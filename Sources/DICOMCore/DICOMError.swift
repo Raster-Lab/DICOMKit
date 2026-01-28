@@ -1,5 +1,5 @@
 /// Errors that can occur during DICOM parsing and processing
-public enum DicomError: Error, Sendable {
+public enum DICOMError: Error, Sendable {
     /// Invalid or missing 128-byte preamble
     ///
     /// Reference: PS3.10 Section 7.1 - DICOM File Meta Information
@@ -28,7 +28,7 @@ public enum DicomError: Error, Sendable {
     case parsingFailed(String)
 }
 
-extension DicomError: CustomStringConvertible {
+extension DICOMError: CustomStringConvertible {
     public var description: String {
         switch self {
         case .invalidPreamble:
