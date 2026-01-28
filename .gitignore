@@ -1,0 +1,27 @@
+# Swift Package Manager
+.build/
+.swiftpm/
+*.xcodeproj
+*.xcworkspace
+DerivedData/
+
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.swp
+
+# Testing
+.test/
+*.lcov
+*.profdata
+
+# Dependencies
+Packages/
+Package.resolved
