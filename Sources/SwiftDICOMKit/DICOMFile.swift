@@ -32,7 +32,7 @@ public struct DICOMFile: Sendable {
     /// - Returns: Parsed DICOM file
     /// - Throws: DICOMError if file is invalid or parsing fails
     public static func read(from data: Data) throws -> DICOMFile {
-        // Validate minimum size (128 byte preamble + 4 byte "DICM")
+        // Validate minimum size (128-byte preamble + 4-byte "DICM")
         guard data.count >= 132 else {
             throw DICOMError.unexpectedEndOfData
         }
