@@ -4,7 +4,7 @@ import Foundation
 ///
 /// Represents a DICOM Part 10 file with File Meta Information and main data set.
 /// Reference: DICOM PS3.10 Section 7 - DICOM File Format
-public struct DicomFile: Sendable {
+public struct DICOMFile: Sendable {
     /// File Meta Information (Group 0002 elements)
     ///
     /// Contains metadata about the file, including Transfer Syntax UID.
@@ -30,11 +30,11 @@ public struct DicomFile: Sendable {
     ///
     /// - Parameter data: Raw file data
     /// - Returns: Parsed DICOM file
-    /// - Throws: DicomError if file is invalid or parsing fails
-    public static func read(from data: Data) throws -> DicomFile {
-        // Validate minimum size (128 byte preamble + 4 byte "DICM")
+    /// - Throws: DICOMError if file is invalid or parsing fails
+    public static func read(from data: Data) throws -> DICOMFile {
+        // Validate minimum size (128-byte preamble + 4-byte "DICM")
         guard data.count >= 132 else {
-            throw DicomError.unexpectedEndOfData
+            throw DICOMError.unexpectedEndOfData
         }
         
         // Validate "DICM" prefix at offset 128
@@ -42,7 +42,7 @@ public struct DicomFile: Sendable {
         let dicmOffset = 128
         let dicmBytes = data[dicmOffset..<dicmOffset+4]
         guard dicmBytes.elementsEqual([0x44, 0x49, 0x43, 0x4D]) else { // "DICM" in ASCII
-            throw DicomError.invalidDICMPrefix
+            throw DICOMError.invalidDICMPrefix
         }
         
         // Placeholder: Return empty data sets for v0.1
@@ -50,7 +50,7 @@ public struct DicomFile: Sendable {
         let fileMetaInfo = DataSet()
         let mainDataSet = DataSet()
         
-        return DicomFile(fileMetaInformation: fileMetaInfo, dataSet: mainDataSet)
+        return DICOMFile(fileMetaInformation: fileMetaInfo, dataSet: mainDataSet)
     }
     
     /// Transfer Syntax UID from File Meta Information
