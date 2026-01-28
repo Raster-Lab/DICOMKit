@@ -89,4 +89,57 @@ struct DataSetTests {
         
         #expect(count == 2)
     }
+    
+    @Test("DataSet numeric value extraction")
+    func testDataSetNumericExtraction() {
+        // Create elements with various numeric types
+        var uint16Data = Data()
+        uint16Data.append(contentsOf: [0x64, 0x00]) // 100
+        let seriesElement = DataElement(
+            tag: .seriesNumber,
+            vr: .US,
+            length: 2,
+            valueData: uint16Data
+        )
+        
+        var float64Data = Data()
+        let sliceThickness: Float64 = 5.0
+        withUnsafeBytes(of: sliceThickness.bitPattern) { float64Data.append(contentsOf: $0) }
+        let sliceElement = DataElement(
+            tag: .sliceThickness,
+            vr: .FD,
+            length: 8,
+            valueData: float64Data
+        )
+        
+        let dataSet = DataSet(elements: [seriesElement, sliceElement])
+        
+        // Test single value extraction
+        #expect(dataSet.uint16(for: .seriesNumber) == 100)
+        #expect(dataSet.float64(for: .sliceThickness) == 5.0)
+    }
+    
+    @Test("DataSet array value extraction")
+    func testDataSetArrayExtraction() {
+        // Create element with multiple UInt16 values
+        var data = Data()
+        data.append(contentsOf: [0x64, 0x00]) // 100
+        data.append(contentsOf: [0xC8, 0x00]) // 200
+        data.append(contentsOf: [0x2C, 0x01]) // 300
+        
+        let element = DataElement(
+            tag: Tag(group: 0x0028, element: 0x0010),
+            vr: .US,
+            length: 6,
+            valueData: data
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let values = dataSet.uint16s(for: Tag(group: 0x0028, element: 0x0010))
+        
+        #expect(values?.count == 3)
+        #expect(values?[0] == 100)
+        #expect(values?[1] == 200)
+        #expect(values?[2] == 300)
+    }
 }

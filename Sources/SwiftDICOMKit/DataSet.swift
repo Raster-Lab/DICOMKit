@@ -61,6 +61,62 @@ public struct DataSet: Sendable {
         return elements[tag]?.uint32Value
     }
     
+    /// Returns the UInt16 values array for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of UInt16 values or nil
+    public func uint16s(for tag: Tag) -> [UInt16]? {
+        return elements[tag]?.uint16Values
+    }
+    
+    /// Returns the UInt32 values array for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of UInt32 values or nil
+    public func uint32s(for tag: Tag) -> [UInt32]? {
+        return elements[tag]?.uint32Values
+    }
+    
+    /// Returns the Int16 value for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Int16 value or nil
+    public func int16(for tag: Tag) -> Int16? {
+        return elements[tag]?.int16Value
+    }
+    
+    /// Returns the Int32 value for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Int32 value or nil
+    public func int32(for tag: Tag) -> Int32? {
+        return elements[tag]?.int32Value
+    }
+    
+    /// Returns the Float32 value for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Float32 value or nil
+    public func float32(for tag: Tag) -> Float32? {
+        return elements[tag]?.float32Value
+    }
+    
+    /// Returns the Float64 value for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Float64 value or nil
+    public func float64(for tag: Tag) -> Float64? {
+        return elements[tag]?.float64Value
+    }
+    
+    /// Returns the Float32 values array for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of Float32 values or nil
+    public func float32s(for tag: Tag) -> [Float32]? {
+        return elements[tag]?.float32Values
+    }
+    
+    /// Returns the Float64 values array for a given tag, if available
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of Float64 values or nil
+    public func float64s(for tag: Tag) -> [Float64]? {
+        return elements[tag]?.float64Values
+    }
+    
     /// Number of elements in the data set
     public var count: Int {
         return elements.count
