@@ -26,7 +26,7 @@ public struct DICOMFile: Sendable {
     /// Reads a DICOM file from data
     ///
     /// Validates the 128-byte preamble and "DICM" prefix per PS3.10 Section 7.1.
-    /// This is a placeholder implementation for v0.1 - full parsing will be implemented later.
+    /// Parses File Meta Information and main data set using Explicit VR Little Endian.
     ///
     /// - Parameter data: Raw file data
     /// - Returns: Parsed DICOM file
@@ -45,10 +45,16 @@ public struct DICOMFile: Sendable {
             throw DICOMError.invalidDICMPrefix
         }
         
-        // Placeholder: Return empty data sets for v0.1
-        // Full parsing implementation will be added in future versions
-        let fileMetaInfo = DataSet()
-        let mainDataSet = DataSet()
+        // Parse File Meta Information (starts at offset 132, after DICM prefix)
+        var parser = DICOMParser(data: data)
+        let fileMetaInfo = try parser.parseFileMetaInformation(startOffset: 132)
+        
+        // Get Transfer Syntax UID from File Meta Information
+        // Default to Explicit VR Little Endian if not specified
+        let transferSyntaxUID = fileMetaInfo.string(for: .transferSyntaxUID) ?? "1.2.840.10008.1.2.1"
+        
+        // Parse main data set
+        let mainDataSet = try parser.parseDataSet(transferSyntaxUID: transferSyntaxUID)
         
         return DICOMFile(fileMetaInformation: fileMetaInfo, dataSet: mainDataSet)
     }

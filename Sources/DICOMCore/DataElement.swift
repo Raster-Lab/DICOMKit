@@ -117,4 +117,133 @@ public struct DataElement: Sendable {
         }
         return valueData.readFloat64LE(at: 0)
     }
+    
+    /// Extracts multiple 16-bit unsigned integer values (for US VR with multiplicity)
+    ///
+    /// Many DICOM elements can have multiple values. This property returns all values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var uint16Values: [UInt16]? {
+        guard vr == .US else {
+            return nil
+        }
+        
+        let count = valueData.count / 2
+        guard count > 0 else {
+            return []
+        }
+        
+        var values: [UInt16] = []
+        for i in 0..<count {
+            if let value = valueData.readUInt16LE(at: i * 2) {
+                values.append(value)
+            }
+        }
+        
+        return values.isEmpty ? nil : values
+    }
+    
+    /// Extracts multiple 32-bit unsigned integer values (for UL VR with multiplicity)
+    public var uint32Values: [UInt32]? {
+        guard vr == .UL else {
+            return nil
+        }
+        
+        let count = valueData.count / 4
+        guard count > 0 else {
+            return []
+        }
+        
+        var values: [UInt32] = []
+        for i in 0..<count {
+            if let value = valueData.readUInt32LE(at: i * 4) {
+                values.append(value)
+            }
+        }
+        
+        return values.isEmpty ? nil : values
+    }
+    
+    /// Extracts multiple 16-bit signed integer values (for SS VR with multiplicity)
+    public var int16Values: [Int16]? {
+        guard vr == .SS else {
+            return nil
+        }
+        
+        let count = valueData.count / 2
+        guard count > 0 else {
+            return []
+        }
+        
+        var values: [Int16] = []
+        for i in 0..<count {
+            if let value = valueData.readInt16LE(at: i * 2) {
+                values.append(value)
+            }
+        }
+        
+        return values.isEmpty ? nil : values
+    }
+    
+    /// Extracts multiple 32-bit signed integer values (for SL VR with multiplicity)
+    public var int32Values: [Int32]? {
+        guard vr == .SL else {
+            return nil
+        }
+        
+        let count = valueData.count / 4
+        guard count > 0 else {
+            return []
+        }
+        
+        var values: [Int32] = []
+        for i in 0..<count {
+            if let value = valueData.readInt32LE(at: i * 4) {
+                values.append(value)
+            }
+        }
+        
+        return values.isEmpty ? nil : values
+    }
+    
+    /// Extracts multiple 32-bit floating point values (for FL VR with multiplicity)
+    public var float32Values: [Float32]? {
+        guard vr == .FL else {
+            return nil
+        }
+        
+        let count = valueData.count / 4
+        guard count > 0 else {
+            return []
+        }
+        
+        var values: [Float32] = []
+        for i in 0..<count {
+            if let value = valueData.readFloat32LE(at: i * 4) {
+                values.append(value)
+            }
+        }
+        
+        return values.isEmpty ? nil : values
+    }
+    
+    /// Extracts multiple 64-bit floating point values (for FD VR with multiplicity)
+    public var float64Values: [Float64]? {
+        guard vr == .FD else {
+            return nil
+        }
+        
+        let count = valueData.count / 8
+        guard count > 0 else {
+            return []
+        }
+        
+        var values: [Float64] = []
+        for i in 0..<count {
+            if let value = valueData.readFloat64LE(at: i * 8) {
+                values.append(value)
+            }
+        }
+        
+        return values.isEmpty ? nil : values
+    }
 }
