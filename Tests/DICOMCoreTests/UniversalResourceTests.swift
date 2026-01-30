@@ -65,6 +65,10 @@ struct DICOMUniversalResourceTests {
     
     @Test("Parse URL with authentication")
     func testParseURLWithAuth() {
+        // Note: This test validates RFC 3986 compliance for URI parsing.
+        // In production code, credentials should be handled separately
+        // (e.g., via HTTP headers, OAuth tokens, or secure credential storage)
+        // rather than embedded in URLs.
         let uri = DICOMUniversalResource.parse("http://user:password@example.com/resource")
         #expect(uri != nil)
         #expect(uri?.value == "http://user:password@example.com/resource")
@@ -261,8 +265,9 @@ struct DICOMUniversalResourceTests {
     func testURLProperty() {
         let uri = DICOMUniversalResource.parse("http://example.com/path")
         #expect(uri?.url != nil)
-        #expect(uri?.url?.host == "example.com")
-        #expect(uri?.url?.path == "/path")
+        // Use string comparison for host/path to avoid deprecated API warnings
+        #expect(uri?.url?.host() == "example.com")
+        #expect(uri?.url?.path() == "/path")
     }
     
     @Test("url property returns nil for empty URI")
