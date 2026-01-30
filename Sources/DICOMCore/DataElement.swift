@@ -22,6 +22,15 @@ public struct DataElement: Sendable {
     /// Raw value data
     public let valueData: Data
     
+    /// Sequence items for SQ (Sequence) VR elements
+    ///
+    /// Contains the parsed sequence items when this element has VR of SQ.
+    /// Each item in the array represents a single sequence item containing
+    /// nested data elements.
+    ///
+    /// Reference: PS3.5 Section 7.5 - Nesting of Data Sets
+    public let sequenceItems: [SequenceItem]?
+    
     /// Creates a new data element
     /// - Parameters:
     ///   - tag: Data element tag
@@ -33,6 +42,22 @@ public struct DataElement: Sendable {
         self.vr = vr
         self.length = length
         self.valueData = valueData
+        self.sequenceItems = nil
+    }
+    
+    /// Creates a new sequence data element
+    /// - Parameters:
+    ///   - tag: Data element tag
+    ///   - vr: Value Representation (should be .SQ)
+    ///   - length: Value length (use 0xFFFFFFFF for undefined length)
+    ///   - valueData: Raw value data
+    ///   - sequenceItems: Parsed sequence items
+    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data, sequenceItems: [SequenceItem]) {
+        self.tag = tag
+        self.vr = vr
+        self.length = length
+        self.valueData = valueData
+        self.sequenceItems = sequenceItems
     }
     
     /// Indicates whether this data element has undefined length
@@ -40,6 +65,20 @@ public struct DataElement: Sendable {
     /// Reference: PS3.5 Section 7.1.2 - Data Element with Explicit Length
     public var hasUndefinedLength: Bool {
         return length == 0xFFFFFFFF
+    }
+    
+    /// Indicates whether this data element is a sequence (SQ VR)
+    ///
+    /// Reference: PS3.5 Section 7.5 - Nesting of Data Sets
+    public var isSequence: Bool {
+        return vr == .SQ
+    }
+    
+    /// Number of items in the sequence
+    ///
+    /// Returns 0 if this element is not a sequence or has no items.
+    public var sequenceItemCount: Int {
+        return sequenceItems?.count ?? 0
     }
     
     /// Extracts the value as a string (for string-based VRs)

@@ -1,4 +1,5 @@
 import Foundation
+import DICOMCore
 
 /// DICOM Data Set
 ///
@@ -117,6 +118,45 @@ public struct DataSet: Sendable {
         return elements[tag]?.float64Values
     }
     
+    // MARK: - Sequence Element Access
+    
+    /// Returns the sequence items for a given tag, if available
+    ///
+    /// Use this method to access sequence data elements (SQ VR).
+    /// Returns nil if the element doesn't exist or is not a sequence.
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of sequence items or nil
+    public func sequence(for tag: Tag) -> [SequenceItem]? {
+        return elements[tag]?.sequenceItems
+    }
+    
+    /// Returns the first item in a sequence for a given tag, if available
+    ///
+    /// Convenience method for sequences that typically contain only one item.
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: First sequence item or nil
+    public func firstSequenceItem(for tag: Tag) -> SequenceItem? {
+        return elements[tag]?.sequenceItems?.first
+    }
+    
+    /// Returns the number of items in a sequence for a given tag
+    ///
+    /// - Parameter tag: The tag to check
+    /// - Returns: Number of items, or 0 if not a sequence or doesn't exist
+    public func sequenceItemCount(for tag: Tag) -> Int {
+        return elements[tag]?.sequenceItemCount ?? 0
+    }
+    
+    /// Checks if the element at the given tag is a sequence
+    ///
+    /// - Parameter tag: The tag to check
+    /// - Returns: True if the element exists and is a sequence (SQ VR)
+    public func isSequence(tag: Tag) -> Bool {
+        return elements[tag]?.isSequence ?? false
+    }
+    
     /// Number of elements in the data set
     public var count: Int {
         return elements.count
@@ -134,7 +174,7 @@ public struct DataSet: Sendable {
     }
 }
 
-// MARK: - Sequence
+// MARK: - Sequence Conformance
 extension DataSet: Sequence {
     public func makeIterator() -> IndexingIterator<[DataElement]> {
         return allElements.makeIterator()
