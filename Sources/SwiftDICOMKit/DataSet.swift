@@ -118,6 +118,52 @@ public struct DataSet: Sendable {
         return elements[tag]?.float64Values
     }
     
+    // MARK: - Date/Time Value Access
+    
+    /// Returns the DICOM Date (DA) value for a given tag, if available
+    ///
+    /// Parses the DICOM Date string (YYYYMMDD format) into a structured DICOMDate.
+    /// Reference: PS3.5 Section 6.2 - DA Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMDate or nil
+    public func date(for tag: Tag) -> DICOMDate? {
+        return elements[tag]?.dateValue
+    }
+    
+    /// Returns the DICOM Time (TM) value for a given tag, if available
+    ///
+    /// Parses the DICOM Time string (HHMMSS.FFFFFF format) into a structured DICOMTime.
+    /// Reference: PS3.5 Section 6.2 - TM Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMTime or nil
+    public func time(for tag: Tag) -> DICOMTime? {
+        return elements[tag]?.timeValue
+    }
+    
+    /// Returns the DICOM DateTime (DT) value for a given tag, if available
+    ///
+    /// Parses the DICOM DateTime string into a structured DICOMDateTime.
+    /// Reference: PS3.5 Section 6.2 - DT Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMDateTime or nil
+    public func dateTime(for tag: Tag) -> DICOMDateTime? {
+        return elements[tag]?.dateTimeValue
+    }
+    
+    /// Returns a Foundation Date for a given tag, if available
+    ///
+    /// Converts DICOM DA or DT values to a Swift Date object.
+    /// TM (Time) values alone cannot be converted to a Date.
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Foundation Date or nil
+    public func foundationDate(for tag: Tag) -> Date? {
+        return elements[tag]?.foundationDateValue
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available

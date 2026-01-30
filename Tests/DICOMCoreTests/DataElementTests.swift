@@ -149,4 +149,83 @@ struct DataElementTests {
         #expect(values?[0] == 3.14159)
         #expect(values?[1] == 2.71828)
     }
+    
+    // MARK: - Date/Time Value Extraction
+    
+    @Test("DICOM Date (DA) value extraction")
+    func testDateValue() {
+        let data = "20250130".data(using: .utf8)!
+        let element = DataElement(tag: Tag.studyDate, vr: .DA, length: UInt32(data.count), valueData: data)
+        
+        let date = element.dateValue
+        #expect(date != nil)
+        #expect(date?.year == 2025)
+        #expect(date?.month == 1)
+        #expect(date?.day == 30)
+    }
+    
+    @Test("DICOM Time (TM) value extraction")
+    func testTimeValue() {
+        let data = "143025.123456".data(using: .utf8)!
+        let element = DataElement(tag: Tag.studyTime, vr: .TM, length: UInt32(data.count), valueData: data)
+        
+        let time = element.timeValue
+        #expect(time != nil)
+        #expect(time?.hour == 14)
+        #expect(time?.minute == 30)
+        #expect(time?.second == 25)
+        #expect(time?.microsecond == 123456)
+    }
+    
+    @Test("DICOM DateTime (DT) value extraction")
+    func testDateTimeValue() {
+        let data = "20250130143025+0530".data(using: .utf8)!
+        let element = DataElement(tag: Tag(group: 0x0008, element: 0x002A), vr: .DT, length: UInt32(data.count), valueData: data)
+        
+        let dateTime = element.dateTimeValue
+        #expect(dateTime != nil)
+        #expect(dateTime?.year == 2025)
+        #expect(dateTime?.month == 1)
+        #expect(dateTime?.day == 30)
+        #expect(dateTime?.hour == 14)
+        #expect(dateTime?.minute == 30)
+        #expect(dateTime?.second == 25)
+        #expect(dateTime?.timezoneOffsetMinutes == 330)
+    }
+    
+    @Test("Foundation Date from DA value")
+    func testFoundationDateFromDA() {
+        let data = "20250130".data(using: .utf8)!
+        let element = DataElement(tag: Tag.studyDate, vr: .DA, length: UInt32(data.count), valueData: data)
+        
+        let date = element.foundationDateValue
+        #expect(date != nil)
+    }
+    
+    @Test("Foundation Date from DT value")
+    func testFoundationDateFromDT() {
+        let data = "20250130143025".data(using: .utf8)!
+        let element = DataElement(tag: Tag(group: 0x0008, element: 0x002A), vr: .DT, length: UInt32(data.count), valueData: data)
+        
+        let date = element.foundationDateValue
+        #expect(date != nil)
+    }
+    
+    @Test("Date value returns nil for wrong VR")
+    func testDateValueWrongVR() {
+        let data = "20250130".data(using: .utf8)!
+        // Using LO (Long String) instead of DA
+        let element = DataElement(tag: Tag.patientID, vr: .LO, length: UInt32(data.count), valueData: data)
+        
+        #expect(element.dateValue == nil)
+    }
+    
+    @Test("Time value returns nil for wrong VR")
+    func testTimeValueWrongVR() {
+        let data = "143025".data(using: .utf8)!
+        // Using LO (Long String) instead of TM
+        let element = DataElement(tag: Tag.patientID, vr: .LO, length: UInt32(data.count), valueData: data)
+        
+        #expect(element.timeValue == nil)
+    }
 }

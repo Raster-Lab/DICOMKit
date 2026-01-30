@@ -285,4 +285,58 @@ public struct DataElement: Sendable {
         
         return values.isEmpty ? nil : values
     }
+    
+    // MARK: - Date/Time Value Extraction
+    
+    /// Extracts the value as a DICOM Date (for DA VR)
+    ///
+    /// Parses the DICOM Date string (YYYYMMDD format) into a structured DICOMDate.
+    /// Reference: PS3.5 Section 6.2 - DA Value Representation
+    public var dateValue: DICOMDate? {
+        guard vr == .DA, let string = stringValue else {
+            return nil
+        }
+        return DICOMDate.parse(string)
+    }
+    
+    /// Extracts the value as a DICOM Time (for TM VR)
+    ///
+    /// Parses the DICOM Time string (HHMMSS.FFFFFF format) into a structured DICOMTime.
+    /// Reference: PS3.5 Section 6.2 - TM Value Representation
+    public var timeValue: DICOMTime? {
+        guard vr == .TM, let string = stringValue else {
+            return nil
+        }
+        return DICOMTime.parse(string)
+    }
+    
+    /// Extracts the value as a DICOM DateTime (for DT VR)
+    ///
+    /// Parses the DICOM DateTime string into a structured DICOMDateTime.
+    /// Reference: PS3.5 Section 6.2 - DT Value Representation
+    public var dateTimeValue: DICOMDateTime? {
+        guard vr == .DT, let string = stringValue else {
+            return nil
+        }
+        return DICOMDateTime.parse(string)
+    }
+    
+    /// Extracts the value as a Foundation Date (for DA, TM, or DT VR)
+    ///
+    /// Converts DICOM date/time values to a Swift Date object.
+    /// - For DA (Date): Returns date at midnight UTC
+    /// - For TM (Time): Returns nil (time alone cannot be converted to Date)
+    /// - For DT (DateTime): Returns full date and time
+    ///
+    /// Reference: PS3.5 Section 6.2
+    public var foundationDateValue: Date? {
+        switch vr {
+        case .DA:
+            return dateValue?.toDate()
+        case .DT:
+            return dateTimeValue?.toDate()
+        default:
+            return nil
+        }
+    }
 }
