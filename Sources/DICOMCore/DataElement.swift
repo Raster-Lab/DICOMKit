@@ -352,4 +352,52 @@ public struct DataElement: Sendable {
         }
         return DICOMAgeString.parse(string)
     }
+    
+    // MARK: - Decimal String Value Extraction
+    
+    /// Extracts the value as a DICOM Decimal String (for DS VR)
+    ///
+    /// Parses the DICOM Decimal String into a structured DICOMDecimalString.
+    /// Reference: PS3.5 Section 6.2 - DS Value Representation
+    public var decimalStringValue: DICOMDecimalString? {
+        guard vr == .DS, let string = stringValue else {
+            return nil
+        }
+        return DICOMDecimalString.parse(string)
+    }
+    
+    /// Extracts multiple DICOM Decimal String values (for DS VR with multiplicity)
+    ///
+    /// DICOM uses backslash (\) as a delimiter for multiple values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var decimalStringValues: [DICOMDecimalString]? {
+        guard vr == .DS, let string = stringValue else {
+            return nil
+        }
+        return DICOMDecimalString.parseMultiple(string)
+    }
+    
+    // MARK: - Integer String Value Extraction
+    
+    /// Extracts the value as a DICOM Integer String (for IS VR)
+    ///
+    /// Parses the DICOM Integer String into a structured DICOMIntegerString.
+    /// Reference: PS3.5 Section 6.2 - IS Value Representation
+    public var integerStringValue: DICOMIntegerString? {
+        guard vr == .IS, let string = stringValue else {
+            return nil
+        }
+        return DICOMIntegerString.parse(string)
+    }
+    
+    /// Extracts multiple DICOM Integer String values (for IS VR with multiplicity)
+    ///
+    /// DICOM uses backslash (\) as a delimiter for multiple values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var integerStringValues: [DICOMIntegerString]? {
+        guard vr == .IS, let string = stringValue else {
+            return nil
+        }
+        return DICOMIntegerString.parseMultiple(string)
+    }
 }

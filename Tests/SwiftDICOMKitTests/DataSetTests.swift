@@ -254,6 +254,93 @@ struct DataSetTests {
         #expect(dataSet.age(for: .patientAge) == nil)
     }
     
+    // MARK: - Decimal String Value Access Tests
+    
+    @Test("DataSet DICOM Decimal String extraction")
+    func testDataSetDecimalStringExtraction() {
+        let element = DataElement(
+            tag: .sliceThickness,
+            vr: .DS,
+            length: 3,
+            valueData: "2.5".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let ds = dataSet.decimalString(for: .sliceThickness)
+        
+        #expect(ds != nil)
+        #expect(ds?.value == 2.5)
+    }
+    
+    @Test("DataSet DICOM Decimal String multiple values extraction")
+    func testDataSetDecimalStringsExtraction() {
+        let element = DataElement(
+            tag: .pixelSpacing,
+            vr: .DS,
+            length: 13,
+            valueData: "0.3125\\0.3125".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let values = dataSet.decimalStrings(for: .pixelSpacing)
+        
+        #expect(values != nil)
+        #expect(values?.count == 2)
+        #expect(values?[0].value == 0.3125)
+        #expect(values?[1].value == 0.3125)
+    }
+    
+    @Test("DataSet decimal string returns nil for missing tag")
+    func testDataSetDecimalStringMissingTag() {
+        let dataSet = DataSet()
+        #expect(dataSet.decimalString(for: .sliceThickness) == nil)
+        #expect(dataSet.decimalStrings(for: .pixelSpacing) == nil)
+    }
+    
+    // MARK: - Integer String Value Access Tests
+    
+    @Test("DataSet DICOM Integer String extraction")
+    func testDataSetIntegerStringExtraction() {
+        let element = DataElement(
+            tag: .instanceNumber,
+            vr: .IS,
+            length: 1,
+            valueData: "1".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let is_value = dataSet.integerString(for: .instanceNumber)
+        
+        #expect(is_value != nil)
+        #expect(is_value?.value == 1)
+    }
+    
+    @Test("DataSet DICOM Integer String multiple values extraction")
+    func testDataSetIntegerStringsExtraction() {
+        let element = DataElement(
+            tag: Tag(group: 0x0020, element: 0x0013),
+            vr: .IS,
+            length: 5,
+            valueData: "1\\2\\3".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let values = dataSet.integerStrings(for: Tag(group: 0x0020, element: 0x0013))
+        
+        #expect(values != nil)
+        #expect(values?.count == 3)
+        #expect(values?[0].value == 1)
+        #expect(values?[1].value == 2)
+        #expect(values?[2].value == 3)
+    }
+    
+    @Test("DataSet integer string returns nil for missing tag")
+    func testDataSetIntegerStringMissingTag() {
+        let dataSet = DataSet()
+        #expect(dataSet.integerString(for: .instanceNumber) == nil)
+        #expect(dataSet.integerStrings(for: Tag(group: 0x0020, element: 0x0013)) == nil)
+    }
+    
     @Test("DataSet sequence access methods")
     func testDataSetSequenceAccess() {
         // Create a sequence element with items

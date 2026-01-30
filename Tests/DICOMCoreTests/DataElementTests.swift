@@ -250,4 +250,73 @@ struct DataElementTests {
         
         #expect(element.ageValue == nil)
     }
+    
+    // MARK: - Decimal String Value Extraction
+    
+    @Test("DICOM Decimal String (DS) value extraction")
+    func testDecimalStringValue() {
+        let data = "3.14159".data(using: .utf8)!
+        let element = DataElement(tag: Tag.sliceThickness, vr: .DS, length: UInt32(data.count), valueData: data)
+        
+        let ds = element.decimalStringValue
+        #expect(ds != nil)
+        #expect(ds?.value == 3.14159)
+    }
+    
+    @Test("DICOM Decimal String multiple values extraction")
+    func testDecimalStringValuesMultiple() {
+        let data = "0.3125\\0.3125".data(using: .utf8)!
+        let element = DataElement(tag: Tag.pixelSpacing, vr: .DS, length: UInt32(data.count), valueData: data)
+        
+        let values = element.decimalStringValues
+        #expect(values != nil)
+        #expect(values?.count == 2)
+        #expect(values?[0].value == 0.3125)
+        #expect(values?[1].value == 0.3125)
+    }
+    
+    @Test("Decimal String value returns nil for wrong VR")
+    func testDecimalStringValueWrongVR() {
+        let data = "3.14159".data(using: .utf8)!
+        // Using LO (Long String) instead of DS
+        let element = DataElement(tag: Tag.patientID, vr: .LO, length: UInt32(data.count), valueData: data)
+        
+        #expect(element.decimalStringValue == nil)
+        #expect(element.decimalStringValues == nil)
+    }
+    
+    // MARK: - Integer String Value Extraction
+    
+    @Test("DICOM Integer String (IS) value extraction")
+    func testIntegerStringValue() {
+        let data = "12345".data(using: .utf8)!
+        let element = DataElement(tag: Tag.instanceNumber, vr: .IS, length: UInt32(data.count), valueData: data)
+        
+        let is_value = element.integerStringValue
+        #expect(is_value != nil)
+        #expect(is_value?.value == 12345)
+    }
+    
+    @Test("DICOM Integer String multiple values extraction")
+    func testIntegerStringValuesMultiple() {
+        let data = "1\\2\\3".data(using: .utf8)!
+        let element = DataElement(tag: Tag(group: 0x0020, element: 0x0013), vr: .IS, length: UInt32(data.count), valueData: data)
+        
+        let values = element.integerStringValues
+        #expect(values != nil)
+        #expect(values?.count == 3)
+        #expect(values?[0].value == 1)
+        #expect(values?[1].value == 2)
+        #expect(values?[2].value == 3)
+    }
+    
+    @Test("Integer String value returns nil for wrong VR")
+    func testIntegerStringValueWrongVR() {
+        let data = "12345".data(using: .utf8)!
+        // Using LO (Long String) instead of IS
+        let element = DataElement(tag: Tag.patientID, vr: .LO, length: UInt32(data.count), valueData: data)
+        
+        #expect(element.integerStringValue == nil)
+        #expect(element.integerStringValues == nil)
+    }
 }
