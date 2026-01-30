@@ -164,6 +164,19 @@ public struct DataSet: Sendable {
         return elements[tag]?.foundationDateValue
     }
     
+    // MARK: - Age String Value Access
+    
+    /// Returns the DICOM Age String (AS) value for a given tag, if available
+    ///
+    /// Parses the DICOM Age String (nnnX format) into a structured DICOMAgeString.
+    /// Reference: PS3.5 Section 6.2 - AS Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMAgeString or nil
+    public func age(for tag: Tag) -> DICOMAgeString? {
+        return elements[tag]?.ageValue
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available

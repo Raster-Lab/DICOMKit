@@ -228,6 +228,32 @@ struct DataSetTests {
         #expect(dataSet.foundationDate(for: .studyDate) == nil)
     }
     
+    // MARK: - Age String Value Access Tests
+    
+    @Test("DataSet DICOM Age String extraction")
+    func testDataSetAgeExtraction() {
+        let element = DataElement(
+            tag: .patientAge,
+            vr: .AS,
+            length: 4,
+            valueData: "018Y".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let age = dataSet.age(for: .patientAge)
+        
+        #expect(age != nil)
+        #expect(age?.value == 18)
+        #expect(age?.unit == .years)
+        #expect(age?.humanReadable == "18 years")
+    }
+    
+    @Test("DataSet age returns nil for missing tag")
+    func testDataSetAgeMissingTag() {
+        let dataSet = DataSet()
+        #expect(dataSet.age(for: .patientAge) == nil)
+    }
+    
     @Test("DataSet sequence access methods")
     func testDataSetSequenceAccess() {
         // Create a sequence element with items

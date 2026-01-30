@@ -228,4 +228,26 @@ struct DataElementTests {
         
         #expect(element.timeValue == nil)
     }
+    
+    // MARK: - Age String Value Extraction
+    
+    @Test("DICOM Age String (AS) value extraction")
+    func testAgeValue() {
+        let data = "018Y".data(using: .utf8)!
+        let element = DataElement(tag: Tag.patientAge, vr: .AS, length: UInt32(data.count), valueData: data)
+        
+        let age = element.ageValue
+        #expect(age != nil)
+        #expect(age?.value == 18)
+        #expect(age?.unit == .years)
+    }
+    
+    @Test("Age value returns nil for wrong VR")
+    func testAgeValueWrongVR() {
+        let data = "018Y".data(using: .utf8)!
+        // Using LO (Long String) instead of AS
+        let element = DataElement(tag: Tag.patientID, vr: .LO, length: UInt32(data.count), valueData: data)
+        
+        #expect(element.ageValue == nil)
+    }
 }
