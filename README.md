@@ -111,6 +111,12 @@ if let instanceNumber = dicomFile.dataSet.integerString(for: .instanceNumber) {
     print("Instance Number: \(instanceNumber.value)")
 }
 
+// Access Application Entity (AE) values
+if let ae = dicomFile.dataSet.applicationEntity(for: .sourceApplicationEntityTitle) {
+    print("Source AE: \(ae.value)")  // e.g., "STORESCU"
+    print("Padded: \(ae.paddedValue)")  // 16-character padded format
+}
+
 // Access sequence (SQ) elements
 if let items = dicomFile.dataSet.sequence(for: .procedureCodeSequence) {
     for item in items {
@@ -142,6 +148,9 @@ Core data types and utilities:
 - `DICOMAgeString` - DICOM Age String (AS) value parsing
 - `DICOMDecimalString` - DICOM Decimal String (DS) value parsing
 - `DICOMIntegerString` - DICOM Integer String (IS) value parsing
+- `DICOMPersonName` - DICOM Person Name (PN) value parsing
+- `DICOMUniqueIdentifier` - DICOM Unique Identifier (UI) value parsing
+- `DICOMApplicationEntity` - DICOM Application Entity (AE) value parsing
 - `DICOMError` - Error types for parsing failures
 - Little Endian byte reading utilities
 
