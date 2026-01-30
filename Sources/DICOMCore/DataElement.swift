@@ -400,4 +400,29 @@ public struct DataElement: Sendable {
         }
         return DICOMIntegerString.parseMultiple(string)
     }
+    
+    // MARK: - Person Name Value Extraction
+    
+    /// Extracts the value as a DICOM Person Name (for PN VR)
+    ///
+    /// Parses the DICOM Person Name string into a structured DICOMPersonName.
+    /// Reference: PS3.5 Section 6.2 - PN Value Representation
+    public var personNameValue: DICOMPersonName? {
+        guard vr == .PN, let string = stringValue else {
+            return nil
+        }
+        return DICOMPersonName.parse(string)
+    }
+    
+    /// Extracts multiple DICOM Person Name values (for PN VR with multiplicity)
+    ///
+    /// DICOM uses backslash (\) as a delimiter for multiple values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var personNameValues: [DICOMPersonName]? {
+        guard vr == .PN, let strings = stringValues else {
+            return nil
+        }
+        let names = strings.compactMap { DICOMPersonName.parse($0) }
+        return names.isEmpty ? nil : names
+    }
 }

@@ -225,6 +225,30 @@ public struct DataSet: Sendable {
         return elements[tag]?.integerStringValues
     }
     
+    // MARK: - Person Name Value Access
+    
+    /// Returns the DICOM Person Name (PN) value for a given tag, if available
+    ///
+    /// Parses the DICOM Person Name string into a structured DICOMPersonName.
+    /// Reference: PS3.5 Section 6.2 - PN Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMPersonName or nil
+    public func personName(for tag: Tag) -> DICOMPersonName? {
+        return elements[tag]?.personNameValue
+    }
+    
+    /// Returns multiple DICOM Person Name (PN) values for a given tag, if available
+    ///
+    /// Parses multi-valued DICOM Person Name strings (backslash-delimited).
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of DICOMPersonName or nil
+    public func personNames(for tag: Tag) -> [DICOMPersonName]? {
+        return elements[tag]?.personNameValues
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available

@@ -319,4 +319,44 @@ struct DataElementTests {
         #expect(element.integerStringValue == nil)
         #expect(element.integerStringValues == nil)
     }
+    
+    // MARK: - Person Name Value Extraction
+    
+    @Test("DICOM Person Name (PN) value extraction")
+    func testPersonNameValue() {
+        let data = "Doe^John^Robert^Dr.^Jr.".data(using: .utf8)!
+        let element = DataElement(tag: Tag.patientName, vr: .PN, length: UInt32(data.count), valueData: data)
+        
+        let name = element.personNameValue
+        #expect(name != nil)
+        #expect(name?.familyName == "Doe")
+        #expect(name?.givenName == "John")
+        #expect(name?.middleName == "Robert")
+        #expect(name?.namePrefix == "Dr.")
+        #expect(name?.nameSuffix == "Jr.")
+    }
+    
+    @Test("DICOM Person Name multiple values extraction")
+    func testPersonNameValuesMultiple() {
+        let data = "Doe^John\\Smith^Jane".data(using: .utf8)!
+        let element = DataElement(tag: Tag.patientName, vr: .PN, length: UInt32(data.count), valueData: data)
+        
+        let values = element.personNameValues
+        #expect(values != nil)
+        #expect(values?.count == 2)
+        #expect(values?[0].familyName == "Doe")
+        #expect(values?[0].givenName == "John")
+        #expect(values?[1].familyName == "Smith")
+        #expect(values?[1].givenName == "Jane")
+    }
+    
+    @Test("Person Name value returns nil for wrong VR")
+    func testPersonNameValueWrongVR() {
+        let data = "Doe^John".data(using: .utf8)!
+        // Using LO (Long String) instead of PN
+        let element = DataElement(tag: Tag.patientID, vr: .LO, length: UInt32(data.count), valueData: data)
+        
+        #expect(element.personNameValue == nil)
+        #expect(element.personNameValues == nil)
+    }
 }
