@@ -473,4 +473,28 @@ public struct DataElement: Sendable {
         }
         return DICOMApplicationEntity.parseMultiple(string)
     }
+    
+    // MARK: - Code String Value Extraction
+    
+    /// Extracts the value as a DICOM Code String (for CS VR)
+    ///
+    /// Parses the DICOM Code String into a structured DICOMCodeString.
+    /// Reference: PS3.5 Section 6.2 - CS Value Representation
+    public var codeStringValue: DICOMCodeString? {
+        guard vr == .CS, let string = stringValue else {
+            return nil
+        }
+        return DICOMCodeString.parse(string)
+    }
+    
+    /// Extracts multiple DICOM Code String values (for CS VR with multiplicity)
+    ///
+    /// DICOM uses backslash (\) as a delimiter for multiple values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var codeStringValues: [DICOMCodeString]? {
+        guard vr == .CS, let string = stringValue else {
+            return nil
+        }
+        return DICOMCodeString.parseMultiple(string)
+    }
 }

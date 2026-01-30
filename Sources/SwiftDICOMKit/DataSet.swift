@@ -297,6 +297,30 @@ public struct DataSet: Sendable {
         return elements[tag]?.applicationEntityValues
     }
     
+    // MARK: - Code String Value Access
+    
+    /// Returns the DICOM Code String (CS) value for a given tag, if available
+    ///
+    /// Parses the DICOM Code String into a structured DICOMCodeString.
+    /// Reference: PS3.5 Section 6.2 - CS Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMCodeString or nil
+    public func codeString(for tag: Tag) -> DICOMCodeString? {
+        return elements[tag]?.codeStringValue
+    }
+    
+    /// Returns multiple DICOM Code String (CS) values for a given tag, if available
+    ///
+    /// Parses multi-valued DICOM Code Strings (backslash-delimited).
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of DICOMCodeString or nil
+    public func codeStrings(for tag: Tag) -> [DICOMCodeString]? {
+        return elements[tag]?.codeStringValues
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available
