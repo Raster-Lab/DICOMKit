@@ -425,4 +425,28 @@ public struct DataElement: Sendable {
         let names = strings.compactMap { DICOMPersonName.parse($0) }
         return names.isEmpty ? nil : names
     }
+    
+    // MARK: - Unique Identifier Value Extraction
+    
+    /// Extracts the value as a DICOM Unique Identifier (for UI VR)
+    ///
+    /// Parses the DICOM UID string into a structured DICOMUniqueIdentifier.
+    /// Reference: PS3.5 Section 6.2 - UI Value Representation
+    public var uidValue: DICOMUniqueIdentifier? {
+        guard vr == .UI, let string = stringValue else {
+            return nil
+        }
+        return DICOMUniqueIdentifier.parse(string)
+    }
+    
+    /// Extracts multiple DICOM Unique Identifier values (for UI VR with multiplicity)
+    ///
+    /// DICOM uses backslash (\) as a delimiter for multiple values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var uidValues: [DICOMUniqueIdentifier]? {
+        guard vr == .UI, let string = stringValue else {
+            return nil
+        }
+        return DICOMUniqueIdentifier.parseMultiple(string)
+    }
 }

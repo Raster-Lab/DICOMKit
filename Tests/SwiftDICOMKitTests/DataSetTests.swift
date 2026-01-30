@@ -418,4 +418,66 @@ struct DataSetTests {
         #expect(dataSet.personName(for: .patientName) == nil)
         #expect(dataSet.personNames(for: .patientName) == nil)
     }
+    
+    // MARK: - Unique Identifier Value Access Tests
+    
+    @Test("DataSet DICOM Unique Identifier extraction")
+    func testDataSetUIDExtraction() {
+        let element = DataElement(
+            tag: .sopClassUID,
+            vr: .UI,
+            length: 26,
+            valueData: "1.2.840.10008.5.1.4.1.1.2".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let uid = dataSet.uid(for: .sopClassUID)
+        
+        #expect(uid != nil)
+        #expect(uid?.value == "1.2.840.10008.5.1.4.1.1.2")
+        #expect(uid?.isStandardDICOM == true)
+        #expect(uid?.isSOPClass == true)
+    }
+    
+    @Test("DataSet DICOM Unique Identifier Transfer Syntax extraction")
+    func testDataSetTransferSyntaxUIDExtraction() {
+        let element = DataElement(
+            tag: .transferSyntaxUID,
+            vr: .UI,
+            length: 20,
+            valueData: "1.2.840.10008.1.2.1\0".data(using: .utf8)!  // With null padding
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let uid = dataSet.uid(for: .transferSyntaxUID)
+        
+        #expect(uid != nil)
+        #expect(uid?.value == "1.2.840.10008.1.2.1")
+        #expect(uid?.isTransferSyntax == true)
+    }
+    
+    @Test("DataSet DICOM Unique Identifier multiple values extraction")
+    func testDataSetUIDsExtraction() {
+        let element = DataElement(
+            tag: Tag(group: 0x0008, element: 0x0058),  // Failed SOP Instance UID List
+            vr: .UI,
+            length: 41,
+            valueData: "1.2.840.10008.1.2\\1.2.840.10008.1.2.1".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let uids = dataSet.uids(for: Tag(group: 0x0008, element: 0x0058))
+        
+        #expect(uids != nil)
+        #expect(uids?.count == 2)
+        #expect(uids?[0].value == "1.2.840.10008.1.2")
+        #expect(uids?[1].value == "1.2.840.10008.1.2.1")
+    }
+    
+    @Test("DataSet uid returns nil for missing tag")
+    func testDataSetUIDMissingTag() {
+        let dataSet = DataSet()
+        #expect(dataSet.uid(for: .sopClassUID) == nil)
+        #expect(dataSet.uids(for: .sopClassUID) == nil)
+    }
 }
