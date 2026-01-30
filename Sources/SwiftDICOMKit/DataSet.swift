@@ -177,6 +177,54 @@ public struct DataSet: Sendable {
         return elements[tag]?.ageValue
     }
     
+    // MARK: - Decimal String Value Access
+    
+    /// Returns the DICOM Decimal String (DS) value for a given tag, if available
+    ///
+    /// Parses the DICOM Decimal String into a structured DICOMDecimalString.
+    /// Reference: PS3.5 Section 6.2 - DS Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMDecimalString or nil
+    public func decimalString(for tag: Tag) -> DICOMDecimalString? {
+        return elements[tag]?.decimalStringValue
+    }
+    
+    /// Returns multiple DICOM Decimal String (DS) values for a given tag, if available
+    ///
+    /// Parses multi-valued DICOM Decimal Strings (backslash-delimited).
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of DICOMDecimalString or nil
+    public func decimalStrings(for tag: Tag) -> [DICOMDecimalString]? {
+        return elements[tag]?.decimalStringValues
+    }
+    
+    // MARK: - Integer String Value Access
+    
+    /// Returns the DICOM Integer String (IS) value for a given tag, if available
+    ///
+    /// Parses the DICOM Integer String into a structured DICOMIntegerString.
+    /// Reference: PS3.5 Section 6.2 - IS Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMIntegerString or nil
+    public func integerString(for tag: Tag) -> DICOMIntegerString? {
+        return elements[tag]?.integerStringValue
+    }
+    
+    /// Returns multiple DICOM Integer String (IS) values for a given tag, if available
+    ///
+    /// Parses multi-valued DICOM Integer Strings (backslash-delimited).
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of DICOMIntegerString or nil
+    public func integerStrings(for tag: Tag) -> [DICOMIntegerString]? {
+        return elements[tag]?.integerStringValues
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available

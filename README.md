@@ -98,6 +98,19 @@ if let patientAge = dicomFile.dataSet.age(for: .patientAge) {
     print("Age in years: \(patientAge.approximateYears)")
 }
 
+// Access numeric string values (DS and IS)
+if let sliceThickness = dicomFile.dataSet.decimalString(for: .sliceThickness) {
+    print("Slice Thickness: \(sliceThickness.value) mm")
+}
+
+if let pixelSpacing = dicomFile.dataSet.decimalStrings(for: .pixelSpacing) {
+    print("Pixel Spacing: \(pixelSpacing.map { $0.value })")  // e.g., [0.3125, 0.3125]
+}
+
+if let instanceNumber = dicomFile.dataSet.integerString(for: .instanceNumber) {
+    print("Instance Number: \(instanceNumber.value)")
+}
+
 // Access sequence (SQ) elements
 if let items = dicomFile.dataSet.sequence(for: .procedureCodeSequence) {
     for item in items {
@@ -127,6 +140,8 @@ Core data types and utilities:
 - `DICOMTime` - DICOM Time (TM) value parsing
 - `DICOMDateTime` - DICOM DateTime (DT) value parsing
 - `DICOMAgeString` - DICOM Age String (AS) value parsing
+- `DICOMDecimalString` - DICOM Decimal String (DS) value parsing
+- `DICOMIntegerString` - DICOM Integer String (IS) value parsing
 - `DICOMError` - Error types for parsing failures
 - Little Endian byte reading utilities
 
