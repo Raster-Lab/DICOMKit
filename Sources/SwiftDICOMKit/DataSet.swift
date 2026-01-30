@@ -249,6 +249,30 @@ public struct DataSet: Sendable {
         return elements[tag]?.personNameValues
     }
     
+    // MARK: - Unique Identifier Value Access
+    
+    /// Returns the DICOM Unique Identifier (UI) value for a given tag, if available
+    ///
+    /// Parses the DICOM UID string into a structured DICOMUniqueIdentifier.
+    /// Reference: PS3.5 Section 6.2 - UI Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMUniqueIdentifier or nil
+    public func uid(for tag: Tag) -> DICOMUniqueIdentifier? {
+        return elements[tag]?.uidValue
+    }
+    
+    /// Returns multiple DICOM Unique Identifier (UI) values for a given tag, if available
+    ///
+    /// Parses multi-valued DICOM UID strings (backslash-delimited).
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of DICOMUniqueIdentifier or nil
+    public func uids(for tag: Tag) -> [DICOMUniqueIdentifier]? {
+        return elements[tag]?.uidValues
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available
