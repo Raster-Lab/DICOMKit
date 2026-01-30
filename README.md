@@ -111,6 +111,15 @@ if let instanceNumber = dicomFile.dataSet.integerString(for: .instanceNumber) {
     print("Instance Number: \(instanceNumber.value)")
 }
 
+// Access Code String (CS) values
+if let modality = dicomFile.dataSet.codeString(for: .modality) {
+    print("Modality: \(modality.value)")  // e.g., "CT", "MR"
+}
+
+if let imageType = dicomFile.dataSet.codeStrings(for: .imageType) {
+    print("Image Type: \(imageType.map { $0.value })")  // e.g., ["ORIGINAL", "PRIMARY", "AXIAL"]
+}
+
 // Access Application Entity (AE) values
 if let ae = dicomFile.dataSet.applicationEntity(for: .sourceApplicationEntityTitle) {
     print("Source AE: \(ae.value)")  // e.g., "STORESCU"
@@ -146,6 +155,7 @@ Core data types and utilities:
 - `DICOMTime` - DICOM Time (TM) value parsing
 - `DICOMDateTime` - DICOM DateTime (DT) value parsing
 - `DICOMAgeString` - DICOM Age String (AS) value parsing
+- `DICOMCodeString` - DICOM Code String (CS) value parsing
 - `DICOMDecimalString` - DICOM Decimal String (DS) value parsing
 - `DICOMIntegerString` - DICOM Integer String (IS) value parsing
 - `DICOMPersonName` - DICOM Person Name (PN) value parsing
