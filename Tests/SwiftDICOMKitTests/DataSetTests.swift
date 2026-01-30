@@ -368,4 +368,54 @@ struct DataSetTests {
         #expect(dataSet.sequence(for: .procedureCodeSequence)?.count == 1)
         #expect(dataSet.firstSequenceItem(for: .procedureCodeSequence) != nil)
     }
+    
+    // MARK: - Person Name Value Access Tests
+    
+    @Test("DataSet DICOM Person Name extraction")
+    func testDataSetPersonNameExtraction() {
+        let element = DataElement(
+            tag: .patientName,
+            vr: .PN,
+            length: 23,
+            valueData: "Doe^John^Robert^Dr.^Jr.".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let name = dataSet.personName(for: .patientName)
+        
+        #expect(name != nil)
+        #expect(name?.familyName == "Doe")
+        #expect(name?.givenName == "John")
+        #expect(name?.middleName == "Robert")
+        #expect(name?.namePrefix == "Dr.")
+        #expect(name?.nameSuffix == "Jr.")
+        #expect(name?.formattedName == "Dr. John Robert Doe Jr.")
+    }
+    
+    @Test("DataSet DICOM Person Name multiple values extraction")
+    func testDataSetPersonNamesExtraction() {
+        let element = DataElement(
+            tag: .patientName,
+            vr: .PN,
+            length: 19,
+            valueData: "Doe^John\\Smith^Jane".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let names = dataSet.personNames(for: .patientName)
+        
+        #expect(names != nil)
+        #expect(names?.count == 2)
+        #expect(names?[0].familyName == "Doe")
+        #expect(names?[0].givenName == "John")
+        #expect(names?[1].familyName == "Smith")
+        #expect(names?[1].givenName == "Jane")
+    }
+    
+    @Test("DataSet person name returns nil for missing tag")
+    func testDataSetPersonNameMissingTag() {
+        let dataSet = DataSet()
+        #expect(dataSet.personName(for: .patientName) == nil)
+        #expect(dataSet.personNames(for: .patientName) == nil)
+    }
 }
