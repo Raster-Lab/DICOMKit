@@ -78,8 +78,18 @@ if let patientName = dicomFile.dataSet.string(for: .patientName) {
     print("Patient Name: \(patientName)")
 }
 
-if let studyDate = dicomFile.dataSet.string(for: .studyDate) {
-    print("Study Date: \(studyDate)")
+// Access date/time values with type-safe parsing
+if let studyDate = dicomFile.dataSet.date(for: .studyDate) {
+    print("Study Date: \(studyDate.year)-\(studyDate.month)-\(studyDate.day)")
+    
+    // Convert to Foundation Date if needed
+    if let date = studyDate.toDate() {
+        print("As Foundation Date: \(date)")
+    }
+}
+
+if let studyTime = dicomFile.dataSet.time(for: .studyTime) {
+    print("Study Time: \(studyTime.hour):\(studyTime.minute ?? 0)")
 }
 
 // Access sequence (SQ) elements
@@ -107,6 +117,9 @@ Core data types and utilities:
 - `Tag` - Data element tags (group, element pairs)
 - `DataElement` - Individual DICOM data elements
 - `SequenceItem` - Items within a DICOM sequence
+- `DICOMDate` - DICOM Date (DA) value parsing
+- `DICOMTime` - DICOM Time (TM) value parsing
+- `DICOMDateTime` - DICOM DateTime (DT) value parsing
 - `DICOMError` - Error types for parsing failures
 - Little Endian byte reading utilities
 

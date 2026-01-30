@@ -142,4 +142,117 @@ struct DataSetTests {
         #expect(values?[1] == 200)
         #expect(values?[2] == 300)
     }
+    
+    // MARK: - Date/Time Value Access Tests
+    
+    @Test("DataSet DICOM Date extraction")
+    func testDataSetDateExtraction() {
+        let element = DataElement(
+            tag: .studyDate,
+            vr: .DA,
+            length: 8,
+            valueData: "20250130".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let date = dataSet.date(for: .studyDate)
+        
+        #expect(date != nil)
+        #expect(date?.year == 2025)
+        #expect(date?.month == 1)
+        #expect(date?.day == 30)
+    }
+    
+    @Test("DataSet DICOM Time extraction")
+    func testDataSetTimeExtraction() {
+        let element = DataElement(
+            tag: .studyTime,
+            vr: .TM,
+            length: 6,
+            valueData: "143025".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let time = dataSet.time(for: .studyTime)
+        
+        #expect(time != nil)
+        #expect(time?.hour == 14)
+        #expect(time?.minute == 30)
+        #expect(time?.second == 25)
+    }
+    
+    @Test("DataSet DICOM DateTime extraction")
+    func testDataSetDateTimeExtraction() {
+        // Create a DT element - using Acquisition DateTime tag
+        let element = DataElement(
+            tag: Tag(group: 0x0008, element: 0x002A),
+            vr: .DT,
+            length: 19,
+            valueData: "20250130143025+0530".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let dateTime = dataSet.dateTime(for: Tag(group: 0x0008, element: 0x002A))
+        
+        #expect(dateTime != nil)
+        #expect(dateTime?.year == 2025)
+        #expect(dateTime?.month == 1)
+        #expect(dateTime?.day == 30)
+        #expect(dateTime?.hour == 14)
+        #expect(dateTime?.minute == 30)
+        #expect(dateTime?.timezoneOffsetMinutes == 330)
+    }
+    
+    @Test("DataSet Foundation Date extraction")
+    func testDataSetFoundationDateExtraction() {
+        let element = DataElement(
+            tag: .studyDate,
+            vr: .DA,
+            length: 8,
+            valueData: "20250130".data(using: .utf8)!
+        )
+        
+        let dataSet = DataSet(elements: [element])
+        let date = dataSet.foundationDate(for: .studyDate)
+        
+        #expect(date != nil)
+    }
+    
+    @Test("DataSet date returns nil for missing tag")
+    func testDataSetDateMissingTag() {
+        let dataSet = DataSet()
+        
+        #expect(dataSet.date(for: .studyDate) == nil)
+        #expect(dataSet.time(for: .studyTime) == nil)
+        #expect(dataSet.dateTime(for: Tag(group: 0x0008, element: 0x002A)) == nil)
+        #expect(dataSet.foundationDate(for: .studyDate) == nil)
+    }
+    
+    @Test("DataSet sequence access methods")
+    func testDataSetSequenceAccess() {
+        // Create a sequence element with items
+        let innerElement = DataElement(
+            tag: Tag(group: 0x0008, element: 0x0100),
+            vr: .SH,
+            length: 5,
+            valueData: "12345".data(using: .utf8)!
+        )
+        
+        let item = SequenceItem(elements: [innerElement])
+        
+        let sequenceElement = DataElement(
+            tag: .procedureCodeSequence,
+            vr: .SQ,
+            length: 0xFFFFFFFF,
+            valueData: Data(),
+            sequenceItems: [item]
+        )
+        
+        let dataSet = DataSet(elements: [sequenceElement])
+        
+        #expect(dataSet.isSequence(tag: .procedureCodeSequence) == true)
+        #expect(dataSet.sequenceItemCount(for: .procedureCodeSequence) == 1)
+        #expect(dataSet.sequence(for: .procedureCodeSequence)?.count == 1)
+        #expect(dataSet.firstSequenceItem(for: .procedureCodeSequence) != nil)
+    }
 }
