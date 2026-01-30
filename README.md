@@ -15,6 +15,7 @@ SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (D
 - ✅ **Read-only DICOM file parsing** - Parse DICOM Part 10 files
 - ✅ **Explicit VR Little Endian support** - Industry-standard transfer syntax
 - ✅ **Implicit VR Little Endian support** - DICOM default transfer syntax
+- ✅ **Sequence (SQ) parsing** - Full support for nested data sets
 - ✅ **Type-safe API** - Leverages Swift's type system for safety
 - ✅ **Value semantics** - Immutable data structures with `struct` and `enum`
 - ✅ **Strict concurrency** - Full Swift 6 concurrency support
@@ -65,7 +66,7 @@ import Foundation
 
 // Read a DICOM file
 let fileData = try Data(contentsOf: fileURL)
-let dicomFile = try DicomFile.read(from: fileData)
+let dicomFile = try DICOMFile.read(from: fileData)
 
 // Access File Meta Information
 if let transferSyntax = dicomFile.transferSyntaxUID {
@@ -79,6 +80,15 @@ if let patientName = dicomFile.dataSet.string(for: .patientName) {
 
 if let studyDate = dicomFile.dataSet.string(for: .studyDate) {
     print("Study Date: \(studyDate)")
+}
+
+// Access sequence (SQ) elements
+if let items = dicomFile.dataSet.sequence(for: .procedureCodeSequence) {
+    for item in items {
+        if let codeValue = item.string(for: Tag(group: 0x0008, element: 0x0100)) {
+            print("Code Value: \(codeValue)")
+        }
+    }
 }
 
 // Iterate through all elements
@@ -96,7 +106,8 @@ Core data types and utilities:
 - `VR` - All 31 Value Representations from DICOM PS3.5
 - `Tag` - Data element tags (group, element pairs)
 - `DataElement` - Individual DICOM data elements
-- `DicomError` - Error types for parsing failures
+- `SequenceItem` - Items within a DICOM sequence
+- `DICOMError` - Error types for parsing failures
 - Little Endian byte reading utilities
 
 ### DICOMDictionary

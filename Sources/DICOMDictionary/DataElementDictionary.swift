@@ -491,6 +491,15 @@ public struct DataElementDictionary {
             vm: "1"
         )
         
+        // Procedure Code Sequence (for sequence parsing)
+        dict[.procedureCodeSequence] = DataElementEntry(
+            tag: .procedureCodeSequence,
+            name: "Procedure Code Sequence",
+            keyword: "ProcedureCodeSequence",
+            vr: .SQ,
+            vm: "1"
+        )
+        
         return dict
     }()
     
