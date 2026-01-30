@@ -119,6 +119,21 @@ extension Tag {
     /// VR: SQ, VM: 1
     public static let otherPatientIDsSequence = Tag(group: 0x0010, element: 0x1002)
     
+    /// Patient's Age (0010,1010)
+    /// VR: AS, VM: 1
+    /// Age of the Patient expressed in nnnD for days, nnnW for weeks, nnnM for months, or nnnY for years
+    public static let patientAge = Tag(group: 0x0010, element: 0x1010)
+    
+    /// Patient's Size (0010,1020)
+    /// VR: DS, VM: 1
+    /// Patient height in meters
+    public static let patientSize = Tag(group: 0x0010, element: 0x1020)
+    
+    /// Patient's Weight (0010,1030)
+    /// VR: DS, VM: 1
+    /// Patient weight in kilograms
+    public static let patientWeight = Tag(group: 0x0010, element: 0x1030)
+    
     /// Referenced Patient Photo Sequence (0010,1100)
     /// VR: SQ, VM: 1
     public static let referencedPatientPhotoSequence = Tag(group: 0x0010, element: 0x1100)

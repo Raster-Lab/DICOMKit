@@ -92,6 +92,12 @@ if let studyTime = dicomFile.dataSet.time(for: .studyTime) {
     print("Study Time: \(studyTime.hour):\(studyTime.minute ?? 0)")
 }
 
+// Access age values with type-safe parsing
+if let patientAge = dicomFile.dataSet.age(for: .patientAge) {
+    print("Patient Age: \(patientAge.humanReadable)")  // e.g., "45 years"
+    print("Age in years: \(patientAge.approximateYears)")
+}
+
 // Access sequence (SQ) elements
 if let items = dicomFile.dataSet.sequence(for: .procedureCodeSequence) {
     for item in items {
@@ -120,6 +126,7 @@ Core data types and utilities:
 - `DICOMDate` - DICOM Date (DA) value parsing
 - `DICOMTime` - DICOM Time (TM) value parsing
 - `DICOMDateTime` - DICOM DateTime (DT) value parsing
+- `DICOMAgeString` - DICOM Age String (AS) value parsing
 - `DICOMError` - Error types for parsing failures
 - Little Endian byte reading utilities
 

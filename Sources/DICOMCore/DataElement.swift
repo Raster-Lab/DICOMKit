@@ -339,4 +339,17 @@ public struct DataElement: Sendable {
             return nil
         }
     }
+    
+    // MARK: - Age String Value Extraction
+    
+    /// Extracts the value as a DICOM Age String (for AS VR)
+    ///
+    /// Parses the DICOM Age String (nnnX format) into a structured DICOMAgeString.
+    /// Reference: PS3.5 Section 6.2 - AS Value Representation
+    public var ageValue: DICOMAgeString? {
+        guard vr == .AS, let string = stringValue else {
+            return nil
+        }
+        return DICOMAgeString.parse(string)
+    }
 }
