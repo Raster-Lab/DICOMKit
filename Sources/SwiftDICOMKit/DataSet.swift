@@ -273,6 +273,30 @@ public struct DataSet: Sendable {
         return elements[tag]?.uidValues
     }
     
+    // MARK: - Application Entity Value Access
+    
+    /// Returns the DICOM Application Entity (AE) value for a given tag, if available
+    ///
+    /// Parses the DICOM AE Title string into a structured DICOMApplicationEntity.
+    /// Reference: PS3.5 Section 6.2 - AE Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMApplicationEntity or nil
+    public func applicationEntity(for tag: Tag) -> DICOMApplicationEntity? {
+        return elements[tag]?.applicationEntityValue
+    }
+    
+    /// Returns multiple DICOM Application Entity (AE) values for a given tag, if available
+    ///
+    /// Parses multi-valued DICOM AE Title strings (backslash-delimited).
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of DICOMApplicationEntity or nil
+    public func applicationEntities(for tag: Tag) -> [DICOMApplicationEntity]? {
+        return elements[tag]?.applicationEntityValues
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available

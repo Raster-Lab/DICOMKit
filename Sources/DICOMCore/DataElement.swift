@@ -449,4 +449,28 @@ public struct DataElement: Sendable {
         }
         return DICOMUniqueIdentifier.parseMultiple(string)
     }
+    
+    // MARK: - Application Entity Value Extraction
+    
+    /// Extracts the value as a DICOM Application Entity (for AE VR)
+    ///
+    /// Parses the DICOM AE Title string into a structured DICOMApplicationEntity.
+    /// Reference: PS3.5 Section 6.2 - AE Value Representation
+    public var applicationEntityValue: DICOMApplicationEntity? {
+        guard vr == .AE, let string = stringValue else {
+            return nil
+        }
+        return DICOMApplicationEntity.parse(string)
+    }
+    
+    /// Extracts multiple DICOM Application Entity values (for AE VR with multiplicity)
+    ///
+    /// DICOM uses backslash (\) as a delimiter for multiple values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var applicationEntityValues: [DICOMApplicationEntity]? {
+        guard vr == .AE, let string = stringValue else {
+            return nil
+        }
+        return DICOMApplicationEntity.parseMultiple(string)
+    }
 }
