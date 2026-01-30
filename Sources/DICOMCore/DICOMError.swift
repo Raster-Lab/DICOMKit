@@ -18,7 +18,8 @@ public enum DICOMError: Error, Sendable {
     
     /// Unsupported Transfer Syntax UID
     ///
-    /// v0.1 supports only Explicit VR Little Endian (1.2.840.10008.1.2.1)
+    /// v0.1 supports Explicit VR Little Endian (1.2.840.10008.1.2.1)
+    /// and Implicit VR Little Endian (1.2.840.10008.1.2)
     case unsupportedTransferSyntax(String)
     
     /// Invalid tag structure or value

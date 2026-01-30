@@ -7,7 +7,8 @@
 ///
 /// ## Features (v0.1)
 /// - Read-only DICOM file parsing
-/// - Explicit VR Little Endian Transfer Syntax support only
+/// - Explicit VR Little Endian Transfer Syntax support
+/// - Implicit VR Little Endian Transfer Syntax support
 /// - Value semantics with Swift 6 strict concurrency
 /// - Full DICOM PS3.5 2025e compliance for supported features
 ///
@@ -15,7 +16,7 @@
 /// - No pixel data decoding
 /// - No DICOM writing
 /// - No networking (DICOM C-* operations)
-/// - Explicit VR Little Endian only (no Implicit VR, Big Endian, or compressed transfer syntaxes)
+/// - No Big Endian or compressed transfer syntaxes
 ///
 /// ## Platform Requirements
 /// - iOS 17.0+
@@ -33,5 +34,12 @@ public let version = "0.1.0"
 /// Supported DICOM Standard edition
 public let dicomStandardEdition = "2025e"
 
-/// Supported Transfer Syntax UID (Explicit VR Little Endian)
+/// Supported Transfer Syntax UIDs
+public let supportedTransferSyntaxUIDs: [String] = [
+    "1.2.840.10008.1.2.1", // Explicit VR Little Endian
+    "1.2.840.10008.1.2"    // Implicit VR Little Endian
+]
+
+/// Primary supported Transfer Syntax UID (Explicit VR Little Endian)
+/// - Note: For backward compatibility. Use `supportedTransferSyntaxUIDs` for full list.
 public let supportedTransferSyntaxUID = "1.2.840.10008.1.2.1"

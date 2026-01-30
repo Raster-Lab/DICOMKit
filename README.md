@@ -14,6 +14,7 @@ SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (D
 
 - ✅ **Read-only DICOM file parsing** - Parse DICOM Part 10 files
 - ✅ **Explicit VR Little Endian support** - Industry-standard transfer syntax
+- ✅ **Implicit VR Little Endian support** - DICOM default transfer syntax
 - ✅ **Type-safe API** - Leverages Swift's type system for safety
 - ✅ **Value semantics** - Immutable data structures with `struct` and `enum`
 - ✅ **Strict concurrency** - Full Swift 6 concurrency support
@@ -27,7 +28,7 @@ This is an initial release with focused scope:
 - ❌ **No pixel data decoding** - Metadata only
 - ❌ **No DICOM writing** - Read-only operations
 - ❌ **No networking** - No DICOM C-* operations (C-STORE, C-FIND, etc.)
-- ❌ **Explicit VR Little Endian only** - No Implicit VR, Big Endian, or compressed transfer syntaxes
+- ❌ **No Big Endian or compressed transfer syntaxes** - Little Endian uncompressed only
 
 These features may be added in future versions.
 

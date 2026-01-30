@@ -183,6 +183,314 @@ public struct DataElementDictionary {
             vm: "1"
         )
         
+        // Additional elements commonly needed for Implicit VR parsing
+        // Image Information elements
+        dict[.specificCharacterSet] = DataElementEntry(
+            tag: .specificCharacterSet,
+            name: "Specific Character Set",
+            keyword: "SpecificCharacterSet",
+            vr: .CS,
+            vm: "1-n"
+        )
+        
+        dict[.imageType] = DataElementEntry(
+            tag: .imageType,
+            name: "Image Type",
+            keyword: "ImageType",
+            vr: .CS,
+            vm: "2-n"
+        )
+        
+        dict[.instanceCreationDate] = DataElementEntry(
+            tag: .instanceCreationDate,
+            name: "Instance Creation Date",
+            keyword: "InstanceCreationDate",
+            vr: .DA,
+            vm: "1"
+        )
+        
+        dict[.instanceCreationTime] = DataElementEntry(
+            tag: .instanceCreationTime,
+            name: "Instance Creation Time",
+            keyword: "InstanceCreationTime",
+            vr: .TM,
+            vm: "1"
+        )
+        
+        dict[.acquisitionDate] = DataElementEntry(
+            tag: .acquisitionDate,
+            name: "Acquisition Date",
+            keyword: "AcquisitionDate",
+            vr: .DA,
+            vm: "1"
+        )
+        
+        dict[.contentDate] = DataElementEntry(
+            tag: .contentDate,
+            name: "Content Date",
+            keyword: "ContentDate",
+            vr: .DA,
+            vm: "1"
+        )
+        
+        dict[.acquisitionTime] = DataElementEntry(
+            tag: .acquisitionTime,
+            name: "Acquisition Time",
+            keyword: "AcquisitionTime",
+            vr: .TM,
+            vm: "1"
+        )
+        
+        dict[.contentTime] = DataElementEntry(
+            tag: .contentTime,
+            name: "Content Time",
+            keyword: "ContentTime",
+            vr: .TM,
+            vm: "1"
+        )
+        
+        // Study Description
+        dict[.studyDescription] = DataElementEntry(
+            tag: .studyDescription,
+            name: "Study Description",
+            keyword: "StudyDescription",
+            vr: .LO,
+            vm: "1"
+        )
+        
+        // Series Description
+        dict[.seriesDescription] = DataElementEntry(
+            tag: .seriesDescription,
+            name: "Series Description",
+            keyword: "SeriesDescription",
+            vr: .LO,
+            vm: "1"
+        )
+        
+        // Image Pixel Module elements (essential for image data)
+        dict[.samplesPerPixel] = DataElementEntry(
+            tag: .samplesPerPixel,
+            name: "Samples per Pixel",
+            keyword: "SamplesPerPixel",
+            vr: .US,
+            vm: "1"
+        )
+        
+        dict[.photometricInterpretation] = DataElementEntry(
+            tag: .photometricInterpretation,
+            name: "Photometric Interpretation",
+            keyword: "PhotometricInterpretation",
+            vr: .CS,
+            vm: "1"
+        )
+        
+        dict[.rows] = DataElementEntry(
+            tag: .rows,
+            name: "Rows",
+            keyword: "Rows",
+            vr: .US,
+            vm: "1"
+        )
+        
+        dict[.columns] = DataElementEntry(
+            tag: .columns,
+            name: "Columns",
+            keyword: "Columns",
+            vr: .US,
+            vm: "1"
+        )
+        
+        dict[.bitsAllocated] = DataElementEntry(
+            tag: .bitsAllocated,
+            name: "Bits Allocated",
+            keyword: "BitsAllocated",
+            vr: .US,
+            vm: "1"
+        )
+        
+        dict[.bitsStored] = DataElementEntry(
+            tag: .bitsStored,
+            name: "Bits Stored",
+            keyword: "BitsStored",
+            vr: .US,
+            vm: "1"
+        )
+        
+        dict[.highBit] = DataElementEntry(
+            tag: .highBit,
+            name: "High Bit",
+            keyword: "HighBit",
+            vr: .US,
+            vm: "1"
+        )
+        
+        dict[.pixelRepresentation] = DataElementEntry(
+            tag: .pixelRepresentation,
+            name: "Pixel Representation",
+            keyword: "PixelRepresentation",
+            vr: .US,
+            vm: "1"
+        )
+        
+        dict[.numberOfFrames] = DataElementEntry(
+            tag: .numberOfFrames,
+            name: "Number of Frames",
+            keyword: "NumberOfFrames",
+            vr: .IS,
+            vm: "1"
+        )
+        
+        // Image Plane elements
+        dict[.pixelSpacing] = DataElementEntry(
+            tag: .pixelSpacing,
+            name: "Pixel Spacing",
+            keyword: "PixelSpacing",
+            vr: .DS,
+            vm: "2"
+        )
+        
+        dict[.imagePositionPatient] = DataElementEntry(
+            tag: .imagePositionPatient,
+            name: "Image Position (Patient)",
+            keyword: "ImagePositionPatient",
+            vr: .DS,
+            vm: "3"
+        )
+        
+        dict[.imageOrientationPatient] = DataElementEntry(
+            tag: .imageOrientationPatient,
+            name: "Image Orientation (Patient)",
+            keyword: "ImageOrientationPatient",
+            vr: .DS,
+            vm: "6"
+        )
+        
+        dict[.sliceThickness] = DataElementEntry(
+            tag: .sliceThickness,
+            name: "Slice Thickness",
+            keyword: "SliceThickness",
+            vr: .DS,
+            vm: "1"
+        )
+        
+        dict[.sliceLocation] = DataElementEntry(
+            tag: .sliceLocation,
+            name: "Slice Location",
+            keyword: "SliceLocation",
+            vr: .DS,
+            vm: "1"
+        )
+        
+        // Window/Level
+        dict[.windowCenter] = DataElementEntry(
+            tag: .windowCenter,
+            name: "Window Center",
+            keyword: "WindowCenter",
+            vr: .DS,
+            vm: "1-n"
+        )
+        
+        dict[.windowWidth] = DataElementEntry(
+            tag: .windowWidth,
+            name: "Window Width",
+            keyword: "WindowWidth",
+            vr: .DS,
+            vm: "1-n"
+        )
+        
+        // Rescale
+        dict[.rescaleIntercept] = DataElementEntry(
+            tag: .rescaleIntercept,
+            name: "Rescale Intercept",
+            keyword: "RescaleIntercept",
+            vr: .DS,
+            vm: "1"
+        )
+        
+        dict[.rescaleSlope] = DataElementEntry(
+            tag: .rescaleSlope,
+            name: "Rescale Slope",
+            keyword: "RescaleSlope",
+            vr: .DS,
+            vm: "1"
+        )
+        
+        dict[.rescaleType] = DataElementEntry(
+            tag: .rescaleType,
+            name: "Rescale Type",
+            keyword: "RescaleType",
+            vr: .LO,
+            vm: "1"
+        )
+        
+        // Equipment elements
+        dict[.manufacturer] = DataElementEntry(
+            tag: .manufacturer,
+            name: "Manufacturer",
+            keyword: "Manufacturer",
+            vr: .LO,
+            vm: "1"
+        )
+        
+        dict[.institutionName] = DataElementEntry(
+            tag: .institutionName,
+            name: "Institution Name",
+            keyword: "InstitutionName",
+            vr: .LO,
+            vm: "1"
+        )
+        
+        dict[.stationName] = DataElementEntry(
+            tag: .stationName,
+            name: "Station Name",
+            keyword: "StationName",
+            vr: .SH,
+            vm: "1"
+        )
+        
+        dict[.manufacturerModelName] = DataElementEntry(
+            tag: .manufacturerModelName,
+            name: "Manufacturer's Model Name",
+            keyword: "ManufacturerModelName",
+            vr: .LO,
+            vm: "1"
+        )
+        
+        dict[.softwareVersions] = DataElementEntry(
+            tag: .softwareVersions,
+            name: "Software Versions",
+            keyword: "SoftwareVersions",
+            vr: .LO,
+            vm: "1-n"
+        )
+        
+        // Referring Physician
+        dict[.referringPhysicianName] = DataElementEntry(
+            tag: .referringPhysicianName,
+            name: "Referring Physician's Name",
+            keyword: "ReferringPhysicianName",
+            vr: .PN,
+            vm: "1"
+        )
+        
+        // Performing Physician
+        dict[.performingPhysicianName] = DataElementEntry(
+            tag: .performingPhysicianName,
+            name: "Performing Physician's Name",
+            keyword: "PerformingPhysicianName",
+            vr: .PN,
+            vm: "1-n"
+        )
+        
+        // Accession Number
+        dict[.accessionNumber] = DataElementEntry(
+            tag: .accessionNumber,
+            name: "Accession Number",
+            keyword: "AccessionNumber",
+            vr: .SH,
+            vm: "1"
+        )
+        
         return dict
     }()
     
