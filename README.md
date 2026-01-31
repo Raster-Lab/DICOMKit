@@ -10,9 +10,19 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7.5)
+## Features (v0.7.6)
 
-- ✅ **Intelligent Retry Logic (NEW in v0.7.5)**
+- ✅ **Validation Before Send (NEW in v0.7.6)**
+  - ✅ DICOMValidator for pre-send data validation
+  - ✅ Configurable validation levels (minimal, standard, strict)
+  - ✅ Required attribute checking (SOP Class UID, SOP Instance UID, Study/Series UIDs)
+  - ✅ UID format validation
+  - ✅ Pixel data attribute validation
+  - ✅ Transfer Syntax validation
+  - ✅ Allowed SOP Classes filtering
+  - ✅ Custom required tags configuration
+  - ✅ Detailed error and warning reporting
+- ✅ **Intelligent Retry Logic (v0.7.5)**
   - ✅ Configurable retry policies with preset configurations
   - ✅ Exponential backoff with jitter to prevent thundering herd
   - ✅ Per-SOP Class retry policy configuration
@@ -20,7 +30,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ Integration with circuit breaker pattern
   - ✅ Retry executor with progress callbacks
   - ✅ Multiple retry strategies (fixed, exponential, linear)
-- ✅ **Audit Logging (NEW in v0.7.5)**
+- ✅ **Audit Logging (v0.7.5)**
   - ✅ IHE ATNA-aligned audit event types for healthcare compliance
   - ✅ Comprehensive audit log entries with transfer metadata
   - ✅ Multiple audit handlers (console, file, OSLog)
@@ -1027,6 +1037,70 @@ do {
 let fastTimeouts = TimeoutConfiguration.fast    // For local networks
 let slowTimeouts = TimeoutConfiguration.slow    // For WAN connections
 let defaultTimeouts = TimeoutConfiguration.default  // Balanced defaults
+```
+
+### DICOM Validation (v0.7.6)
+
+DICOMKit provides comprehensive validation of DICOM data sets before sending to ensure data integrity and compliance.
+
+```swift
+import DICOMNetwork
+import DICOMCore
+
+// Create a validator
+let validator = DICOMValidator()
+
+// Validate a data set with default (standard) configuration
+// Using closures for DataSet access
+let result = validator.validate(
+    getString: { tag in dataSet.string(for: tag) },
+    getData: { tag in dataSet[tag]?.valueData },
+    configuration: .default
+)
+
+if result.isValid {
+    print("Validation passed")
+    if result.hasWarnings {
+        for warning in result.warnings {
+            print("Warning: \(warning)")
+        }
+    }
+} else {
+    for error in result.errors {
+        print("Validation error: \(error)")
+    }
+}
+
+// Validate with strict configuration for production
+let strictResult = validator.validate(
+    getString: { tag in dataSet.string(for: tag) },
+    getData: { tag in dataSet[tag]?.valueData },
+    configuration: .strict
+)
+
+// Custom validation configuration
+let customConfig = ValidationConfiguration(
+    level: .standard,
+    validateTransferSyntax: true,
+    validatePixelData: true,
+    treatWarningsAsErrors: false,
+    allowedSOPClasses: [
+        "1.2.840.10008.5.1.4.1.1.2",  // CT Image Storage
+        "1.2.840.10008.5.1.4.1.1.4"   // MR Image Storage
+    ],
+    additionalRequiredTags: [.patientWeight, .patientSize]
+)
+
+let customResult = validator.validate(
+    getString: { tag in dataSet.string(for: tag) },
+    getData: { tag in dataSet[tag]?.valueData },
+    configuration: customConfig
+)
+
+// Validate UIDs directly
+if !validator.isValidUID("1.2.840.10008.5.1.4.1.1.2") {
+    print("Invalid UID format")
+}
 ```
 
 ### Audit Logging (v0.7.5)

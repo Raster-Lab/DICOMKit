@@ -860,11 +860,21 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] Configuration with server pool, retry policies, queue settings
   - [ ] Automatic server selection (round-robin, priority)
   - [ ] Unified store interface with automatic retry
-- [ ] Validation before send:
-  - [ ] Schema validation against IOD
-  - [ ] Required attribute checking
-  - [ ] UID validation
-  - [ ] Configurable validation strictness
+- [x] Validation before send:
+  - [ ] Schema validation against IOD (deferred to future version)
+  - [x] Required attribute checking
+  - [x] UID validation
+  - [x] Configurable validation strictness
+  - [x] `DICOMValidator` struct for validating DICOM data sets
+  - [x] `ValidationConfiguration` for configurable validation behavior
+  - [x] `ValidationResult` with errors and warnings
+  - [x] `ValidationError` enum with detailed error types
+  - [x] `ValidationLevel` enum (minimal, standard, strict)
+  - [x] Allowed SOP Classes filtering
+  - [x] Additional required tags configuration
+  - [x] Pixel data attribute validation
+  - [x] Transfer Syntax validation
+  - [x] Unit tests for DICOMValidator
 
 #### Technical Notes
 - Reference: PS3.4 Annex B - Storage Service Class
