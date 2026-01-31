@@ -49,6 +49,14 @@ public struct AssociationConfiguration: Sendable, Hashable {
     /// Whether to use TLS encryption
     public let tlsEnabled: Bool
     
+    /// User identity for authentication (optional)
+    ///
+    /// When set, user identity information will be included in the A-ASSOCIATE-RQ PDU
+    /// for authentication with the remote SCP.
+    ///
+    /// Reference: PS3.7 Section D.3.3.7 - User Identity Negotiation
+    public let userIdentity: UserIdentity?
+    
     /// Creates association configuration
     ///
     /// - Parameters:
@@ -62,6 +70,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
     ///   - timeout: Connection timeout (default: 30 seconds)
     ///   - artimTimeout: ARTIM timer timeout in seconds (default: 30 seconds, nil to disable)
     ///   - tlsEnabled: Use TLS (default: false)
+    ///   - userIdentity: User identity for authentication (optional)
     public init(
         callingAETitle: AETitle,
         calledAETitle: AETitle,
@@ -72,7 +81,8 @@ public struct AssociationConfiguration: Sendable, Hashable {
         implementationVersionName: String? = nil,
         timeout: TimeInterval = 30,
         artimTimeout: TimeInterval? = 30,
-        tlsEnabled: Bool = false
+        tlsEnabled: Bool = false,
+        userIdentity: UserIdentity? = nil
     ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
@@ -84,6 +94,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
         self.timeout = timeout
         self.artimTimeout = artimTimeout
         self.tlsEnabled = tlsEnabled
+        self.userIdentity = userIdentity
     }
 }
 
@@ -101,6 +112,11 @@ public struct NegotiatedAssociation: Sendable {
     /// Remote implementation version name
     public let remoteImplementationVersionName: String?
     
+    /// User identity server response (if user identity was requested and accepted)
+    ///
+    /// Reference: PS3.7 Section D.3.3.7.2 - Server Response
+    public let userIdentityServerResponse: UserIdentityServerResponse?
+    
     /// The raw A-ASSOCIATE-AC PDU
     public let acceptPDU: AssociateAcceptPDU
     
@@ -111,6 +127,7 @@ public struct NegotiatedAssociation: Sendable {
         self.maxPDUSize = min(localMaxPDUSize, acceptPDU.maxPDUSize)
         self.remoteImplementationClassUID = acceptPDU.implementationClassUID
         self.remoteImplementationVersionName = acceptPDU.implementationVersionName
+        self.userIdentityServerResponse = acceptPDU.userIdentityServerResponse
     }
     
     /// Gets the accepted transfer syntax for a presentation context ID
@@ -242,7 +259,8 @@ public final class Association: @unchecked Sendable {
             presentationContexts: presentationContexts,
             maxPDUSize: configuration.maxPDUSize,
             implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName
+            implementationVersionName: configuration.implementationVersionName,
+            userIdentity: configuration.userIdentity
         )
         
         try await conn.send(pdu: associateRequest)

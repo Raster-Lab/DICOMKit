@@ -440,7 +440,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 6.7: Advanced Networking Features (v0.6.7)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Production-ready networking with security and reliability features  
 **Complexity**: High  
 **Dependencies**: Milestone 6.6
@@ -478,7 +478,13 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Configuration with server address, AE titles, TLS settings (`DICOMClientConfiguration`)
   - [x] Automatic association management (via existing services)
   - [x] Convenience methods for common workflows (verify, findStudies, findSeries, findInstances, moveStudy, moveSeries, moveInstance, getStudy, getSeries, getInstance)
-- [ ] User Identity Negotiation (username/password, Kerberos)
+- [x] User Identity Negotiation (username/password, Kerberos)
+  - [x] `UserIdentity` struct with multiple authentication types
+  - [x] `UserIdentityType` enum (username, usernameAndPasscode, kerberos, saml, jwt)
+  - [x] `UserIdentityServerResponse` for server acknowledgment
+  - [x] PDU encoding/decoding for user identity sub-items (0x58, 0x59)
+  - [x] Integration with AssociationConfiguration and all service configurations
+  - [x] Unit tests for all user identity functionality
 
 #### Technical Notes
 - Reference: PS3.15 - Security and System Management Profiles

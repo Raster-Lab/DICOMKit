@@ -32,6 +32,14 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
     /// Implementation Version Name of the acceptor (optional)
     public let implementationVersionName: String?
     
+    /// User identity server response (optional)
+    ///
+    /// Included when the SCU requested a positive response for user identity
+    /// negotiation and the SCP accepted the authentication.
+    ///
+    /// Reference: PS3.7 Section D.3.3.7.2 - Server Response
+    public let userIdentityServerResponse: UserIdentityServerResponse?
+    
     /// Creates an A-ASSOCIATE-AC PDU
     public init(
         protocolVersion: UInt16 = 1,
@@ -41,7 +49,8 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         presentationContexts: [AcceptedPresentationContext],
         maxPDUSize: UInt32,
         implementationClassUID: String,
-        implementationVersionName: String? = nil
+        implementationVersionName: String? = nil,
+        userIdentityServerResponse: UserIdentityServerResponse? = nil
     ) {
         self.protocolVersion = protocolVersion
         self.calledAETitle = calledAETitle
@@ -51,6 +60,7 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
         self.maxPDUSize = maxPDUSize
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
+        self.userIdentityServerResponse = userIdentityServerResponse
     }
     
     /// Encodes the PDU for network transmission
@@ -191,6 +201,11 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
             subItems.append(versionSubItem)
         }
         
+        // User Identity Server Response Sub-Item (optional)
+        if let serverResponse = userIdentityServerResponse {
+            subItems.append(serverResponse.encode())
+        }
+        
         // User Information Item
         item.append(0x50)  // Item Type
         item.append(0x00)  // Reserved
@@ -216,7 +231,7 @@ public struct AssociateAcceptPDU: PDU, Sendable, Hashable {
 extension AssociateAcceptPDU: CustomStringConvertible {
     public var description: String {
         let acceptedCount = presentationContexts.filter { $0.isAccepted }.count
-        return """
+        var desc = """
         A-ASSOCIATE-AC:
           Called AE Title: \(calledAETitle)
           Calling AE Title: \(callingAETitle)
@@ -226,5 +241,9 @@ extension AssociateAcceptPDU: CustomStringConvertible {
           Implementation Class UID: \(implementationClassUID)
           Implementation Version Name: \(implementationVersionName ?? "(none)")
         """
+        if userIdentityServerResponse != nil {
+            desc += "\n  User Identity Response: present"
+        }
+        return desc
     }
 }

@@ -498,7 +498,8 @@ public actor ConnectionPool {
             implementationVersionName: clientConfiguration.implementationVersionName,
             timeout: clientConfiguration.timeout,
             artimTimeout: 30,
-            tlsEnabled: clientConfiguration.tlsEnabled
+            tlsEnabled: clientConfiguration.tlsEnabled,
+            userIdentity: clientConfiguration.userIdentity
         )
         
         let association = Association(configuration: config)

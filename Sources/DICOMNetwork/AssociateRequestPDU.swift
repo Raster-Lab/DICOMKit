@@ -34,6 +34,11 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
     /// Implementation Version Name (optional)
     public let implementationVersionName: String?
     
+    /// User identity for authentication (optional)
+    ///
+    /// Reference: PS3.7 Section D.3.3.7 - User Identity Negotiation
+    public let userIdentity: UserIdentity?
+    
     /// DICOM Application Context Name UID
     ///
     /// Reference: PS3.7 Annex A
@@ -48,6 +53,7 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
     ///   - maxPDUSize: Maximum PDU size the requestor can receive
     ///   - implementationClassUID: The Implementation Class UID
     ///   - implementationVersionName: The Implementation Version Name (optional)
+    ///   - userIdentity: User identity for authentication (optional)
     ///   - applicationContextName: Application Context Name (defaults to DICOM)
     public init(
         calledAETitle: AETitle,
@@ -56,6 +62,7 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         maxPDUSize: UInt32 = defaultMaxPDUSize,
         implementationClassUID: String,
         implementationVersionName: String? = nil,
+        userIdentity: UserIdentity? = nil,
         applicationContextName: String = dicomApplicationContextName
     ) {
         self.calledAETitle = calledAETitle
@@ -64,6 +71,7 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
         self.maxPDUSize = maxPDUSize
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
+        self.userIdentity = userIdentity
         self.applicationContextName = applicationContextName
     }
     
@@ -234,6 +242,11 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
             subItems.append(encodeImplementationVersionNameSubItem(versionName))
         }
         
+        // User Identity Sub-Item (optional)
+        if let userIdentity = userIdentity {
+            subItems.append(userIdentity.encode())
+        }
+        
         // Item Type (1 byte) - 0x50 for User Information
         item.append(0x50)
         
@@ -313,7 +326,7 @@ public struct AssociateRequestPDU: PDU, Sendable, Hashable {
 // MARK: - CustomStringConvertible
 extension AssociateRequestPDU: CustomStringConvertible {
     public var description: String {
-        """
+        var desc = """
         A-ASSOCIATE-RQ:
           Called AE Title: \(calledAETitle)
           Calling AE Title: \(callingAETitle)
@@ -323,5 +336,9 @@ extension AssociateRequestPDU: CustomStringConvertible {
           Implementation Class UID: \(implementationClassUID)
           Implementation Version Name: \(implementationVersionName ?? "(none)")
         """
+        if let identity = userIdentity {
+            desc += "\n  User Identity: \(identity)"
+        }
+        return desc
     }
 }
