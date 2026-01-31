@@ -157,13 +157,15 @@ These features may be added in future versions. See [MILESTONES.md](MILESTONES.m
 
 DICOMKit is distributed via Swift Package Manager (SPM). You can add it to your project in two ways:
 
+> **⚠️ Important**: DICOMKit is a **Swift Package**, not a Package Collection. Use **"Add Package Dependencies"** in Xcode, not "Add Package Collection".
+
 #### Option 1: Using Xcode UI (Recommended for App Projects)
 
 1. Open your project in Xcode
 2. Select your **project** in the Navigator (not a target)
 3. Go to the **Package Dependencies** tab
-4. Click the **+** button
-5. Enter the repository URL:
+4. Click the **+** button (or use **File → Add Package Dependencies...**)
+5. In the search field at the top right, enter the repository URL:
    ```
    https://github.com/raster-image/DICOMKit.git
    ```
@@ -180,6 +182,16 @@ DICOMKit is distributed via Swift Package Manager (SPM). You can add it to your 
    | **DICOMDictionary** | DICOM data dictionary lookup |
    | **DICOMNetwork** | PACS connectivity (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE) |
 9. Click **Add Package**
+
+##### Troubleshooting
+
+If you see the error:
+```
+Received invalid response at https://github.com/raster-image/DICOMKit.git.
+Please make sure it is a package collection URL.
+```
+
+This means you used **"Add Package Collection"** instead of **"Add Package Dependencies"**. Use **File → Add Package Dependencies...** (not "Add Package Collection").
 
 #### Option 2: Using Package.swift (For SPM Projects)
 
