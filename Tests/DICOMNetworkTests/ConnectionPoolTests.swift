@@ -131,8 +131,8 @@ final class PooledConnectionTests: XCTestCase {
     
     func test_pooledConnection_isIdleFor() {
         let config = AssociationConfiguration(
-            callingAETitle: try! AETitle("SCU"),
-            calledAETitle: try! AETitle("SCP"),
+            callingAETitle: "SCU",
+            calledAETitle: "SCP",
             host: "localhost",
             port: 11112,
             implementationClassUID: "1.2.3.4.5"
@@ -155,8 +155,8 @@ final class PooledConnectionTests: XCTestCase {
     
     func test_pooledConnection_markUsed() {
         let config = AssociationConfiguration(
-            callingAETitle: try! AETitle("SCU"),
-            calledAETitle: try! AETitle("SCP"),
+            callingAETitle: "SCU",
+            calledAETitle: "SCP",
             host: "localhost",
             port: 11112,
             implementationClassUID: "1.2.3.4.5"
@@ -182,8 +182,8 @@ final class PooledConnectionTests: XCTestCase {
     
     func test_pooledConnection_uniqueIds() {
         let config = AssociationConfiguration(
-            callingAETitle: try! AETitle("SCU"),
-            calledAETitle: try! AETitle("SCP"),
+            callingAETitle: "SCU",
+            calledAETitle: "SCP",
             host: "localhost",
             port: 11112,
             implementationClassUID: "1.2.3.4.5"
@@ -248,7 +248,7 @@ final class ConnectionPoolStatisticsTests: XCTestCase {
 
 final class ConnectionPoolCreationTests: XCTestCase {
     
-    func test_pool_creation() throws {
+    func test_pool_creation() async throws {
         let clientConfig = try DICOMClientConfiguration(
             host: "pacs.hospital.com",
             port: 11112,
@@ -263,9 +263,14 @@ final class ConnectionPoolCreationTests: XCTestCase {
             poolConfiguration: poolConfig
         )
         
-        XCTAssertEqual(pool.clientConfiguration.host, "pacs.hospital.com")
-        XCTAssertEqual(pool.clientConfiguration.port, 11112)
-        XCTAssertEqual(pool.poolConfiguration.maxConnections, 10)
+        // Access actor properties with await
+        let host = await pool.clientConfiguration.host
+        let port = await pool.clientConfiguration.port
+        let maxConnections = await pool.poolConfiguration.maxConnections
+        
+        XCTAssertEqual(host, "pacs.hospital.com")
+        XCTAssertEqual(port, 11112)
+        XCTAssertEqual(maxConnections, 10)
     }
     
     func test_pool_initialStatistics() async throws {

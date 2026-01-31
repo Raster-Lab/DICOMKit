@@ -22,7 +22,7 @@ final class DICOMClientTests: XCTestCase {
         XCTAssertEqual(config.timeout, 30)
         XCTAssertEqual(config.maxPDUSize, defaultMaxPDUSize)
         XCTAssertFalse(config.tlsEnabled)
-        XCTAssertFalse(config.retryPolicy.allowsRetries)
+        XCTAssertEqual(config.retryPolicy.maxAttempts, 0)
     }
     
     func test_configuration_customValues() throws {
@@ -34,7 +34,7 @@ final class DICOMClientTests: XCTestCase {
             timeout: 60,
             maxPDUSize: 32768,
             tlsEnabled: true,
-            retryPolicy: .fixed(maxRetries: 3, delay: 1.0)
+            retryPolicy: RetryPolicy(maxAttempts: 3, initialDelay: 1.0, strategy: .fixed)
         )
         
         XCTAssertEqual(config.host, "secure-pacs.hospital.com")
@@ -44,7 +44,7 @@ final class DICOMClientTests: XCTestCase {
         XCTAssertEqual(config.timeout, 60)
         XCTAssertEqual(config.maxPDUSize, 32768)
         XCTAssertTrue(config.tlsEnabled)
-        XCTAssertTrue(config.retryPolicy.allowsRetries)
+        XCTAssertGreaterThan(config.retryPolicy.maxAttempts, 0)
     }
     
     func test_configuration_invalidCallingAE() {
@@ -66,8 +66,8 @@ final class DICOMClientTests: XCTestCase {
     }
     
     func test_configuration_withAETitle() {
-        let callingAE = try! AETitle("MY_SCU")
-        let calledAE = try! AETitle("PACS")
+        let callingAE: AETitle = "MY_SCU"
+        let calledAE: AETitle = "PACS"
         
         let config = DICOMClientConfiguration(
             host: "pacs.hospital.com",
@@ -286,11 +286,11 @@ final class DICOMClientCreationTests: XCTestCase {
             port: 11112,
             callingAE: "MY_SCU",
             calledAE: "PACS",
-            retryPolicy: .exponentialBackoff(maxRetries: 5)
+            retryPolicy: RetryPolicy(maxAttempts: 5, strategy: .exponential(factor: 2.0))
         )
         
-        XCTAssertTrue(client.configuration.retryPolicy.allowsRetries)
-        XCTAssertEqual(client.configuration.retryPolicy.maxRetries, 5)
+        XCTAssertGreaterThan(client.configuration.retryPolicy.maxAttempts, 0)
+        XCTAssertEqual(client.configuration.retryPolicy.maxAttempts, 5)
     }
     
     func test_client_invalidAEThrows() {
@@ -308,7 +308,7 @@ final class DICOMClientCreationTests: XCTestCase {
             port: 11112,
             callingAE: "MY_SCU",
             calledAE: "PACS",
-            retryPolicy: .fixed(maxRetries: 3, delay: 1.0)
+            retryPolicy: RetryPolicy(maxAttempts: 3, initialDelay: 1.0, strategy: .fixed)
         )
         
         let description = client.description
