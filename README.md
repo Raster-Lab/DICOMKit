@@ -12,7 +12,14 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 ## Features (v0.7.5)
 
-- ✅ **Network Error Handling (NEW in v0.7.5)**
+- ✅ **Audit Logging (NEW in v0.7.5)**
+  - ✅ IHE ATNA-aligned audit event types for healthcare compliance
+  - ✅ Comprehensive audit log entries with transfer metadata
+  - ✅ Multiple audit handlers (console, file, OSLog)
+  - ✅ File audit logging with JSON Lines format and rotation
+  - ✅ Event type filtering for targeted auditing
+  - ✅ Storage operation logging helpers
+- ✅ **Network Error Handling (v0.7.5)**
   - ✅ Error categorization (transient, permanent, configuration, protocol, timeout, resource)
   - ✅ Recovery suggestions with actionable guidance
   - ✅ Fine-grained timeout configuration (connect, read, write, operation, association)
@@ -1014,6 +1021,86 @@ let slowTimeouts = TimeoutConfiguration.slow    // For WAN connections
 let defaultTimeouts = TimeoutConfiguration.default  // Balanced defaults
 ```
 
+### Audit Logging (v0.7.5)
+
+DICOMKit provides comprehensive audit logging for healthcare compliance (IHE ATNA).
+
+```swift
+import DICOMNetwork
+
+// Configure audit logging at app startup
+let auditLogger = AuditLogger.shared
+
+// Add a file handler for persistent logging
+let fileHandler = try FileAuditLogHandler(
+    directory: URL(fileURLWithPath: "/var/log/dicom"),
+    baseName: "dicom_audit",
+    maxFileSize: 50 * 1024 * 1024,  // 50 MB
+    maxFiles: 10
+)
+await auditLogger.addHandler(fileHandler)
+
+// Add console handler for debugging (optional)
+await auditLogger.addHandler(ConsoleAuditLogHandler(verbose: true))
+
+// Add OSLog handler for system integration (Apple platforms)
+await auditLogger.addHandler(OSLogAuditHandler())
+
+// Filter to specific event types (optional)
+await auditLogger.setEnabledEventTypes([.storeSent, .storeReceived, .queryExecuted])
+
+// Log a C-STORE send event
+let source = AuditParticipant(
+    aeTitle: "MY_SCU",
+    host: "10.0.0.1",
+    port: 11112,
+    isRequestor: true,
+    userIdentity: "technician"
+)
+
+let destination = AuditParticipant(
+    aeTitle: "PACS_AE",
+    host: "pacs.hospital.com",
+    port: 11112,
+    isRequestor: false
+)
+
+await auditLogger.logStoreSent(
+    outcome: .success,
+    source: source,
+    destination: destination,
+    sopClassUID: "1.2.840.10008.5.1.4.1.1.2",  // CT Image Storage
+    sopInstanceUID: "1.2.3.4.5.6.7.8.9",
+    studyInstanceUID: "1.2.3.4.5",
+    patientID: "PATIENT123",
+    bytesTransferred: 524288,
+    duration: 1.5,
+    statusCode: 0x0000
+)
+
+// Log query operations
+await auditLogger.logQueryExecuted(
+    outcome: .success,
+    source: source,
+    destination: destination,
+    queryLevel: "STUDY",
+    resultCount: 42,
+    duration: 0.5
+)
+
+// Log security events
+await auditLogger.logSecurityEvent(
+    outcome: .majorFailure,
+    source: AuditParticipant(
+        aeTitle: "UNKNOWN",
+        host: "192.168.1.99",
+        port: 11112,
+        isRequestor: true
+    ),
+    description: "Authentication failed: invalid credentials"
+)
+```
+
 ## Architecture
 
 DICOMKit is organized into three modules:
@@ -1059,6 +1146,17 @@ DICOM network protocol implementation:
 - `RecoverySuggestion` - Actionable recovery guidance for errors (NEW in v0.7.5)
 - `TimeoutConfiguration` - Fine-grained timeout settings for network operations (NEW in v0.7.5)
 - `TimeoutType` - Specific timeout type identification (NEW in v0.7.5)
+- `AuditLogger` - Central audit logging for DICOM network operations (NEW in v0.7.5)
+- `AuditLogEntry` - Comprehensive audit log entry with transfer metadata (NEW in v0.7.5)
+- `AuditEventType` - Types of auditable DICOM network events (NEW in v0.7.5)
+- `AuditEventOutcome` - Outcome classification for audit events (NEW in v0.7.5)
+- `AuditParticipant` - Information about participants in auditable events (NEW in v0.7.5)
+- `AuditLogHandler` - Protocol for handling audit log entries (NEW in v0.7.5)
+- `ConsoleAuditLogHandler` - Console-based audit log handler (NEW in v0.7.5)
+- `FileAuditLogHandler` - File-based audit log handler with rotation (NEW in v0.7.5)
+- `OSLogAuditHandler` - OSLog-based audit handler for Apple platforms (NEW in v0.7.5)
+- `DICOMLogCategory.storage` - Log category for C-STORE operations (NEW in v0.7.5)
+- `DICOMLogCategory.audit` - Log category for audit events (NEW in v0.7.5)
 - `TLSConfiguration` - TLS settings with protocol versions, certificate validation (NEW in v0.7.4)
 - `TLSProtocolVersion` - TLS protocol version enumeration (NEW in v0.7.4)
 - `CertificateValidation` - Certificate validation modes (system, disabled, pinned, custom) (NEW in v0.7.4)

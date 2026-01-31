@@ -840,10 +840,15 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] Detailed error codes with recovery suggestions
   - [ ] Association-level vs. file-level error differentiation
   - [ ] Automatic reconnection after transient failures
-- [ ] Audit Logging:
-  - [ ] Detailed transfer logs (source, destination, timestamps)
-  - [ ] Integration with system logging (OSLog)
-  - [ ] Configurable log retention
+- [x] Audit Logging:
+  - [x] Detailed transfer logs (source, destination, timestamps)
+  - [x] Integration with system logging (OSLog)
+  - [x] Configurable log retention
+  - [x] IHE ATNA-aligned audit event types
+  - [x] File-based audit logging with JSON Lines format
+  - [x] Log rotation support
+  - [x] Event type filtering
+  - [x] Storage operation logging helpers
 - [ ] `DICOMStorageClient` unified API:
   - [ ] Configuration with server pool, retry policies, queue settings
   - [ ] Automatic server selection (round-robin, priority)

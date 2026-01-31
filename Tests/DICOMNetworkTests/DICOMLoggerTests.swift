@@ -38,11 +38,13 @@ final class DICOMLoggerTests: XCTestCase {
         XCTAssertEqual(DICOMLogCategory.verification.rawValue, "Verification")
         XCTAssertEqual(DICOMLogCategory.stateMachine.rawValue, "StateMachine")
         XCTAssertEqual(DICOMLogCategory.performance.rawValue, "Performance")
+        XCTAssertEqual(DICOMLogCategory.storage.rawValue, "Storage")
+        XCTAssertEqual(DICOMLogCategory.audit.rawValue, "Audit")
     }
     
     func testLogCategoryAllCases() {
         let allCategories = DICOMLogCategory.allCases
-        XCTAssertEqual(allCategories.count, 9)
+        XCTAssertEqual(allCategories.count, 11)
         XCTAssertTrue(allCategories.contains(.connection))
         XCTAssertTrue(allCategories.contains(.association))
         XCTAssertTrue(allCategories.contains(.pdu))
@@ -52,6 +54,8 @@ final class DICOMLoggerTests: XCTestCase {
         XCTAssertTrue(allCategories.contains(.verification))
         XCTAssertTrue(allCategories.contains(.stateMachine))
         XCTAssertTrue(allCategories.contains(.performance))
+        XCTAssertTrue(allCategories.contains(.storage))
+        XCTAssertTrue(allCategories.contains(.audit))
     }
     
     // MARK: - Log Message Tests

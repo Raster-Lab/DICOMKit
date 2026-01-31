@@ -86,6 +86,12 @@ public enum DICOMLogCategory: String, Sendable, CaseIterable {
     
     /// Performance metrics and timing
     case performance = "Performance"
+    
+    /// Storage operations (C-STORE send/receive)
+    case storage = "Storage"
+    
+    /// Audit trail events
+    case audit = "Audit"
 }
 
 // MARK: - Log Message
@@ -821,6 +827,171 @@ extension DICOMLogger {
             warning(.verification, "C-ECHO verification failed", context: [
                 "host": host,
                 "port": String(port)
+            ])
+        }
+    }
+}
+
+// MARK: - Storage Logging Helpers
+
+extension DICOMLogger {
+    /// Logs C-STORE send operation start
+    ///
+    /// - Parameters:
+    ///   - sopClassUID: SOP Class UID of the object being stored
+    ///   - sopInstanceUID: SOP Instance UID of the object being stored
+    ///   - host: Remote host
+    ///   - port: Remote port
+    public func logStoreSendStart(
+        sopClassUID: String,
+        sopInstanceUID: String,
+        host: String,
+        port: UInt16
+    ) {
+        debug(.storage, "Starting C-STORE send", context: [
+            "sopClass": sopClassUID,
+            "sopInstance": sopInstanceUID,
+            "host": host,
+            "port": String(port)
+        ])
+    }
+    
+    /// Logs C-STORE send operation completion
+    ///
+    /// - Parameters:
+    ///   - sopInstanceUID: SOP Instance UID of the stored object
+    ///   - success: Whether the store succeeded
+    ///   - statusCode: DICOM status code
+    ///   - bytesTransferred: Number of bytes transferred
+    ///   - duration: Duration in seconds
+    public func logStoreSendComplete(
+        sopInstanceUID: String,
+        success: Bool,
+        statusCode: UInt16,
+        bytesTransferred: Int,
+        duration: TimeInterval
+    ) {
+        let statusHex = String(format: "0x%04X", statusCode)
+        let durationMs = String(format: "%.2f", duration * 1000)
+        
+        if success {
+            info(.storage, "C-STORE send completed", context: [
+                "sopInstance": sopInstanceUID,
+                "status": statusHex,
+                "bytes": String(bytesTransferred),
+                "duration_ms": durationMs
+            ])
+        } else {
+            warning(.storage, "C-STORE send failed", context: [
+                "sopInstance": sopInstanceUID,
+                "status": statusHex,
+                "bytes": String(bytesTransferred),
+                "duration_ms": durationMs
+            ])
+        }
+    }
+    
+    /// Logs C-STORE receive operation start
+    ///
+    /// - Parameters:
+    ///   - sopClassUID: SOP Class UID of the object being received
+    ///   - sopInstanceUID: SOP Instance UID of the object being received
+    ///   - sourceAE: Source Application Entity title
+    public func logStoreReceiveStart(
+        sopClassUID: String,
+        sopInstanceUID: String,
+        sourceAE: String
+    ) {
+        debug(.storage, "Receiving C-STORE", context: [
+            "sopClass": sopClassUID,
+            "sopInstance": sopInstanceUID,
+            "sourceAE": sourceAE
+        ])
+    }
+    
+    /// Logs C-STORE receive operation completion
+    ///
+    /// - Parameters:
+    ///   - sopInstanceUID: SOP Instance UID of the received object
+    ///   - success: Whether the receive succeeded
+    ///   - statusCode: DICOM status code sent in response
+    ///   - bytesReceived: Number of bytes received
+    ///   - duration: Duration in seconds
+    public func logStoreReceiveComplete(
+        sopInstanceUID: String,
+        success: Bool,
+        statusCode: UInt16,
+        bytesReceived: Int,
+        duration: TimeInterval
+    ) {
+        let statusHex = String(format: "0x%04X", statusCode)
+        let durationMs = String(format: "%.2f", duration * 1000)
+        
+        if success {
+            info(.storage, "C-STORE received successfully", context: [
+                "sopInstance": sopInstanceUID,
+                "status": statusHex,
+                "bytes": String(bytesReceived),
+                "duration_ms": durationMs
+            ])
+        } else {
+            warning(.storage, "C-STORE receive failed", context: [
+                "sopInstance": sopInstanceUID,
+                "status": statusHex,
+                "bytes": String(bytesReceived),
+                "duration_ms": durationMs
+            ])
+        }
+    }
+    
+    /// Logs batch storage progress
+    ///
+    /// - Parameters:
+    ///   - completed: Number of completed files
+    ///   - total: Total number of files
+    ///   - succeeded: Number of successful stores
+    ///   - failed: Number of failed stores
+    public func logBatchStoreProgress(
+        completed: Int,
+        total: Int,
+        succeeded: Int,
+        failed: Int
+    ) {
+        debug(.storage, "Batch store progress: \(completed)/\(total)", context: [
+            "completed": String(completed),
+            "total": String(total),
+            "succeeded": String(succeeded),
+            "failed": String(failed)
+        ])
+    }
+    
+    /// Logs batch storage completion
+    ///
+    /// - Parameters:
+    ///   - total: Total number of files
+    ///   - succeeded: Number of successful stores
+    ///   - failed: Number of failed stores
+    ///   - duration: Total duration in seconds
+    public func logBatchStoreComplete(
+        total: Int,
+        succeeded: Int,
+        failed: Int,
+        duration: TimeInterval
+    ) {
+        let durationSeconds = String(format: "%.2f", duration)
+        
+        if failed == 0 {
+            info(.storage, "Batch store completed successfully", context: [
+                "total": String(total),
+                "succeeded": String(succeeded),
+                "duration_s": durationSeconds
+            ])
+        } else {
+            warning(.storage, "Batch store completed with failures", context: [
+                "total": String(total),
+                "succeeded": String(succeeded),
+                "failed": String(failed),
+                "duration_s": durationSeconds
             ])
         }
     }
