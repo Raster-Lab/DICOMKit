@@ -3,7 +3,7 @@ import Foundation
 import Network
 
 /// Thread-safe wrapper for continuation to handle one-shot resumption
-private final class ContinuationResumeOnce<T, E: Error>: @unchecked Sendable {
+private final class ContinuationResumeOnce<T: Sendable, E: Error>: @unchecked Sendable {
     private var resumed = false
     private var continuation: CheckedContinuation<T, E>?
     private let lock = NSLock()

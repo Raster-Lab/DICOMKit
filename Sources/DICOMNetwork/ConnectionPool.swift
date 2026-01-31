@@ -381,7 +381,7 @@ public actor ConnectionPool {
             // Set up timeout
             Task {
                 try? await Task.sleep(for: .seconds(acquireTimeout))
-                await self.timeoutWaiter(waiterID: waiterID)
+                self.timeoutWaiter(waiterID: waiterID)
             }
         }
     }
