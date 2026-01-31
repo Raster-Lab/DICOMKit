@@ -10,9 +10,17 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7.6)
+## Features (v0.7.7)
 
-- ✅ **Validation Before Send (NEW in v0.7.6)**
+- ✅ **Transfer Syntax Conversion (NEW in v0.7.7)**
+  - ✅ Automatic transcoding when target server doesn't support source syntax
+  - ✅ Configurable preferred transfer syntaxes with priority ordering
+  - ✅ Support for uncompressed syntax conversion (Explicit/Implicit VR, Little/Big Endian)
+  - ✅ Decompression support for RLE and JPEG compressed data
+  - ✅ Pixel data fidelity preservation options
+  - ✅ Lossless/lossy conversion constraints
+  - ✅ Integration with DICOM Storage Service
+- ✅ **Validation Before Send (v0.7.6)**
   - ✅ DICOMValidator for pre-send data validation
   - ✅ Configurable validation levels (minimal, standard, strict)
   - ✅ Required attribute checking (SOP Class UID, SOP Instance UID, Study/Series UIDs)
