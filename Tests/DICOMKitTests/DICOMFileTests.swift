@@ -1,6 +1,6 @@
 import Testing
 import Foundation
-@testable import SwiftDICOMKit
+@testable import DICOMKit
 import DICOMCore
 
 @Suite("DICOMFile Tests")

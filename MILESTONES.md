@@ -1,10 +1,10 @@
-# SwiftDICOMKit Milestone Plan
+# DICOMKit Milestone Plan
 
-This document outlines the development roadmap for SwiftDICOMKit, a pure Swift DICOM toolkit for Apple platforms.
+This document outlines the development roadmap for DICOMKit, a pure Swift DICOM toolkit for Apple platforms.
 
 ## Overview
 
-SwiftDICOMKit aims to provide a comprehensive, Swift-native implementation for working with DICOM medical imaging files. The development is structured in phases, each building upon the previous to deliver incremental value while maintaining stability and quality.
+DICOMKit aims to provide a comprehensive, Swift-native implementation for working with DICOM medical imaging files. The development is structured in phases, each building upon the previous to deliver incremental value while maintaining stability and quality.
 
 ---
 

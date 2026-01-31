@@ -1,6 +1,6 @@
-# Contributing to SwiftDICOMKit
+# Contributing to DICOMKit
 
-Thank you for your interest in contributing to SwiftDICOMKit! This document provides guidelines for contributing to the project.
+Thank you for your interest in contributing to DICOMKit! This document provides guidelines for contributing to the project.
 
 ## Code of Conduct
 
@@ -9,7 +9,7 @@ Be respectful and professional in all interactions. We aim to create a welcoming
 ## Getting Started
 
 1. Fork the repository
-2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/SwiftDICOMKit.git`
+2. Clone your fork: `git clone https://github.com/YOUR_USERNAME/DICOMKit.git`
 3. Create a feature branch: `git checkout -b feature/your-feature-name`
 4. Make your changes
 5. Run tests: `swift test`
@@ -25,7 +25,7 @@ Be respectful and professional in all interactions. We aim to create a welcoming
 
 ## Code Style
 
-SwiftDICOMKit follows standard Swift conventions with these specific requirements:
+DICOMKit follows standard Swift conventions with these specific requirements:
 
 ### Formatting
 - Use 4 spaces for indentation (no tabs)
@@ -70,7 +70,7 @@ public struct PatientName: Sendable {
 
 ## DICOM Standard Compliance
 
-**This is critical**: SwiftDICOMKit must faithfully implement the DICOM standard.
+**This is critical**: DICOMKit must faithfully implement the DICOM standard.
 
 ### Requirements
 
@@ -98,7 +98,7 @@ public struct PatientName: Sendable {
 
 - All new features must include tests
 - Use Swift Testing framework (`@Test`, `#expect`)
-- Organize tests by module (DICOMCoreTests, DICOMDictionaryTests, SwiftDICOMKitTests)
+- Organize tests by module (DICOMCoreTests, DICOMDictionaryTests, DICOMKitTests)
 - Test both success and failure cases
 - Test edge cases (empty data, maximum values, etc.)
 
@@ -178,8 +178,8 @@ More detailed explanation if needed. Wrap at 72 characters.
 
 ## License
 
-By contributing to SwiftDICOMKit, you agree that your contributions will be licensed under the MIT License.
+By contributing to DICOMKit, you agree that your contributions will be licensed under the MIT License.
 
 ---
 
-Thank you for helping make SwiftDICOMKit better!
+Thank you for helping make DICOMKit better!

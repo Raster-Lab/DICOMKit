@@ -1,8 +1,8 @@
-/// SwiftDICOMKit - A pure Swift DICOM toolkit for Apple platforms
+/// DICOMKit - A pure Swift DICOM toolkit for Apple platforms
 ///
 /// Version 0.3.0
 ///
-/// SwiftDICOMKit provides a modern, Swift-native interface for reading and parsing
+/// DICOMKit provides a modern, Swift-native interface for reading and parsing
 /// DICOM (Digital Imaging and Communications in Medicine) files on iOS, macOS, and visionOS.
 ///
 /// ## Features (v0.3)
@@ -34,7 +34,7 @@
 @_exported import DICOMCore
 @_exported import DICOMDictionary
 
-/// SwiftDICOMKit version
+/// DICOMKit version
 public let version = "0.3.0"
 
 /// Supported DICOM Standard edition
