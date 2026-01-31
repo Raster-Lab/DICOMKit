@@ -1,7 +1,7 @@
 import Foundation
 import DICOMCore
 
-// MARK: - Query/Retrieve SOP Class UIDs
+// MARK: - Query/Retrieve SOP Class UIDs - FIND
 
 /// Patient Root Query/Retrieve Information Model - FIND
 ///
@@ -17,6 +17,40 @@ public let studyRootQueryRetrieveFindSOPClassUID = "1.2.840.10008.5.1.4.1.2.2.1"
 ///
 /// Reference: PS3.4 Annex C.6.3
 public let patientStudyOnlyQueryRetrieveFindSOPClassUID = "1.2.840.10008.5.1.4.1.2.3.1"
+
+// MARK: - Query/Retrieve SOP Class UIDs - MOVE
+
+/// Patient Root Query/Retrieve Information Model - MOVE
+///
+/// Reference: PS3.4 Annex C.6.1
+public let patientRootQueryRetrieveMoveSOPClassUID = "1.2.840.10008.5.1.4.1.2.1.2"
+
+/// Study Root Query/Retrieve Information Model - MOVE
+///
+/// Reference: PS3.4 Annex C.6.2
+public let studyRootQueryRetrieveMoveSOPClassUID = "1.2.840.10008.5.1.4.1.2.2.2"
+
+/// Patient/Study Only Query/Retrieve Information Model - MOVE (Retired)
+///
+/// Reference: PS3.4 Annex C.6.3
+public let patientStudyOnlyQueryRetrieveMoveSOPClassUID = "1.2.840.10008.5.1.4.1.2.3.2"
+
+// MARK: - Query/Retrieve SOP Class UIDs - GET
+
+/// Patient Root Query/Retrieve Information Model - GET
+///
+/// Reference: PS3.4 Annex C.6.1
+public let patientRootQueryRetrieveGetSOPClassUID = "1.2.840.10008.5.1.4.1.2.1.3"
+
+/// Study Root Query/Retrieve Information Model - GET
+///
+/// Reference: PS3.4 Annex C.6.2
+public let studyRootQueryRetrieveGetSOPClassUID = "1.2.840.10008.5.1.4.1.2.2.3"
+
+/// Patient/Study Only Query/Retrieve Information Model - GET (Retired)
+///
+/// Reference: PS3.4 Annex C.6.3
+public let patientStudyOnlyQueryRetrieveGetSOPClassUID = "1.2.840.10008.5.1.4.1.2.3.3"
 
 // MARK: - Query/Retrieve Information Model
 
@@ -45,6 +79,26 @@ public enum QueryRetrieveInformationModel: Sendable, Hashable {
             return patientRootQueryRetrieveFindSOPClassUID
         case .studyRoot:
             return studyRootQueryRetrieveFindSOPClassUID
+        }
+    }
+    
+    /// The SOP Class UID for C-MOVE
+    public var moveSOPClassUID: String {
+        switch self {
+        case .patientRoot:
+            return patientRootQueryRetrieveMoveSOPClassUID
+        case .studyRoot:
+            return studyRootQueryRetrieveMoveSOPClassUID
+        }
+    }
+    
+    /// The SOP Class UID for C-GET
+    public var getSOPClassUID: String {
+        switch self {
+        case .patientRoot:
+            return patientRootQueryRetrieveGetSOPClassUID
+        case .studyRoot:
+            return studyRootQueryRetrieveGetSOPClassUID
         }
     }
     
