@@ -1294,6 +1294,19 @@ DICOMKit implements:
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
 
+## Example Application
+
+DICOMKit includes a complete example application demonstrating PACS connectivity:
+
+**DICOMViewer** (`Examples/DICOMViewer/`) - A SwiftUI application showcasing:
+- PACS server configuration and management
+- C-ECHO connection testing
+- Patient search with wildcards (C-FIND)
+- Study and Series hierarchy navigation
+- Cross-platform support (iOS, macOS, visionOS)
+
+See the [DICOMViewer README](Examples/DICOMViewer/README.md) for detailed setup instructions.
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
