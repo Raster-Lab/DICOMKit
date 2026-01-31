@@ -730,11 +730,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Build Transaction UID and Referenced SOP Sequence
   - [x] Handle N-ACTION-RSP
   - [ ] Receive N-EVENT-REPORT with commitment results (requires SCP listener)
-- [ ] Storage Commitment SCP implementation:
-  - [ ] Accept N-ACTION-RQ for commitment requests
-  - [ ] Process commitment requests against stored instances
-  - [ ] Send N-EVENT-REPORT with commitment results
-  - [ ] Handle both success and failure references
+- [x] Storage Commitment SCP implementation:
+  - [x] Accept N-ACTION-RQ for commitment requests
+  - [x] Process commitment requests against stored instances
+  - [x] Send N-EVENT-REPORT with commitment results
+  - [x] Handle both success and failure references
 - [x] Commitment request handling:
   - [x] Storage Commitment Push Model SOP Class (1.2.840.10008.1.20.1)
   - [x] Referenced SOP Sequence building
@@ -762,6 +762,14 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [x] N-ACTION DIMSE message types (NActionRequest, NActionResponse)
 - [x] N-EVENT-REPORT DIMSE message types (NEventReportRequest, NEventReportResponse)
 - [x] Command Set accessors for N-ACTION/N-EVENT-REPORT fields
+- [x] `StorageCommitmentServer` SCP API:
+  - [x] `StorageCommitmentSCPConfiguration` for SCP settings
+  - [x] `StorageCommitmentDelegate` protocol for handling commitment requests
+  - [x] `CommitmentRequestInfo` struct for received commitment requests
+  - [x] `StorageCommitmentServerEvent` enum for monitoring SCP activity
+  - [x] `DefaultCommitmentHandler` actor for default commitment handling
+  - [x] `func start() async throws` and `func stop() async` for server lifecycle
+  - [x] `var events: AsyncStream<StorageCommitmentServerEvent>` for event monitoring
 
 #### Technical Notes
 - Reference: PS3.4 Annex J - Storage Commitment Service Class
@@ -776,9 +784,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [ ] Successfully request and receive storage commitment (requires network access)
 - [ ] Handle asynchronous commitment notifications
 - [x] Correctly parse commitment results (success/failure)
-- [ ] SCP correctly processes commitment requests
+- [x] SCP correctly processes commitment requests
 - [ ] Timeout handling works for delayed commitments
 - [x] Unit tests for N-ACTION and N-EVENT-REPORT handling
+- [x] Unit tests for Storage Commitment SCP configuration and delegate
 - [ ] Integration tests with PACS supporting storage commitment (requires network access)
 
 ---
