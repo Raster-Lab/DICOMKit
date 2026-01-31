@@ -3,7 +3,7 @@ import Foundation
 /// Priority level for DIMSE operations
 ///
 /// Reference: PS3.7 Section 9.1.1
-public enum DIMSEPriority: UInt16, Sendable, Hashable {
+public enum DIMSEPriority: UInt16, Sendable, Hashable, Codable {
     /// Low priority (0x0002)
     case low = 0x0002
     

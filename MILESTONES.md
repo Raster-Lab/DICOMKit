@@ -831,10 +831,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Integration with existing `ErrorCategory` and `CircuitBreaker`
   - [ ] Dead letter queue for undeliverable files (deferred to store-and-forward)
 - [ ] Store-and-Forward:
-  - [ ] Queue files for later delivery
-  - [ ] Persistent queue (survives app restart)
-  - [ ] Automatic retry on connectivity restoration
-  - [ ] Queue management API (pause, resume, clear)
+  - [x] Queue files for later delivery
+  - [x] Persistent queue (survives app restart)
+  - [x] Automatic retry on connectivity restoration
+  - [x] Queue management API (pause, resume, clear)
 - [ ] Compression Optimization:
   - [ ] On-the-fly compression for network efficiency
   - [ ] Configurable compression level vs. speed tradeoff
