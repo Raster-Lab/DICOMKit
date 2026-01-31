@@ -678,7 +678,7 @@ extension Data {
             }
             
             // Allocate destination buffer - start with 4x source size as initial estimate
-            let destinationCapacity = max(count * 4, 64 * 1024)
+            let destinationCapacity = Swift.max(count * 4, 64 * 1024)
             let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: destinationCapacity)
             defer { destinationBuffer.deallocate() }
             
