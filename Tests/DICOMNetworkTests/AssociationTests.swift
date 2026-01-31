@@ -384,3 +384,103 @@ struct DICOMPortConstantsTests {
         #expect(dicomAlternativePort == 11112)
     }
 }
+
+@Suite("ARTIM Timer Tests")
+struct ARTIMTimerTests {
+    
+    @Test("Configuration includes default ARTIM timeout")
+    func testDefaultARTIMTimeout() throws {
+        let config = AssociationConfiguration(
+            callingAETitle: try AETitle("SCU"),
+            calledAETitle: try AETitle("SCP"),
+            host: "localhost",
+            implementationClassUID: "1.2.3.4.5"
+        )
+        
+        #expect(config.artimTimeout == 30)
+    }
+    
+    @Test("Configuration can have custom ARTIM timeout")
+    func testCustomARTIMTimeout() throws {
+        let config = AssociationConfiguration(
+            callingAETitle: try AETitle("SCU"),
+            calledAETitle: try AETitle("SCP"),
+            host: "localhost",
+            implementationClassUID: "1.2.3.4.5",
+            artimTimeout: 60
+        )
+        
+        #expect(config.artimTimeout == 60)
+    }
+    
+    @Test("Configuration can disable ARTIM timeout")
+    func testDisabledARTIMTimeout() throws {
+        let config = AssociationConfiguration(
+            callingAETitle: try AETitle("SCU"),
+            calledAETitle: try AETitle("SCP"),
+            host: "localhost",
+            implementationClassUID: "1.2.3.4.5",
+            artimTimeout: nil
+        )
+        
+        #expect(config.artimTimeout == nil)
+    }
+    
+    @Test("ARTIM timer expiration transitions state from awaiting remote associate response")
+    func testARTIMExpirationFromAwaitingRemoteAssociateResponse() {
+        let stateMachine = AssociationStateMachine(initialState: .awaitingRemoteAssociateResponse)
+        
+        let result = stateMachine.handleEvent(.artimTimerExpired)
+        
+        #expect(result.newState == .awaitingTransportClose)
+        #expect(stateMachine.state == .awaitingTransportClose)
+    }
+    
+    @Test("ARTIM timer expiration transitions state from awaiting remote release response")
+    func testARTIMExpirationFromAwaitingRemoteReleaseResponse() {
+        let stateMachine = AssociationStateMachine(initialState: .awaitingRemoteReleaseResponse)
+        
+        let result = stateMachine.handleEvent(.artimTimerExpired)
+        
+        #expect(result.newState == .awaitingTransportClose)
+        #expect(stateMachine.state == .awaitingTransportClose)
+    }
+    
+    @Test("ARTIM timer expiration generates abort action")
+    func testARTIMExpirationGeneratesAbortAction() {
+        let stateMachine = AssociationStateMachine(initialState: .awaitingRemoteAssociateResponse)
+        
+        let result = stateMachine.handleEvent(.artimTimerExpired)
+        
+        // Should have an abort action
+        let hasAbortAction = result.actions.contains { action in
+            if case .sendAbort = action {
+                return true
+            }
+            return false
+        }
+        #expect(hasAbortAction == true)
+    }
+    
+    @Test("ARTIM timer event is ignored in established state")
+    func testARTIMIgnoredInEstablishedState() {
+        let stateMachine = AssociationStateMachine(initialState: .established)
+        
+        let result = stateMachine.handleEvent(.artimTimerExpired)
+        
+        // Should stay in established state (default handler)
+        #expect(result.newState == .established)
+        #expect(stateMachine.state == .established)
+    }
+    
+    @Test("ARTIM timer event is ignored in idle state")
+    func testARTIMIgnoredInIdleState() {
+        let stateMachine = AssociationStateMachine(initialState: .idle)
+        
+        let result = stateMachine.handleEvent(.artimTimerExpired)
+        
+        // Should stay in idle state (default handler)
+        #expect(result.newState == .idle)
+        #expect(stateMachine.state == .idle)
+    }
+}

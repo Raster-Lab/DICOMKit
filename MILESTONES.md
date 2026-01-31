@@ -204,7 +204,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 6.2: Association Management (v0.6.2)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Implement DICOM Association establishment and release  
 **Complexity**: Medium-High  
 **Dependencies**: Milestone 6.1
@@ -230,7 +230,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Propose transfer syntaxes
   - [x] Accept/reject context handling
 - [x] Association state machine (Idle, Awaiting Response, Established, Released)
-- [ ] Timeouts for association operations (configurable ARTIM timer)
+- [x] Timeouts for association operations (configurable ARTIM timer)
 
 #### Technical Notes
 - Reference: PS3.8 Section 7 - DICOM Upper Layer Service
@@ -243,7 +243,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [ ] Successfully establish association with a DICOM SCP (test server)
 - [x] Graceful release and cleanup of associations
 - [x] Proper handling of rejected associations with descriptive errors
-- [ ] Association timeout handling works correctly
+- [x] Association timeout handling works correctly
 - [x] Unit tests for association state machine
 
 ---

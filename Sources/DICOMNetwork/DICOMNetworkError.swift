@@ -60,6 +60,14 @@ public enum DICOMNetworkError: Error, Sendable {
     
     /// Retrieve operation failed with a DIMSE status
     case retrieveFailed(DIMSEStatus)
+    
+    /// ARTIM timer expired while waiting for association response
+    ///
+    /// The ARTIM (Association Request/Release Timer) fires when waiting
+    /// for an A-ASSOCIATE-AC/RJ or A-RELEASE-RP response takes too long.
+    ///
+    /// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
+    case artimTimerExpired
 }
 
 // MARK: - CustomStringConvertible
@@ -98,7 +106,21 @@ extension DICOMNetworkError: CustomStringConvertible {
             return "Query failed: \(status)"
         case .retrieveFailed(let status):
             return "Retrieve failed: \(status)"
+        case .artimTimerExpired:
+            return "ARTIM timer expired: remote peer did not respond in time"
         }
+    }
+}
+
+// MARK: - Error Helpers
+
+extension DICOMNetworkError {
+    /// Returns true if this error is an ARTIM timer expiration
+    var isARTIMExpired: Bool {
+        if case .artimTimerExpired = self {
+            return true
+        }
+        return false
     }
 }
 

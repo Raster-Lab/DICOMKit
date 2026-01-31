@@ -117,6 +117,15 @@ public enum AssociationEvent: Sendable {
     // Local service events
     case localAbortRequest
     case localReleaseRequest
+    
+    // Timer events
+    /// ARTIM (Association Request/Release Timer) expired
+    ///
+    /// This event is triggered when the ARTIM timer fires while waiting for
+    /// an association response (A-ASSOCIATE-AC/RJ) or release response (A-RELEASE-RP).
+    ///
+    /// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
+    case artimTimerExpired
 }
 
 /// Actions to be performed during state transitions
@@ -298,6 +307,15 @@ public final class AssociationStateMachine: @unchecked Sendable {
                 actions: [.issueAbortIndication(.serviceProvider, AbortReason.notSpecified.rawValue)]
             )
             
+        case (.awaitingRemoteAssociateResponse, .artimTimerExpired):
+            // AA-2: ARTIM timer expired while awaiting A-ASSOCIATE-AC/RJ
+            // Abort the association and close the transport
+            let abortPDU = AbortPDU(source: .serviceProvider, reason: AbortReason.notSpecified.rawValue)
+            return TransitionResult(
+                newState: .awaitingTransportClose,
+                actions: [.sendAbort(abortPDU)]
+            )
+            
         // Established state transitions (Sta6)
         case (.established, .dataTransferReceived(let pdu)):
             // DT-2: P-DATA-TF PDU received
@@ -392,6 +410,15 @@ public final class AssociationStateMachine: @unchecked Sendable {
             return TransitionResult(
                 newState: .idle,
                 actions: [.issueAbortIndication(.serviceProvider, AbortReason.notSpecified.rawValue)]
+            )
+            
+        case (.awaitingRemoteReleaseResponse, .artimTimerExpired):
+            // AA-2: ARTIM timer expired while awaiting A-RELEASE-RP
+            // Abort the association and close the transport
+            let abortPDU = AbortPDU(source: .serviceProvider, reason: AbortReason.notSpecified.rawValue)
+            return TransitionResult(
+                newState: .awaitingTransportClose,
+                actions: [.sendAbort(abortPDU)]
             )
             
         // Release collision (Sta9-11)
