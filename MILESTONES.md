@@ -99,22 +99,23 @@ SwiftDICOMKit aims to provide a comprehensive, Swift-native implementation for w
 
 ## Milestone 4: Compressed Pixel Data (v0.4)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Support common compressed image formats
 
 ### Deliverables
-- [ ] JPEG Baseline (Process 1) - 1.2.840.10008.1.2.4.50
-- [ ] JPEG Extended (Process 2 & 4) - 1.2.840.10008.1.2.4.51
-- [ ] JPEG Lossless - 1.2.840.10008.1.2.4.57
-- [ ] JPEG 2000 Image Compression (Lossless Only) - 1.2.840.10008.1.2.4.90
-- [ ] JPEG 2000 Image Compression - 1.2.840.10008.1.2.4.91
-- [ ] RLE Lossless - 1.2.840.10008.1.2.5
-- [ ] Encapsulated pixel data parsing (fragments, offset table)
-- [ ] Codec plugin architecture for extensibility
+- [x] JPEG Baseline (Process 1) - 1.2.840.10008.1.2.4.50
+- [x] JPEG Extended (Process 2 & 4) - 1.2.840.10008.1.2.4.51
+- [x] JPEG Lossless - 1.2.840.10008.1.2.4.57
+- [x] JPEG Lossless SV1 (Process 14, Selection Value 1) - 1.2.840.10008.1.2.4.70
+- [x] JPEG 2000 Image Compression (Lossless Only) - 1.2.840.10008.1.2.4.90
+- [x] JPEG 2000 Image Compression - 1.2.840.10008.1.2.4.91
+- [x] RLE Lossless - 1.2.840.10008.1.2.5
+- [x] Encapsulated pixel data parsing (fragments, offset table)
+- [x] Codec plugin architecture for extensibility
 
 ### Technical Notes
-- Leverage platform codecs where available (ImageIO, VideoToolbox)
-- Consider optional dependency on open-source JPEG 2000 library
+- Leverages Apple platform codecs via ImageIO framework
+- Pure Swift RLE codec implementation per DICOM PS3.5 Annex G
 - Reference: PS3.5 Annex A - Transfer Syntax Specifications
 
 ### Acceptance Criteria

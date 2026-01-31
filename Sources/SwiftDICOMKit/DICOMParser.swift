@@ -70,12 +70,13 @@ struct DICOMParser {
         
         let isExplicitVR = transferSyntax.isExplicitVR
         let byteOrder = transferSyntax.byteOrder
+        let isEncapsulated = transferSyntax.isEncapsulated
         
         var elements: [DataElement] = []
         
         // Parse elements until we reach the end or pixel data
         while offset < data.count {
-            // Stop at pixel data (7FE0,0010) for v0.1
+            // Check for pixel data (7FE0,0010)
             guard let groupNumber = readUInt16(at: offset, byteOrder: byteOrder) else {
                 break
             }
@@ -83,8 +84,26 @@ struct DICOMParser {
                 break
             }
             
-            // Stop at pixel data
+            // Handle pixel data
             if groupNumber == 0x7FE0 && elementNumber == 0x0010 {
+                // Parse pixel data element
+                let pixelDataElement: DataElement
+                if isEncapsulated {
+                    pixelDataElement = try parseEncapsulatedPixelData(isExplicitVR: isExplicitVR, byteOrder: byteOrder)
+                } else {
+                    if isExplicitVR {
+                        guard let parsed = try? parseExplicitVRElement(byteOrder: byteOrder) else {
+                            break
+                        }
+                        pixelDataElement = parsed
+                    } else {
+                        guard let parsed = try? parseImplicitVRElement(byteOrder: byteOrder) else {
+                            break
+                        }
+                        pixelDataElement = parsed
+                    }
+                }
+                elements.append(pixelDataElement)
                 break
             }
             
@@ -106,6 +125,163 @@ struct DICOMParser {
         }
         
         return DataSet(elements: elements)
+    }
+    
+    // MARK: - Encapsulated Pixel Data Parsing
+    
+    /// Parses encapsulated (compressed) pixel data
+    ///
+    /// Encapsulated pixel data is stored as a sequence of fragments with an optional
+    /// Basic Offset Table. The structure is:
+    /// - Pixel Data Tag (7FE0,0010)
+    /// - VR (OB or OW) and Length (undefined = FFFFFFFF)
+    /// - Item Tag (FFFE,E000) + Length + Basic Offset Table (first item, may be empty)
+    /// - Item Tag (FFFE,E000) + Length + Fragment data (repeated for each fragment)
+    /// - Sequence Delimitation Item (FFFE,E0DD)
+    ///
+    /// Reference: PS3.5 Section A.4 - Transfer Syntaxes For Encapsulation of Encoded Pixel Data
+    private mutating func parseEncapsulatedPixelData(isExplicitVR: Bool, byteOrder: ByteOrder) throws -> DataElement {
+        // Read tag (should be 7FE0,0010)
+        guard let groupNumber = readUInt16(at: offset, byteOrder: byteOrder),
+              let elementNumber = readUInt16(at: offset + 2, byteOrder: byteOrder) else {
+            throw DICOMError.unexpectedEndOfData
+        }
+        offset += 4
+        
+        let tag = Tag(group: groupNumber, element: elementNumber)
+        
+        // Read VR and length
+        let vr: VR
+        let valueLength: UInt32
+        
+        if isExplicitVR {
+            guard offset + 2 <= data.count else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            
+            let vrByte0 = data[offset]
+            let vrByte1 = data[offset + 1]
+            offset += 2
+            
+            guard let vrString = String(bytes: [vrByte0, vrByte1], encoding: .ascii),
+                  let parsedVR = VR(rawValue: vrString) else {
+                // Default to OB for pixel data if VR is invalid
+                vr = .OB
+                offset -= 2 // backtrack
+                valueLength = 0xFFFFFFFF
+                return DataElement(tag: tag, vr: vr, length: valueLength, valueData: Data())
+            }
+            vr = parsedVR
+            
+            // Skip 2 reserved bytes and read 4-byte length
+            offset += 2
+            guard let length32 = readUInt32(at: offset, byteOrder: byteOrder) else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            offset += 4
+            valueLength = length32
+        } else {
+            // Implicit VR - use OW for pixel data
+            vr = .OW
+            guard let length32 = readUInt32(at: offset, byteOrder: byteOrder) else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            offset += 4
+            valueLength = length32
+        }
+        
+        // For encapsulated pixel data, the length should be undefined (0xFFFFFFFF)
+        guard valueLength == 0xFFFFFFFF else {
+            // Not actually encapsulated, treat as regular pixel data
+            guard offset + Int(valueLength) <= data.count else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            let valueData = data.subdata(in: offset..<offset + Int(valueLength))
+            offset += Int(valueLength)
+            return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData)
+        }
+        
+        // Parse the Basic Offset Table (first item)
+        var offsetTable: [UInt32] = []
+        var fragments: [Data] = []
+        
+        // Read first item (Basic Offset Table)
+        guard let botItemTag = readItemTag(byteOrder: byteOrder) else {
+            throw DICOMError.parsingFailed("Expected Item tag for Basic Offset Table")
+        }
+        
+        guard botItemTag == .item else {
+            throw DICOMError.parsingFailed("Expected Item tag (FFFE,E000), found \(botItemTag)")
+        }
+        offset += 4
+        
+        guard let botLength = readUInt32(at: offset, byteOrder: byteOrder) else {
+            throw DICOMError.unexpectedEndOfData
+        }
+        offset += 4
+        
+        // Parse offset table if present
+        if botLength > 0 {
+            let numOffsets = Int(botLength) / 4
+            for _ in 0..<numOffsets {
+                guard let offsetValue = readUInt32(at: offset, byteOrder: .littleEndian) else {
+                    throw DICOMError.unexpectedEndOfData
+                }
+                offsetTable.append(offsetValue)
+                offset += 4
+            }
+        }
+        
+        // Parse fragments until Sequence Delimitation Item
+        while offset < data.count {
+            guard let itemTag = readItemTag(byteOrder: byteOrder) else {
+                break
+            }
+            
+            // Check for Sequence Delimitation Item
+            if itemTag == .sequenceDelimitationItem {
+                offset += 4 // Skip tag
+                offset += 4 // Skip length (should be 0)
+                break
+            }
+            
+            // Should be an Item tag
+            guard itemTag == .item else {
+                throw DICOMError.parsingFailed("Expected Item or Sequence Delimitation tag, found \(itemTag)")
+            }
+            offset += 4
+            
+            guard let fragmentLength = readUInt32(at: offset, byteOrder: byteOrder) else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            offset += 4
+            
+            guard offset + Int(fragmentLength) <= data.count else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            
+            let fragmentData = data.subdata(in: offset..<offset + Int(fragmentLength))
+            fragments.append(fragmentData)
+            offset += Int(fragmentLength)
+        }
+        
+        return DataElement(
+            tag: tag,
+            vr: vr,
+            length: valueLength,
+            valueData: Data(),
+            encapsulatedFragments: fragments,
+            encapsulatedOffsetTable: offsetTable
+        )
+    }
+    
+    /// Reads an Item or Delimiter tag
+    private func readItemTag(byteOrder: ByteOrder) -> Tag? {
+        guard let groupNumber = readUInt16(at: offset, byteOrder: byteOrder),
+              let elementNumber = readUInt16(at: offset + 2, byteOrder: byteOrder) else {
+            return nil
+        }
+        return Tag(group: groupNumber, element: elementNumber)
     }
     
     // MARK: - Byte Order Helpers

@@ -31,6 +31,22 @@ public struct DataElement: Sendable {
     /// Reference: PS3.5 Section 7.5 - Nesting of Data Sets
     public let sequenceItems: [SequenceItem]?
     
+    /// Encapsulated pixel data fragments for compressed pixel data
+    ///
+    /// When pixel data is encapsulated (compressed), the data is stored
+    /// as a sequence of fragments. Each fragment is a separate Data block.
+    ///
+    /// Reference: PS3.5 Section A.4 - Transfer Syntaxes For Encapsulation
+    public let encapsulatedFragments: [Data]?
+    
+    /// Basic Offset Table for encapsulated pixel data
+    ///
+    /// Contains byte offsets to each frame in the encapsulated pixel data.
+    /// May be empty if the encoder did not provide offset information.
+    ///
+    /// Reference: PS3.5 Section A.4 - Table A.4-1
+    public let encapsulatedOffsetTable: [UInt32]?
+    
     /// Creates a new data element
     /// - Parameters:
     ///   - tag: Data element tag
@@ -43,6 +59,8 @@ public struct DataElement: Sendable {
         self.length = length
         self.valueData = valueData
         self.sequenceItems = nil
+        self.encapsulatedFragments = nil
+        self.encapsulatedOffsetTable = nil
     }
     
     /// Creates a new sequence data element
@@ -58,6 +76,26 @@ public struct DataElement: Sendable {
         self.length = length
         self.valueData = valueData
         self.sequenceItems = sequenceItems
+        self.encapsulatedFragments = nil
+        self.encapsulatedOffsetTable = nil
+    }
+    
+    /// Creates a new encapsulated pixel data element
+    /// - Parameters:
+    ///   - tag: Data element tag
+    ///   - vr: Value Representation (should be .OB or .OW)
+    ///   - length: Value length (typically 0xFFFFFFFF for undefined length)
+    ///   - valueData: Raw value data (typically empty for encapsulated)
+    ///   - encapsulatedFragments: Compressed pixel data fragments
+    ///   - encapsulatedOffsetTable: Basic offset table
+    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data, encapsulatedFragments: [Data], encapsulatedOffsetTable: [UInt32]) {
+        self.tag = tag
+        self.vr = vr
+        self.length = length
+        self.valueData = valueData
+        self.sequenceItems = nil
+        self.encapsulatedFragments = encapsulatedFragments
+        self.encapsulatedOffsetTable = encapsulatedOffsetTable
     }
     
     /// Indicates whether this data element has undefined length
@@ -74,11 +112,25 @@ public struct DataElement: Sendable {
         return vr == .SQ
     }
     
+    /// Indicates whether this data element contains encapsulated pixel data
+    ///
+    /// Reference: PS3.5 Section A.4 - Transfer Syntaxes For Encapsulation
+    public var isEncapsulated: Bool {
+        return encapsulatedFragments != nil && !(encapsulatedFragments?.isEmpty ?? true)
+    }
+    
     /// Number of items in the sequence
     ///
     /// Returns 0 if this element is not a sequence or has no items.
     public var sequenceItemCount: Int {
         return sequenceItems?.count ?? 0
+    }
+    
+    /// Number of fragments in encapsulated pixel data
+    ///
+    /// Returns 0 if this element does not contain encapsulated data.
+    public var encapsulatedFragmentCount: Int {
+        return encapsulatedFragments?.count ?? 0
     }
     
     /// Extracts the value as a string (for string-based VRs)

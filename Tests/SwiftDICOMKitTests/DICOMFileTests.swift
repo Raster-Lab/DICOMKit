@@ -158,11 +158,16 @@ struct DICOMFileTests {
         data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // Dummy pixel data
         
         let file = try DICOMFile.read(from: data)
-        // Should only have parsed the patient name, not pixel data
-        #expect(file.dataSet.count == 1)
+        // Should have parsed both patient name and pixel data
+        #expect(file.dataSet.count == 2)
         
         let patientName = file.dataSet.string(for: .patientName)
         #expect(patientName == "Test")
+        
+        // Verify pixel data was parsed
+        let pixelDataElement = file.dataSet[.pixelData]
+        #expect(pixelDataElement != nil)
+        #expect(pixelDataElement?.vr == .OW)
     }
     
     @Test("Invalid DICOM file - too short")
@@ -359,8 +364,13 @@ struct DICOMFileTests {
         data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // Dummy pixel data
         
         let file = try DICOMFile.read(from: data)
-        #expect(file.dataSet.count == 1)
+        // Should have parsed both patient name and pixel data
+        #expect(file.dataSet.count == 2)
         #expect(file.dataSet.string(for: .patientName) == "Test")
+        
+        // Verify pixel data was parsed
+        let pixelDataElement = file.dataSet[.pixelData]
+        #expect(pixelDataElement != nil)
     }
     
     @Test("Parse Implicit VR Little Endian file with unknown tag uses UN VR")
@@ -405,11 +415,11 @@ struct DICOMFileTests {
         // "DICM" prefix
         data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
         
-        // File Meta Information - Transfer Syntax UID for JPEG Baseline (not supported)
+        // File Meta Information - Transfer Syntax UID for JPEG 2000 Part 2 (not supported)
         data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
         data.append(contentsOf: [0x55, 0x49]) // "UI"
         data.append(contentsOf: [0x16, 0x00]) // Length: 22
-        data.append("1.2.840.10008.1.2.4.50".data(using: .ascii)!)
+        data.append("1.2.840.10008.1.2.4.92".data(using: .ascii)!)
         
         // Add a data element that will trigger parsing
         data.append(contentsOf: [0x10, 0x00, 0x10, 0x00])
@@ -563,7 +573,13 @@ struct DICOMFileTests {
         data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // Dummy pixel data
         
         let file = try DICOMFile.read(from: data)
-        #expect(file.dataSet.count == 1)
+        // Should have parsed both patient name and pixel data
+        #expect(file.dataSet.count == 2)
         #expect(file.dataSet.string(for: .patientName) == "Test")
+        
+        // Verify pixel data was parsed
+        let pixelDataElement = file.dataSet[.pixelData]
+        #expect(pixelDataElement != nil)
+        #expect(pixelDataElement?.vr == .OW)
     }
 }

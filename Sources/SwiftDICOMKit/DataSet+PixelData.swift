@@ -81,6 +81,37 @@ extension DataSet {
         return PixelData(data: element.valueData, descriptor: descriptor)
     }
     
+    // MARK: - Encapsulated Pixel Data Extraction
+    
+    /// Extracts encapsulated (compressed) pixel data from the data set
+    ///
+    /// Returns the encapsulated pixel data including offset table and fragments.
+    /// Returns nil if encapsulated pixel data is not present.
+    ///
+    /// - Returns: EncapsulatedPixelData if extraction succeeds
+    public func encapsulatedPixelData() -> EncapsulatedPixelData? {
+        guard let descriptor = pixelDataDescriptor() else {
+            return nil
+        }
+        
+        // Get the pixel data element
+        guard let element = self[.pixelData] else {
+            return nil
+        }
+        
+        // If the element has encapsulated fragments, use those
+        if let fragments = element.encapsulatedFragments, !fragments.isEmpty {
+            let offsetTable = element.encapsulatedOffsetTable ?? []
+            return EncapsulatedPixelData(
+                offsetTable: offsetTable,
+                fragments: fragments,
+                descriptor: descriptor
+            )
+        }
+        
+        return nil
+    }
+    
     // MARK: - Window Settings
     
     /// Returns the first window settings from the data set

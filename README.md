@@ -10,7 +10,7 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.3)
+## Features (v0.4)
 
 - ✅ **Read-only DICOM file parsing** - Parse DICOM Part 10 files
 - ✅ **Multiple transfer syntax support**:
@@ -18,6 +18,16 @@ SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (D
   - ✅ Implicit VR Little Endian
   - ✅ Explicit VR Big Endian (Retired)
   - ✅ Deflated Explicit VR Little Endian
+- ✅ **Compressed pixel data support** (v0.4):
+  - ✅ JPEG Baseline (Process 1) - 1.2.840.10008.1.2.4.50
+  - ✅ JPEG Extended (Process 2 & 4) - 1.2.840.10008.1.2.4.51
+  - ✅ JPEG Lossless (Process 14) - 1.2.840.10008.1.2.4.57
+  - ✅ JPEG Lossless SV1 (Process 14, Selection Value 1) - 1.2.840.10008.1.2.4.70
+  - ✅ JPEG 2000 Lossless - 1.2.840.10008.1.2.4.90
+  - ✅ JPEG 2000 Lossy - 1.2.840.10008.1.2.4.91
+  - ✅ RLE Lossless - 1.2.840.10008.1.2.5
+- ✅ **Encapsulated pixel data parsing** - Fragment and offset table support
+- ✅ **Extensible codec architecture** - Plugin-based codec support
 - ✅ **Uncompressed pixel data extraction** - Extract and render medical images
 - ✅ **Photometric interpretation support**:
   - ✅ MONOCHROME1
@@ -34,11 +44,10 @@ SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (D
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.3)
+## Limitations (v0.4)
 
 - ❌ **No DICOM writing** - Read-only operations
 - ❌ **No networking** - No DICOM C-* operations (C-STORE, C-FIND, etc.)
-- ❌ **No compressed pixel data** - JPEG, JPEG 2000, RLE not yet supported
 - ❌ **No PALETTE COLOR support** - Deferred to future version
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
@@ -329,4 +338,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.3 - adding uncompressed pixel data extraction and rendering capabilities. Future versions will expand functionality including compressed pixel data support, DICOM writing, and networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.4 - adding compressed pixel data support including JPEG, JPEG 2000, and RLE codecs. Future versions will expand functionality including DICOM writing and networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

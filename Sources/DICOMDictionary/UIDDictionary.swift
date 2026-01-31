@@ -7,7 +7,7 @@ public struct UIDDictionary {
     private static let entries: [String: UIDEntry] = {
         var dict: [String: UIDEntry] = [:]
         
-        // Transfer Syntax UIDs
+        // Transfer Syntax UIDs - Uncompressed
         dict["1.2.840.10008.1.2"] = UIDEntry(
             uid: "1.2.840.10008.1.2",
             name: "Implicit VR Little Endian",
@@ -22,10 +22,69 @@ public struct UIDDictionary {
             type: .transferSyntax
         )
         
+        dict["1.2.840.10008.1.2.1.99"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.1.99",
+            name: "Deflated Explicit VR Little Endian",
+            keyword: "DeflatedExplicitVRLittleEndian",
+            type: .transferSyntax
+        )
+        
         dict["1.2.840.10008.1.2.2"] = UIDEntry(
             uid: "1.2.840.10008.1.2.2",
             name: "Explicit VR Big Endian",
             keyword: "ExplicitVRBigEndian",
+            type: .transferSyntax
+        )
+        
+        // Transfer Syntax UIDs - JPEG
+        dict["1.2.840.10008.1.2.4.50"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.50",
+            name: "JPEG Baseline (Process 1)",
+            keyword: "JPEGBaseline8Bit",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.51"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.51",
+            name: "JPEG Extended (Process 2 & 4)",
+            keyword: "JPEGExtended12Bit",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.57"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.57",
+            name: "JPEG Lossless, Non-Hierarchical (Process 14)",
+            keyword: "JPEGLossless",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.70"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.70",
+            name: "JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process 14, Selection Value 1)",
+            keyword: "JPEGLosslessSV1",
+            type: .transferSyntax
+        )
+        
+        // Transfer Syntax UIDs - JPEG 2000
+        dict["1.2.840.10008.1.2.4.90"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.90",
+            name: "JPEG 2000 Image Compression (Lossless Only)",
+            keyword: "JPEG2000Lossless",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.91"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.91",
+            name: "JPEG 2000 Image Compression",
+            keyword: "JPEG2000",
+            type: .transferSyntax
+        )
+        
+        // Transfer Syntax UIDs - RLE
+        dict["1.2.840.10008.1.2.5"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.5",
+            name: "RLE Lossless",
+            keyword: "RLELossless",
             type: .transferSyntax
         )
         

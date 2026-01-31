@@ -99,12 +99,79 @@ struct TransferSyntaxTests {
         #expect(ts == nil)
     }
     
-    @Test("TransferSyntax from UID - Compressed transfer syntax returns nil")
+    @Test("TransferSyntax from UID - Compressed transfer syntax returns valid syntax")
     func testFromUIDCompressed() {
-        // JPEG Baseline (Process 1) - this is a compressed transfer syntax
+        // JPEG Baseline (Process 1) - now supported
         let ts = TransferSyntax.from(uid: "1.2.840.10008.1.2.4.50")
         
+        #expect(ts != nil)
+        #expect(ts?.isEncapsulated == true)
+        #expect(ts?.isExplicitVR == true)
+        #expect(ts?.byteOrder == .littleEndian)
+    }
+    
+    @Test("TransferSyntax from UID - Unsupported transfer syntax returns nil")
+    func testFromUIDUnsupported() {
+        // JPEG 2000 Part 2 Multi-component (not supported)
+        let ts = TransferSyntax.from(uid: "1.2.840.10008.1.2.4.92")
+        
         #expect(ts == nil)
+    }
+    
+    @Test("JPEG transfer syntax properties")
+    func testJPEGTransferSyntaxes() {
+        // JPEG Baseline
+        let jpegBaseline = TransferSyntax.jpegBaseline
+        #expect(jpegBaseline.uid == "1.2.840.10008.1.2.4.50")
+        #expect(jpegBaseline.isEncapsulated == true)
+        #expect(jpegBaseline.isJPEG == true)
+        #expect(jpegBaseline.isLossless == false)
+        
+        // JPEG Extended
+        let jpegExtended = TransferSyntax.jpegExtended
+        #expect(jpegExtended.uid == "1.2.840.10008.1.2.4.51")
+        #expect(jpegExtended.isEncapsulated == true)
+        #expect(jpegExtended.isJPEG == true)
+        
+        // JPEG Lossless
+        let jpegLossless = TransferSyntax.jpegLossless
+        #expect(jpegLossless.uid == "1.2.840.10008.1.2.4.57")
+        #expect(jpegLossless.isEncapsulated == true)
+        #expect(jpegLossless.isJPEG == true)
+        #expect(jpegLossless.isLossless == true)
+        
+        // JPEG Lossless SV1
+        let jpegLosslessSV1 = TransferSyntax.jpegLosslessSV1
+        #expect(jpegLosslessSV1.uid == "1.2.840.10008.1.2.4.70")
+        #expect(jpegLosslessSV1.isEncapsulated == true)
+        #expect(jpegLosslessSV1.isJPEG == true)
+        #expect(jpegLosslessSV1.isLossless == true)
+    }
+    
+    @Test("JPEG 2000 transfer syntax properties")
+    func testJPEG2000TransferSyntaxes() {
+        // JPEG 2000 Lossless
+        let j2kLossless = TransferSyntax.jpeg2000Lossless
+        #expect(j2kLossless.uid == "1.2.840.10008.1.2.4.90")
+        #expect(j2kLossless.isEncapsulated == true)
+        #expect(j2kLossless.isJPEG2000 == true)
+        #expect(j2kLossless.isLossless == true)
+        
+        // JPEG 2000 Lossy
+        let j2k = TransferSyntax.jpeg2000
+        #expect(j2k.uid == "1.2.840.10008.1.2.4.91")
+        #expect(j2k.isEncapsulated == true)
+        #expect(j2k.isJPEG2000 == true)
+        #expect(j2k.isLossless == false)
+    }
+    
+    @Test("RLE transfer syntax properties")
+    func testRLETransferSyntax() {
+        let rle = TransferSyntax.rleLossless
+        #expect(rle.uid == "1.2.840.10008.1.2.5")
+        #expect(rle.isEncapsulated == true)
+        #expect(rle.isRLE == true)
+        #expect(rle.isLossless == true)
     }
     
     @Test("TransferSyntax equality")
