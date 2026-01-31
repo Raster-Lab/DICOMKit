@@ -57,6 +57,28 @@
 /// - Verification SOP Class UID constant
 /// - Common transfer syntax UID constants
 ///
+/// ## Milestone 6.5 - Query Services (C-FIND)
+///
+/// - C-FIND SCU implementation via `DICOMQueryService`
+/// - Query methods: `findStudies()`, `findSeries()`, `findInstances()`
+/// - `QueryKeys` fluent API for building query identifiers
+/// - `QueryLevel` for PATIENT, STUDY, SERIES, IMAGE levels
+/// - Query result types: `StudyResult`, `SeriesResult`, `InstanceResult`
+/// - Wildcard matching support (*, ?)
+/// - Date/Time range queries
+///
+/// ## Milestone 6.6 - Retrieve Services (C-MOVE, C-GET)
+///
+/// - C-MOVE SCU implementation via `DICOMRetrieveService`
+/// - C-GET SCU implementation via `DICOMRetrieveService`
+/// - Retrieve methods: `moveStudy()`, `moveSeries()`, `moveInstance()`
+/// - Download methods: `getStudy()`, `getSeries()`, `getInstance()`
+/// - `RetrieveKeys` fluent API for building retrieve identifiers
+/// - `RetrieveProgress` for sub-operation progress tracking
+/// - `RetrieveResult` for operation results
+/// - Storage SOP Class negotiation for C-GET
+/// - Async stream-based C-GET with incoming C-STORE handling
+///
 /// ## Usage
 ///
 /// ### Creating DIMSE Messages
@@ -196,6 +218,55 @@
 /// )
 /// print("Status: \(result.status)")
 /// print("Round-trip time: \(result.roundTripTime)s")
+/// ```
+///
+/// ### DICOM Retrieve Service (C-MOVE)
+///
+/// ```swift
+/// import DICOMNetwork
+///
+/// // Move a study to a destination AE
+/// let result = try await DICOMRetrieveService.moveStudy(
+///     host: "pacs.hospital.com",
+///     port: 11112,
+///     callingAE: "MY_SCU",
+///     calledAE: "PACS",
+///     studyInstanceUID: "1.2.3.4.5.6.7.8.9",
+///     moveDestination: "MY_SCP"
+/// ) { progress in
+///     print("Progress: \(progress.completed)/\(progress.total)")
+/// }
+/// print("Completed: \(result.progress.completed)")
+/// print("Failed: \(result.progress.failed)")
+/// ```
+///
+/// ### DICOM Download Service (C-GET)
+///
+/// ```swift
+/// import DICOMNetwork
+///
+/// // Download a study directly
+/// let stream = try await DICOMRetrieveService.getStudy(
+///     host: "pacs.hospital.com",
+///     port: 11112,
+///     callingAE: "MY_SCU",
+///     calledAE: "PACS",
+///     studyInstanceUID: "1.2.3.4.5.6.7.8.9"
+/// )
+///
+/// for await event in stream {
+///     switch event {
+///     case .progress(let progress):
+///         print("Progress: \(progress.completed)/\(progress.total)")
+///     case .instance(let sopInstanceUID, let sopClassUID, let data):
+///         print("Received: \(sopInstanceUID)")
+///         // Process the DICOM data
+///     case .completed(let result):
+///         print("Done: \(result.progress.completed) instances")
+///     case .error(let error):
+///         print("Error: \(error)")
+///     }
+/// }
 /// ```
 
 // MARK: - PDU Types
