@@ -80,6 +80,11 @@ public struct VerificationConfiguration: Sendable, Hashable {
     /// Implementation Version Name (optional)
     public let implementationVersionName: String?
     
+    /// User identity for authentication (optional)
+    ///
+    /// Reference: PS3.7 Section D.3.3.7 - User Identity Negotiation
+    public let userIdentity: UserIdentity?
+    
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
     
@@ -95,13 +100,15 @@ public struct VerificationConfiguration: Sendable, Hashable {
     ///   - maxPDUSize: Maximum PDU size (default: 16KB)
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
+    ///   - userIdentity: User identity for authentication (optional)
     public init(
         callingAETitle: AETitle,
         calledAETitle: AETitle,
         timeout: TimeInterval = 30,
         maxPDUSize: UInt32 = defaultMaxPDUSize,
         implementationClassUID: String = defaultImplementationClassUID,
-        implementationVersionName: String? = defaultImplementationVersionName
+        implementationVersionName: String? = defaultImplementationVersionName,
+        userIdentity: UserIdentity? = nil
     ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
@@ -109,6 +116,7 @@ public struct VerificationConfiguration: Sendable, Hashable {
         self.maxPDUSize = maxPDUSize
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
+        self.userIdentity = userIdentity
     }
 }
 
@@ -238,7 +246,8 @@ public enum DICOMVerificationService {
             maxPDUSize: configuration.maxPDUSize,
             implementationClassUID: configuration.implementationClassUID,
             implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout
+            timeout: configuration.timeout,
+            userIdentity: configuration.userIdentity
         )
         
         // Create association

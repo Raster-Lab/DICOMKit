@@ -114,6 +114,9 @@ public struct StorageConfiguration: Sendable, Hashable {
     /// Priority for the store operation
     public let priority: DIMSEPriority
     
+    /// User identity for authentication (optional)
+    public let userIdentity: UserIdentity?
+    
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
     
@@ -130,6 +133,7 @@ public struct StorageConfiguration: Sendable, Hashable {
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - priority: Operation priority (default: medium)
+    ///   - userIdentity: User identity for authentication (optional)
     public init(
         callingAETitle: AETitle,
         calledAETitle: AETitle,
@@ -137,7 +141,8 @@ public struct StorageConfiguration: Sendable, Hashable {
         maxPDUSize: UInt32 = defaultMaxPDUSize,
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
-        priority: DIMSEPriority = .medium
+        priority: DIMSEPriority = .medium,
+        userIdentity: UserIdentity? = nil
     ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
@@ -146,6 +151,7 @@ public struct StorageConfiguration: Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.priority = priority
+        self.userIdentity = userIdentity
     }
 }
 
@@ -629,7 +635,8 @@ public enum DICOMStorageService {
             maxPDUSize: configuration.maxPDUSize,
             implementationClassUID: configuration.implementationClassUID,
             implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout
+            timeout: configuration.timeout,
+            userIdentity: configuration.userIdentity
         )
         
         // Create association
@@ -934,7 +941,8 @@ public enum DICOMStorageService {
             maxPDUSize: configuration.maxPDUSize,
             implementationClassUID: configuration.implementationClassUID,
             implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout
+            timeout: configuration.timeout,
+            userIdentity: configuration.userIdentity
         )
         
         // Create presentation contexts for all SOP Classes

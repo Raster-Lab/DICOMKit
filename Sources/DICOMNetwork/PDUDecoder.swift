@@ -121,6 +121,7 @@ public enum PDUDecoder {
         var maxPDUSize: UInt32 = defaultMaxPDUSize
         var implementationClassUID = ""
         var implementationVersionName: String?
+        var userIdentity: UserIdentity?
         
         while offset < data.endIndex {
             guard offset + 4 <= data.endIndex else { break }
@@ -146,10 +147,11 @@ public enum PDUDecoder {
                 }
                 
             case 0x50: // User Information
-                let userInfo = try decodeUserInformation(from: itemData)
+                let userInfo = try decodeUserInformationFull(from: itemData)
                 maxPDUSize = userInfo.maxPDUSize ?? maxPDUSize
                 implementationClassUID = userInfo.implementationClassUID ?? implementationClassUID
                 implementationVersionName = userInfo.implementationVersionName
+                userIdentity = userInfo.userIdentity
                 
             default:
                 break // Unknown item type, skip
@@ -163,6 +165,7 @@ public enum PDUDecoder {
             maxPDUSize: maxPDUSize,
             implementationClassUID: implementationClassUID,
             implementationVersionName: implementationVersionName,
+            userIdentity: userIdentity,
             applicationContextName: applicationContextName
         )
     }
@@ -205,11 +208,18 @@ public enum PDUDecoder {
         return try PresentationContext(id: contextID, abstractSyntax: abstractSyntax, transferSyntaxes: transferSyntaxes)
     }
     
-    private static func decodeUserInformation(from data: Data) throws -> (maxPDUSize: UInt32?, implementationClassUID: String?, implementationVersionName: String?) {
-        var offset = data.startIndex
+    /// User information result from decoding
+    private struct UserInformationResult {
         var maxPDUSize: UInt32?
         var implementationClassUID: String?
         var implementationVersionName: String?
+        var userIdentity: UserIdentity?
+        var userIdentityServerResponse: UserIdentityServerResponse?
+    }
+    
+    private static func decodeUserInformationFull(from data: Data) throws -> UserInformationResult {
+        var offset = data.startIndex
+        var result = UserInformationResult()
         
         while offset < data.endIndex {
             guard offset + 4 <= data.endIndex else { break }
@@ -227,18 +237,103 @@ public enum PDUDecoder {
             switch subItemType {
             case 0x51: // Maximum Length
                 if subItemLength >= 4 {
-                    maxPDUSize = readUInt32BigEndian(from: subItemData, at: subItemData.startIndex)
+                    result.maxPDUSize = readUInt32BigEndian(from: subItemData, at: subItemData.startIndex)
                 }
             case 0x52: // Implementation Class UID
-                implementationClassUID = String(data: subItemData, encoding: .ascii)
+                result.implementationClassUID = String(data: subItemData, encoding: .ascii)
             case 0x55: // Implementation Version Name
-                implementationVersionName = String(data: subItemData, encoding: .ascii)
+                result.implementationVersionName = String(data: subItemData, encoding: .ascii)
+            case 0x58: // User Identity (A-ASSOCIATE-RQ)
+                result.userIdentity = try decodeUserIdentity(from: subItemData)
+            case 0x59: // User Identity Server Response (A-ASSOCIATE-AC)
+                result.userIdentityServerResponse = try decodeUserIdentityServerResponse(from: subItemData)
             default:
                 break
             }
         }
         
-        return (maxPDUSize, implementationClassUID, implementationVersionName)
+        return result
+    }
+    
+    private static func decodeUserInformation(from data: Data) throws -> (maxPDUSize: UInt32?, implementationClassUID: String?, implementationVersionName: String?) {
+        let result = try decodeUserInformationFull(from: data)
+        return (result.maxPDUSize, result.implementationClassUID, result.implementationVersionName)
+    }
+    
+    /// Decodes User Identity from a sub-item
+    ///
+    /// Reference: PS3.7 Section D.3.3.7.1 - Sub-item Structure (A-ASSOCIATE-RQ)
+    private static func decodeUserIdentity(from data: Data) throws -> UserIdentity {
+        guard data.count >= 6 else {
+            throw DICOMNetworkError.decodingFailed("User Identity sub-item too short")
+        }
+        
+        var offset = data.startIndex
+        
+        // User-Identity-Type (1 byte)
+        let identityTypeByte = data[offset]
+        guard let identityType = UserIdentityType(rawValue: identityTypeByte) else {
+            throw DICOMNetworkError.decodingFailed("Unknown User Identity Type: \(identityTypeByte)")
+        }
+        offset += 1
+        
+        // Positive-response-requested (1 byte)
+        let positiveResponseRequested = data[offset] != 0
+        offset += 1
+        
+        // Primary-field-length (2 bytes, big endian)
+        let primaryLength = readUInt16BigEndian(from: data, at: offset)
+        offset += 2
+        
+        guard offset + Int(primaryLength) <= data.endIndex else {
+            throw DICOMNetworkError.decodingFailed("User Identity primary field extends beyond data")
+        }
+        
+        // Primary-field
+        let primaryField = Data(data[offset ..< offset + Int(primaryLength)])
+        offset += Int(primaryLength)
+        
+        // Secondary-field (only for usernameAndPasscode type)
+        var secondaryField: Data?
+        if identityType == .usernameAndPasscode && offset + 2 <= data.endIndex {
+            let secondaryLength = readUInt16BigEndian(from: data, at: offset)
+            offset += 2
+            
+            if secondaryLength > 0 && offset + Int(secondaryLength) <= data.endIndex {
+                secondaryField = Data(data[offset ..< offset + Int(secondaryLength)])
+            }
+        }
+        
+        return UserIdentity(
+            identityType: identityType,
+            positiveResponseRequested: positiveResponseRequested,
+            primaryField: primaryField,
+            secondaryField: secondaryField
+        )
+    }
+    
+    /// Decodes User Identity Server Response from a sub-item
+    ///
+    /// Reference: PS3.7 Section D.3.3.7.2 - Sub-item Structure (A-ASSOCIATE-AC)
+    private static func decodeUserIdentityServerResponse(from data: Data) throws -> UserIdentityServerResponse {
+        guard data.count >= 2 else {
+            throw DICOMNetworkError.decodingFailed("User Identity Server Response sub-item too short")
+        }
+        
+        var offset = data.startIndex
+        
+        // Server-response-length (2 bytes, big endian)
+        let responseLength = readUInt16BigEndian(from: data, at: offset)
+        offset += 2
+        
+        guard offset + Int(responseLength) <= data.endIndex else {
+            throw DICOMNetworkError.decodingFailed("User Identity Server Response extends beyond data")
+        }
+        
+        // Server-response
+        let serverResponse = Data(data[offset ..< offset + Int(responseLength)])
+        
+        return UserIdentityServerResponse(serverResponse: serverResponse)
     }
     
     private static func decodeAssociateAccept(from data: Data) throws -> AssociateAcceptPDU {
@@ -278,6 +373,7 @@ public enum PDUDecoder {
         var maxPDUSize: UInt32 = defaultMaxPDUSize
         var implementationClassUID = ""
         var implementationVersionName: String?
+        var userIdentityServerResponse: UserIdentityServerResponse?
         
         while offset < data.endIndex {
             guard offset + 4 <= data.endIndex else { break }
@@ -302,10 +398,11 @@ public enum PDUDecoder {
                 }
                 
             case 0x50: // User Information
-                let userInfo = try decodeUserInformation(from: itemData)
+                let userInfo = try decodeUserInformationFull(from: itemData)
                 maxPDUSize = userInfo.maxPDUSize ?? maxPDUSize
                 implementationClassUID = userInfo.implementationClassUID ?? implementationClassUID
                 implementationVersionName = userInfo.implementationVersionName
+                userIdentityServerResponse = userInfo.userIdentityServerResponse
                 
             default:
                 break
@@ -320,7 +417,8 @@ public enum PDUDecoder {
             presentationContexts: presentationContexts,
             maxPDUSize: maxPDUSize,
             implementationClassUID: implementationClassUID,
-            implementationVersionName: implementationVersionName
+            implementationVersionName: implementationVersionName,
+            userIdentityServerResponse: userIdentityServerResponse
         )
     }
     
