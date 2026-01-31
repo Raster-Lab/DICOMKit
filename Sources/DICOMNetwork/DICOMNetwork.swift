@@ -85,6 +85,12 @@
 /// - `DICOMClientConfiguration` with server settings and TLS options
 /// - `RetryPolicy` configurable retry policies with exponential backoff
 /// - Automatic retry logic for transient network failures
+/// - `DICOMLogger` centralized logging with configurable handlers
+/// - `DICOMLogLevel` (debug, info, warning, error)
+/// - `DICOMLogCategory` for filtering by component (connection, association, PDU, etc.)
+/// - `OSLogHandler` integration with Apple's Unified Logging System (Apple platforms)
+/// - `ConsoleLogHandler` for simple console output
+/// - Helper methods for common logging patterns (PDU events, state transitions, operations)
 ///
 /// ## Usage
 ///
@@ -303,6 +309,30 @@
 /// for await event in try await client.getStudy(studyInstanceUID: studies[0].studyInstanceUID!) {
 ///     // Handle events...
 /// }
+/// ```
+///
+/// ### Configuring Logging
+///
+/// ```swift
+/// import DICOMNetwork
+///
+/// // Enable logging with console output (for debugging)
+/// await DICOMLogger.shared.addHandler(ConsoleLogHandler())
+/// await DICOMLogger.shared.setMinimumLevel(.debug)
+///
+/// // Or use Apple's Unified Logging (production)
+/// #if canImport(os)
+/// await DICOMLogger.shared.addHandler(OSLogHandler())
+/// #endif
+///
+/// // Filter to specific categories
+/// await DICOMLogger.shared.setEnabledCategories([.connection, .association])
+///
+/// // Log messages (fire-and-forget style)
+/// DICOMLogger.info(.connection, "Connecting to PACS")
+/// DICOMLogger.debug(.pdu, "PDU sent", context: ["size": "256"])
+/// DICOMLogger.warning(.retrieve, "Retry attempt", context: ["attempt": "2"])
+/// DICOMLogger.error(.association, "Association rejected")
 /// ```
 
 // MARK: - PDU Types
