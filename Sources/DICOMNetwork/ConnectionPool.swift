@@ -236,8 +236,8 @@ public actor ConnectionPool {
     /// Idle cleanup task
     private var idleCleanupTask: Task<Void, Never>?
     
-    /// Waiters for available connections
-    private var waiters: [CheckedContinuation<PooledConnection, Error>] = []
+    /// Waiters for available connections (keyed by unique ID)
+    private var waiters: [UUID: CheckedContinuation<PooledConnection, Error>] = [:]
     
     // MARK: - Initialization
     
@@ -269,18 +269,23 @@ public actor ConnectionPool {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(interval))
                     guard !Task.isCancelled else { break }
-                    await self?.performHealthChecks()
+                    guard let self = self else { break }
+                    await self.performHealthChecks()
                 }
             }
         }
         
+        // Capture idleTimeout before task to avoid accessing self later
+        let idleTimeout = poolConfiguration.idleTimeout
+        
         // Start idle cleanup timer
         idleCleanupTask = Task { [weak self] in
-            let checkInterval = min(60.0, (self?.poolConfiguration.idleTimeout ?? 60) / 2)
+            let checkInterval = min(60.0, idleTimeout / 2)
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(checkInterval))
                 guard !Task.isCancelled else { break }
-                await self?.cleanupIdleConnections()
+                guard let self = self else { break }
+                await self.cleanupIdleConnections()
             }
         }
         
@@ -312,7 +317,7 @@ public actor ConnectionPool {
         idleCleanupTask = nil
         
         // Fail all waiters
-        for waiter in waiters {
+        for (_, waiter) in waiters {
             waiter.resume(throwing: DICOMNetworkError.poolShutdown)
         }
         waiters.removeAll()
@@ -366,24 +371,27 @@ public actor ConnectionPool {
         }
         
         // Wait for a connection to become available
+        let waiterID = UUID()
+        let acquireTimeout = poolConfiguration.acquireTimeout
+        
         return try await withCheckedThrowingContinuation { continuation in
-            waiters.append(continuation)
+            waiters[waiterID] = continuation
             
             // Set up timeout
             Task {
-                try? await Task.sleep(for: .seconds(poolConfiguration.acquireTimeout))
-                await self.timeoutWaiter(continuation)
+                try? await Task.sleep(for: .seconds(acquireTimeout))
+                await self.timeoutWaiter(waiterID: waiterID)
             }
         }
     }
     
     /// Helper to timeout a waiter
-    private func timeoutWaiter(_ continuation: CheckedContinuation<PooledConnection, Error>) {
-        if let index = waiters.firstIndex(where: { $0 == continuation }) {
-            waiters.remove(at: index)
+    private func timeoutWaiter(waiterID: UUID) {
+        if let continuation = waiters.removeValue(forKey: waiterID) {
             acquisitionTimeouts += 1
             continuation.resume(throwing: DICOMNetworkError.poolExhausted)
         }
+        // If waiterID not found, the continuation was already resumed by release()
     }
     
     /// Releases a connection back to the pool
@@ -406,9 +414,9 @@ public actor ConnectionPool {
         var mutableConnection = connection
         mutableConnection.lastUsedAt = Date()
         
-        // If there are waiters, give them the connection
-        if !waiters.isEmpty {
-            let waiter = waiters.removeFirst()
+        // If there are waiters, give them the connection (FIFO order via first key)
+        if let firstWaiterID = waiters.keys.first,
+           let waiter = waiters.removeValue(forKey: firstWaiterID) {
             mutableConnection.markUsed()
             inUseConnections[connection.id] = mutableConnection
             waiter.resume(returning: mutableConnection)
@@ -620,19 +628,6 @@ extension DICOMNetworkError {
     
     /// No connections available in the pool
     static let poolExhausted = DICOMNetworkError.timeout
-}
-
-// MARK: - CheckedContinuation Equatable
-
-extension CheckedContinuation: @retroactive Equatable where T: Sendable, E: Error {
-    public static func == (lhs: CheckedContinuation<T, E>, rhs: CheckedContinuation<T, E>) -> Bool {
-        // Compare by memory address using ObjectIdentifier-like approach
-        withUnsafePointer(to: lhs) { lhsPtr in
-            withUnsafePointer(to: rhs) { rhsPtr in
-                lhsPtr == rhsPtr
-            }
-        }
-    }
 }
 
 #endif
