@@ -74,7 +74,7 @@ DICOMKit aims to provide a comprehensive, Swift-native implementation for workin
   - [x] MONOCHROME1
   - [x] MONOCHROME2
   - [x] RGB
-  - [ ] PALETTE COLOR (deferred to future version)
+  - [x] PALETTE COLOR
 - [x] Pixel data metadata parsing:
   - [x] Rows, Columns
   - [x] Bits Allocated, Bits Stored, High Bit
@@ -88,6 +88,7 @@ DICOMKit aims to provide a comprehensive, Swift-native implementation for workin
 ### Technical Notes
 - Reference: PS3.5 Section 8 - Native or Encapsulated Format Encoding
 - Reference: PS3.3 C.7.6.3 - Image Pixel Module
+- Reference: PS3.3 C.7.6.3.1.5 - Palette Color Lookup Table Module
 - CGImage rendering available only on Apple platforms (iOS, macOS, visionOS)
 
 ### Acceptance Criteria

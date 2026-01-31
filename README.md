@@ -41,6 +41,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ MONOCHROME1
   - ✅ MONOCHROME2
   - ✅ RGB
+  - ✅ PALETTE COLOR
   - ✅ YBR color spaces
 - ✅ **Multi-frame image support** - Work with CT, MR and other multi-slice images
 - ✅ **Window/Level (VOI LUT)** - Apply Window Center/Width transformations
@@ -55,7 +56,6 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 ## Limitations (v0.5)
 
 - ❌ **No networking** - No DICOM C-* operations (C-STORE, C-FIND, etc.)
-- ❌ **No PALETTE COLOR support** - Deferred to future version
 - ❌ **No character set conversion** - UTF-8 only
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

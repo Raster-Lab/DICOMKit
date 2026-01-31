@@ -75,6 +75,13 @@ struct PhotometricInterpretationTests {
         #expect(PhotometricInterpretation.paletteColor.isColor == true)
     }
     
+    @Test("isPaletteColor for PALETTE COLOR")
+    func testIsPaletteColorForPaletteColor() {
+        #expect(PhotometricInterpretation.paletteColor.isPaletteColor == true)
+        #expect(PhotometricInterpretation.rgb.isPaletteColor == false)
+        #expect(PhotometricInterpretation.monochrome2.isPaletteColor == false)
+    }
+    
     @Test("expectedSamplesPerPixel for monochrome")
     func testExpectedSamplesPerPixelForMonochrome() {
         #expect(PhotometricInterpretation.monochrome1.expectedSamplesPerPixel == 1)
@@ -84,8 +91,14 @@ struct PhotometricInterpretationTests {
     @Test("expectedSamplesPerPixel for color")
     func testExpectedSamplesPerPixelForColor() {
         #expect(PhotometricInterpretation.rgb.expectedSamplesPerPixel == 3)
-        #expect(PhotometricInterpretation.paletteColor.expectedSamplesPerPixel == 3)
         #expect(PhotometricInterpretation.ybrFull.expectedSamplesPerPixel == 3)
+    }
+    
+    @Test("expectedSamplesPerPixel for paletteColor is 1")
+    func testExpectedSamplesPerPixelForPaletteColor() {
+        // PALETTE COLOR has 1 sample per pixel - the pixel value is an index into the lookup tables
+        // Reference: DICOM PS3.3 C.7.6.3.1.1
+        #expect(PhotometricInterpretation.paletteColor.expectedSamplesPerPixel == 1)
     }
     
     // MARK: - Equatable and Hashable

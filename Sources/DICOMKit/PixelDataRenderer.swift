@@ -9,6 +9,7 @@ import CoreGraphics
 /// Supports rendering of uncompressed DICOM images including:
 /// - MONOCHROME1 and MONOCHROME2 grayscale images
 /// - RGB color images
+/// - PALETTE COLOR images with lookup tables
 /// - 8-bit, 12-bit, and 16-bit images
 /// - Multi-frame images (individual frame rendering)
 ///
@@ -17,10 +18,23 @@ public struct PixelDataRenderer: Sendable {
     /// The pixel data to render
     public let pixelData: PixelData
     
+    /// Optional palette color lookup table for PALETTE COLOR images
+    public let paletteColorLUT: PaletteColorLUT?
+    
     /// Creates a new renderer for the specified pixel data
     /// - Parameter pixelData: The pixel data to render
     public init(pixelData: PixelData) {
         self.pixelData = pixelData
+        self.paletteColorLUT = nil
+    }
+    
+    /// Creates a new renderer for the specified pixel data with a palette color LUT
+    /// - Parameters:
+    ///   - pixelData: The pixel data to render
+    ///   - paletteColorLUT: Palette color lookup table for PALETTE COLOR images
+    public init(pixelData: PixelData, paletteColorLUT: PaletteColorLUT?) {
+        self.pixelData = pixelData
+        self.paletteColorLUT = paletteColorLUT
     }
     
     // MARK: - CGImage Rendering
@@ -28,6 +42,7 @@ public struct PixelDataRenderer: Sendable {
     /// Renders a frame to a CGImage using default settings
     ///
     /// For monochrome images, calculates window settings from the actual pixel range.
+    /// For palette color images, uses the palette lookup table if provided.
     /// - Parameter frameIndex: The frame index to render (default 0)
     /// - Returns: CGImage if rendering succeeds, nil otherwise
     public func renderFrame(_ frameIndex: Int = 0) -> CGImage? {
@@ -44,6 +59,8 @@ public struct PixelDataRenderer: Sendable {
             let window = WindowSettings(center: center, width: max(1.0, width))
             
             return renderMonochromeFrame(frameIndex, window: window)
+        } else if descriptor.photometricInterpretation.isPaletteColor {
+            return renderPaletteColorFrame(frameIndex)
         } else {
             return renderColorFrame(frameIndex)
         }
@@ -124,12 +141,18 @@ public struct PixelDataRenderer: Sendable {
     }
     
     /// Renders a color frame to a CGImage
+    ///
+    /// Handles RGB and YBR color images with 3 samples per pixel.
+    /// For PALETTE COLOR images, use renderPaletteColorFrame instead.
+    ///
     /// - Parameter frameIndex: The frame index to render (default 0)
     /// - Returns: CGImage if rendering succeeds, nil otherwise
     public func renderColorFrame(_ frameIndex: Int = 0) -> CGImage? {
         let descriptor = pixelData.descriptor
         
-        guard descriptor.photometricInterpretation.isColor else {
+        // Only handle RGB/YBR color images, not PALETTE COLOR
+        guard descriptor.photometricInterpretation.isColor,
+              !descriptor.photometricInterpretation.isPaletteColor else {
             return nil
         }
         
@@ -215,6 +238,85 @@ public struct PixelDataRenderer: Sendable {
         // Handle YBR to RGB conversion if needed
         if isYBRPhotometricInterpretation(descriptor.photometricInterpretation) {
             convertYBRToRGB(&outputBytes, totalPixels: totalPixels)
+        }
+        
+        return createRGBACGImage(from: outputBytes, width: width, height: height)
+    }
+    
+    /// Renders a palette color frame to a CGImage
+    ///
+    /// Uses the palette color lookup table to convert indexed pixel values
+    /// to RGB colors.
+    ///
+    /// Reference: DICOM PS3.3 C.7.6.3.1.5 - Palette Color Lookup Table Module
+    ///
+    /// - Parameter frameIndex: The frame index to render (default 0)
+    /// - Returns: CGImage if rendering succeeds, nil otherwise
+    public func renderPaletteColorFrame(_ frameIndex: Int = 0) -> CGImage? {
+        let descriptor = pixelData.descriptor
+        
+        guard descriptor.photometricInterpretation.isPaletteColor else {
+            return nil
+        }
+        
+        guard let lut = paletteColorLUT else {
+            return nil
+        }
+        
+        guard let frameData = pixelData.frameData(at: frameIndex) else {
+            return nil
+        }
+        
+        let width = descriptor.columns
+        let height = descriptor.rows
+        let totalPixels = width * height
+        
+        // Create RGB output buffer (4 bytes per pixel: RGBA)
+        var outputBytes = [UInt8](repeating: 255, count: totalPixels * 4)
+        
+        let bytesPerSample = descriptor.bytesPerSample
+        let bitShift = descriptor.bitShift
+        let storedBitMask = descriptor.storedBitMask
+        let isSigned = descriptor.isSigned
+        let bitsStored = descriptor.bitsStored
+        
+        for pixelIndex in 0..<totalPixels {
+            let offset = pixelIndex * bytesPerSample
+            guard offset + bytesPerSample <= frameData.count else {
+                break
+            }
+            
+            // Read raw pixel value (index into LUT)
+            let rawValue: Int
+            if bytesPerSample == 1 {
+                rawValue = Int(frameData[offset])
+            } else {
+                let low = Int(frameData[offset])
+                let high = Int(frameData[offset + 1])
+                rawValue = low | (high << 8)
+            }
+            
+            // Apply bit masking
+            let shiftedValue = rawValue >> bitShift
+            var maskedValue = shiftedValue & storedBitMask
+            
+            // Apply sign extension if needed
+            if isSigned {
+                let signBit = 1 << (bitsStored - 1)
+                if maskedValue & signBit != 0 {
+                    maskedValue = maskedValue - (1 << bitsStored)
+                }
+            }
+            
+            // Look up the color in the palette
+            let (red, green, blue) = lut.lookup(maskedValue)
+            
+            // Write to output buffer
+            let outputOffset = pixelIndex * 4
+            outputBytes[outputOffset] = red
+            outputBytes[outputOffset + 1] = green
+            outputBytes[outputOffset + 2] = blue
+            outputBytes[outputOffset + 3] = 255 // Alpha
         }
         
         return createRGBACGImage(from: outputBytes, width: width, height: height)

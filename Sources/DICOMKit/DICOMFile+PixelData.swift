@@ -52,6 +52,7 @@ extension DICOMFile {
     /// Renders the specified frame to a CGImage
     ///
     /// Uses automatic windowing based on pixel value range for monochrome images.
+    /// For palette color images, uses the palette lookup table from the DICOM file.
     /// - Parameter frameIndex: The frame index to render (default 0)
     /// - Returns: CGImage if rendering succeeds
     public func renderFrame(_ frameIndex: Int = 0) -> CGImage? {
@@ -59,7 +60,8 @@ extension DICOMFile {
             return nil
         }
         
-        let renderer = PixelDataRenderer(pixelData: pixelData)
+        let lut = dataSet.paletteColorLUT()
+        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
         return renderer.renderFrame(frameIndex)
     }
     
@@ -74,10 +76,13 @@ extension DICOMFile {
             return nil
         }
         
-        let renderer = PixelDataRenderer(pixelData: pixelData)
+        let lut = dataSet.paletteColorLUT()
+        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
         
         if pixelData.descriptor.photometricInterpretation.isMonochrome {
             return renderer.renderMonochromeFrame(frameIndex, window: window)
+        } else if pixelData.descriptor.photometricInterpretation.isPaletteColor {
+            return renderer.renderPaletteColorFrame(frameIndex)
         } else {
             return renderer.renderColorFrame(frameIndex)
         }
@@ -134,6 +139,20 @@ extension DICOMFile {
     /// Whether the image data is color
     public var isColor: Bool {
         photometricInterpretation?.isColor ?? false
+    }
+    
+    /// Whether the image data uses palette color lookup tables
+    public var isPaletteColor: Bool {
+        photometricInterpretation?.isPaletteColor ?? false
+    }
+    
+    // MARK: - Palette Color Lookup Table
+    
+    /// Returns the palette color lookup table for PALETTE COLOR images
+    ///
+    /// - Returns: PaletteColorLUT if present and valid
+    public func paletteColorLUT() -> PaletteColorLUT? {
+        dataSet.paletteColorLUT()
     }
     
     // MARK: - Pixel Value Range
