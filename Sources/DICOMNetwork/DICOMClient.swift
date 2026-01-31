@@ -1,6 +1,8 @@
 import Foundation
 import DICOMCore
 
+#if canImport(Network)
+
 // MARK: - DICOMClient Configuration
 
 /// Configuration for a DICOM Client
@@ -45,7 +47,50 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     public let implementationVersionName: String?
     
     /// Whether to use TLS encryption
-    public let tlsEnabled: Bool
+    ///
+    /// - Note: For more advanced TLS configuration, use `tlsConfiguration` property instead.
+    public var tlsEnabled: Bool {
+        return tlsConfiguration != nil
+    }
+    
+    /// TLS configuration for secure connections
+    ///
+    /// When set, enables TLS with the specified configuration. When nil, plain TCP is used.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// // Use default secure TLS
+    /// let config = try DICOMClientConfiguration(
+    ///     host: "secure-pacs.hospital.com",
+    ///     port: 2762,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     tlsConfiguration: .default
+    /// )
+    ///
+    /// // Use insecure TLS for development (self-signed certificates)
+    /// let devConfig = try DICOMClientConfiguration(
+    ///     host: "dev-pacs.local",
+    ///     port: 2762,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     tlsConfiguration: .insecure
+    /// )
+    ///
+    /// // Custom TLS with certificate pinning
+    /// let pinnedConfig = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 2762,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     tlsConfiguration: TLSConfiguration(
+    ///         minimumVersion: .tlsProtocol13,
+    ///         certificateValidation: .pinned([myCertificate])
+    ///     )
+    /// )
+    /// ```
+    public let tlsConfiguration: TLSConfiguration?
     
     /// Retry policy for network operations
     public let retryPolicy: RetryPolicy
@@ -67,7 +112,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - maxPDUSize: Maximum PDU size (default: 16KB)
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
-    ///   - tlsEnabled: Use TLS encryption (default: false)
+    ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
     /// - Throws: `DICOMNetworkError.invalidAETitle` if AE titles are invalid
     public init(
@@ -90,7 +135,45 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.maxPDUSize = maxPDUSize
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
-        self.tlsEnabled = tlsEnabled
+        self.tlsConfiguration = tlsEnabled ? .default : nil
+        self.retryPolicy = retryPolicy
+    }
+    
+    /// Creates a DICOM client configuration with TLS configuration
+    ///
+    /// - Parameters:
+    ///   - host: The remote host address (IP or hostname)
+    ///   - port: The remote port number (default: 104)
+    ///   - callingAE: The local AE title string
+    ///   - calledAE: The remote AE title string
+    ///   - timeout: Connection timeout in seconds (default: 30)
+    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - implementationClassUID: Implementation Class UID
+    ///   - implementationVersionName: Implementation Version Name
+    ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
+    ///   - retryPolicy: Retry policy for operations (default: no retries)
+    /// - Throws: `DICOMNetworkError.invalidAETitle` if AE titles are invalid
+    public init(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        callingAE: String,
+        calledAE: String,
+        timeout: TimeInterval = 30,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        tlsConfiguration: TLSConfiguration?,
+        retryPolicy: RetryPolicy = .none
+    ) throws {
+        self.host = host
+        self.port = port
+        self.callingAETitle = try AETitle(callingAE)
+        self.calledAETitle = try AETitle(calledAE)
+        self.timeout = timeout
+        self.maxPDUSize = maxPDUSize
+        self.implementationClassUID = implementationClassUID
+        self.implementationVersionName = implementationVersionName
+        self.tlsConfiguration = tlsConfiguration
         self.retryPolicy = retryPolicy
     }
     
@@ -105,7 +188,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - maxPDUSize: Maximum PDU size (default: 16KB)
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
-    ///   - tlsEnabled: Use TLS encryption (default: false)
+    ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
     public init(
         host: String,
@@ -127,7 +210,44 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.maxPDUSize = maxPDUSize
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
-        self.tlsEnabled = tlsEnabled
+        self.tlsConfiguration = tlsEnabled ? .default : nil
+        self.retryPolicy = retryPolicy
+    }
+    
+    /// Creates a DICOM client configuration with pre-validated AE titles and TLS configuration
+    ///
+    /// - Parameters:
+    ///   - host: The remote host address (IP or hostname)
+    ///   - port: The remote port number (default: 104)
+    ///   - callingAETitle: The local AE title
+    ///   - calledAETitle: The remote AE title
+    ///   - timeout: Connection timeout in seconds (default: 30)
+    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - implementationClassUID: Implementation Class UID
+    ///   - implementationVersionName: Implementation Version Name
+    ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
+    ///   - retryPolicy: Retry policy for operations (default: no retries)
+    public init(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 30,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        tlsConfiguration: TLSConfiguration?,
+        retryPolicy: RetryPolicy = .none
+    ) {
+        self.host = host
+        self.port = port
+        self.callingAETitle = callingAETitle
+        self.calledAETitle = calledAETitle
+        self.timeout = timeout
+        self.maxPDUSize = maxPDUSize
+        self.implementationClassUID = implementationClassUID
+        self.implementationVersionName = implementationVersionName
+        self.tlsConfiguration = tlsConfiguration
         self.retryPolicy = retryPolicy
     }
 }
@@ -251,8 +371,6 @@ public struct RetryPolicy: Sendable, Hashable {
 }
 
 // MARK: - DICOMClient
-
-#if canImport(Network)
 
 /// Unified high-level DICOM client for network operations
 ///
