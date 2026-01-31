@@ -1,18 +1,19 @@
 /// DICOMNetwork - DICOM Networking Support
 ///
 /// This module provides DICOM networking capabilities for DICOMKit,
-/// implementing the DICOM Upper Layer Protocol.
+/// implementing the DICOM Upper Layer Protocol and DIMSE message exchange.
 ///
+/// Reference: DICOM PS3.7 - Message Exchange
 /// Reference: DICOM PS3.8 - Network Communication Support
 ///
 /// ## Overview
 ///
 /// DICOMNetwork provides types and protocols for DICOM network communication,
-/// including Protocol Data Units (PDUs) for association management and data transfer.
+/// including Protocol Data Units (PDUs) for association management, data transfer,
+/// and DIMSE (DICOM Message Service Element) message structures.
 ///
 /// ## Milestone 6.1 - Core Networking Infrastructure
 ///
-/// This version includes:
 /// - PDU type definitions for all DICOM Upper Layer Protocol messages
 /// - Association PDUs: A-ASSOCIATE-RQ, A-ASSOCIATE-AC, A-ASSOCIATE-RJ
 /// - Release PDUs: A-RELEASE-RQ, A-RELEASE-RP
@@ -25,40 +26,103 @@
 ///
 /// ## Milestone 6.2 - Association Management
 ///
-/// This version adds:
 /// - TCP socket abstraction with `DICOMConnection`
 /// - Association state machine for protocol compliance
 /// - High-level `Association` class for SCU operations
 /// - Async/await network operations
 /// - Configuration types for association parameters
 ///
+/// ## Milestone 6.3 - DIMSE Protocol
+///
+/// - DIMSE Command types (DIMSECommand enum)
+/// - DIMSE Status codes (DIMSEStatus type)
+/// - DIMSE Priority levels (DIMSEPriority enum)
+/// - Command Set encoding/decoding (CommandSet struct)
+/// - DIMSE-C message types:
+///   - C-ECHO (CEchoRequest, CEchoResponse)
+///   - C-STORE (CStoreRequest, CStoreResponse)
+///   - C-FIND (CFindRequest, CFindResponse)
+///   - C-MOVE (CMoveRequest, CMoveResponse)
+///   - C-GET (CGetRequest, CGetResponse)
+///   - C-CANCEL (CCancelRequest)
+/// - Message assembly (MessageAssembler)
+/// - Message fragmentation (MessageFragmenter)
+///
 /// ## Usage
 ///
-/// ### Low-level PDU Creation
+/// ### Creating DIMSE Messages
 ///
 /// ```swift
 /// import DICOMNetwork
 ///
-/// // Create presentation contexts for negotiation
-/// let context = try PresentationContext(
-///     id: 1,
-///     abstractSyntax: "1.2.840.10008.5.1.4.1.1.7",  // Secondary Capture
-///     transferSyntaxes: ["1.2.840.10008.1.2.1"]      // Explicit VR LE
+/// // Create a C-ECHO request
+/// let echoRequest = CEchoRequest(
+///     messageID: 1,
+///     presentationContextID: 1
 /// )
 ///
-/// // Create an association request
-/// let request = AssociateRequestPDU(
-///     calledAETitle: try AETitle("PACS_SERVER"),
-///     callingAETitle: try AETitle("MY_CLIENT"),
-///     presentationContexts: [context],
-///     implementationClassUID: "1.2.3.4.5.6.7.8.9"
+/// // Create a C-STORE request
+/// let storeRequest = CStoreRequest(
+///     messageID: 2,
+///     affectedSOPClassUID: "1.2.840.10008.5.1.4.1.1.7",
+///     affectedSOPInstanceUID: "1.2.3.4.5.6.7.8.9",
+///     priority: .medium,
+///     presentationContextID: 3
 /// )
 ///
-/// // Encode for transmission
-/// let data = try request.encode()
+/// // Create a C-FIND request
+/// let findRequest = CFindRequest(
+///     messageID: 3,
+///     affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.1",
+///     priority: .high,
+///     presentationContextID: 5
+/// )
 /// ```
 ///
-/// ### High-level Association Management
+/// ### Assembling Messages from PDVs
+///
+/// ```swift
+/// import DICOMNetwork
+///
+/// let assembler = MessageAssembler()
+///
+/// // Add PDVs from received P-DATA-TF PDUs
+/// for pdu in receivedPDUs {
+///     if let message = try assembler.addPDVs(from: pdu) {
+///         // Message is complete
+///         if let echoResponse = message.asCEchoResponse() {
+///             print("C-ECHO status: \(echoResponse.status)")
+///         }
+///     }
+/// }
+/// ```
+///
+/// ### Fragmenting Messages for Transmission
+///
+/// ```swift
+/// import DICOMNetwork
+///
+/// let fragmenter = MessageFragmenter(maxPDUSize: 16384)
+///
+/// let storeRequest = CStoreRequest(
+///     messageID: 1,
+///     affectedSOPClassUID: sopClassUID,
+///     affectedSOPInstanceUID: sopInstanceUID,
+///     presentationContextID: 3
+/// )
+///
+/// let pdus = fragmenter.fragmentMessage(
+///     commandSet: storeRequest.commandSet,
+///     dataSet: dataSetBytes,
+///     presentationContextID: 3
+/// )
+///
+/// for pdu in pdus {
+///     try await connection.send(pdu: pdu)
+/// }
+/// ```
+///
+/// ### Association and Data Transfer
 ///
 /// ```swift
 /// import DICOMNetwork

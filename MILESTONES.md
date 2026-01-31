@@ -250,33 +250,33 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 6.3: DICOM Message Exchange - DIMSE (v0.6.3)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Implement DIMSE (DICOM Message Service Element) protocol  
 **Complexity**: High  
 **Dependencies**: Milestone 6.2
 
 #### Deliverables
-- [ ] DIMSE message structure definitions:
-  - [ ] Command Set encoding/decoding
-  - [ ] Data Set transmission/reception
-- [ ] DIMSE-C operations base types:
-  - [ ] C-STORE (request/response structures)
-  - [ ] C-FIND (request/response structures)
-  - [ ] C-GET (request/response structures)
-  - [ ] C-MOVE (request/response structures)
-  - [ ] C-ECHO (request/response structures)
-- [ ] Message fragmentation for P-DATA-TF PDUs
-- [ ] Presentation Data Value (PDV) handling:
-  - [ ] Message Control Header (Command/Dataset, Last/Not-Last)
-  - [ ] PDV assembly from fragments
-  - [ ] PDV disassembly for large datasets
-- [ ] Command Set field definitions:
-  - [ ] Affected/Requested SOP Class UID
-  - [ ] Message ID / Message ID Being Responded To
-  - [ ] Priority (LOW, MEDIUM, HIGH)
-  - [ ] Status codes (Success, Pending, Warning, Failure)
-  - [ ] Data Set Type (present/absent)
-- [ ] Status code definitions and handling (0x0000, 0xFF00, 0xFF01, etc.)
+- [x] DIMSE message structure definitions:
+  - [x] Command Set encoding/decoding
+  - [x] Data Set transmission/reception
+- [x] DIMSE-C operations base types:
+  - [x] C-STORE (request/response structures)
+  - [x] C-FIND (request/response structures)
+  - [x] C-GET (request/response structures)
+  - [x] C-MOVE (request/response structures)
+  - [x] C-ECHO (request/response structures)
+- [x] Message fragmentation for P-DATA-TF PDUs
+- [x] Presentation Data Value (PDV) handling:
+  - [x] Message Control Header (Command/Dataset, Last/Not-Last)
+  - [x] PDV assembly from fragments
+  - [x] PDV disassembly for large datasets
+- [x] Command Set field definitions:
+  - [x] Affected/Requested SOP Class UID
+  - [x] Message ID / Message ID Being Responded To
+  - [x] Priority (LOW, MEDIUM, HIGH)
+  - [x] Status codes (Success, Pending, Warning, Failure)
+  - [x] Data Set Type (present/absent)
+- [x] Status code definitions and handling (0x0000, 0xFF00, 0xFF01, etc.)
 
 #### Technical Notes
 - Reference: PS3.7 Section 7 - DIMSE-C Services
@@ -286,11 +286,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Presentation Context ID selection for commands
 
 #### Acceptance Criteria
-- [ ] DIMSE command messages can be constructed and parsed
-- [ ] Large datasets are properly fragmented across PDVs
-- [ ] Status codes are correctly interpreted
-- [ ] Unit tests for message encoding/decoding
-- [ ] Integration tests with mock server
+- [x] DIMSE command messages can be constructed and parsed
+- [x] Large datasets are properly fragmented across PDVs
+- [x] Status codes are correctly interpreted
+- [x] Unit tests for message encoding/decoding
+- [ ] Integration tests with mock server (deferred to Milestone 6.4)
 
 ---
 
