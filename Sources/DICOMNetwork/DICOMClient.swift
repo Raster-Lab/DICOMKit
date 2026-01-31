@@ -608,6 +608,69 @@ public final class DICOMClient: Sendable {
         )
     }
     
+    // MARK: - Storage (C-STORE)
+    
+    /// Stores a DICOM file to the remote SCP
+    ///
+    /// Extracts the SOP Class UID and SOP Instance UID from the file's data set
+    /// and sends it to the configured destination.
+    ///
+    /// - Parameters:
+    ///   - fileData: The complete DICOM file data (including file meta information)
+    ///   - priority: Operation priority (default: medium)
+    /// - Returns: A `StoreResult` with detailed information
+    /// - Throws: `DICOMNetworkError` for connection or protocol errors
+    /// - Throws: `DICOMError` if the file cannot be parsed or is missing required attributes
+    public func store(
+        fileData: Data,
+        priority: DIMSEPriority = .medium
+    ) async throws -> StoreResult {
+        try await withRetry {
+            try await DICOMStorageService.store(
+                fileData: fileData,
+                to: self.configuration.host,
+                port: self.configuration.port,
+                callingAE: self.configuration.callingAETitle.value,
+                calledAE: self.configuration.calledAETitle.value,
+                priority: priority,
+                timeout: self.configuration.timeout
+            )
+        }
+    }
+    
+    /// Stores a DICOM data set to the remote SCP
+    ///
+    /// - Parameters:
+    ///   - dataSetData: The DICOM data set (without file meta information preamble)
+    ///   - sopClassUID: The SOP Class UID
+    ///   - sopInstanceUID: The SOP Instance UID
+    ///   - transferSyntaxUID: The transfer syntax of the data (default: Explicit VR Little Endian)
+    ///   - priority: Operation priority (default: medium)
+    /// - Returns: A `StoreResult` with detailed information
+    /// - Throws: `DICOMNetworkError` for connection or protocol errors
+    public func store(
+        dataSetData: Data,
+        sopClassUID: String,
+        sopInstanceUID: String,
+        transferSyntaxUID: String = explicitVRLittleEndianTransferSyntaxUID,
+        priority: DIMSEPriority = .medium
+    ) async throws -> StoreResult {
+        try await withRetry {
+            try await DICOMStorageService.store(
+                dataSetData: dataSetData,
+                sopClassUID: sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                transferSyntaxUID: transferSyntaxUID,
+                to: self.configuration.host,
+                port: self.configuration.port,
+                callingAE: self.configuration.callingAETitle.value,
+                calledAE: self.configuration.calledAETitle.value,
+                priority: priority,
+                timeout: self.configuration.timeout
+            )
+        }
+    }
+    
     // MARK: - Retry Logic
     
     /// Executes an operation with retry logic
