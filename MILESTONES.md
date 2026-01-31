@@ -41,15 +41,15 @@ SwiftDICOMKit aims to provide a comprehensive, Swift-native implementation for w
 
 ## Milestone 2: Extended Transfer Syntax Support (v0.2)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Support additional transfer syntaxes for broader file compatibility
 
 ### Deliverables
-- [ ] Explicit VR Big Endian (1.2.840.10008.1.2.2)
-- [ ] Deflated Explicit VR Little Endian (1.2.840.10008.1.2.1.99)
-- [ ] Transfer syntax detection and automatic handling
-- [ ] Byte order abstraction layer
-- [ ] Extended test coverage with various transfer syntax files
+- [x] Explicit VR Big Endian (1.2.840.10008.1.2.2)
+- [x] Deflated Explicit VR Little Endian (1.2.840.10008.1.2.1.99)
+- [x] Transfer syntax detection and automatic handling
+- [x] Byte order abstraction layer
+- [x] Extended test coverage with various transfer syntax files
 
 ### Technical Notes
 - Implement `ByteOrder` protocol for endianness handling

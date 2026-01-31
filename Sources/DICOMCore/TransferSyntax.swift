@@ -26,17 +26,24 @@ public struct TransferSyntax: Sendable, Hashable {
     /// Reference: PS3.5 Section A.4
     public let isEncapsulated: Bool
     
+    /// Whether the data set is deflate compressed
+    ///
+    /// Reference: PS3.5 Section A.5
+    public let isDeflated: Bool
+    
     /// Creates a transfer syntax specification
     /// - Parameters:
     ///   - uid: Transfer Syntax UID
     ///   - isExplicitVR: Whether VR is explicitly encoded
     ///   - byteOrder: Byte ordering for multi-byte values
     ///   - isEncapsulated: Whether pixel data is encapsulated
-    public init(uid: String, isExplicitVR: Bool, byteOrder: ByteOrder, isEncapsulated: Bool = false) {
+    ///   - isDeflated: Whether data set uses deflate compression
+    public init(uid: String, isExplicitVR: Bool, byteOrder: ByteOrder, isEncapsulated: Bool = false, isDeflated: Bool = false) {
         self.uid = uid
         self.isExplicitVR = isExplicitVR
         self.byteOrder = byteOrder
         self.isEncapsulated = isEncapsulated
+        self.isDeflated = isDeflated
     }
 }
 
@@ -66,6 +73,19 @@ extension TransferSyntax {
         byteOrder: .littleEndian
     )
     
+    /// Deflated Explicit VR Little Endian (1.2.840.10008.1.2.1.99)
+    ///
+    /// Same encoding as Explicit VR Little Endian, but the Data Set is compressed
+    /// using the Deflate algorithm (RFC 1951). The File Meta Information is not deflated.
+    ///
+    /// Reference: PS3.5 Section A.5
+    public static let deflatedExplicitVRLittleEndian = TransferSyntax(
+        uid: "1.2.840.10008.1.2.1.99",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isDeflated: true
+    )
+    
     /// Explicit VR Big Endian (1.2.840.10008.1.2.2) - Retired
     ///
     /// Retired in DICOM PS3.5 (2011). Included for compatibility with legacy files.
@@ -89,6 +109,8 @@ extension TransferSyntax {
             return .implicitVRLittleEndian
         case explicitVRLittleEndian.uid:
             return .explicitVRLittleEndian
+        case deflatedExplicitVRLittleEndian.uid:
+            return .deflatedExplicitVRLittleEndian
         case explicitVRBigEndian.uid:
             return .explicitVRBigEndian
         default:
@@ -102,7 +124,8 @@ extension TransferSyntax: CustomStringConvertible {
     public var description: String {
         let vrType = isExplicitVR ? "Explicit VR" : "Implicit VR"
         let endian = byteOrder == .littleEndian ? "Little Endian" : "Big Endian"
-        return "\(vrType) \(endian) (\(uid))"
+        let deflated = isDeflated ? " Deflated" : ""
+        return "\(deflated)\(vrType) \(endian) (\(uid))".trimmingCharacters(in: .whitespaces)
     }
 }
 
