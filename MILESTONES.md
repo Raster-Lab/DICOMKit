@@ -333,38 +333,38 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 6.5: Query Services - C-FIND (v0.6.5)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Implement DICOM Query services for finding studies, series, and instances  
 **Complexity**: High  
 **Dependencies**: Milestone 6.4
 
 #### Deliverables
-- [ ] C-FIND SCU implementation:
-  - [ ] Build C-FIND-RQ with query keys
-  - [ ] Send request and receive multiple C-FIND-RSP
-  - [ ] Handle pending (0xFF00, 0xFF01) and success (0x0000) status
-  - [ ] Assemble query results from responses
-- [ ] Query/Retrieve Information Models:
-  - [ ] Patient Root Query/Retrieve Information Model - FIND (1.2.840.10008.5.1.4.1.2.1.1)
-  - [ ] Study Root Query/Retrieve Information Model - FIND (1.2.840.10008.5.1.4.1.2.2.1)
-- [ ] Query Levels:
-  - [ ] PATIENT level queries
-  - [ ] STUDY level queries
-  - [ ] SERIES level queries
-  - [ ] IMAGE (Instance) level queries
-- [ ] Query key builders for common attributes:
-  - [ ] Patient Name, Patient ID, Patient Birth Date
-  - [ ] Study Date, Study Time, Study Description, Study Instance UID, Accession Number
-  - [ ] Series Description, Series Instance UID, Modality
-  - [ ] SOP Instance UID, Instance Number
-- [ ] Wildcard matching support (*, ?)
-- [ ] Date/Time range queries (e.g., "20240101-20241231")
-- [ ] `DICOMQueryService` high-level API:
-  - [ ] `func findStudies(matching: QueryKeys) async throws -> [StudyResult]`
-  - [ ] `func findSeries(forStudy: String, matching: QueryKeys) async throws -> [SeriesResult]`
-  - [ ] `func findInstances(forSeries: String, matching: QueryKeys) async throws -> [InstanceResult]`
-- [ ] Query result data structures with type-safe accessors
-- [ ] Query cancellation support (C-CANCEL)
+- [x] C-FIND SCU implementation:
+  - [x] Build C-FIND-RQ with query keys
+  - [x] Send request and receive multiple C-FIND-RSP
+  - [x] Handle pending (0xFF00, 0xFF01) and success (0x0000) status
+  - [x] Assemble query results from responses
+- [x] Query/Retrieve Information Models:
+  - [x] Patient Root Query/Retrieve Information Model - FIND (1.2.840.10008.5.1.4.1.2.1.1)
+  - [x] Study Root Query/Retrieve Information Model - FIND (1.2.840.10008.5.1.4.1.2.2.1)
+- [x] Query Levels:
+  - [x] PATIENT level queries
+  - [x] STUDY level queries
+  - [x] SERIES level queries
+  - [x] IMAGE (Instance) level queries
+- [x] Query key builders for common attributes:
+  - [x] Patient Name, Patient ID, Patient Birth Date
+  - [x] Study Date, Study Time, Study Description, Study Instance UID, Accession Number
+  - [x] Series Description, Series Instance UID, Modality
+  - [x] SOP Instance UID, Instance Number
+- [x] Wildcard matching support (*, ?)
+- [x] Date/Time range queries (e.g., "20240101-20241231")
+- [x] `DICOMQueryService` high-level API:
+  - [x] `func findStudies(matching: QueryKeys) async throws -> [StudyResult]`
+  - [x] `func findSeries(forStudy: String, matching: QueryKeys) async throws -> [SeriesResult]`
+  - [x] `func findInstances(forSeries: String, matching: QueryKeys) async throws -> [InstanceResult]`
+- [x] Query result data structures with type-safe accessors
+- [ ] Query cancellation support (C-CANCEL) - deferred to advanced features
 
 #### Technical Notes
 - Reference: PS3.4 Annex C - Query/Retrieve Service Class
@@ -374,12 +374,12 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Handle Sequence Matching for coded values
 
 #### Acceptance Criteria
-- [ ] Successfully query studies from PACS by patient name, date range
-- [ ] Query at all levels (Patient, Study, Series, Instance) works correctly
-- [ ] Wildcard queries return expected matches
-- [ ] Large result sets are handled efficiently (streaming)
-- [ ] Query cancellation works correctly
-- [ ] Integration tests with test PACS server
+- [ ] Successfully query studies from PACS by patient name, date range (requires network access)
+- [x] Query at all levels (Patient, Study, Series, Instance) works correctly
+- [x] Wildcard queries return expected matches
+- [x] Large result sets are handled efficiently (streaming)
+- [ ] Query cancellation works correctly - deferred
+- [ ] Integration tests with test PACS server (requires network access)
 
 ---
 

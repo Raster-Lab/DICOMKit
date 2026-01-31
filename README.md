@@ -10,9 +10,18 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.5)
+## Features (v0.6)
 
-- ✅ **DICOM file reading and writing** (NEW in v0.5)
+- ✅ **DICOM Networking (NEW in v0.6)**
+  - ✅ C-ECHO verification service for connectivity testing
+  - ✅ C-FIND query service for finding studies, series, and instances
+  - ✅ Patient Root and Study Root Query/Retrieve Information Models
+  - ✅ All query levels (PATIENT, STUDY, SERIES, IMAGE)
+  - ✅ Wildcard matching support (*, ?)
+  - ✅ Date/Time range queries
+  - ✅ Type-safe query result data structures
+  - ✅ Async/await-based API
+- ✅ **DICOM file reading and writing** (v0.5)
   - ✅ Create new DICOM files from scratch
   - ✅ Modify existing DICOM files
   - ✅ File Meta Information generation
@@ -53,9 +62,9 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.5)
+## Limitations (v0.6)
 
-- ❌ **No networking** - No DICOM C-* operations (C-STORE, C-FIND, etc.)
+- ⚠️ **Limited networking** - C-ECHO and C-FIND implemented; C-STORE, C-MOVE, C-GET not yet available
 - ❌ **No character set conversion** - UTF-8 only
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
@@ -329,6 +338,73 @@ let sopInstanceUID = generator.generateSOPInstanceUID()
 let newUID = UIDGenerator.generateUID()
 ```
 
+### DICOM Query Service (v0.6)
+
+```swift
+import DICOMNetwork
+import Foundation
+
+// Query for studies matching patient name and date range
+let studies = try await DICOMQueryService.findStudies(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    matching: QueryKeys(level: .study)
+        .patientName("DOE^JOHN*")   // Wildcard matching
+        .studyDate("20240101-20241231")   // Date range
+        .requestStudyDescription()   // Request additional fields
+        .requestModalitiesInStudy()
+)
+
+// Process results
+for study in studies {
+    print("Study: \(study.studyInstanceUID ?? "Unknown")")
+    print("  Date: \(study.studyDate ?? "N/A")")
+    print("  Description: \(study.studyDescription ?? "N/A")")
+    print("  Patient: \(study.patientName ?? "N/A")")
+    print("  Modalities: \(study.modalities)")
+    print("  Series: \(study.numberOfStudyRelatedSeries ?? 0)")
+}
+
+// Query for series within a study
+let series = try await DICOMQueryService.findSeries(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    forStudy: studies[0].studyInstanceUID!,
+    matching: QueryKeys(level: .series)
+        .modality("CT")   // Filter by modality
+        .requestSeriesDescription()
+        .requestNumberOfSeriesRelatedInstances()
+)
+
+for seriesResult in series {
+    print("Series: \(seriesResult.seriesNumber ?? 0) - \(seriesResult.modality ?? "N/A")")
+    print("  Description: \(seriesResult.seriesDescription ?? "N/A")")
+    print("  Instances: \(seriesResult.numberOfSeriesRelatedInstances ?? 0)")
+}
+
+// Query for instances within a series
+let instances = try await DICOMQueryService.findInstances(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    forStudy: studies[0].studyInstanceUID!,
+    forSeries: series[0].seriesInstanceUID!
+)
+
+for instance in instances {
+    print("Instance: \(instance.instanceNumber ?? 0)")
+    print("  SOP Class: \(instance.sopClassUID ?? "N/A")")
+    if let rows = instance.rows, let cols = instance.columns {
+        print("  Dimensions: \(cols)x\(rows)")
+    }
+}
+```
+
 ## Architecture
 
 DICOMKit is organized into three modules:
@@ -365,6 +441,18 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
+### DICOMNetwork (NEW in v0.6)
+DICOM network protocol implementation:
+- `DICOMVerificationService` - C-ECHO SCU for connectivity testing
+- `DICOMQueryService` - C-FIND SCU for querying PACS
+- `QueryKeys` - Fluent API for building query identifiers
+- `QueryLevel` - PATIENT, STUDY, SERIES, IMAGE levels
+- `QueryRetrieveInformationModel` - Patient Root, Study Root models
+- `StudyResult`, `SeriesResult`, `InstanceResult` - Type-safe query results
+- `Association` - DICOM Association management
+- `CommandSet`, `PresentationContext` - Low-level protocol types
+- `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, etc.)
+
 ### DICOMKit
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
@@ -377,6 +465,8 @@ High-level API:
 DICOMKit implements:
 - **DICOM PS3.5 2025e** - Data Structures and Encoding
 - **DICOM PS3.6 2025e** - Data Dictionary (partial, essential tags only)
+- **DICOM PS3.7 2025e** - Message Exchange (DIMSE-C services)
+- **DICOM PS3.8 2025e** - Network Communication Support (Upper Layer Protocol)
 - **DICOM PS3.10 2025e** - Media Storage and File Format
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
@@ -395,4 +485,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.5 - adding DICOM file writing support including file creation, modification, UID generation, and round-trip compatibility. Future versions will add networking capabilities. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.6 - adding DICOM networking support including C-ECHO verification and C-FIND query services. Future versions will add C-STORE, C-MOVE, and C-GET support. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

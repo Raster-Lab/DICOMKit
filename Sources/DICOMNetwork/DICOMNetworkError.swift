@@ -54,6 +54,9 @@ public enum DICOMNetworkError: Error, Sendable {
     
     /// Decoding error when deserializing PDU
     case decodingFailed(String)
+    
+    /// Query operation failed with a DIMSE status
+    case queryFailed(DIMSEStatus)
 }
 
 // MARK: - CustomStringConvertible
@@ -88,6 +91,8 @@ extension DICOMNetworkError: CustomStringConvertible {
             return "Encoding failed: \(message)"
         case .decodingFailed(let message):
             return "Decoding failed: \(message)"
+        case .queryFailed(let status):
+            return "Query failed: \(status)"
         }
     }
 }
