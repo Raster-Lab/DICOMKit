@@ -1066,7 +1066,10 @@ final class AuditLoggerTests: XCTestCase {
 
 // MARK: - Mock Audit Log Handler
 
-/// Mock handler for testing audit logging
+/// Mock handler for testing audit logging.
+/// This class uses @unchecked Sendable because it is only used in test contexts
+/// where synchronization is handled by test expectations and awaiting the logger.
+/// The entries array is accessed sequentially in each test case.
 final class MockAuditLogHandler: AuditLogHandler, @unchecked Sendable {
     var entries: [AuditLogEntry] = []
     

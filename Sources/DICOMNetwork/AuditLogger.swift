@@ -435,6 +435,16 @@ public final class ConsoleAuditLogHandler: AuditLogHandler {
 /// )
 /// await AuditLogger.shared.addHandler(handler)
 /// ```
+///
+/// ## Thread Safety
+///
+/// This class uses `@unchecked Sendable` because all file operations are
+/// serialized through a dedicated serial `DispatchQueue` (`queue`). The
+/// `queue.sync` calls in `handleAuditEvent` ensure that concurrent calls
+/// to write audit entries are properly synchronized. The immutable properties
+/// (directory, baseName, maxFileSize, maxFiles) are set during initialization
+/// and never modified. The mutable state (fileHandle, currentFileSize) is
+/// only accessed within the serialized queue operations.
 public final class FileAuditLogHandler: AuditLogHandler, @unchecked Sendable {
     /// Directory where log files are stored
     public let directory: URL
