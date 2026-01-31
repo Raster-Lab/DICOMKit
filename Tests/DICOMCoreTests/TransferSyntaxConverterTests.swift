@@ -184,14 +184,31 @@ struct TransferSyntaxConverterTests {
         #expect(converter.canTranscode(from: .implicitVRLittleEndian, to: .explicitVRBigEndian) == true)
     }
     
-    @Test("Cannot transcode to compressed syntax currently")
-    func testCannotTranscodeToCompressed() {
+    #if canImport(ImageIO)
+    @Test("Can transcode to compressed syntax with encoder support")
+    func testCanTranscodeToCompressed() {
         let converter = TransferSyntaxConverter()
         
-        // Cannot encode to JPEG (encoding not supported yet)
+        // Can encode to JPEG Baseline if encoder is available
+        if CodecRegistry.shared.hasEncoder(for: TransferSyntax.jpegBaseline.uid) {
+            #expect(converter.canTranscode(from: .explicitVRLittleEndian, to: .jpegBaseline) == true)
+        }
+        
+        // Can encode to JPEG 2000 Lossless if encoder is available
+        if CodecRegistry.shared.hasEncoder(for: TransferSyntax.jpeg2000Lossless.uid) {
+            #expect(converter.canTranscode(from: .implicitVRLittleEndian, to: .jpeg2000Lossless) == true)
+        }
+    }
+    #else
+    @Test("Cannot transcode to compressed syntax without ImageIO")
+    func testCannotTranscodeToCompressedWithoutImageIO() {
+        let converter = TransferSyntaxConverter()
+        
+        // Cannot encode without ImageIO
         #expect(converter.canTranscode(from: .explicitVRLittleEndian, to: .jpegBaseline) == false)
         #expect(converter.canTranscode(from: .implicitVRLittleEndian, to: .jpeg2000Lossless) == false)
     }
+    #endif
     
     #if canImport(ImageIO)
     @Test("Can decompress JPEG to uncompressed (if codec available)")
@@ -463,5 +480,381 @@ struct TransferSyntaxConverterTests {
         // Each element in Implicit VR: Tag (4) + Length (4) + Value (2) = 10 bytes
         // Two elements: 20 bytes
         #expect(result.data.count == 20)
+    }
+}
+
+// MARK: - Compression Configuration Tests
+
+@Suite("CompressionQuality Tests")
+struct CompressionQualityTests {
+    
+    @Test("Quality presets have correct values")
+    func testQualityPresetValues() {
+        #expect(CompressionQuality.maximum.value == 0.98)
+        #expect(CompressionQuality.high.value == 0.90)
+        #expect(CompressionQuality.medium.value == 0.75)
+        #expect(CompressionQuality.low.value == 0.60)
+    }
+    
+    @Test("Custom quality values are clamped")
+    func testCustomQualityClamping() {
+        #expect(CompressionQuality.custom(1.5).value == 1.0)
+        #expect(CompressionQuality.custom(-0.5).value == 0.0)
+        #expect(CompressionQuality.custom(0.5).value == 0.5)
+    }
+    
+    @Test("Maximum quality is considered lossless")
+    func testLosslessQuality() {
+        #expect(CompressionQuality.maximum.isLossless == true)
+        #expect(CompressionQuality.custom(1.0).isLossless == true)
+        #expect(CompressionQuality.high.isLossless == false)
+    }
+    
+    @Test("Quality descriptions are meaningful")
+    func testQualityDescriptions() {
+        #expect(CompressionQuality.maximum.description.contains("Maximum"))
+        #expect(CompressionQuality.high.description.contains("High"))
+        #expect(CompressionQuality.medium.description.contains("Medium"))
+        #expect(CompressionQuality.low.description.contains("Low"))
+        #expect(CompressionQuality.custom(0.5).description.contains("50"))
+    }
+}
+
+@Suite("CompressionSpeed Tests")
+struct CompressionSpeedTests {
+    
+    @Test("Speed descriptions are meaningful")
+    func testSpeedDescriptions() {
+        #expect(CompressionSpeed.fast.description == "Fast")
+        #expect(CompressionSpeed.balanced.description == "Balanced")
+        #expect(CompressionSpeed.optimal.description == "Optimal")
+    }
+}
+
+@Suite("CompressionConfiguration Tests")
+struct CompressionConfigurationTests {
+    
+    @Test("Default configuration has expected values")
+    func testDefaultConfiguration() {
+        let config = CompressionConfiguration.default
+        
+        #expect(config.quality.value == CompressionQuality.high.value)
+        #expect(config.speed == .balanced)
+        #expect(config.progressive == false)
+        #expect(config.preferLossless == false)
+        #expect(config.maxBitsPerSample == nil)
+    }
+    
+    @Test("Network configuration optimizes for transfer")
+    func testNetworkConfiguration() {
+        let config = CompressionConfiguration.network
+        
+        #expect(config.quality == .medium)
+        #expect(config.speed == .fast)
+        #expect(config.progressive == true)
+        #expect(config.preferLossless == false)
+    }
+    
+    @Test("Archival configuration prioritizes quality")
+    func testArchivalConfiguration() {
+        let config = CompressionConfiguration.archival
+        
+        #expect(config.quality == .maximum)
+        #expect(config.speed == .optimal)
+        #expect(config.preferLossless == true)
+    }
+    
+    @Test("Lossless configuration enforces lossless")
+    func testLosslessConfiguration() {
+        let config = CompressionConfiguration.lossless
+        
+        #expect(config.quality == .maximum)
+        #expect(config.preferLossless == true)
+    }
+    
+    @Test("Custom configuration creation")
+    func testCustomConfiguration() {
+        let config = CompressionConfiguration(
+            quality: .custom(0.85),
+            speed: .optimal,
+            progressive: true,
+            preferLossless: false,
+            maxBitsPerSample: 12
+        )
+        
+        #expect(config.quality.value == 0.85)
+        #expect(config.speed == .optimal)
+        #expect(config.progressive == true)
+        #expect(config.preferLossless == false)
+        #expect(config.maxBitsPerSample == 12)
+    }
+    
+    @Test("Configuration description is informative")
+    func testConfigurationDescription() {
+        let config = CompressionConfiguration(
+            quality: .high,
+            speed: .balanced,
+            progressive: true,
+            preferLossless: true,
+            maxBitsPerSample: 16
+        )
+        
+        let description = config.description
+        #expect(description.contains("quality"))
+        #expect(description.contains("speed"))
+        #expect(description.contains("progressive"))
+        #expect(description.contains("preferLossless"))
+        #expect(description.contains("maxBits"))
+    }
+}
+
+// MARK: - Codec Registry Encoder Tests
+
+#if canImport(ImageIO)
+@Suite("CodecRegistry Encoder Tests")
+struct CodecRegistryEncoderTests {
+    
+    @Test("Registry has encoders for JPEG")
+    func testJPEGEncoderAvailable() {
+        let registry = CodecRegistry.shared
+        
+        #expect(registry.hasEncoder(for: TransferSyntax.jpegBaseline.uid) == true)
+    }
+    
+    @Test("Registry has encoders for JPEG 2000")
+    func testJPEG2000EncoderAvailable() {
+        let registry = CodecRegistry.shared
+        
+        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000.uid) == true)
+        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000Lossless.uid) == true)
+    }
+    
+    @Test("Registry returns encoder for supported syntax")
+    func testEncoderRetrieval() {
+        let registry = CodecRegistry.shared
+        
+        let jpegEncoder = registry.encoder(for: TransferSyntax.jpegBaseline.uid)
+        #expect(jpegEncoder != nil)
+        
+        let jp2Encoder = registry.encoder(for: TransferSyntax.jpeg2000.uid)
+        #expect(jp2Encoder != nil)
+    }
+    
+    @Test("Registry does not have encoder for RLE")
+    func testNoRLEEncoder() {
+        let registry = CodecRegistry.shared
+        
+        // RLE is decode-only
+        #expect(registry.hasEncoder(for: TransferSyntax.rleLossless.uid) == false)
+    }
+    
+    @Test("Supported encoding transfer syntaxes list is populated")
+    func testSupportedEncodingList() {
+        let registry = CodecRegistry.shared
+        
+        let encodingSyntaxes = registry.supportedEncodingTransferSyntaxes
+        #expect(encodingSyntaxes.count >= 3) // JPEG Baseline, JPEG 2000, JPEG 2000 Lossless
+    }
+}
+#endif
+
+// MARK: - JPEG Encoder Tests
+
+#if canImport(ImageIO)
+@Suite("NativeJPEGCodec Encoder Tests")
+struct NativeJPEGCodecEncoderTests {
+    
+    @Test("Can encode 8-bit grayscale")
+    func testCanEncode8BitGrayscale() {
+        let codec = NativeJPEGCodec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        
+        let config = CompressionConfiguration.default
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == true)
+    }
+    
+    @Test("Can encode 8-bit RGB")
+    func testCanEncode8BitRGB() {
+        let codec = NativeJPEGCodec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 3,
+            photometricInterpretation: .rgb
+        )
+        
+        let config = CompressionConfiguration.default
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == true)
+    }
+    
+    @Test("Cannot encode 16-bit with JPEG Baseline")
+    func testCannotEncode16Bit() {
+        let codec = NativeJPEGCodec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 16,
+            bitsStored: 12,
+            highBit: 11,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        
+        let config = CompressionConfiguration.default
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == false)
+    }
+    
+    @Test("Cannot encode when lossless is preferred")
+    func testCannotEncodeLossless() {
+        let codec = NativeJPEGCodec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        
+        let config = CompressionConfiguration.lossless
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == false)
+    }
+    
+    @Test("Encode simple 8-bit grayscale frame")
+    func testEncodeGrayscaleFrame() throws {
+        let codec = NativeJPEGCodec()
+        let descriptor = PixelDataDescriptor(
+            rows: 4,
+            columns: 4,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        
+        // Create 4x4 test image (gradient)
+        var pixelData = Data()
+        for y in 0..<4 {
+            for x in 0..<4 {
+                pixelData.append(UInt8(y * 64 + x * 16))
+            }
+        }
+        
+        let config = CompressionConfiguration.default
+        let encoded = try codec.encodeFrame(pixelData, descriptor: descriptor, frameIndex: 0, configuration: config)
+        
+        // Verify we got JPEG data (starts with FFD8)
+        #expect(encoded.count > 0)
+        #expect(encoded[0] == 0xFF)
+        #expect(encoded[1] == 0xD8)
+    }
+}
+#endif
+
+// MARK: - JPEG 2000 Encoder Tests
+
+#if canImport(ImageIO)
+@Suite("NativeJPEG2000Codec Encoder Tests")
+struct NativeJPEG2000CodecEncoderTests {
+    
+    @Test("Can encode 8-bit grayscale")
+    func testCanEncode8BitGrayscale() {
+        let codec = NativeJPEG2000Codec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        
+        let config = CompressionConfiguration.default
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == true)
+    }
+    
+    @Test("Can encode 16-bit grayscale")
+    func testCanEncode16BitGrayscale() {
+        let codec = NativeJPEG2000Codec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 16,
+            bitsStored: 12,
+            highBit: 11,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        
+        let config = CompressionConfiguration.default
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == true)
+    }
+    
+    @Test("Can encode with lossless configuration")
+    func testCanEncodeLossless() {
+        let codec = NativeJPEG2000Codec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        
+        let config = CompressionConfiguration.lossless
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == true)
+    }
+}
+#endif
+
+// MARK: - Converter Compression Tests
+
+@Suite("TransferSyntaxConverter Compression Tests")
+struct TransferSyntaxConverterCompressionTests {
+    
+    @Test("Converter with compression configuration")
+    func testConverterWithCompressionConfig() {
+        let transcodingConfig = TranscodingConfiguration.maxCompression
+        let compressionConfig = CompressionConfiguration.network
+        
+        let converter = TransferSyntaxConverter(
+            configuration: transcodingConfig,
+            compressionConfiguration: compressionConfig
+        )
+        
+        #expect(converter.configuration.allowLossyCompression == true)
+        #expect(converter.compressionConfiguration.progressive == true)
     }
 }
