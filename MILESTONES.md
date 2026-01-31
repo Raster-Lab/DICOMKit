@@ -894,25 +894,619 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 **Status**: Planned  
 **Goal**: Implement RESTful DICOM web services (DICOMweb)
 
-### Deliverables
-- [ ] WADO-RS (Web Access to DICOM Objects - RESTful Services)
-- [ ] STOW-RS (Store Over the Web - RESTful Services)
-- [ ] QIDO-RS (Query based on ID for DICOM Objects - RESTful)
-- [ ] UPS-RS (Unified Procedure Step - RESTful Services)
-- [ ] Multipart MIME handling
-- [ ] JSON metadata support (bulk data)
-- [ ] Thumbnail generation
-- [ ] OAuth2/OpenID Connect authentication
+This milestone implements the DICOMweb standard (PS3.18), providing modern RESTful HTTP/HTTPS-based access to DICOM objects. DICOMweb enables browser-based viewers, mobile applications, and cloud-native integrations without requiring traditional DICOM networking infrastructure.
 
-### Technical Notes
-- Reference: PS3.18 - Web Services
-- Build on URLSession for HTTP
-- Support both client and server modes
+This milestone is divided into modular sub-milestones based on complexity, allowing for incremental development and testing. Each sub-milestone builds upon previous ones.
 
-### Acceptance Criteria
-- Compatibility with OHIF viewer and other DICOMweb clients
+---
+
+### Milestone 8.1: Core DICOMweb Infrastructure (v0.8.1)
+
+**Status**: Planned  
+**Goal**: Establish the foundational HTTP layer and data format support for DICOMweb  
+**Complexity**: Medium  
+**Dependencies**: Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [ ] HTTP client abstraction layer using URLSession:
+  - [ ] Configurable timeouts (connect, read, resource)
+  - [ ] HTTP/2 support for connection multiplexing
+  - [ ] Request/response interceptors for logging and customization
+  - [ ] Automatic retry with configurable policies
+- [ ] DICOM JSON representation (PS3.18 Section F):
+  - [ ] DataSet to JSON serialization
+  - [ ] JSON to DataSet deserialization
+  - [ ] Bulk data URI handling (BulkDataURI)
+  - [ ] InlineBinary encoding (Base64)
+  - [ ] Proper handling of all VR types in JSON
+  - [ ] PersonName JSON format (Alphabetic, Ideographic, Phonetic)
+- [ ] DICOM XML representation (optional):
+  - [ ] DataSet to XML serialization
+  - [ ] XML to DataSet deserialization
+- [ ] Multipart MIME handling (PS3.18 Section 8):
+  - [ ] `multipart/related` parsing and generation
+  - [ ] Boundary detection and handling
+  - [ ] Content-Type header parsing (type, boundary parameters)
+  - [ ] Efficient streaming for large payloads
+  - [ ] Support for nested multipart content
+- [ ] Media type definitions:
+  - [ ] `application/dicom` - DICOM Part 10 files
+  - [ ] `application/dicom+json` - DICOM JSON
+  - [ ] `application/dicom+xml` - DICOM XML
+  - [ ] `application/octet-stream` - Bulk data
+  - [ ] `image/jpeg`, `image/png`, `image/gif` - Rendered frames
+  - [ ] `video/mpeg`, `video/mp4` - Video content
+- [ ] URL path construction utilities:
+  - [ ] Study, Series, Instance URL building
+  - [ ] Query parameter encoding
+  - [ ] URL template handling for server configuration
+- [ ] `DICOMwebError` error types:
+  - [ ] HTTP status code mapping (4xx, 5xx)
+  - [ ] DICOM-specific error conditions
+  - [ ] Detailed error responses with Warning header parsing
+- [ ] `DICOMwebConfiguration` for client/server settings:
+  - [ ] Base URL configuration
+  - [ ] Authentication settings
+  - [ ] Default Accept/Content-Type headers
+  - [ ] Request timeout configuration
+
+#### Technical Notes
+- Reference: PS3.18 Section 6 - Media Types and Transfer Syntaxes
+- Reference: PS3.18 Section 8 - Multipart MIME
+- Reference: PS3.18 Section F - DICOM JSON Model
+- JSON encoding must handle special VR types: PN, DA, TM, DT, IS, DS
+- Bulk data can be inline (Base64) or referenced (URI)
+- Consider memory-efficient streaming for large multipart responses
+
+#### Acceptance Criteria
+- [ ] DICOM JSON serialization/deserialization is compliant with PS3.18
+- [ ] Multipart MIME parsing handles edge cases correctly
+- [ ] Round-trip tests: DataSet → JSON → DataSet produces identical data
+- [ ] Unit tests cover all media types and encoding scenarios
+- [ ] Documentation for core infrastructure types
+
+---
+
+### Milestone 8.2: WADO-RS Client - Retrieve Services (v0.8.2)
+
+**Status**: Planned  
+**Goal**: Implement DICOMweb retrieve client for fetching DICOM objects over HTTP  
+**Complexity**: Medium-High  
+**Dependencies**: Milestone 8.1
+
+#### Deliverables
+- [ ] WADO-RS Study retrieval:
+  - [ ] `GET /studies/{StudyInstanceUID}` - Retrieve all instances in study
+  - [ ] Accept header negotiation (DICOM, JSON, XML, bulk data)
+  - [ ] Multipart response parsing for multiple instances
+  - [ ] Streaming download for large studies
+- [ ] WADO-RS Series retrieval:
+  - [ ] `GET /studies/{StudyInstanceUID}/series/{SeriesInstanceUID}`
+  - [ ] Filter to single series within study
+- [ ] WADO-RS Instance retrieval:
+  - [ ] `GET /studies/{StudyInstanceUID}/series/{SeriesInstanceUID}/instances/{SOPInstanceUID}`
+  - [ ] Single instance download
+- [ ] WADO-RS Metadata retrieval:
+  - [ ] `GET /studies/{StudyInstanceUID}/metadata` - Study metadata (JSON/XML)
+  - [ ] `GET .../series/{SeriesInstanceUID}/metadata` - Series metadata
+  - [ ] `GET .../instances/{SOPInstanceUID}/metadata` - Instance metadata
+  - [ ] Bulk data URI handling in metadata responses
+- [ ] WADO-RS Frames retrieval:
+  - [ ] `GET .../instances/{SOPInstanceUID}/frames/{FrameList}` - Specific frames
+  - [ ] Frame number list parsing (e.g., "1,3,5" or "1-10")
+  - [ ] Uncompressed frame data (raw pixels)
+  - [ ] Compressed frame data (JPEG, JPEG 2000, etc.)
+- [ ] WADO-RS Rendered retrieval (consumer-friendly formats):
+  - [ ] `GET .../instances/{SOPInstanceUID}/rendered` - Rendered image
+  - [ ] `GET .../frames/{FrameList}/rendered` - Rendered frames
+  - [ ] Query parameters: window, viewport, quality
+  - [ ] Accept: `image/jpeg`, `image/png`, `image/gif`
+- [ ] WADO-RS Thumbnail retrieval:
+  - [ ] `GET .../instances/{SOPInstanceUID}/thumbnail` - Thumbnail image
+  - [ ] `GET .../series/{SeriesInstanceUID}/thumbnail` - Series representative
+  - [ ] `GET /studies/{StudyInstanceUID}/thumbnail` - Study representative
+  - [ ] Configurable thumbnail size via viewport parameter
+- [ ] WADO-RS Bulk Data retrieval:
+  - [ ] `GET {BulkDataURI}` - Retrieve bulk data by URI
+  - [ ] Range header support for partial retrieval
+  - [ ] Accept header for format negotiation
+- [ ] Transfer syntax negotiation:
+  - [ ] Accept header with transfer-syntax parameter
+  - [ ] Multiple transfer syntax preference via quality values
+  - [ ] Handle 406 Not Acceptable responses
+- [ ] `DICOMwebClient` retrieve API:
+  - [ ] `func retrieveStudy(studyUID: String) async throws -> AsyncStream<DicomFile>`
+  - [ ] `func retrieveSeries(studyUID: String, seriesUID: String) async throws -> AsyncStream<DicomFile>`
+  - [ ] `func retrieveInstance(...) async throws -> DicomFile`
+  - [ ] `func retrieveMetadata(level: QueryRetrieveLevel, ...) async throws -> [DataSet]`
+  - [ ] `func retrieveFrames(instanceUID: String, frames: [Int]) async throws -> [Data]`
+  - [ ] `func retrieveRendered(..., window: WindowSettings?, viewport: CGSize?) async throws -> CGImage`
+  - [ ] `func retrieveThumbnail(...) async throws -> CGImage`
+- [ ] Progress reporting for downloads:
+  - [ ] Bytes received / total bytes
+  - [ ] Instances received / total instances (when known)
+- [ ] Cancellation support via Swift Task cancellation
+
+#### Technical Notes
+- Reference: PS3.18 Section 10.4 - WADO-RS
+- Reference: PS3.18 Section 8 - Multipart MIME encoding
+- Reference: PS3.18 Section 9 - Accept Header
+- WADO-RS returns multipart/related for multiple objects
+- Rendered endpoint applies windowing and color transformations
+- Frame numbers are 1-based per DICOM convention
+- Consider disk caching for repeated requests
+
+#### Acceptance Criteria
+- [ ] Successfully retrieve studies from public DICOMweb servers
+- [ ] Multipart response parsing handles varying boundary formats
+- [ ] Transfer syntax negotiation selects optimal format
+- [ ] Rendered images display correctly with windowing applied
+- [ ] Thumbnail generation works at all levels
+- [ ] Large study downloads don't cause memory issues (streaming)
+- [ ] Unit tests for URL construction and response parsing
+- [ ] Integration tests with test DICOMweb servers
+
+---
+
+### Milestone 8.3: QIDO-RS Client - Query Services (v0.8.3)
+
+**Status**: Planned  
+**Goal**: Implement DICOMweb query client for searching DICOM objects  
+**Complexity**: Medium-High  
+**Dependencies**: Milestone 8.1
+
+#### Deliverables
+- [ ] QIDO-RS Study queries:
+  - [ ] `GET /studies?{query}` - Search studies
+  - [ ] Standard query parameters: PatientName, PatientID, StudyDate, etc.
+  - [ ] Response as JSON array or multipart XML
+- [ ] QIDO-RS Series queries:
+  - [ ] `GET /studies/{StudyInstanceUID}/series?{query}` - Search series in study
+  - [ ] `GET /series?{query}` - Search series across all studies
+  - [ ] Series-level attributes: Modality, SeriesDescription, etc.
+- [ ] QIDO-RS Instance queries:
+  - [ ] `GET /studies/{StudyInstanceUID}/series/{SeriesInstanceUID}/instances?{query}`
+  - [ ] `GET /instances?{query}` - Search instances across all
+  - [ ] Instance-level attributes: SOPClassUID, InstanceNumber, etc.
+- [ ] Query parameter support:
+  - [ ] Exact matching: `PatientID=12345`
+  - [ ] Wildcard matching: `PatientName=Smith*`
+  - [ ] Date range queries: `StudyDate=20240101-20241231`
+  - [ ] Time range queries: `StudyTime=080000-170000`
+  - [ ] UID matching: `StudyInstanceUID=1.2.3.4...`
+  - [ ] Sequence matching (limited per PS3.18)
+- [ ] Query attribute filtering:
+  - [ ] `includefield` parameter for requesting specific attributes
+  - [ ] `includefield=all` for all available attributes
+  - [ ] Default attributes per query level
+- [ ] Pagination support:
+  - [ ] `limit` - Maximum results to return
+  - [ ] `offset` - Starting position
+  - [ ] Response headers for total count (if available)
+  - [ ] Automatic pagination iteration
+- [ ] Fuzzy matching (optional server feature):
+  - [ ] `fuzzymatching=true` parameter
+  - [ ] Handle servers with/without fuzzy support
+- [ ] `DICOMwebClient` query API:
+  - [ ] `func searchStudies(query: QIDOQuery) async throws -> QIDOStudyResults`
+  - [ ] `func searchSeries(studyUID: String?, query: QIDOQuery) async throws -> QIDOSeriesResults`
+  - [ ] `func searchInstances(studyUID: String?, seriesUID: String?, query: QIDOQuery) async throws -> QIDOInstanceResults`
+- [ ] `QIDOQuery` builder:
+  - [ ] Fluent API for building queries
+  - [ ] Type-safe attribute setters
+  - [ ] Date/Time range builders
+  - [ ] Wildcard helpers
+- [ ] `QIDOResults` types:
+  - [ ] `QIDOStudyResults` with study-level attributes
+  - [ ] `QIDOSeriesResults` with series-level attributes
+  - [ ] `QIDOInstanceResults` with instance-level attributes
+  - [ ] Pagination info (hasMore, nextOffset)
+  - [ ] Type-safe attribute accessors
+
+#### Technical Notes
+- Reference: PS3.18 Section 10.6 - QIDO-RS
+- Reference: PS3.18 Section 8 - Query Parameters
+- QIDO-RS uses HTTP GET with query parameters
+- Response typically JSON array of matching results
+- Server may limit results; check X-Total-Count header
+- Wildcard (*) matches any sequence of characters
+- Date format: YYYYMMDD or YYYYMMDD-YYYYMMDD
+
+#### Acceptance Criteria
+- [ ] Successfully query studies from public DICOMweb servers
+- [ ] All query parameter types work correctly
+- [ ] Pagination handles large result sets
+- [ ] JSON response parsing extracts all attributes
+- [ ] Query builder produces valid URLs
+- [ ] Integration tests with test DICOMweb servers
+
+---
+
+### Milestone 8.4: STOW-RS Client - Store Services (v0.8.4)
+
+**Status**: Planned  
+**Goal**: Implement DICOMweb store client for uploading DICOM objects  
+**Complexity**: Medium  
+**Dependencies**: Milestone 8.1
+
+#### Deliverables
+- [ ] STOW-RS Study store:
+  - [ ] `POST /studies` - Store instances (auto-create study)
+  - [ ] `POST /studies/{StudyInstanceUID}` - Store to specific study
+  - [ ] Multipart request body for multiple instances
+- [ ] Content-Type handling:
+  - [ ] `multipart/related; type="application/dicom"` - DICOM Part 10 files
+  - [ ] `multipart/related; type="application/dicom+json"` - JSON with bulk data
+  - [ ] `multipart/related; type="application/dicom+xml"` - XML with bulk data
+- [ ] Request construction:
+  - [ ] Multipart boundary generation
+  - [ ] Part headers (Content-Type, Content-Location)
+  - [ ] Efficient body streaming for large files
+- [ ] Response handling:
+  - [ ] Parse STOW-RS response (JSON or XML)
+  - [ ] Success: 200 OK with stored instance references
+  - [ ] Partial success: 202 Accepted with warnings
+  - [ ] Failure: 4xx/5xx with error details
+  - [ ] Per-instance status from response
+- [ ] `STOWResponse` struct:
+  - [ ] Successfully stored instances (ReferencedSOPSequence)
+  - [ ] Failed instances (FailedSOPSequence) with reasons
+  - [ ] Warning messages
+  - [ ] Retrieve URL for stored instances
+- [ ] Batch store operations:
+  - [ ] Store multiple instances in single request
+  - [ ] Configurable batch size (for server limits)
+  - [ ] Progress reporting for batch uploads
+- [ ] `DICOMwebClient` store API:
+  - [ ] `func storeInstances(instances: [Data], studyUID: String?) async throws -> STOWResponse`
+  - [ ] `func storeInstance(dicomData: Data, studyUID: String?) async throws -> STOWResponse`
+  - [ ] `func storeAsJSON(dataset: DataSet, bulkData: [BulkData], ...) async throws -> STOWResponse`
+- [ ] Progress reporting:
+  - [ ] Bytes uploaded / total bytes
+  - [ ] Per-file progress for batch operations
+- [ ] Error handling:
+  - [ ] Request too large (413 status)
+  - [ ] Unsupported media type (415 status)
+  - [ ] Conflict (409 status) - instance already exists
+  - [ ] Storage quota exceeded
+
+#### Technical Notes
+- Reference: PS3.18 Section 10.5 - STOW-RS
+- Reference: PS3.18 Section 8 - Multipart MIME
+- STOW-RS uses HTTP POST with multipart body
+- Response contains SOP Instance references and status
+- Servers may limit request size; consider chunking
+- Study UID in URL must match Study UID in instances
+
+#### Acceptance Criteria
+- [ ] Successfully store single and batch instances
+- [ ] Multipart request generation is compliant
+- [ ] Response parsing extracts success/failure details
+- [ ] Large file uploads don't cause memory issues
+- [ ] Progress reporting is accurate
+- [ ] Integration tests with test DICOMweb servers
+
+---
+
+### Milestone 8.5: DICOMweb Server - WADO-RS/QIDO-RS (v0.8.5)
+
+**Status**: Planned  
+**Goal**: Implement DICOMweb server for serving DICOM objects over HTTP  
+**Complexity**: High  
+**Dependencies**: Milestone 8.1, Milestone 8.2, Milestone 8.3
+
+#### Deliverables
+- [ ] HTTP server foundation:
+  - [ ] Built on SwiftNIO HTTP server or Vapor/Hummingbird
+  - [ ] Route registration for DICOMweb endpoints
+  - [ ] Request parsing and response generation
+  - [ ] Async handler support
+- [ ] WADO-RS endpoints:
+  - [ ] `GET /studies/{studyUID}` - Retrieve study
+  - [ ] `GET /studies/{studyUID}/series/{seriesUID}` - Retrieve series
+  - [ ] `GET .../instances/{instanceUID}` - Retrieve instance
+  - [ ] `GET .../metadata` - Retrieve metadata (JSON/XML)
+  - [ ] `GET .../frames/{frames}` - Retrieve frames
+  - [ ] `GET .../rendered` - Retrieve rendered image
+  - [ ] `GET .../thumbnail` - Retrieve thumbnail
+  - [ ] `GET {bulkDataURI}` - Retrieve bulk data
+- [ ] QIDO-RS endpoints:
+  - [ ] `GET /studies` - Search studies
+  - [ ] `GET /studies/{studyUID}/series` - Search series
+  - [ ] `GET .../instances` - Search instances
+  - [ ] Query parameter parsing
+  - [ ] Pagination via limit/offset
+- [ ] Content negotiation:
+  - [ ] Parse Accept header
+  - [ ] Select best matching media type
+  - [ ] Return 406 Not Acceptable when no match
+  - [ ] Transfer syntax parameter handling
+- [ ] Storage backend abstraction:
+  - [ ] `DICOMwebStorageProvider` protocol
+  - [ ] Methods for retrieve, query, store
+  - [ ] File system implementation
+  - [ ] In-memory implementation (for testing)
+  - [ ] SQLite-backed index for queries
+- [ ] Image rendering pipeline:
+  - [ ] Window/level application
+  - [ ] Viewport scaling
+  - [ ] JPEG/PNG encoding
+  - [ ] Thumbnail generation
+  - [ ] Caching for rendered images
+- [ ] `DICOMwebServer` API:
+  - [ ] `init(configuration: DICOMwebServerConfiguration, storage: DICOMwebStorageProvider)`
+  - [ ] `func start() async throws`
+  - [ ] `func stop() async`
+  - [ ] `var port: Int { get }`
+  - [ ] `var baseURL: URL { get }`
+- [ ] `DICOMwebServerConfiguration`:
+  - [ ] Port and bind address
+  - [ ] Base URL path prefix
+  - [ ] TLS configuration
+  - [ ] CORS settings
+  - [ ] Rate limiting
+  - [ ] Maximum response size
+
+#### Technical Notes
+- Reference: PS3.18 Section 10.4 (WADO-RS), 10.6 (QIDO-RS)
+- Server must handle concurrent requests efficiently
+- Consider lazy loading for large studies
+- Index required for efficient queries (by Patient, Study Date, etc.)
+- Rendered endpoint requires pixel data processing from Milestone 3/4
+- Caching reduces CPU load for repeated rendered requests
+
+#### Acceptance Criteria
+- [ ] Server passes basic DICOMweb conformance tests
+- [ ] OHIF viewer can connect and display images
+- [ ] Query performance acceptable with 10,000+ instances
+- [ ] Concurrent request handling is stable
+- [ ] Memory usage is bounded for large studies
+- [ ] Unit tests for all endpoints
+- [ ] Integration tests with DICOMweb clients
+
+---
+
+### Milestone 8.6: DICOMweb Server - STOW-RS (v0.8.6)
+
+**Status**: Planned  
+**Goal**: Implement DICOMweb server for receiving DICOM objects over HTTP  
+**Complexity**: High  
+**Dependencies**: Milestone 8.5
+
+#### Deliverables
+- [ ] STOW-RS endpoints:
+  - [ ] `POST /studies` - Store instances
+  - [ ] `POST /studies/{studyUID}` - Store to specific study
+  - [ ] Multipart request parsing
+  - [ ] Support for application/dicom and application/dicom+json
+- [ ] Request validation:
+  - [ ] Content-Type validation
+  - [ ] Study UID consistency check
+  - [ ] Required attribute validation
+  - [ ] SOP Class validation (optional)
+- [ ] Response generation:
+  - [ ] Success response with ReferencedSOPSequence
+  - [ ] Partial success with warnings
+  - [ ] Failure response with FailedSOPSequence
+  - [ ] Proper HTTP status codes (200, 202, 400, 409, 415)
+- [ ] Storage backend integration:
+  - [ ] Store received instances to storage provider
+  - [ ] Update query index
+  - [ ] Handle duplicates (reject or replace)
+- [ ] Streaming upload support:
+  - [ ] Process multipart parts as they arrive
+  - [ ] Memory-efficient for large uploads
+  - [ ] Request size limits
+- [ ] Store delegate protocol:
+  - [ ] `func shouldAcceptInstance(metadata: DataSet) -> Bool`
+  - [ ] `func didStoreInstance(sopInstanceUID: String, location: URL)`
+  - [ ] `func didFailToStore(sopInstanceUID: String, error: Error)`
+- [ ] Duplicate handling configuration:
+  - [ ] Reject duplicates (409 Conflict)
+  - [ ] Replace existing
+  - [ ] Accept and ignore (idempotent)
+
+#### Technical Notes
+- Reference: PS3.18 Section 10.5 - STOW-RS
+- Multipart parsing must handle varying boundary formats
+- Request size limits prevent memory exhaustion
+- Index update should be transactional
+- Consider async processing for large batches
+
+#### Acceptance Criteria
+- [ ] Server accepts STOW-RS uploads from standard clients
+- [ ] Multipart parsing handles edge cases
+- [ ] Validation rejects invalid requests appropriately
+- [ ] Large uploads don't cause memory issues
+- [ ] Duplicate handling works per configuration
+- [ ] Integration tests with DICOMweb clients
+
+---
+
+### Milestone 8.7: UPS-RS Worklist Services (v0.8.7)
+
+**Status**: Planned  
+**Goal**: Implement Unified Procedure Step RESTful Services for worklist management  
+**Complexity**: Very High  
+**Dependencies**: Milestone 8.5, Milestone 8.6
+
+#### Deliverables
+- [ ] UPS-RS Worklist Query (client and server):
+  - [ ] `GET /workitems` - Search workitems
+  - [ ] Query parameters for UPS attributes
+  - [ ] Scheduled, In Progress, Completed, Canceled states
+- [ ] UPS-RS Worklist Retrieval (client and server):
+  - [ ] `GET /workitems/{workitemUID}` - Retrieve specific workitem
+  - [ ] JSON/XML metadata response
+- [ ] UPS-RS Worklist Creation (client and server):
+  - [ ] `POST /workitems` - Create new workitem
+  - [ ] `POST /workitems/{workitemUID}` - Create with specific UID
+  - [ ] Required UPS attributes validation
+- [ ] UPS-RS State Management (client and server):
+  - [ ] `PUT /workitems/{workitemUID}/state` - Change state
+  - [ ] State transitions: SCHEDULED → IN PROGRESS → COMPLETED/CANCELED
+  - [ ] Transaction UID tracking
+  - [ ] Performer information
+- [ ] UPS-RS Cancellation:
+  - [ ] `PUT /workitems/{workitemUID}/cancelrequest` - Request cancellation
+  - [ ] Cancellation request dataset
+- [ ] UPS-RS Subscription (Event Service):
+  - [ ] `POST /workitems/{workitemUID}/subscribers/{AETitle}` - Subscribe
+  - [ ] `DELETE /workitems/{workitemUID}/subscribers/{AETitle}` - Unsubscribe
+  - [ ] `POST /workitems/1.2.840.10008.5.1.4.34.5/subscribers/{AETitle}` - Global subscription
+  - [ ] WebSocket event delivery
+  - [ ] Long polling fallback
+- [ ] UPS Event Types:
+  - [ ] UPS State Report (state changes)
+  - [ ] UPS Progress Report (progress updates)
+  - [ ] UPS Cancel Requested
+  - [ ] UPS Assigned
+  - [ ] UPS Completed/Canceled
+- [ ] Workitem data model:
+  - [ ] `Workitem` struct with UPS attributes
+  - [ ] Scheduled Procedure Step attributes
+  - [ ] Performed Procedure Step attributes
+  - [ ] Progress information
+- [ ] `UPSClient` API:
+  - [ ] `func searchWorkitems(query: UPSQuery) async throws -> [Workitem]`
+  - [ ] `func retrieveWorkitem(uid: String) async throws -> Workitem`
+  - [ ] `func createWorkitem(workitem: Workitem) async throws -> String`
+  - [ ] `func changeState(uid: String, state: UPSState, transaction: String?) async throws`
+  - [ ] `func requestCancellation(uid: String, reason: String?) async throws`
+  - [ ] `func subscribe(uid: String?, events: AsyncStream<UPSEvent>) async throws`
+- [ ] `UPSServer` additions:
+  - [ ] Workitem storage and retrieval
+  - [ ] State machine enforcement
+  - [ ] Event generation and delivery
+  - [ ] Subscription management
+
+#### Technical Notes
+- Reference: PS3.18 Section 11 - UPS-RS
+- Reference: PS3.4 Annex CC - Unified Procedure Step Service
+- UPS is used for worklist management and workflow orchestration
+- State transitions must follow defined state machine
+- Events enable real-time workflow coordination
+- WebSocket preferred for low-latency event delivery
+
+#### Acceptance Criteria
+- [ ] UPS worklist operations work correctly
+- [ ] State machine enforces valid transitions only
+- [ ] Events are delivered reliably
+- [ ] Subscription management handles multiple subscribers
+- [ ] Integration tests with UPS-aware systems
+
+---
+
+### Milestone 8.8: Advanced DICOMweb Features (v0.8.8)
+
+**Status**: Planned  
+**Goal**: Production-ready DICOMweb with security and advanced features  
+**Complexity**: High  
+**Dependencies**: Milestone 8.7
+
+#### Deliverables
+- [ ] OAuth2/OpenID Connect Authentication:
+  - [ ] Client credentials flow
+  - [ ] Authorization code flow
+  - [ ] Token refresh handling
+  - [ ] Bearer token injection
+  - [ ] SMART on FHIR compatibility
+- [ ] Server authentication middleware:
+  - [ ] Token validation
+  - [ ] JWT parsing and verification
+  - [ ] Role-based access control
+  - [ ] Study-level access control
+- [ ] HTTPS/TLS Configuration:
+  - [ ] TLS 1.2/1.3 support
+  - [ ] Certificate management
+  - [ ] Client certificate authentication (mTLS)
+- [ ] Capability Discovery:
+  - [ ] `GET /` or `GET /capabilities` - Server capabilities
+  - [ ] Supported services and endpoints
+  - [ ] Supported transfer syntaxes
+  - [ ] Conformance statement generation
+- [ ] Extended Negotiation:
+  - [ ] `accept-charset` parameter handling
+  - [ ] Compression (gzip, deflate) for responses
+  - [ ] ETag and conditional requests
+  - [ ] Range requests for partial content
+- [ ] Caching:
+  - [ ] Cache-Control header support
+  - [ ] ETag generation and validation
+  - [ ] Client-side caching utilities
+  - [ ] Server-side response caching
+- [ ] Performance Optimizations:
+  - [ ] Connection pooling (HTTP/2 multiplexing)
+  - [ ] Request pipelining
+  - [ ] Prefetching for likely requests
+  - [ ] Response streaming
+- [ ] Monitoring and Logging:
+  - [ ] Request/response logging
+  - [ ] Performance metrics (latency, throughput)
+  - [ ] Error rate tracking
+  - [ ] OSLog integration
+- [ ] CORS Configuration (Server):
+  - [ ] Allowed origins configuration
+  - [ ] Preflight request handling
+  - [ ] Credentials support
+- [ ] Delete Services (optional per PS3.18):
+  - [ ] `DELETE /studies/{studyUID}` - Delete study
+  - [ ] `DELETE .../series/{seriesUID}` - Delete series
+  - [ ] `DELETE .../instances/{instanceUID}` - Delete instance
+  - [ ] Soft delete vs. permanent delete
+- [ ] `DICOMwebClient` unified API:
+  - [ ] Single client for all DICOMweb services
+  - [ ] Configuration with authentication, caching, retry
+  - [ ] Automatic token refresh
+  - [ ] Request interceptors for customization
+
+#### Technical Notes
+- Reference: PS3.18 Section 6 - Security Considerations
+- Reference: PS3.18 Section 10.8 - Capabilities
+- OAuth2/OIDC is the recommended authentication mechanism
+- SMART on FHIR enables EHR launch integration
+- HTTP/2 multiplexing reduces connection overhead
+- Caching critical for performance with repeated requests
+
+#### Acceptance Criteria
+- [ ] OAuth2 authentication works with major providers
+- [ ] SMART on FHIR launch flow works with test EHRs
+- [ ] HTTPS connections are secure (no vulnerabilities)
+- [ ] Capability discovery provides accurate information
+- [ ] Caching improves performance for repeated requests
+- [ ] Delete services work correctly (when enabled)
+- [ ] Performance acceptable for production workloads
+- [ ] Security scan passes
+
+---
+
+### Milestone 8 Summary
+
+| Sub-Milestone | Version | Complexity | Key Deliverables |
+|--------------|---------|------------|------------------|
+| 8.1 Core Infrastructure | v0.8.1 | Medium | HTTP layer, JSON/XML, multipart MIME |
+| 8.2 WADO-RS Client | v0.8.2 | Medium-High | Retrieve studies, metadata, frames, rendered |
+| 8.3 QIDO-RS Client | v0.8.3 | Medium-High | Query studies, series, instances |
+| 8.4 STOW-RS Client | v0.8.4 | Medium | Store instances, batch upload |
+| 8.5 WADO-RS/QIDO-RS Server | v0.8.5 | High | Serve studies, handle queries |
+| 8.6 STOW-RS Server | v0.8.6 | High | Receive uploads, validation |
+| 8.7 UPS-RS Worklist | v0.8.7 | Very High | Worklist management, events |
+| 8.8 Advanced Features | v0.8.8 | High | OAuth2, TLS, caching, production readiness |
+
+### Overall Technical Notes
+- Reference: PS3.18 - Web Services (complete specification)
+- Build HTTP client on URLSession for Apple platform integration
+- Consider SwiftNIO or Vapor for server implementation
+- All APIs use Swift concurrency (async/await, AsyncStream)
+- Memory efficiency critical for streaming large studies
+- Test with public DICOMweb servers (e.g., Google Cloud Healthcare API, DCM4CHEE)
+
+### Overall Acceptance Criteria
+- Full DICOMweb client compatible with major servers (DCM4CHEE, Orthanc, Google Cloud Healthcare)
+- DICOMweb server compatible with OHIF viewer and other standard clients
 - Pass DICOMweb conformance tests
-- Performance optimized for web delivery
+- Secure with OAuth2/OIDC authentication
+- Production-ready reliability and performance
 
 ---
 
