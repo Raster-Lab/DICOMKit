@@ -48,6 +48,15 @@
 /// - Message assembly (MessageAssembler)
 /// - Message fragmentation (MessageFragmenter)
 ///
+/// ## Milestone 6.4 - Verification Service (C-ECHO)
+///
+/// - C-ECHO SCU implementation via `DICOMVerificationService`
+/// - Simple `verify()` method for connectivity testing
+/// - Detailed `echo()` method with `VerificationResult`
+/// - `VerificationConfiguration` for customization
+/// - Verification SOP Class UID constant
+/// - Common transfer syntax UID constants
+///
 /// ## Usage
 ///
 /// ### Creating DIMSE Messages
@@ -161,6 +170,32 @@
 ///
 /// // Release association
 /// try await association.release()
+/// ```
+///
+/// ### DICOM Verification Service (C-ECHO)
+///
+/// ```swift
+/// import DICOMNetwork
+///
+/// // Simple connectivity test
+/// let success = try await DICOMVerificationService.verify(
+///     host: "pacs.hospital.com",
+///     port: 11112,
+///     callingAE: "MY_SCU",
+///     calledAE: "PACS"
+/// )
+/// print("Connection successful: \(success)")
+///
+/// // Detailed verification with timing
+/// let result = try await DICOMVerificationService.echo(
+///     host: "pacs.hospital.com",
+///     port: 11112,
+///     callingAE: "MY_SCU",
+///     calledAE: "PACS",
+///     timeout: 10
+/// )
+/// print("Status: \(result.status)")
+/// print("Round-trip time: \(result.roundTripTime)s")
 /// ```
 
 // MARK: - PDU Types
