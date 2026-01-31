@@ -195,6 +195,49 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         return circuitBreakerConfiguration != nil
     }
     
+    /// User identity for authentication (optional)
+    ///
+    /// When set, user identity information will be included in the A-ASSOCIATE-RQ PDU
+    /// for authentication with the remote SCP.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// // Username only authentication
+    /// let config = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     userIdentity: .username("john.doe")
+    /// )
+    ///
+    /// // Username and password authentication
+    /// let authConfig = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     userIdentity: .usernameAndPasscode(
+    ///         username: "john.doe",
+    ///         passcode: "secretPassword",
+    ///         positiveResponseRequested: true
+    ///     )
+    /// )
+    ///
+    /// // JWT authentication
+    /// let jwtConfig = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     userIdentity: .jwt(token: "eyJhbGciOiJIUzI1NiIs...")
+    /// )
+    /// ```
+    ///
+    /// Reference: PS3.7 Section D.3.3.7 - User Identity Negotiation
+    public let userIdentity: UserIdentity?
+    
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
     
@@ -215,6 +258,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
     ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
+    ///   - userIdentity: User identity for authentication (optional)
     /// - Throws: `DICOMNetworkError.invalidAETitle` if AE titles are invalid
     public init(
         host: String,
@@ -227,7 +271,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsEnabled: Bool = false,
         retryPolicy: RetryPolicy = .none,
-        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
+        userIdentity: UserIdentity? = nil
     ) throws {
         self.host = host
         self.port = port
@@ -240,6 +285,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.tlsConfiguration = tlsEnabled ? .default : nil
         self.retryPolicy = retryPolicy
         self.circuitBreakerConfiguration = circuitBreakerConfiguration
+        self.userIdentity = userIdentity
     }
     
     /// Creates a DICOM client configuration with TLS configuration
@@ -256,6 +302,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
     ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
+    ///   - userIdentity: User identity for authentication (optional)
     /// - Throws: `DICOMNetworkError.invalidAETitle` if AE titles are invalid
     public init(
         host: String,
@@ -268,7 +315,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsConfiguration: TLSConfiguration?,
         retryPolicy: RetryPolicy = .none,
-        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
+        userIdentity: UserIdentity? = nil
     ) throws {
         self.host = host
         self.port = port
@@ -281,6 +329,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.tlsConfiguration = tlsConfiguration
         self.retryPolicy = retryPolicy
         self.circuitBreakerConfiguration = circuitBreakerConfiguration
+        self.userIdentity = userIdentity
     }
     
     /// Creates a DICOM client configuration with pre-validated AE titles
@@ -297,6 +346,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
     ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
+    ///   - userIdentity: User identity for authentication (optional)
     public init(
         host: String,
         port: UInt16 = dicomDefaultPort,
@@ -308,7 +358,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsEnabled: Bool = false,
         retryPolicy: RetryPolicy = .none,
-        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
+        userIdentity: UserIdentity? = nil
     ) {
         self.host = host
         self.port = port
@@ -321,6 +372,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.tlsConfiguration = tlsEnabled ? .default : nil
         self.retryPolicy = retryPolicy
         self.circuitBreakerConfiguration = circuitBreakerConfiguration
+        self.userIdentity = userIdentity
     }
     
     /// Creates a DICOM client configuration with pre-validated AE titles and TLS configuration
@@ -337,6 +389,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
     ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
+    ///   - userIdentity: User identity for authentication (optional)
     public init(
         host: String,
         port: UInt16 = dicomDefaultPort,
@@ -348,7 +401,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsConfiguration: TLSConfiguration?,
         retryPolicy: RetryPolicy = .none,
-        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
+        userIdentity: UserIdentity? = nil
     ) {
         self.host = host
         self.port = port
@@ -361,6 +415,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.tlsConfiguration = tlsConfiguration
         self.retryPolicy = retryPolicy
         self.circuitBreakerConfiguration = circuitBreakerConfiguration
+        self.userIdentity = userIdentity
     }
 }
 

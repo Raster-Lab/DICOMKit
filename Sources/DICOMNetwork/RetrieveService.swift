@@ -151,6 +151,9 @@ public struct RetrieveConfiguration: Sendable, Hashable {
     /// The Query/Retrieve Information Model to use
     public let informationModel: QueryRetrieveInformationModel
     
+    /// User identity for authentication (optional)
+    public let userIdentity: UserIdentity?
+    
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
     
@@ -167,6 +170,7 @@ public struct RetrieveConfiguration: Sendable, Hashable {
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - informationModel: The Query/Retrieve Information Model (default: Study Root)
+    ///   - userIdentity: User identity for authentication (optional)
     public init(
         callingAETitle: AETitle,
         calledAETitle: AETitle,
@@ -174,7 +178,8 @@ public struct RetrieveConfiguration: Sendable, Hashable {
         maxPDUSize: UInt32 = defaultMaxPDUSize,
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
-        informationModel: QueryRetrieveInformationModel = .studyRoot
+        informationModel: QueryRetrieveInformationModel = .studyRoot,
+        userIdentity: UserIdentity? = nil
     ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
@@ -183,6 +188,7 @@ public struct RetrieveConfiguration: Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.informationModel = informationModel
+        self.userIdentity = userIdentity
     }
 }
 
@@ -671,7 +677,8 @@ public enum DICOMRetrieveService {
             maxPDUSize: configuration.maxPDUSize,
             implementationClassUID: configuration.implementationClassUID,
             implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout
+            timeout: configuration.timeout,
+            userIdentity: configuration.userIdentity
         )
         
         // Create association
@@ -836,7 +843,8 @@ public enum DICOMRetrieveService {
                         maxPDUSize: configuration.maxPDUSize,
                         implementationClassUID: configuration.implementationClassUID,
                         implementationVersionName: configuration.implementationVersionName,
-                        timeout: configuration.timeout
+                        timeout: configuration.timeout,
+                        userIdentity: configuration.userIdentity
                     )
                     
                     // Create association
