@@ -247,6 +247,48 @@ public struct CommandSet: Sendable, Hashable {
         setUInt16(count, for: .numberOfWarningSuboperations)
     }
     
+    // MARK: - N-ACTION/N-EVENT-REPORT Fields
+    
+    /// The requested SOP Class UID (used in N-* operations)
+    public var requestedSOPClassUID: String? {
+        getString(.requestedSOPClassUID)
+    }
+    
+    /// Sets the requested SOP Class UID
+    public mutating func setRequestedSOPClassUID(_ uid: String) {
+        setString(uid, for: .requestedSOPClassUID)
+    }
+    
+    /// The requested SOP Instance UID (used in N-* operations)
+    public var requestedSOPInstanceUID: String? {
+        getString(.requestedSOPInstanceUID)
+    }
+    
+    /// Sets the requested SOP Instance UID
+    public mutating func setRequestedSOPInstanceUID(_ uid: String) {
+        setString(uid, for: .requestedSOPInstanceUID)
+    }
+    
+    /// The action type ID (for N-ACTION)
+    public var actionTypeID: UInt16? {
+        getUInt16(.actionTypeID)
+    }
+    
+    /// Sets the action type ID
+    public mutating func setActionTypeID(_ id: UInt16) {
+        setUInt16(id, for: .actionTypeID)
+    }
+    
+    /// The event type ID (for N-EVENT-REPORT)
+    public var eventTypeID: UInt16? {
+        getUInt16(.eventTypeID)
+    }
+    
+    /// Sets the event type ID
+    public mutating func setEventTypeID(_ id: UInt16) {
+        setUInt16(id, for: .eventTypeID)
+    }
+    
     // MARK: - Encoding
     
     /// Encodes the command set to binary data
