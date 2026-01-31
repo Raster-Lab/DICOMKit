@@ -20,7 +20,7 @@
 /// - Deflated Explicit VR Little Endian Transfer Syntax support (Apple platforms only)
 /// - Compressed pixel data support (JPEG, JPEG 2000, RLE)
 /// - Uncompressed pixel data extraction and rendering
-/// - Support for MONOCHROME1, MONOCHROME2, RGB photometric interpretations
+/// - Support for MONOCHROME1, MONOCHROME2, RGB, PALETTE COLOR photometric interpretations
 /// - Multi-frame image support
 /// - Window Center/Width (VOI LUT) support
 /// - CGImage rendering for display
@@ -29,7 +29,6 @@
 ///
 /// ## Limitations (v0.5)
 /// - No networking (DICOM C-* operations)
-/// - No PALETTE COLOR photometric interpretation support
 /// - No character set conversion (UTF-8 only)
 ///
 /// ## Platform Requirements

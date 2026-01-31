@@ -235,4 +235,53 @@ extension DataSet {
         }
         return PhotometricInterpretation.parse(value)
     }
+    
+    // MARK: - Palette Color Lookup Table
+    
+    /// Returns the Palette Color Lookup Table for PALETTE COLOR images
+    ///
+    /// Extracts the Red, Green, and Blue palette lookup tables and their
+    /// descriptors from the data set. Required for PALETTE COLOR photometric
+    /// interpretation images.
+    ///
+    /// Reference: DICOM PS3.3 C.7.6.3.1.5 - Palette Color Lookup Table Module
+    ///
+    /// - Returns: PaletteColorLUT if all required components are present
+    public func paletteColorLUT() -> PaletteColorLUT? {
+        // Get the descriptors
+        guard let redDescriptorData = self[.redPaletteColorLookupTableDescriptor]?.valueData,
+              let greenDescriptorData = self[.greenPaletteColorLookupTableDescriptor]?.valueData,
+              let blueDescriptorData = self[.bluePaletteColorLookupTableDescriptor]?.valueData else {
+            return nil
+        }
+        
+        guard let redDescriptor = PaletteColorLUT.Descriptor.parse(from: redDescriptorData),
+              let greenDescriptor = PaletteColorLUT.Descriptor.parse(from: greenDescriptorData),
+              let blueDescriptor = PaletteColorLUT.Descriptor.parse(from: blueDescriptorData) else {
+            return nil
+        }
+        
+        // Get the LUT data
+        guard let redLUTData = self[.redPaletteColorLookupTableData]?.valueData,
+              let greenLUTData = self[.greenPaletteColorLookupTableData]?.valueData,
+              let blueLUTData = self[.bluePaletteColorLookupTableData]?.valueData else {
+            return nil
+        }
+        
+        // Parse the LUT data
+        guard let redLUT = PaletteColorLUT.parseLUTData(from: redLUTData, descriptor: redDescriptor),
+              let greenLUT = PaletteColorLUT.parseLUTData(from: greenLUTData, descriptor: greenDescriptor),
+              let blueLUT = PaletteColorLUT.parseLUTData(from: blueLUTData, descriptor: blueDescriptor) else {
+            return nil
+        }
+        
+        return PaletteColorLUT(
+            redDescriptor: redDescriptor,
+            greenDescriptor: greenDescriptor,
+            blueDescriptor: blueDescriptor,
+            redLUT: redLUT,
+            greenLUT: greenLUT,
+            blueLUT: blueLUT
+        )
+    }
 }

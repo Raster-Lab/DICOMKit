@@ -61,12 +61,18 @@ public enum PhotometricInterpretation: String, Sendable, Equatable, Hashable {
         !isMonochrome
     }
     
+    /// Whether this photometric interpretation uses a palette lookup table
+    public var isPaletteColor: Bool {
+        self == .paletteColor
+    }
+    
     /// The expected number of samples per pixel for this photometric interpretation
     public var expectedSamplesPerPixel: Int {
         switch self {
-        case .monochrome1, .monochrome2:
+        case .monochrome1, .monochrome2, .paletteColor:
+            // PALETTE COLOR has 1 sample per pixel (the index value)
             return 1
-        case .rgb, .paletteColor, .ybrFull, .ybrFull422, .ybrPartial422, .ybrPartial420, .ybrICT, .ybrRCT:
+        case .rgb, .ybrFull, .ybrFull422, .ybrPartial422, .ybrPartial420, .ybrICT, .ybrRCT:
             return 3
         }
     }
