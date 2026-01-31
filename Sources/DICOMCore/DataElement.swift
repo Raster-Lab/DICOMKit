@@ -136,7 +136,10 @@ public struct DataElement: Sendable {
     /// Extracts the value as a string (for string-based VRs)
     ///
     /// Returns nil if the VR doesn't support string values or if decoding fails.
-    /// Trims leading/trailing whitespace per DICOM conventions.
+    /// Trims leading/trailing whitespace and null padding per DICOM conventions.
+    ///
+    /// Reference: PS3.5 Section 6.2 - Value padding uses space (0x20) for most
+    /// string VRs and null (0x00) for UI.
     public var stringValue: String? {
         guard vr.characterRepertoire != nil else {
             return nil
@@ -146,7 +149,12 @@ public struct DataElement: Sendable {
             return nil
         }
         
-        return string.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Create a character set containing whitespace, newlines, and null characters
+        // DICOM pads UI with null (0x00) and other string VRs with space (0x20)
+        var trimmingSet = CharacterSet.whitespacesAndNewlines
+        trimmingSet.insert(charactersIn: "\0")
+        
+        return string.trimmingCharacters(in: trimmingSet)
     }
     
     /// Extracts multiple string values (for multi-valued string VRs)

@@ -8,17 +8,25 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 ## Overview
 
-DICOMKit is a modern, Swift-native library for reading and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
+DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.4)
+## Features (v0.5)
 
-- ✅ **Read-only DICOM file parsing** - Parse DICOM Part 10 files
+- ✅ **DICOM file reading and writing** (NEW in v0.5)
+  - ✅ Create new DICOM files from scratch
+  - ✅ Modify existing DICOM files
+  - ✅ File Meta Information generation
+  - ✅ UID generation utilities
+  - ✅ Data element serialization for all VRs
+  - ✅ Sequence writing support
+  - ✅ Value padding per DICOM specification
+  - ✅ Round-trip read → write → read support
 - ✅ **Multiple transfer syntax support**:
   - ✅ Explicit VR Little Endian
   - ✅ Implicit VR Little Endian
   - ✅ Explicit VR Big Endian (Retired)
   - ✅ Deflated Explicit VR Little Endian
-- ✅ **Compressed pixel data support** (v0.4):
+- ✅ **Compressed pixel data support**:
   - ✅ JPEG Baseline (Process 1) - 1.2.840.10008.1.2.4.50
   - ✅ JPEG Extended (Process 2 & 4) - 1.2.840.10008.1.2.4.51
   - ✅ JPEG Lossless (Process 14) - 1.2.840.10008.1.2.4.57
@@ -44,11 +52,11 @@ DICOMKit is a modern, Swift-native library for reading and parsing DICOM (Digita
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.4)
+## Limitations (v0.5)
 
-- ❌ **No DICOM writing** - Read-only operations
 - ❌ **No networking** - No DICOM C-* operations (C-STORE, C-FIND, etc.)
 - ❌ **No PALETTE COLOR support** - Deferred to future version
+- ❌ **No character set conversion** - UTF-8 only
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
 
@@ -68,14 +76,14 @@ Add DICOMKit to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/rasterdevapps/DICOMKit.git", from: "0.3.0")
+    .package(url: "https://github.com/rasterdevapps/DICOMKit.git", from: "0.5.0")
 ]
 ```
 
 Or add it through Xcode:
 1. File → Add Package Dependencies
 2. Enter: `https://github.com/rasterdevapps/DICOMKit`
-3. Select version 0.3.0 or later
+3. Select version 0.5.0 or later
 
 ## Quick Start
 
@@ -274,6 +282,53 @@ if let pixelData = dicomFile.pixelData() {
 #endif
 ```
 
+### DICOM File Writing (v0.5)
+
+```swift
+import DICOMKit
+import Foundation
+
+// Create a new DICOM file from scratch
+var dataSet = DataSet()
+dataSet.setString("Doe^John", for: .patientName, vr: .PN)
+dataSet.setString("12345678", for: .patientID, vr: .LO)
+dataSet.setString("20250131", for: .studyDate, vr: .DA)
+dataSet.setUInt16(512, for: .rows)
+dataSet.setUInt16(512, for: .columns)
+
+// Create a DICOM file with auto-generated File Meta Information
+let dicomFile = DICOMFile.create(
+    dataSet: dataSet,
+    sopClassUID: "1.2.840.10008.5.1.4.1.1.7",  // Secondary Capture Image Storage
+    transferSyntaxUID: "1.2.840.10008.1.2.1"    // Explicit VR Little Endian
+)
+
+// Write to data
+let fileData = try dicomFile.write()
+
+// Save to file
+try fileData.write(to: outputURL)
+
+// Modify an existing file
+var existingFile = try DICOMFile.read(from: inputData)
+var modifiedDataSet = existingFile.dataSet
+modifiedDataSet.setString("Anonymized", for: .patientName, vr: .PN)
+modifiedDataSet.remove(tag: .patientBirthDate)
+
+// Create new file with modified data set
+let modifiedFile = DICOMFile.create(dataSet: modifiedDataSet)
+let outputData = try modifiedFile.write()
+
+// Generate unique UIDs
+let generator = UIDGenerator()
+let studyUID = generator.generateStudyInstanceUID()
+let seriesUID = generator.generateSeriesInstanceUID()
+let sopInstanceUID = generator.generateSOPInstanceUID()
+
+// Or use static methods
+let newUID = UIDGenerator.generateUID()
+```
+
 ## Architecture
 
 DICOMKit is organized into three modules:
@@ -284,6 +339,8 @@ Core data types and utilities:
 - `Tag` - Data element tags (group, element pairs)
 - `DataElement` - Individual DICOM data elements
 - `SequenceItem` - Items within a DICOM sequence
+- `UIDGenerator` - UID generation for DICOM objects (NEW in v0.5)
+- `DICOMWriter` - Data element serialization (NEW in v0.5)
 - `DICOMDate` - DICOM Date (DA) value parsing
 - `DICOMTime` - DICOM Time (TM) value parsing
 - `DICOMDateTime` - DICOM DateTime (DT) value parsing
@@ -300,7 +357,7 @@ Core data types and utilities:
 - `PixelData` - Uncompressed pixel data access
 - `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
-- Little Endian and Big Endian byte reading utilities
+- Little Endian and Big Endian byte reading/writing utilities
 
 ### DICOMDictionary
 Standard DICOM dictionaries:
@@ -310,8 +367,8 @@ Standard DICOM dictionaries:
 
 ### DICOMKit
 High-level API:
-- `DICOMFile` - DICOM Part 10 file abstraction
-- `DataSet` - Collections of data elements
+- `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
+- `DataSet` - Collections of data elements (with setter methods)
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
@@ -338,4 +395,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.4 - adding compressed pixel data support including JPEG, JPEG 2000, and RLE codecs. Future versions will expand functionality including DICOM writing and networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.5 - adding DICOM file writing support including file creation, modification, UID generation, and round-trip compatibility. Future versions will add networking capabilities. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
