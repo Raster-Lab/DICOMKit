@@ -379,4 +379,243 @@ final class StorageCommitmentServiceTests: XCTestCase {
             "DICOMKIT_001"
         )
     }
+    
+    // MARK: - CommitmentNotificationListenerConfiguration Tests
+    
+    func testCommitmentNotificationListenerConfigurationCreation() throws {
+        let aeTitle = try AETitle("MY_SCU")
+        
+        let config = CommitmentNotificationListenerConfiguration(
+            aeTitle: aeTitle
+        )
+        
+        XCTAssertEqual(config.aeTitle, aeTitle)
+        XCTAssertEqual(config.port, 11113)
+        XCTAssertEqual(config.maxPDUSize, defaultMaxPDUSize)
+        XCTAssertEqual(config.implementationClassUID, CommitmentNotificationListenerConfiguration.defaultImplementationClassUID)
+        XCTAssertEqual(config.implementationVersionName, CommitmentNotificationListenerConfiguration.defaultImplementationVersionName)
+        XCTAssertEqual(config.maxConcurrentAssociations, 5)
+        XCTAssertNil(config.callingAEWhitelist)
+    }
+    
+    func testCommitmentNotificationListenerConfigurationCustomValues() throws {
+        let aeTitle = try AETitle("SCU")
+        let whitelist: Set<String> = ["PACS1", "PACS2"]
+        
+        let config = CommitmentNotificationListenerConfiguration(
+            aeTitle: aeTitle,
+            port: 12345,
+            maxPDUSize: 32768,
+            implementationClassUID: "1.2.3.4.5",
+            implementationVersionName: "TEST_V1",
+            maxConcurrentAssociations: 10,
+            callingAEWhitelist: whitelist
+        )
+        
+        XCTAssertEqual(config.port, 12345)
+        XCTAssertEqual(config.maxPDUSize, 32768)
+        XCTAssertEqual(config.implementationClassUID, "1.2.3.4.5")
+        XCTAssertEqual(config.implementationVersionName, "TEST_V1")
+        XCTAssertEqual(config.maxConcurrentAssociations, 10)
+        XCTAssertEqual(config.callingAEWhitelist, whitelist)
+    }
+    
+    func testCommitmentNotificationListenerConfigurationMinimumAssociations() throws {
+        let aeTitle = try AETitle("SCU")
+        
+        // Setting 0 should result in 1
+        let config = CommitmentNotificationListenerConfiguration(
+            aeTitle: aeTitle,
+            maxConcurrentAssociations: 0
+        )
+        
+        XCTAssertEqual(config.maxConcurrentAssociations, 1)
+    }
+    
+    func testCommitmentNotificationListenerConfigurationIsCallingAEAllowed() throws {
+        let aeTitle = try AETitle("SCU")
+        
+        // No whitelist - all allowed
+        let configNoWhitelist = CommitmentNotificationListenerConfiguration(aeTitle: aeTitle)
+        XCTAssertTrue(configNoWhitelist.isCallingAEAllowed("ANY_AE"))
+        
+        // With whitelist - only allowed if in whitelist
+        let configWithWhitelist = CommitmentNotificationListenerConfiguration(
+            aeTitle: aeTitle,
+            callingAEWhitelist: ["ALLOWED1", "ALLOWED2"]
+        )
+        XCTAssertTrue(configWithWhitelist.isCallingAEAllowed("ALLOWED1"))
+        XCTAssertTrue(configWithWhitelist.isCallingAEAllowed("ALLOWED2"))
+        XCTAssertFalse(configWithWhitelist.isCallingAEAllowed("NOT_ALLOWED"))
+    }
+    
+    func testCommitmentNotificationListenerConfigurationHashable() throws {
+        let aeTitle = try AETitle("SCU")
+        
+        let config1 = CommitmentNotificationListenerConfiguration(aeTitle: aeTitle, port: 11113)
+        let config2 = CommitmentNotificationListenerConfiguration(aeTitle: aeTitle, port: 11113)
+        let config3 = CommitmentNotificationListenerConfiguration(aeTitle: aeTitle, port: 11114)
+        
+        XCTAssertEqual(config1, config2)
+        XCTAssertNotEqual(config1, config3)
+    }
+    
+    func testCommitmentNotificationListenerConfigurationDefaultConstants() {
+        XCTAssertEqual(
+            CommitmentNotificationListenerConfiguration.defaultImplementationClassUID,
+            "1.2.826.0.1.3680043.9.7433.1.4"
+        )
+        XCTAssertEqual(
+            CommitmentNotificationListenerConfiguration.defaultImplementationVersionName,
+            "DICOMKIT_CMTLSN"
+        )
+    }
+    
+    // MARK: - CommitmentNotificationListenerEvent Tests
+    
+    func testCommitmentNotificationListenerEventStarted() {
+        let event = CommitmentNotificationListenerEvent.started(port: 11113)
+        
+        switch event {
+        case .started(let port):
+            XCTAssertEqual(port, 11113)
+        default:
+            XCTFail("Expected .started event")
+        }
+    }
+    
+    func testCommitmentNotificationListenerEventResultReceived() {
+        let result = CommitmentResult(
+            transactionUID: "1.2.3.4.5",
+            committedReferences: [SOPReference(sopClassUID: "1.2.3", sopInstanceUID: "1.2.3.4")],
+            failedReferences: [],
+            remoteAETitle: "PACS"
+        )
+        
+        let event = CommitmentNotificationListenerEvent.resultReceived(result)
+        
+        switch event {
+        case .resultReceived(let receivedResult):
+            XCTAssertEqual(receivedResult.transactionUID, "1.2.3.4.5")
+            XCTAssertTrue(receivedResult.isSuccess)
+        default:
+            XCTFail("Expected .resultReceived event")
+        }
+    }
+    
+    func testCommitmentNotificationListenerEventAssociationEstablished() {
+        let event = CommitmentNotificationListenerEvent.associationEstablished(callingAE: "PACS")
+        
+        switch event {
+        case .associationEstablished(let ae):
+            XCTAssertEqual(ae, "PACS")
+        default:
+            XCTFail("Expected .associationEstablished event")
+        }
+    }
+    
+    func testCommitmentNotificationListenerEventAssociationRejected() {
+        let event = CommitmentNotificationListenerEvent.associationRejected(
+            callingAE: "UNKNOWN",
+            reason: "AE not allowed"
+        )
+        
+        switch event {
+        case .associationRejected(let ae, let reason):
+            XCTAssertEqual(ae, "UNKNOWN")
+            XCTAssertEqual(reason, "AE not allowed")
+        default:
+            XCTFail("Expected .associationRejected event")
+        }
+    }
+    
+    #if canImport(Network)
+    // MARK: - CommitmentNotificationListener Tests
+    
+    func testCommitmentNotificationListenerCreation() async throws {
+        let config = CommitmentNotificationListenerConfiguration(
+            aeTitle: try AETitle("MY_SCU")
+        )
+        
+        let listener = CommitmentNotificationListener(configuration: config)
+        let isRunning = await listener.isRunning
+        let associationCount = await listener.activeAssociationCount
+        
+        XCTAssertFalse(isRunning)
+        XCTAssertEqual(associationCount, 0)
+    }
+    
+    func testCommitmentNotificationListenerStartStop() async throws {
+        let config = CommitmentNotificationListenerConfiguration(
+            aeTitle: try AETitle("MY_SCU"),
+            port: 19123 // Use a high port that's likely available
+        )
+        
+        let listener = CommitmentNotificationListener(configuration: config)
+        
+        // Start the listener
+        try await listener.start()
+        var isRunning = await listener.isRunning
+        XCTAssertTrue(isRunning)
+        
+        // Stop the listener
+        await listener.stop()
+        isRunning = await listener.isRunning
+        XCTAssertFalse(isRunning)
+    }
+    
+    func testCommitmentNotificationListenerCannotStartTwice() async throws {
+        let config = CommitmentNotificationListenerConfiguration(
+            aeTitle: try AETitle("MY_SCU"),
+            port: 19124
+        )
+        
+        let listener = CommitmentNotificationListener(configuration: config)
+        
+        try await listener.start()
+        
+        // Second start should fail
+        do {
+            try await listener.start()
+            XCTFail("Expected error when starting already running listener")
+        } catch let error as DICOMNetworkError {
+            switch error {
+            case .invalidState:
+                break // Expected
+            default:
+                XCTFail("Expected invalidState error, got \(error)")
+            }
+        }
+        
+        await listener.stop()
+    }
+    
+    func testCommitmentNotificationListenerWaitForResultTimeout() async throws {
+        let config = CommitmentNotificationListenerConfiguration(
+            aeTitle: try AETitle("MY_SCU"),
+            port: 19125
+        )
+        
+        let listener = CommitmentNotificationListener(configuration: config)
+        try await listener.start()
+        
+        // Wait for a result that will never come - should timeout
+        do {
+            _ = try await listener.waitForResult(
+                transactionUID: "non.existent.transaction",
+                timeout: .milliseconds(100)
+            )
+            XCTFail("Expected timeout error")
+        } catch let error as DICOMNetworkError {
+            switch error {
+            case .timeout:
+                break // Expected
+            default:
+                XCTFail("Expected timeout error, got \(error)")
+            }
+        }
+        
+        await listener.stop()
+    }
+    #endif
 }

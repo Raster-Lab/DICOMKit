@@ -745,15 +745,15 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Failure - commitment could not be processed
   - [x] Referenced SOP Sequence in results
   - [x] Failed SOP Sequence with failure reasons
-- [ ] Asynchronous commitment workflow:
+- [x] Asynchronous commitment workflow:
   - [x] Request commitment and continue processing
-  - [ ] Receive commitment notification (N-EVENT-REPORT) - requires SCP listener
-  - [ ] Timeout handling for delayed commitments
+  - [x] Receive commitment notification (N-EVENT-REPORT) - via `CommitmentNotificationListener`
+  - [x] Timeout handling for delayed commitments
   - [ ] Retry logic for failed commitment requests
 - [x] `StorageCommitmentService` API:
   - [x] `func requestCommitment(for: [SOPReference], host:port:configuration:) async throws -> CommitmentRequest`
   - [x] `func parseCommitmentResult(eventTypeID:dataSet:remoteAETitle:) throws -> CommitmentResult`
-  - [ ] `func waitForCommitment(request: CommitmentRequest, timeout: Duration) async throws -> CommitmentResult` (requires SCP listener)
+  - [x] `func waitForCommitment(request: CommitmentRequest, timeout: Duration, listener:) async throws -> CommitmentResult`
 - [x] `CommitmentResult` struct with:
   - [x] Transaction UID
   - [x] Committed instances list
@@ -770,6 +770,12 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] `DefaultCommitmentHandler` actor for default commitment handling
   - [x] `func start() async throws` and `func stop() async` for server lifecycle
   - [x] `var events: AsyncStream<StorageCommitmentServerEvent>` for event monitoring
+- [x] `CommitmentNotificationListener` for receiving commitment results:
+  - [x] `CommitmentNotificationListenerConfiguration` for listener settings
+  - [x] `CommitmentNotificationListenerEvent` enum for monitoring activity
+  - [x] `func start() async throws` and `func stop() async` for lifecycle
+  - [x] `func waitForResult(transactionUID:timeout:) async throws -> CommitmentResult`
+  - [x] Event stream for monitoring received results
 
 #### Technical Notes
 - Reference: PS3.4 Annex J - Storage Commitment Service Class
@@ -782,12 +788,13 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 #### Acceptance Criteria
 - [ ] Successfully request and receive storage commitment (requires network access)
-- [ ] Handle asynchronous commitment notifications
+- [x] Handle asynchronous commitment notifications
 - [x] Correctly parse commitment results (success/failure)
 - [x] SCP correctly processes commitment requests
-- [ ] Timeout handling works for delayed commitments
+- [x] Timeout handling works for delayed commitments
 - [x] Unit tests for N-ACTION and N-EVENT-REPORT handling
 - [x] Unit tests for Storage Commitment SCP configuration and delegate
+- [x] Unit tests for CommitmentNotificationListener configuration and events
 - [ ] Integration tests with PACS supporting storage commitment (requires network access)
 
 ---
