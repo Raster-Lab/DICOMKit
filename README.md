@@ -136,7 +136,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **Value semantics** - Immutable data structures with `struct` and `enum`
 - ✅ **Strict concurrency** - Full Swift 6 concurrency support
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
-- ✅ **Apple Silicon optimized** - Native performance on M-series chips
+- ✅ **Universal architecture** - Supports both Apple Silicon (M-series) and Intel (x86_64) processors
 
 ## Limitations (v0.7.5)
 
@@ -147,9 +147,8 @@ These features may be added in future versions. See [MILESTONES.md](MILESTONES.m
 ## Platform Requirements
 
 - **iOS 17.0+**
-- **macOS 14.0+**
+- **macOS 14.0+** (Apple Silicon and Intel)
 - **visionOS 1.0+**
-- **Apple Silicon only** (M1, M2, M3, M4, or later)
 - **Swift 6.2+**
 
 ## Installation
