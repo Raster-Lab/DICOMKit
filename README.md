@@ -15,12 +15,15 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **DICOM Networking (NEW in v0.6)**
   - ✅ C-ECHO verification service for connectivity testing
   - ✅ C-FIND query service for finding studies, series, and instances
+  - ✅ C-MOVE retrieve service for moving images to a destination AE
+  - ✅ C-GET retrieve service for downloading images directly
   - ✅ Patient Root and Study Root Query/Retrieve Information Models
   - ✅ All query levels (PATIENT, STUDY, SERIES, IMAGE)
   - ✅ Wildcard matching support (*, ?)
   - ✅ Date/Time range queries
-  - ✅ Type-safe query result data structures
-  - ✅ Async/await-based API
+  - ✅ Type-safe query and retrieve result data structures
+  - ✅ Progress reporting with sub-operation counts
+  - ✅ Async/await-based API with AsyncStream for streaming results
 - ✅ **DICOM file reading and writing** (v0.5)
   - ✅ Create new DICOM files from scratch
   - ✅ Modify existing DICOM files
@@ -64,7 +67,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 ## Limitations (v0.6)
 
-- ⚠️ **Limited networking** - C-ECHO and C-FIND implemented; C-STORE, C-MOVE, C-GET not yet available
+- ⚠️ **Limited networking** - C-ECHO, C-FIND, C-MOVE, and C-GET implemented; C-STORE not yet available
 - ❌ **No character set conversion** - UTF-8 only
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
@@ -405,6 +408,139 @@ for instance in instances {
 }
 ```
 
+### DICOM Retrieve Service - C-MOVE (v0.6)
+
+C-MOVE requests the PACS to send images to a destination AE Title. This requires a separate Storage SCP (Service Class Provider) running at the destination to receive the images.
+
+```swift
+import DICOMNetwork
+import Foundation
+
+// Move a study to a destination AE
+// Note: MY_STORAGE_SCP must be a registered AE Title in the PACS
+// and point to a running Storage SCP that can receive images
+let result = try await DICOMRetrieveService.moveStudy(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    studyInstanceUID: "1.2.3.4.5.6.7.8.9",
+    moveDestination: "MY_STORAGE_SCP",
+    onProgress: { progress in
+        print("Progress: \(progress.completed)/\(progress.total) - \(progress.failed) failed")
+    }
+)
+
+print("Move completed: \(result.isSuccess)")
+print("Total transferred: \(result.progress.completed)")
+if result.hasPartialFailures {
+    print("Some images failed: \(result.progress.failed)")
+}
+
+// Move a series
+let seriesResult = try await DICOMRetrieveService.moveSeries(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    studyInstanceUID: "1.2.3.4.5.6.7.8.9",
+    seriesInstanceUID: "1.2.3.4.5.6.7.8.9.10",
+    moveDestination: "MY_STORAGE_SCP"
+)
+
+// Move a single instance
+let instanceResult = try await DICOMRetrieveService.moveInstance(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    studyInstanceUID: "1.2.3.4.5.6.7.8.9",
+    seriesInstanceUID: "1.2.3.4.5.6.7.8.9.10",
+    sopInstanceUID: "1.2.3.4.5.6.7.8.9.10.11",
+    moveDestination: "MY_STORAGE_SCP"
+)
+```
+
+### DICOM Retrieve Service - C-GET (v0.6)
+
+C-GET downloads images directly on the same association, eliminating the need for a separate Storage SCP. This is simpler to use for client applications.
+
+```swift
+import DICOMNetwork
+import Foundation
+
+// Download a study directly using C-GET (no separate SCP needed)
+let studyStream = try await DICOMRetrieveService.getStudy(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    studyInstanceUID: "1.2.3.4.5.6.7.8.9"
+)
+
+// Process the async stream of events
+for await event in studyStream {
+    switch event {
+    case .progress(let progress):
+        print("Progress: \(progress.completed)/\(progress.total)")
+    case .instance(let sopInstanceUID, let sopClassUID, let data):
+        print("Received instance: \(sopInstanceUID)")
+        print("  SOP Class: \(sopClassUID)")
+        print("  Data size: \(data.count) bytes")
+        // Save or process the DICOM data
+    case .completed(let result):
+        print("Download completed: \(result.isSuccess)")
+        print("Total downloaded: \(result.progress.completed)")
+    case .error(let error):
+        print("Error: \(error)")
+    }
+}
+
+// Download a series using C-GET
+let seriesStream = try await DICOMRetrieveService.getSeries(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    studyInstanceUID: "1.2.3.4.5.6.7.8.9",
+    seriesInstanceUID: "1.2.3.4.5.6.7.8.9.10"
+)
+
+// Process events using the same pattern as above
+for await event in seriesStream {
+    switch event {
+    case .progress(let progress): print("Series progress: \(progress.completed)/\(progress.total)")
+    case .instance(_, _, let data): print("Received \(data.count) bytes")
+    case .completed(let result): print("Series download: \(result.isSuccess ? "success" : "failed")")
+    case .error(let error): print("Error: \(error)")
+    }
+}
+
+// Download a single instance using C-GET
+let instanceStream = try await DICOMRetrieveService.getInstance(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    studyInstanceUID: "1.2.3.4.5.6.7.8.9",
+    seriesInstanceUID: "1.2.3.4.5.6.7.8.9.10",
+    sopInstanceUID: "1.2.3.4.5.6.7.8.9.10.11"
+)
+
+// Process events using the same pattern
+for await event in instanceStream {
+    switch event {
+    case .instance(_, _, let data):
+        // Single instance downloaded
+        print("Instance data: \(data.count) bytes")
+    case .completed(let result):
+        print("Instance download: \(result.isSuccess ? "success" : "failed")")
+    default:
+        break
+    }
+}
+```
+
 ## Architecture
 
 DICOMKit is organized into three modules:
@@ -445,13 +581,16 @@ Standard DICOM dictionaries:
 DICOM network protocol implementation:
 - `DICOMVerificationService` - C-ECHO SCU for connectivity testing
 - `DICOMQueryService` - C-FIND SCU for querying PACS
+- `DICOMRetrieveService` - C-MOVE and C-GET SCU for retrieving images
 - `QueryKeys` - Fluent API for building query identifiers
+- `RetrieveKeys` - Fluent API for building retrieve identifiers
 - `QueryLevel` - PATIENT, STUDY, SERIES, IMAGE levels
 - `QueryRetrieveInformationModel` - Patient Root, Study Root models
 - `StudyResult`, `SeriesResult`, `InstanceResult` - Type-safe query results
+- `RetrieveProgress`, `RetrieveResult` - Progress and result types for retrieve operations
 - `Association` - DICOM Association management
 - `CommandSet`, `PresentationContext` - Low-level protocol types
-- `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, etc.)
+- `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
 ### DICOMKit
 High-level API:
@@ -485,4 +624,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.6 - adding DICOM networking support including C-ECHO verification and C-FIND query services. Future versions will add C-STORE, C-MOVE, and C-GET support. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.6 - adding comprehensive DICOM networking support including C-ECHO verification, C-FIND query, C-MOVE and C-GET retrieve services. Future versions will add C-STORE for sending images and advanced networking features. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
