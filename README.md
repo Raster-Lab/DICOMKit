@@ -10,9 +10,19 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7.2)
+## Features (v0.7.3)
 
-- ✅ **DICOM Batch Storage (NEW in v0.7.2)**
+- ✅ **DICOM Storage SCP (NEW in v0.7.3)**
+  - ✅ Receive DICOM files from remote sources
+  - ✅ C-STORE SCP server implementation
+  - ✅ Configurable AE whitelist/blacklist
+  - ✅ Support for common Storage SOP Classes
+  - ✅ Transfer syntax negotiation
+  - ✅ StorageDelegate protocol for custom handling
+  - ✅ Default file storage handler
+  - ✅ Real-time event streaming with AsyncStream
+  - ✅ Multiple concurrent associations support
+- ✅ **DICOM Batch Storage (v0.7.2)**
   - ✅ Efficient batch transfer of multiple DICOM files
   - ✅ Single association reuse for improved performance
   - ✅ Real-time progress reporting with AsyncStream
@@ -79,9 +89,8 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.7)
+## Limitations (v0.7.3)
 
-- ⚠️ **No Storage SCP** - Can send files (C-STORE SCU) but cannot receive files (C-STORE SCP) yet
 - ❌ **No character set conversion** - UTF-8 only
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
@@ -602,6 +611,82 @@ let dataSetResult = try await DICOMStorageService.store(
 )
 ```
 
+### DICOM Storage SCP - Receiving Files (v0.7.3)
+
+Storage SCP enables receiving DICOM files from remote sources like modalities and workstations.
+
+```swift
+import DICOMNetwork
+import Foundation
+
+// Create SCP configuration
+let config = StorageSCPConfiguration(
+    aeTitle: try AETitle("MY_SCP"),
+    port: 11112,
+    maxConcurrentAssociations: 10
+)
+
+// Create a custom storage handler
+class MyStorageHandler: StorageDelegate {
+    func shouldAcceptAssociation(from info: AssociationInfo) async -> Bool {
+        // Accept only from known AE titles
+        return ["MODALITY1", "WORKSTATION"].contains(info.callingAETitle)
+    }
+    
+    func willReceive(sopClassUID: String, sopInstanceUID: String) async -> Bool {
+        // Accept all instances
+        return true
+    }
+    
+    func didReceive(file: ReceivedFile) async throws {
+        print("Received: \(file.sopInstanceUID)")
+        print("  From: \(file.callingAETitle)")
+        print("  Size: \(file.dataSize) bytes")
+        
+        // Save to disk
+        let url = URL(fileURLWithPath: "/data/dicom/\(file.sopInstanceUID).dcm")
+        try file.dataSetData.write(to: url)
+    }
+    
+    func didFail(error: Error, for sopInstanceUID: String?) async {
+        print("Failed to receive: \(error)")
+    }
+}
+
+// Create and start server
+let handler = MyStorageHandler()
+let server = DICOMStorageServer(configuration: config, delegate: handler)
+try await server.start()
+
+// Monitor server events
+for await event in server.events {
+    switch event {
+    case .started(let port):
+        print("Server started on port \(port)")
+    case .associationEstablished(let info):
+        print("Connection from: \(info.callingAETitle)")
+    case .fileReceived(let file):
+        print("Received file: \(file.sopInstanceUID)")
+    case .associationReleased(let ae):
+        print("Connection closed: \(ae)")
+    case .error(let error):
+        print("Error: \(error)")
+    default:
+        break
+    }
+}
+
+// Stop server
+await server.stop()
+
+// Or use the default file storage handler
+let defaultHandler = DefaultStorageHandler(
+    storageDirectory: URL(fileURLWithPath: "/data/dicom")
+)
+let simpleServer = DICOMStorageServer(configuration: config, delegate: defaultHandler)
+try await simpleServer.start()
+```
+
 ### DICOM Batch Storage Service (v0.7.2)
 
 Batch storage enables efficient transfer of multiple DICOM files over a single association.
@@ -805,7 +890,7 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (v0.6, v0.7, v0.7.2)
+### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3)
 DICOM network protocol implementation:
 - `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
 - `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
@@ -814,6 +899,11 @@ DICOM network protocol implementation:
 - `DICOMQueryService` - C-FIND SCU for querying PACS
 - `DICOMRetrieveService` - C-MOVE and C-GET SCU for retrieving images
 - `DICOMStorageService` - C-STORE SCU for sending DICOM files (v0.7), batch storage (v0.7.2)
+- `DICOMStorageServer` - C-STORE SCP for receiving DICOM files (NEW in v0.7.3)
+- `StorageSCPConfiguration` - SCP configuration with AE whitelist/blacklist (NEW in v0.7.3)
+- `StorageDelegate` - Protocol for custom storage handling (NEW in v0.7.3)
+- `ReceivedFile` - Received DICOM file information (NEW in v0.7.3)
+- `StorageServerEvent` - Event types for server monitoring (NEW in v0.7.3)
 - `StoreResult` - Result type for single storage operations (NEW in v0.7)
 - `StorageConfiguration` - Configuration for storage operations (NEW in v0.7)
 - `BatchStoreResult`, `FileStoreResult` - Result types for batch operations (NEW in v0.7.2)
@@ -861,4 +951,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.7.2 - adding batch storage operations for efficiently sending multiple DICOM files to remote destinations over a single association. The library now provides a complete DICOM networking service stack (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE). Future versions will add C-STORE SCP for receiving images and storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.7.3 - adding Storage SCP for receiving DICOM files from remote sources. The library now provides a complete bidirectional DICOM networking stack supporting both sending (C-STORE SCU) and receiving (C-STORE SCP) DICOM files. Future versions will add storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
