@@ -355,8 +355,9 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
     private func encodeToJPEG2000(_ image: CGImage, configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) throws -> Data {
         let mutableData = NSMutableData()
         
-        // Use JP2 (JPEG 2000) format - UTType.jpeg2000 for type safety
-        let jp2UTType = UTType.jpeg2000.identifier as CFString
+        // Use JP2 (JPEG 2000) format - use "public.jp2" identifier directly
+        // Note: UTType.jpeg2000 doesn't exist; we use the raw identifier string
+        let jp2UTType = "public.jp2" as CFString
         guard let destination = CGImageDestinationCreateWithData(mutableData, jp2UTType, 1, nil) else {
             throw DICOMError.parsingFailed("Failed to create JPEG 2000 image destination")
         }
