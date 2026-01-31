@@ -708,3 +708,267 @@ public struct CCancelRequest: DIMSERequest, Hashable {
         self.presentationContextID = presentationContextID
     }
 }
+
+// MARK: - N-ACTION Messages
+
+/// N-ACTION Request
+///
+/// Request to perform an action on a managed SOP Instance.
+/// Used for Storage Commitment and other normalized services.
+///
+/// Reference: PS3.7 Section 10.1 - N-ACTION Service
+public struct NActionRequest: DIMSERequest, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageID: UInt16 {
+        commandSet.messageID ?? 0
+    }
+    
+    public var requestedSOPClassUID: String {
+        commandSet.requestedSOPClassUID ?? ""
+    }
+    
+    public var requestedSOPInstanceUID: String {
+        commandSet.requestedSOPInstanceUID ?? ""
+    }
+    
+    public var actionTypeID: UInt16 {
+        commandSet.actionTypeID ?? 0
+    }
+    
+    /// Creates an N-ACTION request
+    ///
+    /// - Parameters:
+    ///   - messageID: The message ID (unique within association)
+    ///   - requestedSOPClassUID: The SOP Class UID of the managed instance
+    ///   - requestedSOPInstanceUID: The SOP Instance UID of the managed instance
+    ///   - actionTypeID: The type of action to perform
+    ///   - hasDataSet: Whether a data set follows (default: true)
+    ///   - presentationContextID: The negotiated presentation context ID
+    public init(
+        messageID: UInt16,
+        requestedSOPClassUID: String,
+        requestedSOPInstanceUID: String,
+        actionTypeID: UInt16,
+        hasDataSet: Bool = true,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nActionRequest)
+        cmd.setMessageID(messageID)
+        cmd.setRequestedSOPClassUID(requestedSOPClassUID)
+        cmd.setRequestedSOPInstanceUID(requestedSOPInstanceUID)
+        cmd.setActionTypeID(actionTypeID)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-ACTION request from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+/// N-ACTION Response
+///
+/// Response to an N-ACTION request.
+///
+/// Reference: PS3.7 Section 10.1 - N-ACTION Service
+public struct NActionResponse: DIMSEResponse, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageIDBeingRespondedTo: UInt16 {
+        commandSet.messageIDBeingRespondedTo ?? 0
+    }
+    
+    public var status: DIMSEStatus {
+        commandSet.status ?? .unknown(0xFFFF)
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    public var affectedSOPInstanceUID: String {
+        commandSet.affectedSOPInstanceUID ?? ""
+    }
+    
+    public var actionTypeID: UInt16? {
+        commandSet.actionTypeID
+    }
+    
+    /// Creates an N-ACTION response
+    ///
+    /// - Parameters:
+    ///   - messageIDBeingRespondedTo: The message ID of the request
+    ///   - affectedSOPClassUID: The SOP Class UID
+    ///   - affectedSOPInstanceUID: The SOP Instance UID
+    ///   - actionTypeID: The action type ID (optional in response)
+    ///   - status: The response status (default: success)
+    ///   - hasDataSet: Whether a data set follows (default: false)
+    ///   - presentationContextID: The presentation context ID
+    public init(
+        messageIDBeingRespondedTo: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String,
+        actionTypeID: UInt16? = nil,
+        status: DIMSEStatus = .success,
+        hasDataSet: Bool = false,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nActionResponse)
+        cmd.setMessageIDBeingRespondedTo(messageIDBeingRespondedTo)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        if let actionTypeID = actionTypeID {
+            cmd.setActionTypeID(actionTypeID)
+        }
+        cmd.setStatus(status)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-ACTION response from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+// MARK: - N-EVENT-REPORT Messages
+
+/// N-EVENT-REPORT Request
+///
+/// Request to report an event from a managed SOP Instance.
+/// Used for Storage Commitment notifications and other event-based services.
+///
+/// Reference: PS3.7 Section 10.3 - N-EVENT-REPORT Service
+public struct NEventReportRequest: DIMSERequest, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageID: UInt16 {
+        commandSet.messageID ?? 0
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    public var affectedSOPInstanceUID: String {
+        commandSet.affectedSOPInstanceUID ?? ""
+    }
+    
+    public var eventTypeID: UInt16 {
+        commandSet.eventTypeID ?? 0
+    }
+    
+    /// Creates an N-EVENT-REPORT request
+    ///
+    /// - Parameters:
+    ///   - messageID: The message ID (unique within association)
+    ///   - affectedSOPClassUID: The SOP Class UID of the managed instance
+    ///   - affectedSOPInstanceUID: The SOP Instance UID of the managed instance
+    ///   - eventTypeID: The type of event being reported
+    ///   - hasDataSet: Whether a data set follows (default: true)
+    ///   - presentationContextID: The negotiated presentation context ID
+    public init(
+        messageID: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String,
+        eventTypeID: UInt16,
+        hasDataSet: Bool = true,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nEventReportRequest)
+        cmd.setMessageID(messageID)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        cmd.setEventTypeID(eventTypeID)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-EVENT-REPORT request from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+/// N-EVENT-REPORT Response
+///
+/// Response to an N-EVENT-REPORT request.
+///
+/// Reference: PS3.7 Section 10.3 - N-EVENT-REPORT Service
+public struct NEventReportResponse: DIMSEResponse, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageIDBeingRespondedTo: UInt16 {
+        commandSet.messageIDBeingRespondedTo ?? 0
+    }
+    
+    public var status: DIMSEStatus {
+        commandSet.status ?? .unknown(0xFFFF)
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    public var affectedSOPInstanceUID: String {
+        commandSet.affectedSOPInstanceUID ?? ""
+    }
+    
+    public var eventTypeID: UInt16? {
+        commandSet.eventTypeID
+    }
+    
+    /// Creates an N-EVENT-REPORT response
+    ///
+    /// - Parameters:
+    ///   - messageIDBeingRespondedTo: The message ID of the request
+    ///   - affectedSOPClassUID: The SOP Class UID
+    ///   - affectedSOPInstanceUID: The SOP Instance UID
+    ///   - eventTypeID: The event type ID (optional in response)
+    ///   - status: The response status (default: success)
+    ///   - hasDataSet: Whether a data set follows (default: false)
+    ///   - presentationContextID: The presentation context ID
+    public init(
+        messageIDBeingRespondedTo: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String,
+        eventTypeID: UInt16? = nil,
+        status: DIMSEStatus = .success,
+        hasDataSet: Bool = false,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nEventReportResponse)
+        cmd.setMessageIDBeingRespondedTo(messageIDBeingRespondedTo)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        if let eventTypeID = eventTypeID {
+            cmd.setEventTypeID(eventTypeID)
+        }
+        cmd.setStatus(status)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-EVENT-REPORT response from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}

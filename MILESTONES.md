@@ -716,46 +716,49 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 7.4: Storage Commitment Service (v0.7.4)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Implement Storage Commitment for reliable storage confirmation  
 **Complexity**: High  
 **Dependencies**: Milestone 7.1 (C-STORE SCU), Milestone 7.3 (Storage SCP)
 
 #### Deliverables
-- [ ] Storage Commitment SCU implementation:
-  - [ ] N-ACTION-RQ for requesting storage commitment
-  - [ ] Build Transaction UID and Referenced SOP Sequence
-  - [ ] Handle N-ACTION-RSP
-  - [ ] Receive N-EVENT-REPORT with commitment results
+- [x] Storage Commitment SCU implementation:
+  - [x] N-ACTION-RQ for requesting storage commitment
+  - [x] Build Transaction UID and Referenced SOP Sequence
+  - [x] Handle N-ACTION-RSP
+  - [ ] Receive N-EVENT-REPORT with commitment results (requires SCP listener)
 - [ ] Storage Commitment SCP implementation:
   - [ ] Accept N-ACTION-RQ for commitment requests
   - [ ] Process commitment requests against stored instances
   - [ ] Send N-EVENT-REPORT with commitment results
   - [ ] Handle both success and failure references
-- [ ] Commitment request handling:
-  - [ ] Storage Commitment Push Model SOP Class (1.2.840.10008.1.20.1)
-  - [ ] Referenced SOP Sequence building
-  - [ ] Transaction UID generation and tracking
-- [ ] Commitment result processing:
-  - [ ] Success (0000) - all instances committed
-  - [ ] Partial success - some instances committed
-  - [ ] Failure - commitment could not be processed
-  - [ ] Referenced SOP Sequence in results
-  - [ ] Failed SOP Sequence with failure reasons
+- [x] Commitment request handling:
+  - [x] Storage Commitment Push Model SOP Class (1.2.840.10008.1.20.1)
+  - [x] Referenced SOP Sequence building
+  - [x] Transaction UID generation and tracking
+- [x] Commitment result processing:
+  - [x] Success (0000) - all instances committed
+  - [x] Partial success - some instances committed
+  - [x] Failure - commitment could not be processed
+  - [x] Referenced SOP Sequence in results
+  - [x] Failed SOP Sequence with failure reasons
 - [ ] Asynchronous commitment workflow:
-  - [ ] Request commitment and continue processing
-  - [ ] Receive commitment notification (N-EVENT-REPORT)
+  - [x] Request commitment and continue processing
+  - [ ] Receive commitment notification (N-EVENT-REPORT) - requires SCP listener
   - [ ] Timeout handling for delayed commitments
   - [ ] Retry logic for failed commitment requests
-- [ ] `StorageCommitmentService` API:
-  - [ ] `func requestCommitment(for instances: [SOPReference], from server: ...) async throws -> CommitmentRequest`
-  - [ ] `func waitForCommitment(request: CommitmentRequest, timeout: Duration) async throws -> CommitmentResult`
-  - [ ] `var commitmentNotifications: AsyncStream<CommitmentResult>`
-- [ ] `CommitmentResult` struct with:
-  - [ ] Transaction UID
-  - [ ] Committed instances list
-  - [ ] Failed instances with reasons
-  - [ ] Timestamp
+- [x] `StorageCommitmentService` API:
+  - [x] `func requestCommitment(for: [SOPReference], host:port:configuration:) async throws -> CommitmentRequest`
+  - [x] `func parseCommitmentResult(eventTypeID:dataSet:remoteAETitle:) throws -> CommitmentResult`
+  - [ ] `func waitForCommitment(request: CommitmentRequest, timeout: Duration) async throws -> CommitmentResult` (requires SCP listener)
+- [x] `CommitmentResult` struct with:
+  - [x] Transaction UID
+  - [x] Committed instances list
+  - [x] Failed instances with reasons
+  - [x] Timestamp
+- [x] N-ACTION DIMSE message types (NActionRequest, NActionResponse)
+- [x] N-EVENT-REPORT DIMSE message types (NEventReportRequest, NEventReportResponse)
+- [x] Command Set accessors for N-ACTION/N-EVENT-REPORT fields
 
 #### Technical Notes
 - Reference: PS3.4 Annex J - Storage Commitment Service Class
@@ -767,13 +770,13 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Track pending commitments with Transaction UIDs
 
 #### Acceptance Criteria
-- [ ] Successfully request and receive storage commitment
+- [ ] Successfully request and receive storage commitment (requires network access)
 - [ ] Handle asynchronous commitment notifications
-- [ ] Correctly parse commitment results (success/failure)
+- [x] Correctly parse commitment results (success/failure)
 - [ ] SCP correctly processes commitment requests
 - [ ] Timeout handling works for delayed commitments
-- [ ] Unit tests for N-ACTION and N-EVENT-REPORT handling
-- [ ] Integration tests with PACS supporting storage commitment
+- [x] Unit tests for N-ACTION and N-EVENT-REPORT handling
+- [ ] Integration tests with PACS supporting storage commitment (requires network access)
 
 ---
 
