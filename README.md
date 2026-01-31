@@ -12,6 +12,14 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 ## Features (v0.7.5)
 
+- ✅ **Intelligent Retry Logic (NEW in v0.7.5)**
+  - ✅ Configurable retry policies with preset configurations
+  - ✅ Exponential backoff with jitter to prevent thundering herd
+  - ✅ Per-SOP Class retry policy configuration
+  - ✅ Integration with error categories (transient, permanent, timeout, resource)
+  - ✅ Integration with circuit breaker pattern
+  - ✅ Retry executor with progress callbacks
+  - ✅ Multiple retry strategies (fixed, exponential, linear)
 - ✅ **Audit Logging (NEW in v0.7.5)**
   - ✅ IHE ATNA-aligned audit event types for healthcare compliance
   - ✅ Comprehensive audit log entries with transfer metadata

@@ -807,7 +807,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 7.5: Advanced Storage Features (v0.7.5)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Production-ready storage with advanced features and reliability  
 **Complexity**: High  
 **Dependencies**: Milestone 7.2, Milestone 7.4
@@ -818,11 +818,18 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] Configurable preferred transfer syntaxes
   - [ ] Compression/decompression during transfer
   - [ ] Maintain pixel data fidelity flags
-- [ ] Intelligent Retry Logic:
-  - [ ] Configurable retry policies per SOP Class
-  - [ ] Exponential backoff with jitter
-  - [ ] Separate retry queues for transient vs. permanent failures
-  - [ ] Dead letter queue for undeliverable files
+- [x] Intelligent Retry Logic:
+  - [x] Configurable retry policies per SOP Class
+  - [x] Exponential backoff with jitter
+  - [x] Separate handling of transient vs. permanent failures
+  - [x] `RetryPolicy` struct with configurable parameters
+  - [x] `RetryStrategy` enum (fixed, exponential, exponential with jitter, linear)
+  - [x] `RetryExecutor` actor for executing operations with automatic retries
+  - [x] `RetryContext` for monitoring retry progress
+  - [x] `RetryResult` for detailed retry operation results
+  - [x] `SOPClassRetryConfiguration` for per-SOP Class policies
+  - [x] Integration with existing `ErrorCategory` and `CircuitBreaker`
+  - [ ] Dead letter queue for undeliverable files (deferred to store-and-forward)
 - [ ] Store-and-Forward:
   - [ ] Queue files for later delivery
   - [ ] Persistent queue (survives app restart)
