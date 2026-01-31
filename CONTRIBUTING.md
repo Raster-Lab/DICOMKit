@@ -157,12 +157,11 @@ More detailed explanation if needed. Wrap at 72 characters.
 - Documentation improvements
 - Test coverage improvements
 
-### Future Enhancements (post-v0.1)
-- Full DICOM parser implementation (currently placeholder)
-- Support for additional transfer syntaxes
-- Pixel data decoding
-- DICOM writing
-- Networking (DICOM C-* operations)
+### Future Enhancements
+- DICOMweb services (WADO-RS, QIDO-RS, STOW-RS)
+- Structured Reporting (SR documents)
+- Presentation State support
+- Extended character set support (beyond UTF-8)
 
 ### Not Accepting
 - Features outside DICOM 2025e specification
