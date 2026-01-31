@@ -317,7 +317,7 @@ final class DICOMClientCreationTests: XCTestCase {
         XCTAssertTrue(description.contains("11112"))
         XCTAssertTrue(description.contains("MY_SCU"))
         XCTAssertTrue(description.contains("PACS"))
-        XCTAssertTrue(description.contains("maxAttempts: 3"))
+        XCTAssertTrue(description.contains("3 attempts"))
     }
 }
 
