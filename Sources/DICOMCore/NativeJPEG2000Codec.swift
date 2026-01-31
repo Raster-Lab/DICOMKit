@@ -3,19 +3,31 @@ import Foundation
 #if canImport(ImageIO)
 import ImageIO
 import CoreGraphics
+import UniformTypeIdentifiers
 
 /// Native JPEG 2000 codec using Apple's ImageIO framework
 ///
 /// Supports JPEG 2000 lossless and lossy transfer syntaxes.
+/// Provides both decoding and encoding capabilities.
 /// Reference: DICOM PS3.5 Section A.4.4
-public struct NativeJPEG2000Codec: ImageCodec, Sendable {
-    /// Supported JPEG 2000 transfer syntaxes
+public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
+    /// Supported JPEG 2000 transfer syntaxes for decoding
     public static let supportedTransferSyntaxes: [String] = [
         TransferSyntax.jpeg2000Lossless.uid,  // 1.2.840.10008.1.2.4.90
         TransferSyntax.jpeg2000.uid           // 1.2.840.10008.1.2.4.91
     ]
     
+    /// Supported JPEG 2000 transfer syntaxes for encoding
+    ///
+    /// ImageIO supports both lossless and lossy JPEG 2000 encoding.
+    public static let supportedEncodingTransferSyntaxes: [String] = [
+        TransferSyntax.jpeg2000Lossless.uid,  // 1.2.840.10008.1.2.4.90
+        TransferSyntax.jpeg2000.uid           // 1.2.840.10008.1.2.4.91
+    ]
+    
     public init() {}
+    
+    // MARK: - Decoding
     
     /// Decodes a JPEG 2000-compressed frame
     /// - Parameters:
@@ -47,11 +59,45 @@ public struct NativeJPEG2000Codec: ImageCodec, Sendable {
         return try extractPixelData(from: cgImage, descriptor: descriptor)
     }
     
+    // MARK: - Encoding
+    
+    /// Whether this encoder supports the given configuration
+    public func canEncode(with configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) -> Bool {
+        // JPEG 2000 supports various bit depths
+        guard descriptor.bitsAllocated == 8 || descriptor.bitsAllocated == 16 else {
+            return false
+        }
+        
+        // Support grayscale and RGB
+        guard descriptor.samplesPerPixel == 1 || descriptor.samplesPerPixel == 3 else {
+            return false
+        }
+        
+        return true
+    }
+    
+    /// Encodes a single frame to JPEG 2000 format
+    /// - Parameters:
+    ///   - frameData: Uncompressed frame data
+    ///   - descriptor: Pixel data descriptor
+    ///   - frameIndex: Zero-based frame index
+    ///   - configuration: Compression configuration
+    /// - Returns: JPEG 2000 compressed frame data
+    /// - Throws: DICOMError if encoding fails
+    public func encodeFrame(_ frameData: Data, descriptor: PixelDataDescriptor, frameIndex: Int, configuration: CompressionConfiguration) throws -> Data {
+        // Create CGImage from raw pixel data
+        let cgImage = try createCGImage(from: frameData, descriptor: descriptor)
+        
+        // Encode to JPEG 2000
+        return try encodeToJPEG2000(cgImage, configuration: configuration, descriptor: descriptor)
+    }
+    
+    // MARK: - Private Decoding Helpers
+    
     /// Extracts raw pixel data from a CGImage
     private func extractPixelData(from image: CGImage, descriptor: PixelDataDescriptor) throws -> Data {
         let width = image.width
         let height = image.height
-        let bytesPerSample = descriptor.bytesPerSample
         let samplesPerPixel = descriptor.samplesPerPixel
         
         // Validate dimensions
@@ -186,6 +232,154 @@ public struct NativeJPEG2000Codec: ImageCodec, Sendable {
         }
         
         return rgbData
+    }
+    
+    // MARK: - Private Encoding Helpers
+    
+    /// Creates a CGImage from raw pixel data
+    private func createCGImage(from data: Data, descriptor: PixelDataDescriptor) throws -> CGImage {
+        let width = descriptor.columns
+        let height = descriptor.rows
+        let bytesPerSample = descriptor.bytesPerSample
+        let samplesPerPixel = descriptor.samplesPerPixel
+        let bitsPerComponent = bytesPerSample * 8
+        
+        let colorSpace: CGColorSpace
+        let bitmapInfo: CGBitmapInfo
+        let bytesPerRow: Int
+        var processedData = data
+        
+        if samplesPerPixel == 1 {
+            // Grayscale
+            colorSpace = CGColorSpaceCreateDeviceGray()
+            if bytesPerSample == 1 {
+                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+            } else {
+                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue | CGBitmapInfo.byteOrder16Little.rawValue)
+            }
+            bytesPerRow = width * bytesPerSample
+        } else if samplesPerPixel == 3 {
+            // RGB - need to convert to RGBA for CGImage
+            colorSpace = CGColorSpaceCreateDeviceRGB()
+            if bytesPerSample == 1 {
+                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue)
+            } else {
+                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue | CGBitmapInfo.byteOrder16Little.rawValue)
+            }
+            bytesPerRow = width * 4 * bytesPerSample
+            
+            // Convert RGB to RGBA by adding alpha channel
+            processedData = try addAlphaChannel(to: data, descriptor: descriptor)
+        } else {
+            throw DICOMError.parsingFailed("Unsupported samples per pixel for encoding: \(samplesPerPixel)")
+        }
+        
+        // Create CGImage from data
+        guard let dataProvider = CGDataProvider(data: processedData as CFData) else {
+            throw DICOMError.parsingFailed("Failed to create data provider for encoding")
+        }
+        
+        let bitsPerPixel: Int
+        if samplesPerPixel == 1 {
+            bitsPerPixel = bitsPerComponent
+        } else {
+            bitsPerPixel = 4 * bitsPerComponent // RGBA
+        }
+        
+        guard let cgImage = CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: bitsPerComponent,
+            bitsPerPixel: bitsPerPixel,
+            bytesPerRow: bytesPerRow,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo,
+            provider: dataProvider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ) else {
+            throw DICOMError.parsingFailed("Failed to create CGImage for encoding")
+        }
+        
+        return cgImage
+    }
+    
+    /// Adds alpha channel to RGB data to create RGBA data
+    private func addAlphaChannel(to rgbData: Data, descriptor: PixelDataDescriptor) throws -> Data {
+        let width = descriptor.columns
+        let height = descriptor.rows
+        let bytesPerSample = descriptor.bytesPerSample
+        let rgbBytesPerPixel = 3 * bytesPerSample
+        let rgbaBytesPerPixel = 4 * bytesPerSample
+        
+        var rgbaData = Data(capacity: width * height * rgbaBytesPerPixel)
+        
+        if bytesPerSample == 1 {
+            for y in 0..<height {
+                for x in 0..<width {
+                    let rgbOffset = (y * width + x) * rgbBytesPerPixel
+                    guard rgbOffset + 2 < rgbData.count else {
+                        throw DICOMError.parsingFailed("RGB data too short for pixel at (\(x), \(y))")
+                    }
+                    rgbaData.append(rgbData[rgbOffset])     // R
+                    rgbaData.append(rgbData[rgbOffset + 1]) // G
+                    rgbaData.append(rgbData[rgbOffset + 2]) // B
+                    rgbaData.append(0xFF)                    // A (fully opaque)
+                }
+            }
+        } else {
+            // 16-bit samples
+            for y in 0..<height {
+                for x in 0..<width {
+                    let rgbOffset = (y * width + x) * rgbBytesPerPixel
+                    guard rgbOffset + 5 < rgbData.count else {
+                        throw DICOMError.parsingFailed("RGB data too short for pixel at (\(x), \(y))")
+                    }
+                    rgbaData.append(rgbData[rgbOffset])     // R low
+                    rgbaData.append(rgbData[rgbOffset + 1]) // R high
+                    rgbaData.append(rgbData[rgbOffset + 2]) // G low
+                    rgbaData.append(rgbData[rgbOffset + 3]) // G high
+                    rgbaData.append(rgbData[rgbOffset + 4]) // B low
+                    rgbaData.append(rgbData[rgbOffset + 5]) // B high
+                    rgbaData.append(0xFF)                    // A low
+                    rgbaData.append(0xFF)                    // A high
+                }
+            }
+        }
+        
+        return rgbaData
+    }
+    
+    /// Encodes a CGImage to JPEG 2000 data
+    private func encodeToJPEG2000(_ image: CGImage, configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) throws -> Data {
+        let mutableData = NSMutableData()
+        
+        // Use JP2 (JPEG 2000) format - UTType.jpeg2000 for type safety
+        let jp2UTType = UTType.jpeg2000.identifier as CFString
+        guard let destination = CGImageDestinationCreateWithData(mutableData, jp2UTType, 1, nil) else {
+            throw DICOMError.parsingFailed("Failed to create JPEG 2000 image destination")
+        }
+        
+        // Set compression options
+        var options: [CFString: Any] = [:]
+        
+        // For JPEG 2000, use lossless if preferLossless is set
+        if configuration.preferLossless || configuration.quality.isLossless {
+            // Lossless JPEG 2000 - quality of 1.0 means lossless
+            options[kCGImageDestinationLossyCompressionQuality] = 1.0
+        } else {
+            // Lossy compression with specified quality
+            options[kCGImageDestinationLossyCompressionQuality] = configuration.quality.value
+        }
+        
+        CGImageDestinationAddImage(destination, image, options as CFDictionary)
+        
+        guard CGImageDestinationFinalize(destination) else {
+            throw DICOMError.parsingFailed("Failed to finalize JPEG 2000 encoding")
+        }
+        
+        return mutableData as Data
     }
 }
 

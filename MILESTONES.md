@@ -835,10 +835,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Persistent queue (survives app restart)
   - [x] Automatic retry on connectivity restoration
   - [x] Queue management API (pause, resume, clear)
-- [ ] Compression Optimization:
-  - [ ] On-the-fly compression for network efficiency
-  - [ ] Configurable compression level vs. speed tradeoff
-  - [ ] Support for JPEG, JPEG 2000, JPEG-LS compression
+- [x] Compression Optimization:
+  - [x] On-the-fly compression for network efficiency
+  - [x] Configurable compression level vs. speed tradeoff
+  - [x] Support for JPEG, JPEG 2000 compression (JPEG-LS not supported by ImageIO)
 - [ ] Bandwidth Management:
   - [ ] Rate limiting per connection
   - [ ] Bandwidth scheduling (e.g., off-peak transfers)

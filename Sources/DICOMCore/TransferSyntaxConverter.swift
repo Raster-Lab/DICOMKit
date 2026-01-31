@@ -161,8 +161,8 @@ extension TranscodingError: CustomStringConvertible {
 /// Transfer Syntax Converter
 ///
 /// Converts DICOM data sets between different transfer syntaxes.
-/// Supports conversion between uncompressed syntaxes (Implicit VR, Explicit VR)
-/// and handles byte order conversion.
+/// Supports conversion between uncompressed syntaxes (Implicit VR, Explicit VR),
+/// decompression (compressed to uncompressed), and compression (uncompressed to compressed).
 ///
 /// Reference: DICOM PS3.5 Section 10 - Transfer Syntax Specification
 public struct TransferSyntaxConverter: Sendable {
@@ -170,10 +170,19 @@ public struct TransferSyntaxConverter: Sendable {
     /// Configuration for the converter
     public let configuration: TranscodingConfiguration
     
+    /// Compression configuration for encoding operations
+    public let compressionConfiguration: CompressionConfiguration
+    
     /// Creates a transfer syntax converter with the specified configuration
-    /// - Parameter configuration: Transcoding configuration (default: `.default`)
-    public init(configuration: TranscodingConfiguration = .default) {
+    /// - Parameters:
+    ///   - configuration: Transcoding configuration (default: `.default`)
+    ///   - compressionConfiguration: Compression configuration for encoding (default: `.default`)
+    public init(
+        configuration: TranscodingConfiguration = .default,
+        compressionConfiguration: CompressionConfiguration = .default
+    ) {
         self.configuration = configuration
+        self.compressionConfiguration = compressionConfiguration
     }
     
     // MARK: - Public API
@@ -208,6 +217,11 @@ public struct TransferSyntaxConverter: Sendable {
         // Decompression: compressed to uncompressed
         if source.isEncapsulated && targetIsUncompressed {
             return CodecRegistry.shared.hasCodec(for: source.uid)
+        }
+        
+        // Compression: uncompressed to compressed
+        if sourceIsUncompressed && target.isEncapsulated {
+            return CodecRegistry.shared.hasEncoder(for: target.uid)
         }
         
         return false
@@ -298,6 +312,14 @@ public struct TransferSyntaxConverter: Sendable {
         // Perform the transcoding
         let transcodedData: Data
         
+        // Determine transcoding direction
+        let supportedUncompressed = [
+            TransferSyntax.implicitVRLittleEndian.uid,
+            TransferSyntax.explicitVRLittleEndian.uid,
+            TransferSyntax.explicitVRBigEndian.uid
+        ]
+        let sourceIsUncompressed = supportedUncompressed.contains(sourceSyntax.uid) && !sourceSyntax.isEncapsulated
+        
         if !sourceSyntax.isEncapsulated && !targetSyntax.isEncapsulated {
             // Uncompressed to uncompressed
             transcodedData = try transcodeUncompressed(
@@ -308,6 +330,13 @@ public struct TransferSyntaxConverter: Sendable {
         } else if sourceSyntax.isEncapsulated && !targetSyntax.isEncapsulated {
             // Compressed to uncompressed (decompression)
             transcodedData = try transcodeFromEncapsulated(
+                dataSetData: dataSetData,
+                from: sourceSyntax,
+                to: targetSyntax
+            )
+        } else if sourceIsUncompressed && targetSyntax.isEncapsulated {
+            // Uncompressed to compressed (compression)
+            transcodedData = try transcodeToEncapsulated(
                 dataSetData: dataSetData,
                 from: sourceSyntax,
                 to: targetSyntax
@@ -407,6 +436,162 @@ public struct TransferSyntaxConverter: Sendable {
         }
         
         return outputData
+    }
+    
+    /// Transcodes from uncompressed to encapsulated (compressed)
+    private func transcodeToEncapsulated(
+        dataSetData: Data,
+        from source: TransferSyntax,
+        to target: TransferSyntax
+    ) throws -> Data {
+        // Get encoder for target syntax
+        guard let encoder = CodecRegistry.shared.encoder(for: target.uid) else {
+            throw TranscodingError.unsupportedTargetSyntax(target.uid)
+        }
+        
+        // Parse elements from source
+        let elements = try parseDataElements(from: dataSetData, transferSyntax: source)
+        
+        // Find pixel data element and compress if present
+        var outputElements: [DataElement] = []
+        
+        for element in elements {
+            if element.tag == .pixelData && !element.isEncapsulated {
+                // Get pixel data descriptor from surrounding elements
+                let descriptor = try extractPixelDataDescriptor(from: elements)
+                
+                // Validate encoder can handle this configuration
+                guard encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) else {
+                    throw TranscodingError.encodingFailed("Encoder does not support the given pixel data configuration")
+                }
+                
+                // Compress the pixel data
+                let compressedFrames = try encoder.encode(
+                    element.valueData,
+                    descriptor: descriptor,
+                    configuration: compressionConfiguration
+                )
+                
+                // Create new encapsulated pixel data element
+                let newElement = DataElement(
+                    tag: element.tag,
+                    vr: .OB, // Encapsulated pixel data is always OB
+                    length: 0xFFFFFFFF, // Undefined length for encapsulated data
+                    valueData: Data(),
+                    encapsulatedFragments: compressedFrames,
+                    encapsulatedOffsetTable: buildOffsetTable(for: compressedFrames)
+                )
+                outputElements.append(newElement)
+            } else {
+                outputElements.append(element)
+            }
+        }
+        
+        // Write elements in target transfer syntax (Explicit VR Little Endian for encapsulated)
+        let writer = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+        var outputData = Data()
+        
+        for element in outputElements {
+            if element.tag == .pixelData && element.isEncapsulated {
+                // Write encapsulated pixel data specially
+                outputData.append(serializeEncapsulatedPixelData(element))
+            } else {
+                outputData.append(writer.serializeElement(element))
+            }
+        }
+        
+        return outputData
+    }
+    
+    /// Builds the Basic Offset Table for encapsulated pixel data
+    private func buildOffsetTable(for frames: [Data]) -> [UInt32] {
+        guard frames.count > 1 else {
+            // Single frame - offset table can be empty per DICOM spec
+            return []
+        }
+        
+        var offsets: [UInt32] = []
+        var currentOffset: UInt32 = 0
+        
+        for frame in frames {
+            offsets.append(currentOffset)
+            // Each fragment is preceded by item tag (4 bytes) and length (4 bytes)
+            currentOffset += 8 + UInt32(frame.count)
+            // Pad to even length if needed
+            if frame.count % 2 != 0 {
+                currentOffset += 1
+            }
+        }
+        
+        return offsets
+    }
+    
+    /// Builds the complete encapsulated pixel data bytes
+    private func buildEncapsulatedPixelData(frames: [Data]) -> Data {
+        var data = Data()
+        
+        // Build offset table
+        let offsets = buildOffsetTable(for: frames)
+        
+        // Write offset table item (Item tag + length + offset values)
+        // Item tag: FFFE,E000
+        data.append(contentsOf: [0xFE, 0xFF, 0x00, 0xE0])
+        
+        let offsetTableLength = UInt32(offsets.count * 4)
+        data.append(contentsOf: withUnsafeBytes(of: offsetTableLength.littleEndian) { Array($0) })
+        
+        for offset in offsets {
+            data.append(contentsOf: withUnsafeBytes(of: offset.littleEndian) { Array($0) })
+        }
+        
+        // Write each frame as a fragment
+        for frame in frames {
+            // Item tag: FFFE,E000
+            data.append(contentsOf: [0xFE, 0xFF, 0x00, 0xE0])
+            
+            // Item length
+            var frameLength = UInt32(frame.count)
+            // Pad to even length
+            if frame.count % 2 != 0 {
+                frameLength += 1
+            }
+            data.append(contentsOf: withUnsafeBytes(of: frameLength.littleEndian) { Array($0) })
+            
+            // Frame data
+            data.append(frame)
+            
+            // Add padding byte if needed
+            if frame.count % 2 != 0 {
+                data.append(0x00)
+            }
+        }
+        
+        // Sequence Delimitation Item: FFFE,E0DD with zero length
+        data.append(contentsOf: [0xFE, 0xFF, 0xDD, 0xE0])
+        data.append(contentsOf: [0x00, 0x00, 0x00, 0x00])
+        
+        return data
+    }
+    
+    /// Serializes an encapsulated pixel data element
+    private func serializeEncapsulatedPixelData(_ element: DataElement) -> Data {
+        var data = Data()
+        
+        // Write tag (7FE0,0010)
+        data.append(contentsOf: [0xE0, 0x7F, 0x10, 0x00])
+        
+        // Write VR (OB) + 2 reserved bytes
+        data.append(contentsOf: [0x4F, 0x42, 0x00, 0x00])
+        
+        // Write undefined length (FFFFFFFF)
+        data.append(contentsOf: [0xFF, 0xFF, 0xFF, 0xFF])
+        
+        // Write the encapsulated data (offset table + fragments + delimiter)
+        if let fragments = element.encapsulatedFragments {
+            data.append(buildEncapsulatedPixelData(frames: fragments))
+        }
+        
+        return data
     }
     
     /// Parses data elements from raw bytes
