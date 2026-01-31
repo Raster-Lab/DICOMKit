@@ -10,9 +10,16 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7.4)
+## Features (v0.7.5)
 
-- ✅ **TLS Security (NEW in v0.7.4)**
+- ✅ **Network Error Handling (NEW in v0.7.5)**
+  - ✅ Error categorization (transient, permanent, configuration, protocol, timeout, resource)
+  - ✅ Recovery suggestions with actionable guidance
+  - ✅ Fine-grained timeout configuration (connect, read, write, operation, association)
+  - ✅ Preset timeout configurations (.default, .fast, .slow)
+  - ✅ Detailed timeout types for diagnosis
+  - ✅ Retryability detection for intelligent retry strategies
+- ✅ **TLS Security (v0.7.4)**
   - ✅ TLS 1.2/1.3 encryption for DICOM connections
   - ✅ System trust store validation (default)
   - ✅ Certificate pinning for enhanced security
@@ -98,7 +105,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.7.4)
+## Limitations (v0.7.5)
 
 - ❌ **No character set conversion** - UTF-8 only
 
@@ -936,6 +943,77 @@ let studies = try await secureClient.findStudies(
 )
 ```
 
+### Network Error Handling (v0.7.5)
+
+DICOMKit provides comprehensive error handling with categorization, recovery suggestions, and fine-grained timeout configuration.
+
+```swift
+import DICOMNetwork
+
+// Configure timeouts for different network conditions
+let client = try DICOMClient(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    timeoutConfiguration: .default  // or .fast, .slow
+)
+
+// Custom timeout configuration
+let customTimeouts = TimeoutConfiguration(
+    connect: 10,      // 10s to establish connection
+    read: 30,         // 30s for read operations
+    write: 30,        // 30s for write operations
+    operation: 120,   // 120s for entire operation
+    association: 30   // 30s for association establishment
+)
+
+let customClient = try DICOMClient(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    timeoutConfiguration: customTimeouts
+)
+
+// Handle errors with categorization and recovery suggestions
+do {
+    let connected = try await client.verify()
+} catch let error as DICOMNetworkError {
+    // Check error category
+    switch error.category {
+    case .transient:
+        print("Temporary failure - retry may succeed")
+    case .permanent:
+        print("Permanent failure - intervention required")
+    case .configuration:
+        print("Configuration error - check settings")
+    case .protocol:
+        print("Protocol error - check compatibility")
+    case .timeout:
+        print("Timeout - increase timeout or check network")
+    case .resource:
+        print("Resource error - wait and retry")
+    }
+    
+    // Check if retryable
+    if error.isRetryable {
+        print("This error can be retried")
+    }
+    
+    // Get recovery suggestion
+    print("Suggestion: \(error.recoverySuggestion)")
+    
+    // Get detailed explanation
+    print("Explanation: \(error.explanation)")
+}
+
+// Preset timeout configurations
+let fastTimeouts = TimeoutConfiguration.fast    // For local networks
+let slowTimeouts = TimeoutConfiguration.slow    // For WAN connections
+let defaultTimeouts = TimeoutConfiguration.default  // Balanced defaults
+```
+
 ## Architecture
 
 DICOMKit is organized into three modules:
@@ -972,11 +1050,15 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4)
+### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4, v0.7.5)
 DICOM network protocol implementation:
 - `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
 - `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
 - `RetryPolicy` - Configurable retry policies with exponential backoff (NEW in v0.6.7)
+- `ErrorCategory` - Error categorization (transient, permanent, configuration, protocol, timeout, resource) (NEW in v0.7.5)
+- `RecoverySuggestion` - Actionable recovery guidance for errors (NEW in v0.7.5)
+- `TimeoutConfiguration` - Fine-grained timeout settings for network operations (NEW in v0.7.5)
+- `TimeoutType` - Specific timeout type identification (NEW in v0.7.5)
 - `TLSConfiguration` - TLS settings with protocol versions, certificate validation (NEW in v0.7.4)
 - `TLSProtocolVersion` - TLS protocol version enumeration (NEW in v0.7.4)
 - `CertificateValidation` - Certificate validation modes (system, disabled, pinned, custom) (NEW in v0.7.4)
@@ -1039,4 +1121,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.7.4 - adding TLS security for DICOM network connections. The library now provides secure DICOM connections with TLS 1.2/1.3 encryption, certificate validation options, certificate pinning, and mutual TLS support. Future versions will add connection pooling and storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.7.5 - adding network error handling enhancements. The library now provides comprehensive error categorization, recovery suggestions, and fine-grained timeout configuration for DICOM network operations. Future versions will add connection pooling and storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
