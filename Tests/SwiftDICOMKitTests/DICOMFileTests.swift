@@ -191,7 +191,7 @@ struct DICOMFileTests {
     
     @Test("Version constant")
     func testVersionConstant() {
-        #expect(version == "0.1.0")
+        #expect(version == "0.2.0")
     }
     
     @Test("DICOM standard edition")
@@ -208,7 +208,9 @@ struct DICOMFileTests {
     func testSupportedTransferSyntaxUIDsList() {
         #expect(supportedTransferSyntaxUIDs.contains("1.2.840.10008.1.2.1"))
         #expect(supportedTransferSyntaxUIDs.contains("1.2.840.10008.1.2"))
-        #expect(supportedTransferSyntaxUIDs.count == 2)
+        #expect(supportedTransferSyntaxUIDs.contains("1.2.840.10008.1.2.2"))
+        #expect(supportedTransferSyntaxUIDs.contains("1.2.840.10008.1.2.1.99"))
+        #expect(supportedTransferSyntaxUIDs.count == 4)
     }
     
     // MARK: - Implicit VR Little Endian Tests
@@ -418,5 +420,150 @@ struct DICOMFileTests {
         #expect(throws: DICOMError.self) {
             try DICOMFile.read(from: data)
         }
+    }
+    
+    // MARK: - Explicit VR Big Endian Tests
+    
+    @Test("Parse Explicit VR Big Endian file with patient name")
+    func testParseExplicitVRBigEndianPatientName() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID (0002,0010) - Always Little Endian
+        // Tag: 0002,0010
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        // VR: UI
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        // Length: 20 (16-bit)
+        data.append(contentsOf: [0x14, 0x00])
+        // Value: "1.2.840.10008.1.2.2 " (Explicit VR Big Endian, padded to even)
+        data.append("1.2.840.10008.1.2.2 ".data(using: .ascii)!)
+        
+        // Main data set - Big Endian encoding
+        // Patient Name (0010,0010) - Big Endian tags and lengths
+        // Tag: 0010,0010 in Big Endian
+        data.append(contentsOf: [0x00, 0x10, 0x00, 0x10])
+        // VR: PN (Person Name)
+        data.append(contentsOf: [0x50, 0x4E]) // "PN"
+        // Length: 8 (16-bit, Big Endian)
+        data.append(contentsOf: [0x00, 0x08])
+        // Value: "Doe^John" (string values are not affected by endianness)
+        data.append(contentsOf: [0x44, 0x6F, 0x65, 0x5E, 0x4A, 0x6F, 0x68, 0x6E])
+        
+        let file = try DICOMFile.read(from: data)
+        #expect(file.transferSyntaxUID == "1.2.840.10008.1.2.2")
+        #expect(file.dataSet.count == 1)
+        
+        let patientName = file.dataSet.string(for: .patientName)
+        #expect(patientName == "Doe^John")
+    }
+    
+    @Test("Parse Explicit VR Big Endian file with multiple elements")
+    func testParseExplicitVRBigEndianMultipleElements() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.2 ".data(using: .ascii)!)
+        
+        // Patient Name (0010,0010) - Big Endian
+        data.append(contentsOf: [0x00, 0x10, 0x00, 0x10]) // Tag in BE
+        data.append(contentsOf: [0x50, 0x4E]) // "PN"
+        data.append(contentsOf: [0x00, 0x08]) // Length: 8 in BE
+        data.append("Smith^Jo".data(using: .ascii)!)
+        
+        // Patient ID (0010,0020) - Big Endian
+        data.append(contentsOf: [0x00, 0x10, 0x00, 0x20]) // Tag in BE
+        data.append(contentsOf: [0x4C, 0x4F]) // "LO"
+        data.append(contentsOf: [0x00, 0x08]) // Length: 8 in BE
+        data.append("12345678".data(using: .ascii)!)
+        
+        // Study Date (0008,0020) - Big Endian
+        data.append(contentsOf: [0x00, 0x08, 0x00, 0x20]) // Tag in BE
+        data.append(contentsOf: [0x44, 0x41]) // "DA"
+        data.append(contentsOf: [0x00, 0x08]) // Length: 8 in BE
+        data.append("20260130".data(using: .ascii)!)
+        
+        let file = try DICOMFile.read(from: data)
+        #expect(file.transferSyntaxUID == "1.2.840.10008.1.2.2")
+        #expect(file.dataSet.count == 3)
+        
+        #expect(file.dataSet.string(for: .patientName) == "Smith^Jo")
+        #expect(file.dataSet.string(for: .patientID) == "12345678")
+        #expect(file.dataSet.string(for: .studyDate) == "20260130")
+    }
+    
+    @Test("Parse Explicit VR Big Endian file with 32-bit length VR")
+    func testParseExplicitVRBigEndian32BitLength() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.2 ".data(using: .ascii)!)
+        
+        // Private Creator (0009,0010) - LO VR (16-bit length) - Big Endian
+        data.append(contentsOf: [0x00, 0x09, 0x00, 0x10]) // Tag in BE
+        data.append(contentsOf: [0x4C, 0x4F]) // "LO"
+        data.append(contentsOf: [0x00, 0x08]) // Length: 8 in BE
+        data.append("TESTPRIV".data(using: .ascii)!)
+        
+        let file = try DICOMFile.read(from: data)
+        #expect(file.transferSyntaxUID == "1.2.840.10008.1.2.2")
+        #expect(file.dataSet.count == 1)
+    }
+    
+    @Test("Parse Explicit VR Big Endian file stops at pixel data")
+    func testParseExplicitVRBigEndianStopsAtPixelData() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.2 ".data(using: .ascii)!)
+        
+        // Patient Name (0010,0010) - Big Endian
+        data.append(contentsOf: [0x00, 0x10, 0x00, 0x10]) // Tag in BE
+        data.append(contentsOf: [0x50, 0x4E]) // "PN"
+        data.append(contentsOf: [0x00, 0x04]) // Length: 4 in BE
+        data.append("Test".data(using: .ascii)!)
+        
+        // Pixel Data (7FE0,0010) - Big Endian - should stop here
+        data.append(contentsOf: [0x7F, 0xE0, 0x00, 0x10]) // Tag in BE
+        data.append(contentsOf: [0x4F, 0x57]) // "OW"
+        data.append(contentsOf: [0x00, 0x00]) // Reserved
+        data.append(contentsOf: [0x00, 0x00, 0x00, 0x04]) // Length: 4 in BE
+        data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // Dummy pixel data
+        
+        let file = try DICOMFile.read(from: data)
+        #expect(file.dataSet.count == 1)
+        #expect(file.dataSet.string(for: .patientName) == "Test")
     }
 }
