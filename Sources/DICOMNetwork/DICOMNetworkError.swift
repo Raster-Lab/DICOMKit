@@ -68,6 +68,17 @@ public enum DICOMNetworkError: Error, Sendable {
     ///
     /// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
     case artimTimerExpired
+    
+    /// Circuit breaker is open for this server
+    ///
+    /// The server has failed repeatedly and the circuit breaker has tripped
+    /// to prevent further requests. Wait for the reset timeout before retrying.
+    ///
+    /// - Parameters:
+    ///   - host: The server host
+    ///   - port: The server port
+    ///   - retryAfter: When the circuit may allow requests again
+    case circuitBreakerOpen(host: String, port: UInt16, retryAfter: Date)
 }
 
 // MARK: - CustomStringConvertible
@@ -108,6 +119,9 @@ extension DICOMNetworkError: CustomStringConvertible {
             return "Retrieve failed: \(status)"
         case .artimTimerExpired:
             return "ARTIM timer expired: remote peer did not respond in time"
+        case .circuitBreakerOpen(let host, let port, let retryAfter):
+            let retryInSeconds = max(0, Int(retryAfter.timeIntervalSinceNow))
+            return "Circuit breaker open for \(host):\(port). Retry in \(retryInSeconds) seconds."
         }
     }
 }

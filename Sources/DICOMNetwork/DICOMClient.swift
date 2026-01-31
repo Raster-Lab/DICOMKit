@@ -95,6 +95,43 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     /// Retry policy for network operations
     public let retryPolicy: RetryPolicy
     
+    /// Circuit breaker configuration for failing server protection
+    ///
+    /// When set, enables the circuit breaker pattern to prevent cascading failures
+    /// when a server is consistently failing. When nil, circuit breaker is disabled.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// // Enable circuit breaker with default settings
+    /// let config = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     circuitBreakerConfiguration: .default
+    /// )
+    ///
+    /// // Enable with custom settings
+    /// let customConfig = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     circuitBreakerConfiguration: CircuitBreakerConfiguration(
+    ///         failureThreshold: 3,
+    ///         successThreshold: 1,
+    ///         resetTimeout: 15
+    ///     )
+    /// )
+    /// ```
+    public let circuitBreakerConfiguration: CircuitBreakerConfiguration?
+    
+    /// Whether circuit breaker is enabled
+    public var circuitBreakerEnabled: Bool {
+        return circuitBreakerConfiguration != nil
+    }
+    
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
     
@@ -114,6 +151,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
+    ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
     /// - Throws: `DICOMNetworkError.invalidAETitle` if AE titles are invalid
     public init(
         host: String,
@@ -125,7 +163,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsEnabled: Bool = false,
-        retryPolicy: RetryPolicy = .none
+        retryPolicy: RetryPolicy = .none,
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
     ) throws {
         self.host = host
         self.port = port
@@ -137,6 +176,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.implementationVersionName = implementationVersionName
         self.tlsConfiguration = tlsEnabled ? .default : nil
         self.retryPolicy = retryPolicy
+        self.circuitBreakerConfiguration = circuitBreakerConfiguration
     }
     
     /// Creates a DICOM client configuration with TLS configuration
@@ -152,6 +192,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
+    ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
     /// - Throws: `DICOMNetworkError.invalidAETitle` if AE titles are invalid
     public init(
         host: String,
@@ -163,7 +204,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsConfiguration: TLSConfiguration?,
-        retryPolicy: RetryPolicy = .none
+        retryPolicy: RetryPolicy = .none,
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
     ) throws {
         self.host = host
         self.port = port
@@ -175,6 +217,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.implementationVersionName = implementationVersionName
         self.tlsConfiguration = tlsConfiguration
         self.retryPolicy = retryPolicy
+        self.circuitBreakerConfiguration = circuitBreakerConfiguration
     }
     
     /// Creates a DICOM client configuration with pre-validated AE titles
@@ -190,6 +233,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsEnabled: Use TLS encryption with default configuration (default: false)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
+    ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
     public init(
         host: String,
         port: UInt16 = dicomDefaultPort,
@@ -200,7 +244,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsEnabled: Bool = false,
-        retryPolicy: RetryPolicy = .none
+        retryPolicy: RetryPolicy = .none,
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
     ) {
         self.host = host
         self.port = port
@@ -212,6 +257,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.implementationVersionName = implementationVersionName
         self.tlsConfiguration = tlsEnabled ? .default : nil
         self.retryPolicy = retryPolicy
+        self.circuitBreakerConfiguration = circuitBreakerConfiguration
     }
     
     /// Creates a DICOM client configuration with pre-validated AE titles and TLS configuration
@@ -227,6 +273,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     ///   - implementationVersionName: Implementation Version Name
     ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
     ///   - retryPolicy: Retry policy for operations (default: no retries)
+    ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
     public init(
         host: String,
         port: UInt16 = dicomDefaultPort,
@@ -237,7 +284,8 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsConfiguration: TLSConfiguration?,
-        retryPolicy: RetryPolicy = .none
+        retryPolicy: RetryPolicy = .none,
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
     ) {
         self.host = host
         self.port = port
@@ -249,6 +297,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.implementationVersionName = implementationVersionName
         self.tlsConfiguration = tlsConfiguration
         self.retryPolicy = retryPolicy
+        self.circuitBreakerConfiguration = circuitBreakerConfiguration
     }
 }
 
@@ -419,11 +468,25 @@ public final class DICOMClient: Sendable {
     /// The client configuration
     public let configuration: DICOMClientConfiguration
     
+    /// Circuit breaker for this client (nil if disabled)
+    private let circuitBreaker: CircuitBreaker?
+    
     /// Creates a new DICOM client
     ///
     /// - Parameter configuration: The client configuration
     public init(configuration: DICOMClientConfiguration) {
         self.configuration = configuration
+        
+        // Create circuit breaker if configured
+        if let cbConfig = configuration.circuitBreakerConfiguration {
+            self.circuitBreaker = CircuitBreaker(
+                host: configuration.host,
+                port: configuration.port,
+                configuration: cbConfig
+            )
+        } else {
+            self.circuitBreaker = nil
+        }
     }
     
     // MARK: - Convenience Initializer
@@ -437,6 +500,7 @@ public final class DICOMClient: Sendable {
     ///   - calledAE: The remote AE title
     ///   - timeout: Connection timeout (default: 30 seconds)
     ///   - retryPolicy: Retry policy (default: no retries)
+    ///   - circuitBreakerConfiguration: Circuit breaker configuration (nil to disable)
     /// - Throws: `DICOMNetworkError.invalidAETitle` if AE titles are invalid
     public convenience init(
         host: String,
@@ -444,7 +508,8 @@ public final class DICOMClient: Sendable {
         callingAE: String,
         calledAE: String,
         timeout: TimeInterval = 30,
-        retryPolicy: RetryPolicy = .none
+        retryPolicy: RetryPolicy = .none,
+        circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
     ) throws {
         let config = try DICOMClientConfiguration(
             host: host,
@@ -452,7 +517,8 @@ public final class DICOMClient: Sendable {
             callingAE: callingAE,
             calledAE: calledAE,
             timeout: timeout,
-            retryPolicy: retryPolicy
+            retryPolicy: retryPolicy,
+            circuitBreakerConfiguration: circuitBreakerConfiguration
         )
         self.init(configuration: config)
     }
@@ -841,12 +907,25 @@ public final class DICOMClient: Sendable {
     
     // MARK: - Retry Logic
     
-    /// Executes an operation with retry logic
+    /// Executes an operation with retry logic and circuit breaker protection
     ///
     /// - Parameter operation: The operation to execute
     /// - Returns: The result of the operation
-    /// - Throws: The last error if all retries fail
+    /// - Throws: The last error if all retries fail, or `circuitBreakerOpen` if circuit is open
     private func withRetry<T>(_ operation: @Sendable () async throws -> T) async throws -> T {
+        // Check circuit breaker first
+        if let breaker = circuitBreaker {
+            do {
+                try await breaker.checkState()
+            } catch let error as CircuitBreakerOpenError {
+                throw DICOMNetworkError.circuitBreakerOpen(
+                    host: error.host,
+                    port: error.port,
+                    retryAfter: error.retryAfter
+                )
+            }
+        }
+        
         let policy = configuration.retryPolicy
         
         var lastError: Error?
@@ -861,9 +940,21 @@ public final class DICOMClient: Sendable {
                     }
                 }
                 
-                return try await operation()
+                let result = try await operation()
+                
+                // Record success to circuit breaker
+                if let breaker = circuitBreaker {
+                    await breaker.recordSuccess()
+                }
+                
+                return result
             } catch {
                 lastError = error
+                
+                // Record failure to circuit breaker
+                if let breaker = circuitBreaker, shouldRecordFailure(error: error) {
+                    await breaker.recordFailure()
+                }
                 
                 // Check if we should retry
                 if !shouldRetry(error: error) {
@@ -879,6 +970,33 @@ public final class DICOMClient: Sendable {
         
         // Should never reach here, but just in case
         throw lastError ?? DICOMNetworkError.connectionFailed("Unknown error")
+    }
+    
+    /// Determines if an error should be recorded as a failure in the circuit breaker
+    ///
+    /// - Parameter error: The error to check
+    /// - Returns: `true` if the error should be counted as a failure
+    private func shouldRecordFailure(error: Error) -> Bool {
+        guard let networkError = error as? DICOMNetworkError else {
+            // Unknown errors are considered failures
+            return true
+        }
+        
+        switch networkError {
+        case .connectionFailed, .timeout, .connectionClosed, .artimTimerExpired:
+            // Connection-level failures should trip the circuit
+            return true
+        case .associationRejected(let result, _, _):
+            // Only transient rejections are considered server failures
+            return result == .rejectedTransient
+        case .invalidAETitle, .invalidState, .noPresentationContextAccepted,
+             .sopClassNotSupported, .unexpectedPDUType, .invalidPDU,
+             .encodingFailed, .decodingFailed, .pduTooLarge,
+             .associationAborted, .queryFailed, .retrieveFailed,
+             .circuitBreakerOpen:
+            // Client-side or protocol errors shouldn't affect circuit breaker
+            return false
+        }
     }
     
     /// Determines if an error should trigger a retry
@@ -909,7 +1027,28 @@ public final class DICOMClient: Sendable {
         case .associationAborted, .queryFailed, .retrieveFailed:
             // Application-level failures - don't retry
             return false
+        case .circuitBreakerOpen:
+            // Circuit is open - don't retry
+            return false
         }
+    }
+    
+    // MARK: - Circuit Breaker Access
+    
+    /// Gets the current circuit breaker statistics, if circuit breaker is enabled
+    ///
+    /// - Returns: Circuit breaker statistics, or nil if circuit breaker is disabled
+    public func circuitBreakerStatistics() async -> CircuitBreakerStatistics? {
+        guard let breaker = circuitBreaker else { return nil }
+        return await breaker.statistics()
+    }
+    
+    /// Resets the circuit breaker to closed state
+    ///
+    /// Call this if you want to manually reset the circuit breaker after
+    /// the underlying issue has been resolved.
+    public func resetCircuitBreaker() async {
+        await circuitBreaker?.reset()
     }
 }
 
@@ -924,6 +1063,7 @@ extension DICOMClient: CustomStringConvertible {
           Called AE: \(configuration.calledAETitle)
           TLS: \(configuration.tlsEnabled)
           Retry: \(configuration.retryPolicy.maxRetries) attempts
+          Circuit Breaker: \(configuration.circuitBreakerEnabled ? "enabled" : "disabled")
         """
     }
 }

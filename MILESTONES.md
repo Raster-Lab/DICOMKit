@@ -459,7 +459,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [x] Retry Logic:
   - [x] Configurable retry policies (`RetryPolicy` struct)
   - [x] Exponential backoff (`RetryPolicy.exponentialBackoff`)
-  - [ ] Circuit breaker pattern for failing servers
+  - [x] Circuit breaker pattern for failing servers
 - [ ] Network Error Handling:
   - [ ] Detailed error types with recovery suggestions
   - [ ] Timeout configuration (connect, read, write, operation)
