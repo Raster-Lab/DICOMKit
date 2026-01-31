@@ -192,4 +192,39 @@ extension Data {
         
         return Float64(bitPattern: bits)
     }
+    
+    // MARK: - 64-bit Integer Reading
+    
+    /// Reads a 64-bit unsigned integer in Little Endian byte order
+    /// - Parameter offset: Byte offset to read from
+    /// - Returns: UInt64 value, or nil if offset is out of bounds
+    public func readUInt64LE(at offset: Int) -> UInt64? {
+        guard offset + 8 <= count else {
+            return nil
+        }
+        
+        var result: UInt64 = 0
+        for i in 0..<8 {
+            result |= UInt64(self[offset + i]) << (i * 8)
+        }
+        return result
+    }
+    
+    /// Reads a 64-bit unsigned integer in Big Endian byte order
+    ///
+    /// Used by the retired Explicit VR Big Endian Transfer Syntax (1.2.840.10008.1.2.2).
+    /// Reference: PS3.5 Section 7.1.2 - Big Endian Byte Ordering
+    /// - Parameter offset: Byte offset to read from
+    /// - Returns: UInt64 value, or nil if offset is out of bounds
+    public func readUInt64BE(at offset: Int) -> UInt64? {
+        guard offset + 8 <= count else {
+            return nil
+        }
+        
+        var result: UInt64 = 0
+        for i in 0..<8 {
+            result |= UInt64(self[offset + i]) << ((7 - i) * 8)
+        }
+        return result
+    }
 }

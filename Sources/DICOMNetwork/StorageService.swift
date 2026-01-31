@@ -117,6 +117,12 @@ public struct StorageConfiguration: Sendable, Hashable {
     /// User identity for authentication (optional)
     public let userIdentity: UserIdentity?
     
+    /// Transcoding configuration for automatic transfer syntax conversion
+    ///
+    /// When enabled, the storage service will automatically transcode data
+    /// if the remote server doesn't support the source transfer syntax.
+    public let transcodingConfiguration: TranscodingConfiguration?
+    
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
     
@@ -134,6 +140,7 @@ public struct StorageConfiguration: Sendable, Hashable {
     ///   - implementationVersionName: Implementation Version Name
     ///   - priority: Operation priority (default: medium)
     ///   - userIdentity: User identity for authentication (optional)
+    ///   - transcodingConfiguration: Transcoding configuration (default: nil - no transcoding)
     public init(
         callingAETitle: AETitle,
         calledAETitle: AETitle,
@@ -142,7 +149,8 @@ public struct StorageConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         priority: DIMSEPriority = .medium,
-        userIdentity: UserIdentity? = nil
+        userIdentity: UserIdentity? = nil,
+        transcodingConfiguration: TranscodingConfiguration? = nil
     ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
@@ -152,6 +160,7 @@ public struct StorageConfiguration: Sendable, Hashable {
         self.implementationVersionName = implementationVersionName
         self.priority = priority
         self.userIdentity = userIdentity
+        self.transcodingConfiguration = transcodingConfiguration
     }
 }
 
@@ -675,18 +684,46 @@ public enum DICOMStorageService {
             // Transcode the data set if the accepted transfer syntax differs
             let finalDataSetData: Data
             if acceptedTransferSyntax != transferSyntaxUID {
-                // For now, we only support same transfer syntax or the common ones
-                // Future versions can add transcoding support
-                if acceptedTransferSyntax == explicitVRLittleEndianTransferSyntaxUID ||
-                   acceptedTransferSyntax == implicitVRLittleEndianTransferSyntaxUID {
-                    // Basic transcoding between Explicit and Implicit VR is possible
-                    // but for now we send the data as-is if it's one of these syntaxes
-                    finalDataSetData = dataSetData
+                // Attempt transcoding if configuration is provided
+                if let transcodingConfig = configuration.transcodingConfiguration,
+                   let sourceTS = TransferSyntax.from(uid: transferSyntaxUID),
+                   let targetTS = TransferSyntax.from(uid: acceptedTransferSyntax) {
+                    let converter = TransferSyntaxConverter(configuration: transcodingConfig)
+                    
+                    if converter.canTranscode(from: sourceTS, to: targetTS) {
+                        do {
+                            let result = try converter.transcode(
+                                dataSetData: dataSetData,
+                                from: sourceTS,
+                                to: targetTS
+                            )
+                            finalDataSetData = result.data
+                        } catch let transcodingError as TranscodingError {
+                            try await association.abort()
+                            throw DICOMNetworkError.invalidState(
+                                "Transcoding failed: \(transcodingError.description)"
+                            )
+                        }
+                    } else {
+                        try await association.abort()
+                        throw DICOMNetworkError.invalidState(
+                            "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax)"
+                        )
+                    }
                 } else {
-                    try await association.abort()
-                    throw DICOMNetworkError.invalidState(
-                        "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax)"
-                    )
+                    // No transcoding configuration - check if basic compatibility exists
+                    if acceptedTransferSyntax == explicitVRLittleEndianTransferSyntaxUID ||
+                       acceptedTransferSyntax == implicitVRLittleEndianTransferSyntaxUID {
+                        // For uncompressed syntaxes, we can send the data as-is
+                        // The receiver should be able to interpret it
+                        finalDataSetData = dataSetData
+                    } else {
+                        try await association.abort()
+                        throw DICOMNetworkError.invalidState(
+                            "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax). " +
+                            "Enable transcoding by providing a transcodingConfiguration."
+                        )
+                    }
                 }
             } else {
                 finalDataSetData = dataSetData

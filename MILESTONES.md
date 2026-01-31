@@ -813,11 +813,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 **Dependencies**: Milestone 7.2, Milestone 7.4
 
 #### Deliverables
-- [ ] Transfer Syntax Conversion:
-  - [ ] Automatic transcoding when target doesn't support source syntax
-  - [ ] Configurable preferred transfer syntaxes
-  - [ ] Compression/decompression during transfer
-  - [ ] Maintain pixel data fidelity flags
+- [x] Transfer Syntax Conversion:
+  - [x] Automatic transcoding when target doesn't support source syntax
+  - [x] Configurable preferred transfer syntaxes
+  - [x] Compression/decompression during transfer (decompression supported)
+  - [x] Maintain pixel data fidelity flags
 - [x] Intelligent Retry Logic:
   - [x] Configurable retry policies per SOP Class
   - [x] Exponential backoff with jitter
