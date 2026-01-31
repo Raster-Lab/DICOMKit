@@ -126,6 +126,15 @@ if let ae = dicomFile.dataSet.applicationEntity(for: .sourceApplicationEntityTit
     print("Padded: \(ae.paddedValue)")  // 16-character padded format
 }
 
+// Access Universal Resource (UR) values
+if let uri = dicomFile.dataSet.universalResource(for: Tag(group: 0x0008, element: 0x1190)) {
+    print("Retrieve URL: \(uri.value)")  // e.g., "http://server/wado?..."
+    print("Scheme: \(uri.scheme ?? "none")")  // e.g., "http"
+    if let url = uri.url {
+        print("Foundation URL: \(url)")
+    }
+}
+
 // Access sequence (SQ) elements
 if let items = dicomFile.dataSet.sequence(for: .procedureCodeSequence) {
     for item in items {
@@ -161,6 +170,7 @@ Core data types and utilities:
 - `DICOMPersonName` - DICOM Person Name (PN) value parsing
 - `DICOMUniqueIdentifier` - DICOM Unique Identifier (UI) value parsing
 - `DICOMApplicationEntity` - DICOM Application Entity (AE) value parsing
+- `DICOMUniversalResource` - DICOM Universal Resource Identifier (UR) value parsing
 - `DICOMError` - Error types for parsing failures
 - Little Endian byte reading utilities
 

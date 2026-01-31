@@ -321,6 +321,30 @@ public struct DataSet: Sendable {
         return elements[tag]?.codeStringValues
     }
     
+    // MARK: - Universal Resource Value Access
+    
+    /// Returns the DICOM Universal Resource (UR) value for a given tag, if available
+    ///
+    /// Parses the DICOM URI/URL string into a structured DICOMUniversalResource.
+    /// Reference: PS3.5 Section 6.2 - UR Value Representation
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: DICOMUniversalResource or nil
+    public func universalResource(for tag: Tag) -> DICOMUniversalResource? {
+        return elements[tag]?.universalResourceValue
+    }
+    
+    /// Returns multiple DICOM Universal Resource (UR) values for a given tag, if available
+    ///
+    /// Parses multi-valued DICOM URI/URL strings (backslash-delimited).
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    ///
+    /// - Parameter tag: The tag to retrieve
+    /// - Returns: Array of DICOMUniversalResource or nil
+    public func universalResources(for tag: Tag) -> [DICOMUniversalResource]? {
+        return elements[tag]?.universalResourceValues
+    }
+    
     // MARK: - Sequence Element Access
     
     /// Returns the sequence items for a given tag, if available

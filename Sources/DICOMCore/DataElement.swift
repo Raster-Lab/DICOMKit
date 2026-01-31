@@ -497,4 +497,28 @@ public struct DataElement: Sendable {
         }
         return DICOMCodeString.parseMultiple(string)
     }
+    
+    // MARK: - Universal Resource Value Extraction
+    
+    /// Extracts the value as a DICOM Universal Resource (for UR VR)
+    ///
+    /// Parses the DICOM URI/URL string into a structured DICOMUniversalResource.
+    /// Reference: PS3.5 Section 6.2 - UR Value Representation
+    public var universalResourceValue: DICOMUniversalResource? {
+        guard vr == .UR, let string = stringValue else {
+            return nil
+        }
+        return DICOMUniversalResource.parse(string)
+    }
+    
+    /// Extracts multiple DICOM Universal Resource values (for UR VR with multiplicity)
+    ///
+    /// DICOM uses backslash (\) as a delimiter for multiple values.
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
+    public var universalResourceValues: [DICOMUniversalResource]? {
+        guard vr == .UR, let string = stringValue else {
+            return nil
+        }
+        return DICOMUniversalResource.parseMultiple(string)
+    }
 }
