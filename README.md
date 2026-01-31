@@ -10,9 +10,18 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7.3)
+## Features (v0.7.4)
 
-- ✅ **DICOM Storage SCP (NEW in v0.7.3)**
+- ✅ **TLS Security (NEW in v0.7.4)**
+  - ✅ TLS 1.2/1.3 encryption for DICOM connections
+  - ✅ System trust store validation (default)
+  - ✅ Certificate pinning for enhanced security
+  - ✅ Custom CA trust roots for enterprise PKI
+  - ✅ Self-signed certificate support (development mode)
+  - ✅ Mutual TLS (mTLS) client authentication
+  - ✅ PKCS#12 and keychain identity loading
+  - ✅ Preset configurations (.default, .strict, .insecure)
+- ✅ **DICOM Storage SCP (v0.7.3)**
   - ✅ Receive DICOM files from remote sources
   - ✅ C-STORE SCP server implementation
   - ✅ Configurable AE whitelist/blacklist
@@ -89,7 +98,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.7.3)
+## Limitations (v0.7.4)
 
 - ❌ **No character set conversion** - UTF-8 only
 
@@ -854,6 +863,79 @@ let exponentialRetry = RetryPolicy.exponentialBackoff(
 )
 ```
 
+### TLS/Secure Connections (v0.7.4)
+
+DICOMKit supports secure DICOM connections using TLS 1.2/1.3 encryption.
+
+```swift
+import DICOMNetwork
+
+// Default TLS configuration (TLS 1.2+, system trust store)
+let secureClient = try DICOMClient(
+    host: "secure-pacs.hospital.com",
+    port: 2762,  // DICOM TLS port
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    tlsConfiguration: .default
+)
+
+// Strict mode: TLS 1.3 only
+let strictClient = try DICOMClient(
+    host: "secure-pacs.hospital.com",
+    port: 2762,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    tlsConfiguration: .strict
+)
+
+// Development mode with self-signed certificates (INSECURE)
+let devClient = try DICOMClient(
+    host: "dev-pacs.local",
+    port: 2762,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    tlsConfiguration: .insecure  // Only for development!
+)
+
+// Certificate pinning for enhanced security
+let certData = try Data(contentsOf: serverCertURL)
+let pinnedCert = try TLSConfiguration.certificate(fromPEM: certData)
+let pinnedConfig = TLSConfiguration(certificateValidation: .pinned([pinnedCert]))
+
+let pinnedClient = try DICOMClient(
+    host: "secure-pacs.hospital.com",
+    port: 2762,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    tlsConfiguration: pinnedConfig
+)
+
+// Mutual TLS (mTLS) with client certificate
+let clientIdentity = ClientIdentity(
+    pkcs12Data: try Data(contentsOf: clientCertURL),
+    password: "certificate-password"
+)
+let mtlsConfig = TLSConfiguration(
+    minimumVersion: .tlsProtocol12,
+    certificateValidation: .system,
+    clientIdentity: clientIdentity
+)
+
+let mtlsClient = try DICOMClient(
+    host: "secure-pacs.hospital.com",
+    port: 2762,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    tlsConfiguration: mtlsConfig
+)
+
+// Use secure client for any DICOM operation
+let connected = try await secureClient.verify()
+let studies = try await secureClient.findStudies(
+    matching: QueryKeys(level: .study).patientName("DOE^JOHN*")
+)
+```
+
 ## Architecture
 
 DICOMKit is organized into three modules:
@@ -890,11 +972,16 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3)
+### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4)
 DICOM network protocol implementation:
 - `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
 - `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
 - `RetryPolicy` - Configurable retry policies with exponential backoff (NEW in v0.6.7)
+- `TLSConfiguration` - TLS settings with protocol versions, certificate validation (NEW in v0.7.4)
+- `TLSProtocolVersion` - TLS protocol version enumeration (NEW in v0.7.4)
+- `CertificateValidation` - Certificate validation modes (system, disabled, pinned, custom) (NEW in v0.7.4)
+- `ClientIdentity` - Client certificate for mutual TLS authentication (NEW in v0.7.4)
+- `TLSConfigurationError` - TLS configuration error types (NEW in v0.7.4)
 - `DICOMVerificationService` - C-ECHO SCU for connectivity testing
 - `DICOMQueryService` - C-FIND SCU for querying PACS
 - `DICOMRetrieveService` - C-MOVE and C-GET SCU for retrieving images
@@ -934,6 +1021,7 @@ DICOMKit implements:
 - **DICOM PS3.7 2025e** - Message Exchange (DIMSE-C services)
 - **DICOM PS3.8 2025e** - Network Communication Support (Upper Layer Protocol)
 - **DICOM PS3.10 2025e** - Media Storage and File Format
+- **DICOM PS3.15 2025e** - Security and System Management Profiles (TLS support)
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
 
@@ -951,4 +1039,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.7.3 - adding Storage SCP for receiving DICOM files from remote sources. The library now provides a complete bidirectional DICOM networking stack supporting both sending (C-STORE SCU) and receiving (C-STORE SCP) DICOM files. Future versions will add storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.7.4 - adding TLS security for DICOM network connections. The library now provides secure DICOM connections with TLS 1.2/1.3 encryption, certificate validation options, certificate pinning, and mutual TLS support. Future versions will add connection pooling and storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
