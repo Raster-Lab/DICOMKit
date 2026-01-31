@@ -545,9 +545,7 @@ public actor ConnectionPool {
             )
             
             // Send C-ECHO command
-            let commandData = try echoRequest.commandSet.encode(
-                transferSyntax: TransferSyntax(uid: implicitVRLittleEndianTransferSyntaxUID)!
-            )
+            let commandData = echoRequest.commandSet.encode()
             let pdv = PresentationDataValue(
                 presentationContextID: contextID,
                 isCommand: true,
