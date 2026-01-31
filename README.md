@@ -31,7 +31,7 @@ This is an initial release with focused scope:
 - ❌ **No networking** - No DICOM C-* operations (C-STORE, C-FIND, etc.)
 - ❌ **No Big Endian or compressed transfer syntaxes** - Little Endian uncompressed only
 
-These features may be added in future versions.
+These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
 
 ## Platform Requirements
 
