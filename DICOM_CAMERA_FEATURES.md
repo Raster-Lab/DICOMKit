@@ -129,6 +129,14 @@ This document lists all the features available in DICOMKit that can be used to b
   - Error handling
 - ✅ No separate Storage SCP required
 
+### C-STORE Storage Service
+- ✅ Send DICOM files to remote PACS destinations
+- ✅ Support for common Storage SOP Classes (CT, MR, CR, DX, US, SC, RT)
+- ✅ Transfer syntax negotiation
+- ✅ Priority support (LOW, MEDIUM, HIGH)
+- ✅ Detailed store result with status codes
+- ✅ Integration with DICOMClient unified API
+
 ### Query Builder API
 - ✅ Fluent QueryKeys API for building queries
 - ✅ Type-safe query parameter setting
@@ -280,7 +288,7 @@ This document lists all the features available in DICOMKit that can be used to b
 
 ## Current Limitations
 
-- ⚠️ C-STORE not yet available (cannot send images to PACS)
+- ⚠️ Storage SCP not yet available (can send files but cannot receive files from remote sources)
 - ❌ No character set conversion (UTF-8 only)
 
 ---
@@ -289,6 +297,7 @@ This document lists all the features available in DICOMKit that can be used to b
 
 | Version | Features Added |
 |---------|---------------|
+| v0.7 | DICOM Storage: C-STORE SCU |
 | v0.6 | DICOM Networking: C-ECHO, C-FIND, C-MOVE, C-GET |
 | v0.5 | DICOM File Writing, UID Generation |
 | v0.4 | Compressed Pixel Data Support |
@@ -298,4 +307,4 @@ This document lists all the features available in DICOMKit that can be used to b
 
 ---
 
-*This feature list is based on DICOMKit v0.6. For the latest development roadmap, see [MILESTONES.md](MILESTONES.md).*
+*This feature list is based on DICOMKit v0.7. For the latest development roadmap, see [MILESTONES.md](MILESTONES.md).*

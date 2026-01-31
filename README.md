@@ -95,13 +95,13 @@ Add DICOMKit to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/rasterdevapps/DICOMKit.git", from: "0.5.0")
+    .package(url: "https://github.com/raster-image/DICOMKit.git", from: "0.5.0")
 ]
 ```
 
 Or add it through Xcode:
 1. File → Add Package Dependencies
-2. Enter: `https://github.com/rasterdevapps/DICOMKit`
+2. Enter: `https://github.com/raster-image/DICOMKit`
 3. Select version 0.5.0 or later
 
 ## Quick Start
