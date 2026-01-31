@@ -48,6 +48,9 @@ public final class DICOMConnection: Sendable {
     /// Connection timeout in seconds
     public let timeout: TimeInterval
     
+    /// The TLS configuration (nil if TLS is not enabled)
+    public let tlsConfiguration: TLSConfiguration?
+    
     /// The underlying network connection
     private let connection: NWConnection
     
@@ -65,6 +68,7 @@ public final class DICOMConnection: Sendable {
     ///   - maxPDUSize: Maximum PDU size for receiving (default: 16KB)
     ///   - timeout: Connection timeout in seconds (default: 30)
     ///   - tlsEnabled: Whether to use TLS encryption (default: false)
+    @available(*, deprecated, message: "Use init(host:port:maxPDUSize:timeout:tlsConfiguration:) instead")
     public init(
         host: String,
         port: UInt16 = dicomDefaultPort,
@@ -76,6 +80,7 @@ public final class DICOMConnection: Sendable {
         self.port = port
         self.maxPDUSize = maxPDUSize
         self.timeout = timeout
+        self.tlsConfiguration = tlsEnabled ? .default : nil
         
         let nwHost = NWEndpoint.Host(host)
         let nwPort = NWEndpoint.Port(rawValue: port)!
@@ -83,6 +88,42 @@ public final class DICOMConnection: Sendable {
         let parameters: NWParameters
         if tlsEnabled {
             parameters = NWParameters(tls: .init(), tcp: .init())
+        } else {
+            parameters = NWParameters.tcp
+        }
+        
+        self.connection = NWConnection(host: nwHost, port: nwPort, using: parameters)
+    }
+    
+    /// Creates a new DICOM connection with TLS configuration
+    ///
+    /// - Parameters:
+    ///   - host: The remote host address (IP or hostname)
+    ///   - port: The remote port number (default: 104)
+    ///   - maxPDUSize: Maximum PDU size for receiving (default: 16KB)
+    ///   - timeout: Connection timeout in seconds (default: 30)
+    ///   - tlsConfiguration: TLS configuration for secure connections (nil for plain TCP)
+    /// - Throws: `TLSConfigurationError` if TLS configuration is invalid
+    public init(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        timeout: TimeInterval = 30,
+        tlsConfiguration: TLSConfiguration?
+    ) throws {
+        self.host = host
+        self.port = port
+        self.maxPDUSize = maxPDUSize
+        self.timeout = timeout
+        self.tlsConfiguration = tlsConfiguration
+        
+        let nwHost = NWEndpoint.Host(host)
+        let nwPort = NWEndpoint.Port(rawValue: port)!
+        
+        let parameters: NWParameters
+        if let tlsConfig = tlsConfiguration {
+            let tlsOptions = try tlsConfig.makeNWProtocolTLSOptions()
+            parameters = NWParameters(tls: tlsOptions, tcp: .init())
         } else {
             parameters = NWParameters.tcp
         }

@@ -446,11 +446,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 **Dependencies**: Milestone 6.6
 
 #### Deliverables
-- [ ] TLS Support:
-  - [ ] TLS 1.2/1.3 encryption for DICOM connections
-  - [ ] Certificate validation (system trust store)
-  - [ ] Custom certificate/key configuration
-  - [ ] Self-signed certificate handling (development mode)
+- [x] TLS Support:
+  - [x] TLS 1.2/1.3 encryption for DICOM connections
+  - [x] Certificate validation (system trust store)
+  - [x] Custom certificate/key configuration
+  - [x] Self-signed certificate handling (development mode)
 - [ ] Connection Pooling:
   - [ ] Reuse associations for multiple operations
   - [ ] Pool size configuration
@@ -486,14 +486,17 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - TLS implementation via Network.framework or SwiftNIO SSL
 - Connection pooling requires careful association state management
 - User identity per DICOM Supplement 99
+- TLS configuration supports: default (TLS 1.2+), strict (TLS 1.3 only), insecure (development), and custom configurations
+- Certificate pinning and custom trust roots supported for enterprise deployments
+- Client certificate authentication (mTLS) supported via PKCS#12 or keychain
 
 #### Acceptance Criteria
-- [ ] TLS connections work with hospital/enterprise PACS
+- [ ] TLS connections work with hospital/enterprise PACS (requires network testing)
 - [ ] Connection pooling reduces latency for batch operations
 - [x] Retry logic handles transient network failures
 - [ ] Performance is acceptable for production use
 - [ ] Security scan passes (no vulnerabilities)
-- [ ] Documentation covers security configuration
+- [x] Documentation covers security configuration
 
 ---
 
