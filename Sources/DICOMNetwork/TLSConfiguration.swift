@@ -284,11 +284,23 @@ public struct TLSConfiguration: Sendable, Hashable {
 /// Supported TLS protocol versions
 ///
 /// DICOM networks typically require TLS 1.2 or higher for security compliance.
+///
+/// > Warning: TLS 1.0 and TLS 1.1 are deprecated and no longer supported on
+/// > macOS 13+/iOS 16+ systems. On these newer systems, selecting TLS 1.0 or
+/// > TLS 1.1 will automatically fall back to TLS 1.2 to maintain security
+/// > compliance. If you require TLS 1.0/1.1 for legacy server compatibility,
+/// > ensure your deployment targets support these protocol versions.
 public enum TLSProtocolVersion: String, Sendable, Hashable, CaseIterable {
     /// TLS 1.0 (deprecated, not recommended)
+    ///
+    /// > Warning: TLS 1.0 is not available on macOS 13+/iOS 16+ and will
+    /// > automatically fall back to TLS 1.2 on these systems.
     case tlsProtocol10 = "TLS 1.0"
     
     /// TLS 1.1 (deprecated, not recommended)
+    ///
+    /// > Warning: TLS 1.1 is not available on macOS 13+/iOS 16+ and will
+    /// > automatically fall back to TLS 1.2 on these systems.
     case tlsProtocol11 = "TLS 1.1"
     
     /// TLS 1.2 (recommended minimum)
@@ -298,23 +310,24 @@ public enum TLSProtocolVersion: String, Sendable, Hashable, CaseIterable {
     case tlsProtocol13 = "TLS 1.3"
     
     /// The corresponding Security framework protocol version
+    ///
+    /// > Note: On macOS 13+/iOS 16+, TLS 1.0 and TLS 1.1 are no longer
+    /// > available and will return TLS 1.2 instead.
     @available(macOS 10.15, iOS 13.0, *)
     var secProtocolVersion: tls_protocol_version_t {
         switch self {
         case .tlsProtocol10:
-            // TLSv10 is deprecated but kept for legacy system compatibility
-            // Use TLS 1.2+ for new deployments
+            // TLSv10 is deprecated and not available on newer systems
+            // Fall back to TLS 1.2 for security compliance
             if #available(macOS 13.0, iOS 16.0, *) {
-                // On newer systems, fall back to TLS 1.2 since 1.0 is not available
                 return .TLSv12
             } else {
                 return .TLSv10
             }
         case .tlsProtocol11:
-            // TLSv11 is deprecated but kept for legacy system compatibility
-            // Use TLS 1.2+ for new deployments
+            // TLSv11 is deprecated and not available on newer systems
+            // Fall back to TLS 1.2 for security compliance
             if #available(macOS 13.0, iOS 16.0, *) {
-                // On newer systems, fall back to TLS 1.2 since 1.1 is not available
                 return .TLSv12
             } else {
                 return .TLSv11
@@ -323,6 +336,22 @@ public enum TLSProtocolVersion: String, Sendable, Hashable, CaseIterable {
             return .TLSv12
         case .tlsProtocol13:
             return .TLSv13
+        }
+    }
+    
+    /// Whether this protocol version is available on the current system
+    ///
+    /// TLS 1.0 and TLS 1.1 are not available on macOS 13+/iOS 16+.
+    @available(macOS 10.15, iOS 13.0, *)
+    public var isAvailableOnCurrentSystem: Bool {
+        switch self {
+        case .tlsProtocol10, .tlsProtocol11:
+            if #available(macOS 13.0, iOS 16.0, *) {
+                return false
+            }
+            return true
+        case .tlsProtocol12, .tlsProtocol13:
+            return true
         }
     }
 }
