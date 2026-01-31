@@ -167,26 +167,26 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 6.1: Core Networking Infrastructure (v0.6.1)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Establish the foundational networking layer for DICOM communication  
 **Complexity**: Medium  
 **Dependencies**: None
 
 #### Deliverables
-- [ ] TCP socket abstraction layer using Swift NIO or Foundation networking
-- [ ] Protocol Data Unit (PDU) type definitions:
-  - [ ] A-ASSOCIATE-RQ (Associate Request)
-  - [ ] A-ASSOCIATE-AC (Associate Accept)
-  - [ ] A-ASSOCIATE-RJ (Associate Reject)
-  - [ ] A-RELEASE-RQ (Release Request)
-  - [ ] A-RELEASE-RP (Release Response)
-  - [ ] A-ABORT (Abort)
-  - [ ] P-DATA-TF (Data Transfer)
-- [ ] PDU encoding/decoding (serialization)
-- [ ] Presentation Context definition structures
-- [ ] Abstract Syntax and Transfer Syntax negotiation types
-- [ ] Basic error types for networking (`DICOMNetworkError`)
-- [ ] Async/await foundation for network operations
+- [x] TCP socket abstraction layer using Swift NIO or Foundation networking
+- [x] Protocol Data Unit (PDU) type definitions:
+  - [x] A-ASSOCIATE-RQ (Associate Request)
+  - [x] A-ASSOCIATE-AC (Associate Accept)
+  - [x] A-ASSOCIATE-RJ (Associate Reject)
+  - [x] A-RELEASE-RQ (Release Request)
+  - [x] A-RELEASE-RP (Release Response)
+  - [x] A-ABORT (Abort)
+  - [x] P-DATA-TF (Data Transfer)
+- [x] PDU encoding/decoding (serialization)
+- [x] Presentation Context definition structures
+- [x] Abstract Syntax and Transfer Syntax negotiation types
+- [x] Basic error types for networking (`DICOMNetworkError`)
+- [x] Async/await foundation for network operations
 
 #### Technical Notes
 - Reference: PS3.8 Section 9 - Protocol Data Units
@@ -195,41 +195,41 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Byte order handling for network transmission (Big Endian for PDU headers)
 
 #### Acceptance Criteria
-- [ ] PDU structures can be encoded to and decoded from binary data
-- [ ] PDU round-trip tests pass (encode → decode → compare)
-- [ ] Unit tests cover all PDU types
-- [ ] Documentation for core networking types
+- [x] PDU structures can be encoded to and decoded from binary data
+- [x] PDU round-trip tests pass (encode → decode → compare)
+- [x] Unit tests cover all PDU types
+- [x] Documentation for core networking types
 
 ---
 
 ### Milestone 6.2: Association Management (v0.6.2)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Implement DICOM Association establishment and release  
 **Complexity**: Medium-High  
 **Dependencies**: Milestone 6.1
 
 #### Deliverables
-- [ ] `Association` class/struct for managing connection state
-- [ ] Association establishment (A-ASSOCIATE):
-  - [ ] Build A-ASSOCIATE-RQ with Application Context
-  - [ ] Send A-ASSOCIATE-RQ and receive A-ASSOCIATE-AC/RJ
-  - [ ] Parse A-ASSOCIATE-AC for accepted contexts
-  - [ ] Handle A-ASSOCIATE-RJ with reason codes
-- [ ] Association release (A-RELEASE):
-  - [ ] Send A-RELEASE-RQ
-  - [ ] Receive A-RELEASE-RP
-  - [ ] Graceful connection cleanup
-- [ ] Association abort (A-ABORT):
-  - [ ] Handle unexpected disconnections
-  - [ ] Send A-ABORT when needed
-  - [ ] Process received A-ABORT with source/reason
-- [ ] Application Entity (AE) Title handling (16-character validation)
-- [ ] Presentation Context negotiation:
-  - [ ] Propose abstract syntaxes (SOP Classes)
-  - [ ] Propose transfer syntaxes
-  - [ ] Accept/reject context handling
-- [ ] Association state machine (Idle, Awaiting Response, Established, Released)
+- [x] `Association` class/struct for managing connection state
+- [x] Association establishment (A-ASSOCIATE):
+  - [x] Build A-ASSOCIATE-RQ with Application Context
+  - [x] Send A-ASSOCIATE-RQ and receive A-ASSOCIATE-AC/RJ
+  - [x] Parse A-ASSOCIATE-AC for accepted contexts
+  - [x] Handle A-ASSOCIATE-RJ with reason codes
+- [x] Association release (A-RELEASE):
+  - [x] Send A-RELEASE-RQ
+  - [x] Receive A-RELEASE-RP
+  - [x] Graceful connection cleanup
+- [x] Association abort (A-ABORT):
+  - [x] Handle unexpected disconnections
+  - [x] Send A-ABORT when needed
+  - [x] Process received A-ABORT with source/reason
+- [x] Application Entity (AE) Title handling (16-character validation)
+- [x] Presentation Context negotiation:
+  - [x] Propose abstract syntaxes (SOP Classes)
+  - [x] Propose transfer syntaxes
+  - [x] Accept/reject context handling
+- [x] Association state machine (Idle, Awaiting Response, Established, Released)
 - [ ] Timeouts for association operations (configurable ARTIM timer)
 
 #### Technical Notes
@@ -241,10 +241,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 #### Acceptance Criteria
 - [ ] Successfully establish association with a DICOM SCP (test server)
-- [ ] Graceful release and cleanup of associations
-- [ ] Proper handling of rejected associations with descriptive errors
+- [x] Graceful release and cleanup of associations
+- [x] Proper handling of rejected associations with descriptive errors
 - [ ] Association timeout handling works correctly
-- [ ] Unit tests for association state machine
+- [x] Unit tests for association state machine
 
 ---
 
