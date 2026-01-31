@@ -34,6 +34,18 @@ public struct AssociationConfiguration: Sendable, Hashable {
     /// Connection timeout in seconds
     public let timeout: TimeInterval
     
+    /// ARTIM (Association Request/Release Timer) timeout in seconds
+    ///
+    /// This timer is started when an A-ASSOCIATE-RQ or A-RELEASE-RQ is sent
+    /// and should be stopped when the response is received. If the timer expires,
+    /// the association is aborted.
+    ///
+    /// Reference: PS3.8 Section 9.1.1 - ARTIM Timer
+    ///
+    /// Set to `nil` to disable the ARTIM timer (not recommended for production).
+    /// Default is 30 seconds.
+    public let artimTimeout: TimeInterval?
+    
     /// Whether to use TLS encryption
     public let tlsEnabled: Bool
     
@@ -48,6 +60,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - timeout: Connection timeout (default: 30 seconds)
+    ///   - artimTimeout: ARTIM timer timeout in seconds (default: 30 seconds, nil to disable)
     ///   - tlsEnabled: Use TLS (default: false)
     public init(
         callingAETitle: AETitle,
@@ -58,6 +71,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
         implementationClassUID: String,
         implementationVersionName: String? = nil,
         timeout: TimeInterval = 30,
+        artimTimeout: TimeInterval? = 30,
         tlsEnabled: Bool = false
     ) {
         self.callingAETitle = callingAETitle
@@ -68,6 +82,7 @@ public struct AssociationConfiguration: Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.timeout = timeout
+        self.artimTimeout = artimTimeout
         self.tlsEnabled = tlsEnabled
     }
 }
@@ -200,6 +215,7 @@ public final class Association: @unchecked Sendable {
     /// - Returns: The negotiated association parameters
     /// - Throws: `DICOMNetworkError.connectionFailed` if connection fails
     /// - Throws: `DICOMNetworkError.associationRejected` if association is rejected
+    /// - Throws: `DICOMNetworkError.artimTimerExpired` if ARTIM timer expires
     public func request(presentationContexts: [PresentationContext]) async throws -> NegotiatedAssociation {
         // Ensure we're in idle state
         guard state == .idle else {
@@ -232,12 +248,23 @@ public final class Association: @unchecked Sendable {
         try await conn.send(pdu: associateRequest)
         _ = stateMachine.handleEvent(.associateRequestSent)
         
-        // Wait for response
-        let responsePDU = try await conn.receivePDU()
+        // Wait for response with ARTIM timer
+        let responsePDU: any PDU
+        do {
+            responsePDU = try await receiveWithARTIMTimer(conn: conn)
+        } catch let error as DICOMNetworkError where error.isARTIMExpired {
+            _ = stateMachine.handleEvent(.artimTimerExpired)
+            // Send abort and close connection
+            let abortPDU = AbortPDU(source: .serviceProvider, reason: AbortReason.notSpecified.rawValue)
+            try? await conn.send(pdu: abortPDU)
+            conn.abort()
+            _ = stateMachine.handleEvent(.transportConnectionClosed)
+            throw error
+        }
         
         switch responsePDU {
         case let acceptPDU as AssociateAcceptPDU:
-            let result = stateMachine.handleEvent(.associateAcceptReceived(acceptPDU))
+            _ = stateMachine.handleEvent(.associateAcceptReceived(acceptPDU))
             
             // Check if any presentation context was accepted
             guard acceptPDU.acceptedContextIDs.count > 0 else {
@@ -367,6 +394,7 @@ public final class Association: @unchecked Sendable {
     /// Sends an A-RELEASE-RQ and waits for A-RELEASE-RP.
     ///
     /// - Throws: `DICOMNetworkError.invalidState` if not in established state
+    /// - Throws: `DICOMNetworkError.artimTimerExpired` if ARTIM timer expires
     public func release() async throws {
         guard state == .established else {
             throw DICOMNetworkError.invalidState("Cannot release: association not established")
@@ -379,10 +407,21 @@ public final class Association: @unchecked Sendable {
         // Send A-RELEASE-RQ
         let releaseRequest = ReleaseRequestPDU()
         try await conn.send(pdu: releaseRequest)
-        let result = stateMachine.handleEvent(.localReleaseRequest)
+        _ = stateMachine.handleEvent(.localReleaseRequest)
         
-        // Wait for A-RELEASE-RP
-        let responsePDU = try await conn.receivePDU()
+        // Wait for A-RELEASE-RP with ARTIM timer
+        let responsePDU: any PDU
+        do {
+            responsePDU = try await receiveWithARTIMTimer(conn: conn)
+        } catch let error as DICOMNetworkError where error.isARTIMExpired {
+            _ = stateMachine.handleEvent(.artimTimerExpired)
+            // Send abort and close connection
+            let abortPDU = AbortPDU(source: .serviceProvider, reason: AbortReason.notSpecified.rawValue)
+            try? await conn.send(pdu: abortPDU)
+            conn.abort()
+            _ = stateMachine.handleEvent(.transportConnectionClosed)
+            throw error
+        }
         
         switch responsePDU {
         case _ as ReleaseResponsePDU:
@@ -437,6 +476,57 @@ public final class Association: @unchecked Sendable {
         conn.abort()
         _ = stateMachine.handleEvent(.transportConnectionClosed)
     }
+    
+    /// Receives a PDU with ARTIM timer protection
+    ///
+    /// If artimTimeout is configured and the timer expires before receiving a PDU,
+    /// throws `DICOMNetworkError.artimTimerExpired`.
+    ///
+    /// - Parameter conn: The connection to receive from
+    /// - Returns: The received PDU
+    /// - Throws: `DICOMNetworkError.artimTimerExpired` if timer expires
+    private func receiveWithARTIMTimer(conn: DICOMConnection) async throws -> any PDU {
+        guard let artimTimeout = configuration.artimTimeout else {
+            // ARTIM timer disabled, just receive normally
+            return try await conn.receivePDU()
+        }
+        
+        // Use task group to race between receive and timeout
+        return try await withThrowingTaskGroup(of: ARTIMResult.self) { group in
+            // Task 1: Receive PDU
+            group.addTask {
+                let pdu = try await conn.receivePDU()
+                return .pdu(pdu)
+            }
+            
+            // Task 2: ARTIM timer
+            group.addTask {
+                try await Task.sleep(for: .seconds(artimTimeout))
+                return .timerExpired
+            }
+            
+            // Wait for first result
+            guard let result = try await group.next() else {
+                throw DICOMNetworkError.artimTimerExpired
+            }
+            
+            // Cancel the other task
+            group.cancelAll()
+            
+            switch result {
+            case .pdu(let pdu):
+                return pdu
+            case .timerExpired:
+                throw DICOMNetworkError.artimTimerExpired
+            }
+        }
+    }
+}
+
+/// Internal enum for ARTIM timer race result
+private enum ARTIMResult: Sendable {
+    case pdu(any PDU)
+    case timerExpired
 }
 
 // MARK: - CustomStringConvertible

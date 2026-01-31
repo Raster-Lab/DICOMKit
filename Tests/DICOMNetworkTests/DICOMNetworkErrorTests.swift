@@ -53,6 +53,10 @@ struct DICOMNetworkErrorTests {
         
         let decodeError = DICOMNetworkError.decodingFailed("Invalid header")
         #expect(decodeError.description.contains("Invalid header"))
+        
+        let artimError = DICOMNetworkError.artimTimerExpired
+        #expect(artimError.description.contains("ARTIM"))
+        #expect(artimError.description.contains("expired"))
     }
     
     @Test("Associate Reject Result values")
@@ -93,5 +97,17 @@ struct DICOMNetworkErrorTests {
         #expect(AbortReason.unrecognizedPDUParameter.description.contains("parameter"))
         #expect(AbortReason.unexpectedPDUParameter.description.contains("parameter"))
         #expect(AbortReason.invalidPDUParameterValue.description.contains("Invalid"))
+    }
+    
+    @Test("isARTIMExpired helper returns correct values")
+    func testIsARTIMExpiredHelper() {
+        // ARTIM timer expired error should return true
+        let artimError = DICOMNetworkError.artimTimerExpired
+        #expect(artimError.isARTIMExpired == true)
+        
+        // Other errors should return false
+        #expect(DICOMNetworkError.timeout.isARTIMExpired == false)
+        #expect(DICOMNetworkError.connectionClosed.isARTIMExpired == false)
+        #expect(DICOMNetworkError.connectionFailed("test").isARTIMExpired == false)
     }
 }
