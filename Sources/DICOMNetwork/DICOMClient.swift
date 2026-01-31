@@ -651,8 +651,8 @@ public final class DICOMClient: Sendable {
                 calledAE: self.configuration.calledAETitle.value,
                 studyInstanceUID: studyInstanceUID,
                 moveDestination: moveDestination,
-                timeout: self.configuration.timeout,
-                onProgress: onProgress
+                onProgress: onProgress,
+                timeout: self.configuration.timeout
             )
         }
     }
@@ -681,8 +681,8 @@ public final class DICOMClient: Sendable {
                 studyInstanceUID: studyInstanceUID,
                 seriesInstanceUID: seriesInstanceUID,
                 moveDestination: moveDestination,
-                timeout: self.configuration.timeout,
-                onProgress: onProgress
+                onProgress: onProgress,
+                timeout: self.configuration.timeout
             )
         }
     }
@@ -714,8 +714,8 @@ public final class DICOMClient: Sendable {
                 seriesInstanceUID: seriesInstanceUID,
                 sopInstanceUID: sopInstanceUID,
                 moveDestination: moveDestination,
-                timeout: self.configuration.timeout,
-                onProgress: onProgress
+                onProgress: onProgress,
+                timeout: self.configuration.timeout
             )
         }
     }
@@ -732,7 +732,7 @@ public final class DICOMClient: Sendable {
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
     public func getStudy(
         studyInstanceUID: String
-    ) async throws -> AsyncThrowingStream<RetrieveEvent, Error> {
+    ) async throws -> AsyncStream<DICOMRetrieveService.GetEvent> {
         // Note: C-GET operations are not retried since they return a stream
         // Individual failures are reported through the stream
         try await DICOMRetrieveService.getStudy(
@@ -755,7 +755,7 @@ public final class DICOMClient: Sendable {
     public func getSeries(
         studyInstanceUID: String,
         seriesInstanceUID: String
-    ) async throws -> AsyncThrowingStream<RetrieveEvent, Error> {
+    ) async throws -> AsyncStream<DICOMRetrieveService.GetEvent> {
         try await DICOMRetrieveService.getSeries(
             host: configuration.host,
             port: configuration.port,
@@ -779,7 +779,7 @@ public final class DICOMClient: Sendable {
         studyInstanceUID: String,
         seriesInstanceUID: String,
         sopInstanceUID: String
-    ) async throws -> AsyncThrowingStream<RetrieveEvent, Error> {
+    ) async throws -> AsyncStream<DICOMRetrieveService.GetEvent> {
         try await DICOMRetrieveService.getInstance(
             host: configuration.host,
             port: configuration.port,
@@ -986,6 +986,9 @@ public final class DICOMClient: Sendable {
         case .connectionFailed, .timeout, .connectionClosed, .artimTimerExpired:
             // Connection-level failures should trip the circuit
             return true
+        case .operationTimeout:
+            // Operation timeouts are connection-level failures
+            return true
         case .associationRejected(let result, _, _):
             // Only transient rejections are considered server failures
             return result == .rejectedTransient
@@ -993,7 +996,7 @@ public final class DICOMClient: Sendable {
              .sopClassNotSupported, .unexpectedPDUType, .invalidPDU,
              .encodingFailed, .decodingFailed, .pduTooLarge,
              .associationAborted, .queryFailed, .retrieveFailed,
-             .circuitBreakerOpen:
+             .circuitBreakerOpen, .storeFailed, .partialFailure:
             // Client-side or protocol errors shouldn't affect circuit breaker
             return false
         }
@@ -1016,7 +1019,7 @@ public final class DICOMClient: Sendable {
         case .associationRejected(let result, _, _):
             // Retry only transient rejections
             return result == .rejectedTransient
-        case .artimTimerExpired:
+        case .artimTimerExpired, .operationTimeout:
             // Timeout waiting for response - retry
             return true
         case .invalidAETitle, .invalidState, .noPresentationContextAccepted,
@@ -1024,11 +1027,14 @@ public final class DICOMClient: Sendable {
              .encodingFailed, .decodingFailed, .pduTooLarge:
             // Protocol/configuration errors - don't retry
             return false
-        case .associationAborted, .queryFailed, .retrieveFailed:
+        case .associationAborted, .queryFailed, .retrieveFailed, .storeFailed:
             // Application-level failures - don't retry
             return false
         case .circuitBreakerOpen:
             // Circuit is open - don't retry
+            return false
+        case .partialFailure:
+            // Partial failures shouldn't be retried as some operations succeeded
             return false
         }
     }

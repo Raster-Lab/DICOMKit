@@ -18,7 +18,7 @@ import Network
 /// let response = try await connection.receivePDU()
 /// try await connection.disconnect()
 /// ```
-public final class DICOMConnection: Sendable {
+public final class DICOMConnection: @unchecked Sendable {
     
     /// Connection states
     public enum State: Sendable, Hashable {
@@ -238,7 +238,7 @@ public final class DICOMConnection: Sendable {
         
         // First, read the PDU header (6 bytes)
         let headerData = try await receive(length: 6)
-        let (pduType, pduLength) = try PDUDecoder.readHeader(from: headerData)
+        let (_, pduLength) = try PDUDecoder.readHeader(from: headerData)
         
         // Validate PDU length
         guard pduLength <= maxPDUSize else {
