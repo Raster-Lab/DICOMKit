@@ -1,4 +1,5 @@
 import Foundation
+import DICOMCore
 
 #if canImport(Network)
 
@@ -530,20 +531,21 @@ public actor ConnectionPool {
     
     /// Validates a connection using C-ECHO
     private func validateConnection(_ connection: PooledConnection) async -> Bool {
-        // Build C-ECHO request
-        let echoRequest = CEchoRequest(messageID: UInt16.random(in: 1...65535))
-        let commandSet = echoRequest.toCommandSet(
-            affectedSOPClassUID: verificationSOPClassUID
-        )
-        
         do {
             // Get the first accepted presentation context
             guard let contextID = connection.association.negotiated?.acceptedPresentationContexts.first?.id else {
                 return false
             }
             
+            // Build C-ECHO request
+            let echoRequest = CEchoRequest(
+                messageID: UInt16.random(in: 1...65535),
+                affectedSOPClassUID: verificationSOPClassUID,
+                presentationContextID: contextID
+            )
+            
             // Send C-ECHO command
-            let commandData = try commandSet.encode(
+            let commandData = try echoRequest.commandSet.encode(
                 transferSyntax: TransferSyntax(uid: implicitVRLittleEndianTransferSyntaxUID)!
             )
             let pdv = PresentationDataValue(
