@@ -108,10 +108,13 @@ public struct RetryPolicy: Sendable, Hashable {
     public static let `default` = RetryPolicy()
     
     /// No retries - fail immediately on first error
+    ///
+    /// Note: The initialDelay is set to 0.1 (the minimum) even though retries won't occur.
+    /// This ensures consistent behavior if the policy is ever used as a base for other configurations.
     public static let noRetry = RetryPolicy(
         maxAttempts: 0,
-        initialDelay: 0,
-        maxDelay: 0,
+        initialDelay: 0.1,  // Minimum allowed, but won't be used since maxAttempts is 0
+        maxDelay: 0.1,
         strategy: .fixed
     )
     
@@ -286,11 +289,27 @@ extension RetryStrategy: CustomStringConvertible {
 /// Provides information about retry progress that can be used
 /// for logging, monitoring, or making decisions about whether
 /// to continue retrying.
+///
+/// ## Attempt Numbering
+///
+/// `attemptNumber` starts at 1 for the initial attempt and increments for each retry.
+/// `maxAttempts` is the number of **retry** attempts allowed (not including the initial attempt).
+/// Total possible attempts = 1 (initial) + maxAttempts (retries)
+///
+/// For example, with maxAttempts=3:
+/// - attemptNumber=1 is the initial attempt
+/// - attemptNumber=2 is the 1st retry
+/// - attemptNumber=3 is the 2nd retry
+/// - attemptNumber=4 is the 3rd retry (final)
 public struct RetryContext: Sendable {
     /// The number of attempts that have been made (including the initial attempt)
+    ///
+    /// Starts at 1 for the initial attempt.
     public let attemptNumber: Int
     
-    /// The total number of attempts allowed
+    /// The maximum number of retry attempts allowed (not counting the initial attempt)
+    ///
+    /// Total possible attempts = 1 + maxAttempts
     public let maxAttempts: Int
     
     /// Whether there are more retry attempts available

@@ -70,7 +70,8 @@ final class RetryPolicyConfigurationTests: XCTestCase {
         let policy = RetryPolicy.noRetry
         
         XCTAssertEqual(policy.maxAttempts, 0)
-        XCTAssertEqual(policy.initialDelay, 0.1)  // Minimum allowed
+        XCTAssertEqual(policy.initialDelay, 0.1)  // Minimum allowed, won't be used
+        XCTAssertEqual(policy.maxDelay, 0.1)      // Same as initialDelay
     }
     
     func test_preset_aggressive() {
@@ -329,7 +330,7 @@ final class RetryContextTests: XCTestCase {
     
     func test_context_fractionUsed() {
         let context = RetryContext(attemptNumber: 2, maxAttempts: 4)
-        // Fraction used = (2-1)/4 = 0.25
+        // Fraction used = (2-1)/4 = 0.25 (1 retry used out of 4 allowed)
         XCTAssertEqual(context.fractionUsed, 0.25, accuracy: 0.001)
     }
     
@@ -342,6 +343,7 @@ final class RetryContextTests: XCTestCase {
         )
         let description = context.description
         
+        // attemptNumber=2, maxAttempts=3 means we're on attempt 2 of 4 total (1 initial + 3 retries)
         XCTAssertTrue(description.contains("attempt 2/4"))
         XCTAssertTrue(description.contains("elapsed"))
         XCTAssertTrue(description.contains("nextDelay"))
