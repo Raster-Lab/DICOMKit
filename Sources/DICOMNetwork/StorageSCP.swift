@@ -718,8 +718,8 @@ actor SCPAssociation {
         // Check if calling AE is allowed
         guard configuration.isCallingAEAllowed(callingAETitle) else {
             try await sendAssociateReject(
-                result: .permanentRejected,
-                source: .serviceUserACSERelated,
+                result: .rejectedPermanent,
+                source: .serviceUser,
                 reason: 2 // Calling AE Title not recognized
             )
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Calling AE not allowed"))
@@ -730,8 +730,8 @@ actor SCPAssociation {
         let calledAE = associateRequest.calledAETitle.value
         guard calledAE == configuration.aeTitle.value else {
             try await sendAssociateReject(
-                result: .permanentRejected,
-                source: .serviceUserACSERelated,
+                result: .rejectedPermanent,
+                source: .serviceUser,
                 reason: 7 // Called AE Title not recognized
             )
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Called AE mismatch"))
@@ -753,8 +753,8 @@ actor SCPAssociation {
         // Ask delegate if we should accept
         guard await delegate.shouldAcceptAssociation(from: info) else {
             try await sendAssociateReject(
-                result: .permanentRejected,
-                source: .serviceUserACSERelated,
+                result: .rejectedPermanent,
+                source: .serviceUser,
                 reason: 1 // No reason given
             )
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Rejected by delegate"))
@@ -950,7 +950,7 @@ actor SCPAssociation {
                 messageIDBeingRespondedTo: request.messageID,
                 affectedSOPClassUID: sopClassUID,
                 affectedSOPInstanceUID: sopInstanceUID,
-                status: .processingFailure,
+                status: .failedUnableToProcess,
                 presentationContextID: message.presentationContextID
             )
             try await sendDIMSEResponse(response)

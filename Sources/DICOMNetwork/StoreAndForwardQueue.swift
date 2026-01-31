@@ -1175,11 +1175,7 @@ public actor StoreAndForwardQueue {
                 await markItemCompleted(id: item.id, result: result, deliveryTime: deliveryTime)
             } else {
                 // Store returned failure status
-                let error = DICOMNetworkError.storeFailed(
-                    sopInstanceUID: item.sopInstanceUID,
-                    status: result.status.code,
-                    message: "Store failed with status: \(result.status)"
-                )
+                let error = DICOMNetworkError.storeFailed(result.status)
                 await handleItemFailure(id: item.id, error: error)
             }
         } catch {

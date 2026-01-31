@@ -127,15 +127,15 @@ public struct TLSConfiguration: Sendable, Hashable {
         let options = NWProtocolTLS.Options()
         let secOptions = options.securityProtocolOptions
         
-        // Set minimum TLS version
-        sec_protocol_options_set_tls_min_version(
+        // Set minimum TLS version using the modern API
+        sec_protocol_options_set_min_tls_protocol_version(
             secOptions,
             minimumVersion.secProtocolVersion
         )
         
         // Set maximum TLS version if specified
         if let maxVersion = maximumVersion {
-            sec_protocol_options_set_tls_max_version(
+            sec_protocol_options_set_max_tls_protocol_version(
                 secOptions,
                 maxVersion.secProtocolVersion
             )
@@ -198,9 +198,27 @@ public struct TLSConfiguration: Sendable, Hashable {
             { _, secTrust, completion in
                 let trust = sec_trust_copy_ref(secTrust).takeRetainedValue()
                 
-                // Get the server certificate
-                guard SecTrustGetCertificateCount(trust) > 0,
-                      let serverCert = SecTrustGetCertificateAtIndex(trust, 0) else {
+                // Get the server certificate using the modern API
+                guard SecTrustGetCertificateCount(trust) > 0 else {
+                    completion(false)
+                    return
+                }
+                
+                // Use SecTrustCopyCertificateChain (available on macOS 12+/iOS 15+)
+                // Fall back to deprecated API for older systems
+                let serverCert: SecCertificate?
+                if #available(macOS 12.0, iOS 15.0, *) {
+                    if let certChain = SecTrustCopyCertificateChain(trust) as? [SecCertificate],
+                       let firstCert = certChain.first {
+                        serverCert = firstCert
+                    } else {
+                        serverCert = nil
+                    }
+                } else {
+                    serverCert = SecTrustGetCertificateAtIndex(trust, 0)
+                }
+                
+                guard let serverCert = serverCert else {
                     completion(false)
                     return
                 }
@@ -266,11 +284,23 @@ public struct TLSConfiguration: Sendable, Hashable {
 /// Supported TLS protocol versions
 ///
 /// DICOM networks typically require TLS 1.2 or higher for security compliance.
+///
+/// > Warning: TLS 1.0 and TLS 1.1 are deprecated and no longer supported on
+/// > macOS 13+/iOS 16+ systems. On these newer systems, selecting TLS 1.0 or
+/// > TLS 1.1 will automatically fall back to TLS 1.2 to maintain security
+/// > compliance. If you require TLS 1.0/1.1 for legacy server compatibility,
+/// > ensure your deployment targets support these protocol versions.
 public enum TLSProtocolVersion: String, Sendable, Hashable, CaseIterable {
     /// TLS 1.0 (deprecated, not recommended)
+    ///
+    /// > Warning: TLS 1.0 is not available on macOS 13+/iOS 16+ and will
+    /// > automatically fall back to TLS 1.2 on these systems.
     case tlsProtocol10 = "TLS 1.0"
     
     /// TLS 1.1 (deprecated, not recommended)
+    ///
+    /// > Warning: TLS 1.1 is not available on macOS 13+/iOS 16+ and will
+    /// > automatically fall back to TLS 1.2 on these systems.
     case tlsProtocol11 = "TLS 1.1"
     
     /// TLS 1.2 (recommended minimum)
@@ -280,16 +310,48 @@ public enum TLSProtocolVersion: String, Sendable, Hashable, CaseIterable {
     case tlsProtocol13 = "TLS 1.3"
     
     /// The corresponding Security framework protocol version
+    ///
+    /// > Note: On macOS 13+/iOS 16+, TLS 1.0 and TLS 1.1 are no longer
+    /// > available and will return TLS 1.2 instead.
+    @available(macOS 10.15, iOS 13.0, *)
     var secProtocolVersion: tls_protocol_version_t {
         switch self {
         case .tlsProtocol10:
-            return .TLSv10
+            // TLSv10 is deprecated and not available on newer systems
+            // Fall back to TLS 1.2 for security compliance
+            if #available(macOS 13.0, iOS 16.0, *) {
+                return .TLSv12
+            } else {
+                return .TLSv10
+            }
         case .tlsProtocol11:
-            return .TLSv11
+            // TLSv11 is deprecated and not available on newer systems
+            // Fall back to TLS 1.2 for security compliance
+            if #available(macOS 13.0, iOS 16.0, *) {
+                return .TLSv12
+            } else {
+                return .TLSv11
+            }
         case .tlsProtocol12:
             return .TLSv12
         case .tlsProtocol13:
             return .TLSv13
+        }
+    }
+    
+    /// Whether this protocol version is available on the current system
+    ///
+    /// TLS 1.0 and TLS 1.1 are not available on macOS 13+/iOS 16+.
+    @available(macOS 10.15, iOS 13.0, *)
+    public var isAvailableOnCurrentSystem: Bool {
+        switch self {
+        case .tlsProtocol10, .tlsProtocol11:
+            if #available(macOS 13.0, iOS 16.0, *) {
+                return false
+            }
+            return true
+        case .tlsProtocol12, .tlsProtocol13:
+            return true
         }
     }
 }
@@ -490,10 +552,13 @@ public struct ClientIdentity: @unchecked Sendable, Hashable {
         
         guard let itemsArray = items as? [[String: Any]],
               let firstItem = itemsArray.first,
-              let identity = firstItem[kSecImportItemIdentity as String] as? SecIdentity else {
+              let identityRef = firstItem[kSecImportItemIdentity as String] else {
             throw TLSConfigurationError.pkcs12NoIdentity
         }
         
+        // The identity is guaranteed to be a SecIdentity from SecPKCS12Import
+        // swiftlint:disable:next force_cast
+        let identity = identityRef as! SecIdentity
         return identity
     }
     
@@ -511,10 +576,13 @@ public struct ClientIdentity: @unchecked Sendable, Hashable {
             throw TLSConfigurationError.keychainIdentityNotFound(label: label, status: status)
         }
         
-        guard let identity = item as? SecIdentity else {
+        guard item != nil else {
             throw TLSConfigurationError.keychainIdentityNotFound(label: label, status: errSecItemNotFound)
         }
         
+        // The identity is guaranteed to be a SecIdentity when querying with kSecClassIdentity
+        // swiftlint:disable:next force_cast
+        let identity = item as! SecIdentity
         return identity
     }
 }
