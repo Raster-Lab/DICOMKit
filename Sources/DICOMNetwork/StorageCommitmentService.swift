@@ -1373,8 +1373,8 @@ actor CommitmentListenerAssociation {
             return
         }
         
-        callingAETitle = associateRequest.callingAETitle
-        calledAETitle = associateRequest.calledAETitle
+        callingAETitle = associateRequest.callingAETitle.value
+        calledAETitle = associateRequest.calledAETitle.value
         maxPDUSize = min(associateRequest.maxPDUSize, configuration.maxPDUSize)
         
         // Check if calling AE is allowed
@@ -1460,17 +1460,17 @@ actor CommitmentListenerAssociation {
         request: AssociateRequestPDU,
         acceptedContexts: [UInt8: String]
     ) -> AssociateAcceptPDU {
-        var acceptedPresentationContexts: [PresentationContextAccept] = []
+        var acceptedPresentationContexts: [AcceptedPresentationContext] = []
         
         for context in request.presentationContexts {
             if let transferSyntax = acceptedContexts[context.id] {
-                acceptedPresentationContexts.append(PresentationContextAccept(
+                acceptedPresentationContexts.append(AcceptedPresentationContext(
                     id: context.id,
                     result: .acceptance,
                     transferSyntax: transferSyntax
                 ))
             } else {
-                acceptedPresentationContexts.append(PresentationContextAccept(
+                acceptedPresentationContexts.append(AcceptedPresentationContext(
                     id: context.id,
                     result: .abstractSyntaxNotSupported,
                     transferSyntax: context.transferSyntaxes.first ?? implicitVRLittleEndianTransferSyntaxUID
@@ -1547,7 +1547,7 @@ actor CommitmentListenerAssociation {
                     affectedSOPClassUID: affectedSOPClassUID,
                     affectedSOPInstanceUID: affectedSOPInstanceUID,
                     eventTypeID: eventTypeID,
-                    status: .processingFailure,
+                    status: .failedUnableToProcess,
                     hasDataSet: false,
                     presentationContextID: message.presentationContextID
                 )
@@ -1596,7 +1596,7 @@ actor CommitmentListenerAssociation {
     }
     
     private func sendPDU(_ pdu: any PDU) async throws {
-        let data = pdu.encode()
+        let data = try pdu.encode()
         
         return try await withCheckedThrowingContinuation { continuation in
             connection.send(content: data, completion: .contentProcessed { error in

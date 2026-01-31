@@ -240,12 +240,12 @@ public final class Association: @unchecked Sendable {
         }
         
         // Create and establish TCP connection
-        let conn = DICOMConnection(
+        let conn = try DICOMConnection(
             host: configuration.host,
             port: configuration.port,
             maxPDUSize: configuration.maxPDUSize,
             timeout: configuration.timeout,
-            tlsEnabled: configuration.tlsEnabled
+            tlsConfiguration: configuration.tlsEnabled ? .default : nil
         )
         connection = conn
         

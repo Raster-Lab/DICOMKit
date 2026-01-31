@@ -771,7 +771,6 @@ public enum DICOMRetrieveService {
         }
         
         // Receive responses
-        var lastProgress = RetrieveProgress()
         let assembler = MessageAssembler()
         
         while true {
@@ -786,7 +785,6 @@ public enum DICOMRetrieveService {
                 
                 // Update progress
                 let progress = RetrieveProgress(from: moveResponse)
-                lastProgress = progress
                 onProgress?(progress)
                 
                 // Check the status
@@ -964,7 +962,6 @@ public enum DICOMRetrieveService {
         }
         
         // Receive responses and C-STORE sub-operations
-        var lastProgress = RetrieveProgress()
         let assembler = MessageAssembler()
         
         while true {
@@ -980,7 +977,6 @@ public enum DICOMRetrieveService {
                     
                     // Update progress
                     let progress = RetrieveProgress(from: getResponse)
-                    lastProgress = progress
                     continuation.yield(.progress(progress))
                     
                     // Check the status

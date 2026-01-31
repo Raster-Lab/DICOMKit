@@ -470,7 +470,7 @@ actor CommitmentSCPAssociation {
     }
     
     func abort() async {
-        try? await sendAbort(reason: .serviceProviderInitiatedAbort)
+        try? await sendAbort(reason: .unexpectedPDU)
         connection.cancel()
     }
     
@@ -482,22 +482,22 @@ actor CommitmentSCPAssociation {
         
         guard let associateRequest = firstPDU as? AssociateRequestPDU else {
             try await sendAbort(reason: .unexpectedPDU)
-            throw DICOMNetworkError.protocolError("Expected A-ASSOCIATE-RQ, got \(type(of: firstPDU))")
+            throw DICOMNetworkError.decodingFailed("Expected A-ASSOCIATE-RQ, got \(type(of: firstPDU))")
         }
         
         // Extract association info
-        callingAETitle = associateRequest.callingAETitle.trimmingCharacters(in: .whitespaces)
-        calledAETitle = associateRequest.calledAETitle.trimmingCharacters(in: .whitespaces)
+        callingAETitle = associateRequest.callingAETitle.value
+        calledAETitle = associateRequest.calledAETitle.value
         
         // Check calling AE is allowed
         guard configuration.isCallingAEAllowed(callingAETitle) else {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Calling AE not allowed"))
             try await sendAssociateReject(
                 result: .rejectedPermanent,
-                source: .serviceUserACSERelated,
+                source: .serviceUser,
                 reason: 3 // Calling AE Title not recognized
             )
-            throw DICOMNetworkError.associationRejected("Calling AE not allowed: \(callingAETitle)")
+            throw DICOMNetworkError.associationRejected(result: .rejectedPermanent, source: .serviceUser, reason: 3)
         }
         
         // Check called AE matches our AE
@@ -505,10 +505,10 @@ actor CommitmentSCPAssociation {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Called AE mismatch"))
             try await sendAssociateReject(
                 result: .rejectedPermanent,
-                source: .serviceUserACSERelated,
+                source: .serviceUser,
                 reason: 7 // Called AE Title not recognized
             )
-            throw DICOMNetworkError.associationRejected("Called AE mismatch: \(calledAETitle)")
+            throw DICOMNetworkError.associationRejected(result: .rejectedPermanent, source: .serviceUser, reason: 7)
         }
         
         // Create association info for delegate
@@ -530,10 +530,10 @@ actor CommitmentSCPAssociation {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "Rejected by delegate"))
             try await sendAssociateReject(
                 result: .rejectedPermanent,
-                source: .serviceUserACSERelated,
+                source: .serviceUser,
                 reason: 1 // No reason given
             )
-            throw DICOMNetworkError.associationRejected("Rejected by delegate")
+            throw DICOMNetworkError.associationRejected(result: .rejectedPermanent, source: .serviceUser, reason: 1)
         }
         
         // Negotiate presentation contexts
@@ -544,10 +544,10 @@ actor CommitmentSCPAssociation {
             await eventHandler(.associationRejected(callingAE: callingAETitle, reason: "No presentation contexts accepted"))
             try await sendAssociateReject(
                 result: .rejectedTransient,
-                source: .serviceProviderACSERelated,
+                source: .serviceProviderACSE,
                 reason: 1 // No reason given
             )
-            throw DICOMNetworkError.presentationContextRejected("No presentation contexts could be accepted")
+            throw DICOMNetworkError.noPresentationContextAccepted
         }
         
         // Store accepted contexts
@@ -556,18 +556,14 @@ actor CommitmentSCPAssociation {
         }
         
         // Set max PDU size from request
-        if let userInfo = associateRequest.userInformation {
-            if let maxLength = userInfo.maxPDULength {
-                maxPDUSize = min(maxLength, configuration.maxPDUSize)
-            }
-        }
+        maxPDUSize = min(associateRequest.maxPDUSize, configuration.maxPDUSize)
         
         // Build and send A-ASSOCIATE-AC
         let acceptPDU = try buildAssociateAccept(
             calledAE: calledAETitle,
             callingAE: callingAETitle,
             acceptedContexts: acceptedContextList,
-            applicationContext: associateRequest.applicationContext
+            applicationContext: associateRequest.applicationContextName
         )
         
         try await send(pdu: acceptPDU)
@@ -594,16 +590,12 @@ actor CommitmentSCPAssociation {
                 
                 for ts in context.transferSyntaxes {
                     if supportedTS.contains(ts) {
-                        do {
-                            let acceptedContext = try AcceptedPresentationContext(
-                                id: context.id,
-                                result: .acceptance,
-                                transferSyntax: ts
-                            )
-                            accepted.append(acceptedContext)
-                        } catch {
-                            // Skip invalid contexts
-                        }
+                        let acceptedContext = AcceptedPresentationContext(
+                            id: context.id,
+                            result: .acceptance,
+                            transferSyntax: ts
+                        )
+                        accepted.append(acceptedContext)
                         break
                     }
                 }
@@ -626,13 +618,13 @@ actor CommitmentSCPAssociation {
                 
             case let abortPDU as AbortPDU:
                 _ = abortPDU // Acknowledge we received it
-                throw DICOMNetworkError.associationAborted("Association aborted by peer")
+                throw DICOMNetworkError.associationAborted(source: .serviceUser, reason: abortPDU.reason)
                 
             case let dataPDU as DataTransferPDU:
                 try await handleDataTransfer(dataPDU)
                 
             default:
-                throw DICOMNetworkError.protocolError("Unexpected PDU type: \(type(of: pdu))")
+                throw DICOMNetworkError.decodingFailed("Unexpected PDU type: \(type(of: pdu))")
             }
         }
     }
@@ -647,24 +639,23 @@ actor CommitmentSCPAssociation {
     }
     
     private func handleAssembledMessage(_ message: AssembledMessage) async throws {
-        // Parse the command set
-        let commandData = message.commandData
-        guard let commandField = CommandSet.parseCommandField(from: commandData) else {
+        // Get the command from the assembled message
+        guard let commandType = message.command else {
             throw DICOMNetworkError.invalidPDU("Failed to parse command field")
         }
         
-        switch commandField {
+        switch commandType {
         case .nActionRequest:
             try await handleNAction(message)
         default:
             // Unsupported command
-            throw DICOMNetworkError.protocolError("Unsupported command: \(commandField)")
+            throw DICOMNetworkError.decodingFailed("Unsupported command: \(commandType)")
         }
     }
     
     private func handleNAction(_ message: AssembledMessage) async throws {
         // Parse the N-ACTION request
-        let commandSet = CommandSet(data: message.commandData)
+        let commandSet = message.commandSet
         let request = NActionRequest(commandSet: commandSet, presentationContextID: message.presentationContextID)
         
         // Validate it's a Storage Commitment request
@@ -674,7 +665,7 @@ actor CommitmentSCPAssociation {
                 affectedSOPClassUID: request.requestedSOPClassUID,
                 affectedSOPInstanceUID: request.requestedSOPInstanceUID,
                 actionTypeID: request.actionTypeID,
-                status: .sopClassNotSupported,
+                status: .refusedSOPClassNotSupported,
                 presentationContextID: message.presentationContextID
             )
             try await sendDIMSEResponse(response)
@@ -687,7 +678,7 @@ actor CommitmentSCPAssociation {
                 affectedSOPClassUID: request.requestedSOPClassUID,
                 affectedSOPInstanceUID: request.requestedSOPInstanceUID,
                 actionTypeID: request.actionTypeID,
-                status: .noSuchActionType,
+                status: .failedUnableToProcess,
                 presentationContextID: message.presentationContextID
             )
             try await sendDIMSEResponse(response)
@@ -695,13 +686,13 @@ actor CommitmentSCPAssociation {
         }
         
         // Parse the data set to extract Transaction UID and Referenced SOP Sequence
-        guard let dataSetData = message.dataSetData else {
+        guard let dataSetData = message.dataSet else {
             let response = NActionResponse(
                 messageIDBeingRespondedTo: request.messageID,
                 affectedSOPClassUID: request.requestedSOPClassUID,
                 affectedSOPInstanceUID: request.requestedSOPInstanceUID,
                 actionTypeID: request.actionTypeID,
-                status: .processingFailure,
+                status: .failedUnableToProcess,
                 presentationContextID: message.presentationContextID
             )
             try await sendDIMSEResponse(response)
@@ -715,7 +706,7 @@ actor CommitmentSCPAssociation {
                 affectedSOPClassUID: request.requestedSOPClassUID,
                 affectedSOPInstanceUID: request.requestedSOPInstanceUID,
                 actionTypeID: request.actionTypeID,
-                status: .processingFailure,
+                status: .failedUnableToProcess,
                 presentationContextID: message.presentationContextID
             )
             try await sendDIMSEResponse(response)
@@ -782,17 +773,17 @@ actor CommitmentSCPAssociation {
         // Wait for and process the N-EVENT-REPORT response
         let responsePDU = try await receivePDU()
         guard let dataPDU = responsePDU as? DataTransferPDU else {
-            throw DICOMNetworkError.protocolError("Expected P-DATA-TF for N-EVENT-REPORT response")
+            throw DICOMNetworkError.decodingFailed("Expected P-DATA-TF for N-EVENT-REPORT response")
         }
         
         // Process the response
         for pdv in dataPDU.presentationDataValues {
             if let message = try messageAssembler.addPDV(pdv) {
-                let responseCommandSet = CommandSet(data: message.commandData)
+                let responseCommandSet = message.commandSet
                 let response = NEventReportResponse(commandSet: responseCommandSet, presentationContextID: message.presentationContextID)
                 
                 if !response.status.isSuccess {
-                    throw DICOMNetworkError.dimseError(response.status, "N-EVENT-REPORT failed")
+                    throw DICOMNetworkError.storeFailed(response.status)
                 }
             }
         }
@@ -1093,9 +1084,9 @@ actor CommitmentSCPAssociation {
     private func sendDIMSEResponse(_ response: DIMSEResponse) async throws {
         let commandData = response.commandSet.encode()
         let pdv = PresentationDataValue(
-            contextID: response.presentationContextID,
+            presentationContextID: response.presentationContextID,
             isCommand: true,
-            isLast: true,
+            isLastFragment: true,
             data: commandData
         )
         
@@ -1109,9 +1100,9 @@ actor CommitmentSCPAssociation {
         // Command PDV
         let commandData = request.commandSet.encode()
         let commandPDV = PresentationDataValue(
-            contextID: request.presentationContextID,
+            presentationContextID: request.presentationContextID,
             isCommand: true,
-            isLast: dataSetData == nil,
+            isLastFragment: dataSetData == nil,
             data: commandData
         )
         pdvs.append(commandPDV)
@@ -1119,9 +1110,9 @@ actor CommitmentSCPAssociation {
         // Data PDV (if present)
         if let data = dataSetData {
             let dataPDV = PresentationDataValue(
-                contextID: request.presentationContextID,
+                presentationContextID: request.presentationContextID,
                 isCommand: false,
-                isLast: true,
+                isLastFragment: true,
                 data: data
             )
             pdvs.append(dataPDV)
@@ -1142,7 +1133,7 @@ actor CommitmentSCPAssociation {
     }
     
     private func send(pdu: any PDU) async throws {
-        let data = pdu.encode()
+        let data = try pdu.encode()
         
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
             connection.send(content: data, completion: .contentProcessed { error in
@@ -1177,7 +1168,7 @@ actor CommitmentSCPAssociation {
         }
         
         // Decode the PDU
-        return try PDUDecoder.decode(data: fullData)
+        return try PDUDecoder.decode(from: fullData)
     }
     
     private func receive(length: Int) async throws -> Data {
@@ -1202,18 +1193,14 @@ actor CommitmentSCPAssociation {
         acceptedContexts: [AcceptedPresentationContext],
         applicationContext: String
     ) throws -> AssociateAcceptPDU {
-        let userInfo = UserInformation(
-            maxPDULength: maxPDUSize,
+        return AssociateAcceptPDU(
+            calledAETitle: try AETitle(calledAE),
+            callingAETitle: try AETitle(callingAE),
+            applicationContextName: applicationContext,
+            presentationContexts: acceptedContexts,
+            maxPDUSize: maxPDUSize,
             implementationClassUID: configuration.implementationClassUID,
             implementationVersionName: configuration.implementationVersionName
-        )
-        
-        return AssociateAcceptPDU(
-            calledAETitle: calledAE,
-            callingAETitle: callingAE,
-            applicationContext: applicationContext,
-            presentationContexts: acceptedContexts,
-            userInformation: userInfo
         )
     }
 }

@@ -1262,8 +1262,8 @@ struct DICOMFileParser {
         while offset < data.count {
             // Read tag
             guard offset + 4 <= data.count else { break }
-            let group = data.readUInt16LE(at: offset)
-            let element = data.readUInt16LE(at: offset + 2)
+            guard let group = data.readUInt16LE(at: offset),
+                  let element = data.readUInt16LE(at: offset + 2) else { break }
             offset += 4
             
             // Stop when we exit Group 0002
@@ -1287,12 +1287,14 @@ struct DICOMFileParser {
                 // Skip reserved 2 bytes, read 4-byte length
                 guard offset + 6 <= data.count else { break }
                 offset += 2
-                valueLength = data.readUInt32LE(at: offset)
+                guard let length = data.readUInt32LE(at: offset) else { break }
+                valueLength = length
                 offset += 4
             } else {
                 // Read 2-byte length
                 guard offset + 2 <= data.count else { break }
-                valueLength = UInt32(data.readUInt16LE(at: offset))
+                guard let length = data.readUInt16LE(at: offset) else { break }
+                valueLength = UInt32(length)
                 offset += 2
             }
             
@@ -1331,11 +1333,11 @@ struct DICOMFileParser {
         
         // Validate required fields
         guard let finalSOPClassUID = sopClassUID, !finalSOPClassUID.isEmpty else {
-            throw DICOMError.missingRequiredElement("Media Storage SOP Class UID (0002,0002)")
+            throw DICOMError.parsingFailed("Missing required element: Media Storage SOP Class UID (0002,0002)")
         }
         
         guard let finalSOPInstanceUID = sopInstanceUID, !finalSOPInstanceUID.isEmpty else {
-            throw DICOMError.missingRequiredElement("Media Storage SOP Instance UID (0002,0003)")
+            throw DICOMError.parsingFailed("Missing required element: Media Storage SOP Instance UID (0002,0003)")
         }
         
         let finalTransferSyntax = transferSyntaxUID ?? explicitVRLittleEndianTransferSyntaxUID
@@ -1352,25 +1354,6 @@ struct DICOMFileParser {
             transferSyntaxUID: finalTransferSyntax,
             dataSetData: dataSetData
         )
-    }
-}
-
-// MARK: - Data Extensions for Reading
-
-private extension Data {
-    func readUInt16LE(at offset: Int) -> UInt16 {
-        guard offset + 2 <= count else { return 0 }
-        let bytes = self[self.startIndex + offset..<self.startIndex + offset + 2]
-        return UInt16(bytes[bytes.startIndex]) | (UInt16(bytes[bytes.startIndex + 1]) << 8)
-    }
-    
-    func readUInt32LE(at offset: Int) -> UInt32 {
-        guard offset + 4 <= count else { return 0 }
-        let bytes = self[self.startIndex + offset..<self.startIndex + offset + 4]
-        return UInt32(bytes[bytes.startIndex]) |
-               (UInt32(bytes[bytes.startIndex + 1]) << 8) |
-               (UInt32(bytes[bytes.startIndex + 2]) << 16) |
-               (UInt32(bytes[bytes.startIndex + 3]) << 24)
     }
 }
 
