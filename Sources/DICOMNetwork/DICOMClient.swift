@@ -37,6 +37,69 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     /// Connection timeout in seconds
     public let timeout: TimeInterval
     
+    /// Granular timeout configuration for different operation phases
+    ///
+    /// Provides fine-grained control over timeouts for different phases of
+    /// DICOM network operations. If not explicitly set, defaults to using the
+    /// legacy `timeout` value for all timeout types.
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// // Use default timeout configuration
+    /// let config = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     timeoutConfiguration: .default
+    /// )
+    ///
+    /// // Use fast timeouts for local network
+    /// let fastConfig = try DICOMClientConfiguration(
+    ///     host: "localhost",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     timeoutConfiguration: .fast
+    /// )
+    ///
+    /// // Use slow timeouts for WAN connections
+    /// let slowConfig = try DICOMClientConfiguration(
+    ///     host: "remote-pacs.example.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     timeoutConfiguration: .slow
+    /// )
+    ///
+    /// // Custom timeout configuration
+    /// let customConfig = try DICOMClientConfiguration(
+    ///     host: "pacs.hospital.com",
+    ///     port: 11112,
+    ///     callingAE: "MY_SCU",
+    ///     calledAE: "PACS",
+    ///     timeoutConfiguration: TimeoutConfiguration(
+    ///         connect: 15,
+    ///         read: 60,
+    ///         write: 30,
+    ///         operation: 300,
+    ///         association: 45
+    ///     )
+    /// )
+    /// ```
+    public var timeoutConfiguration: TimeoutConfiguration {
+        // Use the legacy timeout value for backward compatibility
+        // Each timeout type defaults to the single timeout value
+        return TimeoutConfiguration(
+            connect: timeout,
+            read: timeout,
+            write: timeout,
+            operation: timeout * 4, // Operations typically need more time
+            association: timeout
+        )
+    }
+    
     /// Maximum PDU size to propose
     public let maxPDUSize: UInt32
     

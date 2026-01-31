@@ -460,10 +460,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Configurable retry policies (`RetryPolicy` struct)
   - [x] Exponential backoff (`RetryPolicy.exponentialBackoff`)
   - [x] Circuit breaker pattern for failing servers
-- [ ] Network Error Handling:
-  - [ ] Detailed error types with recovery suggestions
-  - [ ] Timeout configuration (connect, read, write, operation)
-  - [ ] Graceful degradation on partial failures
+- [x] Network Error Handling:
+  - [x] Detailed error types with recovery suggestions (`ErrorCategory`, `RecoverySuggestion`)
+  - [x] Timeout configuration (connect, read, write, operation) (`TimeoutConfiguration`)
+  - [x] Graceful degradation on partial failures (`partialFailure` error case)
 - [x] Logging and Diagnostics:
   - [x] PDU-level logging (configurable verbosity)
   - [x] Association event logging
