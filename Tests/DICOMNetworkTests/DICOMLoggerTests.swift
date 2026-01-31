@@ -94,93 +94,6 @@ final class DICOMLoggerTests: XCTestCase {
         XCTAssertFalse(handlerNoTimestamp.includeTimestamp)
     }
     
-    // MARK: - Retry Policy Tests (also in DICOMClient but relevant here)
-    
-    func testRetryPolicyNone() {
-        let policy = RetryPolicy.none
-        XCTAssertEqual(policy.maxRetries, 0)
-        XCTAssertFalse(policy.allowsRetries)
-    }
-    
-    func testRetryPolicyFixed() {
-        let policy = RetryPolicy.fixed(maxRetries: 3, delay: 1.0)
-        XCTAssertEqual(policy.maxRetries, 3)
-        XCTAssertEqual(policy.initialDelay, 1.0)
-        XCTAssertEqual(policy.maxDelay, 1.0)
-        XCTAssertEqual(policy.multiplier, 1.0)
-        XCTAssertTrue(policy.allowsRetries)
-    }
-    
-    func testRetryPolicyExponentialBackoff() {
-        let policy = RetryPolicy.exponentialBackoff(
-            maxRetries: 5,
-            initialDelay: 0.5,
-            maxDelay: 30.0,
-            multiplier: 2.0
-        )
-        XCTAssertEqual(policy.maxRetries, 5)
-        XCTAssertEqual(policy.initialDelay, 0.5)
-        XCTAssertEqual(policy.maxDelay, 30.0)
-        XCTAssertEqual(policy.multiplier, 2.0)
-        XCTAssertTrue(policy.allowsRetries)
-    }
-    
-    func testRetryPolicyDelayCalculation() {
-        let policy = RetryPolicy.exponentialBackoff(
-            maxRetries: 5,
-            initialDelay: 1.0,
-            maxDelay: 30.0,
-            multiplier: 2.0
-        )
-        
-        // First attempt has no delay
-        XCTAssertEqual(policy.delay(forAttempt: 0), 0)
-        
-        // First retry: initialDelay * 2^0 = 1.0
-        XCTAssertEqual(policy.delay(forAttempt: 1), 1.0)
-        
-        // Second retry: initialDelay * 2^1 = 2.0
-        XCTAssertEqual(policy.delay(forAttempt: 2), 2.0)
-        
-        // Third retry: initialDelay * 2^2 = 4.0
-        XCTAssertEqual(policy.delay(forAttempt: 3), 4.0)
-        
-        // Fourth retry: initialDelay * 2^3 = 8.0
-        XCTAssertEqual(policy.delay(forAttempt: 4), 8.0)
-        
-        // Fifth retry: initialDelay * 2^4 = 16.0
-        XCTAssertEqual(policy.delay(forAttempt: 5), 16.0)
-    }
-    
-    func testRetryPolicyDelayClampedToMax() {
-        let policy = RetryPolicy.exponentialBackoff(
-            maxRetries: 10,
-            initialDelay: 1.0,
-            maxDelay: 5.0,
-            multiplier: 2.0
-        )
-        
-        // Retry 4: 1.0 * 2^3 = 8.0, clamped to 5.0
-        XCTAssertEqual(policy.delay(forAttempt: 4), 5.0)
-        
-        // Later retries should also be clamped
-        XCTAssertEqual(policy.delay(forAttempt: 10), 5.0)
-    }
-    
-    func testRetryPolicyNegativeValuesNormalized() {
-        let policy = RetryPolicy(
-            maxRetries: -5,
-            initialDelay: -1.0,
-            maxDelay: -10.0,
-            multiplier: 0.5
-        )
-        
-        XCTAssertEqual(policy.maxRetries, 0)
-        XCTAssertEqual(policy.initialDelay, 0)
-        XCTAssertEqual(policy.maxDelay, 0)
-        XCTAssertEqual(policy.multiplier, 1.0) // Minimum is 1.0
-    }
-    
     // MARK: - Mock Log Handler for Testing
     
     final class MockLogHandler: DICOMLogHandler, @unchecked Sendable {
@@ -304,39 +217,7 @@ final class DICOMLoggerTests: XCTestCase {
     }
 }
 
-// MARK: - Retry Policy Hashable and Sendable Tests
-
-final class RetryPolicyConformanceTests: XCTestCase {
-    
-    func testRetryPolicyHashable() {
-        let policy1 = RetryPolicy.exponentialBackoff(maxRetries: 3)
-        let policy2 = RetryPolicy.exponentialBackoff(maxRetries: 3)
-        let policy3 = RetryPolicy.fixed(maxRetries: 3, delay: 1.0)
-        
-        XCTAssertEqual(policy1, policy2)
-        XCTAssertNotEqual(policy1, policy3)
-        
-        // Test with Set
-        var policySet: Set<RetryPolicy> = []
-        policySet.insert(policy1)
-        policySet.insert(policy2)
-        XCTAssertEqual(policySet.count, 1)
-    }
-    
-    func testRetryPolicySendable() async {
-        // This test verifies Sendable conformance by passing across concurrency boundaries
-        let policy = RetryPolicy.exponentialBackoff(maxRetries: 3)
-        
-        // Use the policy in an async context
-        let retries = await Task {
-            return policy.maxRetries
-        }.value
-        
-        XCTAssertEqual(retries, 3)
-    }
-}
-
-// MARK: - Log Level Sendable Tests
+// MARK: - Log Level and Category Sendable Tests
 
 final class LogLevelConformanceTests: XCTestCase {
     
