@@ -174,6 +174,17 @@ This document lists all the features available in DICOMKit that can be used to b
 - ✅ Detailed timeout types for diagnosis
 - ✅ Retryability detection for intelligent retry strategies
 
+### Validation Before Send
+- ✅ `DICOMValidator` for pre-send validation
+- ✅ Configurable validation levels (minimal, standard, strict)
+- ✅ Required attribute checking (SOP Class UID, SOP Instance UID, Study/Series UIDs)
+- ✅ UID format validation
+- ✅ Pixel data attribute validation
+- ✅ Transfer Syntax validation
+- ✅ Allowed SOP Classes filtering
+- ✅ Custom required tags configuration
+- ✅ Detailed error/warning reporting
+
 ### Query Builder API
 - ✅ Fluent QueryKeys API for building queries
 - ✅ Type-safe query parameter setting
@@ -333,6 +344,7 @@ This document lists all the features available in DICOMKit that can be used to b
 
 | Version | Features Added |
 |---------|---------------|
+| v0.7.6 | Validation Before Send: DICOMValidator for pre-send data validation |
 | v0.7.5 | Network Error Handling: Error categorization, recovery suggestions, timeout configuration |
 | v0.7.4 | TLS Security: TLS 1.2/1.3 encryption, certificate pinning, mTLS |
 | v0.7.3 | DICOM Storage SCP: Receive files from remote sources |
@@ -347,4 +359,4 @@ This document lists all the features available in DICOMKit that can be used to b
 
 ---
 
-*This feature list is based on DICOMKit v0.7.5. For the latest development roadmap, see [MILESTONES.md](MILESTONES.md).*
+*This feature list is based on DICOMKit v0.7.6. For the latest development roadmap, see [MILESTONES.md](MILESTONES.md).*
