@@ -541,6 +541,85 @@ for await event in instanceStream {
 }
 ```
 
+### DICOM Client - Unified High-Level API (v0.6.7)
+
+The `DICOMClient` provides a simplified, unified interface for all DICOM networking operations with built-in retry support.
+
+```swift
+import DICOMNetwork
+import Foundation
+
+// Create a client with retry policy
+let client = try DICOMClient(
+    host: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    timeout: 30,
+    retryPolicy: .exponentialBackoff(maxRetries: 3)
+)
+
+// Test connectivity
+let connected = try await client.verify()
+print("Connected: \(connected)")
+
+// Query for studies
+let studies = try await client.findStudies(
+    matching: QueryKeys(level: .study)
+        .patientName("DOE^JOHN*")
+        .studyDate("20240101-20241231")
+)
+
+// Query for series
+let series = try await client.findSeries(
+    forStudy: studies[0].studyInstanceUID!,
+    matching: QueryKeys(level: .series).modality("CT")
+)
+
+// Download a study using C-GET
+for await event in try await client.getStudy(studyInstanceUID: studies[0].studyInstanceUID!) {
+    switch event {
+    case .progress(let progress):
+        print("Progress: \(progress.completed)/\(progress.total)")
+    case .instance(_, _, let data):
+        print("Received \(data.count) bytes")
+    case .completed(let result):
+        print("Download complete: \(result.progress.completed) instances")
+    case .error(let error):
+        print("Error: \(error)")
+    }
+}
+
+// Or use C-MOVE to send to another destination
+let result = try await client.moveStudy(
+    studyInstanceUID: studies[0].studyInstanceUID!,
+    moveDestination: "MY_STORAGE_SCP"
+) { progress in
+    print("Move progress: \(progress.completed)/\(progress.total)")
+}
+print("Move result: \(result.isSuccess)")
+```
+
+#### Retry Policies
+
+Configure how network operations are retried on transient failures:
+
+```swift
+// No retries (default)
+let noRetry = RetryPolicy.none
+
+// Fixed delay between retries
+let fixedRetry = RetryPolicy.fixed(maxRetries: 3, delay: 1.0)
+
+// Exponential backoff (recommended for production)
+let exponentialRetry = RetryPolicy.exponentialBackoff(
+    maxRetries: 5,
+    initialDelay: 0.5,
+    maxDelay: 30.0,
+    multiplier: 2.0
+)
+```
+
 ## Architecture
 
 DICOMKit is organized into three modules:
@@ -579,6 +658,9 @@ Standard DICOM dictionaries:
 
 ### DICOMNetwork (NEW in v0.6)
 DICOM network protocol implementation:
+- `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
+- `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
+- `RetryPolicy` - Configurable retry policies with exponential backoff (NEW in v0.6.7)
 - `DICOMVerificationService` - C-ECHO SCU for connectivity testing
 - `DICOMQueryService` - C-FIND SCU for querying PACS
 - `DICOMRetrieveService` - C-MOVE and C-GET SCU for retrieving images

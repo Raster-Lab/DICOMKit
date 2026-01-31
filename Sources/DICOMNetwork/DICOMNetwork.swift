@@ -79,6 +79,13 @@
 /// - Storage SOP Class negotiation for C-GET
 /// - Async stream-based C-GET with incoming C-STORE handling
 ///
+/// ## Milestone 6.7 - Advanced Networking Features (Partial)
+///
+/// - `DICOMClient` unified high-level API
+/// - `DICOMClientConfiguration` with server settings and TLS options
+/// - `RetryPolicy` configurable retry policies with exponential backoff
+/// - Automatic retry logic for transient network failures
+///
 /// ## Usage
 ///
 /// ### Creating DIMSE Messages
@@ -266,6 +273,35 @@
 ///     case .error(let error):
 ///         print("Error: \(error)")
 ///     }
+/// }
+/// ```
+///
+/// ### Using DICOMClient (High-Level API)
+///
+/// ```swift
+/// import DICOMNetwork
+///
+/// // Create a client with retry policy
+/// let client = try DICOMClient(
+///     host: "pacs.hospital.com",
+///     port: 11112,
+///     callingAE: "MY_SCU",
+///     calledAE: "PACS",
+///     retryPolicy: .exponentialBackoff(maxRetries: 3)
+/// )
+///
+/// // Test connectivity
+/// let connected = try await client.verify()
+///
+/// // Query for studies
+/// let studies = try await client.findStudies(
+///     matching: QueryKeys(level: .study)
+///         .patientName("DOE^JOHN*")
+/// )
+///
+/// // Download using C-GET
+/// for await event in try await client.getStudy(studyInstanceUID: studies[0].studyInstanceUID!) {
+///     // Handle events...
 /// }
 /// ```
 

@@ -440,7 +440,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 6.7: Advanced Networking Features (v0.6.7)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Production-ready networking with security and reliability features  
 **Complexity**: High  
 **Dependencies**: Milestone 6.6
@@ -456,9 +456,9 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] Pool size configuration
   - [ ] Idle connection timeout and cleanup
   - [ ] Connection health checks (periodic C-ECHO)
-- [ ] Retry Logic:
-  - [ ] Configurable retry policies
-  - [ ] Exponential backoff
+- [x] Retry Logic:
+  - [x] Configurable retry policies (`RetryPolicy` struct)
+  - [x] Exponential backoff (`RetryPolicy.exponentialBackoff`)
   - [ ] Circuit breaker pattern for failing servers
 - [ ] Network Error Handling:
   - [ ] Detailed error types with recovery suggestions
@@ -468,10 +468,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] PDU-level logging (configurable verbosity)
   - [ ] Association event logging
   - [ ] Performance metrics (latency, throughput)
-- [ ] `DICOMClient` unified high-level API:
-  - [ ] Configuration with server address, AE titles, TLS settings
-  - [ ] Automatic association management
-  - [ ] Convenience methods for common workflows
+- [x] `DICOMClient` unified high-level API:
+  - [x] Configuration with server address, AE titles, TLS settings (`DICOMClientConfiguration`)
+  - [x] Automatic association management (via existing services)
+  - [x] Convenience methods for common workflows (verify, findStudies, findSeries, findInstances, moveStudy, moveSeries, moveInstance, getStudy, getSeries, getInstance)
 - [ ] User Identity Negotiation (username/password, Kerberos)
 
 #### Technical Notes
@@ -484,7 +484,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 #### Acceptance Criteria
 - [ ] TLS connections work with hospital/enterprise PACS
 - [ ] Connection pooling reduces latency for batch operations
-- [ ] Retry logic handles transient network failures
+- [x] Retry logic handles transient network failures
 - [ ] Performance is acceptable for production use
 - [ ] Security scan passes (no vulnerabilities)
 - [ ] Documentation covers security configuration
