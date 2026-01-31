@@ -270,7 +270,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsEnabled: Bool = false,
-        retryPolicy: RetryPolicy = .none,
+        retryPolicy: RetryPolicy = .noRetry,
         circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
         userIdentity: UserIdentity? = nil
     ) throws {
@@ -314,7 +314,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsConfiguration: TLSConfiguration?,
-        retryPolicy: RetryPolicy = .none,
+        retryPolicy: RetryPolicy = .noRetry,
         circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
         userIdentity: UserIdentity? = nil
     ) throws {
@@ -357,7 +357,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsEnabled: Bool = false,
-        retryPolicy: RetryPolicy = .none,
+        retryPolicy: RetryPolicy = .noRetry,
         circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
         userIdentity: UserIdentity? = nil
     ) {
@@ -400,7 +400,7 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
         tlsConfiguration: TLSConfiguration?,
-        retryPolicy: RetryPolicy = .none,
+        retryPolicy: RetryPolicy = .noRetry,
         circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil,
         userIdentity: UserIdentity? = nil
     ) {
@@ -416,124 +416,6 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
         self.retryPolicy = retryPolicy
         self.circuitBreakerConfiguration = circuitBreakerConfiguration
         self.userIdentity = userIdentity
-    }
-}
-
-// MARK: - Retry Policy
-
-/// Policy for retrying failed network operations
-///
-/// Defines how many times and with what delay network operations should be retried.
-///
-/// ## Usage
-///
-/// ```swift
-/// // No retries
-/// let noRetry = RetryPolicy.none
-///
-/// // Fixed delay retries
-/// let fixedRetry = RetryPolicy.fixed(maxRetries: 3, delay: 1.0)
-///
-/// // Exponential backoff
-/// let exponentialRetry = RetryPolicy.exponentialBackoff(
-///     maxRetries: 5,
-///     initialDelay: 0.5,
-///     maxDelay: 30.0,
-///     multiplier: 2.0
-/// )
-/// ```
-public struct RetryPolicy: Sendable, Hashable {
-    /// Maximum number of retry attempts
-    public let maxRetries: Int
-    
-    /// Initial delay before first retry (in seconds)
-    public let initialDelay: TimeInterval
-    
-    /// Maximum delay between retries (in seconds)
-    public let maxDelay: TimeInterval
-    
-    /// Multiplier for exponential backoff
-    public let multiplier: Double
-    
-    /// Whether this policy allows any retries
-    public var allowsRetries: Bool {
-        maxRetries > 0
-    }
-    
-    /// Creates a custom retry policy
-    ///
-    /// - Parameters:
-    ///   - maxRetries: Maximum number of retry attempts
-    ///   - initialDelay: Initial delay before first retry
-    ///   - maxDelay: Maximum delay between retries
-    ///   - multiplier: Multiplier for exponential backoff (1.0 for fixed delay)
-    public init(
-        maxRetries: Int,
-        initialDelay: TimeInterval,
-        maxDelay: TimeInterval,
-        multiplier: Double = 1.0
-    ) {
-        self.maxRetries = max(0, maxRetries)
-        let normalizedInitialDelay = max(0, initialDelay)
-        self.initialDelay = normalizedInitialDelay
-        self.maxDelay = max(normalizedInitialDelay, max(0, maxDelay))
-        self.multiplier = max(1.0, multiplier)
-    }
-    
-    /// No retry policy - operations fail immediately on first error
-    public static let none = RetryPolicy(
-        maxRetries: 0,
-        initialDelay: 0,
-        maxDelay: 0
-    )
-    
-    /// Creates a fixed-delay retry policy
-    ///
-    /// - Parameters:
-    ///   - maxRetries: Maximum number of retry attempts
-    ///   - delay: Fixed delay between retries in seconds
-    /// - Returns: A retry policy with fixed delays
-    public static func fixed(maxRetries: Int, delay: TimeInterval) -> RetryPolicy {
-        RetryPolicy(
-            maxRetries: maxRetries,
-            initialDelay: delay,
-            maxDelay: delay,
-            multiplier: 1.0
-        )
-    }
-    
-    /// Creates an exponential backoff retry policy
-    ///
-    /// Each retry attempt waits longer than the previous, up to maxDelay.
-    ///
-    /// - Parameters:
-    ///   - maxRetries: Maximum number of retry attempts
-    ///   - initialDelay: Initial delay before first retry (default: 0.5 seconds)
-    ///   - maxDelay: Maximum delay between retries (default: 30 seconds)
-    ///   - multiplier: Multiplier for each retry (default: 2.0)
-    /// - Returns: A retry policy with exponential backoff
-    public static func exponentialBackoff(
-        maxRetries: Int,
-        initialDelay: TimeInterval = 0.5,
-        maxDelay: TimeInterval = 30.0,
-        multiplier: Double = 2.0
-    ) -> RetryPolicy {
-        RetryPolicy(
-            maxRetries: maxRetries,
-            initialDelay: initialDelay,
-            maxDelay: maxDelay,
-            multiplier: multiplier
-        )
-    }
-    
-    /// Calculates the delay for a specific retry attempt
-    ///
-    /// - Parameter attempt: The retry attempt number (0-based)
-    /// - Returns: The delay in seconds before this retry attempt
-    public func delay(forAttempt attempt: Int) -> TimeInterval {
-        guard attempt > 0 else { return 0 }
-        let exponentialDelay = initialDelay * pow(multiplier, Double(attempt - 1))
-        return min(exponentialDelay, maxDelay)
     }
 }
 
@@ -626,7 +508,7 @@ public final class DICOMClient: Sendable {
         callingAE: String,
         calledAE: String,
         timeout: TimeInterval = 30,
-        retryPolicy: RetryPolicy = .none,
+        retryPolicy: RetryPolicy = .noRetry,
         circuitBreakerConfiguration: CircuitBreakerConfiguration? = nil
     ) throws {
         let config = try DICOMClientConfiguration(
@@ -1048,7 +930,7 @@ public final class DICOMClient: Sendable {
         
         var lastError: Error?
         
-        for attempt in 0...policy.maxRetries {
+        for attempt in 0...policy.maxAttempts {
             do {
                 // Wait before retry (no wait on first attempt)
                 if attempt > 0 {
@@ -1080,7 +962,7 @@ public final class DICOMClient: Sendable {
                 }
                 
                 // If this was the last attempt, throw the error
-                if attempt == policy.maxRetries {
+                if attempt == policy.maxAttempts {
                     throw error
                 }
             }
@@ -1180,7 +1062,7 @@ extension DICOMClient: CustomStringConvertible {
           Calling AE: \(configuration.callingAETitle)
           Called AE: \(configuration.calledAETitle)
           TLS: \(configuration.tlsEnabled)
-          Retry: \(configuration.retryPolicy.maxRetries) attempts
+          Retry: \(configuration.retryPolicy.maxAttempts) attempts
           Circuit Breaker: \(configuration.circuitBreakerEnabled ? "enabled" : "disabled")
         """
     }
