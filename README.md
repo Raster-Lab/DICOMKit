@@ -410,11 +410,15 @@ for instance in instances {
 
 ### DICOM Retrieve Service - C-MOVE (v0.6)
 
+C-MOVE requests the PACS to send images to a destination AE Title. This requires a separate Storage SCP (Service Class Provider) running at the destination to receive the images.
+
 ```swift
 import DICOMNetwork
 import Foundation
 
-// Move a study to a destination AE (requires a separate Storage SCP)
+// Move a study to a destination AE
+// Note: MY_STORAGE_SCP must be a registered AE Title in the PACS
+// and point to a running Storage SCP that can receive images
 let result = try await DICOMRetrieveService.moveStudy(
     host: "pacs.hospital.com",
     port: 11112,
@@ -459,12 +463,14 @@ let instanceResult = try await DICOMRetrieveService.moveInstance(
 
 ### DICOM Retrieve Service - C-GET (v0.6)
 
+C-GET downloads images directly on the same association, eliminating the need for a separate Storage SCP. This is simpler to use for client applications.
+
 ```swift
 import DICOMNetwork
 import Foundation
 
 // Download a study directly using C-GET (no separate SCP needed)
-let stream = try await DICOMRetrieveService.getStudy(
+let studyStream = try await DICOMRetrieveService.getStudy(
     host: "pacs.hospital.com",
     port: 11112,
     callingAE: "MY_SCU",
@@ -473,7 +479,7 @@ let stream = try await DICOMRetrieveService.getStudy(
 )
 
 // Process the async stream of events
-for await event in stream {
+for await event in studyStream {
     switch event {
     case .progress(let progress):
         print("Progress: \(progress.completed)/\(progress.total)")
@@ -500,8 +506,14 @@ let seriesStream = try await DICOMRetrieveService.getSeries(
     seriesInstanceUID: "1.2.3.4.5.6.7.8.9.10"
 )
 
+// Process events using the same pattern as above
 for await event in seriesStream {
-    // Handle events...
+    switch event {
+    case .progress(let progress): print("Series progress: \(progress.completed)/\(progress.total)")
+    case .instance(_, _, let data): print("Received \(data.count) bytes")
+    case .completed(let result): print("Series download: \(result.isSuccess ? "success" : "failed")")
+    case .error(let error): print("Error: \(error)")
+    }
 }
 
 // Download a single instance using C-GET
@@ -515,8 +527,17 @@ let instanceStream = try await DICOMRetrieveService.getInstance(
     sopInstanceUID: "1.2.3.4.5.6.7.8.9.10.11"
 )
 
+// Process events using the same pattern
 for await event in instanceStream {
-    // Handle events...
+    switch event {
+    case .instance(_, _, let data):
+        // Single instance downloaded
+        print("Instance data: \(data.count) bytes")
+    case .completed(let result):
+        print("Instance download: \(result.isSuccess ? "success" : "failed")")
+    default:
+        break
+    }
 }
 ```
 
