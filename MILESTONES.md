@@ -451,11 +451,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Certificate validation (system trust store)
   - [x] Custom certificate/key configuration
   - [x] Self-signed certificate handling (development mode)
-- [ ] Connection Pooling:
-  - [ ] Reuse associations for multiple operations
-  - [ ] Pool size configuration
-  - [ ] Idle connection timeout and cleanup
-  - [ ] Connection health checks (periodic C-ECHO)
+- [x] Connection Pooling:
+  - [x] Reuse associations for multiple operations
+  - [x] Pool size configuration
+  - [x] Idle connection timeout and cleanup
+  - [x] Connection health checks (periodic C-ECHO)
 - [x] Retry Logic:
   - [x] Configurable retry policies (`RetryPolicy` struct)
   - [x] Exponential backoff (`RetryPolicy.exponentialBackoff`)
