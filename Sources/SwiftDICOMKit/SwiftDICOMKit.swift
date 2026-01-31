@@ -1,24 +1,29 @@
 /// SwiftDICOMKit - A pure Swift DICOM toolkit for Apple platforms
 ///
-/// Version 0.2.0
+/// Version 0.3.0
 ///
 /// SwiftDICOMKit provides a modern, Swift-native interface for reading and parsing
 /// DICOM (Digital Imaging and Communications in Medicine) files on iOS, macOS, and visionOS.
 ///
-/// ## Features (v0.2)
+/// ## Features (v0.3)
 /// - Read-only DICOM file parsing
 /// - Explicit VR Little Endian Transfer Syntax support
 /// - Implicit VR Little Endian Transfer Syntax support
 /// - Explicit VR Big Endian Transfer Syntax support (Retired)
 /// - Deflated Explicit VR Little Endian Transfer Syntax support (Apple platforms only)
+/// - Uncompressed pixel data extraction and rendering
+/// - Support for MONOCHROME1, MONOCHROME2, RGB photometric interpretations
+/// - Multi-frame image support
+/// - Window Center/Width (VOI LUT) support
+/// - CGImage rendering for display
 /// - Value semantics with Swift 6 strict concurrency
 /// - Full DICOM PS3.5 2025e compliance for supported features
 ///
-/// ## Limitations (v0.2)
-/// - No pixel data decoding
+/// ## Limitations (v0.3)
 /// - No DICOM writing
 /// - No networking (DICOM C-* operations)
 /// - No compressed pixel data transfer syntaxes (JPEG, JPEG 2000, etc.)
+/// - No PALETTE COLOR photometric interpretation support
 ///
 /// ## Platform Requirements
 /// - iOS 17.0+
@@ -30,7 +35,7 @@
 @_exported import DICOMDictionary
 
 /// SwiftDICOMKit version
-public let version = "0.2.0"
+public let version = "0.3.0"
 
 /// Supported DICOM Standard edition
 public let dicomStandardEdition = "2025e"

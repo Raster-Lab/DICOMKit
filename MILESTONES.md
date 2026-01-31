@@ -65,30 +65,30 @@ SwiftDICOMKit aims to provide a comprehensive, Swift-native implementation for w
 
 ## Milestone 3: Pixel Data Access (v0.3)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Enable access to uncompressed pixel data for image rendering
 
 ### Deliverables
-- [ ] Uncompressed pixel data extraction
-- [ ] Support for common photometric interpretations:
-  - [ ] MONOCHROME1
-  - [ ] MONOCHROME2
-  - [ ] RGB
-  - [ ] PALETTE COLOR
-- [ ] Pixel data metadata parsing:
-  - [ ] Rows, Columns
-  - [ ] Bits Allocated, Bits Stored, High Bit
-  - [ ] Pixel Representation
-  - [ ] Samples Per Pixel
-  - [ ] Planar Configuration
-- [ ] Multi-frame image support
-- [ ] Basic windowing (Window Center/Width)
-- [ ] `CGImage` creation for display on Apple platforms
+- [x] Uncompressed pixel data extraction
+- [x] Support for common photometric interpretations:
+  - [x] MONOCHROME1
+  - [x] MONOCHROME2
+  - [x] RGB
+  - [ ] PALETTE COLOR (deferred to future version)
+- [x] Pixel data metadata parsing:
+  - [x] Rows, Columns
+  - [x] Bits Allocated, Bits Stored, High Bit
+  - [x] Pixel Representation
+  - [x] Samples Per Pixel
+  - [x] Planar Configuration
+- [x] Multi-frame image support
+- [x] Basic windowing (Window Center/Width)
+- [x] `CGImage` creation for display on Apple platforms
 
 ### Technical Notes
 - Reference: PS3.5 Section 8 - Native or Encapsulated Format Encoding
 - Reference: PS3.3 C.7.6.3 - Image Pixel Module
-- Use Accelerate framework for optimized pixel transformations
+- CGImage rendering available only on Apple platforms (iOS, macOS, visionOS)
 
 ### Acceptance Criteria
 - Successfully extract and display CT, MR, and X-ray images

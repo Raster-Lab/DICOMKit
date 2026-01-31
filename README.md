@@ -10,11 +10,23 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.1)
+## Features (v0.3)
 
 - ✅ **Read-only DICOM file parsing** - Parse DICOM Part 10 files
-- ✅ **Explicit VR Little Endian support** - Industry-standard transfer syntax
-- ✅ **Implicit VR Little Endian support** - DICOM default transfer syntax
+- ✅ **Multiple transfer syntax support**:
+  - ✅ Explicit VR Little Endian
+  - ✅ Implicit VR Little Endian
+  - ✅ Explicit VR Big Endian (Retired)
+  - ✅ Deflated Explicit VR Little Endian
+- ✅ **Uncompressed pixel data extraction** - Extract and render medical images
+- ✅ **Photometric interpretation support**:
+  - ✅ MONOCHROME1
+  - ✅ MONOCHROME2
+  - ✅ RGB
+  - ✅ YBR color spaces
+- ✅ **Multi-frame image support** - Work with CT, MR and other multi-slice images
+- ✅ **Window/Level (VOI LUT)** - Apply Window Center/Width transformations
+- ✅ **CGImage rendering** - Display images on Apple platforms
 - ✅ **Sequence (SQ) parsing** - Full support for nested data sets
 - ✅ **Type-safe API** - Leverages Swift's type system for safety
 - ✅ **Value semantics** - Immutable data structures with `struct` and `enum`
@@ -22,14 +34,12 @@ SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (D
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.1)
+## Limitations (v0.3)
 
-This is an initial release with focused scope:
-
-- ❌ **No pixel data decoding** - Metadata only
 - ❌ **No DICOM writing** - Read-only operations
 - ❌ **No networking** - No DICOM C-* operations (C-STORE, C-FIND, etc.)
-- ❌ **No Big Endian or compressed transfer syntaxes** - Little Endian uncompressed only
+- ❌ **No compressed pixel data** - JPEG, JPEG 2000, RLE not yet supported
+- ❌ **No PALETTE COLOR support** - Deferred to future version
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
 
@@ -49,14 +59,14 @@ Add SwiftDICOMKit to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/rasterdevapps/SwiftDICOMKit.git", from: "0.1.0")
+    .package(url: "https://github.com/rasterdevapps/SwiftDICOMKit.git", from: "0.3.0")
 ]
 ```
 
 Or add it through Xcode:
 1. File → Add Package Dependencies
 2. Enter: `https://github.com/rasterdevapps/SwiftDICOMKit`
-3. Select version 0.1.0 or later
+3. Select version 0.3.0 or later
 
 ## Quick Start
 
@@ -150,6 +160,111 @@ for element in dicomFile.dataSet {
 }
 ```
 
+### Pixel Data Access (v0.3)
+
+```swift
+import SwiftDICOMKit
+
+// Extract pixel data from DICOM file
+if let pixelData = dicomFile.pixelData() {
+    let descriptor = pixelData.descriptor
+    print("Image size: \(descriptor.columns) x \(descriptor.rows)")
+    print("Bits allocated: \(descriptor.bitsAllocated)")
+    print("Bits stored: \(descriptor.bitsStored)")
+    print("Number of frames: \(descriptor.numberOfFrames)")
+    
+    // Get pixel value range
+    if let range = pixelData.pixelRange(forFrame: 0) {
+        print("Pixel range: \(range.min) to \(range.max)")
+    }
+    
+    // Access individual pixel values
+    if let value = pixelData.pixelValue(row: 100, column: 100) {
+        print("Pixel at (100, 100): \(value)")
+    }
+    
+    // For RGB images, get color values
+    if let color = pixelData.colorValue(row: 100, column: 100) {
+        print("RGB: (\(color.red), \(color.green), \(color.blue))")
+    }
+}
+
+// Get image dimensions
+if let rows = dicomFile.imageRows, let cols = dicomFile.imageColumns {
+    print("Image dimensions: \(cols) x \(rows)")
+}
+
+// Check photometric interpretation
+if let pi = dicomFile.photometricInterpretation {
+    print("Photometric Interpretation: \(pi.rawValue)")
+    print("Is monochrome: \(pi.isMonochrome)")
+}
+
+// Get window settings from DICOM file
+if let window = dicomFile.windowSettings() {
+    print("Window Center: \(window.center)")
+    print("Window Width: \(window.width)")
+    if let explanation = window.explanation {
+        print("Window explanation: \(explanation)")
+    }
+}
+
+// Get all window presets
+let allWindows = dicomFile.allWindowSettings()
+for (index, window) in allWindows.enumerated() {
+    print("Window \(index): C=\(window.center), W=\(window.width)")
+}
+
+// Apply rescale transformation (e.g., for CT Hounsfield Units)
+let slope = dicomFile.rescaleSlope()
+let intercept = dicomFile.rescaleIntercept()
+let hounsfield = dicomFile.rescale(1024.0)  // Convert stored value to HU
+print("Hounsfield Units: \(hounsfield)")
+```
+
+### Rendering to CGImage (Apple platforms only)
+
+```swift
+import SwiftDICOMKit
+#if canImport(CoreGraphics)
+import CoreGraphics
+
+// Render using automatic windowing
+if let cgImage = dicomFile.renderFrame(0) {
+    // Use the CGImage with SwiftUI, UIKit, or AppKit
+}
+
+// Render with custom window settings
+let customWindow = WindowSettings(center: 40.0, width: 400.0)  // Soft tissue
+if let cgImage = dicomFile.renderFrame(0, window: customWindow) {
+    // Use the windowed image
+}
+
+// Render using window settings from the DICOM file
+if let cgImage = dicomFile.renderFrameWithStoredWindow(0) {
+    // Use the image with stored window/level
+}
+
+// Use PixelDataRenderer for more control
+if let pixelData = dicomFile.pixelData() {
+    let renderer = PixelDataRenderer(pixelData: pixelData)
+    
+    // Render monochrome with specific window
+    let window = WindowSettings(center: 50.0, width: 350.0, explanation: "BONE")
+    if let image = renderer.renderMonochromeFrame(0, window: window) {
+        // Use the rendered image
+    }
+    
+    // Render multi-frame images
+    for frameIndex in 0..<pixelData.descriptor.numberOfFrames {
+        if let frame = renderer.renderFrame(frameIndex) {
+            // Process each frame
+        }
+    }
+}
+#endif
+```
+
 ## Architecture
 
 SwiftDICOMKit is organized into three modules:
@@ -171,8 +286,12 @@ Core data types and utilities:
 - `DICOMUniqueIdentifier` - DICOM Unique Identifier (UI) value parsing
 - `DICOMApplicationEntity` - DICOM Application Entity (AE) value parsing
 - `DICOMUniversalResource` - DICOM Universal Resource Identifier (UR) value parsing
+- `PhotometricInterpretation` - Image photometric interpretation types
+- `PixelDataDescriptor` - Pixel data attributes and metadata
+- `PixelData` - Uncompressed pixel data access
+- `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
-- Little Endian byte reading utilities
+- Little Endian and Big Endian byte reading utilities
 
 ### DICOMDictionary
 Standard DICOM dictionaries:
@@ -182,8 +301,9 @@ Standard DICOM dictionaries:
 
 ### SwiftDICOMKit
 High-level API:
-- `DicomFile` - DICOM Part 10 file abstraction
+- `DICOMFile` - DICOM Part 10 file abstraction
 - `DataSet` - Collections of data elements
+- `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
 ## DICOM Standard Compliance
@@ -209,4 +329,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.1 - an initial release focused on core infrastructure and read-only metadata parsing. Future versions will expand functionality based on community needs.
+**Note**: This is v0.3 - adding uncompressed pixel data extraction and rendering capabilities. Future versions will expand functionality including compressed pixel data support, DICOM writing, and networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

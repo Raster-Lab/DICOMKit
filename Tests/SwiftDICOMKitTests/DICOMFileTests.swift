@@ -191,7 +191,7 @@ struct DICOMFileTests {
     
     @Test("Version constant")
     func testVersionConstant() {
-        #expect(version == "0.2.0")
+        #expect(version == "0.3.0")
     }
     
     @Test("DICOM standard edition")
