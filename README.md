@@ -10,9 +10,16 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.6)
+## Features (v0.7)
 
-- ✅ **DICOM Networking (NEW in v0.6)**
+- ✅ **DICOM Storage Service (NEW in v0.7)**
+  - ✅ C-STORE SCU for sending DICOM files to remote destinations
+  - ✅ Support for all common Storage SOP Classes (CT, MR, CR, DX, US, SC, RT)
+  - ✅ Transfer syntax negotiation
+  - ✅ Priority support (LOW, MEDIUM, HIGH)
+  - ✅ Detailed store result with status codes
+  - ✅ Integration with DICOMClient unified API
+- ✅ **DICOM Networking (v0.6)**
   - ✅ C-ECHO verification service for connectivity testing
   - ✅ C-FIND query service for finding studies, series, and instances
   - ✅ C-MOVE retrieve service for moving images to a destination AE
@@ -65,9 +72,9 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Apple Silicon optimized** - Native performance on M-series chips
 
-## Limitations (v0.6)
+## Limitations (v0.7)
 
-- ⚠️ **Limited networking** - C-ECHO, C-FIND, C-MOVE, and C-GET implemented; C-STORE not yet available
+- ⚠️ **No Storage SCP** - Can send files (C-STORE SCU) but cannot receive files (C-STORE SCP) yet
 - ❌ **No character set conversion** - UTF-8 only
 
 These features may be added in future versions. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
@@ -541,6 +548,53 @@ for await event in instanceStream {
 }
 ```
 
+### DICOM Storage Service - C-STORE (v0.7)
+
+C-STORE enables sending DICOM files to remote storage destinations like PACS systems.
+
+```swift
+import DICOMNetwork
+import Foundation
+
+// Store a complete DICOM file
+let fileData = try Data(contentsOf: dicomFileURL)
+let result = try await DICOMStorageService.store(
+    fileData: fileData,
+    to: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS"
+)
+
+if result.success {
+    print("Stored successfully: \(result.affectedSOPInstanceUID)")
+    print("Round-trip time: \(result.roundTripTime)s")
+} else {
+    print("Store failed: \(result.status)")
+}
+
+// Store with priority
+let urgentResult = try await DICOMStorageService.store(
+    fileData: fileData,
+    to: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    priority: .high
+)
+
+// Store a raw data set (without file meta information)
+let dataSetResult = try await DICOMStorageService.store(
+    dataSetData: dataSetBytes,
+    sopClassUID: "1.2.840.10008.5.1.4.1.1.2",  // CT Image Storage
+    sopInstanceUID: "1.2.3.4.5.6.7.8.9",
+    to: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS"
+)
+```
+
 ### DICOM Client - Unified High-Level API (v0.6.7)
 
 The `DICOMClient` provides a simplified, unified interface for all DICOM networking operations with built-in retry support.
@@ -598,6 +652,11 @@ let result = try await client.moveStudy(
     print("Move progress: \(progress.completed)/\(progress.total)")
 }
 print("Move result: \(result.isSuccess)")
+
+// Store a DICOM file using C-STORE (NEW in v0.7)
+let fileData = try Data(contentsOf: dicomFileURL)
+let storeResult = try await client.store(fileData: fileData)
+print("Store result: \(storeResult.success ? "success" : "failed")")
 ```
 
 #### Retry Policies
@@ -656,7 +715,7 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (NEW in v0.6)
+### DICOMNetwork (v0.6, v0.7)
 DICOM network protocol implementation:
 - `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
 - `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
@@ -664,6 +723,9 @@ DICOM network protocol implementation:
 - `DICOMVerificationService` - C-ECHO SCU for connectivity testing
 - `DICOMQueryService` - C-FIND SCU for querying PACS
 - `DICOMRetrieveService` - C-MOVE and C-GET SCU for retrieving images
+- `DICOMStorageService` - C-STORE SCU for sending DICOM files (NEW in v0.7)
+- `StoreResult` - Result type for storage operations (NEW in v0.7)
+- `StorageConfiguration` - Configuration for storage operations (NEW in v0.7)
 - `QueryKeys` - Fluent API for building query identifiers
 - `RetrieveKeys` - Fluent API for building retrieve identifiers
 - `QueryLevel` - PATIENT, STUDY, SERIES, IMAGE levels
@@ -706,4 +768,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.6 - adding comprehensive DICOM networking support including C-ECHO verification, C-FIND query, C-MOVE and C-GET retrieve services. Future versions will add C-STORE for sending images and advanced networking features. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.7 - adding C-STORE SCU for sending DICOM files to remote destinations, completing the basic DICOM networking service stack (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE). Future versions will add C-STORE SCP for receiving images and batch storage operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

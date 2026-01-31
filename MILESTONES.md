@@ -535,38 +535,41 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 7.1: C-STORE SCU - Basic Storage (v0.7.1)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Implement sending DICOM files to remote storage destinations  
 **Complexity**: Medium  
 **Dependencies**: Milestone 6.2 (Association Management), Milestone 6.3 (DIMSE Protocol)
 
 #### Deliverables
-- [ ] C-STORE SCU implementation:
-  - [ ] Build C-STORE-RQ with SOP Class/Instance UIDs
-  - [ ] Send DICOM dataset as part of C-STORE operation
-  - [ ] Receive and validate C-STORE-RSP
-  - [ ] Handle success/failure/warning status codes
-- [ ] Storage SOP Class support:
-  - [ ] CT Image Storage (1.2.840.10008.5.1.4.1.1.2)
-  - [ ] MR Image Storage (1.2.840.10008.5.1.4.1.1.4)
-  - [ ] CR Image Storage (1.2.840.10008.5.1.4.1.1.1)
-  - [ ] DX Image Storage (1.2.840.10008.5.1.4.1.1.1.1)
-  - [ ] US Image Storage (1.2.840.10008.5.1.4.1.1.6.1)
-  - [ ] Secondary Capture Image Storage (1.2.840.10008.5.1.4.1.1.7)
-  - [ ] Enhanced CT/MR Image Storage
-  - [ ] RT Structure Set, RT Plan, RT Dose Storage
-  - [ ] Extensible SOP Class registry for custom modalities
-- [ ] Transfer syntax negotiation for storage:
-  - [ ] Negotiate appropriate transfer syntaxes for data
-  - [ ] Handle accepted vs. proposed transfer syntax mismatches
-  - [ ] Automatic transcoding when needed (optional)
-- [ ] `DICOMStorageService` basic API:
-  - [ ] `func store(file: DICOMFile, to host: String, port: Int, calledAE: String) async throws -> StoreResult`
-  - [ ] `func store(dataset: DataSet, sopClassUID: String, to host: String, ...) async throws -> StoreResult`
-- [ ] `StoreResult` struct with:
-  - [ ] Status code and status category (Success, Warning, Failure)
-  - [ ] Affected SOP Instance UID
-  - [ ] Error details for failed operations
+- [x] C-STORE SCU implementation:
+  - [x] Build C-STORE-RQ with SOP Class/Instance UIDs
+  - [x] Send DICOM dataset as part of C-STORE operation
+  - [x] Receive and validate C-STORE-RSP
+  - [x] Handle success/failure/warning status codes
+- [x] Storage SOP Class support:
+  - [x] CT Image Storage (1.2.840.10008.5.1.4.1.1.2)
+  - [x] MR Image Storage (1.2.840.10008.5.1.4.1.1.4)
+  - [x] CR Image Storage (1.2.840.10008.5.1.4.1.1.1)
+  - [x] DX Image Storage (1.2.840.10008.5.1.4.1.1.1.1)
+  - [x] US Image Storage (1.2.840.10008.5.1.4.1.1.6.1)
+  - [x] Secondary Capture Image Storage (1.2.840.10008.5.1.4.1.1.7)
+  - [x] Enhanced CT/MR Image Storage
+  - [x] RT Structure Set, RT Plan, RT Dose Storage
+  - [x] Extensible SOP Class registry for custom modalities
+- [x] Transfer syntax negotiation for storage:
+  - [x] Negotiate appropriate transfer syntaxes for data
+  - [x] Handle accepted vs. proposed transfer syntax mismatches
+  - [ ] Automatic transcoding when needed (optional) - deferred
+- [x] `DICOMStorageService` basic API:
+  - [x] `func store(fileData: Data, to host: String, port: Int, calledAE: String) async throws -> StoreResult`
+  - [x] `func store(dataSetData: Data, sopClassUID: String, to host: String, ...) async throws -> StoreResult`
+- [x] `StoreResult` struct with:
+  - [x] Status code and status category (Success, Warning, Failure)
+  - [x] Affected SOP Instance UID
+  - [x] Error details for failed operations
+- [x] `DICOMClient` integration:
+  - [x] `store(fileData:priority:)` method
+  - [x] `store(dataSetData:sopClassUID:sopInstanceUID:...)` method
 
 #### Technical Notes
 - Reference: PS3.4 Annex B - Storage Service Class
@@ -577,11 +580,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Move Originator AE Title and Message ID for C-MOVE initiated stores
 
 #### Acceptance Criteria
-- [ ] Successfully store single DICOM file to test SCP
-- [ ] Correct handling of all C-STORE response status codes
-- [ ] Proper transfer syntax negotiation
-- [ ] Unit tests for C-STORE message construction and parsing
-- [ ] Error handling for connection and protocol failures
+- [ ] Successfully store single DICOM file to test SCP (requires network access)
+- [x] Correct handling of all C-STORE response status codes
+- [x] Proper transfer syntax negotiation
+- [x] Unit tests for C-STORE message construction and parsing
+- [x] Error handling for connection and protocol failures
 
 ---
 
