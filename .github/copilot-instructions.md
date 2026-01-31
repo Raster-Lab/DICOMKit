@@ -1,8 +1,8 @@
-# SwiftDICOMKit Copilot Instructions
+# DICOMKit Copilot Instructions
 
 ## Project Overview
 
-SwiftDICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) toolkit designed for Apple platforms including iOS, macOS, and visionOS. This library provides native Swift implementations for reading, parsing, and working with DICOM medical imaging files.
+DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) toolkit designed for Apple platforms including iOS, macOS, and visionOS. This library provides native Swift implementations for reading, parsing, and working with DICOM medical imaging files.
 
 ## Tech Stack
 

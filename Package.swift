@@ -3,7 +3,7 @@
 import PackageDescription
 
 let package = Package(
-    name: "SwiftDICOMKit",
+    name: "DICOMKit",
     platforms: [
         .iOS(.v17),
         .macOS(.v14),
@@ -11,8 +11,8 @@ let package = Package(
     ],
     products: [
         .library(
-            name: "SwiftDICOMKit",
-            targets: ["SwiftDICOMKit"]
+            name: "DICOMKit",
+            targets: ["DICOMKit"]
         ),
         .library(
             name: "DICOMCore",
@@ -38,7 +38,7 @@ let package = Package(
             ]
         ),
         .target(
-            name: "SwiftDICOMKit",
+            name: "DICOMKit",
             dependencies: ["DICOMCore", "DICOMDictionary"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
@@ -53,8 +53,8 @@ let package = Package(
             dependencies: ["DICOMDictionary"]
         ),
         .testTarget(
-            name: "SwiftDICOMKitTests",
-            dependencies: ["SwiftDICOMKit"]
+            name: "DICOMKitTests",
+            dependencies: ["DICOMKit"]
         )
     ]
 )

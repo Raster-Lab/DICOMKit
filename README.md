@@ -1,4 +1,4 @@
-# SwiftDICOMKit
+# DICOMKit
 
 A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
@@ -8,7 +8,7 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 ## Overview
 
-SwiftDICOMKit is a modern, Swift-native library for reading and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
+DICOMKit is a modern, Swift-native library for reading and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
 ## Features (v0.4)
 
@@ -64,23 +64,23 @@ These features may be added in future versions. See [MILESTONES.md](MILESTONES.m
 
 ### Swift Package Manager
 
-Add SwiftDICOMKit to your `Package.swift`:
+Add DICOMKit to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/rasterdevapps/SwiftDICOMKit.git", from: "0.3.0")
+    .package(url: "https://github.com/rasterdevapps/DICOMKit.git", from: "0.3.0")
 ]
 ```
 
 Or add it through Xcode:
 1. File → Add Package Dependencies
-2. Enter: `https://github.com/rasterdevapps/SwiftDICOMKit`
+2. Enter: `https://github.com/rasterdevapps/DICOMKit`
 3. Select version 0.3.0 or later
 
 ## Quick Start
 
 ```swift
-import SwiftDICOMKit
+import DICOMKit
 import Foundation
 
 // Read a DICOM file
@@ -172,7 +172,7 @@ for element in dicomFile.dataSet {
 ### Pixel Data Access (v0.3)
 
 ```swift
-import SwiftDICOMKit
+import DICOMKit
 
 // Extract pixel data from DICOM file
 if let pixelData = dicomFile.pixelData() {
@@ -234,7 +234,7 @@ print("Hounsfield Units: \(hounsfield)")
 ### Rendering to CGImage (Apple platforms only)
 
 ```swift
-import SwiftDICOMKit
+import DICOMKit
 #if canImport(CoreGraphics)
 import CoreGraphics
 
@@ -276,7 +276,7 @@ if let pixelData = dicomFile.pixelData() {
 
 ## Architecture
 
-SwiftDICOMKit is organized into three modules:
+DICOMKit is organized into three modules:
 
 ### DICOMCore
 Core data types and utilities:
@@ -308,7 +308,7 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### SwiftDICOMKit
+### DICOMKit
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction
 - `DataSet` - Collections of data elements
@@ -317,7 +317,7 @@ High-level API:
 
 ## DICOM Standard Compliance
 
-SwiftDICOMKit implements:
+DICOMKit implements:
 - **DICOM PS3.5 2025e** - Data Structures and Encoding
 - **DICOM PS3.6 2025e** - Data Dictionary (partial, essential tags only)
 - **DICOM PS3.10 2025e** - Media Storage and File Format
@@ -330,7 +330,7 @@ Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for gui
 
 ## License
 
-SwiftDICOMKit is released under the MIT License. See [LICENSE](LICENSE) for details.
+DICOMKit is released under the MIT License. See [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
