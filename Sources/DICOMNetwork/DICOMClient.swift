@@ -641,7 +641,7 @@ public final class DICOMClient: Sendable {
     public func moveStudy(
         studyInstanceUID: String,
         moveDestination: String,
-        onProgress: ((RetrieveProgress) -> Void)? = nil
+        onProgress: (@Sendable (RetrieveProgress) -> Void)? = nil
     ) async throws -> RetrieveResult {
         try await withRetry {
             try await DICOMRetrieveService.moveStudy(
@@ -670,7 +670,7 @@ public final class DICOMClient: Sendable {
         studyInstanceUID: String,
         seriesInstanceUID: String,
         moveDestination: String,
-        onProgress: ((RetrieveProgress) -> Void)? = nil
+        onProgress: (@Sendable (RetrieveProgress) -> Void)? = nil
     ) async throws -> RetrieveResult {
         try await withRetry {
             try await DICOMRetrieveService.moveSeries(
@@ -702,7 +702,7 @@ public final class DICOMClient: Sendable {
         seriesInstanceUID: String,
         sopInstanceUID: String,
         moveDestination: String,
-        onProgress: ((RetrieveProgress) -> Void)? = nil
+        onProgress: (@Sendable (RetrieveProgress) -> Void)? = nil
     ) async throws -> RetrieveResult {
         try await withRetry {
             try await DICOMRetrieveService.moveInstance(
