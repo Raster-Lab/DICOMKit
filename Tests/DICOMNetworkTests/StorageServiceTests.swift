@@ -527,4 +527,355 @@ final class StorageServiceTests: XCTestCase {
         // RT Dose Storage
         XCTAssertTrue(commonStorageSOPClassUIDs.contains("1.2.840.10008.5.1.4.1.1.481.2"))
     }
+    
+    // MARK: - FileStoreResult Tests
+    
+    func testFileStoreResultSuccess() {
+        let result = FileStoreResult(
+            index: 0,
+            sopInstanceUID: "1.2.3.4.5.6.7.8.9",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            success: true,
+            status: .success,
+            roundTripTime: 0.125,
+            fileSize: 1024
+        )
+        
+        XCTAssertEqual(result.index, 0)
+        XCTAssertEqual(result.sopInstanceUID, "1.2.3.4.5.6.7.8.9")
+        XCTAssertEqual(result.sopClassUID, "1.2.840.10008.5.1.4.1.1.2")
+        XCTAssertTrue(result.success)
+        XCTAssertTrue(result.status.isSuccess)
+        XCTAssertFalse(result.hasWarning)
+        XCTAssertEqual(result.roundTripTime, 0.125, accuracy: 0.001)
+        XCTAssertEqual(result.fileSize, 1024)
+        XCTAssertNil(result.errorMessage)
+    }
+    
+    func testFileStoreResultFailure() {
+        let result = FileStoreResult(
+            index: 5,
+            sopInstanceUID: "1.2.3.4.5.6",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.7",
+            success: false,
+            status: .refusedOutOfResources,
+            roundTripTime: 0.050,
+            fileSize: 2048,
+            errorMessage: "Storage full"
+        )
+        
+        XCTAssertEqual(result.index, 5)
+        XCTAssertFalse(result.success)
+        XCTAssertTrue(result.status.isFailure)
+        XCTAssertEqual(result.errorMessage, "Storage full")
+    }
+    
+    func testFileStoreResultWarning() {
+        let result = FileStoreResult(
+            index: 2,
+            sopInstanceUID: "1.2.3.4.5.6.7.8.9",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            success: true,
+            status: .warningCoercionOfDataElements,
+            roundTripTime: 0.100,
+            fileSize: 512
+        )
+        
+        XCTAssertTrue(result.success)
+        XCTAssertTrue(result.hasWarning)
+    }
+    
+    func testFileStoreResultSuccessFactory() {
+        let result = FileStoreResult.success(
+            index: 1,
+            sopInstanceUID: "1.2.3.4",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            status: .success,
+            roundTripTime: 0.200,
+            fileSize: 4096
+        )
+        
+        XCTAssertTrue(result.success)
+        XCTAssertNil(result.errorMessage)
+    }
+    
+    func testFileStoreResultFailureFactory() {
+        let result = FileStoreResult.failure(
+            index: 3,
+            sopInstanceUID: "1.2.3.4",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            status: .failedUnableToProcess,
+            roundTripTime: 0.150,
+            fileSize: 8192,
+            errorMessage: "Processing error"
+        )
+        
+        XCTAssertFalse(result.success)
+        XCTAssertEqual(result.errorMessage, "Processing error")
+    }
+    
+    func testFileStoreResultDescription() {
+        let result = FileStoreResult(
+            index: 0,
+            sopInstanceUID: "1.2.3.4.5.6.7.8.9",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            success: true,
+            status: .success,
+            roundTripTime: 0.125,
+            fileSize: 1024
+        )
+        
+        let description = result.description
+        XCTAssertTrue(description.contains("SUCCESS"))
+        XCTAssertTrue(description.contains("[0]"))
+        XCTAssertTrue(description.contains("1.2.3.4.5.6.7.8.9"))
+    }
+    
+    func testFileStoreResultHashable() {
+        let result1 = FileStoreResult(
+            index: 0,
+            sopInstanceUID: "1.2.3.4",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            success: true,
+            status: .success,
+            roundTripTime: 0.100,
+            fileSize: 1024
+        )
+        let result2 = FileStoreResult(
+            index: 0,
+            sopInstanceUID: "1.2.3.4",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            success: true,
+            status: .success,
+            roundTripTime: 0.100,
+            fileSize: 1024
+        )
+        let result3 = FileStoreResult(
+            index: 1,
+            sopInstanceUID: "1.2.3.4",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            success: true,
+            status: .success,
+            roundTripTime: 0.100,
+            fileSize: 1024
+        )
+        
+        XCTAssertEqual(result1, result2)
+        XCTAssertNotEqual(result1, result3)
+    }
+    
+    // MARK: - BatchStoreResult Tests
+    
+    func testBatchStoreResultSuccess() {
+        let progress = BatchStoreProgress(total: 10, succeeded: 10, failed: 0, warnings: 0)
+        let fileResults = (0..<10).map { index in
+            FileStoreResult(
+                index: index,
+                sopInstanceUID: "1.2.3.4.5.\(index)",
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                success: true,
+                status: .success,
+                roundTripTime: 0.100,
+                fileSize: 1024
+            )
+        }
+        
+        let result = BatchStoreResult(
+            progress: progress,
+            fileResults: fileResults,
+            totalBytesTransferred: 10240,
+            totalTime: 1.5
+        )
+        
+        XCTAssertTrue(result.allSucceeded)
+        XCTAssertFalse(result.hasFailures)
+        XCTAssertEqual(result.successfulFiles.count, 10)
+        XCTAssertEqual(result.failedFiles.count, 0)
+        XCTAssertEqual(result.totalBytesTransferred, 10240)
+        XCTAssertEqual(result.totalTime, 1.5, accuracy: 0.001)
+    }
+    
+    func testBatchStoreResultPartialFailure() {
+        let progress = BatchStoreProgress(total: 10, succeeded: 7, failed: 2, warnings: 1)
+        let fileResults = [
+            FileStoreResult(index: 0, sopInstanceUID: "1.2.3.1", sopClassUID: "1.2.840.10008.5.1.4.1.1.2", success: true, status: .success, roundTripTime: 0.1, fileSize: 1024),
+            FileStoreResult(index: 1, sopInstanceUID: "1.2.3.2", sopClassUID: "1.2.840.10008.5.1.4.1.1.2", success: false, status: .refusedOutOfResources, roundTripTime: 0.1, fileSize: 1024, errorMessage: "Out of resources"),
+            FileStoreResult(index: 2, sopInstanceUID: "1.2.3.3", sopClassUID: "1.2.840.10008.5.1.4.1.1.2", success: true, status: .warningCoercionOfDataElements, roundTripTime: 0.1, fileSize: 1024)
+        ]
+        
+        let result = BatchStoreResult(
+            progress: progress,
+            fileResults: fileResults,
+            totalBytesTransferred: 3072,
+            totalTime: 0.5
+        )
+        
+        XCTAssertFalse(result.allSucceeded)
+        XCTAssertTrue(result.hasFailures)
+        XCTAssertEqual(result.failedFiles.count, 1)
+    }
+    
+    func testBatchStoreResultAverageTransferRate() {
+        let progress = BatchStoreProgress(total: 5, succeeded: 5)
+        let result = BatchStoreResult(
+            progress: progress,
+            fileResults: [],
+            totalBytesTransferred: 1_000_000, // 1 MB
+            totalTime: 2.0 // 2 seconds
+        )
+        
+        XCTAssertEqual(result.averageTransferRate, 500_000, accuracy: 1) // 500 KB/s
+    }
+    
+    func testBatchStoreResultZeroTime() {
+        let progress = BatchStoreProgress(total: 0)
+        let result = BatchStoreResult(
+            progress: progress,
+            fileResults: [],
+            totalBytesTransferred: 0,
+            totalTime: 0
+        )
+        
+        XCTAssertEqual(result.averageTransferRate, 0)
+    }
+    
+    func testBatchStoreResultDescription() {
+        let progress = BatchStoreProgress(total: 10, succeeded: 8, failed: 1, warnings: 1)
+        let result = BatchStoreResult(
+            progress: progress,
+            fileResults: [],
+            totalBytesTransferred: 1024 * 1024, // 1 MB
+            totalTime: 5.0
+        )
+        
+        let description = result.description
+        XCTAssertTrue(description.contains("8 succeeded"))
+        XCTAssertTrue(description.contains("1 failed"))
+        XCTAssertTrue(description.contains("1 warnings"))
+    }
+    
+    // MARK: - BatchStorageConfiguration Tests
+    
+    func testBatchStorageConfigurationDefault() {
+        let config = BatchStorageConfiguration.default
+        
+        XCTAssertTrue(config.continueOnError)
+        XCTAssertEqual(config.maxFilesPerAssociation, 0)
+        XCTAssertEqual(config.delayBetweenFiles, 0)
+    }
+    
+    func testBatchStorageConfigurationFailFast() {
+        let config = BatchStorageConfiguration.failFast
+        
+        XCTAssertFalse(config.continueOnError)
+    }
+    
+    func testBatchStorageConfigurationCustom() {
+        let config = BatchStorageConfiguration(
+            continueOnError: false,
+            maxFilesPerAssociation: 100,
+            delayBetweenFiles: 0.5
+        )
+        
+        XCTAssertFalse(config.continueOnError)
+        XCTAssertEqual(config.maxFilesPerAssociation, 100)
+        XCTAssertEqual(config.delayBetweenFiles, 0.5, accuracy: 0.001)
+    }
+    
+    func testBatchStorageConfigurationNegativeValues() {
+        let config = BatchStorageConfiguration(
+            continueOnError: true,
+            maxFilesPerAssociation: -10,
+            delayBetweenFiles: -1.0
+        )
+        
+        // Negative values should be clamped to 0
+        XCTAssertEqual(config.maxFilesPerAssociation, 0)
+        XCTAssertEqual(config.delayBetweenFiles, 0)
+    }
+    
+    func testBatchStorageConfigurationHashable() {
+        let config1 = BatchStorageConfiguration(
+            continueOnError: true,
+            maxFilesPerAssociation: 50,
+            delayBetweenFiles: 0.1
+        )
+        let config2 = BatchStorageConfiguration(
+            continueOnError: true,
+            maxFilesPerAssociation: 50,
+            delayBetweenFiles: 0.1
+        )
+        let config3 = BatchStorageConfiguration(
+            continueOnError: false,
+            maxFilesPerAssociation: 50,
+            delayBetweenFiles: 0.1
+        )
+        
+        XCTAssertEqual(config1, config2)
+        XCTAssertNotEqual(config1, config3)
+    }
+    
+    // MARK: - StorageProgressEvent Tests
+    
+    func testStorageProgressEventProgress() {
+        let progress = BatchStoreProgress(total: 10, succeeded: 5, failed: 1)
+        let event = StorageProgressEvent.progress(progress)
+        
+        if case .progress(let p) = event {
+            XCTAssertEqual(p.total, 10)
+            XCTAssertEqual(p.succeeded, 5)
+            XCTAssertEqual(p.failed, 1)
+        } else {
+            XCTFail("Expected progress event")
+        }
+    }
+    
+    func testStorageProgressEventFileResult() {
+        let fileResult = FileStoreResult(
+            index: 0,
+            sopInstanceUID: "1.2.3.4",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            success: true,
+            status: .success,
+            roundTripTime: 0.1,
+            fileSize: 1024
+        )
+        let event = StorageProgressEvent.fileResult(fileResult)
+        
+        if case .fileResult(let result) = event {
+            XCTAssertEqual(result.sopInstanceUID, "1.2.3.4")
+            XCTAssertTrue(result.success)
+        } else {
+            XCTFail("Expected fileResult event")
+        }
+    }
+    
+    func testStorageProgressEventCompleted() {
+        let progress = BatchStoreProgress(total: 5, succeeded: 5)
+        let batchResult = BatchStoreResult(
+            progress: progress,
+            fileResults: [],
+            totalBytesTransferred: 5120,
+            totalTime: 1.0
+        )
+        let event = StorageProgressEvent.completed(batchResult)
+        
+        if case .completed(let result) = event {
+            XCTAssertEqual(result.progress.total, 5)
+            XCTAssertTrue(result.allSucceeded)
+        } else {
+            XCTFail("Expected completed event")
+        }
+    }
+    
+    func testStorageProgressEventError() {
+        let error = DICOMNetworkError.connectionFailed("Test error")
+        let event = StorageProgressEvent.error(error)
+        
+        if case .error(let e) = event {
+            XCTAssertTrue(e is DICOMNetworkError)
+        } else {
+            XCTFail("Expected error event")
+        }
+    }
 }

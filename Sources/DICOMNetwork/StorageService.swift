@@ -191,6 +191,240 @@ extension BatchStoreProgress: CustomStringConvertible {
     }
 }
 
+// MARK: - Storage Progress Event
+
+/// Events emitted during batch storage operations
+///
+/// Used with `AsyncThrowingStream` to report progress of batch storage operations.
+///
+/// Reference: PS3.4 Annex B - Storage Service Class
+public enum StorageProgressEvent: Sendable {
+    /// Progress update with current counts
+    case progress(BatchStoreProgress)
+    
+    /// An individual file was stored (success, warning, or failure)
+    case fileResult(FileStoreResult)
+    
+    /// All files have been processed
+    case completed(BatchStoreResult)
+    
+    /// An error occurred that prevented the operation from continuing
+    case error(Error)
+}
+
+// MARK: - File Store Result
+
+/// Result of storing a single file within a batch operation
+///
+/// Contains detailed information about an individual C-STORE operation.
+public struct FileStoreResult: Sendable, Hashable {
+    /// The index of the file in the batch (0-based)
+    public let index: Int
+    
+    /// The SOP Instance UID of the stored instance
+    public let sopInstanceUID: String
+    
+    /// The SOP Class UID of the stored instance
+    public let sopClassUID: String
+    
+    /// Whether the storage was successful
+    public let success: Bool
+    
+    /// The DIMSE status from the response
+    public let status: DIMSEStatus
+    
+    /// Round-trip time in seconds for this file
+    public let roundTripTime: TimeInterval
+    
+    /// Size of the file in bytes
+    public let fileSize: Int
+    
+    /// Error message if the store failed (nil if successful)
+    public let errorMessage: String?
+    
+    /// Whether the store completed with a warning
+    public var hasWarning: Bool {
+        status.isWarning
+    }
+    
+    /// Creates a file store result
+    public init(
+        index: Int,
+        sopInstanceUID: String,
+        sopClassUID: String,
+        success: Bool,
+        status: DIMSEStatus,
+        roundTripTime: TimeInterval,
+        fileSize: Int,
+        errorMessage: String? = nil
+    ) {
+        self.index = index
+        self.sopInstanceUID = sopInstanceUID
+        self.sopClassUID = sopClassUID
+        self.success = success
+        self.status = status
+        self.roundTripTime = roundTripTime
+        self.fileSize = fileSize
+        self.errorMessage = errorMessage
+    }
+    
+    /// Creates a success result
+    public static func success(
+        index: Int,
+        sopInstanceUID: String,
+        sopClassUID: String,
+        status: DIMSEStatus,
+        roundTripTime: TimeInterval,
+        fileSize: Int
+    ) -> FileStoreResult {
+        FileStoreResult(
+            index: index,
+            sopInstanceUID: sopInstanceUID,
+            sopClassUID: sopClassUID,
+            success: true,
+            status: status,
+            roundTripTime: roundTripTime,
+            fileSize: fileSize
+        )
+    }
+    
+    /// Creates a failure result
+    public static func failure(
+        index: Int,
+        sopInstanceUID: String,
+        sopClassUID: String,
+        status: DIMSEStatus,
+        roundTripTime: TimeInterval,
+        fileSize: Int,
+        errorMessage: String
+    ) -> FileStoreResult {
+        FileStoreResult(
+            index: index,
+            sopInstanceUID: sopInstanceUID,
+            sopClassUID: sopClassUID,
+            success: false,
+            status: status,
+            roundTripTime: roundTripTime,
+            fileSize: fileSize,
+            errorMessage: errorMessage
+        )
+    }
+}
+
+extension FileStoreResult: CustomStringConvertible {
+    public var description: String {
+        let statusStr = success ? (hasWarning ? "WARNING" : "SUCCESS") : "FAILED"
+        let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(fileSize), countStyle: .file)
+        return "FileStoreResult[\(index)](\(statusStr), sop=\(sopInstanceUID), size=\(sizeStr), rtt=\(String(format: "%.3f", roundTripTime))s)"
+    }
+}
+
+// MARK: - Batch Store Result
+
+/// Result of a batch storage operation
+///
+/// Contains summary information about the batch operation and individual file results.
+public struct BatchStoreResult: Sendable {
+    /// Final progress counts
+    public let progress: BatchStoreProgress
+    
+    /// Individual results for each file
+    public let fileResults: [FileStoreResult]
+    
+    /// Total bytes transferred
+    public let totalBytesTransferred: Int
+    
+    /// Total time for the batch operation in seconds
+    public let totalTime: TimeInterval
+    
+    /// Average transfer rate in bytes per second
+    public var averageTransferRate: Double {
+        guard totalTime > 0 else { return 0 }
+        return Double(totalBytesTransferred) / totalTime
+    }
+    
+    /// Whether all files were stored successfully
+    public var allSucceeded: Bool {
+        progress.failed == 0 && progress.warnings == 0
+    }
+    
+    /// Whether any files failed to store
+    public var hasFailures: Bool {
+        progress.failed > 0
+    }
+    
+    /// The failed file results
+    public var failedFiles: [FileStoreResult] {
+        fileResults.filter { !$0.success }
+    }
+    
+    /// The successful file results
+    public var successfulFiles: [FileStoreResult] {
+        fileResults.filter { $0.success && !$0.hasWarning }
+    }
+    
+    /// Creates a batch store result
+    public init(
+        progress: BatchStoreProgress,
+        fileResults: [FileStoreResult],
+        totalBytesTransferred: Int,
+        totalTime: TimeInterval
+    ) {
+        self.progress = progress
+        self.fileResults = fileResults
+        self.totalBytesTransferred = totalBytesTransferred
+        self.totalTime = totalTime
+    }
+}
+
+extension BatchStoreResult: CustomStringConvertible {
+    public var description: String {
+        let sizeStr = ByteCountFormatter.string(fromByteCount: Int64(totalBytesTransferred), countStyle: .file)
+        let rateStr = ByteCountFormatter.string(fromByteCount: Int64(averageTransferRate), countStyle: .file)
+        return "BatchStoreResult(\(progress.succeeded) succeeded, \(progress.failed) failed, \(progress.warnings) warnings, \(sizeStr) in \(String(format: "%.2f", totalTime))s @ \(rateStr)/s)"
+    }
+}
+
+// MARK: - Batch Storage Configuration
+
+/// Configuration for batch storage operations
+///
+/// Defines behavior for storing multiple DICOM files in a single operation.
+public struct BatchStorageConfiguration: Sendable, Hashable {
+    /// Whether to continue storing files after a failure
+    public let continueOnError: Bool
+    
+    /// Maximum number of files to store over a single association
+    /// If exceeded, a new association will be created
+    /// Set to 0 for unlimited (single association)
+    public let maxFilesPerAssociation: Int
+    
+    /// Delay between files in seconds (for rate limiting)
+    public let delayBetweenFiles: TimeInterval
+    
+    /// Creates a batch storage configuration
+    ///
+    /// - Parameters:
+    ///   - continueOnError: Whether to continue after failures (default: true)
+    ///   - maxFilesPerAssociation: Max files per association, 0 for unlimited (default: 0)
+    ///   - delayBetweenFiles: Delay between files in seconds (default: 0)
+    public init(
+        continueOnError: Bool = true,
+        maxFilesPerAssociation: Int = 0,
+        delayBetweenFiles: TimeInterval = 0
+    ) {
+        self.continueOnError = continueOnError
+        self.maxFilesPerAssociation = max(0, maxFilesPerAssociation)
+        self.delayBetweenFiles = max(0, delayBetweenFiles)
+    }
+    
+    /// Default configuration: continue on error, single association, no delay
+    public static let `default` = BatchStorageConfiguration()
+    
+    /// Configuration that stops on first error
+    public static let failFast = BatchStorageConfiguration(continueOnError: false)
+}
+
 #if canImport(Network)
 
 // MARK: - DICOM Storage Service
@@ -508,6 +742,398 @@ public enum DICOMStorageService {
         // Create C-STORE request
         let request = CStoreRequest(
             messageID: 1,
+            affectedSOPClassUID: sopClassUID,
+            affectedSOPInstanceUID: sopInstanceUID,
+            priority: priority,
+            presentationContextID: presentationContextID
+        )
+        
+        // Fragment and send the command and data set
+        let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
+        let pdus = fragmenter.fragmentMessage(
+            commandSet: request.commandSet,
+            dataSet: dataSetData,
+            presentationContextID: presentationContextID
+        )
+        
+        // Send all PDUs
+        for pdu in pdus {
+            for pdv in pdu.presentationDataValues {
+                try await association.send(pdv: pdv)
+            }
+        }
+        
+        // Receive response
+        let assembler = MessageAssembler()
+        
+        while true {
+            let responsePDU = try await association.receive()
+            
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                guard let storeResponse = message.asCStoreResponse() else {
+                    throw DICOMNetworkError.decodingFailed(
+                        "Expected C-STORE-RSP, got \(message.command?.description ?? "unknown")"
+                    )
+                }
+                return storeResponse
+            }
+        }
+    }
+    
+    // MARK: - Batch Storage
+    
+    /// Stores multiple DICOM files to a remote SCP
+    ///
+    /// Returns an async stream that emits progress events as files are stored.
+    /// Files are sent over a single association for efficiency.
+    ///
+    /// - Parameters:
+    ///   - files: Array of DICOM file data to store
+    ///   - host: The remote host address
+    ///   - port: The remote port number (default: 104)
+    ///   - callingAE: The local Application Entity title
+    ///   - calledAE: The remote Application Entity title
+    ///   - priority: Operation priority (default: medium)
+    ///   - timeout: Connection timeout in seconds (default: 60)
+    ///   - configuration: Batch configuration options (default: continue on error)
+    /// - Returns: An async stream of `StorageProgressEvent` values
+    /// - Throws: `DICOMNetworkError` for connection errors during setup
+    public static func storeBatch(
+        files: [Data],
+        to host: String,
+        port: UInt16 = dicomDefaultPort,
+        callingAE: String,
+        calledAE: String,
+        priority: DIMSEPriority = .medium,
+        timeout: TimeInterval = 60,
+        configuration: BatchStorageConfiguration = .default
+    ) async throws -> AsyncThrowingStream<StorageProgressEvent, Error> {
+        let callingAETitle = try AETitle(callingAE)
+        let calledAETitle = try AETitle(calledAE)
+        
+        let storageConfig = StorageConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            priority: priority
+        )
+        
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    try await performBatchStore(
+                        files: files,
+                        host: host,
+                        port: port,
+                        configuration: storageConfig,
+                        batchConfiguration: configuration,
+                        continuation: continuation
+                    )
+                } catch {
+                    continuation.yield(.error(error))
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+    
+    /// Performs the batch C-STORE operation
+    private static func performBatchStore(
+        files: [Data],
+        host: String,
+        port: UInt16,
+        configuration: StorageConfiguration,
+        batchConfiguration: BatchStorageConfiguration,
+        continuation: AsyncThrowingStream<StorageProgressEvent, Error>.Continuation
+    ) async throws {
+        let startTime = Date()
+        var fileResults: [FileStoreResult] = []
+        var succeeded = 0
+        var failed = 0
+        var warnings = 0
+        var totalBytesTransferred = 0
+        let total = files.count
+        
+        guard !files.isEmpty else {
+            let result = BatchStoreResult(
+                progress: BatchStoreProgress(total: 0),
+                fileResults: [],
+                totalBytesTransferred: 0,
+                totalTime: 0
+            )
+            continuation.yield(.completed(result))
+            continuation.finish()
+            return
+        }
+        
+        // Parse all files first to gather SOP Class UIDs for negotiation
+        var fileInfos: [(index: Int, data: Data, info: DICOMFileParser.FileInfo)] = []
+        var sopClassUIDs = Set<String>()
+        
+        for (index, fileData) in files.enumerated() {
+            do {
+                let parser = DICOMFileParser(data: fileData)
+                let info = try parser.parseForStorage()
+                fileInfos.append((index, fileData, info))
+                sopClassUIDs.insert(info.sopClassUID)
+            } catch {
+                // Record parse failure
+                let fileResult = FileStoreResult(
+                    index: index,
+                    sopInstanceUID: "UNKNOWN",
+                    sopClassUID: "UNKNOWN",
+                    success: false,
+                    status: .errorCannotUnderstand(0xC000),
+                    roundTripTime: 0,
+                    fileSize: fileData.count,
+                    errorMessage: "Failed to parse DICOM file: \(error.localizedDescription)"
+                )
+                fileResults.append(fileResult)
+                failed += 1
+                
+                continuation.yield(.fileResult(fileResult))
+                continuation.yield(.progress(BatchStoreProgress(
+                    total: total, succeeded: succeeded, failed: failed, warnings: warnings
+                )))
+                
+                if !batchConfiguration.continueOnError {
+                    let totalTime = Date().timeIntervalSince(startTime)
+                    let result = BatchStoreResult(
+                        progress: BatchStoreProgress(total: total, succeeded: succeeded, failed: failed, warnings: warnings),
+                        fileResults: fileResults,
+                        totalBytesTransferred: totalBytesTransferred,
+                        totalTime: totalTime
+                    )
+                    continuation.yield(.completed(result))
+                    continuation.finish()
+                    return
+                }
+            }
+        }
+        
+        // No valid files to store
+        if fileInfos.isEmpty {
+            let totalTime = Date().timeIntervalSince(startTime)
+            let result = BatchStoreResult(
+                progress: BatchStoreProgress(total: total, succeeded: succeeded, failed: failed, warnings: warnings),
+                fileResults: fileResults,
+                totalBytesTransferred: totalBytesTransferred,
+                totalTime: totalTime
+            )
+            continuation.yield(.completed(result))
+            continuation.finish()
+            return
+        }
+        
+        // Create association configuration
+        let associationConfig = AssociationConfiguration(
+            callingAETitle: configuration.callingAETitle,
+            calledAETitle: configuration.calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: configuration.maxPDUSize,
+            implementationClassUID: configuration.implementationClassUID,
+            implementationVersionName: configuration.implementationVersionName,
+            timeout: configuration.timeout
+        )
+        
+        // Create presentation contexts for all SOP Classes
+        var presentationContexts: [PresentationContext] = []
+        var contextID: UInt8 = 1
+        var sopClassToContextID: [String: UInt8] = [:]
+        
+        for sopClassUID in sopClassUIDs {
+            let transferSyntaxes = [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+            
+            do {
+                let context = try PresentationContext(
+                    id: contextID,
+                    abstractSyntax: sopClassUID,
+                    transferSyntaxes: transferSyntaxes
+                )
+                presentationContexts.append(context)
+                sopClassToContextID[sopClassUID] = contextID
+                contextID += 2 // Presentation Context IDs must be odd numbers
+            } catch {
+                // Skip invalid SOP classes
+                continue
+            }
+        }
+        
+        // Establish association
+        let association = Association(configuration: associationConfig)
+        
+        do {
+            var negotiated = try await association.request(presentationContexts: presentationContexts)
+            
+            var filesStoredOnAssociation = 0
+            var messageID: UInt16 = 1
+            
+            // Store each file
+            for (index, fileData, fileInfo) in fileInfos {
+                let fileStartTime = Date()
+                
+                // Check if we need to start a new association
+                if batchConfiguration.maxFilesPerAssociation > 0 &&
+                   filesStoredOnAssociation >= batchConfiguration.maxFilesPerAssociation {
+                    // Release current association and create new one
+                    try? await association.release()
+                    negotiated = try await association.request(presentationContexts: presentationContexts)
+                    filesStoredOnAssociation = 0
+                    messageID = 1
+                }
+                
+                // Add delay if configured
+                if batchConfiguration.delayBetweenFiles > 0 && index > 0 {
+                    try await Task.sleep(for: .seconds(batchConfiguration.delayBetweenFiles))
+                }
+                
+                // Get the presentation context ID for this SOP Class
+                guard let pcID = sopClassToContextID[fileInfo.sopClassUID],
+                      negotiated.isContextAccepted(pcID) else {
+                    // SOP Class not accepted
+                    let fileResult = FileStoreResult(
+                        index: index,
+                        sopInstanceUID: fileInfo.sopInstanceUID,
+                        sopClassUID: fileInfo.sopClassUID,
+                        success: false,
+                        status: .refusedSOPClassNotSupported,
+                        roundTripTime: Date().timeIntervalSince(fileStartTime),
+                        fileSize: fileData.count,
+                        errorMessage: "SOP Class not supported: \(fileInfo.sopClassUID)"
+                    )
+                    fileResults.append(fileResult)
+                    failed += 1
+                    
+                    continuation.yield(.fileResult(fileResult))
+                    continuation.yield(.progress(BatchStoreProgress(
+                        total: total, succeeded: succeeded, failed: failed, warnings: warnings
+                    )))
+                    
+                    if !batchConfiguration.continueOnError {
+                        try? await association.release()
+                        break
+                    }
+                    continue
+                }
+                
+                do {
+                    // Perform C-STORE for this file
+                    let response = try await performCStoreWithMessageID(
+                        association: association,
+                        presentationContextID: pcID,
+                        maxPDUSize: negotiated.maxPDUSize,
+                        sopClassUID: fileInfo.sopClassUID,
+                        sopInstanceUID: fileInfo.sopInstanceUID,
+                        priority: configuration.priority,
+                        dataSetData: fileInfo.dataSetData,
+                        messageID: messageID
+                    )
+                    
+                    let roundTripTime = Date().timeIntervalSince(fileStartTime)
+                    messageID += 1
+                    filesStoredOnAssociation += 1
+                    totalBytesTransferred += fileData.count
+                    
+                    let isSuccess = response.status.isSuccess || response.status.isWarning
+                    let fileResult = FileStoreResult(
+                        index: index,
+                        sopInstanceUID: fileInfo.sopInstanceUID,
+                        sopClassUID: fileInfo.sopClassUID,
+                        success: isSuccess,
+                        status: response.status,
+                        roundTripTime: roundTripTime,
+                        fileSize: fileData.count,
+                        errorMessage: isSuccess ? nil : "Store failed with status: \(response.status)"
+                    )
+                    fileResults.append(fileResult)
+                    
+                    // Categorize by status: warnings are counted separately from pure successes
+                    // Both warnings and pure successes have FileStoreResult.success = true
+                    // but are tracked in different counters for reporting purposes
+                    if response.status.isWarning {
+                        warnings += 1
+                    } else if isSuccess {
+                        succeeded += 1
+                    } else {
+                        failed += 1
+                    }
+                    
+                    continuation.yield(.fileResult(fileResult))
+                    continuation.yield(.progress(BatchStoreProgress(
+                        total: total, succeeded: succeeded, failed: failed, warnings: warnings
+                    )))
+                    
+                    if !isSuccess && !batchConfiguration.continueOnError {
+                        try? await association.release()
+                        break
+                    }
+                    
+                } catch {
+                    let roundTripTime = Date().timeIntervalSince(fileStartTime)
+                    let fileResult = FileStoreResult(
+                        index: index,
+                        sopInstanceUID: fileInfo.sopInstanceUID,
+                        sopClassUID: fileInfo.sopClassUID,
+                        success: false,
+                        status: .failedUnableToProcess,
+                        roundTripTime: roundTripTime,
+                        fileSize: fileData.count,
+                        errorMessage: error.localizedDescription
+                    )
+                    fileResults.append(fileResult)
+                    failed += 1
+                    
+                    continuation.yield(.fileResult(fileResult))
+                    continuation.yield(.progress(BatchStoreProgress(
+                        total: total, succeeded: succeeded, failed: failed, warnings: warnings
+                    )))
+                    
+                    if !batchConfiguration.continueOnError {
+                        try? await association.release()
+                        break
+                    }
+                }
+            }
+            
+            // Release association
+            try? await association.release()
+            
+        } catch {
+            // Association establishment failed
+            try? await association.abort()
+            throw error
+        }
+        
+        // Complete the stream
+        let totalTime = Date().timeIntervalSince(startTime)
+        let result = BatchStoreResult(
+            progress: BatchStoreProgress(total: total, succeeded: succeeded, failed: failed, warnings: warnings),
+            fileResults: fileResults,
+            totalBytesTransferred: totalBytesTransferred,
+            totalTime: totalTime
+        )
+        continuation.yield(.completed(result))
+        continuation.finish()
+    }
+    
+    /// Performs the C-STORE request/response exchange with a specific message ID
+    private static func performCStoreWithMessageID(
+        association: Association,
+        presentationContextID: UInt8,
+        maxPDUSize: UInt32,
+        sopClassUID: String,
+        sopInstanceUID: String,
+        priority: DIMSEPriority,
+        dataSetData: Data,
+        messageID: UInt16
+    ) async throws -> CStoreResponse {
+        // Create C-STORE request
+        let request = CStoreRequest(
+            messageID: messageID,
             affectedSOPClassUID: sopClassUID,
             affectedSOPInstanceUID: sopInstanceUID,
             priority: priority,

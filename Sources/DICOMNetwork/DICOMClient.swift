@@ -671,6 +671,56 @@ public final class DICOMClient: Sendable {
         }
     }
     
+    /// Stores multiple DICOM files to the remote SCP in a batch
+    ///
+    /// Returns an async stream that emits progress events as files are stored.
+    /// Files are sent over a single association for efficiency.
+    ///
+    /// - Parameters:
+    ///   - files: Array of DICOM file data to store
+    ///   - priority: Operation priority (default: medium)
+    ///   - configuration: Batch configuration options (default: continue on error)
+    /// - Returns: An async stream of `StorageProgressEvent` values
+    /// - Throws: `DICOMNetworkError` for connection errors during setup
+    ///
+    /// ## Usage
+    ///
+    /// ```swift
+    /// let files = [fileData1, fileData2, fileData3]
+    /// let stream = try await client.storeBatch(files: files)
+    ///
+    /// for try await event in stream {
+    ///     switch event {
+    ///     case .progress(let progress):
+    ///         print("Progress: \(progress.succeeded)/\(progress.total)")
+    ///     case .fileResult(let result):
+    ///         print("File \(result.index): \(result.success ? "OK" : "FAILED")")
+    ///     case .completed(let result):
+    ///         print("Completed: \(result.progress.succeeded) succeeded")
+    ///     case .error(let error):
+    ///         print("Error: \(error)")
+    ///     }
+    /// }
+    /// ```
+    public func storeBatch(
+        files: [Data],
+        priority: DIMSEPriority = .medium,
+        configuration batchConfig: BatchStorageConfiguration = .default
+    ) async throws -> AsyncThrowingStream<StorageProgressEvent, Error> {
+        // Note: Batch operations are not retried since they return a stream
+        // Individual file failures are reported through the stream
+        try await DICOMStorageService.storeBatch(
+            files: files,
+            to: self.configuration.host,
+            port: self.configuration.port,
+            callingAE: self.configuration.callingAETitle.value,
+            calledAE: self.configuration.calledAETitle.value,
+            priority: priority,
+            timeout: self.configuration.timeout,
+            configuration: batchConfig
+        )
+    }
+    
     // MARK: - Retry Logic
     
     /// Executes an operation with retry logic

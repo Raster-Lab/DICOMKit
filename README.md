@@ -10,9 +10,16 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7)
+## Features (v0.7.2)
 
-- ✅ **DICOM Storage Service (NEW in v0.7)**
+- ✅ **DICOM Batch Storage (NEW in v0.7.2)**
+  - ✅ Efficient batch transfer of multiple DICOM files
+  - ✅ Single association reuse for improved performance
+  - ✅ Real-time progress reporting with AsyncStream
+  - ✅ Per-file success/failure tracking
+  - ✅ Configurable continue-on-error vs fail-fast behavior
+  - ✅ Rate limiting support
+- ✅ **DICOM Storage Service (v0.7)**
   - ✅ C-STORE SCU for sending DICOM files to remote destinations
   - ✅ Support for all common Storage SOP Classes (CT, MR, CR, DX, US, SC, RT)
   - ✅ Transfer syntax negotiation
@@ -595,6 +602,72 @@ let dataSetResult = try await DICOMStorageService.store(
 )
 ```
 
+### DICOM Batch Storage Service (v0.7.2)
+
+Batch storage enables efficient transfer of multiple DICOM files over a single association.
+
+```swift
+import DICOMNetwork
+import Foundation
+
+// Load multiple DICOM files
+let files = [
+    try Data(contentsOf: file1URL),
+    try Data(contentsOf: file2URL),
+    try Data(contentsOf: file3URL)
+]
+
+// Store batch with progress monitoring
+let stream = try await DICOMStorageService.storeBatch(
+    files: files,
+    to: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS"
+)
+
+for try await event in stream {
+    switch event {
+    case .progress(let progress):
+        print("Progress: \(progress.succeeded)/\(progress.total)")
+        print("Fraction complete: \(Int(progress.fractionComplete * 100))%")
+    case .fileResult(let result):
+        if result.success {
+            print("File \(result.index): stored \(result.sopInstanceUID)")
+        } else {
+            print("File \(result.index): FAILED - \(result.errorMessage ?? "")")
+        }
+    case .completed(let result):
+        print("Batch complete!")
+        print("  Succeeded: \(result.progress.succeeded)")
+        print("  Failed: \(result.progress.failed)")
+        print("  Warnings: \(result.progress.warnings)")
+        print("  Transfer rate: \(Int(result.averageTransferRate)) bytes/s")
+    case .error(let error):
+        print("Error: \(error)")
+    }
+}
+
+// Configure batch behavior
+let config = BatchStorageConfiguration(
+    continueOnError: true,       // Continue after failures
+    maxFilesPerAssociation: 100, // Limit files per association
+    delayBetweenFiles: 0.1       // Rate limiting (100ms delay)
+)
+
+let configuredStream = try await DICOMStorageService.storeBatch(
+    files: files,
+    to: "pacs.hospital.com",
+    port: 11112,
+    callingAE: "MY_SCU",
+    calledAE: "PACS",
+    configuration: config
+)
+
+// Use fail-fast mode to stop on first error
+let failFastConfig = BatchStorageConfiguration.failFast
+```
+
 ### DICOM Client - Unified High-Level API (v0.6.7)
 
 The `DICOMClient` provides a simplified, unified interface for all DICOM networking operations with built-in retry support.
@@ -657,6 +730,23 @@ print("Move result: \(result.isSuccess)")
 let fileData = try Data(contentsOf: dicomFileURL)
 let storeResult = try await client.store(fileData: fileData)
 print("Store result: \(storeResult.success ? "success" : "failed")")
+
+// Store multiple files in batch (NEW in v0.7.2)
+let files = [fileData1, fileData2, fileData3]
+let batchStream = try await client.storeBatch(files: files)
+
+for try await event in batchStream {
+    switch event {
+    case .progress(let progress):
+        print("Batch progress: \(progress.succeeded)/\(progress.total)")
+    case .fileResult(let result):
+        print("File \(result.index): \(result.success ? "OK" : "FAILED")")
+    case .completed(let result):
+        print("Batch complete: \(result.progress.succeeded) succeeded")
+    case .error(let error):
+        print("Error: \(error)")
+    }
+}
 ```
 
 #### Retry Policies
@@ -715,7 +805,7 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (v0.6, v0.7)
+### DICOMNetwork (v0.6, v0.7, v0.7.2)
 DICOM network protocol implementation:
 - `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
 - `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
@@ -723,9 +813,12 @@ DICOM network protocol implementation:
 - `DICOMVerificationService` - C-ECHO SCU for connectivity testing
 - `DICOMQueryService` - C-FIND SCU for querying PACS
 - `DICOMRetrieveService` - C-MOVE and C-GET SCU for retrieving images
-- `DICOMStorageService` - C-STORE SCU for sending DICOM files (NEW in v0.7)
-- `StoreResult` - Result type for storage operations (NEW in v0.7)
+- `DICOMStorageService` - C-STORE SCU for sending DICOM files (v0.7), batch storage (v0.7.2)
+- `StoreResult` - Result type for single storage operations (NEW in v0.7)
 - `StorageConfiguration` - Configuration for storage operations (NEW in v0.7)
+- `BatchStoreResult`, `FileStoreResult` - Result types for batch operations (NEW in v0.7.2)
+- `BatchStoreProgress`, `StorageProgressEvent` - Progress reporting for batch storage (NEW in v0.7.2)
+- `BatchStorageConfiguration` - Configuration for batch storage operations (NEW in v0.7.2)
 - `QueryKeys` - Fluent API for building query identifiers
 - `RetrieveKeys` - Fluent API for building retrieve identifiers
 - `QueryLevel` - PATIENT, STUDY, SERIES, IMAGE levels
@@ -768,4 +861,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.7 - adding C-STORE SCU for sending DICOM files to remote destinations, completing the basic DICOM networking service stack (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE). Future versions will add C-STORE SCP for receiving images and batch storage operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.7.2 - adding batch storage operations for efficiently sending multiple DICOM files to remote destinations over a single association. The library now provides a complete DICOM networking service stack (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE). Future versions will add C-STORE SCP for receiving images and storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
