@@ -137,6 +137,43 @@ This document lists all the features available in DICOMKit that can be used to b
 - ✅ Detailed store result with status codes
 - ✅ Integration with DICOMClient unified API
 
+### Storage SCP (Receiving Files)
+- ✅ Receive DICOM files from remote sources
+- ✅ C-STORE SCP server implementation
+- ✅ Configurable AE whitelist/blacklist
+- ✅ Support for common Storage SOP Classes
+- ✅ Transfer syntax negotiation
+- ✅ StorageDelegate protocol for custom handling
+- ✅ Default file storage handler
+- ✅ Real-time event streaming with AsyncStream
+- ✅ Multiple concurrent associations support
+
+### Batch Storage
+- ✅ Efficient batch transfer of multiple DICOM files
+- ✅ Single association reuse for improved performance
+- ✅ Real-time progress reporting with AsyncStream
+- ✅ Per-file success/failure tracking
+- ✅ Configurable continue-on-error vs fail-fast behavior
+- ✅ Rate limiting support
+
+### TLS Security
+- ✅ TLS 1.2/1.3 encryption for DICOM connections
+- ✅ System trust store validation (default)
+- ✅ Certificate pinning for enhanced security
+- ✅ Custom CA trust roots for enterprise PKI
+- ✅ Self-signed certificate support (development mode)
+- ✅ Mutual TLS (mTLS) client authentication
+- ✅ PKCS#12 and keychain identity loading
+- ✅ Preset configurations (.default, .strict, .insecure)
+
+### Network Error Handling
+- ✅ Error categorization (transient, permanent, configuration, protocol, timeout, resource)
+- ✅ Recovery suggestions with actionable guidance
+- ✅ Fine-grained timeout configuration (connect, read, write, operation, association)
+- ✅ Preset timeout configurations (.default, .fast, .slow)
+- ✅ Detailed timeout types for diagnosis
+- ✅ Retryability detection for intelligent retry strategies
+
 ### Query Builder API
 - ✅ Fluent QueryKeys API for building queries
 - ✅ Type-safe query parameter setting
@@ -288,7 +325,6 @@ This document lists all the features available in DICOMKit that can be used to b
 
 ## Current Limitations
 
-- ⚠️ Storage SCP not yet available (can send files but cannot receive files from remote sources)
 - ❌ No character set conversion (UTF-8 only)
 
 ---
@@ -297,6 +333,10 @@ This document lists all the features available in DICOMKit that can be used to b
 
 | Version | Features Added |
 |---------|---------------|
+| v0.7.5 | Network Error Handling: Error categorization, recovery suggestions, timeout configuration |
+| v0.7.4 | TLS Security: TLS 1.2/1.3 encryption, certificate pinning, mTLS |
+| v0.7.3 | DICOM Storage SCP: Receive files from remote sources |
+| v0.7.2 | DICOM Batch Storage: Efficient batch transfers |
 | v0.7 | DICOM Storage: C-STORE SCU |
 | v0.6 | DICOM Networking: C-ECHO, C-FIND, C-MOVE, C-GET |
 | v0.5 | DICOM File Writing, UID Generation |
@@ -307,4 +347,4 @@ This document lists all the features available in DICOMKit that can be used to b
 
 ---
 
-*This feature list is based on DICOMKit v0.7. For the latest development roadmap, see [MILESTONES.md](MILESTONES.md).*
+*This feature list is based on DICOMKit v0.7.5. For the latest development roadmap, see [MILESTONES.md](MILESTONES.md).*

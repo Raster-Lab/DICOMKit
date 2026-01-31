@@ -158,7 +158,7 @@ DICOMKit aims to provide a comprehensive, Swift-native implementation for workin
 
 ## Milestone 6: DICOM Networking - Query/Retrieve (v0.6)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Implement DICOM network operations for finding and retrieving studies
 
 This milestone is divided into modular sub-milestones based on complexity, allowing for incremental development and testing. Each sub-milestone builds upon previous ones.
@@ -333,7 +333,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 6.5: Query Services - C-FIND (v0.6.5)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Implement DICOM Query services for finding studies, series, and instances  
 **Complexity**: High  
 **Dependencies**: Milestone 6.4
@@ -535,7 +535,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ## Milestone 7: DICOM Networking - Storage (v0.7)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Enable sending DICOM files to PACS and other receivers
 
 This milestone is divided into modular sub-milestones based on complexity, allowing for incremental development and testing. Each sub-milestone builds upon the networking infrastructure established in Milestone 6.
@@ -544,7 +544,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 7.1: C-STORE SCU - Basic Storage (v0.7.1)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Implement sending DICOM files to remote storage destinations  
 **Complexity**: Medium  
 **Dependencies**: Milestone 6.2 (Association Management), Milestone 6.3 (DIMSE Protocol)
