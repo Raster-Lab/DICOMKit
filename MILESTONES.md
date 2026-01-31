@@ -464,10 +464,16 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] Detailed error types with recovery suggestions
   - [ ] Timeout configuration (connect, read, write, operation)
   - [ ] Graceful degradation on partial failures
-- [ ] Logging and Diagnostics:
-  - [ ] PDU-level logging (configurable verbosity)
-  - [ ] Association event logging
-  - [ ] Performance metrics (latency, throughput)
+- [x] Logging and Diagnostics:
+  - [x] PDU-level logging (configurable verbosity)
+  - [x] Association event logging
+  - [x] Performance metrics (latency, throughput)
+  - [x] `DICOMLogger` actor for centralized logging
+  - [x] `DICOMLogLevel` (debug, info, warning, error)
+  - [x] `DICOMLogCategory` for filtering by component
+  - [x] `OSLogHandler` for Apple's Unified Logging System (Apple platforms)
+  - [x] `ConsoleLogHandler` for console output
+  - [x] Helper methods for common logging patterns
 - [x] `DICOMClient` unified high-level API:
   - [x] Configuration with server address, AE titles, TLS settings (`DICOMClientConfiguration`)
   - [x] Automatic association management (via existing services)
