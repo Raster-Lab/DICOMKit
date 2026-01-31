@@ -2,6 +2,39 @@ import Foundation
 #if canImport(Network)
 import Network
 
+/// Thread-safe wrapper for continuation to handle one-shot resumption
+private final class ContinuationResumeOnce<T, E: Error>: @unchecked Sendable {
+    private var resumed = false
+    private var continuation: CheckedContinuation<T, E>?
+    private let lock = NSLock()
+    
+    init(_ continuation: CheckedContinuation<T, E>) {
+        self.continuation = continuation
+    }
+    
+    var hasResumed: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return resumed
+    }
+    
+    func resume(with result: Result<T, E>) {
+        lock.lock()
+        guard !resumed else {
+            lock.unlock()
+            return
+        }
+        guard let continuation = continuation else {
+            lock.unlock()
+            return
+        }
+        resumed = true
+        self.continuation = nil
+        lock.unlock()
+        continuation.resume(with: result)
+    }
+}
+
 /// DICOM network connection for managing TCP connections to DICOM services
 ///
 /// Provides a high-level abstraction for TCP socket communication using
@@ -143,12 +176,7 @@ public final class DICOMConnection: @unchecked Sendable {
         state = .connecting
         
         return try await withCheckedThrowingContinuation { continuation in
-            var resumed = false
-            let resumeOnce: (Result<Void, Error>) -> Void = { result in
-                guard !resumed else { return }
-                resumed = true
-                continuation.resume(with: result)
-            }
+            let resumeOnce = ContinuationResumeOnce(continuation)
             
             // Set up state handler
             connection.stateUpdateHandler = { [weak self] newState in
@@ -157,20 +185,20 @@ public final class DICOMConnection: @unchecked Sendable {
                 switch newState {
                 case .ready:
                     self.state = .connected
-                    resumeOnce(.success(()))
+                    resumeOnce.resume(with: .success(()))
                     
                 case .failed(let error):
                     self.state = .failed(error.localizedDescription)
-                    resumeOnce(.failure(DICOMNetworkError.connectionFailed(error.localizedDescription)))
+                    resumeOnce.resume(with: .failure(DICOMNetworkError.connectionFailed(error.localizedDescription)))
                     
                 case .cancelled:
                     self.state = .disconnected
-                    resumeOnce(.failure(DICOMNetworkError.connectionClosed))
+                    resumeOnce.resume(with: .failure(DICOMNetworkError.connectionClosed))
                     
                 case .waiting(let error):
                     // Connection is waiting, possibly due to network unavailability
                     self.state = .failed(error.localizedDescription)
-                    resumeOnce(.failure(DICOMNetworkError.connectionFailed("Network unavailable: \(error.localizedDescription)")))
+                    resumeOnce.resume(with: .failure(DICOMNetworkError.connectionFailed("Network unavailable: \(error.localizedDescription)")))
                     
                 default:
                     break
@@ -183,10 +211,10 @@ public final class DICOMConnection: @unchecked Sendable {
             // Set up timeout
             Task {
                 try? await Task.sleep(for: .seconds(timeout))
-                if !resumed {
+                if !resumeOnce.hasResumed {
                     self.connection.cancel()
                     self.state = .failed("Connection timed out")
-                    resumeOnce(.failure(DICOMNetworkError.timeout))
+                    resumeOnce.resume(with: .failure(DICOMNetworkError.timeout))
                 }
             }
         }
