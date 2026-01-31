@@ -1,6 +1,8 @@
 import XCTest
 @testable import DICOMNetwork
 
+#if canImport(Network)
+
 final class DICOMClientTests: XCTestCase {
     
     // MARK: - Configuration Tests
@@ -239,8 +241,6 @@ final class RetryPolicyTests: XCTestCase {
 }
 
 // MARK: - DICOMClient Creation Tests
-
-#if canImport(Network)
 
 final class DICOMClientCreationTests: XCTestCase {
     
