@@ -24,7 +24,34 @@ An example SwiftUI application demonstrating the capabilities of DICOMKit for br
 
 ## 🚀 How to Run the Application
 
-### Option 1: Quick Start with Xcode (Recommended)
+### Option 1: Open the Included Xcode Project (Easiest)
+
+1. **Clone the DICOMKit repository** (if not already done):
+   ```bash
+   git clone https://github.com/raster-image/DICOMKit.git
+   cd DICOMKit
+   ```
+
+2. **Open the example project in Xcode**:
+   ```bash
+   open Examples/DICOMViewer/DICOMViewerApp.xcodeproj
+   ```
+   
+   Or double-click `DICOMViewerApp.xcodeproj` in Finder.
+
+3. **Select your target device**:
+   - Choose an iPhone simulator from the scheme dropdown
+   - Or connect a physical device
+
+4. **Build and Run**:
+   - Press **⌘R** or click the Play button
+   - The app will build with DICOMKit and launch on the simulator
+
+> **Note**: The project automatically references the local DICOMKit package from the repository root, so all dependencies are already configured.
+
+### Option 2: Create Your Own Xcode Project
+
+If you prefer to create a new project from scratch:
 
 1. **Clone the DICOMKit repository** (if not already done):
    ```bash

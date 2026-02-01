@@ -1,0 +1,469 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		/* App Files */
+		APP001 /* DICOMViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC001 /* DICOMViewerApp.swift */; };
+		APP002 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC002 /* AppState.swift */; };
+		
+		/* Model Files */
+		MDL001 /* PACSServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC003 /* PACSServer.swift */; };
+		MDL002 /* PatientSearchCriteria.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC004 /* PatientSearchCriteria.swift */; };
+		MDL003 /* QueryResultModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC005 /* QueryResultModels.swift */; };
+		
+		/* View Files */
+		VW001 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC006 /* ContentView.swift */; };
+		VW002 /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC007 /* ServerListView.swift */; };
+		VW003 /* ServerConfigView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC008 /* ServerConfigView.swift */; };
+		VW004 /* PatientSearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC009 /* PatientSearchView.swift */; };
+		VW005 /* StudyListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC010 /* StudyListView.swift */; };
+		VW006 /* SeriesListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC011 /* SeriesListView.swift */; };
+		
+		/* Service Files */
+		SVC001 /* ServerStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC012 /* ServerStorageService.swift */; };
+		SVC002 /* ConnectionTestService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC013 /* ConnectionTestService.swift */; };
+		SVC003 /* PACSQueryService.swift in Sources */ = {isa = PBXBuildFile; fileRef = SRC014 /* PACSQueryService.swift */; };
+		
+		/* Package Dependencies */
+		PKG001 /* DICOMKit in Frameworks */ = {isa = PBXBuildFile; productRef = PKGREF001 /* DICOMKit */; };
+		PKG002 /* DICOMCore in Frameworks */ = {isa = PBXBuildFile; productRef = PKGREF002 /* DICOMCore */; };
+		PKG003 /* DICOMNetwork in Frameworks */ = {isa = PBXBuildFile; productRef = PKGREF003 /* DICOMNetwork */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		PROD001 /* DICOMViewerApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DICOMViewerApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		
+		/* Source Files */
+		SRC001 /* DICOMViewerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DICOMViewerApp.swift; sourceTree = "<group>"; };
+		SRC002 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		SRC003 /* PACSServer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PACSServer.swift; sourceTree = "<group>"; };
+		SRC004 /* PatientSearchCriteria.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatientSearchCriteria.swift; sourceTree = "<group>"; };
+		SRC005 /* QueryResultModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueryResultModels.swift; sourceTree = "<group>"; };
+		SRC006 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		SRC007 /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
+		SRC008 /* ServerConfigView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerConfigView.swift; sourceTree = "<group>"; };
+		SRC009 /* PatientSearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PatientSearchView.swift; sourceTree = "<group>"; };
+		SRC010 /* StudyListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StudyListView.swift; sourceTree = "<group>"; };
+		SRC011 /* SeriesListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SeriesListView.swift; sourceTree = "<group>"; };
+		SRC012 /* ServerStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerStorageService.swift; sourceTree = "<group>"; };
+		SRC013 /* ConnectionTestService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionTestService.swift; sourceTree = "<group>"; };
+		SRC014 /* PACSQueryService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PACSQueryService.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FRM001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				PKG001 /* DICOMKit in Frameworks */,
+				PKG002 /* DICOMCore in Frameworks */,
+				PKG003 /* DICOMNetwork in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		GRP000 = {
+			isa = PBXGroup;
+			children = (
+				GRP001 /* DICOMViewerApp */,
+				GRP005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		GRP001 /* DICOMViewerApp */ = {
+			isa = PBXGroup;
+			children = (
+				GRP002 /* App */,
+				GRP003 /* Models */,
+				GRP004 /* Views */,
+				GRP006 /* Services */,
+			);
+			path = "";
+			sourceTree = "<group>";
+		};
+		GRP002 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				SRC001 /* DICOMViewerApp.swift */,
+				SRC002 /* AppState.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		GRP003 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				SRC003 /* PACSServer.swift */,
+				SRC004 /* PatientSearchCriteria.swift */,
+				SRC005 /* QueryResultModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		GRP004 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				SRC006 /* ContentView.swift */,
+				SRC007 /* ServerListView.swift */,
+				SRC008 /* ServerConfigView.swift */,
+				SRC009 /* PatientSearchView.swift */,
+				SRC010 /* StudyListView.swift */,
+				SRC011 /* SeriesListView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		GRP005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				PROD001 /* DICOMViewerApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		GRP006 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				SRC012 /* ServerStorageService.swift */,
+				SRC013 /* ConnectionTestService.swift */,
+				SRC014 /* PACSQueryService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		TGT001 /* DICOMViewerApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CFG003 /* Build configuration list for PBXNativeTarget "DICOMViewerApp" */;
+			buildPhases = (
+				SRC000 /* Sources */,
+				FRM001 /* Frameworks */,
+				RSC001 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DICOMViewerApp;
+			packageProductDependencies = (
+				PKGREF001 /* DICOMKit */,
+				PKGREF002 /* DICOMCore */,
+				PKGREF003 /* DICOMNetwork */,
+			);
+			productName = DICOMViewerApp;
+			productReference = PROD001 /* DICOMViewerApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		PRJ001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					TGT001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = CFG001 /* Build configuration list for PBXProject "DICOMViewerApp" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = GRP000;
+			packageReferences = (
+				PKGLOC001 /* XCLocalSwiftPackageReference "../../.." */,
+			);
+			productRefGroup = GRP005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				TGT001 /* DICOMViewerApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		RSC001 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		SRC000 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				APP001 /* DICOMViewerApp.swift in Sources */,
+				APP002 /* AppState.swift in Sources */,
+				MDL001 /* PACSServer.swift in Sources */,
+				MDL002 /* PatientSearchCriteria.swift in Sources */,
+				MDL003 /* QueryResultModels.swift in Sources */,
+				VW001 /* ContentView.swift in Sources */,
+				VW002 /* ServerListView.swift in Sources */,
+				VW003 /* ServerConfigView.swift in Sources */,
+				VW004 /* PatientSearchView.swift in Sources */,
+				VW005 /* StudyListView.swift in Sources */,
+				VW006 /* SeriesListView.swift in Sources */,
+				SVC001 /* ServerStorageService.swift in Sources */,
+				SVC002 /* ConnectionTestService.swift in Sources */,
+				SVC003 /* PACSQueryService.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		CFG_DEBUG /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		CFG_RELEASE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 6.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		CFG_TGT_DEBUG /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dicomkit.viewer;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CFG_TGT_RELEASE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.dicomkit.viewer;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CFG001 /* Build configuration list for PBXProject "DICOMViewerApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CFG_DEBUG /* Debug */,
+				CFG_RELEASE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CFG003 /* Build configuration list for PBXNativeTarget "DICOMViewerApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CFG_TGT_DEBUG /* Debug */,
+				CFG_TGT_RELEASE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		PKGLOC001 /* XCLocalSwiftPackageReference "../../.." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "../../..";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		PKGREF001 /* DICOMKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = PKGLOC001 /* XCLocalSwiftPackageReference "../../.." */;
+			productName = DICOMKit;
+		};
+		PKGREF002 /* DICOMCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = PKGLOC001 /* XCLocalSwiftPackageReference "../../.." */;
+			productName = DICOMCore;
+		};
+		PKGREF003 /* DICOMNetwork */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = PKGLOC001 /* XCLocalSwiftPackageReference "../../.." */;
+			productName = DICOMNetwork;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = PRJ001 /* Project object */;
+}
