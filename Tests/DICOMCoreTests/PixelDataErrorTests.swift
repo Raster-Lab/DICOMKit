@@ -15,6 +15,26 @@ struct PixelDataErrorTests {
         #expect(error.explanation.contains("missing required attributes"))
     }
     
+    @Test("missingAttributes error lists attribute names")
+    func testMissingAttributesDescription() {
+        let attributes = ["Rows (0028,0010)", "Columns (0028,0011)", "Bits Allocated (0028,0100)"]
+        let error = PixelDataError.missingAttributes(attributes)
+        
+        #expect(error.description.contains("Rows (0028,0010)"))
+        #expect(error.description.contains("Columns (0028,0011)"))
+        #expect(error.description.contains("Bits Allocated (0028,0100)"))
+        #expect(error.explanation.contains("Rows (0028,0010)"))
+        #expect(error.explanation.contains("malformed DICOM file"))
+    }
+    
+    @Test("missingAttributes error with single attribute")
+    func testMissingAttributesSingleDescription() {
+        let error = PixelDataError.missingAttributes(["Rows (0028,0010)"])
+        
+        #expect(error.description.contains("Rows (0028,0010)"))
+        #expect(error.explanation.contains("missing the following required attributes"))
+    }
+    
     @Test("missingPixelData error has correct description")
     func testMissingPixelDataDescription() {
         let error = PixelDataError.missingPixelData

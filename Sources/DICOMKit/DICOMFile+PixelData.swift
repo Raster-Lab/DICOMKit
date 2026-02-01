@@ -90,10 +90,8 @@ extension DICOMFile {
     /// }
     /// ```
     public func tryPixelData() throws -> PixelData {
-        // First check if we have a valid descriptor
-        guard let descriptor = dataSet.pixelDataDescriptor() else {
-            throw PixelDataError.missingDescriptor
-        }
+        // First check if we have a valid descriptor (throws detailed error if missing)
+        let descriptor = try dataSet.tryPixelDataDescriptor()
         
         // Check if pixel data element exists
         guard let pixelDataElement = dataSet[.pixelData] else {
@@ -150,6 +148,15 @@ extension DICOMFile {
     /// - Returns: PixelDataDescriptor if all required attributes are present
     public func pixelDataDescriptor() -> PixelDataDescriptor? {
         dataSet.pixelDataDescriptor()
+    }
+    
+    /// Creates a PixelDataDescriptor from the file's image pixel attributes,
+    /// throwing detailed errors if required attributes are missing.
+    ///
+    /// - Returns: PixelDataDescriptor if all required attributes are present
+    /// - Throws: `PixelDataError.missingAttributes` with the list of missing attribute names
+    public func tryPixelDataDescriptor() throws -> PixelDataDescriptor {
+        try dataSet.tryPixelDataDescriptor()
     }
     
     // MARK: - Window Settings
