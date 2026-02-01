@@ -89,6 +89,11 @@ extension DICOMFile {
     ///     print("Explanation: \(error.explanation)")
     /// }
     /// ```
+    /// The minimum number of required pixel data attributes that must be missing
+    /// to consider a file as likely a non-image object. These are:
+    /// Rows, Columns, Bits Allocated, Bits Stored, High Bit, and Pixel Representation.
+    private static let requiredPixelAttributesCount = 6
+    
     public func tryPixelData() throws -> PixelData {
         // First check if we have a valid descriptor (throws detailed error if missing)
         let descriptor: PixelDataDescriptor
@@ -107,7 +112,7 @@ extension DICOMFile {
                 // Determine if this is likely a non-image object:
                 // 1. Known non-image SOP class, OR
                 // 2. All required pixel attributes are missing AND no pixel data element
-                let allPixelAttributesMissing = attributes.count >= 6 // Rows, Columns, BitsAllocated, BitsStored, HighBit, PixelRepresentation
+                let allPixelAttributesMissing = attributes.count >= Self.requiredPixelAttributesCount
                 let isLikelyNonImage = isKnownNonImage || (allPixelAttributesMissing && !hasPixelDataElement)
                 
                 if isLikelyNonImage {
