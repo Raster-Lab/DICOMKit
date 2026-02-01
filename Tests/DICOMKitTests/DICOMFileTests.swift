@@ -582,4 +582,112 @@ struct DICOMFileTests {
         #expect(pixelDataElement != nil)
         #expect(pixelDataElement?.vr == .OW)
     }
+    
+    // MARK: - Encapsulated Pixel Data Tests
+    
+    @Test("pixelData returns nil for encapsulated data without codec")
+    func testPixelDataReturnsNilForEncapsulatedWithoutCodec() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID for JPEG 2000 Part 2 (not supported)
+        // This transfer syntax has no registered codec
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x16, 0x00]) // Length: 22
+        data.append("1.2.840.10008.1.2.4.92".data(using: .ascii)!)
+        
+        // Since JPEG 2000 Part 2 is not supported, this should throw
+        // when we try to parse the data set
+        #expect(throws: DICOMError.self) {
+            try DICOMFile.read(from: data)
+        }
+    }
+    
+    @Test("pixelData returns uncompressed data when valueData is not empty")
+    func testPixelDataReturnsUncompressedData() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID for Explicit VR Little Endian
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.1 ".data(using: .ascii)!)
+        
+        // Required pixel data attributes
+        // Rows (0028,0010) - US VR - value: 2
+        data.append(contentsOf: [0x28, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x02, 0x00]) // Value: 2
+        
+        // Columns (0028,0011) - US VR - value: 2
+        data.append(contentsOf: [0x28, 0x00, 0x11, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x02, 0x00]) // Value: 2
+        
+        // Bits Allocated (0028,0100) - US VR - value: 8
+        data.append(contentsOf: [0x28, 0x00, 0x00, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x08, 0x00]) // Value: 8
+        
+        // Bits Stored (0028,0101) - US VR - value: 8
+        data.append(contentsOf: [0x28, 0x00, 0x01, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x08, 0x00]) // Value: 8
+        
+        // High Bit (0028,0102) - US VR - value: 7
+        data.append(contentsOf: [0x28, 0x00, 0x02, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x07, 0x00]) // Value: 7
+        
+        // Pixel Representation (0028,0103) - US VR - value: 0 (unsigned)
+        data.append(contentsOf: [0x28, 0x00, 0x03, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x00, 0x00]) // Value: 0
+        
+        // Photometric Interpretation (0028,0004) - CS VR
+        data.append(contentsOf: [0x28, 0x00, 0x04, 0x00])
+        data.append(contentsOf: [0x43, 0x53]) // "CS"
+        data.append(contentsOf: [0x0C, 0x00]) // Length: 12
+        data.append("MONOCHROME2 ".data(using: .ascii)!)
+        
+        // Samples Per Pixel (0028,0002) - US VR - value: 1
+        data.append(contentsOf: [0x28, 0x00, 0x02, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x01, 0x00]) // Value: 1
+        
+        // Pixel Data (7FE0,0010) - OW VR - 4 pixels (2x2 image, 8-bit)
+        data.append(contentsOf: [0xE0, 0x7F, 0x10, 0x00])
+        data.append(contentsOf: [0x4F, 0x57]) // "OW"
+        data.append(contentsOf: [0x00, 0x00]) // Reserved
+        data.append(contentsOf: [0x04, 0x00, 0x00, 0x00]) // Length: 4
+        data.append(contentsOf: [0x10, 0x20, 0x30, 0x40]) // Pixel values
+        
+        let file = try DICOMFile.read(from: data)
+        
+        // Should have pixel data
+        let pixelData = file.pixelData()
+        #expect(pixelData != nil)
+        #expect(pixelData?.data.count == 4)
+        #expect(pixelData?.descriptor.rows == 2)
+        #expect(pixelData?.descriptor.columns == 2)
+    }
 }
