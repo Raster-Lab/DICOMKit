@@ -136,19 +136,11 @@ struct PixelDataTests {
             isSigned: true, photometricInterpretation: .monochrome2
         )
         
-        // 12-bit signed values in CT:
-        // Range: -2048 to +2047 (Hounsfield Units: -1024 HU air to +3071 HU bone after rescale)
-        // -1024 stored as 0xFC00 = 4096 - 1024 = 3072 (0x0C00 in 12-bit two's complement = -1024)
-        // Actually for 12-bit signed: -1024 = 0xC00 in 12-bit two's complement
-        // In little endian 16-bit: 0x00, 0x0C is 0x0C00 = 3072, but we need to treat as signed 12-bit
-        // 
-        // For 12-bit signed values:
+        // 12-bit signed two's complement values (range: -2048 to +2047):
         //   0 = 0x000
         //   100 = 0x064  
-        //   -100 = 0xF9C (4096 - 100 = 3996 = 0xF9C, but masked to 12 bits)
-        //   -1 = 0xFFF (4095 = 0x0FFF in 16-bit LE: 0xFF, 0x0F)
-        //   2047 = 0x7FF (max positive for signed 12-bit)
-        //   -2048 = 0x800 (min negative for signed 12-bit)
+        //   -100 = 0xF9C (in 12-bit two's complement)
+        //   -1 = 0xFFF
         let data = Data([
             0x00, 0x00,  // 0
             0x64, 0x00,  // 100 (0x064)

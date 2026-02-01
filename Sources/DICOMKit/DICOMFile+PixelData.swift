@@ -255,16 +255,7 @@ extension DICOMFile {
             return nil
         }
         
-        let lut = dataSet.paletteColorLUT()
-        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
-        
-        if pixelData.descriptor.photometricInterpretation.isMonochrome {
-            return renderer.renderMonochromeFrame(frameIndex, window: window)
-        } else if pixelData.descriptor.photometricInterpretation.isPaletteColor {
-            return renderer.renderPaletteColorFrame(frameIndex)
-        } else {
-            return renderer.renderColorFrame(frameIndex)
-        }
+        return renderFrameWithWindow(pixelData: pixelData, frameIndex: frameIndex, window: window)
     }
     
     /// Renders the specified frame to a CGImage with custom window settings,
@@ -278,16 +269,7 @@ extension DICOMFile {
     public func tryRenderFrame(_ frameIndex: Int = 0, window: WindowSettings) throws -> CGImage? {
         let pixelData = try tryPixelData()
         
-        let lut = dataSet.paletteColorLUT()
-        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
-        
-        if pixelData.descriptor.photometricInterpretation.isMonochrome {
-            return renderer.renderMonochromeFrame(frameIndex, window: window)
-        } else if pixelData.descriptor.photometricInterpretation.isPaletteColor {
-            return renderer.renderPaletteColorFrame(frameIndex)
-        } else {
-            return renderer.renderColorFrame(frameIndex)
-        }
+        return renderFrameWithWindow(pixelData: pixelData, frameIndex: frameIndex, window: window)
     }
     
     /// Renders the specified frame using window settings from the DICOM file
@@ -317,6 +299,22 @@ extension DICOMFile {
             return try tryRenderFrame(frameIndex, window: window)
         } else {
             return try tryRenderFrame(frameIndex)
+        }
+    }
+    
+    // MARK: - Private Rendering Helpers
+    
+    /// Internal helper to render a frame with window settings using provided pixel data
+    private func renderFrameWithWindow(pixelData: PixelData, frameIndex: Int, window: WindowSettings) -> CGImage? {
+        let lut = dataSet.paletteColorLUT()
+        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
+        
+        if pixelData.descriptor.photometricInterpretation.isMonochrome {
+            return renderer.renderMonochromeFrame(frameIndex, window: window)
+        } else if pixelData.descriptor.photometricInterpretation.isPaletteColor {
+            return renderer.renderPaletteColorFrame(frameIndex)
+        } else {
+            return renderer.renderColorFrame(frameIndex)
         }
     }
 #endif
