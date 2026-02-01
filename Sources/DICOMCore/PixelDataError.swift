@@ -9,6 +9,13 @@ public enum PixelDataError: Error, Sendable {
     /// describe the pixel data format (e.g., Rows, Columns, Bits Allocated).
     case missingDescriptor
     
+    /// Required pixel data descriptor attributes are missing (with details)
+    ///
+    /// The DICOM file is missing specific required attributes needed to
+    /// describe the pixel data format. The associated value contains the
+    /// names of the missing attributes for better diagnostics.
+    case missingAttributes([String])
+    
     /// No pixel data element is present in the data set
     ///
     /// The DICOM file does not contain a Pixel Data element (7FE0,0010).
@@ -54,6 +61,9 @@ extension PixelDataError: CustomStringConvertible {
         switch self {
         case .missingDescriptor:
             return "Pixel data extraction failed: Missing required pixel data attributes (Rows, Columns, Bits Allocated, etc.)"
+        case .missingAttributes(let attributes):
+            let attributeList = attributes.joined(separator: ", ")
+            return "Pixel data extraction failed: Missing required pixel data attributes: \(attributeList)"
         case .missingPixelData:
             return "Pixel data extraction failed: No pixel data element present in the DICOM file"
         case .missingTransferSyntax:
@@ -74,6 +84,10 @@ extension PixelDataError {
         switch self {
         case .missingDescriptor:
             return "The DICOM file is missing required attributes that describe the pixel data format. " +
+                   "This may indicate a malformed DICOM file or a non-image SOP class."
+        case .missingAttributes(let attributes):
+            let attributeList = attributes.joined(separator: ", ")
+            return "The DICOM file is missing the following required attributes: \(attributeList). " +
                    "This may indicate a malformed DICOM file or a non-image SOP class."
         case .missingPixelData:
             return "The DICOM file does not contain any pixel data. " +

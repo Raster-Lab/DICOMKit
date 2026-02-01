@@ -774,7 +774,7 @@ struct DICOMFileTests {
         #expect(pixelData.descriptor.columns == 2)
     }
     
-    @Test("tryPixelData throws missingDescriptor when attributes are missing")
+    @Test("tryPixelData throws missingAttributes when attributes are missing")
     func testTryPixelDataMissingDescriptor() throws {
         var data = Data()
         
@@ -794,16 +794,23 @@ struct DICOMFileTests {
         
         let file = try DICOMFile.read(from: data)
         
-        // Verify that the specific error type is thrown
+        // Verify that the specific error type is thrown with detailed attribute names
         var didThrowExpectedError = false
         do {
             _ = try file.tryPixelData()
             Issue.record("Expected error to be thrown")
         } catch let error as PixelDataError {
-            if case .missingDescriptor = error {
+            if case .missingAttributes(let attributes) = error {
+                // Should list all missing required attributes
+                #expect(attributes.contains { $0.contains("Rows") })
+                #expect(attributes.contains { $0.contains("Columns") })
+                #expect(attributes.contains { $0.contains("Bits Allocated") })
+                #expect(attributes.contains { $0.contains("Bits Stored") })
+                #expect(attributes.contains { $0.contains("High Bit") })
+                #expect(attributes.contains { $0.contains("Pixel Representation") })
                 didThrowExpectedError = true
             } else {
-                Issue.record("Expected missingDescriptor error, got \(error)")
+                Issue.record("Expected missingAttributes error, got \(error)")
             }
         } catch {
             Issue.record("Unexpected error type: \(error)")
