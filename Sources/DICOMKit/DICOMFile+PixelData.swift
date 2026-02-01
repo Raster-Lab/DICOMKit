@@ -95,13 +95,23 @@ extension DICOMFile {
         do {
             descriptor = try dataSet.tryPixelDataDescriptor()
         } catch let error as PixelDataError {
-            // If missing attributes and this is a non-image SOP class, provide enhanced error
+            // If missing attributes, check if this is a non-image SOP class
             if case .missingAttributes(let attributes) = error {
                 let sopUID = sopClassUID
-                let isNonImage = sopUID.map { Self.isNonImageSOPClass($0) } ?? false
+                let isKnownNonImage = sopUID.map { Self.isNonImageSOPClass($0) } ?? false
                 
-                if isNonImage {
-                    // This is a known non-image SOP class - provide context
+                // Also check if the Pixel Data element is missing - this is a strong
+                // indicator that this is a non-image DICOM object
+                let hasPixelDataElement = dataSet[.pixelData] != nil
+                
+                // Determine if this is likely a non-image object:
+                // 1. Known non-image SOP class, OR
+                // 2. All required pixel attributes are missing AND no pixel data element
+                let allPixelAttributesMissing = attributes.count >= 6 // Rows, Columns, BitsAllocated, BitsStored, HighBit, PixelRepresentation
+                let isLikelyNonImage = isKnownNonImage || (allPixelAttributesMissing && !hasPixelDataElement)
+                
+                if isLikelyNonImage {
+                    // This is a non-image SOP class - provide context
                     let sopName = sopUID.flatMap { UIDDictionary.lookup(uid: $0)?.name }
                     throw PixelDataError.nonImageSOPClass(
                         missingAttributes: attributes,

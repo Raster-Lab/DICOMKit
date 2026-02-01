@@ -774,7 +774,7 @@ struct DICOMFileTests {
         #expect(pixelData.descriptor.columns == 2)
     }
     
-    @Test("tryPixelData throws missingAttributes when attributes are missing")
+    @Test("tryPixelData throws missingAttributes when attributes are missing but pixel data is present")
     func testTryPixelDataMissingDescriptor() throws {
         var data = Data()
         
@@ -790,7 +790,13 @@ struct DICOMFileTests {
         data.append(contentsOf: [0x14, 0x00]) // Length: 20
         data.append("1.2.840.10008.1.2.1 ".data(using: .ascii)!)
         
-        // No pixel data attributes - should fail
+        // No pixel data attributes - but include a Pixel Data element (7FE0,0010)
+        // to indicate this is an image file with missing attributes (malformed file)
+        data.append(contentsOf: [0xE0, 0x7F, 0x10, 0x00]) // Pixel Data tag
+        data.append(contentsOf: [0x4F, 0x57]) // "OW"
+        data.append(contentsOf: [0x00, 0x00]) // Reserved
+        data.append(contentsOf: [0x04, 0x00, 0x00, 0x00]) // Length: 4
+        data.append(contentsOf: [0x00, 0x00, 0x00, 0x00]) // Dummy pixel data
         
         let file = try DICOMFile.read(from: data)
         
@@ -949,6 +955,76 @@ struct DICOMFileTests {
                 #expect(error.description.contains("Non-image DICOM object"))
                 #expect(error.description.contains("1.2.840.10008.5.1.4.1.1.88.11"))
                 #expect(error.explanation.contains("Structured Reports"))
+                didThrowExpectedError = true
+            } else {
+                Issue.record("Expected nonImageSOPClass error, got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+        #expect(didThrowExpectedError)
+    }
+    
+    @Test("tryPixelData throws nonImageSOPClass for unknown SOP class when all pixel attributes and pixel data are missing")
+    func testTryPixelDataUnknownNonImageSOPClass() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.1 ".data(using: .ascii)!)
+        
+        // SOP Class UID (0008,0016) - Unknown/custom SOP class (not in our known list)
+        // Using a custom UID that is 22 characters
+        data.append(contentsOf: [0x08, 0x00, 0x16, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x16, 0x00]) // Length: 22
+        data.append("2.25.12345678901234567".data(using: .ascii)!) // 22 chars
+        
+        // SOP Instance UID (0008,0018)
+        data.append(contentsOf: [0x08, 0x00, 0x18, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.3.4.5.6.7.8.9.12".data(using: .ascii)!)
+        
+        // No pixel data attributes AND no pixel data element
+        // This should be detected as a non-image object
+        
+        let file = try DICOMFile.read(from: data)
+        
+        // Verify SOP Class UID is correctly parsed
+        #expect(file.sopClassUID == "2.25.12345678901234567")
+        
+        // Verify that nonImageSOPClass error is thrown (not missingAttributes)
+        // because all pixel attributes are missing and there's no pixel data element
+        var didThrowExpectedError = false
+        do {
+            _ = try file.tryPixelData()
+            Issue.record("Expected error to be thrown")
+        } catch let error as PixelDataError {
+            if case .nonImageSOPClass(let attributes, let sopClassUID, let sopClassName) = error {
+                // Should list missing pixel data attributes
+                #expect(attributes.contains { $0.contains("Rows") })
+                #expect(attributes.contains { $0.contains("Columns") })
+                #expect(attributes.contains { $0.contains("Bits Allocated") })
+                #expect(attributes.contains { $0.contains("Bits Stored") })
+                #expect(attributes.contains { $0.contains("High Bit") })
+                #expect(attributes.contains { $0.contains("Pixel Representation") })
+                // Should have SOP Class UID
+                #expect(sopClassUID == "2.25.12345678901234567")
+                // SOP class name should be nil since it's unknown
+                #expect(sopClassName == nil)
+                // Check error message contains useful info
+                #expect(error.description.contains("Non-image DICOM object"))
+                #expect(error.description.contains("SOP Class UID: 2.25.12345678901234567"))
+                #expect(error.explanation.contains("non-image object"))
                 didThrowExpectedError = true
             } else {
                 Issue.record("Expected nonImageSOPClass error, got \(error)")
