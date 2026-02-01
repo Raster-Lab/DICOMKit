@@ -35,6 +35,69 @@ struct PixelDataErrorTests {
         #expect(error.explanation.contains("missing the following required attributes"))
     }
     
+    // MARK: - Non-Image SOP Class Error Tests
+    
+    @Test("nonImageSOPClass error with SOP class name")
+    func testNonImageSOPClassWithName() {
+        let attributes = ["Rows (0028,0010)", "Columns (0028,0011)"]
+        let error = PixelDataError.nonImageSOPClass(
+            missingAttributes: attributes,
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.88.11",
+            sopClassName: "Basic Text SR Storage"
+        )
+        
+        #expect(error.description.contains("Non-image DICOM object"))
+        #expect(error.description.contains("Basic Text SR Storage"))
+        #expect(error.description.contains("Rows (0028,0010)"))
+        #expect(error.explanation.contains("Basic Text SR Storage"))
+        #expect(error.explanation.contains("non-image object"))
+        #expect(error.explanation.contains("Structured Reports"))
+    }
+    
+    @Test("nonImageSOPClass error with SOP class UID only")
+    func testNonImageSOPClassWithUIDOnly() {
+        let attributes = ["Bits Allocated (0028,0100)"]
+        let error = PixelDataError.nonImageSOPClass(
+            missingAttributes: attributes,
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.88.33",
+            sopClassName: nil
+        )
+        
+        #expect(error.description.contains("SOP Class UID: 1.2.840.10008.5.1.4.1.1.88.33"))
+        #expect(error.description.contains("Bits Allocated (0028,0100)"))
+        #expect(error.explanation.contains("SOP Class UID: 1.2.840.10008.5.1.4.1.1.88.33"))
+    }
+    
+    @Test("nonImageSOPClass error without SOP class info")
+    func testNonImageSOPClassWithoutInfo() {
+        let attributes = ["Rows (0028,0010)", "Columns (0028,0011)", "Bits Allocated (0028,0100)"]
+        let error = PixelDataError.nonImageSOPClass(
+            missingAttributes: attributes,
+            sopClassUID: nil,
+            sopClassName: nil
+        )
+        
+        #expect(error.description.contains("Non-image DICOM object"))
+        #expect(error.description.contains("Rows (0028,0010)"))
+        #expect(error.description.contains("Columns (0028,0011)"))
+        #expect(error.description.contains("Bits Allocated (0028,0100)"))
+        #expect(error.explanation.contains("non-image object"))
+        #expect(error.explanation.contains("Pixel data extraction is not applicable"))
+    }
+    
+    @Test("nonImageSOPClass error explanation mentions common non-image types")
+    func testNonImageSOPClassExplanationContent() {
+        let error = PixelDataError.nonImageSOPClass(
+            missingAttributes: ["Rows (0028,0010)"],
+            sopClassUID: nil,
+            sopClassName: nil
+        )
+        
+        #expect(error.explanation.contains("Structured Reports"))
+        #expect(error.explanation.contains("Key Object Selection"))
+        #expect(error.explanation.contains("Presentation States"))
+    }
+    
     @Test("missingPixelData error has correct description")
     func testMissingPixelDataDescription() {
         let error = PixelDataError.missingPixelData
