@@ -378,8 +378,9 @@ extension DICOMFile {
         "1.2.840.10008.5.1.4.1.1.11.11",    // Multiple Volume Rendering Volumetric Presentation State Storage
         "1.2.840.10008.5.1.4.1.1.11.12",    // Variable Modality LUT Softcopy Presentation State Storage
         
-        // RT Structure and Plan SOP Classes (non-image)
-        "1.2.840.10008.5.1.4.1.1.481.2",    // RT Dose Storage (can have pixel data but often doesn't)
+        // RT Structure and Plan SOP Classes (non-image, no pixel data)
+        // Note: RT Dose Storage (481.2) and RT Image Storage (481.1) are NOT included
+        // as they contain pixel data
         "1.2.840.10008.5.1.4.1.1.481.3",    // RT Structure Set Storage
         "1.2.840.10008.5.1.4.1.1.481.4",    // RT Beams Treatment Record Storage
         "1.2.840.10008.5.1.4.1.1.481.5",    // RT Plan Storage
@@ -427,7 +428,7 @@ extension DICOMFile {
         "1.2.840.10008.5.1.4.1.1.66.1",     // Spatial Registration Storage
         "1.2.840.10008.5.1.4.1.1.66.2",     // Spatial Fiducials Storage
         "1.2.840.10008.5.1.4.1.1.66.3",     // Deformable Spatial Registration Storage
-        "1.2.840.10008.5.1.4.1.1.66.4",     // Segmentation Storage
+        // Note: Segmentation Storage (66.4) contains pixel data for binary/fractional masks
         "1.2.840.10008.5.1.4.1.1.66.5",     // Surface Segmentation Storage
         "1.2.840.10008.5.1.4.1.1.66.6",     // Tractography Results Storage
         "1.2.840.10008.5.1.4.1.1.67",       // Real World Value Mapping Storage
