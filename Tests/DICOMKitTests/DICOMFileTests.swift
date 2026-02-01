@@ -690,4 +690,204 @@ struct DICOMFileTests {
         #expect(pixelData?.descriptor.rows == 2)
         #expect(pixelData?.descriptor.columns == 2)
     }
+    
+    // MARK: - tryPixelData() Tests
+    
+    @Test("tryPixelData returns pixel data for uncompressed images")
+    func testTryPixelDataSuccess() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID for Explicit VR Little Endian
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.1 ".data(using: .ascii)!)
+        
+        // Required pixel data attributes
+        // Rows (0028,0010) - US VR - value: 2
+        data.append(contentsOf: [0x28, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x02, 0x00]) // Value: 2
+        
+        // Columns (0028,0011) - US VR - value: 2
+        data.append(contentsOf: [0x28, 0x00, 0x11, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x02, 0x00]) // Value: 2
+        
+        // Bits Allocated (0028,0100) - US VR - value: 8
+        data.append(contentsOf: [0x28, 0x00, 0x00, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x08, 0x00]) // Value: 8
+        
+        // Bits Stored (0028,0101) - US VR - value: 8
+        data.append(contentsOf: [0x28, 0x00, 0x01, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x08, 0x00]) // Value: 8
+        
+        // High Bit (0028,0102) - US VR - value: 7
+        data.append(contentsOf: [0x28, 0x00, 0x02, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x07, 0x00]) // Value: 7
+        
+        // Pixel Representation (0028,0103) - US VR - value: 0 (unsigned)
+        data.append(contentsOf: [0x28, 0x00, 0x03, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x00, 0x00]) // Value: 0
+        
+        // Photometric Interpretation (0028,0004) - CS VR
+        data.append(contentsOf: [0x28, 0x00, 0x04, 0x00])
+        data.append(contentsOf: [0x43, 0x53]) // "CS"
+        data.append(contentsOf: [0x0C, 0x00]) // Length: 12
+        data.append("MONOCHROME2 ".data(using: .ascii)!)
+        
+        // Samples Per Pixel (0028,0002) - US VR - value: 1
+        data.append(contentsOf: [0x28, 0x00, 0x02, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x01, 0x00]) // Value: 1
+        
+        // Pixel Data (7FE0,0010) - OW VR - 4 pixels (2x2 image, 8-bit)
+        data.append(contentsOf: [0xE0, 0x7F, 0x10, 0x00])
+        data.append(contentsOf: [0x4F, 0x57]) // "OW"
+        data.append(contentsOf: [0x00, 0x00]) // Reserved
+        data.append(contentsOf: [0x04, 0x00, 0x00, 0x00]) // Length: 4
+        data.append(contentsOf: [0x10, 0x20, 0x30, 0x40]) // Pixel values
+        
+        let file = try DICOMFile.read(from: data)
+        
+        // Should successfully extract pixel data
+        let pixelData = try file.tryPixelData()
+        #expect(pixelData.data.count == 4)
+        #expect(pixelData.descriptor.rows == 2)
+        #expect(pixelData.descriptor.columns == 2)
+    }
+    
+    @Test("tryPixelData throws missingDescriptor when attributes are missing")
+    func testTryPixelDataMissingDescriptor() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.1 ".data(using: .ascii)!)
+        
+        // No pixel data attributes - should fail
+        
+        let file = try DICOMFile.read(from: data)
+        
+        // Verify that the specific error type is thrown
+        var didThrowExpectedError = false
+        do {
+            _ = try file.tryPixelData()
+            Issue.record("Expected error to be thrown")
+        } catch let error as PixelDataError {
+            if case .missingDescriptor = error {
+                didThrowExpectedError = true
+            } else {
+                Issue.record("Expected missingDescriptor error, got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+        #expect(didThrowExpectedError)
+    }
+    
+    @Test("tryPixelData throws missingPixelData when pixel data element is absent")
+    func testTryPixelDataMissingPixelData() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.1 ".data(using: .ascii)!)
+        
+        // Required pixel data attributes but no pixel data element
+        // Rows (0028,0010) - US VR - value: 2
+        data.append(contentsOf: [0x28, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x02, 0x00]) // Value: 2
+        
+        // Columns (0028,0011) - US VR - value: 2
+        data.append(contentsOf: [0x28, 0x00, 0x11, 0x00])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x02, 0x00]) // Value: 2
+        
+        // Bits Allocated (0028,0100) - US VR - value: 8
+        data.append(contentsOf: [0x28, 0x00, 0x00, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x08, 0x00]) // Value: 8
+        
+        // Bits Stored (0028,0101) - US VR - value: 8
+        data.append(contentsOf: [0x28, 0x00, 0x01, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x08, 0x00]) // Value: 8
+        
+        // High Bit (0028,0102) - US VR - value: 7
+        data.append(contentsOf: [0x28, 0x00, 0x02, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x07, 0x00]) // Value: 7
+        
+        // Pixel Representation (0028,0103) - US VR - value: 0 (unsigned)
+        data.append(contentsOf: [0x28, 0x00, 0x03, 0x01])
+        data.append(contentsOf: [0x55, 0x53]) // "US"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append(contentsOf: [0x00, 0x00]) // Value: 0
+        
+        // Photometric Interpretation (0028,0004) - CS VR
+        data.append(contentsOf: [0x28, 0x00, 0x04, 0x00])
+        data.append(contentsOf: [0x43, 0x53]) // "CS"
+        data.append(contentsOf: [0x0C, 0x00]) // Length: 12
+        data.append("MONOCHROME2 ".data(using: .ascii)!)
+        
+        // No Pixel Data element
+        
+        let file = try DICOMFile.read(from: data)
+        
+        // Verify that the specific error type is thrown
+        var didThrowExpectedError = false
+        do {
+            _ = try file.tryPixelData()
+            Issue.record("Expected error to be thrown")
+        } catch let error as PixelDataError {
+            if case .missingPixelData = error {
+                didThrowExpectedError = true
+            } else {
+                Issue.record("Expected missingPixelData error, got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+        #expect(didThrowExpectedError)
+    }
 }

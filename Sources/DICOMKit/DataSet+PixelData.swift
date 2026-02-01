@@ -81,6 +81,33 @@ extension DataSet {
         return PixelData(data: element.valueData, descriptor: descriptor)
     }
     
+    /// Extracts uncompressed pixel data from the data set, throwing detailed errors on failure
+    ///
+    /// Returns the uncompressed pixel data along with its descriptor.
+    /// This method only handles uncompressed pixel data; for compressed data,
+    /// use `DICOMFile.tryPixelData()` instead.
+    ///
+    /// - Returns: PixelData if extraction succeeds
+    /// - Throws: `PixelDataError` with detailed information about the failure
+    public func tryPixelData() throws -> PixelData {
+        // First check if we have a valid descriptor
+        guard let descriptor = pixelDataDescriptor() else {
+            throw PixelDataError.missingDescriptor
+        }
+        
+        // Get the pixel data element
+        guard let element = self[.pixelData] else {
+            throw PixelDataError.missingPixelData
+        }
+        
+        // Check if the pixel data has non-empty value data (uncompressed)
+        guard !element.valueData.isEmpty else {
+            throw PixelDataError.missingPixelData
+        }
+        
+        return PixelData(data: element.valueData, descriptor: descriptor)
+    }
+    
     // MARK: - Encapsulated Pixel Data Extraction
     
     /// Extracts encapsulated (compressed) pixel data from the data set
