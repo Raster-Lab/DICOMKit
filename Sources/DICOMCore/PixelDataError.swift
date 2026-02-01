@@ -14,6 +14,12 @@ public enum PixelDataError: Error, Sendable {
     /// The DICOM file does not contain a Pixel Data element (7FE0,0010).
     case missingPixelData
     
+    /// The transfer syntax UID is missing from the file metadata
+    ///
+    /// The DICOM file has encapsulated pixel data but the Transfer Syntax UID
+    /// is not available to determine the codec to use.
+    case missingTransferSyntax
+    
     /// The transfer syntax is not supported for decoding
     ///
     /// The DICOM file uses a compressed transfer syntax that DICOMKit
@@ -50,6 +56,8 @@ extension PixelDataError: CustomStringConvertible {
             return "Pixel data extraction failed: Missing required pixel data attributes (Rows, Columns, Bits Allocated, etc.)"
         case .missingPixelData:
             return "Pixel data extraction failed: No pixel data element present in the DICOM file"
+        case .missingTransferSyntax:
+            return "Pixel data extraction failed: Transfer syntax UID is missing from file metadata"
         case .unsupportedTransferSyntax(let uid):
             return "Pixel data extraction failed: Unsupported transfer syntax '\(uid)' - no codec available"
         case .frameExtractionFailed(let frameIndex):
@@ -70,6 +78,9 @@ extension PixelDataError {
         case .missingPixelData:
             return "The DICOM file does not contain any pixel data. " +
                    "This may be a structured report, key object, or other non-image DICOM object."
+        case .missingTransferSyntax:
+            return "The DICOM file has compressed pixel data but the Transfer Syntax UID is not " +
+                   "available in the file metadata. This is required to determine which codec to use."
         case .unsupportedTransferSyntax(let uid):
             return "The DICOM file uses compressed transfer syntax '\(uid)' which is not currently supported. " +
                    "Supported compressed formats include JPEG Baseline, JPEG Extended, JPEG Lossless, " +

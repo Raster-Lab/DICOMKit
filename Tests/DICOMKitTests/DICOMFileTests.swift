@@ -794,20 +794,21 @@ struct DICOMFileTests {
         
         let file = try DICOMFile.read(from: data)
         
-        #expect(throws: PixelDataError.self) {
-            try file.tryPixelData()
-        }
-        
-        // Verify specific error type
+        // Verify that the specific error type is thrown
+        var didThrowExpectedError = false
         do {
             _ = try file.tryPixelData()
+            Issue.record("Expected error to be thrown")
         } catch let error as PixelDataError {
             if case .missingDescriptor = error {
-                // Expected error
+                didThrowExpectedError = true
             } else {
                 Issue.record("Expected missingDescriptor error, got \(error)")
             }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
         }
+        #expect(didThrowExpectedError)
     }
     
     @Test("tryPixelData throws missingPixelData when pixel data element is absent")
@@ -873,15 +874,20 @@ struct DICOMFileTests {
         
         let file = try DICOMFile.read(from: data)
         
+        // Verify that the specific error type is thrown
+        var didThrowExpectedError = false
         do {
             _ = try file.tryPixelData()
             Issue.record("Expected error to be thrown")
         } catch let error as PixelDataError {
             if case .missingPixelData = error {
-                // Expected error
+                didThrowExpectedError = true
             } else {
                 Issue.record("Expected missingPixelData error, got \(error)")
             }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
         }
+        #expect(didThrowExpectedError)
     }
 }

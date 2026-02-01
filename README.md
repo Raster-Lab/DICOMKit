@@ -122,6 +122,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **Encapsulated pixel data parsing** - Fragment and offset table support
 - ✅ **Extensible codec architecture** - Plugin-based codec support
 - ✅ **Uncompressed pixel data extraction** - Extract and render medical images
+- ✅ **Pixel data error handling** - Detailed error types for unsupported formats
 - ✅ **Photometric interpretation support**:
   - ✅ MONOCHROME1
   - ✅ MONOCHROME2
@@ -321,6 +322,52 @@ let intercept = dicomFile.rescaleIntercept()
 let hounsfield = dicomFile.rescale(1024.0)  // Convert stored value to HU
 print("Hounsfield Units: \(hounsfield)")
 ```
+
+### Error Handling for Pixel Data Extraction
+
+The `tryPixelData()` method provides detailed error information when pixel data extraction fails. This is useful for providing meaningful feedback to users when working with unsupported or malformed DICOM files.
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// Use tryPixelData() for detailed error handling
+do {
+    let pixelData = try dicomFile.tryPixelData()
+    print("Successfully extracted \(pixelData.descriptor.numberOfFrames) frame(s)")
+} catch let error as PixelDataError {
+    // Handle specific error types
+    switch error {
+    case .missingDescriptor:
+        print("Missing required pixel data attributes")
+    case .missingPixelData:
+        print("No pixel data in this DICOM file")
+    case .missingTransferSyntax:
+        print("Transfer syntax UID missing from file metadata")
+    case .unsupportedTransferSyntax(let uid):
+        if let name = error.transferSyntaxName {
+            print("Unsupported transfer syntax: \(name) (\(uid))")
+        } else {
+            print("Unsupported transfer syntax: \(uid)")
+        }
+    case .frameExtractionFailed(let frameIndex):
+        print("Failed to extract frame \(frameIndex)")
+    case .decodingFailed(let frameIndex, let reason):
+        print("Failed to decode frame \(frameIndex): \(reason)")
+    }
+    
+    // Get user-friendly explanation
+    print("Details: \(error.explanation)")
+}
+```
+
+**PixelDataError cases:**
+- `.missingDescriptor` - Required attributes (Rows, Columns, Bits Allocated) are missing
+- `.missingPixelData` - No pixel data element in the DICOM file
+- `.missingTransferSyntax` - Transfer syntax UID is missing from file metadata
+- `.unsupportedTransferSyntax(uid)` - Compressed format without a decoder (e.g., JPEG-LS)
+- `.frameExtractionFailed(frameIndex)` - Cannot extract frame from encapsulated data
+- `.decodingFailed(frameIndex, reason)` - Codec failed to decompress the data
 
 ### Rendering to CGImage (Apple platforms only)
 
@@ -1216,6 +1263,7 @@ Core data types and utilities:
 - `PhotometricInterpretation` - Image photometric interpretation types
 - `PixelDataDescriptor` - Pixel data attributes and metadata
 - `PixelData` - Uncompressed pixel data access
+- `PixelDataError` - Detailed error types for pixel data extraction failures
 - `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
 - Little Endian and Big Endian byte reading/writing utilities

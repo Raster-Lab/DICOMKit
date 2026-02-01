@@ -23,6 +23,14 @@ struct PixelDataErrorTests {
         #expect(error.explanation.contains("does not contain any pixel data"))
     }
     
+    @Test("missingTransferSyntax error has correct description")
+    func testMissingTransferSyntaxDescription() {
+        let error = PixelDataError.missingTransferSyntax
+        
+        #expect(error.description.contains("Transfer syntax UID is missing"))
+        #expect(error.explanation.contains("Transfer Syntax UID is not"))
+    }
+    
     @Test("unsupportedTransferSyntax error includes UID")
     func testUnsupportedTransferSyntaxDescription() {
         let uid = "1.2.840.10008.1.2.4.80"

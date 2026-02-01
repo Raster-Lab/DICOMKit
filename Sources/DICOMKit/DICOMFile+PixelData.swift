@@ -111,7 +111,7 @@ extension DICOMFile {
         }
         
         guard let tsUID = transferSyntaxUID else {
-            throw PixelDataError.missingDescriptor
+            throw PixelDataError.missingTransferSyntax
         }
         
         // Get the codec for this transfer syntax
