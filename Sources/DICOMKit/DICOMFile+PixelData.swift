@@ -214,6 +214,36 @@ extension DICOMFile {
         return renderer.renderFrame(frameIndex)
     }
     
+    /// Renders the specified frame to a CGImage, throwing detailed errors on failure
+    ///
+    /// Uses automatic windowing based on pixel value range for monochrome images.
+    /// For palette color images, uses the palette lookup table from the DICOM file.
+    ///
+    /// This method provides detailed error information when pixel data extraction fails,
+    /// which is useful for CT and other modality-specific images where understanding
+    /// the failure reason is important.
+    ///
+    /// - Parameter frameIndex: The frame index to render (default 0)
+    /// - Returns: CGImage if rendering succeeds
+    /// - Throws: `PixelDataError` with detailed information about the failure
+    ///
+    /// Example usage:
+    /// ```swift
+    /// do {
+    ///     let image = try dicomFile.tryRenderFrame(0)
+    ///     // Use rendered image...
+    /// } catch let error as PixelDataError {
+    ///     print("Failed to render: \(error.description)")
+    /// }
+    /// ```
+    public func tryRenderFrame(_ frameIndex: Int = 0) throws -> CGImage? {
+        let pixelData = try tryPixelData()
+        
+        let lut = dataSet.paletteColorLUT()
+        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
+        return renderer.renderFrame(frameIndex)
+    }
+    
     /// Renders the specified frame to a CGImage with custom window settings
     ///
     /// - Parameters:
@@ -225,16 +255,21 @@ extension DICOMFile {
             return nil
         }
         
-        let lut = dataSet.paletteColorLUT()
-        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
+        return renderFrameWithWindow(pixelData: pixelData, frameIndex: frameIndex, window: window)
+    }
+    
+    /// Renders the specified frame to a CGImage with custom window settings,
+    /// throwing detailed errors on failure
+    ///
+    /// - Parameters:
+    ///   - frameIndex: The frame index to render (default 0)
+    ///   - window: Custom window settings for grayscale mapping
+    /// - Returns: CGImage if rendering succeeds
+    /// - Throws: `PixelDataError` with detailed information about the failure
+    public func tryRenderFrame(_ frameIndex: Int = 0, window: WindowSettings) throws -> CGImage? {
+        let pixelData = try tryPixelData()
         
-        if pixelData.descriptor.photometricInterpretation.isMonochrome {
-            return renderer.renderMonochromeFrame(frameIndex, window: window)
-        } else if pixelData.descriptor.photometricInterpretation.isPaletteColor {
-            return renderer.renderPaletteColorFrame(frameIndex)
-        } else {
-            return renderer.renderColorFrame(frameIndex)
-        }
+        return renderFrameWithWindow(pixelData: pixelData, frameIndex: frameIndex, window: window)
     }
     
     /// Renders the specified frame using window settings from the DICOM file
@@ -247,6 +282,39 @@ extension DICOMFile {
             return renderFrame(frameIndex, window: window)
         } else {
             return renderFrame(frameIndex)
+        }
+    }
+    
+    /// Renders the specified frame using window settings from the DICOM file,
+    /// throwing detailed errors on failure
+    ///
+    /// Falls back to automatic windowing if no window settings are present.
+    /// This method provides detailed error information when pixel data extraction fails.
+    ///
+    /// - Parameter frameIndex: The frame index to render (default 0)
+    /// - Returns: CGImage if rendering succeeds
+    /// - Throws: `PixelDataError` with detailed information about the failure
+    public func tryRenderFrameWithStoredWindow(_ frameIndex: Int = 0) throws -> CGImage? {
+        if let window = windowSettings() {
+            return try tryRenderFrame(frameIndex, window: window)
+        } else {
+            return try tryRenderFrame(frameIndex)
+        }
+    }
+    
+    // MARK: - Private Rendering Helpers
+    
+    /// Internal helper to render a frame with window settings using provided pixel data
+    private func renderFrameWithWindow(pixelData: PixelData, frameIndex: Int, window: WindowSettings) -> CGImage? {
+        let lut = dataSet.paletteColorLUT()
+        let renderer = PixelDataRenderer(pixelData: pixelData, paletteColorLUT: lut)
+        
+        if pixelData.descriptor.photometricInterpretation.isMonochrome {
+            return renderer.renderMonochromeFrame(frameIndex, window: window)
+        } else if pixelData.descriptor.photometricInterpretation.isPaletteColor {
+            return renderer.renderPaletteColorFrame(frameIndex)
+        } else {
+            return renderer.renderColorFrame(frameIndex)
         }
     }
 #endif

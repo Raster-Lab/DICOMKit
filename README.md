@@ -392,6 +392,15 @@ if let cgImage = dicomFile.renderFrameWithStoredWindow(0) {
     // Use the image with stored window/level
 }
 
+// Error-throwing render methods for better diagnostics (CT images, etc.)
+do {
+    let cgImage = try dicomFile.tryRenderFrame(0)
+    // Use the rendered image
+} catch let error as PixelDataError {
+    print("Render failed: \(error.description)")
+    print("Explanation: \(error.explanation)")
+}
+
 // Use PixelDataRenderer for more control
 if let pixelData = dicomFile.pixelData() {
     let renderer = PixelDataRenderer(pixelData: pixelData)
