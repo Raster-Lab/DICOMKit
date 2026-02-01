@@ -91,7 +91,27 @@ extension DICOMFile {
     /// ```
     public func tryPixelData() throws -> PixelData {
         // First check if we have a valid descriptor (throws detailed error if missing)
-        let descriptor = try dataSet.tryPixelDataDescriptor()
+        let descriptor: PixelDataDescriptor
+        do {
+            descriptor = try dataSet.tryPixelDataDescriptor()
+        } catch let error as PixelDataError {
+            // If missing attributes and this is a non-image SOP class, provide enhanced error
+            if case .missingAttributes(let attributes) = error {
+                let sopUID = sopClassUID
+                let isNonImage = sopUID.map { Self.isNonImageSOPClass($0) } ?? false
+                
+                if isNonImage {
+                    // This is a known non-image SOP class - provide context
+                    let sopName = sopUID.flatMap { UIDDictionary.lookup(uid: $0)?.name }
+                    throw PixelDataError.nonImageSOPClass(
+                        missingAttributes: attributes,
+                        sopClassUID: sopUID,
+                        sopClassName: sopName
+                    )
+                }
+            }
+            throw error
+        }
         
         // Check if pixel data element exists
         guard let pixelDataElement = dataSet[.pixelData] else {
@@ -314,5 +334,121 @@ extension DICOMFile {
     /// - Returns: The rescaled value in output units
     public func rescale(_ storedValue: Double) -> Double {
         dataSet.rescale(storedValue)
+    }
+    
+    // MARK: - SOP Class Helpers
+    
+    /// Known non-image SOP Class UIDs that do not contain pixel data
+    ///
+    /// These SOP classes represent document-based DICOM objects such as
+    /// Structured Reports, Presentation States, and other non-image data.
+    private static let nonImageSOPClasses: Set<String> = [
+        // Structured Report SOP Classes
+        "1.2.840.10008.5.1.4.1.1.88.11",    // Basic Text SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.22",    // Enhanced SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.33",    // Comprehensive SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.34",    // Comprehensive 3D SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.35",    // Extensible SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.40",    // Procedure Log Storage
+        "1.2.840.10008.5.1.4.1.1.88.50",    // Mammography CAD SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.59",    // Key Object Selection Document Storage
+        "1.2.840.10008.5.1.4.1.1.88.65",    // Chest CAD SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.67",    // X-Ray Radiation Dose SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.68",    // Radiopharmaceutical Radiation Dose SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.69",    // Colon CAD SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.70",    // Implantation Plan SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.71",    // Acquisition Context SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.72",    // Simplified Adult Echo SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.73",    // Patient Radiation Dose SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.74",    // Planned Imaging Agent Administration SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.75",    // Performed Imaging Agent Administration SR Storage
+        "1.2.840.10008.5.1.4.1.1.88.76",    // Enhanced X-Ray Radiation Dose SR Storage
+        
+        // Presentation State SOP Classes
+        "1.2.840.10008.5.1.4.1.1.11.1",     // Grayscale Softcopy Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.2",     // Color Softcopy Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.3",     // Pseudo-Color Softcopy Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.4",     // Blending Softcopy Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.5",     // XA/XRF Grayscale Softcopy Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.6",     // Grayscale Planar MPR Volumetric Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.7",     // Compositing Planar MPR Volumetric Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.8",     // Advanced Blending Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.9",     // Volume Rendering Volumetric Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.10",    // Segmented Volume Rendering Volumetric Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.11",    // Multiple Volume Rendering Volumetric Presentation State Storage
+        "1.2.840.10008.5.1.4.1.1.11.12",    // Variable Modality LUT Softcopy Presentation State Storage
+        
+        // RT Structure and Plan SOP Classes (non-image, no pixel data)
+        // Note: RT Dose Storage (481.2) and RT Image Storage (481.1) are NOT included
+        // as they contain pixel data
+        "1.2.840.10008.5.1.4.1.1.481.3",    // RT Structure Set Storage
+        "1.2.840.10008.5.1.4.1.1.481.4",    // RT Beams Treatment Record Storage
+        "1.2.840.10008.5.1.4.1.1.481.5",    // RT Plan Storage
+        "1.2.840.10008.5.1.4.1.1.481.6",    // RT Brachy Treatment Record Storage
+        "1.2.840.10008.5.1.4.1.1.481.7",    // RT Treatment Summary Record Storage
+        "1.2.840.10008.5.1.4.1.1.481.8",    // RT Ion Plan Storage
+        "1.2.840.10008.5.1.4.1.1.481.9",    // RT Ion Beams Treatment Record Storage
+        
+        // Waveform SOP Classes
+        "1.2.840.10008.5.1.4.1.1.9.1.1",    // 12-lead ECG Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.1.2",    // General ECG Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.1.3",    // Ambulatory ECG Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.2.1",    // Hemodynamic Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.3.1",    // Cardiac Electrophysiology Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.4.1",    // Basic Voice Audio Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.4.2",    // General Audio Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.5.1",    // Arterial Pulse Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.6.1",    // Respiratory Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.6.2",    // Multichannel Respiratory Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.7.1",    // Routine Scalp Electroencephalogram Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.7.2",    // Electromyogram Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.7.3",    // Electrooculogram Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.7.4",    // Sleep Electroencephalogram Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.8.1",    // Body Position Waveform Storage
+        
+        // Encapsulated Document SOP Classes
+        "1.2.840.10008.5.1.4.1.1.104.1",    // Encapsulated PDF Storage
+        "1.2.840.10008.5.1.4.1.1.104.2",    // Encapsulated CDA Storage
+        "1.2.840.10008.5.1.4.1.1.104.3",    // Encapsulated STL Storage
+        "1.2.840.10008.5.1.4.1.1.104.4",    // Encapsulated OBJ Storage
+        "1.2.840.10008.5.1.4.1.1.104.5",    // Encapsulated MTL Storage
+        
+        // Measurement SOP Classes
+        "1.2.840.10008.5.1.4.1.1.78.1",     // Lensometry Measurements Storage
+        "1.2.840.10008.5.1.4.1.1.78.2",     // Autorefraction Measurements Storage
+        "1.2.840.10008.5.1.4.1.1.78.3",     // Keratometry Measurements Storage
+        "1.2.840.10008.5.1.4.1.1.78.4",     // Subjective Refraction Measurements Storage
+        "1.2.840.10008.5.1.4.1.1.78.5",     // Visual Acuity Measurements Storage
+        "1.2.840.10008.5.1.4.1.1.78.6",     // Spectacle Prescription Report Storage
+        "1.2.840.10008.5.1.4.1.1.78.7",     // Ophthalmic Axial Measurements Storage
+        "1.2.840.10008.5.1.4.1.1.78.8",     // Intraocular Lens Calculations Storage
+        
+        // Other non-image SOP Classes
+        "1.2.840.10008.5.1.4.1.1.66",       // Raw Data Storage
+        "1.2.840.10008.5.1.4.1.1.66.1",     // Spatial Registration Storage
+        "1.2.840.10008.5.1.4.1.1.66.2",     // Spatial Fiducials Storage
+        "1.2.840.10008.5.1.4.1.1.66.3",     // Deformable Spatial Registration Storage
+        // Note: Segmentation Storage (66.4) contains pixel data for binary/fractional masks
+        "1.2.840.10008.5.1.4.1.1.66.5",     // Surface Segmentation Storage
+        "1.2.840.10008.5.1.4.1.1.66.6",     // Tractography Results Storage
+        "1.2.840.10008.5.1.4.1.1.67",       // Real World Value Mapping Storage
+        "1.2.840.10008.5.1.4.1.1.68.1",     // Surface Scan Mesh Storage
+        "1.2.840.10008.5.1.4.1.1.68.2",     // Surface Scan Point Cloud Storage
+        "1.2.840.10008.5.1.4.1.1.91.1",     // Content Assessment Results Storage
+        "1.2.840.10008.5.1.4.1.1.200.1",    // CT Defined Procedure Protocol Storage
+        "1.2.840.10008.5.1.4.1.1.200.2",    // CT Performed Procedure Protocol Storage
+        "1.2.840.10008.5.1.4.1.1.200.8",    // XA Defined Procedure Protocol Storage
+        "1.2.840.10008.5.1.4.1.1.200.9",    // XA Performed Procedure Protocol Storage
+    ]
+    
+    /// Checks if a SOP Class UID represents a non-image DICOM object
+    ///
+    /// Non-image SOP classes include Structured Reports, Presentation States,
+    /// Waveforms, and other document-based DICOM objects that do not contain pixel data.
+    ///
+    /// - Parameter sopClassUID: The SOP Class UID to check
+    /// - Returns: true if the SOP class is known to be a non-image type
+    private static func isNonImageSOPClass(_ sopClassUID: String) -> Bool {
+        return nonImageSOPClasses.contains(sopClassUID)
     }
 }

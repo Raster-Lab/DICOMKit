@@ -16,6 +16,18 @@ public enum PixelDataError: Error, Sendable {
     /// names of the missing attributes for better diagnostics.
     case missingAttributes([String])
     
+    /// Required pixel data descriptor attributes are missing for a non-image SOP class
+    ///
+    /// The DICOM file is missing pixel data attributes because it belongs to a
+    /// non-image SOP class (e.g., Structured Report, Key Object Selection).
+    /// This is not an error for non-image objects but indicates that pixel data
+    /// extraction is not applicable.
+    /// - Parameters:
+    ///   - missingAttributes: The names of the missing pixel data attributes
+    ///   - sopClassUID: The SOP Class UID of the DICOM object (if available)
+    ///   - sopClassName: The human-readable name of the SOP Class (if available)
+    case nonImageSOPClass(missingAttributes: [String], sopClassUID: String?, sopClassName: String?)
+    
     /// No pixel data element is present in the data set
     ///
     /// The DICOM file does not contain a Pixel Data element (7FE0,0010).
@@ -64,6 +76,17 @@ extension PixelDataError: CustomStringConvertible {
         case .missingAttributes(let attributes):
             let attributeList = attributes.joined(separator: ", ")
             return "Pixel data extraction failed: Missing required pixel data attributes: \(attributeList)"
+        case .nonImageSOPClass(let missingAttributes, let sopClassUID, let sopClassName):
+            let attributeList = missingAttributes.joined(separator: ", ")
+            let sopInfo: String
+            if let name = sopClassName {
+                sopInfo = " (SOP Class: \(name))"
+            } else if let uid = sopClassUID {
+                sopInfo = " (SOP Class UID: \(uid))"
+            } else {
+                sopInfo = ""
+            }
+            return "Pixel data extraction failed: Non-image DICOM object\(sopInfo) - missing pixel data attributes: \(attributeList)"
         case .missingPixelData:
             return "Pixel data extraction failed: No pixel data element present in the DICOM file"
         case .missingTransferSyntax:
@@ -89,6 +112,19 @@ extension PixelDataError {
             let attributeList = attributes.joined(separator: ", ")
             return "The DICOM file is missing the following required attributes: \(attributeList). " +
                    "This may indicate a malformed DICOM file or a non-image SOP class."
+        case .nonImageSOPClass(let missingAttributes, let sopClassUID, let sopClassName):
+            let attributeList = missingAttributes.joined(separator: ", ")
+            var explanation = "The DICOM file is a non-image object"
+            if let name = sopClassName {
+                explanation += " (\(name))"
+            } else if let uid = sopClassUID {
+                explanation += " (SOP Class UID: \(uid))"
+            }
+            explanation += " that does not contain pixel data. "
+            explanation += "Missing attributes: \(attributeList). "
+            explanation += "Pixel data extraction is not applicable for this type of DICOM object. "
+            explanation += "Non-image objects include Structured Reports, Key Object Selection, Presentation States, and other document-based DICOM types."
+            return explanation
         case .missingPixelData:
             return "The DICOM file does not contain any pixel data. " +
                    "This may be a structured report, key object, or other non-image DICOM object."

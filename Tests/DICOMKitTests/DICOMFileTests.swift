@@ -898,6 +898,67 @@ struct DICOMFileTests {
         #expect(didThrowExpectedError)
     }
     
+    @Test("tryPixelData throws nonImageSOPClass for Structured Reports")
+    func testTryPixelDataNonImageSOPClass() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // File Meta Information - Transfer Syntax UID
+        data.append(contentsOf: [0x02, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.840.10008.1.2.1 ".data(using: .ascii)!)
+        
+        // SOP Class UID (0008,0016) - Basic Text SR Storage
+        data.append(contentsOf: [0x08, 0x00, 0x16, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x1E, 0x00]) // Length: 30
+        data.append("1.2.840.10008.5.1.4.1.1.88.11 ".data(using: .ascii)!)
+        
+        // SOP Instance UID (0008,0018)
+        data.append(contentsOf: [0x08, 0x00, 0x18, 0x00])
+        data.append(contentsOf: [0x55, 0x49]) // "UI"
+        data.append(contentsOf: [0x14, 0x00]) // Length: 20
+        data.append("1.2.3.4.5.6.7.8.9.10".data(using: .ascii)!)
+        
+        // No pixel data attributes (legitimate for SR)
+        
+        let file = try DICOMFile.read(from: data)
+        
+        // Verify SOP Class UID is correctly parsed
+        #expect(file.sopClassUID == "1.2.840.10008.5.1.4.1.1.88.11")
+        
+        // Verify that nonImageSOPClass error is thrown
+        var didThrowExpectedError = false
+        do {
+            _ = try file.tryPixelData()
+            Issue.record("Expected error to be thrown")
+        } catch let error as PixelDataError {
+            if case .nonImageSOPClass(let attributes, let sopClassUID, _) = error {
+                // Should list missing pixel data attributes
+                #expect(attributes.contains { $0.contains("Rows") })
+                #expect(attributes.contains { $0.contains("Columns") })
+                // Should have SOP Class UID
+                #expect(sopClassUID == "1.2.840.10008.5.1.4.1.1.88.11")
+                // Check error message contains useful info
+                #expect(error.description.contains("Non-image DICOM object"))
+                #expect(error.description.contains("1.2.840.10008.5.1.4.1.1.88.11"))
+                #expect(error.explanation.contains("Structured Reports"))
+                didThrowExpectedError = true
+            } else {
+                Issue.record("Expected nonImageSOPClass error, got \(error)")
+            }
+        } catch {
+            Issue.record("Unexpected error type: \(error)")
+        }
+        #expect(didThrowExpectedError)
+    }
+    
     // MARK: - Legacy DICOM File Tests (Without DICM Prefix)
     
     @Test("Read legacy DICOM file with force=true and Explicit VR")
