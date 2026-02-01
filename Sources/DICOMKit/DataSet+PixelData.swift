@@ -59,6 +59,96 @@ extension DataSet {
         )
     }
     
+    /// Creates a PixelDataDescriptor from the data set's image pixel attributes,
+    /// throwing detailed errors if required attributes are missing.
+    ///
+    /// Extracts all necessary attributes to describe the pixel data format.
+    /// If any required attribute is missing, throws a detailed error indicating
+    /// which specific attributes are not present.
+    ///
+    /// - Returns: PixelDataDescriptor if all required attributes are present
+    /// - Throws: `PixelDataError.missingAttributes` with the list of missing attribute names
+    public func tryPixelDataDescriptor() throws -> PixelDataDescriptor {
+        // Track missing or invalid required attributes
+        var issues: [String] = []
+        
+        // Collect all required attributes
+        let rows = uint16(for: .rows)
+        if rows == nil { issues.append("Rows (0028,0010)") }
+        
+        let columns = uint16(for: .columns)
+        if columns == nil { issues.append("Columns (0028,0011)") }
+        
+        let bitsAllocated = uint16(for: .bitsAllocated)
+        if bitsAllocated == nil { issues.append("Bits Allocated (0028,0100)") }
+        
+        let bitsStored = uint16(for: .bitsStored)
+        if bitsStored == nil { issues.append("Bits Stored (0028,0101)") }
+        
+        let highBit = uint16(for: .highBit)
+        if highBit == nil { issues.append("High Bit (0028,0102)") }
+        
+        let pixelRepresentation = uint16(for: .pixelRepresentation)
+        if pixelRepresentation == nil { issues.append("Pixel Representation (0028,0103)") }
+        
+        // Photometric Interpretation check - only report if truly missing or invalid
+        let photometricString = string(for: .photometricInterpretation)
+        let photometricInterpretation: PhotometricInterpretation?
+        if let piString = photometricString {
+            photometricInterpretation = PhotometricInterpretation.parse(piString)
+            if photometricInterpretation == nil {
+                issues.append("Photometric Interpretation (0028,0004) - unrecognized value: '\(piString)'")
+            }
+        } else {
+            // Default to MONOCHROME2 if not present
+            photometricInterpretation = .monochrome2
+        }
+        
+        // If any required attributes are missing or invalid, throw a detailed error
+        if !issues.isEmpty {
+            throw PixelDataError.missingAttributes(issues)
+        }
+        
+        // At this point, all required values are guaranteed to be valid
+        // Use guard-let to make the non-nil guarantees explicit
+        guard let validRows = rows,
+              let validColumns = columns,
+              let validBitsAllocated = bitsAllocated,
+              let validBitsStored = bitsStored,
+              let validHighBit = highBit,
+              let validPixelRepresentation = pixelRepresentation,
+              let validPhotometric = photometricInterpretation else {
+            // This should never happen due to earlier checks, but provides safety
+            throw PixelDataError.missingDescriptor
+        }
+        
+        // Optional attributes with defaults
+        let samplesPerPixel = uint16(for: .samplesPerPixel) ?? 1
+        let planarConfiguration = uint16(for: .planarConfiguration) ?? 0
+        
+        // Number of frames (default 1 for single-frame images)
+        let numberOfFrames: Int
+        if let frameString = string(for: .numberOfFrames),
+           let frames = Int(frameString.trimmingCharacters(in: .whitespaces)) {
+            numberOfFrames = frames
+        } else {
+            numberOfFrames = 1
+        }
+        
+        return PixelDataDescriptor(
+            rows: Int(validRows),
+            columns: Int(validColumns),
+            numberOfFrames: numberOfFrames,
+            bitsAllocated: Int(validBitsAllocated),
+            bitsStored: Int(validBitsStored),
+            highBit: Int(validHighBit),
+            isSigned: validPixelRepresentation != 0,
+            samplesPerPixel: Int(samplesPerPixel),
+            photometricInterpretation: validPhotometric,
+            planarConfiguration: Int(planarConfiguration)
+        )
+    }
+    
     // MARK: - Pixel Data Extraction
     
     /// Extracts pixel data from the data set
@@ -90,10 +180,8 @@ extension DataSet {
     /// - Returns: PixelData if extraction succeeds
     /// - Throws: `PixelDataError` with detailed information about the failure
     public func tryPixelData() throws -> PixelData {
-        // First check if we have a valid descriptor
-        guard let descriptor = pixelDataDescriptor() else {
-            throw PixelDataError.missingDescriptor
-        }
+        // First check if we have a valid descriptor (throws detailed error if missing)
+        let descriptor = try tryPixelDataDescriptor()
         
         // Get the pixel data element
         guard let element = self[.pixelData] else {
