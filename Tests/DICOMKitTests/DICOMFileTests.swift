@@ -890,4 +890,143 @@ struct DICOMFileTests {
         }
         #expect(didThrowExpectedError)
     }
+    
+    // MARK: - Legacy DICOM File Tests (Without DICM Prefix)
+    
+    @Test("Read legacy DICOM file with force=true and Explicit VR")
+    func testReadLegacyDICOMFileExplicitVR() throws {
+        var data = Data()
+        
+        // No preamble, no DICM prefix - start directly with data elements
+        // Patient Name (0010,0010) - Explicit VR
+        data.append(contentsOf: [0x10, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x50, 0x4E]) // "PN"
+        data.append(contentsOf: [0x08, 0x00]) // Length: 8
+        data.append(contentsOf: [0x44, 0x6F, 0x65, 0x5E, 0x4A, 0x6F, 0x68, 0x6E]) // "Doe^John"
+        
+        // Patient ID (0010,0020) - Explicit VR
+        data.append(contentsOf: [0x10, 0x00, 0x20, 0x00])
+        data.append(contentsOf: [0x4C, 0x4F]) // "LO"
+        data.append(contentsOf: [0x06, 0x00]) // Length: 6
+        data.append(contentsOf: [0x31, 0x32, 0x33, 0x34, 0x35, 0x36]) // "123456"
+        
+        // Without force=true, this should throw
+        #expect(throws: DICOMError.self) {
+            try DICOMFile.read(from: data)
+        }
+        
+        // With force=true, this should succeed
+        let file = try DICOMFile.read(from: data, force: true)
+        #expect(file.fileMetaInformation.count == 0) // No File Meta Information
+        #expect(file.dataSet.count == 2)
+        
+        let patientName = file.dataSet.string(for: .patientName)
+        #expect(patientName == "Doe^John")
+        
+        let patientID = file.dataSet.string(for: .patientID)
+        #expect(patientID == "123456")
+    }
+    
+    @Test("Read legacy DICOM file with force=true and Implicit VR")
+    func testReadLegacyDICOMFileImplicitVR() throws {
+        var data = Data()
+        
+        // No preamble, no DICM prefix - start directly with data elements
+        // Study Date (0008,0020) - Implicit VR (no VR field, 32-bit length)
+        data.append(contentsOf: [0x08, 0x00, 0x20, 0x00])
+        data.append(contentsOf: [0x08, 0x00, 0x00, 0x00]) // Length: 8
+        data.append("20250130".data(using: .ascii)!)
+        
+        // With force=true, this should succeed
+        let file = try DICOMFile.read(from: data, force: true)
+        #expect(file.fileMetaInformation.count == 0)
+        #expect(file.dataSet.count == 1)
+        
+        let studyDate = file.dataSet.string(for: .studyDate)
+        #expect(studyDate == "20250130")
+    }
+    
+    @Test("Read legacy DICOM file fails without force parameter")
+    func testReadLegacyDICOMFileWithoutForce() {
+        var data = Data()
+        
+        // Legacy data without DICM prefix
+        data.append(contentsOf: [0x10, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x50, 0x4E]) // "PN"
+        data.append(contentsOf: [0x04, 0x00]) // Length: 4
+        data.append(contentsOf: [0x54, 0x65, 0x73, 0x74]) // "Test"
+        
+        // Without force, should throw invalidDICMPrefix
+        #expect(throws: DICOMError.self) {
+            try DICOMFile.read(from: data)
+        }
+    }
+    
+    @Test("Read standard DICOM file with force=true still works")
+    func testReadStandardDICOMFileWithForce() throws {
+        var data = Data()
+        
+        // 128-byte preamble
+        data.append(Data(count: 128))
+        
+        // "DICM" prefix
+        data.append(contentsOf: [0x44, 0x49, 0x43, 0x4D])
+        
+        // Patient Name (0010,0010)
+        data.append(contentsOf: [0x10, 0x00, 0x10, 0x00])
+        data.append(contentsOf: [0x50, 0x4E]) // "PN"
+        data.append(contentsOf: [0x08, 0x00]) // Length: 8
+        data.append(contentsOf: [0x44, 0x6F, 0x65, 0x5E, 0x4A, 0x6F, 0x68, 0x6E]) // "Doe^John"
+        
+        // With force=true, standard files should still work
+        let file = try DICOMFile.read(from: data, force: true)
+        #expect(file.dataSet.count == 1)
+        
+        let patientName = file.dataSet.string(for: .patientName)
+        #expect(patientName == "Doe^John")
+    }
+    
+    @Test("Read legacy file with invalid data fails")
+    func testReadLegacyFileWithInvalidData() {
+        // Random data that doesn't look like DICOM
+        let data = Data([0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF])
+        
+        #expect(throws: DICOMError.self) {
+            try DICOMFile.read(from: data, force: true)
+        }
+    }
+    
+    @Test("Read empty data fails")
+    func testReadEmptyData() {
+        let data = Data()
+        
+        #expect(throws: DICOMError.self) {
+            try DICOMFile.read(from: data, force: true)
+        }
+    }
+    
+    @Test("Read legacy file with group 0008 starting element")
+    func testReadLegacyFileWithGroup0008() throws {
+        var data = Data()
+        
+        // Study Date (0008,0020) - Common starting element for legacy files
+        // Using Explicit VR
+        data.append(contentsOf: [0x08, 0x00, 0x20, 0x00])
+        data.append(contentsOf: [0x44, 0x41]) // "DA"
+        data.append(contentsOf: [0x08, 0x00]) // Length: 8
+        data.append("20250201".data(using: .ascii)!)
+        
+        // Modality (0008,0060)
+        data.append(contentsOf: [0x08, 0x00, 0x60, 0x00])
+        data.append(contentsOf: [0x43, 0x53]) // "CS"
+        data.append(contentsOf: [0x02, 0x00]) // Length: 2
+        data.append("CT".data(using: .ascii)!)
+        
+        let file = try DICOMFile.read(from: data, force: true)
+        #expect(file.fileMetaInformation.count == 0)
+        #expect(file.dataSet.count == 2)
+        
+        #expect(file.dataSet.string(for: .studyDate) == "20250201")
+        #expect(file.dataSet.string(for: .modality) == "CT")
+    }
 }

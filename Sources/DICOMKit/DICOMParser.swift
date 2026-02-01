@@ -58,6 +58,17 @@ struct DICOMParser {
     /// Parses data elements using the specified transfer syntax encoding.
     /// Reference: PS3.5 Section 7.1 - Data Element Structure
     mutating func parseDataSet(transferSyntaxUID: String) throws -> DataSet {
+        return try parseDataSet(startOffset: offset, transferSyntaxUID: transferSyntaxUID)
+    }
+    
+    /// Parses main data set elements starting from a specified offset
+    ///
+    /// Parses data elements using the specified transfer syntax encoding.
+    /// Used for legacy DICOM files that don't have a preamble.
+    /// Reference: PS3.5 Section 7.1 - Data Element Structure
+    mutating func parseDataSet(startOffset: Int, transferSyntaxUID: String) throws -> DataSet {
+        offset = startOffset
+        
         // Determine transfer syntax
         guard let transferSyntax = TransferSyntax.from(uid: transferSyntaxUID) else {
             throw DICOMError.unsupportedTransferSyntax(transferSyntaxUID)
