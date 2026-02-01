@@ -1,3 +1,5 @@
+import Foundation
+
 /// Errors that can occur during DICOM parsing and processing
 public enum DICOMError: Error, Sendable {
     /// Invalid or missing 128-byte preamble
@@ -47,5 +49,11 @@ extension DICOMError: CustomStringConvertible {
         case .parsingFailed(let message):
             return "Parsing failed: \(message)"
         }
+    }
+}
+
+extension DICOMError: LocalizedError {
+    public var errorDescription: String? {
+        description
     }
 }
