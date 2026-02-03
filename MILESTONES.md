@@ -862,10 +862,19 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Log rotation support
   - [x] Event type filtering
   - [x] Storage operation logging helpers
-- [ ] `DICOMStorageClient` unified API:
-  - [ ] Configuration with server pool, retry policies, queue settings
-  - [ ] Automatic server selection (round-robin, priority)
-  - [ ] Unified store interface with automatic retry
+- [x] `DICOMStorageClient` unified API:
+  - [x] Configuration with server pool, retry policies, queue settings
+  - [x] Automatic server selection (round-robin, priority, weighted, random, failover)
+  - [x] Unified store interface with automatic retry
+  - [x] `ServerEntry` struct for server pool entries
+  - [x] `ServerPool` struct for managing multiple servers
+  - [x] `ServerSelectionStrategy` enum for server selection algorithms
+  - [x] `DICOMStorageClientConfiguration` for client settings
+  - [x] `StorageClientResult` for detailed operation results
+  - [x] Circuit breaker integration for failure tracking
+  - [x] Per-server circuit breakers
+  - [x] Automatic server failover on failure
+  - [x] Unit tests for DICOMStorageClient
 - [x] Validation before send:
   - [ ] Schema validation against IOD (deferred to future version)
   - [x] Required attribute checking
