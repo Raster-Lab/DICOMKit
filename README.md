@@ -10,9 +10,19 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7.7)
+## Features (v0.7.8)
 
-- ✅ **Transfer Syntax Conversion (NEW in v0.7.7)**
+- ✅ **Unified Storage Client (NEW in v0.7.8)**
+  - ✅ DICOMStorageClient actor for unified storage operations
+  - ✅ Server pool management with multiple storage destinations
+  - ✅ Multiple selection strategies (round-robin, priority, weighted, random, failover)
+  - ✅ Automatic server failover on connection failures
+  - ✅ Per-server circuit breaker integration
+  - ✅ Automatic retry with configurable policies
+  - ✅ Per-SOP Class retry configuration
+  - ✅ Optional store-and-forward queue integration
+  - ✅ Transcoding and validation integration
+- ✅ **Transfer Syntax Conversion (v0.7.7)**
   - ✅ Automatic transcoding when target server doesn't support source syntax
   - ✅ Configurable preferred transfer syntaxes with priority ordering
   - ✅ Support for uncompressed syntax conversion (Explicit/Implicit VR, Little/Big Endian)
@@ -1283,8 +1293,14 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4, v0.7.5, v0.7.6, v0.7.7)
+### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4, v0.7.5, v0.7.6, v0.7.7, v0.7.8)
 DICOM network protocol implementation:
+- `DICOMStorageClient` - Unified storage client with server pool and automatic failover (NEW in v0.7.8)
+- `DICOMStorageClientConfiguration` - Storage client configuration (NEW in v0.7.8)
+- `ServerPool` - Server pool management with selection strategies (NEW in v0.7.8)
+- `ServerEntry` - Server entry with connection settings (NEW in v0.7.8)
+- `ServerSelectionStrategy` - Selection strategies (round-robin, priority, weighted, random, failover) (NEW in v0.7.8)
+- `StorageClientResult` - Detailed result with server and retry information (NEW in v0.7.8)
 - `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
 - `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
 - `RetryPolicy` - Configurable retry policies with exponential backoff (NEW in v0.6.7)
@@ -1370,4 +1386,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.7.7 - adding transfer syntax conversion capabilities. The library now provides automatic transcoding when target servers don't support source transfer syntaxes, configurable preferred transfer syntaxes with priority ordering, and support for uncompressed syntax conversion. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.7.8 - adding the unified DICOMStorageClient with server pool management and automatic failover. The library now provides a comprehensive storage client with multiple server selection strategies (round-robin, priority, weighted, random, failover), per-server circuit breakers, and automatic retry logic. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
