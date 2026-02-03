@@ -10,9 +10,20 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.8.2)
+## Features (v0.8.3)
 
-- ✅ **DICOMweb WADO-RS Client (NEW in v0.8.2)**
+- ✅ **DICOMweb QIDO-RS Client (NEW in v0.8.3)**
+  - ✅ QIDOQuery builder with fluent API for constructing search queries
+  - ✅ Study, series, and instance search endpoints
+  - ✅ Standard query parameters: PatientName, PatientID, StudyDate, Modality, etc.
+  - ✅ Wildcard matching support (*, ?)
+  - ✅ Date/Time range queries
+  - ✅ Pagination with limit and offset
+  - ✅ Include field filtering (includefield parameter)
+  - ✅ Fuzzy matching support
+  - ✅ Type-safe result types (QIDOStudyResult, QIDOSeriesResult, QIDOInstanceResult)
+  - ✅ Automatic X-Total-Count header parsing for pagination
+- ✅ **DICOMweb WADO-RS Client (v0.8.2)**
   - ✅ DICOMwebClient for retrieving DICOM objects over HTTP/HTTPS
   - ✅ Study, series, and instance retrieval
   - ✅ Metadata retrieval (JSON format)
@@ -1352,6 +1363,93 @@ if let bulkDataURI = "https://pacs.example.com/dicom-web/studies/.../bulkdata/7F
 }
 ```
 
+### DICOMweb QIDO-RS Query Client (v0.8.3)
+
+DICOMKit provides a powerful QIDO-RS client for searching DICOM objects with a fluent query builder API.
+
+```swift
+import DICOMWeb
+
+// Configure the DICOMweb client
+let config = try DICOMwebConfiguration(
+    baseURLString: "https://pacs.example.com/dicom-web",
+    authentication: .bearer(token: "your-oauth-token")
+)
+let client = DICOMwebClient(configuration: config)
+
+// Search for studies by patient name with wildcard
+let query = QIDOQuery()
+    .patientName("Smith*")
+    .modality("CT")
+    .studyDate(from: "20240101", to: "20241231")
+    .limit(10)
+
+let results = try await client.searchStudies(query: query)
+print("Found \(results.count) studies")
+
+// Iterate over results with type-safe accessors
+for study in results.results {
+    print("Study UID: \(study.studyInstanceUID ?? "unknown")")
+    print("Patient: \(study.patientName ?? "unknown")")
+    print("Date: \(study.studyDate ?? "unknown")")
+    print("Description: \(study.studyDescription ?? "N/A")")
+}
+
+// Handle pagination
+if results.hasMore, let nextOffset = results.nextOffset {
+    let nextPage = try await client.searchStudies(
+        query: query.offset(nextOffset)
+    )
+    // Process next page...
+}
+
+// Search for series within a study
+let seriesResults = try await client.searchSeries(
+    studyUID: "1.2.3.4.5.6789",
+    query: QIDOQuery().modality("CT")
+)
+
+for series in seriesResults.results {
+    print("Series: \(series.seriesInstanceUID ?? "unknown")")
+    print("Modality: \(series.modality ?? "unknown")")
+    print("Description: \(series.seriesDescription ?? "N/A")")
+}
+
+// Search for instances
+let instanceResults = try await client.searchInstances(
+    studyUID: "1.2.3.4.5.6789",
+    seriesUID: "1.2.3.4.5.6789.1",
+    query: QIDOQuery().limit(100)
+)
+
+for instance in instanceResults.results {
+    print("Instance: \(instance.sopInstanceUID ?? "unknown")")
+    print("Instance #: \(instance.instanceNumber ?? 0)")
+}
+
+// Convenience factory methods
+let recentCTStudies = try await client.searchStudies(
+    query: .studiesByModality("CT", limit: 20)
+)
+
+let patientStudies = try await client.searchStudies(
+    query: .studiesByPatientName("Doe^John")
+)
+
+// Use include fields to request specific attributes
+let detailedQuery = QIDOQuery()
+    .patientID("12345")
+    .includeFields([
+        QIDOQueryAttribute.numberOfStudyRelatedSeries,
+        QIDOQueryAttribute.numberOfStudyRelatedInstances
+    ])
+
+// Enable fuzzy matching for approximate patient name search
+let fuzzyQuery = QIDOQuery()
+    .patientName("Smyth")
+    .fuzzyMatching()
+```
+
 ## Architecture
 
 DICOMKit is organized into four modules:
@@ -1456,13 +1554,19 @@ High-level API:
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
-### DICOMWeb (v0.8.1, v0.8.2)
+### DICOMWeb (v0.8.1, v0.8.2, v0.8.3)
 DICOMweb (RESTful DICOM) client implementation:
-- `DICOMwebClient` - WADO-RS client for retrieving DICOM objects over HTTP (NEW in v0.8.2)
-- `RetrieveResult` - Result type for retrieve operations (NEW in v0.8.2)
-- `FrameResult` - Result type for frame retrieval (NEW in v0.8.2)
-- `RenderOptions` - Options for rendered image retrieval (NEW in v0.8.2)
-- `RetrieveProgress` - Progress information for downloads (NEW in v0.8.2)
+- `DICOMwebClient` - WADO-RS and QIDO-RS client for DICOM web services
+- `QIDOQuery` - Fluent query builder for QIDO-RS searches (NEW in v0.8.3)
+- `QIDOStudyResult` - Type-safe study query result (NEW in v0.8.3)
+- `QIDOSeriesResult` - Type-safe series query result (NEW in v0.8.3)
+- `QIDOInstanceResult` - Type-safe instance query result (NEW in v0.8.3)
+- `QIDOResults<T>` - Paginated query results container (NEW in v0.8.3)
+- `QIDOQueryAttribute` - Standard QIDO-RS query attribute tags (NEW in v0.8.3)
+- `RetrieveResult` - Result type for retrieve operations (v0.8.2)
+- `FrameResult` - Result type for frame retrieval (v0.8.2)
+- `RenderOptions` - Options for rendered image retrieval (v0.8.2)
+- `RetrieveProgress` - Progress information for downloads (v0.8.2)
 - `HTTPClient` - HTTP client with retry and interceptor support (v0.8.1)
 - `DICOMwebConfiguration` - Configuration for DICOMweb clients (v0.8.1)
 - `DICOMwebURLBuilder` - URL construction utilities (v0.8.1)
@@ -1481,7 +1585,7 @@ DICOMKit implements:
 - **DICOM PS3.8 2025e** - Network Communication Support (Upper Layer Protocol)
 - **DICOM PS3.10 2025e** - Media Storage and File Format
 - **DICOM PS3.15 2025e** - Security and System Management Profiles (TLS support)
-- **DICOM PS3.18 2025e** - Web Services (DICOMweb WADO-RS, DICOM JSON)
+- **DICOM PS3.18 2025e** - Web Services (DICOMweb WADO-RS, QIDO-RS, DICOM JSON)
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
 
@@ -1499,4 +1603,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.2 - adding the DICOMweb WADO-RS client for retrieving DICOM objects over HTTP/HTTPS. The library now supports modern RESTful DICOM web services including study/series/instance retrieval, metadata access, frame extraction, rendered images, thumbnails, and bulk data. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.3 - adding the DICOMweb QIDO-RS client for searching DICOM objects. The library now supports both WADO-RS (retrieve) and QIDO-RS (query) operations with a fluent query builder and type-safe result types. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
