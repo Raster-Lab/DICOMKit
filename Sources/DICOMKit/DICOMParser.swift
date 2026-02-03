@@ -415,9 +415,15 @@ struct DICOMParser {
         let vrByte1 = data[offset + 1]
         offset += 2
         
-        guard let vrString = String(bytes: [vrByte0, vrByte1], encoding: .ascii),
-              let vr = VR(rawValue: vrString) else {
-            throw DICOMError.invalidVR(String(format: "%02X%02X", vrByte0, vrByte1))
+        let vr: VR
+        if let vrString = String(bytes: [vrByte0, vrByte1], encoding: .ascii),
+           let parsedVR = VR(rawValue: vrString) {
+            vr = parsedVR
+        } else {
+            // Unknown or invalid VR - treat as UN (Unknown) for robustness
+            // This allows parsing non-conformant DICOM files that may have
+            // vendor-specific or malformed VR codes
+            vr = .UN
         }
         
         // Read value length

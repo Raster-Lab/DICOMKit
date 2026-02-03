@@ -458,4 +458,63 @@ struct DataElementTests {
         let element = DataElement(tag: Tag.fileMetaInformationGroupLength, vr: .US, length: 4, valueData: data)
         #expect(element.uint32Value == nil)
     }
+    
+    // MARK: - OB VR Support Tests (for non-compliant DICOM files)
+    
+    @Test("UInt16 value extraction with OB VR (2 bytes)")
+    func testUInt16ValueWithOB() {
+        var data = Data()
+        data.append(0x00)  // 512 in little endian
+        data.append(0x02)
+        
+        // OB (Other Byte) with exactly 2 bytes should work for uint16Value
+        // This supports non-compliant DICOM files that encode US attributes as OB
+        let element = DataElement(tag: Tag.rows, vr: .OB, length: 2, valueData: data)
+        #expect(element.uint16Value == 512)
+    }
+    
+    @Test("UInt16 value extraction with OB VR returns nil for non-2-byte data")
+    func testUInt16ValueWithOBReturnsNilForNonTwoBytes() {
+        // OB with 3 bytes should not be interpretable as a single uint16
+        var data3 = Data()
+        data3.append(contentsOf: [0x00, 0x02, 0xFF])
+        let element3 = DataElement(tag: Tag.rows, vr: .OB, length: 3, valueData: data3)
+        #expect(element3.uint16Value == nil)
+        
+        // OB with 1 byte should not be interpretable as uint16
+        var data1 = Data()
+        data1.append(0x02)
+        let element1 = DataElement(tag: Tag.rows, vr: .OB, length: 1, valueData: data1)
+        #expect(element1.uint16Value == nil)
+        
+        // OB with 4 bytes should not be interpretable as single uint16
+        var data4 = Data()
+        data4.append(contentsOf: [0x00, 0x02, 0x00, 0x01])
+        let element4 = DataElement(tag: Tag.rows, vr: .OB, length: 4, valueData: data4)
+        #expect(element4.uint16Value == nil)
+    }
+    
+    @Test("UInt16 values extraction with OB VR (even byte count)")
+    func testUInt16ValuesWithOB() {
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x02]) // 512
+        data.append(contentsOf: [0x00, 0x01]) // 256
+        
+        // OB VR with even byte count (4 bytes = 2 uint16 values)
+        let element = DataElement(tag: Tag.rows, vr: .OB, length: 4, valueData: data)
+        let values = element.uint16Values
+        #expect(values?.count == 2)
+        #expect(values?[0] == 512)
+        #expect(values?[1] == 256)
+    }
+    
+    @Test("UInt16 values extraction with OB VR returns nil for odd byte count")
+    func testUInt16ValuesWithOBReturnsNilForOddByteCount() {
+        // OB with odd byte count (3 bytes) cannot be evenly split into uint16 values
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x02, 0xFF])
+        
+        let element = DataElement(tag: Tag.rows, vr: .OB, length: 3, valueData: data)
+        #expect(element.uint16Values == nil)
+    }
 }

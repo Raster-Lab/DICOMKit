@@ -176,6 +176,7 @@ public struct DataElement: Sendable {
     /// - SS (Signed Short): Binary compatible, reads raw 2-byte value
     /// - UN (Unknown): Unknown VR with 2-byte data
     /// - OW (Other Word): 16-bit words
+    /// - OB (Other Byte): When exactly 2 bytes, can represent a 16-bit value
     ///
     /// **Note**: For SS VR, the raw bytes are read directly. If the signed value
     /// is negative, it will appear as a large unsigned value (e.g., -1 → 65535).
@@ -184,12 +185,19 @@ public struct DataElement: Sendable {
     ///
     /// This flexibility is needed because some valid DICOM files may encode
     /// pixel descriptor attributes with different VRs than strictly specified.
+    /// Some DICOM implementations incorrectly encode US attributes as OB.
     /// Reference: PS3.5 Section 6.2
     public var uint16Value: UInt16? {
         // Accept VRs that can contain 16-bit integer data
         switch vr {
         case .US, .SS, .UN, .OW:
             guard valueData.count >= 2 else {
+                return nil
+            }
+            return valueData.readUInt16LE(at: 0)
+        case .OB:
+            // Support OB with exactly 2 bytes as some DICOM files incorrectly use OB for US values
+            guard valueData.count == 2 else {
                 return nil
             }
             return valueData.readUInt16LE(at: 0)
@@ -263,6 +271,7 @@ public struct DataElement: Sendable {
     /// - SS (Signed Short): Signed 16-bit, interpreted as unsigned
     /// - UN (Unknown): Unknown VR with 2-byte data
     /// - OW (Other Word): 16-bit words
+    /// - OB (Other Byte): When data length is a multiple of 2 bytes
     ///
     /// Many DICOM elements can have multiple values. This property returns all values.
     /// Reference: PS3.5 Section 6.2 - Value Multiplicity
@@ -271,6 +280,11 @@ public struct DataElement: Sendable {
         switch vr {
         case .US, .SS, .UN, .OW:
             break
+        case .OB:
+            // Support OB when data length is even (can be interpreted as 16-bit values)
+            guard valueData.count % 2 == 0 else {
+                return nil
+            }
         default:
             return nil
         }
