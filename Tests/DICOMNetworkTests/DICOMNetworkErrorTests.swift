@@ -465,4 +465,348 @@ struct DICOMNetworkErrorTests {
         #expect(error1.category == .transient)
         #expect(error1.isRetryable == true)
     }
+    
+    // MARK: - Error Level Tests
+    
+    @Test("ErrorLevel has all expected cases")
+    func testErrorLevelAllCases() {
+        let allCases = ErrorLevel.allCases
+        #expect(allCases.count == 2)
+        #expect(allCases.contains(.association))
+        #expect(allCases.contains(.operation))
+    }
+    
+    @Test("ErrorLevel descriptions")
+    func testErrorLevelDescriptions() {
+        #expect(ErrorLevel.association.description == "Association")
+        #expect(ErrorLevel.operation.description == "Operation")
+    }
+    
+    @Test("Association-level errors have correct level")
+    func testAssociationLevelErrors() {
+        let associationErrors: [DICOMNetworkError] = [
+            .connectionFailed("Host unreachable"),
+            .timeout,
+            .associationRejected(result: .rejectedPermanent, source: .serviceUser, reason: 1),
+            .associationAborted(source: .serviceProvider, reason: 2),
+            .noPresentationContextAccepted,
+            .invalidAETitle("TOOLONG!"),
+            .connectionClosed,
+            .artimTimerExpired,
+            .circuitBreakerOpen(host: "example.com", port: 104, retryAfter: DICOMNetworkErrorTests.futureDate()),
+            .operationTimeout(type: .connect, duration: 30, operation: nil),
+            .operationTimeout(type: .association, duration: 30, operation: nil)
+        ]
+        
+        for error in associationErrors {
+            #expect(error.level == .association, "Expected \(error) to be association-level")
+        }
+    }
+    
+    @Test("Operation-level errors have correct level")
+    func testOperationLevelErrors() {
+        let operationErrors: [DICOMNetworkError] = [
+            .invalidPDU("Bad format"),
+            .pduTooLarge(received: 100000, maximum: 16384),
+            .unexpectedPDUType(expected: .associateAccept, received: .abort),
+            .sopClassNotSupported("1.2.3.4.5"),
+            .invalidState("Not connected"),
+            .encodingFailed("Buffer overflow"),
+            .decodingFailed("Invalid header"),
+            .queryFailed(.failedUnableToProcess),
+            .retrieveFailed(.failedUnableToProcess),
+            .storeFailed(.failedUnableToProcess),
+            .partialFailure(succeeded: 5, failed: 2, details: nil),
+            .operationTimeout(type: .read, duration: 30, operation: nil),
+            .operationTimeout(type: .write, duration: 30, operation: nil),
+            .operationTimeout(type: .operation, duration: 120, operation: "C-STORE")
+        ]
+        
+        for error in operationErrors {
+            #expect(error.level == .operation, "Expected \(error) to be operation-level")
+        }
+    }
+    
+    @Test("requiresReconnection for transient association errors")
+    func testRequiresReconnection() {
+        // Association-level transient errors should require reconnection
+        let transientAssociationErrors: [DICOMNetworkError] = [
+            .connectionFailed("Host unreachable"),
+            .connectionClosed,
+            .artimTimerExpired,
+            .timeout
+        ]
+        
+        for error in transientAssociationErrors {
+            #expect(error.requiresReconnection == true, "Expected \(error) to require reconnection")
+        }
+        
+        // Permanent association errors should not require reconnection
+        let permanentError = DICOMNetworkError.associationRejected(
+            result: .rejectedPermanent,
+            source: .serviceUser,
+            reason: 1
+        )
+        #expect(permanentError.requiresReconnection == false)
+        
+        // Operation-level errors should not require reconnection
+        let operationError = DICOMNetworkError.storeFailed(.failedUnableToProcess)
+        #expect(operationError.requiresReconnection == false)
+    }
+    
+    @Test("allowsContinuation for operation-level errors")
+    func testAllowsContinuation() {
+        let operationError = DICOMNetworkError.storeFailed(.failedUnableToProcess)
+        #expect(operationError.allowsContinuation == true)
+        
+        let associationError = DICOMNetworkError.connectionClosed
+        #expect(associationError.allowsContinuation == false)
+    }
+    
+    // MARK: - Storage Error Tests
+    
+    @Test("StorageError with automatic level detection")
+    func testStorageErrorAutoLevelDetection() {
+        let associationError = DICOMNetworkError.connectionClosed
+        let storageError1 = StorageError(associationError)
+        #expect(storageError1.level == .association)
+        
+        let operationError = DICOMNetworkError.storeFailed(.failedUnableToProcess)
+        let storageError2 = StorageError(operationError)
+        #expect(storageError2.level == .operation)
+    }
+    
+    @Test("StorageError.associationError factory")
+    func testStorageErrorAssociationFactory() {
+        let underlyingError = DICOMNetworkError.connectionFailed("Network unreachable")
+        let error = StorageError.associationError(
+            underlyingError,
+            host: "pacs.hospital.com",
+            port: 11112,
+            context: "During initial connection"
+        )
+        
+        #expect(error.level == .association)
+        #expect(error.host == "pacs.hospital.com")
+        #expect(error.port == 11112)
+        #expect(error.context == "During initial connection")
+        #expect(error.sopInstanceUID == nil)
+        #expect(error.canRetry == true)
+        #expect(error.needsReconnection == true)
+    }
+    
+    @Test("StorageError.fileError factory")
+    func testStorageErrorFileFactory() {
+        let underlyingError = DICOMNetworkError.storeFailed(.failedUnableToProcess)
+        let error = StorageError.fileError(
+            underlyingError,
+            sopInstanceUID: "1.2.3.4.5.6.7.8.9",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            fileIndex: 5,
+            host: "pacs.hospital.com",
+            port: 11112,
+            context: "During C-STORE"
+        )
+        
+        #expect(error.level == .operation)
+        #expect(error.sopInstanceUID == "1.2.3.4.5.6.7.8.9")
+        #expect(error.sopClassUID == "1.2.840.10008.5.1.4.1.1.2")
+        #expect(error.fileIndex == 5)
+        #expect(error.canRetry == false)
+        #expect(error.needsReconnection == false)
+    }
+    
+    @Test("StorageError category and suggestion")
+    func testStorageErrorCategoryAndSuggestion() {
+        let networkError = DICOMNetworkError.connectionFailed("Host unreachable")
+        let storageError = StorageError(networkError)
+        
+        #expect(storageError.category == .transient)
+        #expect(storageError.suggestion != nil)
+    }
+    
+    @Test("StorageError description")
+    func testStorageErrorDescription() {
+        let error = StorageError.fileError(
+            DICOMNetworkError.storeFailed(.failedUnableToProcess),
+            sopInstanceUID: "1.2.3.4.5",
+            fileIndex: 3,
+            host: "pacs.local",
+            port: 104
+        )
+        
+        let description = error.description
+        #expect(description.contains("Operation"))
+        #expect(description.contains("1.2.3.4.5"))
+        #expect(description.contains("index=3"))
+        #expect(description.contains("pacs.local:104"))
+    }
+    
+    @Test("StorageError LocalizedError conformance")
+    func testStorageErrorLocalizedError() {
+        let error = StorageError.fileError(
+            DICOMNetworkError.storeFailed(.failedUnableToProcess),
+            sopInstanceUID: "1.2.3.4.5",
+            fileIndex: 2
+        )
+        
+        let errorDescription = error.errorDescription
+        #expect(errorDescription != nil)
+        #expect(errorDescription!.contains("Storage"))
+        #expect(errorDescription!.contains("1.2.3.4.5"))
+    }
+    
+    // MARK: - Reconnection Configuration Tests
+    
+    @Test("ReconnectionConfiguration default values")
+    func testReconnectionConfigurationDefaults() {
+        let config = ReconnectionConfiguration.default
+        
+        #expect(config.enabled == true)
+        #expect(config.maxAttempts == 3)
+        #expect(config.initialDelay == 1.0)
+        #expect(config.maxDelay == 30.0)
+        #expect(config.backoffMultiplier == 2.0)
+        #expect(config.useJitter == true)
+    }
+    
+    @Test("ReconnectionConfiguration disabled")
+    func testReconnectionConfigurationDisabled() {
+        let config = ReconnectionConfiguration.disabled
+        
+        #expect(config.enabled == false)
+        #expect(config.maxAttempts == 0)
+    }
+    
+    @Test("ReconnectionConfiguration presets")
+    func testReconnectionConfigurationPresets() {
+        let aggressive = ReconnectionConfiguration.aggressive
+        #expect(aggressive.maxAttempts == 5)
+        #expect(aggressive.initialDelay == 0.5)
+        
+        let conservative = ReconnectionConfiguration.conservative
+        #expect(conservative.maxAttempts == 2)
+        #expect(conservative.initialDelay == 2.0)
+    }
+    
+    @Test("ReconnectionConfiguration delay calculation")
+    func testReconnectionConfigurationDelay() {
+        let config = ReconnectionConfiguration(
+            maxAttempts: 3,
+            initialDelay: 1.0,
+            maxDelay: 10.0,
+            backoffMultiplier: 2.0,
+            useJitter: false
+        )
+        
+        // Without jitter, delays should be exact
+        #expect(config.delay(forAttempt: 0) == 1.0)
+        #expect(config.delay(forAttempt: 1) == 2.0)
+        #expect(config.delay(forAttempt: 2) == 4.0)
+        #expect(config.delay(forAttempt: 3) == 8.0)
+        #expect(config.delay(forAttempt: 4) == 10.0) // Capped at maxDelay
+        #expect(config.delay(forAttempt: 10) == 10.0) // Still capped
+    }
+    
+    @Test("ReconnectionConfiguration delay with jitter")
+    func testReconnectionConfigurationDelayWithJitter() {
+        let config = ReconnectionConfiguration(
+            maxAttempts: 3,
+            initialDelay: 10.0,
+            maxDelay: 100.0,
+            backoffMultiplier: 2.0,
+            useJitter: true,
+            jitterRange: 0.25
+        )
+        
+        // With jitter, delays should be within expected range
+        for _ in 0..<10 {
+            let delay = config.delay(forAttempt: 0)
+            #expect(delay >= 7.5) // 10 * (1 - 0.25)
+            #expect(delay <= 12.5) // 10 * (1 + 0.25)
+        }
+    }
+    
+    @Test("ReconnectionConfiguration description")
+    func testReconnectionConfigurationDescription() {
+        let enabled = ReconnectionConfiguration.default
+        #expect(enabled.description.contains("maxAttempts"))
+        
+        let disabled = ReconnectionConfiguration.disabled
+        #expect(disabled.description.contains("disabled"))
+    }
+    
+    // MARK: - Reconnection State Tests
+    
+    @Test("ReconnectionState properties")
+    func testReconnectionStateProperties() {
+        let state = ReconnectionState(
+            attemptNumber: 2,
+            maxAttempts: 5,
+            delayBeforeAttempt: 2.5,
+            triggeringError: DICOMNetworkError.connectionClosed,
+            elapsedTime: 3.5
+        )
+        
+        #expect(state.attemptNumber == 2)
+        #expect(state.maxAttempts == 5)
+        #expect(state.delayBeforeAttempt == 2.5)
+        #expect(state.elapsedTime == 3.5)
+        #expect(state.hasMoreAttempts == true)
+        #expect(state.fractionUsed == 0.4) // 2/5
+        #expect(state.triggeringError != nil)
+    }
+    
+    @Test("ReconnectionState hasMoreAttempts")
+    func testReconnectionStateHasMoreAttempts() {
+        let state1 = ReconnectionState(attemptNumber: 3, maxAttempts: 5)
+        #expect(state1.hasMoreAttempts == true)
+        
+        let state2 = ReconnectionState(attemptNumber: 5, maxAttempts: 5)
+        #expect(state2.hasMoreAttempts == false)
+        
+        let state3 = ReconnectionState(attemptNumber: 6, maxAttempts: 5)
+        #expect(state3.hasMoreAttempts == false)
+    }
+    
+    @Test("ReconnectionState description")
+    func testReconnectionStateDescription() {
+        let state = ReconnectionState(
+            attemptNumber: 2,
+            maxAttempts: 5,
+            delayBeforeAttempt: 2.5,
+            elapsedTime: 3.5
+        )
+        
+        let description = state.description
+        #expect(description.contains("2/5"))
+        #expect(description.contains("delay"))
+        #expect(description.contains("elapsed"))
+    }
+    
+    // MARK: - Reconnection Error Tests
+    
+    @Test("ReconnectionError.exhausted")
+    func testReconnectionErrorExhausted() {
+        let error = ReconnectionError.exhausted(
+            attempts: 3,
+            totalTime: 15.5,
+            lastError: DICOMNetworkError.connectionClosed
+        )
+        
+        let description = error.description
+        #expect(description.contains("3"))
+        #expect(description.contains("attempt"))
+        
+        // LocalizedError conformance
+        #expect(error.errorDescription != nil)
+    }
+    
+    @Test("ReconnectionError.cancelled")
+    func testReconnectionErrorCancelled() {
+        let error = ReconnectionError.cancelled
+        
+        #expect(error.description.contains("cancelled"))
+        #expect(error.errorDescription != nil)
+    }
 }

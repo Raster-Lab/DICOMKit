@@ -843,10 +843,16 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Rate limiting per connection
   - [x] Bandwidth scheduling (e.g., off-peak transfers)
   - [x] Priority queues for urgent transfers
-- [ ] Enhanced Error Handling:
-  - [ ] Detailed error codes with recovery suggestions
-  - [ ] Association-level vs. file-level error differentiation
-  - [ ] Automatic reconnection after transient failures
+- [x] Enhanced Error Handling:
+  - [x] Detailed error codes with recovery suggestions
+  - [x] Association-level vs. file-level error differentiation
+  - [x] Automatic reconnection after transient failures
+  - [x] `ErrorLevel` enum for distinguishing association vs. operation errors
+  - [x] `StorageError` struct for enhanced storage error context
+  - [x] `ReconnectionConfiguration` for configurable reconnection behavior
+  - [x] `ReconnectionState` for monitoring reconnection progress
+  - [x] `ReconnectableOperation` actor for automatic reconnection
+  - [x] Unit tests for enhanced error handling features
 - [x] Audit Logging:
   - [x] Detailed transfer logs (source, destination, timestamps)
   - [x] Integration with system logging (OSLog)

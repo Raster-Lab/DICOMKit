@@ -846,3 +846,831 @@ extension AbortReason: CustomStringConvertible {
         }
     }
 }
+
+// MARK: - Error Level
+
+/// Level at which a DICOM network error occurred
+///
+/// Distinguishes between errors that occur during association management
+/// (connection, negotiation, release) versus errors that occur during
+/// individual file/operation processing within an established association.
+///
+/// ## Usage
+///
+/// ```swift
+/// do {
+///     try await client.storeBatch(files: files)
+/// } catch let error as DICOMNetworkError {
+///     switch error.level {
+///     case .association:
+///         // Connection-level error - may need to wait and reconnect
+///         print("Association error: \(error)")
+///     case .operation:
+///         // File-level error - other files may still succeed
+///         print("Operation error: \(error)")
+///     }
+/// }
+/// ```
+///
+/// Reference: PS3.8 - Network Communication Support
+public enum ErrorLevel: String, Sendable, Hashable, CaseIterable {
+    /// Error occurred at the association level
+    ///
+    /// These errors affect the entire connection and typically require
+    /// re-establishing the association. Examples include:
+    /// - Connection failures
+    /// - Association rejection
+    /// - Association abort
+    /// - Presentation context negotiation failures
+    /// - ARTIM timer expiration
+    case association
+    
+    /// Error occurred at the operation level
+    ///
+    /// These errors affect individual operations (like C-STORE, C-FIND)
+    /// but the association may still be usable for other operations.
+    /// Examples include:
+    /// - Individual C-STORE failures
+    /// - Query failures
+    /// - Retrieve failures
+    /// - DIMSE status errors
+    case operation
+}
+
+extension ErrorLevel: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .association:
+            return "Association"
+        case .operation:
+            return "Operation"
+        }
+    }
+}
+
+// MARK: - Error Level Extension
+
+extension DICOMNetworkError {
+    /// The level at which this error occurred
+    ///
+    /// Helps determine whether the error affects the entire association
+    /// or just the current operation. Association-level errors typically
+    /// require reconnection, while operation-level errors may allow
+    /// continuing with other operations on the same association.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// do {
+    ///     try await client.store(fileData: data)
+    /// } catch let error as DICOMNetworkError {
+    ///     if error.level == .association {
+    ///         // Need to reconnect
+    ///         try await client.reconnect()
+    ///     } else {
+    ///         // Can retry this specific operation
+    ///         // or continue with other operations
+    ///     }
+    /// }
+    /// ```
+    public var level: ErrorLevel {
+        switch self {
+        case .connectionFailed,
+             .timeout,
+             .associationRejected,
+             .associationAborted,
+             .noPresentationContextAccepted,
+             .invalidAETitle,
+             .connectionClosed,
+             .artimTimerExpired,
+             .circuitBreakerOpen:
+            return .association
+            
+        case .invalidPDU,
+             .pduTooLarge,
+             .unexpectedPDUType,
+             .sopClassNotSupported,
+             .invalidState,
+             .encodingFailed,
+             .decodingFailed,
+             .queryFailed,
+             .retrieveFailed,
+             .storeFailed,
+             .partialFailure:
+            return .operation
+            
+        case .operationTimeout(let type, _, _):
+            // Connection and association timeouts are association-level
+            // Read/write/operation timeouts are typically operation-level
+            switch type {
+            case .connect, .association:
+                return .association
+            case .read, .write, .operation:
+                return .operation
+            }
+        }
+    }
+    
+    /// Whether the error requires reconnection to recover
+    ///
+    /// Returns `true` if the association is no longer usable and a new
+    /// connection must be established to continue operations.
+    public var requiresReconnection: Bool {
+        level == .association && isRetryable
+    }
+    
+    /// Whether the error allows continuing with other operations
+    ///
+    /// Returns `true` if the current association is still usable and
+    /// other operations can be attempted without reconnecting.
+    public var allowsContinuation: Bool {
+        level == .operation
+    }
+}
+
+// MARK: - Storage Error
+
+/// Enhanced error type for DICOM storage operations
+///
+/// Provides additional context about storage operation failures,
+/// including the error level, affected file information, and
+/// whether the operation can be retried.
+///
+/// ## Usage
+///
+/// ```swift
+/// do {
+///     try await client.store(fileData: data)
+/// } catch let error as StorageError {
+///     print("Error level: \(error.level)")
+///     print("Affected file: \(error.sopInstanceUID ?? "unknown")")
+///     print("Can retry: \(error.canRetry)")
+///     print("Needs reconnection: \(error.needsReconnection)")
+/// }
+/// ```
+public struct StorageError: Error, Sendable {
+    /// The underlying error
+    public let underlyingError: Error
+    
+    /// The level at which the error occurred
+    public let level: ErrorLevel
+    
+    /// The SOP Instance UID of the affected file (if applicable)
+    public let sopInstanceUID: String?
+    
+    /// The SOP Class UID of the affected file (if applicable)
+    public let sopClassUID: String?
+    
+    /// The index of the file in a batch operation (if applicable)
+    public let fileIndex: Int?
+    
+    /// The host where the error occurred
+    public let host: String?
+    
+    /// The port where the error occurred
+    public let port: UInt16?
+    
+    /// Timestamp when the error occurred
+    public let timestamp: Date
+    
+    /// Additional context information
+    public let context: String?
+    
+    /// Whether this error can be retried
+    public var canRetry: Bool {
+        if let networkError = underlyingError as? DICOMNetworkError {
+            return networkError.isRetryable
+        }
+        return false
+    }
+    
+    /// Whether reconnection is needed before retrying
+    public var needsReconnection: Bool {
+        if let networkError = underlyingError as? DICOMNetworkError {
+            return networkError.requiresReconnection
+        }
+        return level == .association
+    }
+    
+    /// The error category (if the underlying error is a DICOMNetworkError)
+    public var category: ErrorCategory? {
+        (underlyingError as? DICOMNetworkError)?.category
+    }
+    
+    /// Recovery suggestion object (if the underlying error is a DICOMNetworkError)
+    public var suggestion: RecoverySuggestion? {
+        (underlyingError as? DICOMNetworkError)?.recoverySuggestion
+    }
+    
+    /// Creates a storage error for an association-level failure
+    ///
+    /// - Parameters:
+    ///   - error: The underlying error
+    ///   - host: The remote host
+    ///   - port: The remote port
+    ///   - context: Additional context information
+    public static func associationError(
+        _ error: Error,
+        host: String? = nil,
+        port: UInt16? = nil,
+        context: String? = nil
+    ) -> StorageError {
+        StorageError(
+            underlyingError: error,
+            level: .association,
+            sopInstanceUID: nil,
+            sopClassUID: nil,
+            fileIndex: nil,
+            host: host,
+            port: port,
+            timestamp: Date(),
+            context: context
+        )
+    }
+    
+    /// Creates a storage error for a file-level failure
+    ///
+    /// - Parameters:
+    ///   - error: The underlying error
+    ///   - sopInstanceUID: The SOP Instance UID of the affected file
+    ///   - sopClassUID: The SOP Class UID of the affected file
+    ///   - fileIndex: The index of the file in a batch operation
+    ///   - host: The remote host
+    ///   - port: The remote port
+    ///   - context: Additional context information
+    public static func fileError(
+        _ error: Error,
+        sopInstanceUID: String? = nil,
+        sopClassUID: String? = nil,
+        fileIndex: Int? = nil,
+        host: String? = nil,
+        port: UInt16? = nil,
+        context: String? = nil
+    ) -> StorageError {
+        StorageError(
+            underlyingError: error,
+            level: .operation,
+            sopInstanceUID: sopInstanceUID,
+            sopClassUID: sopClassUID,
+            fileIndex: fileIndex,
+            host: host,
+            port: port,
+            timestamp: Date(),
+            context: context
+        )
+    }
+    
+    /// Creates a storage error with automatic level detection
+    ///
+    /// - Parameters:
+    ///   - error: The underlying error
+    ///   - sopInstanceUID: The SOP Instance UID (if applicable)
+    ///   - sopClassUID: The SOP Class UID (if applicable)
+    ///   - fileIndex: The file index (if applicable)
+    ///   - host: The remote host
+    ///   - port: The remote port
+    ///   - context: Additional context information
+    public init(
+        _ error: Error,
+        sopInstanceUID: String? = nil,
+        sopClassUID: String? = nil,
+        fileIndex: Int? = nil,
+        host: String? = nil,
+        port: UInt16? = nil,
+        context: String? = nil
+    ) {
+        // Auto-detect level from DICOMNetworkError
+        let detectedLevel: ErrorLevel
+        if let networkError = error as? DICOMNetworkError {
+            detectedLevel = networkError.level
+        } else {
+            // Default to operation level for unknown errors
+            detectedLevel = .operation
+        }
+        
+        self.underlyingError = error
+        self.level = detectedLevel
+        self.sopInstanceUID = sopInstanceUID
+        self.sopClassUID = sopClassUID
+        self.fileIndex = fileIndex
+        self.host = host
+        self.port = port
+        self.timestamp = Date()
+        self.context = context
+    }
+    
+    /// Internal initializer with explicit level
+    private init(
+        underlyingError: Error,
+        level: ErrorLevel,
+        sopInstanceUID: String?,
+        sopClassUID: String?,
+        fileIndex: Int?,
+        host: String?,
+        port: UInt16?,
+        timestamp: Date,
+        context: String?
+    ) {
+        self.underlyingError = underlyingError
+        self.level = level
+        self.sopInstanceUID = sopInstanceUID
+        self.sopClassUID = sopClassUID
+        self.fileIndex = fileIndex
+        self.host = host
+        self.port = port
+        self.timestamp = timestamp
+        self.context = context
+    }
+}
+
+extension StorageError: CustomStringConvertible {
+    public var description: String {
+        var parts: [String] = ["StorageError(\(level))"]
+        
+        if let sopUID = sopInstanceUID {
+            parts.append("sop=\(sopUID)")
+        }
+        
+        if let idx = fileIndex {
+            parts.append("index=\(idx)")
+        }
+        
+        if let h = host, let p = port {
+            parts.append("server=\(h):\(p)")
+        }
+        
+        parts.append("error=\(underlyingError)")
+        
+        if let ctx = context {
+            parts.append("context=\(ctx)")
+        }
+        
+        return parts.joined(separator: ", ")
+    }
+}
+
+extension StorageError: LocalizedError {
+    public var errorDescription: String? {
+        var desc = "Storage \(level) error"
+        
+        if let sopUID = sopInstanceUID {
+            desc += " for instance \(sopUID)"
+        }
+        
+        if let idx = fileIndex {
+            desc += " (file \(idx))"
+        }
+        
+        desc += ": \(underlyingError.localizedDescription)"
+        
+        return desc
+    }
+    
+    public var failureReason: String? {
+        if let networkError = underlyingError as? DICOMNetworkError {
+            return networkError.explanation
+        }
+        return (underlyingError as? LocalizedError)?.failureReason
+    }
+    
+    public var recoverySuggestion: String? {
+        if let sug = self.suggestion {
+            return sug.description
+        }
+        return (underlyingError as? LocalizedError)?.recoverySuggestion
+    }
+}
+
+// MARK: - Reconnection Configuration
+
+/// Configuration for automatic reconnection behavior
+///
+/// Defines how the system should handle reconnection attempts after
+/// transient connection failures.
+///
+/// ## Usage
+///
+/// ```swift
+/// // Default configuration
+/// let config = ReconnectionConfiguration.default
+///
+/// // Aggressive reconnection for critical operations
+/// let aggressiveConfig = ReconnectionConfiguration(
+///     enabled: true,
+///     maxAttempts: 5,
+///     initialDelay: 0.5,
+///     maxDelay: 30.0,
+///     backoffMultiplier: 2.0
+/// )
+///
+/// // Disabled reconnection
+/// let noReconnect = ReconnectionConfiguration.disabled
+/// ```
+public struct ReconnectionConfiguration: Sendable, Hashable {
+    /// Whether automatic reconnection is enabled
+    public let enabled: Bool
+    
+    /// Maximum number of reconnection attempts
+    public let maxAttempts: Int
+    
+    /// Initial delay before first reconnection attempt (in seconds)
+    public let initialDelay: TimeInterval
+    
+    /// Maximum delay between reconnection attempts (in seconds)
+    public let maxDelay: TimeInterval
+    
+    /// Multiplier for exponential backoff
+    public let backoffMultiplier: Double
+    
+    /// Whether to use jitter in backoff delays
+    public let useJitter: Bool
+    
+    /// Jitter range as a fraction of the delay (0.0 to 1.0)
+    public let jitterRange: Double
+    
+    /// Creates a reconnection configuration
+    ///
+    /// - Parameters:
+    ///   - enabled: Whether reconnection is enabled (default: true)
+    ///   - maxAttempts: Maximum reconnection attempts (default: 3)
+    ///   - initialDelay: Initial delay in seconds (default: 1.0)
+    ///   - maxDelay: Maximum delay in seconds (default: 30.0)
+    ///   - backoffMultiplier: Backoff multiplier (default: 2.0)
+    ///   - useJitter: Use jitter in delays (default: true)
+    ///   - jitterRange: Jitter range (default: 0.25)
+    public init(
+        enabled: Bool = true,
+        maxAttempts: Int = 3,
+        initialDelay: TimeInterval = 1.0,
+        maxDelay: TimeInterval = 30.0,
+        backoffMultiplier: Double = 2.0,
+        useJitter: Bool = true,
+        jitterRange: Double = 0.25
+    ) {
+        self.enabled = enabled
+        self.maxAttempts = max(0, maxAttempts)
+        self.initialDelay = max(0.1, initialDelay)
+        self.maxDelay = max(initialDelay, maxDelay)
+        self.backoffMultiplier = max(1.0, backoffMultiplier)
+        self.useJitter = useJitter
+        self.jitterRange = min(1.0, max(0.0, jitterRange))
+    }
+    
+    /// Default reconnection configuration
+    ///
+    /// - enabled: true
+    /// - maxAttempts: 3
+    /// - initialDelay: 1.0 seconds
+    /// - maxDelay: 30.0 seconds
+    /// - backoffMultiplier: 2.0
+    /// - useJitter: true
+    public static let `default` = ReconnectionConfiguration()
+    
+    /// Disabled reconnection
+    public static let disabled = ReconnectionConfiguration(enabled: false, maxAttempts: 0)
+    
+    /// Aggressive reconnection for critical operations
+    ///
+    /// - enabled: true
+    /// - maxAttempts: 5
+    /// - initialDelay: 0.5 seconds
+    /// - maxDelay: 60.0 seconds
+    /// - backoffMultiplier: 2.0
+    public static let aggressive = ReconnectionConfiguration(
+        enabled: true,
+        maxAttempts: 5,
+        initialDelay: 0.5,
+        maxDelay: 60.0,
+        backoffMultiplier: 2.0
+    )
+    
+    /// Conservative reconnection
+    ///
+    /// - enabled: true
+    /// - maxAttempts: 2
+    /// - initialDelay: 2.0 seconds
+    /// - maxDelay: 15.0 seconds
+    /// - backoffMultiplier: 1.5
+    public static let conservative = ReconnectionConfiguration(
+        enabled: true,
+        maxAttempts: 2,
+        initialDelay: 2.0,
+        maxDelay: 15.0,
+        backoffMultiplier: 1.5
+    )
+    
+    /// Calculates the delay for a given reconnection attempt
+    ///
+    /// - Parameter attempt: The attempt number (0-based)
+    /// - Returns: The delay in seconds before the next attempt
+    public func delay(forAttempt attempt: Int) -> TimeInterval {
+        let baseDelay = initialDelay * pow(backoffMultiplier, Double(attempt))
+        let cappedDelay = min(baseDelay, maxDelay)
+        
+        if useJitter {
+            let jitter = Double.random(in: -jitterRange...jitterRange)
+            return cappedDelay * (1.0 + jitter)
+        }
+        
+        return cappedDelay
+    }
+}
+
+extension ReconnectionConfiguration: CustomStringConvertible {
+    public var description: String {
+        if !enabled {
+            return "ReconnectionConfiguration(disabled)"
+        }
+        return "ReconnectionConfiguration(maxAttempts: \(maxAttempts), initialDelay: \(initialDelay)s, maxDelay: \(maxDelay)s)"
+    }
+}
+
+// MARK: - Reconnection State
+
+/// State of a reconnection attempt
+///
+/// Provides information about the current reconnection progress,
+/// useful for logging, monitoring, and UI feedback.
+public struct ReconnectionState: Sendable {
+    /// The current attempt number (1-based)
+    public let attemptNumber: Int
+    
+    /// Maximum number of attempts allowed
+    public let maxAttempts: Int
+    
+    /// The delay before this attempt (in seconds)
+    public let delayBeforeAttempt: TimeInterval
+    
+    /// The error that triggered reconnection
+    public let triggeringError: Error?
+    
+    /// Total time elapsed since first reconnection attempt
+    public let elapsedTime: TimeInterval
+    
+    /// Whether there are more attempts available
+    public var hasMoreAttempts: Bool {
+        attemptNumber < maxAttempts
+    }
+    
+    /// Fraction of attempts used (0.0 to 1.0)
+    public var fractionUsed: Double {
+        guard maxAttempts > 0 else { return 1.0 }
+        return Double(attemptNumber) / Double(maxAttempts)
+    }
+    
+    /// Creates a reconnection state
+    public init(
+        attemptNumber: Int,
+        maxAttempts: Int,
+        delayBeforeAttempt: TimeInterval = 0,
+        triggeringError: Error? = nil,
+        elapsedTime: TimeInterval = 0
+    ) {
+        self.attemptNumber = attemptNumber
+        self.maxAttempts = maxAttempts
+        self.delayBeforeAttempt = delayBeforeAttempt
+        self.triggeringError = triggeringError
+        self.elapsedTime = elapsedTime
+    }
+}
+
+extension ReconnectionState: CustomStringConvertible {
+    public var description: String {
+        var parts = ["ReconnectionState(attempt \(attemptNumber)/\(maxAttempts)"]
+        if delayBeforeAttempt > 0 {
+            parts.append(String(format: "delay: %.2fs", delayBeforeAttempt))
+        }
+        if elapsedTime > 0 {
+            parts.append(String(format: "elapsed: %.2fs", elapsedTime))
+        }
+        parts.append(")")
+        return parts.joined(separator: ", ")
+    }
+}
+
+// MARK: - Reconnectable Operation
+
+/// Executes operations with automatic reconnection on transient failures
+///
+/// `ReconnectableOperation` wraps network operations and automatically
+/// handles reconnection when association-level errors occur. This is
+/// particularly useful for long-running operations like batch storage
+/// where connection drops can occur.
+///
+/// ## Usage
+///
+/// ```swift
+/// let reconnectable = ReconnectableOperation(
+///     configuration: .default,
+///     connect: {
+///         // Establish connection
+///         return try await establishAssociation()
+///     }
+/// )
+///
+/// // Execute with automatic reconnection
+/// let result = try await reconnectable.execute { connection in
+///     try await connection.store(fileData: data)
+/// }
+///
+/// // Execute with reconnection progress callback
+/// let result = try await reconnectable.execute(
+///     onReconnecting: { state in
+///         print("Reconnecting: attempt \(state.attemptNumber)/\(state.maxAttempts)")
+///     }
+/// ) { connection in
+///     try await connection.store(fileData: data)
+/// }
+/// ```
+public actor ReconnectableOperation<Connection: Sendable> {
+    
+    // MARK: - Properties
+    
+    /// Reconnection configuration
+    public let configuration: ReconnectionConfiguration
+    
+    /// The connection factory
+    private let connect: @Sendable () async throws -> Connection
+    
+    /// Current connection (if established)
+    private var connection: Connection?
+    
+    /// Whether the operation has been cancelled
+    private var isCancelled: Bool = false
+    
+    // MARK: - Initialization
+    
+    /// Creates a reconnectable operation
+    ///
+    /// - Parameters:
+    ///   - configuration: Reconnection configuration
+    ///   - connect: Factory function to establish a connection
+    public init(
+        configuration: ReconnectionConfiguration = .default,
+        connect: @escaping @Sendable () async throws -> Connection
+    ) {
+        self.configuration = configuration
+        self.connect = connect
+    }
+    
+    // MARK: - Execution
+    
+    /// Executes an operation with automatic reconnection
+    ///
+    /// - Parameters:
+    ///   - onReconnecting: Optional callback invoked before each reconnection attempt
+    ///   - operation: The operation to execute
+    /// - Returns: The result of the successful operation
+    /// - Throws: The last error if all reconnection attempts fail
+    public func execute<T: Sendable>(
+        onReconnecting: (@Sendable (ReconnectionState) async -> Void)? = nil,
+        operation: @Sendable (Connection) async throws -> T
+    ) async throws -> T {
+        // Establish initial connection if needed
+        if connection == nil {
+            connection = try await connect()
+        }
+        
+        guard let conn = connection else {
+            throw DICOMNetworkError.connectionFailed("No connection available")
+        }
+        
+        do {
+            // Try the operation
+            return try await operation(conn)
+        } catch {
+            // Check if we should reconnect
+            guard configuration.enabled,
+                  let networkError = error as? DICOMNetworkError,
+                  networkError.requiresReconnection else {
+                throw error
+            }
+            
+            // Reconnect and retry
+            return try await reconnectAndRetry(
+                error: error,
+                onReconnecting: onReconnecting,
+                operation: operation
+            )
+        }
+    }
+    
+    /// Cancels any pending reconnection attempts
+    public func cancel() {
+        isCancelled = true
+    }
+    
+    /// Resets the cancellation flag
+    public func reset() {
+        isCancelled = false
+    }
+    
+    /// Closes the current connection
+    public func close() {
+        connection = nil
+    }
+    
+    // MARK: - Private
+    
+    private func reconnectAndRetry<T: Sendable>(
+        error: Error,
+        onReconnecting: (@Sendable (ReconnectionState) async -> Void)?,
+        operation: @Sendable (Connection) async throws -> T
+    ) async throws -> T {
+        let startTime = Date()
+        var lastError = error
+        
+        for attempt in 0..<configuration.maxAttempts {
+            // Check cancellation
+            if isCancelled {
+                throw ReconnectionError.cancelled
+            }
+            
+            // Calculate delay
+            let delay = configuration.delay(forAttempt: attempt)
+            let elapsedTime = Date().timeIntervalSince(startTime)
+            
+            // Notify about reconnection
+            let state = ReconnectionState(
+                attemptNumber: attempt + 1,
+                maxAttempts: configuration.maxAttempts,
+                delayBeforeAttempt: delay,
+                triggeringError: lastError,
+                elapsedTime: elapsedTime
+            )
+            await onReconnecting?(state)
+            
+            // Wait before reconnecting
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            
+            // Check cancellation again
+            if isCancelled {
+                throw ReconnectionError.cancelled
+            }
+            
+            do {
+                // Re-establish connection
+                connection = try await connect()
+                
+                guard let conn = connection else {
+                    throw DICOMNetworkError.connectionFailed("Failed to establish connection")
+                }
+                
+                // Retry the operation
+                return try await operation(conn)
+                
+            } catch let newError {
+                lastError = newError
+                
+                // If it's not a reconnectable error, throw immediately
+                if let networkError = newError as? DICOMNetworkError,
+                   !networkError.requiresReconnection {
+                    throw newError
+                }
+                
+                // Continue to next attempt
+            }
+        }
+        
+        // All attempts exhausted
+        let elapsedTime = Date().timeIntervalSince(startTime)
+        throw ReconnectionError.exhausted(
+            attempts: configuration.maxAttempts,
+            totalTime: elapsedTime,
+            lastError: lastError
+        )
+    }
+}
+
+// MARK: - Reconnection Error
+
+/// Errors specific to reconnection operations
+public enum ReconnectionError: Error, Sendable {
+    /// All reconnection attempts were exhausted
+    ///
+    /// - Parameters:
+    ///   - attempts: Number of attempts made
+    ///   - totalTime: Total time spent on reconnection
+    ///   - lastError: The last error encountered
+    case exhausted(attempts: Int, totalTime: TimeInterval, lastError: Error)
+    
+    /// Reconnection was cancelled
+    case cancelled
+}
+
+extension ReconnectionError: CustomStringConvertible {
+    public var description: String {
+        switch self {
+        case .exhausted(let attempts, let totalTime, let lastError):
+            return "Reconnection exhausted after \(attempts) attempt(s) over \(String(format: "%.1f", totalTime))s. Last error: \(lastError)"
+        case .cancelled:
+            return "Reconnection was cancelled"
+        }
+    }
+}
+
+extension ReconnectionError: LocalizedError {
+    public var errorDescription: String? {
+        description
+    }
+}
