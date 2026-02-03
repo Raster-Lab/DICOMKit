@@ -10,9 +10,19 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.8.3)
+## Features (v0.8.4)
 
-- ✅ **DICOMweb QIDO-RS Client (NEW in v0.8.3)**
+- ✅ **DICOMweb STOW-RS Client (NEW in v0.8.4)**
+  - ✅ Store DICOM instances to remote servers via HTTP POST
+  - ✅ Single instance and batch store operations
+  - ✅ Configurable batch size for server limits
+  - ✅ Progress reporting with AsyncThrowingStream
+  - ✅ Per-instance success/failure tracking
+  - ✅ STOWResponse with stored instances and failures
+  - ✅ Failure reason codes (duplicate, SOP class not supported, etc.)
+  - ✅ Continue-on-error option for batch uploads
+  - ✅ Multipart request generation (application/dicom)
+- ✅ **DICOMweb QIDO-RS Client (v0.8.3)**
   - ✅ QIDOQuery builder with fluent API for constructing search queries
   - ✅ Study, series, and instance search endpoints
   - ✅ Standard query parameters: PatientName, PatientID, StudyDate, Modality, etc.
@@ -1554,15 +1564,19 @@ High-level API:
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
-### DICOMWeb (v0.8.1, v0.8.2, v0.8.3)
+### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4)
 DICOMweb (RESTful DICOM) client implementation:
-- `DICOMwebClient` - WADO-RS and QIDO-RS client for DICOM web services
-- `QIDOQuery` - Fluent query builder for QIDO-RS searches (NEW in v0.8.3)
-- `QIDOStudyResult` - Type-safe study query result (NEW in v0.8.3)
-- `QIDOSeriesResult` - Type-safe series query result (NEW in v0.8.3)
-- `QIDOInstanceResult` - Type-safe instance query result (NEW in v0.8.3)
-- `QIDOResults<T>` - Paginated query results container (NEW in v0.8.3)
-- `QIDOQueryAttribute` - Standard QIDO-RS query attribute tags (NEW in v0.8.3)
+- `DICOMwebClient` - WADO-RS, QIDO-RS, and STOW-RS client for DICOM web services
+- `STOWResponse` - Response type for store operations (NEW in v0.8.4)
+- `StoreProgress` - Progress information for uploads (NEW in v0.8.4)
+- `StoreOptions` - Configuration for store operations (NEW in v0.8.4)
+- `StoreEvent` - Event types for progress streams (NEW in v0.8.4)
+- `QIDOQuery` - Fluent query builder for QIDO-RS searches (v0.8.3)
+- `QIDOStudyResult` - Type-safe study query result (v0.8.3)
+- `QIDOSeriesResult` - Type-safe series query result (v0.8.3)
+- `QIDOInstanceResult` - Type-safe instance query result (v0.8.3)
+- `QIDOResults<T>` - Paginated query results container (v0.8.3)
+- `QIDOQueryAttribute` - Standard QIDO-RS query attribute tags (v0.8.3)
 - `RetrieveResult` - Result type for retrieve operations (v0.8.2)
 - `FrameResult` - Result type for frame retrieval (v0.8.2)
 - `RenderOptions` - Options for rendered image retrieval (v0.8.2)
@@ -1585,7 +1599,7 @@ DICOMKit implements:
 - **DICOM PS3.8 2025e** - Network Communication Support (Upper Layer Protocol)
 - **DICOM PS3.10 2025e** - Media Storage and File Format
 - **DICOM PS3.15 2025e** - Security and System Management Profiles (TLS support)
-- **DICOM PS3.18 2025e** - Web Services (DICOMweb WADO-RS, QIDO-RS, DICOM JSON)
+- **DICOM PS3.18 2025e** - Web Services (DICOMweb WADO-RS, QIDO-RS, STOW-RS, DICOM JSON)
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
 
@@ -1603,4 +1617,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.3 - adding the DICOMweb QIDO-RS client for searching DICOM objects. The library now supports both WADO-RS (retrieve) and QIDO-RS (query) operations with a fluent query builder and type-safe result types. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.4 - adding the DICOMweb STOW-RS client for storing DICOM objects. The library now supports WADO-RS (retrieve), QIDO-RS (query), and STOW-RS (store) operations with batch upload support and progress reporting. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

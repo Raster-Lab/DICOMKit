@@ -1014,4 +1014,368 @@ extension DICOMwebClient {
         )
     }
 }
+
+// MARK: - STOW-RS Store Methods
+
+extension DICOMwebClient {
+    
+    // MARK: - Types
+    
+    /// Progress information for store operations
+    public struct StoreProgress: Sendable {
+        /// Number of instances stored so far
+        public let instancesStored: Int
+        
+        /// Total number of instances to store
+        public let totalInstances: Int
+        
+        /// Bytes uploaded so far
+        public let bytesUploaded: Int64
+        
+        /// Total bytes to upload (may be unknown)
+        public let totalBytes: Int64?
+        
+        /// Fraction completed (0.0 to 1.0)
+        public var fractionCompleted: Double {
+            if totalInstances > 0 {
+                return Double(instancesStored) / Double(totalInstances)
+            }
+            if let total = totalBytes, total > 0 {
+                return Double(bytesUploaded) / Double(total)
+            }
+            return 0
+        }
+    }
+    
+    /// Options for store operations
+    public struct StoreOptions: Sendable {
+        /// Maximum number of instances per request
+        /// Set to nil for unlimited (all instances in single request)
+        public let batchSize: Int?
+        
+        /// Continue uploading remaining instances if some fail
+        public let continueOnError: Bool
+        
+        /// Creates store options
+        /// - Parameters:
+        ///   - batchSize: Maximum instances per request (nil for unlimited)
+        ///   - continueOnError: Whether to continue on partial failure
+        public init(batchSize: Int? = nil, continueOnError: Bool = true) {
+            self.batchSize = batchSize
+            self.continueOnError = continueOnError
+        }
+        
+        /// Default options (single request, continue on error)
+        public static let `default` = StoreOptions()
+    }
+    
+    // MARK: - Store Single Instance
+    
+    /// Stores a single DICOM instance
+    ///
+    /// - Parameters:
+    ///   - data: The DICOM Part 10 file data
+    ///   - studyUID: Optional Study Instance UID (instances will be added to this study)
+    /// - Returns: Store response with result information
+    /// - Throws: DICOMwebError on failure
+    ///
+    /// Reference: PS3.18 Section 10.5 - STOW-RS
+    ///
+    /// ## Example Usage
+    ///
+    /// ```swift
+    /// let dicomData = try Data(contentsOf: dicomFileURL)
+    /// let response = try await client.storeInstance(data: dicomData)
+    ///
+    /// if response.isFullSuccess {
+    ///     print("Stored instance: \(response.storedInstances.first?.sopInstanceUID ?? "unknown")")
+    /// }
+    /// ```
+    public func storeInstance(
+        data: Data,
+        studyUID: String? = nil
+    ) async throws -> STOWResponse {
+        return try await storeInstances(instances: [data], studyUID: studyUID)
+    }
+    
+    // MARK: - Store Multiple Instances
+    
+    /// Stores multiple DICOM instances
+    ///
+    /// - Parameters:
+    ///   - instances: Array of DICOM Part 10 file data
+    ///   - studyUID: Optional Study Instance UID (all instances will be added to this study)
+    ///   - options: Store options (batch size, error handling)
+    /// - Returns: Combined store response with all results
+    /// - Throws: DICOMwebError on complete failure
+    ///
+    /// Reference: PS3.18 Section 10.5 - STOW-RS
+    ///
+    /// ## Example Usage
+    ///
+    /// ```swift
+    /// let instances = try dicomFiles.map { try Data(contentsOf: $0) }
+    /// let response = try await client.storeInstances(
+    ///     instances: instances,
+    ///     studyUID: "1.2.3.4.5"
+    /// )
+    ///
+    /// print("Stored: \(response.successCount), Failed: \(response.failureCount)")
+    /// ```
+    public func storeInstances(
+        instances: [Data],
+        studyUID: String? = nil,
+        options: StoreOptions = .default
+    ) async throws -> STOWResponse {
+        guard !instances.isEmpty else {
+            return STOWResponse()
+        }
+        
+        // Determine batch size
+        let batchSize = options.batchSize ?? instances.count
+        
+        // If all instances fit in one batch, do a single request
+        if instances.count <= batchSize {
+            return try await performStoreRequest(instances: instances, studyUID: studyUID)
+        }
+        
+        // Otherwise, batch the requests
+        var allStoredInstances: [STOWResponse.InstanceResult] = []
+        var allFailedInstances: [STOWResponse.InstanceFailure] = []
+        var allWarnings: [STOWResponse.Warning] = []
+        var lastRetrieveURL: String?
+        
+        // Split into batches
+        let batches = stride(from: 0, to: instances.count, by: batchSize).map {
+            Array(instances[$0..<min($0 + batchSize, instances.count)])
+        }
+        
+        for batch in batches {
+            do {
+                let response = try await performStoreRequest(instances: batch, studyUID: studyUID)
+                allStoredInstances.append(contentsOf: response.storedInstances)
+                allFailedInstances.append(contentsOf: response.failedInstances)
+                allWarnings.append(contentsOf: response.warnings)
+                if let url = response.retrieveURL {
+                    lastRetrieveURL = url
+                }
+            } catch {
+                if !options.continueOnError {
+                    throw error
+                }
+                // On error, mark all instances in this batch as failed
+                for _ in batch {
+                    allFailedInstances.append(STOWResponse.InstanceFailure(
+                        failureDescription: error.localizedDescription
+                    ))
+                }
+            }
+        }
+        
+        return STOWResponse(
+            storedInstances: allStoredInstances,
+            failedInstances: allFailedInstances,
+            warnings: allWarnings,
+            retrieveURL: lastRetrieveURL
+        )
+    }
+    
+    /// Stores multiple DICOM instances with progress reporting
+    ///
+    /// - Parameters:
+    ///   - instances: Array of DICOM Part 10 file data
+    ///   - studyUID: Optional Study Instance UID
+    ///   - options: Store options
+    /// - Returns: AsyncThrowingStream of progress updates and final response
+    ///
+    /// ## Example Usage
+    ///
+    /// ```swift
+    /// for try await event in client.storeInstancesWithProgress(instances: dicomFiles) {
+    ///     switch event {
+    ///     case .progress(let progress):
+    ///         print("Progress: \(Int(progress.fractionCompleted * 100))%")
+    ///     case .completed(let response):
+    ///         print("Complete: \(response.successCount) stored")
+    ///     }
+    /// }
+    /// ```
+    public func storeInstancesWithProgress(
+        instances: [Data],
+        studyUID: String? = nil,
+        options: StoreOptions = .default
+    ) -> AsyncThrowingStream<StoreEvent, Error> {
+        return AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard !instances.isEmpty else {
+                        continuation.yield(.completed(STOWResponse()))
+                        continuation.finish()
+                        return
+                    }
+                    
+                    let batchSize = options.batchSize ?? instances.count
+                    let batches = stride(from: 0, to: instances.count, by: batchSize).map {
+                        Array(instances[$0..<min($0 + batchSize, instances.count)])
+                    }
+                    
+                    var allStoredInstances: [STOWResponse.InstanceResult] = []
+                    var allFailedInstances: [STOWResponse.InstanceFailure] = []
+                    var allWarnings: [STOWResponse.Warning] = []
+                    var lastRetrieveURL: String?
+                    var instancesProcessed = 0
+                    
+                    let totalBytes = Int64(instances.reduce(0) { $0 + $1.count })
+                    var bytesUploaded: Int64 = 0
+                    
+                    for batch in batches {
+                        try Task.checkCancellation()
+                        
+                        let batchBytes = Int64(batch.reduce(0) { $0 + $1.count })
+                        
+                        do {
+                            let response = try await performStoreRequest(instances: batch, studyUID: studyUID)
+                            allStoredInstances.append(contentsOf: response.storedInstances)
+                            allFailedInstances.append(contentsOf: response.failedInstances)
+                            allWarnings.append(contentsOf: response.warnings)
+                            if let url = response.retrieveURL {
+                                lastRetrieveURL = url
+                            }
+                        } catch {
+                            if !options.continueOnError {
+                                throw error
+                            }
+                            for _ in batch {
+                                allFailedInstances.append(STOWResponse.InstanceFailure(
+                                    failureDescription: error.localizedDescription
+                                ))
+                            }
+                        }
+                        
+                        instancesProcessed += batch.count
+                        bytesUploaded += batchBytes
+                        
+                        let progress = StoreProgress(
+                            instancesStored: instancesProcessed,
+                            totalInstances: instances.count,
+                            bytesUploaded: bytesUploaded,
+                            totalBytes: totalBytes
+                        )
+                        continuation.yield(.progress(progress))
+                    }
+                    
+                    let finalResponse = STOWResponse(
+                        storedInstances: allStoredInstances,
+                        failedInstances: allFailedInstances,
+                        warnings: allWarnings,
+                        retrieveURL: lastRetrieveURL
+                    )
+                    continuation.yield(.completed(finalResponse))
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+    
+    /// Event types for progress reporting
+    public enum StoreEvent: Sendable {
+        /// Progress update
+        case progress(StoreProgress)
+        
+        /// Store operation completed
+        case completed(STOWResponse)
+    }
+    
+    // MARK: - Private Methods
+    
+    /// Performs a single STOW-RS request
+    private func performStoreRequest(
+        instances: [Data],
+        studyUID: String?
+    ) async throws -> STOWResponse {
+        // Build URL
+        let url: URL
+        if let studyUID = studyUID {
+            url = urlBuilder.storeURL(studyUID: studyUID)
+        } else {
+            url = urlBuilder.storeURL
+        }
+        
+        // Build multipart body
+        let multipart = buildMultipartRequest(instances: instances)
+        let body = multipart.encode()
+        
+        // Build headers
+        let headers: [String: String] = [
+            "Content-Type": multipart.contentType.description,
+            "Accept": DICOMMediaType.dicomJSON.description
+        ]
+        
+        // Execute request
+        let response = try await httpClient.post(url, body: body, headers: headers)
+        
+        // Parse response based on status code
+        switch response.statusCode {
+        case 200:
+            // Full success - parse response body
+            return try parseSTOWResponse(data: response.body)
+            
+        case 202:
+            // Partial success (some warnings or failures)
+            return try parseSTOWResponse(data: response.body)
+            
+        case 409:
+            // Conflict - typically instance already exists
+            let parsed = try? parseSTOWResponse(data: response.body)
+            if let parsed = parsed, !parsed.failedInstances.isEmpty {
+                return parsed
+            }
+            throw DICOMwebError.conflict(message: String(data: response.body, encoding: .utf8))
+            
+        default:
+            // Other errors are already handled by HTTPClient
+            throw DICOMwebError.fromHTTPStatus(
+                response.statusCode,
+                message: String(data: response.body, encoding: .utf8)
+            )
+        }
+    }
+    
+    /// Builds a multipart request body for STOW-RS
+    private func buildMultipartRequest(instances: [Data]) -> MultipartMIME {
+        var builder = MultipartMIME.builder()
+            .withRootType(.dicom)
+        
+        for instance in instances {
+            builder = builder.addDICOM(instance)
+        }
+        
+        return builder.build()
+    }
+    
+    /// Parses a STOW-RS JSON response
+    private func parseSTOWResponse(data: Data) throws -> STOWResponse {
+        // Empty response is considered success with no details
+        if data.isEmpty {
+            return STOWResponse()
+        }
+        
+        // Parse JSON
+        guard let json = try? JSONSerialization.jsonObject(with: data) else {
+            // If not valid JSON, return empty success
+            return STOWResponse()
+        }
+        
+        // Response can be a single object or array
+        if let jsonObject = json as? [String: Any] {
+            return try STOWResponse.parse(json: jsonObject)
+        } else if let jsonArray = json as? [[String: Any]], let first = jsonArray.first {
+            return try STOWResponse.parse(json: first)
+        } else {
+            return STOWResponse()
+        }
+    }
+}
 #endif
