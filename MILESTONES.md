@@ -839,10 +839,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] On-the-fly compression for network efficiency
   - [x] Configurable compression level vs. speed tradeoff
   - [x] Support for JPEG, JPEG 2000 compression (JPEG-LS not supported by ImageIO)
-- [ ] Bandwidth Management:
-  - [ ] Rate limiting per connection
-  - [ ] Bandwidth scheduling (e.g., off-peak transfers)
-  - [ ] Priority queues for urgent transfers
+- [x] Bandwidth Management:
+  - [x] Rate limiting per connection
+  - [x] Bandwidth scheduling (e.g., off-peak transfers)
+  - [x] Priority queues for urgent transfers
 - [ ] Enhanced Error Handling:
   - [ ] Detailed error codes with recovery suggestions
   - [ ] Association-level vs. file-level error differentiation
