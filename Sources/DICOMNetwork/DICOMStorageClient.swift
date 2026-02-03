@@ -583,7 +583,7 @@ public struct DICOMStorageClientConfiguration: Sendable {
         self.validationConfiguration = validationConfiguration
         self.useCircuitBreaker = useCircuitBreaker
         self.circuitBreakerThreshold = max(1, circuitBreakerThreshold)
-        self.circuitBreakerResetTimeout = max(1, circuitBreakerResetTimeout)
+        self.circuitBreakerResetTimeout = max(5, circuitBreakerResetTimeout) // Minimum 5 seconds to prevent rapid cycles
     }
     
     /// Creates a configuration with a single server
@@ -939,7 +939,7 @@ public actor DICOMStorageClient {
             
             // Attempt store with retries
             let executor = RetryExecutor(policy: retryPolicy)
-            let result = await executor.executeWithResult { [self] in
+            let result = await executor.executeWithResult {
                 try await self.performStore(
                     server: server,
                     configuration: storageConfig,
@@ -1002,17 +1002,42 @@ public actor DICOMStorageClient {
             return server
         }
         
-        // Otherwise use the pool's selection strategy
-        var pool = configuration.serverPool
+        // Filter enabled servers that haven't been excluded
+        let availableServers = configuration.serverPool.enabledServers.filter { !excluding.contains($0.id) }
+        guard !availableServers.isEmpty else { return nil }
         
-        // Try to find a server not in the exclusion set
-        for _ in 0..<pool.enabledCount {
-            if let server = pool.selectServer(), !excluding.contains(server.id) {
-                return server
+        // For strategies that need the pool's internal state (round-robin, weighted), we must use selectServer()
+        // For other strategies, we can work directly with the filtered list
+        switch configuration.serverPool.selectionStrategy {
+        case .priority, .failover:
+            // Select highest priority from available servers
+            return availableServers.max { $0.priority < $1.priority }
+        case .random:
+            // Select random from available servers
+            return availableServers.randomElement()
+        case .randomWeighted:
+            // Select random weighted from available servers
+            let totalWeight = availableServers.reduce(0) { $0 + $1.weight }
+            let random = Double.random(in: 0..<totalWeight)
+            var cumulative: Double = 0
+            for server in availableServers {
+                cumulative += server.weight
+                if random < cumulative {
+                    return server
+                }
             }
+            return availableServers.last
+        case .roundRobin, .weightedRoundRobin:
+            // For round-robin strategies, we need to use the pool's internal state
+            // Try to find a server not in the exclusion set
+            var pool = configuration.serverPool
+            for _ in 0..<pool.enabledCount {
+                if let server = pool.selectServer(), !excluding.contains(server.id) {
+                    return server
+                }
+            }
+            return nil
         }
-        
-        return nil
     }
     
     /// Performs the actual store operation

@@ -375,7 +375,12 @@ final class ServerPoolTests: XCTestCase {
         var pool = ServerPool(selectionStrategy: .roundRobin)
         try pool.addServer(host: "s1.com", aeTitle: "S1")
         try pool.addServer(host: "s2.com", aeTitle: "S2")
-        pool.setServerEnabled(id: pool.allServers.first!.id, enabled: false)
+        
+        guard let firstServer = pool.allServers.first else {
+            XCTFail("Expected at least one server in the pool")
+            return
+        }
+        pool.setServerEnabled(id: firstServer.id, enabled: false)
         
         let description = pool.description
         
