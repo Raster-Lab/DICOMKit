@@ -112,6 +112,13 @@ public struct DICOMwebURLBuilder: Sendable {
     
     // MARK: - Instances Resource URLs
     
+    /// URL for instances within a study (across all series)
+    /// - Parameter studyUID: The Study Instance UID
+    /// - Returns: URL for `/studies/{studyUID}/instances`
+    public func instancesInStudyURL(studyUID: String) -> URL {
+        return studyURL(studyUID: studyUID).appendingPathComponent("instances")
+    }
+    
     /// URL for instances within a series
     /// - Parameters:
     ///   - studyUID: The Study Instance UID

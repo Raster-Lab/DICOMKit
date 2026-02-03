@@ -809,4 +809,209 @@ extension DICOMwebClient {
         return arrays.first ?? []
     }
 }
+
+// MARK: - QIDO-RS Query Methods
+
+extension DICOMwebClient {
+    
+    // MARK: - Search Studies (QIDO-RS)
+    
+    /// Searches for studies matching the query criteria
+    ///
+    /// - Parameters:
+    ///   - query: Query parameters (optional, returns all studies if empty)
+    /// - Returns: QIDO study results with pagination info
+    /// - Throws: DICOMwebError on failure
+    ///
+    /// Reference: PS3.18 Section 10.6.1 - SearchForStudies
+    ///
+    /// ## Example Usage
+    ///
+    /// ```swift
+    /// // Search for all CT studies in 2024
+    /// let query = QIDOQuery()
+    ///     .modality("CT")
+    ///     .studyDate(from: "20240101", to: "20241231")
+    ///     .limit(10)
+    ///
+    /// let results = try await client.searchStudies(query: query)
+    /// for study in results.results {
+    ///     print("Study: \(study.studyInstanceUID ?? "unknown")")
+    /// }
+    /// ```
+    public func searchStudies(query: QIDOQuery = QIDOQuery()) async throws -> QIDOStudyResults {
+        let url = urlBuilder.searchStudiesURL(parameters: query.toParameters())
+        return try await performQIDOQuery(url: url, query: query)
+    }
+    
+    /// Searches for studies with raw parameters
+    ///
+    /// - Parameter parameters: Raw query parameters dictionary
+    /// - Returns: QIDO study results
+    /// - Throws: DICOMwebError on failure
+    public func searchStudies(parameters: [String: String]) async throws -> QIDOStudyResults {
+        let url = urlBuilder.searchStudiesURL(parameters: parameters)
+        return try await performQIDOQuery(url: url, query: QIDOQuery(parameters: parameters))
+    }
+    
+    // MARK: - Search Series (QIDO-RS)
+    
+    /// Searches for series within a specific study
+    ///
+    /// - Parameters:
+    ///   - studyUID: The Study Instance UID
+    ///   - query: Query parameters (optional)
+    /// - Returns: QIDO series results with pagination info
+    /// - Throws: DICOMwebError on failure
+    ///
+    /// Reference: PS3.18 Section 10.6.1 - SearchForSeries
+    ///
+    /// ## Example Usage
+    ///
+    /// ```swift
+    /// let results = try await client.searchSeries(
+    ///     studyUID: "1.2.3.4.5",
+    ///     query: QIDOQuery().modality("CT")
+    /// )
+    /// ```
+    public func searchSeries(
+        studyUID: String,
+        query: QIDOQuery = QIDOQuery()
+    ) async throws -> QIDOSeriesResults {
+        let url = urlBuilder.searchSeriesURL(studyUID: studyUID, parameters: query.toParameters())
+        return try await performQIDOQuery(url: url, query: query)
+    }
+    
+    /// Searches for series across all studies
+    ///
+    /// - Parameter query: Query parameters
+    /// - Returns: QIDO series results with pagination info
+    /// - Throws: DICOMwebError on failure
+    ///
+    /// Note: Some servers may not support cross-study series searches.
+    public func searchAllSeries(query: QIDOQuery = QIDOQuery()) async throws -> QIDOSeriesResults {
+        let url = DICOMwebURLBuilder.appendQueryParameters(
+            to: baseSeriesURL,
+            parameters: query.toParameters()
+        )
+        return try await performQIDOQuery(url: url, query: query)
+    }
+    
+    // MARK: - Search Instances (QIDO-RS)
+    
+    /// Searches for instances within a specific series
+    ///
+    /// - Parameters:
+    ///   - studyUID: The Study Instance UID
+    ///   - seriesUID: The Series Instance UID
+    ///   - query: Query parameters (optional)
+    /// - Returns: QIDO instance results with pagination info
+    /// - Throws: DICOMwebError on failure
+    ///
+    /// Reference: PS3.18 Section 10.6.1 - SearchForInstances
+    ///
+    /// ## Example Usage
+    ///
+    /// ```swift
+    /// let results = try await client.searchInstances(
+    ///     studyUID: "1.2.3.4.5",
+    ///     seriesUID: "1.2.3.4.5.6",
+    ///     query: QIDOQuery().limit(50)
+    /// )
+    /// ```
+    public func searchInstances(
+        studyUID: String,
+        seriesUID: String,
+        query: QIDOQuery = QIDOQuery()
+    ) async throws -> QIDOInstanceResults {
+        let url = urlBuilder.searchInstancesURL(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            parameters: query.toParameters()
+        )
+        return try await performQIDOQuery(url: url, query: query)
+    }
+    
+    /// Searches for instances within a specific study (across all series)
+    ///
+    /// - Parameters:
+    ///   - studyUID: The Study Instance UID
+    ///   - query: Query parameters (optional)
+    /// - Returns: QIDO instance results with pagination info
+    /// - Throws: DICOMwebError on failure
+    public func searchInstances(
+        studyUID: String,
+        query: QIDOQuery = QIDOQuery()
+    ) async throws -> QIDOInstanceResults {
+        let url = DICOMwebURLBuilder.appendQueryParameters(
+            to: urlBuilder.instancesInStudyURL(studyUID: studyUID),
+            parameters: query.toParameters()
+        )
+        return try await performQIDOQuery(url: url, query: query)
+    }
+    
+    /// Searches for instances across all studies
+    ///
+    /// - Parameter query: Query parameters
+    /// - Returns: QIDO instance results with pagination info
+    /// - Throws: DICOMwebError on failure
+    ///
+    /// Note: Some servers may not support cross-study instance searches.
+    public func searchAllInstances(query: QIDOQuery = QIDOQuery()) async throws -> QIDOInstanceResults {
+        let url = DICOMwebURLBuilder.appendQueryParameters(
+            to: baseInstancesURL,
+            parameters: query.toParameters()
+        )
+        return try await performQIDOQuery(url: url, query: query)
+    }
+    
+    // MARK: - Private Helper Methods
+    
+    /// Base URL for series search across all studies
+    private var baseSeriesURL: URL {
+        return configuration.baseURL.appendingPathComponent("series")
+    }
+    
+    /// Base URL for instances search across all studies
+    private var baseInstancesURL: URL {
+        return configuration.baseURL.appendingPathComponent("instances")
+    }
+    
+    /// Performs a QIDO-RS query and parses results
+    private func performQIDOQuery<T: QIDOResult>(
+        url: URL,
+        query: QIDOQuery
+    ) async throws -> QIDOResults<T> {
+        let headers = ["Accept": DICOMMediaType.dicomJSON.description]
+        let response = try await httpClient.get(url, headers: headers)
+        
+        // Parse JSON array response
+        guard let jsonArray = try JSONSerialization.jsonObject(with: response.body) as? [[String: Any]] else {
+            throw DICOMwebError.invalidJSON(reason: "Expected array of DICOM JSON objects")
+        }
+        
+        // Extract total count from headers if available
+        let totalCount: Int?
+        if let totalCountHeader = response.header("X-Total-Count") {
+            totalCount = Int(totalCountHeader)
+        } else {
+            totalCount = nil
+        }
+        
+        // Parse limit and offset from query
+        let params = query.toParameters()
+        let limit = params[DICOMwebURLBuilder.QueryParameter.limit].flatMap { Int($0) }
+        let offset = params[DICOMwebURLBuilder.QueryParameter.offset].flatMap { Int($0) } ?? 0
+        
+        // Create result objects
+        let results: [T] = jsonArray.map { T.init(attributes: $0) }
+        
+        return QIDOResults(
+            results: results,
+            totalCount: totalCount,
+            offset: offset,
+            limit: limit
+        )
+    }
+}
 #endif
