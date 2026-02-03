@@ -1283,7 +1283,7 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4, v0.7.5)
+### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4, v0.7.5, v0.7.6, v0.7.7)
 DICOM network protocol implementation:
 - `DICOMClient` - Unified high-level client API with retry support (NEW in v0.6.7)
 - `DICOMClientConfiguration` - Client configuration with server settings (NEW in v0.6.7)
@@ -1303,6 +1303,11 @@ DICOM network protocol implementation:
 - `OSLogAuditHandler` - OSLog-based audit handler for Apple platforms (NEW in v0.7.5)
 - `DICOMLogCategory.storage` - Log category for C-STORE operations (NEW in v0.7.5)
 - `DICOMLogCategory.audit` - Log category for audit events (NEW in v0.7.5)
+- `DICOMValidator` - Pre-send data validation for DICOM data sets (NEW in v0.7.6)
+- `ValidationConfiguration` - Validation configuration with levels and options (NEW in v0.7.6)
+- `ValidationResult` - Validation result with errors and warnings (NEW in v0.7.6)
+- `TransferSyntaxConverter` - Automatic transcoding between transfer syntaxes (NEW in v0.7.7)
+- `PreferredTransferSyntax` - Configurable preferred transfer syntaxes (NEW in v0.7.7)
 - `TLSConfiguration` - TLS settings with protocol versions, certificate validation (NEW in v0.7.4)
 - `TLSProtocolVersion` - TLS protocol version enumeration (NEW in v0.7.4)
 - `CertificateValidation` - Certificate validation modes (system, disabled, pinned, custom) (NEW in v0.7.4)
@@ -1365,4 +1370,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.7.5 - adding network error handling enhancements. The library now provides comprehensive error categorization, recovery suggestions, and fine-grained timeout configuration for DICOM network operations. Future versions will add connection pooling and storage commitment. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.7.7 - adding transfer syntax conversion capabilities. The library now provides automatic transcoding when target servers don't support source transfer syntaxes, configurable preferred transfer syntaxes with priority ordering, and support for uncompressed syntax conversion. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

@@ -116,3 +116,40 @@ DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) 
 - Ensure all tests pass before submitting changes
 - Update documentation for API changes
 - Follow the existing code style and patterns
+
+## Post-Task Requirements
+
+After completing any significant work on DICOMKit, Copilot should:
+
+### README.md Updates
+When finishing any task that involves feature additions, API changes, or version updates:
+
+1. **Update the Features section** if new functionality was added
+   - Add new feature entries under the appropriate version heading
+   - Use the established format with checkmarks (✅) and version tags
+
+2. **Update the Architecture section** if new public types were added
+   - Add new types under the relevant module (DICOMCore, DICOMDictionary, DICOMNetwork, or DICOMKit)
+   - Include "(NEW in vX.X.X)" tag for new additions
+
+3. **Update the version note at the bottom** if the version changed
+   - Update the version number
+   - Update the description to reflect the latest changes
+
+4. **Update version headers** in the Architecture section module headers
+   - Ensure module headers like "DICOMNetwork (v0.6, v0.7, ...)" include all version numbers
+
+5. **Update the Limitations section** if any limitations were addressed or new ones discovered
+
+### Code Examples
+If new APIs were added:
+- Add usage examples in the appropriate "Quick Start" or feature-specific sections
+- Ensure examples follow the existing code style and are runnable
+
+### Version Consistency
+Ensure all version references are consistent throughout the README:
+- Features section header version
+- Architecture section module headers
+- Note at the bottom of the file
+
+This helps maintain accurate and up-to-date documentation for users of DICOMKit.
