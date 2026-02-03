@@ -37,7 +37,7 @@ extension DICOMError: CustomStringConvertible {
         case .invalidPreamble:
             return "Invalid DICOM preamble"
         case .invalidDICMPrefix:
-            return "Invalid DICM prefix"
+            return "Invalid DICM prefix: File is missing the 'DICM' magic bytes at offset 128. This may be a legacy DICOM file without Part 10 header. Use DICOMFile.read(from:force:) with force=true to attempt reading legacy files."
         case .unexpectedEndOfData:
             return "Unexpected end of data"
         case .invalidVR(let vr):

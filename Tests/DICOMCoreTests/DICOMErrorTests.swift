@@ -18,7 +18,7 @@ struct DICOMErrorTests {
     func testInvalidDICMPrefixDescription() {
         let error = DICOMError.invalidDICMPrefix
         
-        #expect(error.description == "Invalid DICM prefix")
+        #expect(error.description == "Invalid DICM prefix: File is missing the 'DICM' magic bytes at offset 128. This may be a legacy DICOM file without Part 10 header. Use DICOMFile.read(from:force:) with force=true to attempt reading legacy files.")
     }
     
     @Test("unexpectedEndOfData error has correct description")
@@ -71,7 +71,7 @@ struct DICOMErrorTests {
     func testLocalizedDescriptionInvalidDICMPrefix() {
         let error = DICOMError.invalidDICMPrefix
         
-        #expect(error.localizedDescription == "Invalid DICM prefix")
+        #expect(error.localizedDescription == "Invalid DICM prefix: File is missing the 'DICM' magic bytes at offset 128. This may be a legacy DICOM file without Part 10 header. Use DICOMFile.read(from:force:) with force=true to attempt reading legacy files.")
     }
     
     @Test("localizedDescription returns proper message for unexpectedEndOfData")
