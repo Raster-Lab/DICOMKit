@@ -25,6 +25,10 @@ let package = Package(
         .library(
             name: "DICOMNetwork",
             targets: ["DICOMNetwork"]
+        ),
+        .library(
+            name: "DICOMWeb",
+            targets: ["DICOMWeb"]
         )
     ],
     targets: [
@@ -43,6 +47,13 @@ let package = Package(
         ),
         .target(
             name: "DICOMNetwork",
+            dependencies: ["DICOMCore"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
+        .target(
+            name: "DICOMWeb",
             dependencies: ["DICOMCore"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
@@ -70,6 +81,10 @@ let package = Package(
         .testTarget(
             name: "DICOMNetworkTests",
             dependencies: ["DICOMNetwork"]
+        ),
+        .testTarget(
+            name: "DICOMWebTests",
+            dependencies: ["DICOMWeb"]
         )
     ]
 )

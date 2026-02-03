@@ -932,7 +932,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ## Milestone 8: DICOM Web Services (v0.8)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Implement RESTful DICOM web services (DICOMweb)
 
 This milestone implements the DICOMweb standard (PS3.18), providing modern RESTful HTTP/HTTPS-based access to DICOM objects. DICOMweb enables browser-based viewers, mobile applications, and cloud-native integrations without requiring traditional DICOM networking infrastructure.
@@ -943,53 +943,69 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 8.1: Core DICOMweb Infrastructure (v0.8.1)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Establish the foundational HTTP layer and data format support for DICOMweb  
 **Complexity**: Medium  
 **Dependencies**: Milestone 5 (DICOM Writing)
 
 #### Deliverables
-- [ ] HTTP client abstraction layer using URLSession:
-  - [ ] Configurable timeouts (connect, read, resource)
-  - [ ] HTTP/2 support for connection multiplexing
-  - [ ] Request/response interceptors for logging and customization
-  - [ ] Automatic retry with configurable policies
-- [ ] DICOM JSON representation (PS3.18 Section F):
-  - [ ] DataSet to JSON serialization
-  - [ ] JSON to DataSet deserialization
-  - [ ] Bulk data URI handling (BulkDataURI)
-  - [ ] InlineBinary encoding (Base64)
-  - [ ] Proper handling of all VR types in JSON
-  - [ ] PersonName JSON format (Alphabetic, Ideographic, Phonetic)
-- [ ] DICOM XML representation (optional):
+- [x] HTTP client abstraction layer:
+  - [x] `HTTPClient` protocol for pluggable backends
+  - [x] `URLSessionHTTPClient` default implementation using URLSession
+  - [x] Configurable timeouts (connect, read, resource)
+  - [x] Request/response handling with headers
+  - [ ] HTTP/2 support for connection multiplexing (platform dependent)
+  - [ ] Request/response interceptors for logging (deferred to advanced features)
+  - [ ] Automatic retry with configurable policies (deferred to advanced features)
+- [x] DICOM JSON representation (PS3.18 Section F):
+  - [x] `DICOMJSONEncoder` - DataSet to JSON serialization
+  - [x] `DICOMJSONDecoder` - JSON to DataSet deserialization
+  - [x] `BulkDataReference` - Bulk data URI handling
+  - [x] InlineBinary encoding (Base64)
+  - [x] Proper handling of all VR types in JSON
+  - [x] PersonName JSON format (Alphabetic, Ideographic, Phonetic)
+- [ ] DICOM XML representation (deferred to future milestone):
   - [ ] DataSet to XML serialization
   - [ ] XML to DataSet deserialization
-- [ ] Multipart MIME handling (PS3.18 Section 8):
-  - [ ] `multipart/related` parsing and generation
-  - [ ] Boundary detection and handling
-  - [ ] Content-Type header parsing (type, boundary parameters)
-  - [ ] Efficient streaming for large payloads
-  - [ ] Support for nested multipart content
-- [ ] Media type definitions:
-  - [ ] `application/dicom` - DICOM Part 10 files
-  - [ ] `application/dicom+json` - DICOM JSON
-  - [ ] `application/dicom+xml` - DICOM XML
-  - [ ] `application/octet-stream` - Bulk data
-  - [ ] `image/jpeg`, `image/png`, `image/gif` - Rendered frames
-  - [ ] `video/mpeg`, `video/mp4` - Video content
-- [ ] URL path construction utilities:
-  - [ ] Study, Series, Instance URL building
-  - [ ] Query parameter encoding
-  - [ ] URL template handling for server configuration
-- [ ] `DICOMwebError` error types:
-  - [ ] HTTP status code mapping (4xx, 5xx)
-  - [ ] DICOM-specific error conditions
-  - [ ] Detailed error responses with Warning header parsing
-- [ ] `DICOMwebConfiguration` for client/server settings:
-  - [ ] Base URL configuration
-  - [ ] Authentication settings
-  - [ ] Default Accept/Content-Type headers
-  - [ ] Request timeout configuration
+- [x] Multipart MIME handling (PS3.18 Section 8):
+  - [x] `MultipartMIME` - multipart/related parsing and generation
+  - [x] `MultipartMIME.parse()` - boundary detection and handling
+  - [x] Content-Type header parsing (type, boundary parameters)
+  - [x] `MultipartMIME.Builder` - fluent API for construction
+  - [x] Part factories for DICOM, DICOM JSON, bulk data
+  - [x] Round-trip encoding/decoding support
+  - [ ] Efficient streaming for large payloads (deferred)
+  - [ ] Support for nested multipart content (deferred)
+- [x] Media type definitions (`DICOMMediaType`):
+  - [x] `application/dicom` - DICOM Part 10 files
+  - [x] `application/dicom+json` - DICOM JSON
+  - [x] `application/dicom+xml` - DICOM XML
+  - [x] `application/octet-stream` - Bulk data
+  - [x] `image/jpeg`, `image/png`, `image/gif` - Rendered frames
+  - [x] `video/mpeg`, `video/mp4` - Video content
+  - [x] `multipart/related` - Multipart MIME with boundary and type
+  - [x] Media type parsing and generation
+- [x] URL path construction utilities (`DICOMwebURLBuilder`):
+  - [x] Study, Series, Instance URL building (WADO-RS)
+  - [x] Search URL building (QIDO-RS)
+  - [x] Frames and rendered URLs
+  - [x] Bulk data URLs
+  - [x] Metadata URLs
+  - [x] Query parameter encoding
+  - [x] URL template handling for server configuration
+- [x] `DICOMwebError` error types:
+  - [x] HTTP status code mapping (4xx, 5xx)
+  - [x] DICOM-specific error conditions
+  - [x] Error classification (transient, client, server)
+  - [x] Retry-After header support
+  - [x] Detailed error descriptions
+- [x] `DICOMwebConfiguration` for client settings:
+  - [x] Base URL configuration
+  - [x] Authentication settings (basic, bearer, API key, custom)
+  - [x] Default Accept/Content-Type headers
+  - [x] Request timeout configuration
+  - [x] Custom headers support
+  - [x] URL builder integration
 
 #### Technical Notes
 - Reference: PS3.18 Section 6 - Media Types and Transfer Syntaxes
@@ -1000,11 +1016,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Consider memory-efficient streaming for large multipart responses
 
 #### Acceptance Criteria
-- [ ] DICOM JSON serialization/deserialization is compliant with PS3.18
-- [ ] Multipart MIME parsing handles edge cases correctly
-- [ ] Round-trip tests: DataSet → JSON → DataSet produces identical data
-- [ ] Unit tests cover all media types and encoding scenarios
-- [ ] Documentation for core infrastructure types
+- [x] DICOM JSON serialization/deserialization is compliant with PS3.18
+- [x] Multipart MIME parsing handles edge cases correctly
+- [x] Round-trip tests: DataSet → JSON → DataSet produces identical data
+- [x] Unit tests cover all media types and encoding scenarios (124 tests)
+- [x] Documentation for core infrastructure types
 
 ---
 
