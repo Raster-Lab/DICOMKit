@@ -359,4 +359,103 @@ struct DataElementTests {
         #expect(element.personNameValue == nil)
         #expect(element.personNameValues == nil)
     }
+    
+    // MARK: - Extended VR Support Tests
+    
+    @Test("UInt16 value extraction with SS VR")
+    func testUInt16ValueWithSS() {
+        var data = Data()
+        data.append(0x00)  // 512 in little endian
+        data.append(0x02)
+        
+        // SS (Signed Short) should also work for uint16Value
+        let element = DataElement(tag: Tag.rows, vr: .SS, length: 2, valueData: data)
+        #expect(element.uint16Value == 512)
+    }
+    
+    @Test("UInt16 value extraction with UN VR")
+    func testUInt16ValueWithUN() {
+        var data = Data()
+        data.append(0x00)  // 256 in little endian
+        data.append(0x01)
+        
+        // UN (Unknown) with 2-byte data should work for uint16Value
+        let element = DataElement(tag: Tag.columns, vr: .UN, length: 2, valueData: data)
+        #expect(element.uint16Value == 256)
+    }
+    
+    @Test("UInt16 value extraction with OW VR")
+    func testUInt16ValueWithOW() {
+        var data = Data()
+        data.append(0x08)  // 2056 in little endian
+        data.append(0x08)
+        
+        // OW (Other Word) should work for uint16Value
+        let element = DataElement(tag: Tag.bitsAllocated, vr: .OW, length: 2, valueData: data)
+        #expect(element.uint16Value == 2056)
+    }
+    
+    @Test("UInt16 values extraction with SS VR")
+    func testUInt16ValuesWithSS() {
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x02]) // 512
+        data.append(contentsOf: [0x00, 0x01]) // 256
+        
+        // SS VR with multiple values
+        let element = DataElement(tag: Tag.rows, vr: .SS, length: 4, valueData: data)
+        let values = element.uint16Values
+        #expect(values?.count == 2)
+        #expect(values?[0] == 512)
+        #expect(values?[1] == 256)
+    }
+    
+    @Test("UInt32 value extraction with SL VR")
+    func testUInt32ValueWithSL() {
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x10, 0x00, 0x00]) // 4096 in little endian
+        
+        // SL (Signed Long) should also work for uint32Value
+        let element = DataElement(tag: Tag.fileMetaInformationGroupLength, vr: .SL, length: 4, valueData: data)
+        #expect(element.uint32Value == 4096)
+    }
+    
+    @Test("UInt32 value extraction with UN VR")
+    func testUInt32ValueWithUN() {
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x04, 0x00, 0x00]) // 1024 in little endian
+        
+        // UN (Unknown) with 4-byte data should work for uint32Value
+        let element = DataElement(tag: Tag.fileMetaInformationGroupLength, vr: .UN, length: 4, valueData: data)
+        #expect(element.uint32Value == 1024)
+    }
+    
+    @Test("UInt32 value extraction with OL VR")
+    func testUInt32ValueWithOL() {
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x08, 0x00, 0x00]) // 2048 in little endian
+        
+        // OL (Other Long) should work for uint32Value
+        let element = DataElement(tag: Tag.fileMetaInformationGroupLength, vr: .OL, length: 4, valueData: data)
+        #expect(element.uint32Value == 2048)
+    }
+    
+    @Test("UInt16 value returns nil for incompatible VR")
+    func testUInt16ValueReturnsNilForIncompatibleVR() {
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x01])
+        
+        // UL is a 32-bit VR, not compatible with uint16Value
+        let element = DataElement(tag: Tag.rows, vr: .UL, length: 2, valueData: data)
+        #expect(element.uint16Value == nil)
+    }
+    
+    @Test("UInt32 value returns nil for incompatible VR")
+    func testUInt32ValueReturnsNilForIncompatibleVR() {
+        var data = Data()
+        data.append(contentsOf: [0x00, 0x01, 0x00, 0x00])
+        
+        // US is a 16-bit VR, not compatible with uint32Value
+        let element = DataElement(tag: Tag.fileMetaInformationGroupLength, vr: .US, length: 4, valueData: data)
+        #expect(element.uint32Value == nil)
+    }
 }

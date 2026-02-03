@@ -169,20 +169,59 @@ public struct DataElement: Sendable {
         return value.split(separator: "\\").map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
     }
     
-    /// Extracts the value as a 16-bit unsigned integer (for US VR)
+    /// Extracts the value as a 16-bit unsigned integer
+    ///
+    /// Supports VR types that can contain 16-bit values:
+    /// - US (Unsigned Short): Primary VR for unsigned 16-bit values
+    /// - SS (Signed Short): Binary compatible, reads raw 2-byte value
+    /// - UN (Unknown): Unknown VR with 2-byte data
+    /// - OW (Other Word): 16-bit words
+    ///
+    /// **Note**: For SS VR, the raw bytes are read directly. If the signed value
+    /// is negative, it will appear as a large unsigned value (e.g., -1 → 65535).
+    /// For DICOM image pixel attributes like Rows, Columns, Bits Allocated, etc.,
+    /// values are always non-negative, so this behavior is correct.
+    ///
+    /// This flexibility is needed because some valid DICOM files may encode
+    /// pixel descriptor attributes with different VRs than strictly specified.
+    /// Reference: PS3.5 Section 6.2
     public var uint16Value: UInt16? {
-        guard vr == .US && valueData.count >= 2 else {
+        // Accept VRs that can contain 16-bit integer data
+        switch vr {
+        case .US, .SS, .UN, .OW:
+            guard valueData.count >= 2 else {
+                return nil
+            }
+            return valueData.readUInt16LE(at: 0)
+        default:
             return nil
         }
-        return valueData.readUInt16LE(at: 0)
     }
     
-    /// Extracts the value as a 32-bit unsigned integer (for UL VR)
+    /// Extracts the value as a 32-bit unsigned integer
+    ///
+    /// Supports VR types that can contain 32-bit values:
+    /// - UL (Unsigned Long): Primary VR for unsigned 32-bit values
+    /// - SL (Signed Long): Binary compatible, reads raw 4-byte value
+    /// - UN (Unknown): Unknown VR with 4-byte data
+    /// - OL (Other Long): 32-bit words
+    ///
+    /// **Note**: For SL VR, the raw bytes are read directly. If the signed value
+    /// is negative, it will appear as a large unsigned value. For DICOM length
+    /// fields and similar attributes, values are always non-negative.
+    ///
+    /// Reference: PS3.5 Section 6.2
     public var uint32Value: UInt32? {
-        guard vr == .UL && valueData.count >= 4 else {
+        // Accept VRs that can contain 32-bit integer data
+        switch vr {
+        case .UL, .SL, .UN, .OL:
+            guard valueData.count >= 4 else {
+                return nil
+            }
+            return valueData.readUInt32LE(at: 0)
+        default:
             return nil
         }
-        return valueData.readUInt32LE(at: 0)
     }
     
     /// Extracts the value as a 16-bit signed integer (for SS VR)
@@ -217,12 +256,22 @@ public struct DataElement: Sendable {
         return valueData.readFloat64LE(at: 0)
     }
     
-    /// Extracts multiple 16-bit unsigned integer values (for US VR with multiplicity)
+    /// Extracts multiple 16-bit unsigned integer values
+    ///
+    /// Supports VR types that can contain 16-bit values:
+    /// - US (Unsigned Short): Primary VR for unsigned 16-bit values
+    /// - SS (Signed Short): Signed 16-bit, interpreted as unsigned
+    /// - UN (Unknown): Unknown VR with 2-byte data
+    /// - OW (Other Word): 16-bit words
     ///
     /// Many DICOM elements can have multiple values. This property returns all values.
     /// Reference: PS3.5 Section 6.2 - Value Multiplicity
     public var uint16Values: [UInt16]? {
-        guard vr == .US else {
+        // Accept VRs that can contain 16-bit integer data
+        switch vr {
+        case .US, .SS, .UN, .OW:
+            break
+        default:
             return nil
         }
         
@@ -241,9 +290,21 @@ public struct DataElement: Sendable {
         return values.isEmpty ? nil : values
     }
     
-    /// Extracts multiple 32-bit unsigned integer values (for UL VR with multiplicity)
+    /// Extracts multiple 32-bit unsigned integer values
+    ///
+    /// Supports VR types that can contain 32-bit values:
+    /// - UL (Unsigned Long): Primary VR for unsigned 32-bit values
+    /// - SL (Signed Long): Signed 32-bit, interpreted as unsigned
+    /// - UN (Unknown): Unknown VR with 4-byte data
+    /// - OL (Other Long): 32-bit words
+    ///
+    /// Reference: PS3.5 Section 6.2 - Value Multiplicity
     public var uint32Values: [UInt32]? {
-        guard vr == .UL else {
+        // Accept VRs that can contain 32-bit integer data
+        switch vr {
+        case .UL, .SL, .UN, .OL:
+            break
+        default:
             return nil
         }
         
