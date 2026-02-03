@@ -173,9 +173,14 @@ public struct DataElement: Sendable {
     ///
     /// Supports VR types that can contain 16-bit values:
     /// - US (Unsigned Short): Primary VR for unsigned 16-bit values
-    /// - SS (Signed Short): Signed 16-bit, interpreted as unsigned
+    /// - SS (Signed Short): Binary compatible, reads raw 2-byte value
     /// - UN (Unknown): Unknown VR with 2-byte data
     /// - OW (Other Word): 16-bit words
+    ///
+    /// **Note**: For SS VR, the raw bytes are read directly. If the signed value
+    /// is negative, it will appear as a large unsigned value (e.g., -1 → 65535).
+    /// For DICOM image pixel attributes like Rows, Columns, Bits Allocated, etc.,
+    /// values are always non-negative, so this behavior is correct.
     ///
     /// This flexibility is needed because some valid DICOM files may encode
     /// pixel descriptor attributes with different VRs than strictly specified.
@@ -197,9 +202,13 @@ public struct DataElement: Sendable {
     ///
     /// Supports VR types that can contain 32-bit values:
     /// - UL (Unsigned Long): Primary VR for unsigned 32-bit values
-    /// - SL (Signed Long): Signed 32-bit, interpreted as unsigned
+    /// - SL (Signed Long): Binary compatible, reads raw 4-byte value
     /// - UN (Unknown): Unknown VR with 4-byte data
     /// - OL (Other Long): 32-bit words
+    ///
+    /// **Note**: For SL VR, the raw bytes are read directly. If the signed value
+    /// is negative, it will appear as a large unsigned value. For DICOM length
+    /// fields and similar attributes, values are always non-negative.
     ///
     /// Reference: PS3.5 Section 6.2
     public var uint32Value: UInt32? {
