@@ -228,6 +228,21 @@ public struct DICOMwebURLBuilder: Sendable {
             .appendingPathComponent(attributePath)
     }
     
+    // MARK: - STOW-RS URLs
+    
+    /// URL for storing instances (STOW-RS)
+    /// - Returns: URL for `POST /studies`
+    public var storeURL: URL {
+        return studiesURL
+    }
+    
+    /// URL for storing instances to a specific study (STOW-RS)
+    /// - Parameter studyUID: The Study Instance UID
+    /// - Returns: URL for `POST /studies/{studyUID}`
+    public func storeURL(studyUID: String) -> URL {
+        return studyURL(studyUID: studyUID)
+    }
+    
     // MARK: - URL with Query Parameters
     
     /// Appends query parameters to a URL
