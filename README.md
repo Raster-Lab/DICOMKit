@@ -10,9 +10,29 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.7.8)
+## Features (v0.8.2)
 
-- ✅ **Unified Storage Client (NEW in v0.7.8)**
+- ✅ **DICOMweb WADO-RS Client (NEW in v0.8.2)**
+  - ✅ DICOMwebClient for retrieving DICOM objects over HTTP/HTTPS
+  - ✅ Study, series, and instance retrieval
+  - ✅ Metadata retrieval (JSON format)
+  - ✅ Frame-level retrieval for multi-frame images
+  - ✅ Rendered image retrieval (JPEG, PNG, GIF)
+  - ✅ Thumbnail retrieval at study, series, and instance levels
+  - ✅ Bulk data retrieval with range requests
+  - ✅ Transfer syntax negotiation
+  - ✅ Streaming downloads with AsyncThrowingStream
+  - ✅ Progress reporting (bytes and instances)
+  - ✅ Cancellation support via Swift Task
+  - ✅ Render options (windowing, viewport, quality)
+- ✅ **DICOMweb Infrastructure (v0.8.1)**
+  - ✅ HTTPClient with retry and interceptor support
+  - ✅ DICOM JSON encoding/decoding (PS3.18 Annex F)
+  - ✅ Multipart MIME parsing and generation
+  - ✅ URL builder for all DICOMweb endpoints
+  - ✅ Authentication (Basic, Bearer, API Key, Custom)
+  - ✅ Configurable timeouts
+- ✅ **Unified Storage Client (v0.7.8)**
   - ✅ DICOMStorageClient actor for unified storage operations
   - ✅ Server pool management with multiple storage destinations
   - ✅ Multiple selection strategies (round-robin, priority, weighted, random, failover)
@@ -1256,9 +1276,85 @@ await auditLogger.logSecurityEvent(
 )
 ```
 
+### DICOMweb Client (v0.8.2)
+
+DICOMKit provides a modern RESTful DICOMweb client for retrieving DICOM objects over HTTP/HTTPS.
+
+```swift
+import DICOMWeb
+
+// Configure the DICOMweb client
+let config = try DICOMwebConfiguration(
+    baseURLString: "https://pacs.example.com/dicom-web",
+    authentication: .bearer(token: "your-oauth-token")
+)
+let client = DICOMwebClient(configuration: config)
+
+// Retrieve all instances in a study
+let result = try await client.retrieveStudy(studyUID: "1.2.3.4.5.6789")
+print("Retrieved \(result.instances.count) instances")
+
+// Retrieve as a stream for large studies
+for try await instanceData in client.retrieveStudyStream(studyUID: "1.2.3.4.5.6789") {
+    // Process each instance as it arrives
+    print("Received instance: \(instanceData.count) bytes")
+}
+
+// Retrieve a specific instance
+let instanceData = try await client.retrieveInstance(
+    studyUID: "1.2.3.4.5.6789",
+    seriesUID: "1.2.3.4.5.6789.1",
+    instanceUID: "1.2.3.4.5.6789.1.1"
+)
+
+// Retrieve metadata (DICOM JSON)
+let metadata = try await client.retrieveStudyMetadata(studyUID: "1.2.3.4.5.6789")
+for instance in metadata {
+    if let patientName = instance["00100010"] as? [String: Any],
+       let value = patientName["Value"] as? [[String: String]],
+       let alphabetic = value.first?["Alphabetic"] {
+        print("Patient: \(alphabetic)")
+    }
+}
+
+// Retrieve specific frames from a multi-frame image
+let frames = try await client.retrieveFrames(
+    studyUID: "1.2.3.4.5.6789",
+    seriesUID: "1.2.3.4.5.6789.1",
+    instanceUID: "1.2.3.4.5.6789.1.1",
+    frames: [1, 5, 10]
+)
+
+// Retrieve a rendered image (JPEG) with windowing
+let imageData = try await client.retrieveRenderedInstance(
+    studyUID: "1.2.3.4.5.6789",
+    seriesUID: "1.2.3.4.5.6789.1",
+    instanceUID: "1.2.3.4.5.6789.1.1",
+    options: DICOMwebClient.RenderOptions(
+        windowCenter: 40,
+        windowWidth: 400,
+        viewportWidth: 512,
+        viewportHeight: 512,
+        quality: 85,
+        format: .jpeg
+    )
+)
+
+// Retrieve a thumbnail
+let thumbnailData = try await client.retrieveStudyThumbnail(
+    studyUID: "1.2.3.4.5.6789",
+    options: .thumbnail(size: 128)
+)
+
+// Retrieve bulk data from a metadata response
+if let bulkDataURI = "https://pacs.example.com/dicom-web/studies/.../bulkdata/7FE00010" {
+    let pixelData = try await client.retrieveBulkData(uri: bulkDataURI)
+}
+```
+
 ## Architecture
 
-DICOMKit is organized into three modules:
+DICOMKit is organized into four modules:
 
 ### DICOMCore
 Core data types and utilities:
@@ -1360,6 +1456,22 @@ High-level API:
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
+### DICOMWeb (v0.8.1, v0.8.2)
+DICOMweb (RESTful DICOM) client implementation:
+- `DICOMwebClient` - WADO-RS client for retrieving DICOM objects over HTTP (NEW in v0.8.2)
+- `RetrieveResult` - Result type for retrieve operations (NEW in v0.8.2)
+- `FrameResult` - Result type for frame retrieval (NEW in v0.8.2)
+- `RenderOptions` - Options for rendered image retrieval (NEW in v0.8.2)
+- `RetrieveProgress` - Progress information for downloads (NEW in v0.8.2)
+- `HTTPClient` - HTTP client with retry and interceptor support (v0.8.1)
+- `DICOMwebConfiguration` - Configuration for DICOMweb clients (v0.8.1)
+- `DICOMwebURLBuilder` - URL construction utilities (v0.8.1)
+- `DICOMJSONEncoder` - DICOM JSON encoding per PS3.18 Annex F (v0.8.1)
+- `DICOMJSONDecoder` - DICOM JSON decoding per PS3.18 Annex F (v0.8.1)
+- `MultipartMIME` - Multipart MIME parsing and generation (v0.8.1)
+- `DICOMMediaType` - Media type definitions (v0.8.1)
+- `DICOMwebError` - Error types for DICOMweb operations (v0.8.1)
+
 ## DICOM Standard Compliance
 
 DICOMKit implements:
@@ -1369,6 +1481,7 @@ DICOMKit implements:
 - **DICOM PS3.8 2025e** - Network Communication Support (Upper Layer Protocol)
 - **DICOM PS3.10 2025e** - Media Storage and File Format
 - **DICOM PS3.15 2025e** - Security and System Management Profiles (TLS support)
+- **DICOM PS3.18 2025e** - Web Services (DICOMweb WADO-RS, DICOM JSON)
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
 
@@ -1386,4 +1499,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.7.8 - adding the unified DICOMStorageClient with server pool management and automatic failover. The library now provides a comprehensive storage client with multiple server selection strategies (round-robin, priority, weighted, random, failover), per-server circuit breakers, and automatic retry logic. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.2 - adding the DICOMweb WADO-RS client for retrieving DICOM objects over HTTP/HTTPS. The library now supports modern RESTful DICOM web services including study/series/instance retrieval, metadata access, frame extraction, rendered images, thumbnails, and bulk data. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

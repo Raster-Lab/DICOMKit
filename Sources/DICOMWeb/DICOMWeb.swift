@@ -8,6 +8,7 @@
 ///
 /// ## Key Components
 ///
+/// - ``DICOMwebClient``: Client for WADO-RS retrieve operations
 /// - ``DICOMJSONEncoder``: Encodes DICOM DataElements to JSON format
 /// - ``DICOMJSONDecoder``: Decodes JSON to DICOM DataElements
 /// - ``MultipartMIME``: Handles multipart/related messages
@@ -29,6 +30,22 @@
 ///     authentication: .bearer(token: "your-token")
 /// )
 ///
+/// // Create DICOMweb client for WADO-RS operations
+/// let client = DICOMwebClient(configuration: config)
+///
+/// // Retrieve a study
+/// let result = try await client.retrieveStudy(studyUID: "1.2.3.4.5")
+///
+/// // Retrieve metadata
+/// let metadata = try await client.retrieveStudyMetadata(studyUID: "1.2.3.4.5")
+///
+/// // Retrieve a rendered image
+/// let imageData = try await client.retrieveRenderedInstance(
+///     studyUID: "1.2.3.4.5",
+///     seriesUID: "1.2.3.4.5.6",
+///     instanceUID: "1.2.3.4.5.6.7"
+/// )
+///
 /// // Encode data to JSON
 /// let encoder = DICOMJSONEncoder()
 /// let jsonData = try encoder.encode(elements)
@@ -43,10 +60,11 @@
 /// - DICOM PS3.18 - Web Services
 /// - DICOM PS3.18 Annex F - DICOM JSON Model
 /// - DICOM PS3.18 Section 8 - Multipart MIME
+/// - DICOM PS3.18 Section 10.4 - WADO-RS
 ///
 public enum DICOMWeb {
     /// The version of the DICOMWeb module
-    public static let version = "0.8.1"
+    public static let version = "0.8.2"
 }
 
 // Re-export DICOMCore types commonly used with DICOMWeb
