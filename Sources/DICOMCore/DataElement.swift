@@ -176,6 +176,7 @@ public struct DataElement: Sendable {
     /// - SS (Signed Short): Binary compatible, reads raw 2-byte value
     /// - UN (Unknown): Unknown VR with 2-byte data
     /// - OW (Other Word): 16-bit words
+    /// - IS (Integer String): Parses string representation to integer
     ///
     /// **Note**: For SS VR, the raw bytes are read directly. If the signed value
     /// is negative, it will appear as a large unsigned value (e.g., -1 → 65535).
@@ -193,6 +194,15 @@ public struct DataElement: Sendable {
                 return nil
             }
             return valueData.readUInt16LE(at: 0)
+        case .IS:
+            // Handle Integer String VR - some legacy/non-compliant files
+            // may encode pixel descriptor attributes as strings
+            guard let string = stringValue,
+                  let intValue = Int(string.trimmingCharacters(in: .whitespaces)),
+                  intValue >= 0, intValue <= UInt16.max else {
+                return nil
+            }
+            return UInt16(intValue)
         default:
             return nil
         }
@@ -263,6 +273,7 @@ public struct DataElement: Sendable {
     /// - SS (Signed Short): Signed 16-bit, interpreted as unsigned
     /// - UN (Unknown): Unknown VR with 2-byte data
     /// - OW (Other Word): 16-bit words
+    /// - IS (Integer String): Parses string representation to integers
     ///
     /// Many DICOM elements can have multiple values. This property returns all values.
     /// Reference: PS3.5 Section 6.2 - Value Multiplicity
@@ -270,24 +281,35 @@ public struct DataElement: Sendable {
         // Accept VRs that can contain 16-bit integer data
         switch vr {
         case .US, .SS, .UN, .OW:
-            break
+            let count = valueData.count / 2
+            guard count > 0 else {
+                return []
+            }
+            
+            var values: [UInt16] = []
+            for i in 0..<count {
+                if let value = valueData.readUInt16LE(at: i * 2) {
+                    values.append(value)
+                }
+            }
+            
+            return values.isEmpty ? nil : values
+        case .IS:
+            // Handle Integer String VR - parse backslash-separated values
+            guard let strings = stringValues else {
+                return nil
+            }
+            var values: [UInt16] = []
+            for str in strings {
+                if let intValue = Int(str.trimmingCharacters(in: .whitespaces)),
+                   intValue >= 0, intValue <= UInt16.max {
+                    values.append(UInt16(intValue))
+                }
+            }
+            return values.isEmpty ? nil : values
         default:
             return nil
         }
-        
-        let count = valueData.count / 2
-        guard count > 0 else {
-            return []
-        }
-        
-        var values: [UInt16] = []
-        for i in 0..<count {
-            if let value = valueData.readUInt16LE(at: i * 2) {
-                values.append(value)
-            }
-        }
-        
-        return values.isEmpty ? nil : values
     }
     
     /// Extracts multiple 32-bit unsigned integer values

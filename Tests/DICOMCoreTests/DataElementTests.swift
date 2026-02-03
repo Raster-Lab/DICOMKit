@@ -458,4 +458,63 @@ struct DataElementTests {
         let element = DataElement(tag: Tag.fileMetaInformationGroupLength, vr: .US, length: 4, valueData: data)
         #expect(element.uint32Value == nil)
     }
+    
+    // MARK: - Integer String VR to UInt16 Conversion Tests
+    
+    @Test("UInt16 value extraction with IS VR")
+    func testUInt16ValueWithIS() {
+        // Test: IS (Integer String) VR containing "512"
+        let data = "512".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 512)
+    }
+    
+    @Test("UInt16 value extraction with IS VR with whitespace")
+    func testUInt16ValueWithISWhitespace() {
+        // Test: IS VR with leading/trailing whitespace
+        let data = "  256  ".data(using: .utf8)!
+        let element = DataElement(tag: Tag.columns, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 256)
+    }
+    
+    @Test("UInt16 value extraction with IS VR boundary values")
+    func testUInt16ValueWithISBoundary() {
+        // Test: Maximum UInt16 value
+        let data = "65535".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 65535)
+        
+        // Test: Zero value
+        let zeroData = "0".data(using: .utf8)!
+        let zeroElement = DataElement(tag: Tag.columns, vr: .IS, length: UInt32(zeroData.count), valueData: zeroData)
+        #expect(zeroElement.uint16Value == 0)
+    }
+    
+    @Test("UInt16 value extraction with IS VR returns nil for out of range")
+    func testUInt16ValueWithISOutOfRange() {
+        // Test: Value exceeds UInt16.max
+        let data = "70000".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == nil)
+    }
+    
+    @Test("UInt16 value extraction with IS VR returns nil for negative")
+    func testUInt16ValueWithISNegative() {
+        // Test: Negative value
+        let data = "-100".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == nil)
+    }
+    
+    @Test("UInt16 values extraction with IS VR multiple values")
+    func testUInt16ValuesWithIS() {
+        // Test: IS VR with backslash-separated values
+        let data = "512\\256\\128".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        let values = element.uint16Values
+        #expect(values?.count == 3)
+        #expect(values?[0] == 512)
+        #expect(values?[1] == 256)
+        #expect(values?[2] == 128)
+    }
 }

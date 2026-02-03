@@ -363,7 +363,7 @@ struct DICOMParser {
         
         // Look up VR from the dictionary
         // If not found, use UN (Unknown) per PS3.5 Section 6.2.2
-        let vr: VR
+        var vr: VR
         if let entry = DataElementDictionary.lookup(tag: tag) {
             vr = entry.vr.first ?? .UN
         } else {
@@ -371,14 +371,17 @@ struct DICOMParser {
             vr = .UN
         }
         
+        // Handle undefined length - this indicates a sequence even if the dictionary
+        // doesn't know about this tag. In Implicit VR, undefined length is ONLY valid
+        // for sequences per DICOM PS3.5.
+        if valueLength == 0xFFFFFFFF {
+            // Treat as a sequence regardless of dictionary VR
+            vr = .SQ
+        }
+        
         // Handle sequence elements (SQ VR)
         if vr == .SQ {
             return try parseSequenceElement(tag: tag, vr: vr, valueLength: valueLength, isExplicitVR: false, byteOrder: byteOrder)
-        }
-        
-        // Handle undefined length for non-sequence elements - skip to delimiter
-        if valueLength == 0xFFFFFFFF {
-            throw DICOMError.parsingFailed("Undefined length for non-sequence elements not supported")
         }
         
         guard offset + Int(valueLength) <= data.count else {
@@ -416,7 +419,7 @@ struct DICOMParser {
         offset += 2
         
         guard let vrString = String(bytes: [vrByte0, vrByte1], encoding: .ascii),
-              let vr = VR(rawValue: vrString) else {
+              var vr = VR(rawValue: vrString) else {
             throw DICOMError.invalidVR(String(format: "%02X%02X", vrByte0, vrByte1))
         }
         
@@ -440,6 +443,13 @@ struct DICOMParser {
             }
             offset += 2
             valueLength = UInt32(length16)
+        }
+        
+        // Handle undefined length - for UN VR with undefined length, treat as sequence
+        // Per DICOM PS3.5, undefined length in Explicit VR is only valid for SQ or UN
+        // When UN has undefined length, it should be parsed as a sequence
+        if valueLength == 0xFFFFFFFF && vr == .UN {
+            vr = .SQ
         }
         
         // Handle sequence elements (SQ VR)
