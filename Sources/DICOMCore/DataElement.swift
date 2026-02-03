@@ -177,6 +177,7 @@ public struct DataElement: Sendable {
     /// - UN (Unknown): Unknown VR with 2-byte data
     /// - OW (Other Word): 16-bit words
     /// - OB (Other Byte): When exactly 2 bytes, can represent a 16-bit value
+    /// - IS (Integer String): Some non-compliant DICOM files use IS for pixel attributes
     ///
     /// **Note**: For SS VR, the raw bytes are read directly. If the signed value
     /// is negative, it will appear as a large unsigned value (e.g., -1 → 65535).
@@ -185,7 +186,7 @@ public struct DataElement: Sendable {
     ///
     /// This flexibility is needed because some valid DICOM files may encode
     /// pixel descriptor attributes with different VRs than strictly specified.
-    /// Some DICOM implementations incorrectly encode US attributes as OB.
+    /// Some DICOM implementations incorrectly encode US attributes as OB or IS.
     /// Reference: PS3.5 Section 6.2
     public var uint16Value: UInt16? {
         // Accept VRs that can contain 16-bit integer data
@@ -201,6 +202,10 @@ public struct DataElement: Sendable {
                 return nil
             }
             return valueData.readUInt16LE(at: 0)
+        case .IS:
+            // Support IS (Integer String) for non-compliant DICOM files that encode
+            // pixel attributes like Rows, Columns, Bits Allocated, etc. as IS instead of US
+            return integerStringValue?.uint16Value
         default:
             return nil
         }

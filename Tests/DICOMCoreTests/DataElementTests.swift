@@ -517,4 +517,87 @@ struct DataElementTests {
         let element = DataElement(tag: Tag.rows, vr: .OB, length: 3, valueData: data)
         #expect(element.uint16Values == nil)
     }
+    
+    // MARK: - IS VR Support Tests (for non-compliant DICOM files)
+    
+    @Test("UInt16 value extraction with IS VR")
+    func testUInt16ValueWithIS() {
+        // IS (Integer String) should be parseable as uint16 for non-compliant DICOM files
+        // that encode pixel attributes like Rows, Columns, Bits Allocated, etc. as IS instead of US
+        let data = "512".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 512)
+    }
+    
+    @Test("UInt16 value extraction with IS VR and whitespace padding")
+    func testUInt16ValueWithISWhitespacePadded() {
+        // IS values can be padded with whitespace
+        let data = "  256  ".data(using: .utf8)!
+        let element = DataElement(tag: Tag.columns, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 256)
+    }
+    
+    @Test("UInt16 value extraction with IS VR at maximum value")
+    func testUInt16ValueWithISMaxValue() {
+        // Maximum uint16 value (65535)
+        let data = "65535".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 65535)
+    }
+    
+    @Test("UInt16 value extraction with IS VR returns nil for negative values")
+    func testUInt16ValueWithISReturnsNilForNegative() {
+        // Negative values cannot be converted to uint16
+        let data = "-1".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == nil)
+    }
+    
+    @Test("UInt16 value extraction with IS VR returns nil for values exceeding uint16 range")
+    func testUInt16ValueWithISReturnsNilForOverflow() {
+        // Values > 65535 cannot be converted to uint16
+        let data = "65536".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == nil)
+    }
+    
+    @Test("UInt16 value extraction with IS VR returns nil for non-numeric string")
+    func testUInt16ValueWithISReturnsNilForInvalidString() {
+        // Non-numeric strings cannot be converted to uint16
+        let data = "abc".data(using: .utf8)!
+        let element = DataElement(tag: Tag.rows, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == nil)
+    }
+    
+    @Test("UInt16 value extraction with IS VR for Bits Allocated")
+    func testUInt16ValueWithISForBitsAllocated() {
+        // Common case: Bits Allocated encoded as IS instead of US
+        let data = "16".data(using: .utf8)!
+        let element = DataElement(tag: Tag.bitsAllocated, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 16)
+    }
+    
+    @Test("UInt16 value extraction with IS VR for Bits Stored")
+    func testUInt16ValueWithISForBitsStored() {
+        // Common case: Bits Stored encoded as IS instead of US
+        let data = "12".data(using: .utf8)!
+        let element = DataElement(tag: Tag.bitsStored, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 12)
+    }
+    
+    @Test("UInt16 value extraction with IS VR for High Bit")
+    func testUInt16ValueWithISForHighBit() {
+        // Common case: High Bit encoded as IS instead of US
+        let data = "11".data(using: .utf8)!
+        let element = DataElement(tag: Tag.highBit, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 11)
+    }
+    
+    @Test("UInt16 value extraction with IS VR for Pixel Representation")
+    func testUInt16ValueWithISForPixelRepresentation() {
+        // Common case: Pixel Representation encoded as IS instead of US
+        let data = "0".data(using: .utf8)!
+        let element = DataElement(tag: Tag.pixelRepresentation, vr: .IS, length: UInt32(data.count), valueData: data)
+        #expect(element.uint16Value == 0)
+    }
 }
