@@ -491,11 +491,6 @@ public struct KeyObjectSelectionBuilder: Sendable {
                 "Key Object Selection document must contain at least one referenced object"
             )
         }
-        
-        // Document title should be set
-        if documentTitle == nil {
-            // Will use default "Of Interest" in build()
-        }
     }
 }
 
