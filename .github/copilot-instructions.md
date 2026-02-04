@@ -141,6 +141,30 @@ When finishing any task that involves feature additions, API changes, or version
 
 5. **Update the Limitations section** if any limitations were addressed or new ones discovered
 
+### MILESTONES.md Updates
+When finishing any task that involves milestone progress:
+
+1. **Update the Status field** if a milestone's status has changed
+   - Change "In Progress" to "Completed" when all deliverables are done
+   - Change "Planned" to "In Progress" when work begins
+
+2. **Update checklist items** to reflect completed work
+   - Mark items as `[x]` when completed
+   - Add new items if scope expanded during implementation
+   - Note any deferred items with "(deferred to Milestone X.Y)"
+
+3. **Update the Milestone Summary table** at the end of each major milestone section
+   - Update the Status column (✅ Completed, In Progress, Planned)
+   - Update the Key Deliverables column with accurate test counts or feature summaries
+
+4. **Update acceptance criteria** to reflect what was achieved
+   - Mark completed criteria as `[x]`
+   - Note any criteria that were partially met or deferred
+
+5. **Update Technical Notes** if implementation details changed
+   - Add references to relevant DICOM standard sections
+   - Note any design decisions or constraints discovered
+
 ### Code Examples
 If new APIs were added:
 - Add usage examples in the appropriate "Quick Start" or feature-specific sections
@@ -153,3 +177,12 @@ Ensure all version references are consistent throughout the README:
 - Note at the bottom of the file
 
 This helps maintain accurate and up-to-date documentation for users of DICOMKit.
+
+### Reminder
+**IMPORTANT**: Always update BOTH README.md AND MILESTONES.md when completing tasks that involve:
+- New features or functionality
+- Milestone progress (items completed, status changes)
+- Version updates
+- API additions or changes
+
+Failure to update these files can lead to inconsistent documentation and make it difficult for users and contributors to understand the current state of the project.
