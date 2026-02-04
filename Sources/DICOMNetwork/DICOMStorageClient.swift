@@ -748,11 +748,14 @@ public actor DICOMStorageClient {
         // Initialize circuit breakers for each server
         if configuration.useCircuitBreaker {
             for server in configuration.serverPool.allServers {
+                let breakerConfig = CircuitBreakerConfiguration(
+                    failureThreshold: configuration.circuitBreakerThreshold,
+                    resetTimeout: configuration.circuitBreakerResetTimeout
+                )
                 let breaker = CircuitBreaker(
                     host: server.host,
                     port: server.port,
-                    failureThreshold: configuration.circuitBreakerThreshold,
-                    resetTimeout: configuration.circuitBreakerResetTimeout
+                    configuration: breakerConfig
                 )
                 circuitBreakers[server.id] = breaker
             }
@@ -774,7 +777,7 @@ public actor DICOMStorageClient {
         guard !isStarted else { return }
         
         if configuration.useQueue, let queueConfig = configuration.queueConfiguration {
-            storeQueue = StoreAndForwardQueue(configuration: queueConfig)
+            storeQueue = try await StoreAndForwardQueue(configuration: queueConfig)
             try await storeQueue?.start()
         }
         
@@ -801,11 +804,14 @@ public actor DICOMStorageClient {
         
         // Add circuit breaker for new server
         if configuration.useCircuitBreaker {
+            let breakerConfig = CircuitBreakerConfiguration(
+                failureThreshold: configuration.circuitBreakerThreshold,
+                resetTimeout: configuration.circuitBreakerResetTimeout
+            )
             let breaker = CircuitBreaker(
                 host: server.host,
                 port: server.port,
-                failureThreshold: configuration.circuitBreakerThreshold,
-                resetTimeout: configuration.circuitBreakerResetTimeout
+                configuration: breakerConfig
             )
             circuitBreakers[server.id] = breaker
         }
@@ -902,7 +908,6 @@ public actor DICOMStorageClient {
         while true {
             // Select a server
             guard let server = selectServer(preferredID: preferredServer, excluding: attemptedServers) else {
-                let elapsed = Date().timeIntervalSince(startTime)
                 if let error = lastError {
                     throw error
                 }
@@ -977,7 +982,6 @@ public actor DICOMStorageClient {
                 // Check if we should try another server
                 if configuration.serverPool.enabledCount <= attemptedServers.count {
                     // No more servers to try
-                    let elapsed = Date().timeIntervalSince(startTime)
                     if let error = lastError {
                         throw error
                     }
@@ -1049,7 +1053,7 @@ public actor DICOMStorageClient {
         sopInstanceUID: String,
         transferSyntaxUID: String
     ) async throws -> StoreResult {
-        return try await StorageService.store(
+        return try await DICOMStorageService.store(
             dataSetData: dataSetData,
             sopClassUID: sopClassUID,
             sopInstanceUID: sopInstanceUID,
