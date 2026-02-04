@@ -2241,10 +2241,10 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Frame of reference handling
   - [x] `Comprehensive3DSRBuilder` specialized builder
   - [x] Unit tests for Comprehensive 3D SR (66 tests)
-- [ ] High-level extraction APIs:
-  - [ ] `MeasurementReport.extract(from: SRDocument) throws -> MeasurementReport`
-  - [ ] `CADFindings.extract(from: SRDocument) throws -> CADFindings`
-  - [ ] `KeyObjects.extract(from: SRDocument) throws -> [KeyObject]`
+- [x] High-level extraction APIs:
+  - [x] `MeasurementReport.extract(from: SRDocument) throws -> MeasurementReport` (50 tests)
+  - [x] `CADFindings.extract(from: SRDocument) throws -> CADFindings` (45 tests)
+  - [x] `KeyObjects.extract(from: SRDocument) throws -> KeyObjects` (45 tests)
 - [ ] Integration with AI/ML pipelines:
   - [ ] `AIInferenceResult` protocol for AI output
   - [ ] Convert AI detections to SR format
@@ -2257,18 +2257,21 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - TID 1500 is widely used for quantitative imaging and AI outputs
 - CAD SR templates have modality-specific requirements
 - Key Object Selection enables "significant image" flagging
+- Extraction APIs provide high-level access to structured data from SR documents
 
 #### Acceptance Criteria
-- [ ] All listed SR document types can be created and parsed
+- [x] All listed SR document types can be created and parsed
 - [x] TID 1500 Measurement Report fully supported (builder, templates, 60 tests)
 - [x] Mammography CAD SR template correctly encodes detection results (50 tests)
 - [x] Key Object Selection works for image flagging (38 tests)
 - [x] Chest CAD SR templates correctly encode detection results (50 tests)
+- [x] High-level extraction APIs implemented (140 tests: MeasurementReportExtractor 50, CADFindingsExtractor 45, KeyObjectExtractor 45)
 - [ ] AI/ML integration produces valid SR documents
 - [x] Unit tests for core SR types (422 tests completed: BasicTextSRBuilder 53, EnhancedSRBuilder 82, ComprehensiveSRBuilder 83, Comprehensive3DSRBuilder 66, KeyObjectSelectionBuilder 38, MammographyCADSRBuilder 50, ChestCADSRBuilder 50)
 - [x] Unit tests for TID 1500 MeasurementReportBuilder (60 tests)
 - [x] Unit tests for Mammography CAD SR (50 tests)
 - [x] Unit tests for Chest CAD SR (50 tests)
+- [x] Unit tests for extraction APIs (140 tests)
 - [ ] Example applications for common workflows
 - [ ] Integration tests with DICOM viewers (OHIF, etc.)
 

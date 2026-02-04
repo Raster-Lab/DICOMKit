@@ -136,6 +136,30 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `extractROIs(from:)` - All regions of interest
     - ✅ `computeStatistics(_:)` - Statistical summaries (mean, std dev, min, max)
     - ✅ `groupByLocation(_:)` - Group measurements by concept
+- ✅ **High-Level Extraction APIs (NEW in v0.9.8)**
+  - ✅ **MeasurementReport Extraction**
+    - ✅ `MeasurementReport.extract(from:)` - Extract TID 1500 Measurement Reports
+    - ✅ `ExtractedMeasurementGroup` with tracking identifiers and measurements
+    - ✅ Image library entry extraction
+    - ✅ Procedure reported and language of content extraction
+    - ✅ Qualitative evaluation extraction
+    - ✅ Complete roundtrip support (build → serialize → parse → extract)
+    - ✅ ~50 unit tests for comprehensive coverage
+  - ✅ **CAD Findings Extraction**
+    - ✅ `CADFindings.extract(from:)` - Extract CAD detection results
+    - ✅ Support for Mammography CAD SR and Chest CAD SR
+    - ✅ CAD processing info extraction (algorithm name, version, manufacturer)
+    - ✅ `ExtractedCADFinding` with type, probability, location, and characteristics
+    - ✅ `CADFindingLocation` with point, circle, polyline, and ellipse support
+    - ✅ Image reference linkage for findings
+    - ✅ ~45 unit tests for both CAD types
+  - ✅ **Key Object Extraction**
+    - ✅ `KeyObjects.extract(from:)` - Extract Key Object Selections
+    - ✅ Selection purpose extraction (document title)
+    - ✅ `KeyObject` with SOP Class/Instance UIDs, frames, and descriptions
+    - ✅ Support for all standard purpose codes (For Teaching, Quality Issue, etc.)
+    - ✅ Multi-frame image support
+    - ✅ ~45 unit tests for KOS documents
 - ✅ **Coded Terminology Support (v0.9.4)**
   - ✅ **Coding Scheme Infrastructure**
     - ✅ `CodingScheme` struct with designator, name, version, UID
