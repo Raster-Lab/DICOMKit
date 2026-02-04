@@ -1605,11 +1605,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] `DELETE .../series/{seriesUID}` - Delete series
   - [x] `DELETE .../instances/{instanceUID}` - Delete instance
   - [ ] Soft delete vs. permanent delete
-- [ ] `DICOMwebClient` unified API:
-  - [ ] Single client for all DICOMweb services
-  - [ ] Configuration with authentication, caching, retry
+- [x] `DICOMwebClient` unified API:
+  - [x] Single client for all DICOMweb services (WADO-RS, QIDO-RS, STOW-RS, UPS-RS)
+  - [x] Configuration with authentication, caching, retry
   - [x] Automatic token refresh (via `OAuth2TokenProvider`)
-  - [ ] Request interceptors for customization
+  - [x] Request interceptors for customization (via HTTPClient)
 
 #### Technical Notes
 - Reference: PS3.18 Section 6 - Security Considerations

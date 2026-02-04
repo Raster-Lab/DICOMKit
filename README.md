@@ -62,6 +62,14 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `DICOMwebMetrics` actor for performance tracking
     - ✅ Latency percentiles (p50, p95, p99)
     - ✅ Success/error rate tracking
+  - ✅ **Unified DICOMweb Client API (NEW in v0.8.8)**
+    - ✅ `DICOMwebClient` now supports all DICOMweb services in one client
+    - ✅ WADO-RS retrieve operations (studies, series, instances, frames, rendered, thumbnails)
+    - ✅ QIDO-RS query operations (search studies, series, instances)
+    - ✅ STOW-RS store operations (single and batch uploads)
+    - ✅ UPS-RS workitem operations (search, retrieve, create, update, change state, cancel, subscribe)
+    - ✅ Request interceptors for customization (via HTTPClient)
+    - ✅ Automatic token refresh (via OAuth2TokenProvider)
 - ✅ **UPS-RS Worklist Services (v0.8.7)**
   - ✅ `Workitem` struct for UPS workitem representation
   - ✅ `UPSState` enum with state machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
@@ -1814,8 +1822,8 @@ DICOMweb (RESTful DICOM) client and server implementation:
 - `DICOMwebServerDelegate` - Protocol for server lifecycle events (v0.8.5)
 
 **Client Components:**
-- `DICOMwebClient` - WADO-RS, QIDO-RS, and STOW-RS client for DICOM web services
-- `UPSClient` - UPS-RS (Unified Procedure Step) client for worklist management (NEW in v0.8.7)
+- `DICOMwebClient` - Unified client for all DICOMweb services: WADO-RS, QIDO-RS, STOW-RS, and UPS-RS (UPDATED in v0.8.8)
+- `UPSClient` - Standalone UPS-RS (Unified Procedure Step) client for worklist management (NEW in v0.8.7)
 - `STOWResponse` - Response type for store operations (v0.8.4)
 - `StoreProgress` - Progress information for uploads (v0.8.4)
 - `StoreOptions` - Configuration for store operations (v0.8.4)
