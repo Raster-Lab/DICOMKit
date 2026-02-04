@@ -1816,46 +1816,46 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 9.3: Content Item Navigation and Tree Traversal (v0.9.3)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Provide intuitive APIs for navigating and querying SR content trees  
 **Complexity**: Medium  
 **Dependencies**: Milestone 9.2
 
 #### Deliverables
-- [ ] Tree traversal APIs:
-  - [ ] `SRDocument.rootContentItem` - Access root container
-  - [ ] `ContentItem.children` - Direct child items
-  - [ ] `ContentItem.parent` - Parent reference (weak)
-  - [ ] Depth-first iteration via `Sequence` conformance
-  - [ ] Breadth-first iteration alternative
-  - [ ] Lazy iteration for memory efficiency
-- [ ] Query and filtering APIs:
-  - [ ] `findItems(byConceptName:)` - Find by coded concept
-  - [ ] `findItems(byValueType:)` - Find by value type
-  - [ ] `findItems(byRelationship:)` - Find by relationship type
-  - [ ] `findItems(matching:)` - Custom predicate filtering
-  - [ ] Recursive vs. shallow search options
-- [ ] Path-based access:
-  - [ ] `SRPath` struct for addressing content items
-  - [ ] Path notation (e.g., "/Report/Finding[0]/Measurement")
-  - [ ] `item(at path:)` - Access by path
-  - [ ] Path serialization for persistence
-- [ ] Content item subscripting:
-  - [ ] Subscript by index for children
-  - [ ] Subscript by concept code
-  - [ ] Safe optional access patterns
-- [ ] Relationship navigation:
-  - [ ] `inferredFrom` - Items this was inferred from
-  - [ ] `hasProperties` - Property items of this item
-  - [ ] `selectedFrom` - Source of coordinate selection
-  - [ ] `acquisitionContext` - Acquisition context items
-  - [ ] `observationContext` - Observation context items
-- [ ] Measurement-specific navigation:
-  - [ ] `findMeasurements()` - All numeric content items
-  - [ ] `findMeasurements(forConcept:)` - Measurements by name
-  - [ ] `findMeasurementGroups()` - Measurement containers
-  - [ ] `getMeasurementValue(forConcept:)` - Direct value access
-- [ ] Swift-idiomatic patterns:
+- [x] Tree traversal APIs:
+  - [x] `SRDocument.rootContent` - Access root container
+  - [x] `ContainerContentItem.contentItems` - Direct child items
+  - [ ] `ContentItem.parent` - Parent reference (weak) - deferred (would require structural changes)
+  - [x] Depth-first iteration via `Sequence` conformance (`ContentTreeIterator`, `ContentTreeSequence`)
+  - [x] Breadth-first iteration alternative (`BreadthFirstIterator`)
+  - [x] Lazy iteration for memory efficiency (iterators are lazy by design)
+- [x] Query and filtering APIs:
+  - [x] `findItems(byConceptName:)` - Find by coded concept
+  - [x] `findItems(byValueType:)` - Find by value type
+  - [x] `findItems(byRelationship:)` - Find by relationship type
+  - [x] `findItems(matching:)` - Custom predicate filtering
+  - [x] Recursive vs. shallow search options (`recursive` parameter)
+- [x] Path-based access:
+  - [x] `SRPath` struct for addressing content items
+  - [x] Path notation (e.g., "/Report/Finding[0]/Measurement")
+  - [x] `item(at path:)` - Access by path
+  - [x] Path serialization for persistence (`description`)
+- [x] Content item subscripting:
+  - [x] Subscript by index for children (`container[0]`)
+  - [x] Subscript by concept code (`container[concept: "Finding"]`)
+  - [x] Safe optional access patterns (all subscripts return optionals)
+- [x] Relationship navigation:
+  - [x] `inferredFromItems` - Items this was inferred from
+  - [x] `propertyItems` - Property items of this item (HAS PROPERTIES)
+  - [x] `selectedFromItems` - Source of coordinate selection
+  - [x] `acquisitionContextItems` - Acquisition context items
+  - [x] `observationContextItems` - Observation context items
+- [x] Measurement-specific navigation:
+  - [x] `findMeasurements()` - All numeric content items
+  - [x] `findMeasurements(forConcept:)` - Measurements by name
+  - [x] `findMeasurementGroups()` - Measurement containers
+  - [x] `getMeasurementValue(forConcept:)` - Direct value access
+- [ ] Swift-idiomatic patterns (deferred to future enhancement):
   - [ ] `AsyncSequence` for streaming traversal
   - [ ] Result builders for query construction
   - [ ] Key path subscripting where applicable
@@ -1865,15 +1865,17 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Tree may contain by-reference relationships creating non-tree connections
 - Consider memory efficiency for large documents (lazy loading)
 - Parent references should be weak to avoid retain cycles
+- Implemented `ContentTreeIterator` and `BreadthFirstIterator` for efficient traversal
+- `SRPath` enables XPath-like navigation with indexed access
 
 #### Acceptance Criteria
-- [ ] Tree traversal visits all content items correctly
-- [ ] Query APIs efficiently filter large content trees
-- [ ] Path-based access works for common navigation patterns
-- [ ] Measurement navigation simplifies quantitative data extraction
-- [ ] Memory usage is bounded for large documents
-- [ ] Unit tests for navigation scenarios (target: 50+ tests)
-- [ ] Documentation with usage examples
+- [x] Tree traversal visits all content items correctly
+- [x] Query APIs efficiently filter large content trees
+- [x] Path-based access works for common navigation patterns
+- [x] Measurement navigation simplifies quantitative data extraction
+- [x] Memory usage is bounded for large documents (lazy iterators)
+- [x] Unit tests for navigation scenarios (target: 50+ tests) - 66 tests implemented
+- [x] Documentation with usage examples (in README)
 
 ---
 
@@ -2256,8 +2258,8 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 9.1 Core SR Infrastructure | v0.9.1 | High | ✅ Completed | Content item types, coded concepts, relationships |
-| 9.2 SR Document Parsing | v0.9.2 | High | Planned | Parse SR into content tree model |
-| 9.3 Content Navigation | v0.9.3 | Medium | Planned | Tree traversal, query, filtering APIs |
+| 9.2 SR Document Parsing | v0.9.2 | High | ✅ Completed | Parse SR into content tree model |
+| 9.3 Content Navigation | v0.9.3 | Medium | ✅ Completed | Tree traversal, query, filtering APIs |
 | 9.4 Coded Terminology | v0.9.4 | High | Planned | SNOMED, LOINC, RadLex, UCUM, context groups |
 | 9.5 Measurement Extraction | v0.9.5 | High | Planned | Measurements, ROIs, coordinates |
 | 9.6 SR Document Creation | v0.9.6 | High | Planned | Builder API, serialization, validation |
