@@ -1644,29 +1644,614 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 **Status**: Planned  
 **Goal**: Full support for DICOM Structured Reporting
 
-### Deliverables
-- [ ] SR document parsing
-- [ ] Content Item tree navigation
-- [ ] Template support (TID parsing)
-- [ ] Coded terminology handling (SNOMED, LOINC, RadLex)
-- [ ] Measurement extraction
-- [ ] SR document creation
-- [ ] Common SR templates:
-  - [ ] Basic Text SR
-  - [ ] Enhanced SR
-  - [ ] Comprehensive SR
-  - [ ] Mammography CAD SR
-  - [ ] Chest CAD SR
-  - [ ] Measurement Report
+DICOM Structured Reporting (SR) enables the encoding of clinical reports as structured, machine-readable documents. SR documents contain hierarchical trees of "Content Items" with coded concepts, enabling semantic interoperability for measurements, observations, and findings. This milestone implements comprehensive SR support for parsing, creating, and working with structured reports.
 
-### Technical Notes
-- Reference: PS3.3 Part 3 - Information Object Definitions (Section C.17)
+This milestone is divided into modular sub-milestones based on complexity, allowing for incremental development and testing. Each sub-milestone builds upon previous ones.
+
+---
+
+### Milestone 9.1: Core SR Infrastructure (v0.9.1)
+
+**Status**: Planned  
+**Goal**: Establish foundational data structures for DICOM Structured Reporting  
+**Complexity**: High  
+**Dependencies**: Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [ ] Content Item value types (PS3.3 Table C.17.3-1):
+  - [ ] `ContentItemValueType` enum for all SR value types
+  - [ ] `TextContentItem` - Unstructured text (TEXT)
+  - [ ] `CodeContentItem` - Coded concept from terminology (CODE)
+  - [ ] `NumericContentItem` - Quantitative value with units (NUM)
+  - [ ] `DateContentItem` - Date value (DATE)
+  - [ ] `TimeContentItem` - Time value (TIME)
+  - [ ] `DateTimeContentItem` - Combined date/time (DATETIME)
+  - [ ] `PersonNameContentItem` - Person name (PNAME)
+  - [ ] `UIDRefContentItem` - DICOM UID reference (UIDREF)
+  - [ ] `ContainerContentItem` - Groups other content items (CONTAINER)
+- [ ] Reference content item types:
+  - [ ] `CompositeContentItem` - Reference to DICOM composite object (COMPOSITE)
+  - [ ] `ImageContentItem` - Reference to DICOM image (IMAGE)
+  - [ ] `WaveformContentItem` - Reference to waveform data (WAVEFORM)
+- [ ] Coordinate content item types:
+  - [ ] `SpatialCoordinatesContentItem` - 2D spatial coordinates (SCOORD)
+  - [ ] `SpatialCoordinates3DContentItem` - 3D spatial coordinates (SCOORD3D)
+  - [ ] `TemporalCoordinatesContentItem` - Temporal coordinates (TCOORD)
+- [ ] Coded concept support:
+  - [ ] `CodedConcept` struct (Code Value, Coding Scheme Designator, Code Meaning)
+  - [ ] `CodeSequence` for encoding/decoding code sequences
+  - [ ] Common coding scheme designators (DCM, SRT, LN, FMA, etc.)
+  - [ ] Code validation utilities
+- [ ] Relationship types (PS3.3 Table C.17.3-8):
+  - [ ] `RelationshipType` enum (CONTAINS, HAS PROPERTIES, INFERRED FROM, etc.)
+  - [ ] `SRRelationship` struct for relationship encoding
+  - [ ] Relationship validation per value type constraints
+- [ ] Content item base protocol:
+  - [ ] `ContentItem` protocol with common properties
+  - [ ] Concept name (coded name of the item)
+  - [ ] Relationship type to parent
+  - [ ] Child content items (for CONTAINER)
+  - [ ] Observation context support
+- [ ] SR Document type definitions:
+  - [ ] `SRDocumentType` enum (Basic Text, Enhanced, Comprehensive, etc.)
+  - [ ] IOD-specific constraints per document type
+  - [ ] SOP Class UID constants for all SR types
+
+#### Technical Notes
+- Reference: PS3.3 Section C.17.3 - SR Document Content Module
+- Reference: PS3.3 Table C.17.3-1 - Value Type Definitions
+- Reference: PS3.3 Table C.17.3-8 - Relationship Type Definitions
+- Content items form a tree structure with CONTAINER as branch nodes
+- Coded concepts use triplet: Code Value + Coding Scheme Designator + Code Meaning
+- Relationship types constrain which value types can be children
+
+#### Acceptance Criteria
+- [ ] All 15 content item value types are implemented
+- [ ] Coded concepts can be created and validated
+- [ ] Relationship types are correctly defined
+- [ ] Content item protocol enables polymorphic tree building
+- [ ] Unit tests for all content item types (target: 60+ tests)
+- [ ] Documentation for SR data model
+
+---
+
+### Milestone 9.2: SR Document Parsing (v0.9.2)
+
+**Status**: Planned  
+**Goal**: Parse DICOM SR documents into the content item tree model  
+**Complexity**: High  
+**Dependencies**: Milestone 9.1
+
+#### Deliverables
+- [ ] SR Document Module parsing:
+  - [ ] Content Sequence (0040,A730) recursive parsing
+  - [ ] Value Type (0040,A040) detection and dispatch
+  - [ ] Concept Name Code Sequence (0040,A043) parsing
+  - [ ] Relationship Type (0040,A010) extraction
+- [ ] Content item value parsing:
+  - [ ] Text Value (0040,A160) for TEXT items
+  - [ ] Concept Code Sequence (0040,A168) for CODE items
+  - [ ] Measured Value Sequence (0040,A300) for NUM items
+  - [ ] Numeric Value (0040,A30A) and Unit Code (0040,08EA)
+  - [ ] Date/Time/DateTime Value parsing
+  - [ ] Person Name (0040,A123) for PNAME
+  - [ ] UID (0040,A124) for UIDREF
+- [ ] Reference parsing:
+  - [ ] Referenced SOP Sequence (0008,1199)
+  - [ ] Referenced SOP Class UID (0008,1150)
+  - [ ] Referenced SOP Instance UID (0008,1155)
+  - [ ] Referenced Frame Number (0008,1160)
+  - [ ] Referenced Segment Number (0062,000B)
+- [ ] Coordinate parsing:
+  - [ ] Graphic Data (0070,0022) for SCOORD
+  - [ ] Graphic Type (0070,0023) - POINT, POLYLINE, CIRCLE, ELLIPSE
+  - [ ] Fiducial UID (0070,031A)
+  - [ ] Referenced Frame of Reference UID for SCOORD3D
+  - [ ] Temporal Range Type for TCOORD
+- [ ] SR Document header parsing:
+  - [ ] SR Document General Module attributes
+  - [ ] Document Title (Concept Name of root)
+  - [ ] Completion Flag (0040,A491)
+  - [ ] Verification Flag (0040,A493)
+  - [ ] Content Date/Time
+  - [ ] Preliminary Flag
+- [ ] Observation context parsing:
+  - [ ] Observer Type (0040,A084) - Person, Device
+  - [ ] Person Identification Code Sequence
+  - [ ] Device Observer attributes
+  - [ ] Subject Context (Patient, Specimen, Fetus)
+- [ ] `SRDocumentParser` API:
+  - [ ] `func parse(dataSet: DataSet) throws -> SRDocument`
+  - [ ] `func parseContentSequence(from: DataSet) throws -> [ContentItem]`
+  - [ ] Validation level configuration (strict, lenient)
+  - [ ] Error recovery for malformed documents
+
+#### Technical Notes
+- Reference: PS3.3 Section C.17 - SR Document Information Object Definitions
+- Reference: PS3.3 Section C.17.3.2 - Content Item and Content Sequence
+- Recursive parsing required for nested Content Sequences
+- Must handle by-reference relationships (observation context references)
+- Some SR documents may have circular references (must detect/handle)
+
+#### Acceptance Criteria
+- [ ] Successfully parse Basic Text SR documents
+- [ ] Successfully parse Enhanced SR documents
+- [ ] Successfully parse Comprehensive SR documents
+- [ ] Content tree structure correctly represents document hierarchy
+- [ ] All value types are correctly extracted
+- [ ] Coordinate data is correctly parsed for ROI applications
+- [ ] Unit tests with sample SR documents (target: 40+ tests)
+- [ ] Performance acceptable for large SR documents (1000+ content items)
+
+---
+
+### Milestone 9.3: Content Item Navigation and Tree Traversal (v0.9.3)
+
+**Status**: Planned  
+**Goal**: Provide intuitive APIs for navigating and querying SR content trees  
+**Complexity**: Medium  
+**Dependencies**: Milestone 9.2
+
+#### Deliverables
+- [ ] Tree traversal APIs:
+  - [ ] `SRDocument.rootContentItem` - Access root container
+  - [ ] `ContentItem.children` - Direct child items
+  - [ ] `ContentItem.parent` - Parent reference (weak)
+  - [ ] Depth-first iteration via `Sequence` conformance
+  - [ ] Breadth-first iteration alternative
+  - [ ] Lazy iteration for memory efficiency
+- [ ] Query and filtering APIs:
+  - [ ] `findItems(byConceptName:)` - Find by coded concept
+  - [ ] `findItems(byValueType:)` - Find by value type
+  - [ ] `findItems(byRelationship:)` - Find by relationship type
+  - [ ] `findItems(matching:)` - Custom predicate filtering
+  - [ ] Recursive vs. shallow search options
+- [ ] Path-based access:
+  - [ ] `SRPath` struct for addressing content items
+  - [ ] Path notation (e.g., "/Report/Finding[0]/Measurement")
+  - [ ] `item(at path:)` - Access by path
+  - [ ] Path serialization for persistence
+- [ ] Content item subscripting:
+  - [ ] Subscript by index for children
+  - [ ] Subscript by concept code
+  - [ ] Safe optional access patterns
+- [ ] Relationship navigation:
+  - [ ] `inferredFrom` - Items this was inferred from
+  - [ ] `hasProperties` - Property items of this item
+  - [ ] `selectedFrom` - Source of coordinate selection
+  - [ ] `acquisitionContext` - Acquisition context items
+  - [ ] `observationContext` - Observation context items
+- [ ] Measurement-specific navigation:
+  - [ ] `findMeasurements()` - All numeric content items
+  - [ ] `findMeasurements(forConcept:)` - Measurements by name
+  - [ ] `findMeasurementGroups()` - Measurement containers
+  - [ ] `getMeasurementValue(forConcept:)` - Direct value access
+- [ ] Swift-idiomatic patterns:
+  - [ ] `AsyncSequence` for streaming traversal
+  - [ ] Result builders for query construction
+  - [ ] Key path subscripting where applicable
+
+#### Technical Notes
+- Reference: PS3.3 C.17.3.2.4 - Content Sequence and Relationship Type
+- Tree may contain by-reference relationships creating non-tree connections
+- Consider memory efficiency for large documents (lazy loading)
+- Parent references should be weak to avoid retain cycles
+
+#### Acceptance Criteria
+- [ ] Tree traversal visits all content items correctly
+- [ ] Query APIs efficiently filter large content trees
+- [ ] Path-based access works for common navigation patterns
+- [ ] Measurement navigation simplifies quantitative data extraction
+- [ ] Memory usage is bounded for large documents
+- [ ] Unit tests for navigation scenarios (target: 50+ tests)
+- [ ] Documentation with usage examples
+
+---
+
+### Milestone 9.4: Coded Terminology Support (v0.9.4)
+
+**Status**: Planned  
+**Goal**: Comprehensive support for medical terminologies used in SR  
+**Complexity**: High  
+**Dependencies**: Milestone 9.1
+
+#### Deliverables
+- [ ] Coding scheme infrastructure:
+  - [ ] `CodingScheme` struct with designator, name, version
+  - [ ] Registry of known coding schemes
+  - [ ] Coding scheme validation
+  - [ ] Version-aware code lookup
+- [ ] SNOMED CT support:
+  - [ ] `SNOMEDCode` specialized type
+  - [ ] Common anatomical codes (body parts, laterality)
+  - [ ] Common finding codes (mass, lesion, calcification)
+  - [ ] Common procedure codes
+  - [ ] Hierarchical relationship awareness
+- [ ] LOINC support:
+  - [ ] `LOINCCode` specialized type
+  - [ ] Common observation codes
+  - [ ] Measurement type codes
+  - [ ] Radiology report section codes
+- [ ] RadLex support:
+  - [ ] `RadLexCode` specialized type
+  - [ ] Playbook codes for radiology procedures
+  - [ ] Common radiology finding codes
+  - [ ] Anatomical codes relevant to imaging
+- [ ] DCM (DICOM) codes:
+  - [ ] All codes from PS3.16 Context Groups
+  - [ ] Relationship type codes
+  - [ ] SR-specific concept codes
+  - [ ] Measurement template codes
+- [ ] UCUM (Units of Measurement):
+  - [ ] `UCUMUnit` type for units
+  - [ ] Common measurement units (mm, cm, mL, etc.)
+  - [ ] Unit conversion utilities
+  - [ ] Unit validation
+- [ ] Context Group support (PS3.16):
+  - [ ] `ContextGroup` struct for CID definitions
+  - [ ] Extensible vs. non-extensible context groups
+  - [ ] Common context groups:
+    - [ ] CID 218 - Quantitative Temporal Relation
+    - [ ] CID 244 - Laterality
+    - [ ] CID 4021 - Finding Site
+    - [ ] CID 6147 - Response Evaluation
+    - [ ] CID 7021 - Measurement Report Document Titles
+    - [ ] CID 7464 - General Region of Interest Measurement Units
+  - [ ] Context group validation
+- [ ] Code mapping utilities:
+  - [ ] `CodeMapper` for cross-terminology mapping
+  - [ ] Equivalent code lookup
+  - [ ] Display name resolution
+  - [ ] Localization support (future)
+
+#### Technical Notes
 - Reference: PS3.16 - Content Mapping Resource
+- Reference: PS3.16 Annex B - DCMR Context Group Definitions
+- SNOMED CT codes are numeric, LOINC uses alphanumeric patterns
+- Context groups define allowed codes for specific SR positions
+- Some codes are extensible (allow additions), others are non-extensible
 
-### Acceptance Criteria
-- Parse and create compliant SR documents
-- Support for measurement extraction in radiology workflows
-- Integration with AI/ML output pipelines
+#### Acceptance Criteria
+- [ ] All major coding schemes are supported
+- [ ] Common medical codes are pre-defined for convenience
+- [ ] Context group validation works correctly
+- [ ] Unit handling is accurate for measurements
+- [ ] Code lookup is efficient (dictionary-based)
+- [ ] Unit tests for terminology handling (target: 80+ tests)
+- [ ] Documentation with code examples
+
+---
+
+### Milestone 9.5: Measurement and Coordinate Extraction (v0.9.5)
+
+**Status**: Planned  
+**Goal**: Extract quantitative measurements and spatial/temporal coordinates from SR  
+**Complexity**: High  
+**Dependencies**: Milestone 9.3, Milestone 9.4
+
+#### Deliverables
+- [ ] Measurement extraction:
+  - [ ] `Measurement` struct with value, unit, and context
+  - [ ] `MeasurementGroup` for related measurements (e.g., lesion dimensions)
+  - [ ] Numeric precision handling (significant figures)
+  - [ ] Measurement qualifier extraction (mean, max, min, etc.)
+  - [ ] Derivation method tracking (manual, automated, calculated)
+- [ ] Measurement value handling:
+  - [ ] Single numeric values
+  - [ ] Value ranges (min-max)
+  - [ ] Multiple values (e.g., multi-frame measurements)
+  - [ ] Null/missing value handling with reason codes
+- [ ] Unit conversion:
+  - [ ] Automatic unit normalization
+  - [ ] Common conversions (mm↔cm, mL↔L, etc.)
+  - [ ] Configurable output units
+  - [ ] Lossless value preservation
+- [ ] Spatial coordinate extraction (SCOORD):
+  - [ ] `SpatialCoordinates` struct with graphic type and points
+  - [ ] Point coordinates (x, y)
+  - [ ] Polyline (open contour)
+  - [ ] Polygon (closed contour)
+  - [ ] Circle (center + radius point)
+  - [ ] Ellipse (four points)
+  - [ ] Image reference linkage
+- [ ] 3D coordinate extraction (SCOORD3D):
+  - [ ] `SpatialCoordinates3D` struct
+  - [ ] 3D point coordinates (x, y, z)
+  - [ ] 3D polyline and polygon
+  - [ ] Frame of reference handling
+  - [ ] Coordinate system transformation utilities
+- [ ] Temporal coordinate extraction (TCOORD):
+  - [ ] `TemporalCoordinates` struct
+  - [ ] Point in time references
+  - [ ] Time ranges (begin-end)
+  - [ ] Multi-point temporal data
+  - [ ] Frame number references
+- [ ] Region of Interest (ROI) helpers:
+  - [ ] `ROI` struct combining coordinates with measurements
+  - [ ] Area/volume calculation from coordinates
+  - [ ] Bounding box computation
+  - [ ] Centroid calculation
+  - [ ] ROI-to-image coordinate mapping
+- [ ] Measurement aggregation:
+  - [ ] Group measurements by anatomical location
+  - [ ] Group measurements by finding
+  - [ ] Time series of measurements
+  - [ ] Statistical summaries (mean, std dev, etc.)
+- [ ] `MeasurementExtractor` API:
+  - [ ] `func extractAllMeasurements(from: SRDocument) -> [Measurement]`
+  - [ ] `func extractMeasurements(forConcept:) -> [Measurement]`
+  - [ ] `func extractROIs(from: SRDocument) -> [ROI]`
+  - [ ] `func extractTimeSeries(forConcept:) -> TimeSeries`
+
+#### Technical Notes
+- Reference: PS3.3 C.17.3.2 - Numeric measurement encoding
+- Reference: PS3.3 C.18.6 - Spatial Coordinates Macro
+- Reference: PS3.3 C.18.7 - Temporal Coordinates Macro
+- Measurements may have qualifiers (measured, estimated, derived)
+- Coordinates are in image pixel space for SCOORD, patient space for SCOORD3D
+- TCOORD references specific frames or time points in multi-frame images
+
+#### Acceptance Criteria
+- [ ] Measurements are accurately extracted with units
+- [ ] All graphic types are correctly parsed
+- [ ] 3D coordinates handle frame of reference correctly
+- [ ] ROI calculations produce accurate results
+- [ ] Unit conversion maintains precision
+- [ ] Unit tests for measurement scenarios (target: 60+ tests)
+- [ ] Integration tests with real SR measurement reports
+
+---
+
+### Milestone 9.6: SR Document Creation (v0.9.6)
+
+**Status**: Planned  
+**Goal**: Create valid DICOM SR documents programmatically  
+**Complexity**: High  
+**Dependencies**: Milestone 9.1, Milestone 9.4
+
+#### Deliverables
+- [ ] SR Document builder:
+  - [ ] `SRDocumentBuilder` fluent API
+  - [ ] Document type selection (Basic Text, Enhanced, Comprehensive)
+  - [ ] Root container configuration
+  - [ ] Document title setting
+  - [ ] Completion/Verification flag setting
+- [ ] Content item creation:
+  - [ ] Factory methods for each value type
+  - [ ] `addText(concept:value:relationship:)`
+  - [ ] `addCode(concept:value:relationship:)`
+  - [ ] `addNumeric(concept:value:unit:relationship:)`
+  - [ ] `addContainer(concept:relationship:)`
+  - [ ] `addDate/Time/DateTime(concept:value:relationship:)`
+  - [ ] `addPersonName(concept:value:relationship:)`
+  - [ ] `addUIDRef(concept:value:relationship:)`
+- [ ] Reference content creation:
+  - [ ] `addImageReference(concept:sopClassUID:sopInstanceUID:frames:)`
+  - [ ] `addCompositeReference(concept:sopClassUID:sopInstanceUID:)`
+  - [ ] `addWaveformReference(concept:sopClassUID:sopInstanceUID:)`
+- [ ] Coordinate content creation:
+  - [ ] `addSpatialCoordinates(concept:graphicType:points:imageRef:)`
+  - [ ] `addSpatialCoordinates3D(concept:graphicType:points:frameOfRef:)`
+  - [ ] `addTemporalCoordinates(concept:rangeType:values:)`
+- [ ] Observation context setting:
+  - [ ] `setObserverPerson(name:organization:)`
+  - [ ] `setObserverDevice(uid:name:manufacturer:)`
+  - [ ] `setSubjectContext(patient:specimen:fetus:)`
+  - [ ] `setAcquisitionContext(attributes:)`
+- [ ] Measurement creation helpers:
+  - [ ] `addMeasurement(name:value:unit:derivation:)`
+  - [ ] `addMeasurementGroup(name:measurements:)`
+  - [ ] `addQualitativeEvaluation(name:code:)`
+- [ ] Document serialization:
+  - [ ] `SRDocument.toDataSet() throws -> DataSet`
+  - [ ] Content Sequence generation
+  - [ ] Proper tag ordering
+  - [ ] File Meta Information generation
+  - [ ] Transfer syntax handling
+- [ ] Validation during creation:
+  - [ ] IOD-specific validation
+  - [ ] Relationship type constraints
+  - [ ] Required attribute checking
+  - [ ] Value type compatibility
+- [ ] Result builder syntax (optional):
+  - [ ] `@SRBuilder` for declarative SR construction
+  - [ ] Nested container support
+  - [ ] Conditional content inclusion
+
+#### Technical Notes
+- Reference: PS3.3 C.17 - SR Document IODs
+- Reference: PS3.4 Annex A - SR Storage SOP Classes
+- Document type constrains allowed value types and relationships
+- Content Sequence must follow proper nesting structure
+- UIDs must be generated for new documents
+
+#### Acceptance Criteria
+- [ ] Created documents pass DICOM validation tools
+- [ ] All SR document types can be created
+- [ ] Builder API is intuitive and type-safe
+- [ ] Generated documents can be read by DICOM viewers
+- [ ] Round-trip: parse → modify → serialize produces valid output
+- [ ] Unit tests for creation scenarios (target: 50+ tests)
+- [ ] Documentation with creation examples
+
+---
+
+### Milestone 9.7: Template Support (v0.9.7)
+
+**Status**: Planned  
+**Goal**: Parse and apply DICOM SR Templates (TID) for structured content  
+**Complexity**: Very High  
+**Dependencies**: Milestone 9.2, Milestone 9.4, Milestone 9.6
+
+#### Deliverables
+- [ ] Template infrastructure:
+  - [ ] `SRTemplate` protocol for template definitions
+  - [ ] Template ID (TID) registry
+  - [ ] Template version handling
+  - [ ] Extensible template system
+- [ ] Template constraint types:
+  - [ ] `TemplateRow` - Single template row definition
+  - [ ] `TemplateConstraint` - Value type, relationship, requirement level
+  - [ ] Mandatory (M), Required if Known (RK), Optional (O), Conditional (C)
+  - [ ] Cardinality constraints (1, 0-1, 1-n, 0-n)
+- [ ] Template parsing:
+  - [ ] Validate SR content against template definition
+  - [ ] Extract template-specific data structures
+  - [ ] Handle template extensions
+  - [ ] Handle included templates (recursive)
+- [ ] Template creation:
+  - [ ] Template-guided document creation
+  - [ ] Auto-completion of required content
+  - [ ] Validation during creation
+  - [ ] Template-specific builders
+- [ ] Core templates (PS3.16):
+  - [ ] TID 300 - Measurement
+  - [ ] TID 320 - Image Library Entry
+  - [ ] TID 1001 - Observation Context
+  - [ ] TID 1002 - Observer Context
+  - [ ] TID 1204 - Language of Content
+  - [ ] TID 1400 - Linear Measurements
+  - [ ] TID 1410 - Planar ROI Measurements
+  - [ ] TID 1411 - Volumetric ROI Measurements
+  - [ ] TID 1419 - ROI Measurements
+  - [ ] TID 1420 - Measurements Derived from Multiple Frames
+- [ ] Template validation:
+  - [ ] `TemplateValidator` for checking compliance
+  - [ ] Detailed violation reporting
+  - [ ] Strict vs. lenient validation modes
+  - [ ] Warning vs. error classification
+- [ ] Template-based extraction:
+  - [ ] Auto-detect applied templates
+  - [ ] Extract template-specific data structures
+  - [ ] Type-safe accessors for template fields
+
+#### Technical Notes
+- Reference: PS3.16 Annex A - SR Templates
+- Reference: PS3.16 Section 5 - Template Specifications
+- Templates define content structure, not just allowed values
+- Some templates include others (e.g., TID 1500 in 9.8 includes TID 300 from 9.7)
+- Templates may have user-extensible sections
+- Core measurement templates (TID 300, 1400-1420) are implemented in 9.7 as building blocks
+
+#### Acceptance Criteria
+- [ ] Core measurement templates are implemented
+- [ ] Template validation correctly identifies violations
+- [ ] Template-guided creation produces compliant documents
+- [ ] Nested template includes work correctly
+- [ ] Unit tests for template scenarios (target: 70+ tests)
+- [ ] Documentation for template system
+
+---
+
+### Milestone 9.8: Common SR Templates Implementation (v0.9.8)
+
+**Status**: Planned  
+**Goal**: Full implementation of commonly used SR document templates  
+**Complexity**: High  
+**Dependencies**: Milestone 9.7
+
+#### Deliverables
+- [ ] Basic Text SR (1.2.840.10008.5.1.4.1.1.88.11):
+  - [ ] Simple hierarchical text structure
+  - [ ] Section headings and content
+  - [ ] Minimal coding requirements
+  - [ ] `BasicTextSRBuilder` specialized builder
+- [ ] Enhanced SR (1.2.840.10008.5.1.4.1.1.88.22):
+  - [ ] Text with coded entries
+  - [ ] Numeric measurements
+  - [ ] Image references
+  - [ ] `EnhancedSRBuilder` specialized builder
+- [ ] Comprehensive SR (1.2.840.10008.5.1.4.1.1.88.33):
+  - [ ] Full value type support
+  - [ ] Spatial and temporal coordinates
+  - [ ] By-reference relationships
+  - [ ] `ComprehensiveSRBuilder` specialized builder
+- [ ] TID 1500 - Measurement Report:
+  - [ ] Image Library (TID 1600)
+  - [ ] Imaging Measurements Container
+  - [ ] Measurement Groups (TID 1501)
+  - [ ] Tracking Identifiers
+  - [ ] Qualitative Evaluations
+  - [ ] `MeasurementReportBuilder` specialized builder
+  - [ ] `MeasurementReport` extraction type
+- [ ] Key Object Selection (1.2.840.10008.5.1.4.1.1.88.59):
+  - [ ] Referenced instances
+  - [ ] Key object description
+  - [ ] Selection reason code
+  - [ ] `KeyObjectSelectionBuilder` specialized builder
+- [ ] Mammography CAD SR (1.2.840.10008.5.1.4.1.1.88.50):
+  - [ ] CAD Processing Summary
+  - [ ] Detected findings with confidence
+  - [ ] Finding site localization
+  - [ ] `MammographyCADSRBuilder` specialized builder
+- [ ] Chest CAD SR (1.2.840.10008.5.1.4.1.1.88.65):
+  - [ ] Chest-specific CAD findings
+  - [ ] Nodule detection results
+  - [ ] `ChestCADSRBuilder` specialized builder
+- [ ] Comprehensive 3D SR (1.2.840.10008.5.1.4.1.1.88.34):
+  - [ ] 3D coordinate support
+  - [ ] 3D ROI definitions
+  - [ ] Frame of reference handling
+  - [ ] `Comprehensive3DSRBuilder` specialized builder
+- [ ] High-level extraction APIs:
+  - [ ] `MeasurementReport.extract(from: SRDocument) throws -> MeasurementReport`
+  - [ ] `CADFindings.extract(from: SRDocument) throws -> CADFindings`
+  - [ ] `KeyObjects.extract(from: SRDocument) throws -> [KeyObject]`
+- [ ] Integration with AI/ML pipelines:
+  - [ ] `AIInferenceResult` protocol for AI output
+  - [ ] Convert AI detections to SR format
+  - [ ] Support for segmentation results (SEG → SR)
+  - [ ] Confidence score encoding
+
+#### Technical Notes
+- Reference: PS3.3 Annex A - Composite IODs (SR sections)
+- Reference: PS3.16 Annex A - SR Template Specifications
+- TID 1500 is widely used for quantitative imaging and AI outputs
+- CAD SR templates have modality-specific requirements
+- Key Object Selection enables "significant image" flagging
+
+#### Acceptance Criteria
+- [ ] All listed SR document types can be created and parsed
+- [ ] TID 1500 Measurement Report fully supported
+- [ ] CAD SR templates correctly encode detection results
+- [ ] Key Object Selection works for image flagging
+- [ ] AI/ML integration produces valid SR documents
+- [ ] Unit tests for each template (target: 100+ tests)
+- [ ] Example applications for common workflows
+- [ ] Integration tests with DICOM viewers (OHIF, etc.)
+
+---
+
+### Milestone 9 Summary
+
+| Sub-Milestone | Version | Complexity | Key Deliverables |
+|--------------|---------|------------|------------------|
+| 9.1 Core SR Infrastructure | v0.9.1 | High | Content item types, coded concepts, relationships |
+| 9.2 SR Document Parsing | v0.9.2 | High | Parse SR into content tree model |
+| 9.3 Content Navigation | v0.9.3 | Medium | Tree traversal, query, filtering APIs |
+| 9.4 Coded Terminology | v0.9.4 | High | SNOMED, LOINC, RadLex, UCUM, context groups |
+| 9.5 Measurement Extraction | v0.9.5 | High | Measurements, ROIs, coordinates |
+| 9.6 SR Document Creation | v0.9.6 | High | Builder API, serialization, validation |
+| 9.7 Template Support | v0.9.7 | Very High | TID parsing, validation, template-guided creation |
+| 9.8 Common Templates | v0.9.8 | High | TID 1500, CAD SR, Key Object Selection, AI integration |
+
+### Overall Technical Notes
+- Reference: PS3.3 Part 3 Section C.17 - SR Document IODs
+- Reference: PS3.16 - Content Mapping Resource (templates, context groups)
+- Reference: PS3.4 Annex A - SR Storage SOP Classes
+- Build on DataSet infrastructure from Milestone 5
+- All APIs use Swift concurrency where applicable
+- Memory efficiency critical for large SR documents
+- Consider caching for repeated terminology lookups
+
+### Overall Acceptance Criteria
+- Full support for parsing and creating DICOM SR documents
+- TID 1500 Measurement Report for quantitative imaging workflows
+- CAD SR support for AI/ML detection outputs
+- Integration with DICOM networking for SR storage (C-STORE)
+- Integration with DICOMweb for SR retrieval (WADO-RS)
+- Performance acceptable for production radiology workflows
+- Pass DICOM SR conformance tests
 
 ---
 
