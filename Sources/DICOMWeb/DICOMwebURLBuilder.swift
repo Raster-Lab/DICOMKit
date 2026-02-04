@@ -406,3 +406,74 @@ extension DICOMwebURLBuilder {
         return appendQueryParameters(to: baseRenderedURL, parameters: params)
     }
 }
+
+// MARK: - UPS-RS (Unified Procedure Step) URLs
+
+extension DICOMwebURLBuilder {
+    
+    /// URL for the workitems endpoint
+    /// - Returns: URL for `/workitems`
+    ///
+    /// Reference: PS3.18 Section 11 - UPS-RS
+    public var workitemsURL: URL {
+        return baseURL.appendingPathComponent("workitems")
+    }
+    
+    /// URL for a specific workitem
+    /// - Parameter workitemUID: The workitem's SOP Instance UID
+    /// - Returns: URL for `/workitems/{workitemUID}`
+    public func workitemURL(workitemUID: String) -> URL {
+        return workitemsURL.appendingPathComponent(workitemUID)
+    }
+    
+    /// URL for workitem state changes
+    /// - Parameter workitemUID: The workitem's SOP Instance UID
+    /// - Returns: URL for `/workitems/{workitemUID}/state`
+    public func workitemStateURL(workitemUID: String) -> URL {
+        return workitemURL(workitemUID: workitemUID).appendingPathComponent("state")
+    }
+    
+    /// URL for workitem cancellation requests
+    /// - Parameter workitemUID: The workitem's SOP Instance UID
+    /// - Returns: URL for `/workitems/{workitemUID}/cancelrequest`
+    public func workitemCancelRequestURL(workitemUID: String) -> URL {
+        return workitemURL(workitemUID: workitemUID).appendingPathComponent("cancelrequest")
+    }
+    
+    /// URL for workitem subscription
+    /// - Parameters:
+    ///   - workitemUID: The workitem's SOP Instance UID
+    ///   - aeTitle: The subscribing AE Title
+    /// - Returns: URL for `/workitems/{workitemUID}/subscribers/{aeTitle}`
+    public func workitemSubscriptionURL(workitemUID: String, aeTitle: String) -> URL {
+        return workitemURL(workitemUID: workitemUID)
+            .appendingPathComponent("subscribers")
+            .appendingPathComponent(aeTitle)
+    }
+    
+    /// URL for global workitem subscription (subscribe to all workitems)
+    /// - Parameter aeTitle: The subscribing AE Title
+    /// - Returns: URL for `/workitems/1.2.840.10008.5.1.4.34.5/subscribers/{aeTitle}`
+    public func globalWorkitemSubscriptionURL(aeTitle: String) -> URL {
+        // The well-known UID for global subscription
+        let globalSubscriptionUID = "1.2.840.10008.5.1.4.34.5"
+        return workitemSubscriptionURL(workitemUID: globalSubscriptionUID, aeTitle: aeTitle)
+    }
+    
+    /// URL for suspending a workitem subscription
+    /// - Parameters:
+    ///   - workitemUID: The workitem's SOP Instance UID
+    ///   - aeTitle: The subscribing AE Title
+    /// - Returns: URL for `/workitems/{workitemUID}/subscribers/{aeTitle}/suspend`
+    public func workitemSubscriptionSuspendURL(workitemUID: String, aeTitle: String) -> URL {
+        return workitemSubscriptionURL(workitemUID: workitemUID, aeTitle: aeTitle)
+            .appendingPathComponent("suspend")
+    }
+    
+    /// Creates a UPS-RS search URL with query parameters
+    /// - Parameter parameters: Search parameters
+    /// - Returns: URL for workitems search
+    public func searchWorkitemsURL(parameters: [String: String]) -> URL {
+        return Self.appendQueryParameters(to: workitemsURL, parameters: parameters)
+    }
+}
