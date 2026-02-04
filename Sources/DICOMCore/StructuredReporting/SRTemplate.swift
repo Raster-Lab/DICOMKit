@@ -461,6 +461,9 @@ public struct TemplateRegistry: Sendable {
         register(TID1411VolumetricROIMeasurements.self)
         register(TID1419ROIMeasurements.self)
         register(TID1420MultipleROIMeasurements.self)
+        register(TID1500MeasurementReport.self)
+        register(TID1501MeasurementGroup.self)
+        register(TID1600ImageLibrary.self)
     }
     
     /// Registers a template type
