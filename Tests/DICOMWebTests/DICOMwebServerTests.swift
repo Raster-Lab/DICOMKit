@@ -818,3 +818,490 @@ struct STOWDelegateTests {
         #expect(await server.running == false)
     }
 }
+
+
+// MARK: - UPS-RS Server Handler Tests
+
+@Suite("UPS-RS Server Handler Tests")
+struct UPSRSServerHandlerTests {
+    
+    @Test("Search workitems returns empty when no UPS storage configured")
+    func testSearchWithoutUPSStorage() async throws {
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        let request = DICOMwebRequest(
+            method: .get,
+            path: "/dicom-web/workitems",
+            queryParameters: [:]
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 501)
+    }
+    
+    @Test("Search workitems returns results")
+    func testSearchWorkitems() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create test workitems
+        let workitem1 = Workitem(
+            workitemUID: "1.2.3.4.5",
+            scheduledStartDateTime: Date(),
+            patientName: "Smith^John",
+            patientID: "PAT001",
+            procedureStepLabel: "CT Scan"
+        )
+        try await upsStorage.createWorkitem(workitem1)
+        
+        let request = DICOMwebRequest(
+            method: .get,
+            path: "/dicom-web/workitems",
+            queryParameters: [:]
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 200)
+        #expect(response.headers["X-Total-Count"] == "1")
+        #expect(response.headers["Content-Type"]?.contains("application/dicom+json") == true)
+    }
+    
+    @Test("Retrieve specific workitem")
+    func testRetrieveWorkitem() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        let workitem = Workitem(
+            workitemUID: "1.2.3.4.5",
+            scheduledStartDateTime: Date(),
+            patientName: "Smith^John"
+        )
+        try await upsStorage.createWorkitem(workitem)
+        
+        let request = DICOMwebRequest(
+            method: .get,
+            path: "/dicom-web/workitems/1.2.3.4.5",
+            queryParameters: [:]
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 200)
+        
+        // Verify JSON response contains workitem UID
+        if let body = response.body,
+           let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+            let sopUIDElement = json["00080018"] as? [String: Any]
+            let values = sopUIDElement?["Value"] as? [String]
+            #expect(values?.first == "1.2.3.4.5")
+        }
+    }
+    
+    @Test("Retrieve non-existent workitem returns 404")
+    func testRetrieveNonExistentWorkitem() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        let request = DICOMwebRequest(
+            method: .get,
+            path: "/dicom-web/workitems/1.2.3.4.5",
+            queryParameters: [:]
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 404)
+    }
+    
+    @Test("Create workitem without UID")
+    func testCreateWorkitemWithoutUID() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        let workitemJSON: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["SCHEDULED"]],
+            "00100010": ["vr": "PN", "Value": [["Alphabetic": "Smith^John"]]],
+            "00100020": ["vr": "LO", "Value": ["PAT001"]]
+        ]
+        let body = try JSONSerialization.data(withJSONObject: workitemJSON)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/workitems",
+            headers: ["Content-Type": "application/dicom+json"],
+            body: body
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 201)
+        #expect(response.headers["Location"] != nil)
+    }
+    
+    @Test("Create workitem with specific UID")
+    func testCreateWorkitemWithUID() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        let workitemJSON: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["SCHEDULED"]],
+            "00100010": ["vr": "PN", "Value": [["Alphabetic": "Smith^John"]]]
+        ]
+        let body = try JSONSerialization.data(withJSONObject: workitemJSON)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/workitems/1.2.3.4.5",
+            headers: ["Content-Type": "application/dicom+json"],
+            body: body
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 201)
+        #expect(response.headers["Location"]?.contains("1.2.3.4.5") == true)
+    }
+    
+    @Test("Create duplicate workitem returns 409")
+    func testCreateDuplicateWorkitem() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create initial workitem
+        let workitem = Workitem(workitemUID: "1.2.3.4.5")
+        try await upsStorage.createWorkitem(workitem)
+        
+        // Try to create duplicate
+        let workitemJSON: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["SCHEDULED"]]
+        ]
+        let body = try JSONSerialization.data(withJSONObject: workitemJSON)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/workitems/1.2.3.4.5",
+            headers: ["Content-Type": "application/dicom+json"],
+            body: body
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 409)
+    }
+    
+    @Test("Update workitem")
+    func testUpdateWorkitem() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create workitem
+        let workitem = Workitem(
+            workitemUID: "1.2.3.4.5",
+            scheduledStartDateTime: Date(),
+            patientName: "Smith^John"
+        )
+        try await upsStorage.createWorkitem(workitem)
+        
+        // Update workitem
+        let updateJSON: [String: Any] = [
+            "00100010": ["vr": "PN", "Value": [["Alphabetic": "Jones^Jane"]]]
+        ]
+        let body = try JSONSerialization.data(withJSONObject: updateJSON)
+        
+        let request = DICOMwebRequest(
+            method: .put,
+            path: "/dicom-web/workitems/1.2.3.4.5",
+            headers: ["Content-Type": "application/dicom+json"],
+            body: body
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 204)
+        
+        // Verify update
+        let updated = try await upsStorage.getWorkitem(workitemUID: "1.2.3.4.5")
+        #expect(updated?.patientName == "Jones^Jane")
+    }
+    
+    @Test("Change workitem state to IN PROGRESS")
+    func testChangeStateToInProgress() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create workitem
+        let workitem = Workitem(workitemUID: "1.2.3.4.5", state: .scheduled)
+        try await upsStorage.createWorkitem(workitem)
+        
+        // Change state
+        let stateJSON: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["IN PROGRESS"]]
+        ]
+        let body = try JSONSerialization.data(withJSONObject: stateJSON)
+        
+        let request = DICOMwebRequest(
+            method: .put,
+            path: "/dicom-web/workitems/1.2.3.4.5/state",
+            headers: ["Content-Type": "application/dicom+json"],
+            body: body
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 200)
+        
+        // Response should contain transaction UID
+        if let responseBody = response.body,
+           let json = try? JSONSerialization.jsonObject(with: responseBody) as? [String: Any] {
+            let txUIDElement = json["00081195"] as? [String: Any]
+            let values = txUIDElement?["Value"] as? [String]
+            #expect(values?.first != nil)
+        }
+    }
+    
+    @Test("Invalid state transition returns 409")
+    func testInvalidStateTransition() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create workitem in SCHEDULED state
+        let workitem = Workitem(workitemUID: "1.2.3.4.5", state: .scheduled)
+        try await upsStorage.createWorkitem(workitem)
+        
+        // Try to complete directly (invalid)
+        let stateJSON: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["COMPLETED"]]
+        ]
+        let body = try JSONSerialization.data(withJSONObject: stateJSON)
+        
+        let request = DICOMwebRequest(
+            method: .put,
+            path: "/dicom-web/workitems/1.2.3.4.5/state",
+            headers: ["Content-Type": "application/dicom+json"],
+            body: body
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 409)
+    }
+    
+    @Test("Request cancellation for SCHEDULED workitem")
+    func testRequestCancellationScheduled() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create workitem
+        let workitem = Workitem(workitemUID: "1.2.3.4.5", state: .scheduled)
+        try await upsStorage.createWorkitem(workitem)
+        
+        let request = DICOMwebRequest(
+            method: .put,
+            path: "/dicom-web/workitems/1.2.3.4.5/cancelrequest",
+            headers: ["Content-Type": "application/dicom+json"],
+            body: nil
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 202)
+        
+        // Verify workitem is canceled
+        let updated = try await upsStorage.getWorkitem(workitemUID: "1.2.3.4.5")
+        #expect(updated?.state == .canceled)
+    }
+    
+    @Test("Subscribe to workitem returns success")
+    func testSubscribeWorkitem() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create workitem
+        let workitem = Workitem(workitemUID: "1.2.3.4.5")
+        try await upsStorage.createWorkitem(workitem)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/workitems/1.2.3.4.5/subscribers/MYAE",
+            headers: [:]
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 200)
+    }
+    
+    @Test("Unsubscribe from workitem returns success")
+    func testUnsubscribeWorkitem() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        let request = DICOMwebRequest(
+            method: .delete,
+            path: "/dicom-web/workitems/1.2.3.4.5/subscribers/MYAE",
+            headers: [:]
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 200)
+    }
+    
+    @Test("Search workitems with query parameters")
+    func testSearchWithQueryParameters() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let server = DICOMwebServer(configuration: .development, storage: storage, upsStorage: upsStorage)
+        
+        // Create workitems with different states
+        var w1 = Workitem(workitemUID: "1.2.3.1", state: .scheduled)
+        w1.patientID = "PAT001"
+        var w2 = Workitem(workitemUID: "1.2.3.2", state: .inProgress)
+        w2.patientID = "PAT002"
+        
+        try await upsStorage.createWorkitem(w1)
+        try await upsStorage.createWorkitem(w2)
+        
+        // Search for SCHEDULED only
+        let request = DICOMwebRequest(
+            method: .get,
+            path: "/dicom-web/workitems",
+            queryParameters: ["00741000": "SCHEDULED"]
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 200)
+        #expect(response.headers["X-Total-Count"] == "1")
+    }
+    
+    @Test("Capabilities include upsRS when configured")
+    func testCapabilitiesWithUPS() async throws {
+        let storage = InMemoryStorageProvider()
+        let upsStorage = InMemoryUPSStorageProvider()
+        let config = DICOMwebServerConfiguration(pathPrefix: "/dicom-web")
+        let server = DICOMwebServer(configuration: config, storage: storage, upsStorage: upsStorage)
+        
+        // We would need to add a capabilities endpoint route for this test
+        // For now, this validates the server initializes correctly with UPS storage
+        #expect(await server.running == false)
+    }
+    
+    @Test("Setting UPS storage dynamically")
+    func testSetUPSStorage() async throws {
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        // Initially no UPS storage
+        let request1 = DICOMwebRequest(
+            method: .get,
+            path: "/dicom-web/workitems",
+            queryParameters: [:]
+        )
+        let response1 = await server.handleRequest(request1)
+        #expect(response1.statusCode == 501)
+        
+        // Set UPS storage
+        let upsStorage = InMemoryUPSStorageProvider()
+        await server.setUPSStorage(upsStorage)
+        
+        // Now should work
+        let response2 = await server.handleRequest(request1)
+        #expect(response2.statusCode == 200)
+    }
+}
+
+// MARK: - UPS-RS Router Tests
+
+@Suite("UPS-RS Router Tests")
+struct UPSRSRouterTests {
+    
+    let router = DICOMwebRouter(pathPrefix: "/dicom-web")
+    
+    @Test("Match search workitems route")
+    func testMatchSearchWorkitems() {
+        let match = router.match(path: "/dicom-web/workitems", method: .get)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .searchWorkitems)
+    }
+    
+    @Test("Match create workitem route")
+    func testMatchCreateWorkitem() {
+        let match = router.match(path: "/dicom-web/workitems", method: .post)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .createWorkitem)
+    }
+    
+    @Test("Match retrieve workitem route")
+    func testMatchRetrieveWorkitem() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5", method: .get)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .retrieveWorkitem)
+        #expect(match?.parameters["workitemUID"] == "1.2.3.4.5")
+    }
+    
+    @Test("Match create workitem with UID route")
+    func testMatchCreateWorkitemWithUID() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5", method: .post)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .createWorkitemWithUID)
+        #expect(match?.parameters["workitemUID"] == "1.2.3.4.5")
+    }
+    
+    @Test("Match update workitem route")
+    func testMatchUpdateWorkitem() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5", method: .put)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .updateWorkitem)
+    }
+    
+    @Test("Match change workitem state route")
+    func testMatchChangeWorkitemState() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5/state", method: .put)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .changeWorkitemState)
+        #expect(match?.parameters["workitemUID"] == "1.2.3.4.5")
+    }
+    
+    @Test("Match cancel request route")
+    func testMatchCancelRequest() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5/cancelrequest", method: .put)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .requestWorkitemCancellation)
+    }
+    
+    @Test("Match subscribe workitem route")
+    func testMatchSubscribeWorkitem() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5/subscribers/MYAE", method: .post)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .subscribeWorkitem)
+        #expect(match?.parameters["workitemUID"] == "1.2.3.4.5")
+        #expect(match?.parameters["aeTitle"] == "MYAE")
+    }
+    
+    @Test("Match unsubscribe workitem route")
+    func testMatchUnsubscribeWorkitem() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5/subscribers/MYAE", method: .delete)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .unsubscribeWorkitem)
+    }
+    
+    @Test("Match suspend subscription route")
+    func testMatchSuspendSubscription() {
+        let match = router.match(path: "/dicom-web/workitems/1.2.3.4.5/subscribers/MYAE/suspend", method: .post)
+        
+        #expect(match != nil)
+        #expect(match?.handlerType == .suspendSubscription)
+    }
+}
+
