@@ -73,7 +73,7 @@ public struct GrayscalePresentationStateParser: Sendable {
         }
         
         // Parse Presentation State Identification Module
-        let instanceNumber = dataSet.integer(for: .presentationInstanceNumber)
+        let instanceNumber = dataSet.integerString(for: .presentationInstanceNumber)?.value
         let presentationLabel = dataSet.string(for: .presentationLabel)
         let presentationDescription = dataSet.string(for: .presentationDescription)
         let presentationCreationDate = dataSet.date(for: .presentationCreationDate)
@@ -134,20 +134,21 @@ public struct GrayscalePresentationStateParser: Sendable {
             )
         }
         
-        return try seriesSequence.items.compactMap { item in
-            guard let seriesInstanceUID = item.dataSet.string(for: .seriesInstanceUID) else {
-                return nil
+        var result: [ReferencedSeries] = []
+        for item in seriesSequence {
+            guard let seriesInstanceUID = item.string(for: .seriesInstanceUID) else {
+                continue
             }
             
             let referencedImages: [ReferencedImage]
-            if let imageSequence = item.dataSet.sequence(for: .referencedImageSequence) {
-                referencedImages = imageSequence.items.compactMap { imageItem in
-                    guard let sopClassUID = imageItem.dataSet.string(for: .referencedSOPClassUID),
-                          let sopInstanceUID = imageItem.dataSet.string(for: .referencedSOPInstanceUID) else {
+            if let imageSequence = item[.referencedImageSequence]?.sequenceItems {
+                referencedImages = imageSequence.compactMap { imageItem in
+                    guard let sopClassUID = imageItem.string(for: .referencedSOPClassUID),
+                          let sopInstanceUID = imageItem.string(for: .referencedSOPInstanceUID) else {
                         return nil
                     }
                     
-                    let frameNumbers = imageItem.dataSet.integers(for: .referencedFrameNumber)
+                    let frameNumbers = imageItem[.referencedFrameNumber]?.integerStringValues?.map { $0.value }
                     
                     return ReferencedImage(
                         sopClassUID: sopClassUID,
@@ -159,24 +160,26 @@ public struct GrayscalePresentationStateParser: Sendable {
                 referencedImages = []
             }
             
-            return ReferencedSeries(
+            result.append(ReferencedSeries(
                 seriesInstanceUID: seriesInstanceUID,
                 referencedImages: referencedImages
-            )
+            ))
         }
+        
+        return result
     }
     
     private func parseModalityLUT(from dataSet: DataSet) throws -> ModalityLUT? {
         // Check for LUT Sequence first
         if let lutSequence = dataSet.sequence(for: .modalityLUTSequence),
-           let firstItem = lutSequence.items.first {
-            let lutData = try parseLUTData(from: firstItem.dataSet)
+           let firstItem = lutSequence.first {
+            let lutData = try parseLUTData(from: firstItem)
             return .lut(lutData)
         }
         
         // Check for Rescale Slope/Intercept
-        if let slope = dataSet.decimal(for: .rescaleSlope),
-           let intercept = dataSet.decimal(for: .rescaleIntercept) {
+        if let slope = dataSet.decimalString(for: .rescaleSlope)?.value,
+           let intercept = dataSet.decimalString(for: .rescaleIntercept)?.value {
             let type = dataSet.string(for: .rescaleType)
             return .rescale(slope: slope, intercept: intercept, type: type)
         }
@@ -187,14 +190,14 @@ public struct GrayscalePresentationStateParser: Sendable {
     private func parseVOILUT(from dataSet: DataSet) throws -> VOILUT? {
         // Check for LUT Sequence first
         if let lutSequence = dataSet.sequence(for: .voiLUTSequence),
-           let firstItem = lutSequence.items.first {
-            let lutData = try parseLUTData(from: firstItem.dataSet)
+           let firstItem = lutSequence.first {
+            let lutData = try parseLUTData(from: firstItem)
             return .lut(lutData)
         }
         
         // Check for Window Center/Width
-        if let centers = dataSet.decimals(for: .windowCenter),
-           let widths = dataSet.decimals(for: .windowWidth),
+        if let centers = dataSet.decimalStrings(for: .windowCenter)?.map({ $0.value }),
+           let widths = dataSet.decimalStrings(for: .windowWidth)?.map({ $0.value }),
            let center = centers.first,
            let width = widths.first {
             let explanation = dataSet.string(for: .windowCenterWidthExplanation)
@@ -210,8 +213,8 @@ public struct GrayscalePresentationStateParser: Sendable {
     private func parsePresentationLUT(from dataSet: DataSet) throws -> PresentationLUT? {
         // Check for Presentation LUT Sequence
         if let lutSequence = dataSet.sequence(for: .presentationLUTSequence),
-           let firstItem = lutSequence.items.first {
-            let lutData = try parseLUTData(from: firstItem.dataSet)
+           let firstItem = lutSequence.first {
+            let lutData = try parseLUTData(from: firstItem)
             return .lut(lutData)
         }
         
@@ -230,16 +233,16 @@ public struct GrayscalePresentationStateParser: Sendable {
         return nil
     }
     
-    private func parseLUTData(from dataSet: DataSet) throws -> LUTData {
-        guard let descriptorInts = dataSet.integers(for: .lutDescriptor) else {
+    private func parseLUTData(from item: SequenceItem) throws -> LUTData {
+        guard let descriptorInts = item[.lutDescriptor]?.integerStringValues?.map({ $0.value }) else {
             throw ParseError.invalidLUTDescriptor("Missing LUT Descriptor")
         }
         
-        guard let data = dataSet.integers(for: .lutData) else {
+        guard let data = item[.lutData]?.integerStringValues?.map({ $0.value }) else {
             throw ParseError.invalidLUTDescriptor("Missing LUT Data")
         }
         
-        let explanation = dataSet.string(for: .lutExplanation)
+        let explanation = item.string(for: .lutExplanation)
         
         guard let lutData = LUTData.parse(descriptor: descriptorInts, data: data, explanation: explanation) else {
             throw ParseError.invalidLUTDescriptor("Invalid LUT Descriptor format")
@@ -249,7 +252,7 @@ public struct GrayscalePresentationStateParser: Sendable {
     }
     
     private func parseSpatialTransformation(from dataSet: DataSet) -> SpatialTransformation? {
-        let rotation = dataSet.integer(for: .imageRotation) ?? 0
+        let rotation = dataSet.integerString(for: .imageRotation)?.value ?? 0
         let flipString = dataSet.string(for: .imageHorizontalFlip)
         let horizontalFlip = flipString == "Y"
         
@@ -262,15 +265,13 @@ public struct GrayscalePresentationStateParser: Sendable {
     
     private func parseDisplayedArea(from dataSet: DataSet) -> DisplayedArea? {
         guard let displayedAreaSequence = dataSet.sequence(for: .displayedAreaSelectionSequence),
-              let firstItem = displayedAreaSequence.items.first else {
+              let firstItem = displayedAreaSequence.first else {
             return nil
         }
         
-        let item = firstItem.dataSet
-        
-        guard let topLeftValues = item.integers(for: .displayedAreaTopLeftHandCorner),
+        guard let topLeftValues = firstItem[.displayedAreaTopLeftHandCorner]?.integerStringValues?.map({ $0.value }),
               topLeftValues.count == 2,
-              let bottomRightValues = item.integers(for: .displayedAreaBottomRightHandCorner),
+              let bottomRightValues = firstItem[.displayedAreaBottomRightHandCorner]?.integerStringValues?.map({ $0.value }),
               bottomRightValues.count == 2 else {
             return nil
         }
@@ -278,7 +279,7 @@ public struct GrayscalePresentationStateParser: Sendable {
         let topLeft = (column: topLeftValues[0], row: topLeftValues[1])
         let bottomRight = (column: bottomRightValues[0], row: bottomRightValues[1])
         
-        let sizeModeString = item.string(for: .presentationSizeMode) ?? "SCALE TO FIT"
+        let sizeModeString = firstItem.string(for: .presentationSizeMode) ?? "SCALE TO FIT"
         let sizeMode = PresentationSizeMode(rawValue: sizeModeString) ?? .scaleToFit
         
         return DisplayedArea(topLeft: topLeft, bottomRight: bottomRight, sizeMode: sizeMode)
@@ -289,17 +290,17 @@ public struct GrayscalePresentationStateParser: Sendable {
             return []
         }
         
-        return layerSequence.items.compactMap { item in
-            guard let name = item.dataSet.string(for: .graphicLayer),
-                  let order = item.dataSet.integer(for: .graphicLayerOrder) else {
+        return layerSequence.compactMap { item in
+            guard let name = item.string(for: .graphicLayer),
+                  let order = item[.graphicLayerOrder]?.integerStringValue?.value else {
                 return nil
             }
             
-            let description = item.dataSet.string(for: .graphicLayerDescription)
-            let grayscaleValue = item.dataSet.integer(for: .graphicLayerRecommendedDisplayGrayscaleValue)
+            let description = item.string(for: .graphicLayerDescription)
+            let grayscaleValue = item[.graphicLayerRecommendedDisplayGrayscaleValue]?.integerStringValue?.value
             
             var rgbValue: (red: Int, green: Int, blue: Int)? = nil
-            if let rgbValues = item.dataSet.integers(for: .graphicLayerRecommendedDisplayRGBValue),
+            if let rgbValues = item[.graphicLayerRecommendedDisplayRGBValue]?.integerStringValues?.map({ $0.value }),
                rgbValues.count == 3 {
                 rgbValue = (red: rgbValues[0], green: rgbValues[1], blue: rgbValues[2])
             }
@@ -319,21 +320,22 @@ public struct GrayscalePresentationStateParser: Sendable {
             return []
         }
         
-        return try annotationSequence.items.compactMap { item in
-            guard let layer = item.dataSet.string(for: .graphicLayer) else {
-                return nil
+        var result: [GraphicAnnotation] = []
+        for item in annotationSequence {
+            guard let layer = item.string(for: .graphicLayer) else {
+                continue
             }
             
             // Parse referenced images
             var referencedImages: [ReferencedImage] = []
-            if let refImageSeq = item.dataSet.sequence(for: .referencedImageSequence) {
-                referencedImages = refImageSeq.items.compactMap { refItem in
-                    guard let sopClassUID = refItem.dataSet.string(for: .referencedSOPClassUID),
-                          let sopInstanceUID = refItem.dataSet.string(for: .referencedSOPInstanceUID) else {
+            if let refImageSeq = item[.referencedImageSequence]?.sequenceItems {
+                referencedImages = refImageSeq.compactMap { refItem in
+                    guard let sopClassUID = refItem.string(for: .referencedSOPClassUID),
+                          let sopInstanceUID = refItem.string(for: .referencedSOPInstanceUID) else {
                         return nil
                     }
                     
-                    let frameNumbers = refItem.dataSet.integers(for: .referencedFrameNumber)
+                    let frameNumbers = refItem[.referencedFrameNumber]?.integerStringValues?.map { $0.value }
                     
                     return ReferencedImage(
                         sopClassUID: sopClassUID,
@@ -345,50 +347,52 @@ public struct GrayscalePresentationStateParser: Sendable {
             
             // Parse graphic objects
             var graphicObjects: [GraphicObject] = []
-            if let graphicSeq = item.dataSet.sequence(for: .graphicObjectSequence) {
-                graphicObjects = try graphicSeq.items.compactMap { graphicItem in
-                    try parseGraphicObject(from: graphicItem.dataSet)
+            if let graphicSeq = item[.graphicObjectSequence]?.sequenceItems {
+                graphicObjects = try graphicSeq.compactMap { graphicItem in
+                    try parseGraphicObject(from: graphicItem)
                 }
             }
             
             // Parse text objects
             var textObjects: [TextObject] = []
-            if let textSeq = item.dataSet.sequence(for: .textObjectSequence) {
-                textObjects = textSeq.items.compactMap { textItem in
-                    parseTextObject(from: textItem.dataSet)
+            if let textSeq = item[.textObjectSequence]?.sequenceItems {
+                textObjects = textSeq.compactMap { textItem in
+                    parseTextObject(from: textItem)
                 }
             }
             
-            return GraphicAnnotation(
+            result.append(GraphicAnnotation(
                 layer: layer,
                 referencedImages: referencedImages,
                 graphicObjects: graphicObjects,
                 textObjects: textObjects
-            )
+            ))
         }
+        
+        return result
     }
     
-    private func parseGraphicObject(from dataSet: DataSet) throws -> GraphicObject? {
-        guard let typeString = dataSet.string(for: .graphicType),
+    private func parseGraphicObject(from item: SequenceItem) throws -> GraphicObject? {
+        guard let typeString = item.string(for: .graphicType),
               let type = PresentationGraphicType(rawValue: typeString),
-              let data = dataSet.decimals(for: .graphicData) else {
+              let data = item[.graphicData]?.decimalStringValues?.map({ $0.value }) else {
             return nil
         }
         
-        let filledString = dataSet.string(for: .graphicFilled)
+        let filledString = item.string(for: .graphicFilled)
         let filled = filledString == "Y"
         
-        let unitsString = dataSet.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
+        let unitsString = item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
         let units = AnnotationUnits(rawValue: unitsString) ?? .pixel
         
         return GraphicObject(type: type, data: data, filled: filled, units: units)
     }
     
-    private func parseTextObject(from dataSet: DataSet) -> TextObject? {
-        guard let text = dataSet.string(for: .unformattedTextValue),
-              let topLeftValues = dataSet.decimals(for: .boundingBoxTopLeftHandCorner),
+    private func parseTextObject(from item: SequenceItem) -> TextObject? {
+        guard let text = item.string(for: .unformattedTextValue),
+              let topLeftValues = item[.boundingBoxTopLeftHandCorner]?.decimalStringValues?.map({ $0.value }),
               topLeftValues.count == 2,
-              let bottomRightValues = dataSet.decimals(for: .boundingBoxBottomRightHandCorner),
+              let bottomRightValues = item[.boundingBoxBottomRightHandCorner]?.decimalStringValues?.map({ $0.value }),
               bottomRightValues.count == 2 else {
             return nil
         }
@@ -397,18 +401,18 @@ public struct GrayscalePresentationStateParser: Sendable {
         let bottomRight = (column: bottomRightValues[0], row: bottomRightValues[1])
         
         var anchorPoint: (column: Double, row: Double)? = nil
-        if let anchorValues = dataSet.decimals(for: .anchorPoint),
+        if let anchorValues = item[.anchorPoint]?.decimalStringValues?.map({ $0.value }),
            anchorValues.count == 2 {
             anchorPoint = (column: anchorValues[0], row: anchorValues[1])
         }
         
-        let anchorVisibleString = dataSet.string(for: .anchorPointVisibility)
+        let anchorVisibleString = item.string(for: .anchorPointVisibility)
         let anchorVisible = anchorVisibleString == "Y"
         
-        let boundingBoxUnitsString = dataSet.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
+        let boundingBoxUnitsString = item.string(for: .boundingBoxAnnotationUnits) ?? "PIXEL"
         let boundingBoxUnits = AnnotationUnits(rawValue: boundingBoxUnitsString) ?? .pixel
         
-        let anchorPointUnitsString = dataSet.string(for: .anchorPointAnnotationUnits) ?? "PIXEL"
+        let anchorPointUnitsString = item.string(for: .anchorPointAnnotationUnits) ?? "PIXEL"
         let anchorPointUnits = AnnotationUnits(rawValue: anchorPointUnitsString) ?? .pixel
         
         return TextObject(
@@ -430,15 +434,15 @@ public struct GrayscalePresentationStateParser: Sendable {
         let shapes = shapesString.split(separator: "\\").map { String($0) }
         var shutters: [DisplayShutter] = []
         
-        let presentationValue = dataSet.integer(for: .shutterPresentationValue)
+        let presentationValue = dataSet.integerString(for: .shutterPresentationValue)?.value
         
         for shape in shapes {
             switch shape {
             case "RECTANGULAR":
-                if let left = dataSet.integer(for: .shutterLeftVerticalEdge),
-                   let right = dataSet.integer(for: .shutterRightVerticalEdge),
-                   let top = dataSet.integer(for: .shutterUpperHorizontalEdge),
-                   let bottom = dataSet.integer(for: .shutterLowerHorizontalEdge) {
+                if let left = dataSet.integerString(for: .shutterLeftVerticalEdge)?.value,
+                   let right = dataSet.integerString(for: .shutterRightVerticalEdge)?.value,
+                   let top = dataSet.integerString(for: .shutterUpperHorizontalEdge)?.value,
+                   let bottom = dataSet.integerString(for: .shutterLowerHorizontalEdge)?.value {
                     shutters.append(.rectangular(
                         left: left,
                         right: right,
@@ -449,9 +453,9 @@ public struct GrayscalePresentationStateParser: Sendable {
                 }
                 
             case "CIRCULAR":
-                if let centerValues = dataSet.integers(for: .centerOfCircularShutter),
+                if let centerValues = dataSet.integerStrings(for: .centerOfCircularShutter)?.map({ $0.value }),
                    centerValues.count == 2,
-                   let radius = dataSet.integer(for: .radiusOfCircularShutter) {
+                   let radius = dataSet.integerString(for: .radiusOfCircularShutter)?.value {
                     shutters.append(.circular(
                         centerColumn: centerValues[0],
                         centerRow: centerValues[1],
@@ -461,7 +465,7 @@ public struct GrayscalePresentationStateParser: Sendable {
                 }
                 
             case "POLYGONAL":
-                if let vertexData = dataSet.integers(for: .verticesOfPolygonalShutter),
+                if let vertexData = dataSet.integerStrings(for: .verticesOfPolygonalShutter)?.map({ $0.value }),
                    vertexData.count >= 6, vertexData.count % 2 == 0 {
                     var vertices: [(column: Int, row: Int)] = []
                     for i in stride(from: 0, to: vertexData.count, by: 2) {
@@ -471,7 +475,7 @@ public struct GrayscalePresentationStateParser: Sendable {
                 }
                 
             case "BITMAP":
-                if let overlayGroup = dataSet.integer(for: .shutterOverlayGroup) {
+                if let overlayGroup = dataSet.integerString(for: .shutterOverlayGroup)?.value {
                     shutters.append(.bitmap(overlayGroup: overlayGroup, presentationValue: presentationValue))
                 }
                 
