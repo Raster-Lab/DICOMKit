@@ -1532,18 +1532,20 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 8.8: Advanced DICOMweb Features (v0.8.8)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Production-ready DICOMweb with security and advanced features  
 **Complexity**: High  
 **Dependencies**: Milestone 8.7
 
 #### Deliverables
-- [ ] OAuth2/OpenID Connect Authentication:
-  - [ ] Client credentials flow
-  - [ ] Authorization code flow
-  - [ ] Token refresh handling
-  - [ ] Bearer token injection
-  - [ ] SMART on FHIR compatibility
+- [x] OAuth2/OpenID Connect Authentication:
+  - [x] Client credentials flow (`OAuth2TokenManager`)
+  - [x] Authorization code flow (URL building, code exchange)
+  - [x] Token refresh handling (automatic refresh before expiration)
+  - [x] Bearer token injection (`OAuth2TokenProvider` protocol)
+  - [x] SMART on FHIR compatibility (`OAuth2Configuration.smartOnFHIR`)
+  - [x] PKCE support for public clients
+  - [x] Static token provider for testing
 - [ ] Server authentication middleware:
   - [ ] Token validation
   - [ ] JWT parsing and verification
@@ -1553,44 +1555,52 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] TLS 1.2/1.3 support
   - [ ] Certificate management
   - [ ] Client certificate authentication (mTLS)
-- [ ] Capability Discovery:
-  - [ ] `GET /` or `GET /capabilities` - Server capabilities
-  - [ ] Supported services and endpoints
-  - [ ] Supported transfer syntaxes
+- [x] Capability Discovery:
+  - [x] `GET /` or `GET /capabilities` - Server capabilities
+  - [x] Supported services and endpoints (`DICOMwebCapabilities.SupportedServices`)
+  - [x] Supported transfer syntaxes
+  - [x] `DICOMwebCapabilities` type with all capability metadata
+  - [x] Server handler for capabilities endpoint
   - [ ] Conformance statement generation
-- [ ] Extended Negotiation:
+- [x] Extended Negotiation (partial):
   - [ ] `accept-charset` parameter handling
   - [ ] Compression (gzip, deflate) for responses
-  - [ ] ETag and conditional requests
+  - [x] ETag and conditional requests (`CacheControlDirective`)
   - [ ] Range requests for partial content
-- [ ] Caching:
-  - [ ] Cache-Control header support
-  - [ ] ETag generation and validation
-  - [ ] Client-side caching utilities
+- [x] Caching:
+  - [x] Cache-Control header support (`CacheControlDirective`)
+  - [x] ETag generation and validation
+  - [x] Client-side caching utilities (`InMemoryCache`)
+  - [x] `CacheConfiguration` with presets
+  - [x] `CacheEntry` with TTL and validation support
+  - [x] Cache key generation utilities
   - [ ] Server-side response caching
 - [ ] Performance Optimizations:
   - [ ] Connection pooling (HTTP/2 multiplexing)
   - [ ] Request pipelining
   - [ ] Prefetching for likely requests
   - [ ] Response streaming
-- [ ] Monitoring and Logging:
-  - [ ] Request/response logging
-  - [ ] Performance metrics (latency, throughput)
-  - [ ] Error rate tracking
-  - [ ] OSLog integration
-- [ ] CORS Configuration (Server):
-  - [ ] Allowed origins configuration
-  - [ ] Preflight request handling
-  - [ ] Credentials support
-- [ ] Delete Services (optional per PS3.18):
-  - [ ] `DELETE /studies/{studyUID}` - Delete study
-  - [ ] `DELETE .../series/{seriesUID}` - Delete series
-  - [ ] `DELETE .../instances/{instanceUID}` - Delete instance
+- [x] Monitoring and Logging:
+  - [x] Request/response logging (`DICOMwebRequestLogger` protocol)
+  - [x] Performance metrics (latency, throughput) (`DICOMwebMetrics`)
+  - [x] Error rate tracking
+  - [x] OSLog integration (`OSLogRequestLogger`)
+  - [x] Console logger for debugging
+  - [x] Composite logger support
+  - [x] Metric timer for operation timing
+- [x] CORS Configuration (Server) - already in v0.8.5:
+  - [x] Allowed origins configuration
+  - [x] Preflight request handling
+  - [x] Credentials support
+- [x] Delete Services (optional per PS3.18) - already in v0.8.5:
+  - [x] `DELETE /studies/{studyUID}` - Delete study
+  - [x] `DELETE .../series/{seriesUID}` - Delete series
+  - [x] `DELETE .../instances/{instanceUID}` - Delete instance
   - [ ] Soft delete vs. permanent delete
 - [ ] `DICOMwebClient` unified API:
   - [ ] Single client for all DICOMweb services
   - [ ] Configuration with authentication, caching, retry
-  - [ ] Automatic token refresh
+  - [x] Automatic token refresh (via `OAuth2TokenProvider`)
   - [ ] Request interceptors for customization
 
 #### Technical Notes

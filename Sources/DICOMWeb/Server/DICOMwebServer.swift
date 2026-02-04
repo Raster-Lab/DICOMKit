@@ -1470,19 +1470,51 @@ public actor DICOMwebServer {
     // MARK: - Capabilities
     
     private func handleCapabilities() -> DICOMwebResponse {
-        let capabilities: [String: Any] = [
-            "wadoRS": true,
-            "qidoRS": true,
-            "stowRS": true,
-            "upsRS": upsStorage != nil,
-            "supports": [
-                "multipartRelated",
-                "dicomJSON"
-            ]
-        ]
+        // Build capabilities based on server configuration
+        let capabilities = DICOMwebCapabilities(
+            apiVersion: "1.0",
+            serverName: "DICOMKit",
+            serverVersion: "0.8.8",
+            services: DICOMwebCapabilities.SupportedServices(
+                wadoRS: true,
+                qidoRS: true,
+                stowRS: true,
+                upsRS: upsStorage != nil,
+                delete: true,
+                rendered: false,
+                thumbnails: false,
+                bulkdata: true
+            ),
+            mediaTypes: DICOMwebCapabilities.MediaTypeSupport(),
+            transferSyntaxes: [
+                "1.2.840.10008.1.2.1",     // Explicit VR Little Endian
+                "1.2.840.10008.1.2",       // Implicit VR Little Endian
+                "1.2.840.10008.1.2.2",     // Explicit VR Big Endian
+                "1.2.840.10008.1.2.4.50",  // JPEG Baseline
+                "1.2.840.10008.1.2.4.70",  // JPEG Lossless SV1
+                "1.2.840.10008.1.2.4.90",  // JPEG 2000 Lossless
+                "1.2.840.10008.1.2.4.91",  // JPEG 2000
+                "1.2.840.10008.1.2.5"      // RLE Lossless
+            ],
+            queryCapabilities: DICOMwebCapabilities.QueryCapabilities(
+                fuzzyMatching: false,
+                wildcardMatching: true,
+                dateRangeQueries: true,
+                includeFieldAll: true
+            ),
+            storeCapabilities: DICOMwebCapabilities.StoreCapabilities(
+                maxRequestSize: configuration.maxRequestBodySize,
+                partialSuccess: true
+            ),
+            authenticationMethods: [.none, .basic, .bearer, .apiKey]
+        )
         
-        if let json = try? JSONSerialization.data(withJSONObject: capabilities) {
-            return .ok(json: json)
+        let json = capabilities.toJSONDictionary()
+        
+        if let jsonData = try? JSONSerialization.data(withJSONObject: json, options: [.prettyPrinted, .sortedKeys]) {
+            var headers: [String: String] = ["Content-Type": "application/json"]
+            headers["Content-Length"] = "\(jsonData.count)"
+            return DICOMwebResponse(statusCode: 200, headers: headers, body: jsonData)
         }
         return .internalError()
     }
