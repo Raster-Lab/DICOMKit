@@ -820,7 +820,7 @@ final class UPSURLBuilderTests: XCTestCase {
         ])
         let urlString = url.absoluteString
         XCTAssertTrue(urlString.hasPrefix("https://pacs.example.com/dicom-web/workitems?"))
-        XCTAssertTrue(urlString.contains("00741000=SCHEDULED") || urlString.contains("00741000=SCHEDULED"))
+        XCTAssertTrue(urlString.contains("00741000=SCHEDULED"))
         XCTAssertTrue(urlString.contains("limit=10"))
     }
 }
