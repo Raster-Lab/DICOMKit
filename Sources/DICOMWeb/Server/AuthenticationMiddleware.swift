@@ -434,11 +434,13 @@ public struct UnsafeJWTParser: JWTVerifier, Sendable {
     }
 }
 
-#if canImport(CryptoKit) && (os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS))
+#if canImport(CryptoKit) && (os(macOS) || os(iOS) || os(visionOS))
 /// HMAC-based JWT verifier
 ///
 /// Verifies JWT tokens signed with HMAC algorithms (HS256, HS384, HS512).
 /// Suitable for symmetric key scenarios.
+///
+/// - Note: Available on macOS, iOS, and visionOS only.
 public struct HMACJWTVerifier: JWTVerifier, Sendable {
     /// The symmetric key for verification
     private let key: SymmetricKey
@@ -959,8 +961,15 @@ public struct RoleBasedAccessPolicy: AccessPolicy, Sendable {
 // MARK: - Authentication Middleware
 
 /// Configuration for authentication middleware
+///
+/// - Note: When no verifier is configured, tokens are parsed but NOT cryptographically verified.
+///   This is suitable for development or when a reverse proxy handles token verification.
+///   For production use, always provide a verifier such as `HMACJWTVerifier`.
 public struct AuthenticationConfiguration: Sendable {
     /// The JWT verifier to use
+    ///
+    /// - Important: When nil, tokens are parsed without signature verification.
+    ///   This should only be used in development or when tokens are verified upstream.
     public let verifier: (any JWTVerifier)?
     
     /// The access policy to enforce
@@ -976,6 +985,15 @@ public struct AuthenticationConfiguration: Sendable {
     public let tokenPrefix: String
     
     /// Creates an authentication configuration
+    ///
+    /// - Parameters:
+    ///   - verifier: JWT verifier for token validation. If nil, tokens are parsed without signature verification.
+    ///   - accessPolicy: Access control policy (default: permissive)
+    ///   - allowUnauthenticated: Whether to allow requests without tokens (default: true)
+    ///   - authorizationHeader: Header name for token (default: "Authorization")
+    ///   - tokenPrefix: Token prefix (default: "Bearer ")
+    ///
+    /// - Warning: When verifier is nil, tokens are NOT cryptographically verified.
     public init(
         verifier: (any JWTVerifier)? = nil,
         accessPolicy: any AccessPolicy = RoleBasedAccessPolicy.permissive,
@@ -990,7 +1008,10 @@ public struct AuthenticationConfiguration: Sendable {
         self.tokenPrefix = tokenPrefix
     }
     
-    /// Development configuration (no authentication)
+    /// Development configuration (no signature verification)
+    ///
+    /// - Warning: This configuration does NOT verify token signatures.
+    ///   Use only for local development with test data.
     public static let development = AuthenticationConfiguration()
     
     /// Production configuration with JWT verification
@@ -1037,8 +1058,10 @@ public struct AuthenticationMiddleware: Sendable {
         
         // Verify token
         guard let verifier = configuration.verifier else {
-            // No verifier configured, just parse the token
-            let parser = UnsafeJWTParser()
+            // No verifier configured - use UnsafeJWTParser with no validation
+            // This is suitable for development or when tokens are verified by a reverse proxy
+            // WARNING: This does NOT verify signatures - use only in trusted environments
+            let parser = UnsafeJWTParser(options: .none)
             let claims = try await parser.verify(token)
             return AuthenticatedUser(claims: claims)
         }
