@@ -96,8 +96,6 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Image reference linking for each finding
     - ✅ Validation ensures algorithm name and at least one finding present
     - ✅ 50 unit tests for comprehensive coverage
-    - ✅ Validation ensures algorithm name and at least one finding
-    - ✅ 50 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
