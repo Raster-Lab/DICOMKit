@@ -10,9 +10,46 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.9.2)
+## Features (v0.9.3)
 
-- ✅ **Structured Reporting Document Parsing (NEW in v0.9.2)**
+- ✅ **Content Item Navigation and Tree Traversal (NEW in v0.9.3)**
+  - ✅ **Tree Traversal APIs**
+    - ✅ `ContentTreeIterator` - Depth-first tree traversal
+    - ✅ `BreadthFirstIterator` - Breadth-first tree traversal
+    - ✅ `ContentTreeSequence` - Sequence wrapper for iterating content trees
+    - ✅ Configurable maximum depth protection
+    - ✅ Lazy iteration for memory efficiency
+  - ✅ **Query and Filtering APIs**
+    - ✅ `findItems(byConceptName:recursive:)` - Find by coded concept
+    - ✅ `findItems(byValueType:recursive:)` - Find by value type
+    - ✅ `findItems(byRelationship:recursive:)` - Find by relationship type
+    - ✅ `findItems(matching:recursive:)` - Custom predicate filtering
+    - ✅ Recursive vs. shallow search options
+  - ✅ **Path-Based Access**
+    - ✅ `SRPath` struct for addressing content items
+    - ✅ Path notation (e.g., "/Report/Finding[0]/Measurement")
+    - ✅ `item(at:)` method for path-based access
+    - ✅ `SRPath.Component` with concept and value type matching
+    - ✅ Path serialization for persistence
+  - ✅ **Content Item Subscripting**
+    - ✅ Subscript by index (`container[0]`)
+    - ✅ Subscript by concept string (`container[concept: "Finding"]`)
+    - ✅ Subscript by coded concept (`container[concept: codedConcept]`)
+    - ✅ Safe optional access patterns
+  - ✅ **Relationship Navigation**
+    - ✅ `propertyItems` - Items with HAS PROPERTIES relationship
+    - ✅ `containedItems` - Items with CONTAINS relationship
+    - ✅ `inferredFromItems` - Items with INFERRED FROM relationship
+    - ✅ `acquisitionContextItems` - Items with HAS ACQ CONTEXT relationship
+    - ✅ `observationContextItems` - Items with HAS OBS CONTEXT relationship
+    - ✅ `selectedFromItems` - Items with SELECTED FROM relationship
+  - ✅ **Measurement Navigation**
+    - ✅ `findMeasurements()` - All numeric content items
+    - ✅ `findMeasurements(forConcept:)` - Measurements by concept
+    - ✅ `findMeasurements(forConceptString:)` - Measurements by string
+    - ✅ `findMeasurementGroups()` - Containers with measurements
+    - ✅ `getMeasurementValue(forConcept:)` - Direct value access
+- ✅ **Structured Reporting Document Parsing (v0.9.2)**
   - ✅ **SR Document Parser**
     - ✅ `SRDocumentParser` - Parse DICOM SR data sets into content item trees
     - ✅ `SRDocument` - Parsed SR document representation with metadata
@@ -1869,14 +1906,34 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2)
+### DICOMKit (v0.9.2, v0.9.3)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
-**Structured Reporting Document Parsing (NEW in v0.9.2):**
+**Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
+- `ContentTreeIterator` - Depth-first iterator for SR content trees
+- `BreadthFirstIterator` - Breadth-first iterator for SR content trees
+- `ContentTreeSequence` - Sequence wrapper with traversal order options
+- `SRPath` - Path notation for addressing content items (e.g., "/Finding[0]/Measurement")
+- `SRPath.Component` - Path component with concept and value type matching
+- `SRPathError` - Path navigation errors
+- Extensions on `ContainerContentItem`:
+  - `item(at:)` - Navigate to item by path
+  - Subscripts for index, concept string, and coded concept access
+  - `findItems(byConceptName:recursive:)` - Query by concept
+  - `findItems(byValueType:recursive:)` - Query by value type
+  - `findItems(byRelationship:recursive:)` - Query by relationship
+  - `findMeasurements()` / `findMeasurementGroups()` - Measurement navigation
+  - Relationship navigation properties (`propertyItems`, `containedItems`, etc.)
+- Extensions on `SRDocument`:
+  - Path-based subscript access (`document[path: "/Finding"]`)
+  - All query and navigation methods from containers
+  - Relationship-based filtering properties
+
+**Structured Reporting Document Parsing (v0.9.2):**
 - `SRDocument` - Parsed SR document with metadata and content tree
 - `SRDocumentParser` - Parse DICOM data sets into SR documents
 - `SRDocumentParser.Configuration` - Parser configuration options
@@ -2032,4 +2089,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.2 - implementing SR Document Parsing for DICOM Structured Reporting. This version adds the ability to parse DICOM SR documents into typed content item trees with full support for all value types, relationship types, and document metadata. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.3 - implementing Content Item Navigation and Tree Traversal for DICOM Structured Reporting. This version adds intuitive APIs for navigating SR content trees including depth-first/breadth-first iterators, path-based access (e.g., "/Finding[0]/Measurement"), query and filtering methods, relationship navigation, and measurement-specific navigation. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
