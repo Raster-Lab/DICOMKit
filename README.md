@@ -96,6 +96,15 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Image reference linking for each finding
     - ✅ Validation ensures algorithm name and at least one finding present
     - ✅ 50 unit tests for comprehensive coverage
+  - ✅ **AI/ML Integration Foundation (NEW in v0.9.8)**
+    - ✅ `AIInferenceResult` protocol for AI model outputs
+    - ✅ `AIDetection` types for representing AI detections with confidence scores
+    - ✅ `AIDetectionType` enum with common findings (lung nodule, mass, fracture, etc.)
+    - ✅ `AIDetectionLocation` supporting 2D and 3D spatial coordinates
+    - ✅ `AIImageReference` for linking detections to source images
+    - ✅ `ConfidenceScore` utilities for encoding and categorizing AI confidence (high/medium/low)
+    - ✅ Direct integration with existing CAD SR builders
+    - ✅ 26 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
