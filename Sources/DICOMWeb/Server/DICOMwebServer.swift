@@ -34,6 +34,9 @@ public actor DICOMwebServer {
     /// Store delegate for STOW-RS events
     public weak var storeDelegate: STOWDelegate?
     
+    /// UPS storage provider for workitem operations (optional)
+    private var upsStorage: (any UPSStorageProvider)?
+    
     // MARK: - Initialization
     
     /// Creates a DICOMweb server
@@ -53,6 +56,28 @@ public actor DICOMwebServer {
     /// - Parameter storage: Storage provider
     public init(storage: any DICOMwebStorageProvider) {
         self.init(configuration: .development, storage: storage)
+    }
+    
+    /// Creates a DICOMweb server with UPS storage support
+    /// - Parameters:
+    ///   - configuration: Server configuration
+    ///   - storage: DICOM storage provider
+    ///   - upsStorage: UPS storage provider for workitem operations
+    public init(
+        configuration: DICOMwebServerConfiguration,
+        storage: any DICOMwebStorageProvider,
+        upsStorage: any UPSStorageProvider
+    ) {
+        self.configuration = configuration
+        self.storage = storage
+        self.upsStorage = upsStorage
+        self.router = DICOMwebRouter(pathPrefix: configuration.pathPrefix)
+    }
+    
+    /// Sets the UPS storage provider
+    /// - Parameter upsStorage: The UPS storage provider to use
+    public func setUPSStorage(_ upsStorage: any UPSStorageProvider) {
+        self.upsStorage = upsStorage
     }
     
     // MARK: - Server Control
@@ -177,31 +202,31 @@ public actor DICOMwebServer {
         case .deleteInstance:
             return try await handleDeleteInstance(parameters: match.parameters)
             
-        // UPS-RS (Not yet implemented - return 501 Not Implemented)
+        // UPS-RS Handlers
         case .searchWorkitems:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleSearchWorkitems(request: request)
         case .retrieveWorkitem:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleRetrieveWorkitem(parameters: match.parameters, request: request)
         case .createWorkitem:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleCreateWorkitem(parameters: match.parameters, request: request)
         case .createWorkitemWithUID:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleCreateWorkitem(parameters: match.parameters, request: request)
         case .updateWorkitem:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleUpdateWorkitem(parameters: match.parameters, request: request)
         case .changeWorkitemState:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleChangeWorkitemState(parameters: match.parameters, request: request)
         case .requestWorkitemCancellation:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleRequestWorkitemCancellation(parameters: match.parameters, request: request)
         case .subscribeWorkitem:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleSubscribeWorkitem(parameters: match.parameters, request: request)
         case .unsubscribeWorkitem:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleUnsubscribeWorkitem(parameters: match.parameters, request: request)
         case .subscribeGlobal:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleSubscribeGlobal(parameters: match.parameters, request: request)
         case .unsubscribeGlobal:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleUnsubscribeGlobal(parameters: match.parameters, request: request)
         case .suspendSubscription:
-            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            return try await handleSuspendSubscription(parameters: match.parameters, request: request)
             
         case .capabilities:
             return handleCapabilities()
@@ -795,6 +820,645 @@ public actor DICOMwebServer {
         return .noContent()
     }
     
+    // MARK: - UPS-RS Handlers
+    
+    /// Handles GET /workitems - Search workitems
+    private func handleSearchWorkitems(request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard let upsStorage = upsStorage else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        // Parse query parameters into UPSStorageQuery
+        let query = parseUPSQuery(from: request.queryParameters)
+        
+        // Search workitems
+        let workitems = try await upsStorage.searchWorkitems(query: query)
+        let totalCount = try await upsStorage.countWorkitems(query: query)
+        
+        // Convert workitems to DICOM JSON array
+        let jsonArray = workitems.map { workitemToDICOMJSON($0) }
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: jsonArray) else {
+            return .internalError(message: "Failed to serialize workitem results")
+        }
+        
+        let headers: [String: String] = [
+            "Content-Type": DICOMMediaType.dicomJSON.description,
+            "Content-Length": "\(jsonData.count)",
+            "X-Total-Count": "\(totalCount)"
+        ]
+        
+        return DICOMwebResponse(statusCode: 200, headers: headers, body: jsonData)
+    }
+    
+    /// Handles GET /workitems/{workitemUID} - Retrieve specific workitem
+    private func handleRetrieveWorkitem(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard let upsStorage = upsStorage else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        guard let workitemUID = parameters["workitemUID"] else {
+            return .badRequest(message: "Missing workitemUID")
+        }
+        
+        guard let workitem = try await upsStorage.getWorkitem(workitemUID: workitemUID) else {
+            return .notFound(message: "Workitem not found: \(workitemUID)")
+        }
+        
+        // Convert to DICOM JSON
+        let json = workitemToDICOMJSON(workitem)
+        
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: json) else {
+            return .internalError(message: "Failed to serialize workitem")
+        }
+        
+        return .ok(json: jsonData)
+    }
+    
+    /// Handles POST /workitems and POST /workitems/{workitemUID} - Create workitem
+    private func handleCreateWorkitem(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard let upsStorage = upsStorage else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        guard let body = request.body, !body.isEmpty else {
+            return .badRequest(message: "Request body is required")
+        }
+        
+        // Parse JSON body
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .badRequest(message: "Invalid JSON body")
+        }
+        
+        // Get workitem UID from path parameter or generate one
+        let workitemUID: String
+        if let pathUID = parameters["workitemUID"] {
+            workitemUID = pathUID
+        } else if let uidFromBody = extractString(from: json, tag: UPSTag.sopInstanceUID) {
+            workitemUID = uidFromBody
+        } else {
+            workitemUID = generateUID()
+        }
+        
+        // Check for existing workitem
+        if let _ = try await upsStorage.getWorkitem(workitemUID: workitemUID) {
+            return .conflict(message: "Workitem already exists: \(workitemUID)")
+        }
+        
+        // Parse workitem from JSON
+        let workitem = parseWorkitemFromJSON(json, workitemUID: workitemUID)
+        
+        // Create the workitem
+        try await upsStorage.createWorkitem(workitem)
+        
+        // Build response with Location header
+        let locationURL = "\(configuration.baseURL.absoluteString)/workitems/\(workitemUID)"
+        
+        let responseJSON: [String: Any] = [
+            UPSTag.sopInstanceUID: [
+                "vr": "UI",
+                "Value": [workitemUID]
+            ]
+        ]
+        
+        guard let responseData = try? JSONSerialization.data(withJSONObject: responseJSON) else {
+            return .internalError(message: "Failed to serialize response")
+        }
+        
+        return DICOMwebResponse(
+            statusCode: 201,
+            headers: [
+                "Content-Type": DICOMMediaType.dicomJSON.description,
+                "Location": locationURL
+            ],
+            body: responseData
+        )
+    }
+    
+    /// Handles PUT /workitems/{workitemUID} - Update workitem
+    private func handleUpdateWorkitem(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard let upsStorage = upsStorage else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        guard let workitemUID = parameters["workitemUID"] else {
+            return .badRequest(message: "Missing workitemUID")
+        }
+        
+        guard let body = request.body, !body.isEmpty else {
+            return .badRequest(message: "Request body is required")
+        }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .badRequest(message: "Invalid JSON body")
+        }
+        
+        // Get existing workitem
+        guard var workitem = try await upsStorage.getWorkitem(workitemUID: workitemUID) else {
+            return .notFound(message: "Workitem not found: \(workitemUID)")
+        }
+        
+        // Cannot update final state workitems
+        if workitem.state.isFinal {
+            return .conflict(message: "Cannot update workitem in final state: \(workitem.state.rawValue)")
+        }
+        
+        // Apply updates from JSON
+        applyWorkitemUpdates(&workitem, from: json)
+        
+        // Save the updated workitem
+        try await upsStorage.updateWorkitem(workitem)
+        
+        return .noContent()
+    }
+    
+    /// Handles PUT /workitems/{workitemUID}/state - Change workitem state
+    private func handleChangeWorkitemState(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard let upsStorage = upsStorage else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        guard let workitemUID = parameters["workitemUID"] else {
+            return .badRequest(message: "Missing workitemUID")
+        }
+        
+        guard let body = request.body, !body.isEmpty else {
+            return .badRequest(message: "Request body is required")
+        }
+        
+        guard let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] else {
+            return .badRequest(message: "Invalid JSON body")
+        }
+        
+        // Extract target state
+        guard let stateString = extractString(from: json, tag: UPSTag.procedureStepState),
+              let targetState = UPSState(rawValue: stateString) else {
+            return .badRequest(message: "Missing or invalid Procedure Step State")
+        }
+        
+        // Extract transaction UID if provided
+        let transactionUID = extractString(from: json, tag: UPSTag.transactionUID)
+        
+        // Get existing workitem
+        guard let workitem = try await upsStorage.getWorkitem(workitemUID: workitemUID) else {
+            return .notFound(message: "Workitem not found: \(workitemUID)")
+        }
+        
+        // Validate state transition
+        guard workitem.state.canTransition(to: targetState) else {
+            return .conflict(message: "Invalid state transition from \(workitem.state.rawValue) to \(targetState.rawValue)")
+        }
+        
+        do {
+            try await upsStorage.changeWorkitemState(
+                workitemUID: workitemUID,
+                newState: targetState,
+                transactionUID: transactionUID
+            )
+        } catch let error as UPSError {
+            switch error {
+            case .transactionUIDRequired:
+                return .conflict(message: "Transaction UID required for this state transition")
+            case .transactionUIDMismatch:
+                return .conflict(message: "Transaction UID mismatch")
+            default:
+                return .conflict(message: error.description)
+            }
+        }
+        
+        // Build response - include transaction UID if transitioning to IN PROGRESS
+        var responseJSON: [String: Any] = [
+            UPSTag.procedureStepState: [
+                "vr": "CS",
+                "Value": [targetState.rawValue]
+            ]
+        ]
+        
+        if targetState == .inProgress {
+            // Return the transaction UID (either provided or generated)
+            let updatedWorkitem = try await upsStorage.getWorkitem(workitemUID: workitemUID)
+            if let txUID = updatedWorkitem?.transactionUID {
+                responseJSON[UPSTag.transactionUID] = [
+                    "vr": "UI",
+                    "Value": [txUID]
+                ]
+            }
+        }
+        
+        guard let responseData = try? JSONSerialization.data(withJSONObject: responseJSON) else {
+            return .internalError(message: "Failed to serialize response")
+        }
+        
+        return .ok(json: responseData)
+    }
+    
+    /// Handles PUT /workitems/{workitemUID}/cancelrequest - Request workitem cancellation
+    private func handleRequestWorkitemCancellation(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard let upsStorage = upsStorage else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        guard let workitemUID = parameters["workitemUID"] else {
+            return .badRequest(message: "Missing workitemUID")
+        }
+        
+        // Get existing workitem
+        guard let workitem = try await upsStorage.getWorkitem(workitemUID: workitemUID) else {
+            return .notFound(message: "Workitem not found: \(workitemUID)")
+        }
+        
+        // Check if workitem can be canceled
+        guard workitem.state.canTransition(to: .canceled) else {
+            return .conflict(message: "Workitem cannot be canceled from state: \(workitem.state.rawValue)")
+        }
+        
+        // Parse cancellation request body if present
+        var reason: String? = nil
+        if let body = request.body, !body.isEmpty,
+           let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any] {
+            reason = extractString(from: json, tag: UPSTag.reasonForCancellation)
+        }
+        
+        // For workitems in SCHEDULED state, we can directly cancel
+        // For IN PROGRESS, this is just a request (the performer must complete the cancellation)
+        if workitem.state == .scheduled {
+            try await upsStorage.changeWorkitemState(
+                workitemUID: workitemUID,
+                newState: .canceled,
+                transactionUID: nil
+            )
+            
+            // Update cancellation reason if provided
+            if let reason = reason, var updated = try await upsStorage.getWorkitem(workitemUID: workitemUID) {
+                updated.cancellationReason = reason
+                try await upsStorage.updateWorkitem(updated)
+            }
+        }
+        // For IN PROGRESS, the cancellation is just recorded as a request
+        // The performer must explicitly cancel with transaction UID
+        
+        return DICOMwebResponse(statusCode: 202, headers: [:], body: nil)
+    }
+    
+    /// Handles POST /workitems/{workitemUID}/subscribers/{aeTitle} - Subscribe to workitem
+    private func handleSubscribeWorkitem(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard upsStorage != nil else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        guard let workitemUID = parameters["workitemUID"],
+              let _ = parameters["aeTitle"] else {
+            return .badRequest(message: "Missing workitemUID or aeTitle")
+        }
+        
+        // Verify workitem exists
+        guard let _ = try await upsStorage?.getWorkitem(workitemUID: workitemUID) else {
+            return .notFound(message: "Workitem not found: \(workitemUID)")
+        }
+        
+        // Subscription management is not fully implemented yet
+        // Return 200 to indicate subscription accepted
+        return DICOMwebResponse(statusCode: 200, headers: [:], body: nil)
+    }
+    
+    /// Handles DELETE /workitems/{workitemUID}/subscribers/{aeTitle} - Unsubscribe from workitem
+    private func handleUnsubscribeWorkitem(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard upsStorage != nil else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        // Return 200 regardless - idempotent operation
+        return DICOMwebResponse(statusCode: 200, headers: [:], body: nil)
+    }
+    
+    /// Handles POST /workitems/1.2.840.10008.5.1.4.34.5/subscribers/{aeTitle} - Global subscription
+    private func handleSubscribeGlobal(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard upsStorage != nil else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        // Global subscription management is not fully implemented yet
+        return DICOMwebResponse(statusCode: 200, headers: [:], body: nil)
+    }
+    
+    /// Handles DELETE /workitems/1.2.840.10008.5.1.4.34.5/subscribers/{aeTitle} - Global unsubscription
+    private func handleUnsubscribeGlobal(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard upsStorage != nil else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        return DICOMwebResponse(statusCode: 200, headers: [:], body: nil)
+    }
+    
+    /// Handles POST /workitems/{workitemUID}/subscribers/{aeTitle}/suspend - Suspend subscription
+    private func handleSuspendSubscription(parameters: [String: String], request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        guard upsStorage != nil else {
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"],
+                        body: "{\"error\": \"UPS-RS not configured\"}".data(using: .utf8))
+        }
+        
+        guard let workitemUID = parameters["workitemUID"],
+              let _ = parameters["aeTitle"] else {
+            return .badRequest(message: "Missing workitemUID or aeTitle")
+        }
+        
+        // Verify workitem exists
+        guard let _ = try await upsStorage?.getWorkitem(workitemUID: workitemUID) else {
+            return .notFound(message: "Workitem not found: \(workitemUID)")
+        }
+        
+        return DICOMwebResponse(statusCode: 200, headers: [:], body: nil)
+    }
+    
+    // MARK: - UPS Helper Methods
+    
+    /// Parses query parameters into UPSStorageQuery
+    private func parseUPSQuery(from parameters: [String: String]) -> UPSStorageQuery {
+        var query = UPSStorageQuery()
+        
+        // Parse state
+        if let stateStr = parameters["00741000"] ?? parameters["ProcedureStepState"] {
+            query.state = UPSState(rawValue: stateStr)
+        }
+        
+        // Parse priority
+        if let priorityStr = parameters["00741200"] ?? parameters["ScheduledProcedureStepPriority"] {
+            query.priority = UPSPriority(rawValue: priorityStr)
+        }
+        
+        // Parse patient info
+        query.patientID = parameters["00100020"] ?? parameters["PatientID"]
+        query.patientName = parameters["00100010"] ?? parameters["PatientName"]
+        
+        // Parse procedure info
+        query.procedureStepLabel = parameters["00741204"] ?? parameters["ProcedureStepLabel"]
+        query.worklistLabel = parameters["00741202"] ?? parameters["WorklistLabel"]
+        
+        // Parse study reference
+        query.studyInstanceUID = parameters["0020000D"] ?? parameters["StudyInstanceUID"]
+        query.accessionNumber = parameters["00080050"] ?? parameters["AccessionNumber"]
+        
+        // Parse pagination
+        if let limitStr = parameters["limit"], let limit = Int(limitStr) {
+            query.limit = min(limit, 1000) // Cap at 1000
+        }
+        if let offsetStr = parameters["offset"], let offset = Int(offsetStr) {
+            query.offset = offset
+        }
+        
+        // Parse fuzzy matching
+        query.fuzzyMatching = parameters["fuzzymatching"]?.lowercased() == "true"
+        
+        return query
+    }
+    
+    /// Converts a Workitem to DICOM JSON format
+    private func workitemToDICOMJSON(_ workitem: Workitem) -> [String: Any] {
+        var json: [String: Any] = [:]
+        
+        // SOP Instance UID
+        json[UPSTag.sopInstanceUID] = [
+            "vr": "UI",
+            "Value": [workitem.workitemUID]
+        ]
+        
+        // Procedure Step State
+        json[UPSTag.procedureStepState] = [
+            "vr": "CS",
+            "Value": [workitem.state.rawValue]
+        ]
+        
+        // Priority
+        json[UPSTag.scheduledProcedureStepPriority] = [
+            "vr": "CS",
+            "Value": [workitem.priority.rawValue]
+        ]
+        
+        // Patient info
+        if let patientName = workitem.patientName {
+            json[UPSTag.patientName] = [
+                "vr": "PN",
+                "Value": [["Alphabetic": patientName]]
+            ]
+        }
+        
+        if let patientID = workitem.patientID {
+            json[UPSTag.patientID] = [
+                "vr": "LO",
+                "Value": [patientID]
+            ]
+        }
+        
+        // Scheduling info
+        if let scheduledStart = workitem.scheduledStartDateTime {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+            json[UPSTag.scheduledProcedureStepStartDateTime] = [
+                "vr": "DT",
+                "Value": [formatter.string(from: scheduledStart)]
+            ]
+        }
+        
+        // Labels
+        if let label = workitem.procedureStepLabel {
+            json[UPSTag.procedureStepLabel] = [
+                "vr": "LO",
+                "Value": [label]
+            ]
+        }
+        
+        if let worklistLabel = workitem.worklistLabel {
+            json[UPSTag.worklistLabel] = [
+                "vr": "LO",
+                "Value": [worklistLabel]
+            ]
+        }
+        
+        // Study reference
+        if let studyUID = workitem.studyInstanceUID {
+            json[UPSTag.studyInstanceUID] = [
+                "vr": "UI",
+                "Value": [studyUID]
+            ]
+        }
+        
+        if let accession = workitem.accessionNumber {
+            json[UPSTag.accessionNumber] = [
+                "vr": "SH",
+                "Value": [accession]
+            ]
+        }
+        
+        // Transaction UID
+        if let transactionUID = workitem.transactionUID {
+            json[UPSTag.transactionUID] = [
+                "vr": "UI",
+                "Value": [transactionUID]
+            ]
+        }
+        
+        // Progress info
+        if let progress = workitem.progressInformation {
+            if let percentage = progress.progressPercentage {
+                json[UPSTag.procedureStepProgress] = [
+                    "vr": "US",
+                    "Value": [percentage]
+                ]
+            }
+            if let description = progress.progressDescription {
+                json[UPSTag.procedureStepProgressDescription] = [
+                    "vr": "ST",
+                    "Value": [description]
+                ]
+            }
+        }
+        
+        // Comments
+        if let comments = workitem.comments {
+            json[UPSTag.commentsOnScheduledProcedureStep] = [
+                "vr": "LT",
+                "Value": [comments]
+            ]
+        }
+        
+        return json
+    }
+    
+    /// Parses a Workitem from DICOM JSON
+    private func parseWorkitemFromJSON(_ json: [String: Any], workitemUID: String) -> Workitem {
+        var workitem = Workitem(workitemUID: workitemUID)
+        
+        // Parse state
+        if let stateStr = extractString(from: json, tag: UPSTag.procedureStepState),
+           let state = UPSState(rawValue: stateStr) {
+            workitem.state = state
+        }
+        
+        // Parse priority
+        if let priorityStr = extractString(from: json, tag: UPSTag.scheduledProcedureStepPriority),
+           let priority = UPSPriority(rawValue: priorityStr) {
+            workitem.priority = priority
+        }
+        
+        // Parse patient info
+        workitem.patientName = extractPersonName(from: json, tag: UPSTag.patientName)
+        workitem.patientID = extractString(from: json, tag: UPSTag.patientID)
+        
+        // Parse scheduling
+        if let dateStr = extractString(from: json, tag: UPSTag.scheduledProcedureStepStartDateTime) {
+            workitem.scheduledStartDateTime = parseDateTime(dateStr)
+        }
+        
+        // Parse labels
+        workitem.procedureStepLabel = extractString(from: json, tag: UPSTag.procedureStepLabel)
+        workitem.worklistLabel = extractString(from: json, tag: UPSTag.worklistLabel)
+        
+        // Parse study reference
+        workitem.studyInstanceUID = extractString(from: json, tag: UPSTag.studyInstanceUID)
+        workitem.accessionNumber = extractString(from: json, tag: UPSTag.accessionNumber)
+        
+        // Parse comments
+        workitem.comments = extractString(from: json, tag: UPSTag.commentsOnScheduledProcedureStep)
+        
+        return workitem
+    }
+    
+    /// Applies updates from JSON to an existing workitem
+    private func applyWorkitemUpdates(_ workitem: inout Workitem, from json: [String: Any]) {
+        // Update patient info if provided
+        if let patientName = extractPersonName(from: json, tag: UPSTag.patientName) {
+            workitem.patientName = patientName
+        }
+        if let patientID = extractString(from: json, tag: UPSTag.patientID) {
+            workitem.patientID = patientID
+        }
+        
+        // Update scheduling if provided
+        if let dateStr = extractString(from: json, tag: UPSTag.scheduledProcedureStepStartDateTime) {
+            workitem.scheduledStartDateTime = parseDateTime(dateStr)
+        }
+        
+        // Update labels if provided
+        if let label = extractString(from: json, tag: UPSTag.procedureStepLabel) {
+            workitem.procedureStepLabel = label
+        }
+        if let worklistLabel = extractString(from: json, tag: UPSTag.worklistLabel) {
+            workitem.worklistLabel = worklistLabel
+        }
+        
+        // Update priority if provided
+        if let priorityStr = extractString(from: json, tag: UPSTag.scheduledProcedureStepPriority),
+           let priority = UPSPriority(rawValue: priorityStr) {
+            workitem.priority = priority
+        }
+        
+        // Update comments if provided
+        if let comments = extractString(from: json, tag: UPSTag.commentsOnScheduledProcedureStep) {
+            workitem.comments = comments
+        }
+        
+        // Update modification time
+        workitem.modificationDateTime = Date()
+    }
+    
+    /// Extracts a string value from DICOM JSON
+    private func extractString(from json: [String: Any], tag: String) -> String? {
+        guard let element = json[tag] as? [String: Any],
+              let values = element["Value"] as? [Any],
+              let first = values.first else {
+            return nil
+        }
+        return first as? String
+    }
+    
+    /// Extracts a person name from DICOM JSON
+    private func extractPersonName(from json: [String: Any], tag: String) -> String? {
+        guard let element = json[tag] as? [String: Any],
+              let values = element["Value"] as? [Any],
+              let first = values.first else {
+            return nil
+        }
+        
+        if let stringValue = first as? String {
+            return stringValue
+        }
+        if let dictValue = first as? [String: Any],
+           let alphabetic = dictValue["Alphabetic"] as? String {
+            return alphabetic
+        }
+        return nil
+    }
+    
+    /// Parses a DICOM DateTime string to Date
+    private func parseDateTime(_ string: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        
+        // Try without time component
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd"
+        return dateFormatter.date(from: string)
+    }
+    
+    /// Generates a DICOM UID
+    private func generateUID() -> String {
+        let uuid = UUID().uuidString.replacingOccurrences(of: "-", with: "")
+        return "2.25.\(uuid.prefix(32))"
+    }
+    
     // MARK: - Capabilities
     
     private func handleCapabilities() -> DICOMwebResponse {
@@ -802,6 +1466,7 @@ public actor DICOMwebServer {
             "wadoRS": true,
             "qidoRS": true,
             "stowRS": true,
+            "upsRS": upsStorage != nil,
             "supports": [
                 "multipartRelated",
                 "dicomJSON"

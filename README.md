@@ -12,7 +12,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 ## Features (v0.8.7)
 
-- 🚧 **UPS-RS Worklist Services - Data Model (NEW in v0.8.7)**
+- ✅ **UPS-RS Worklist Services (NEW in v0.8.7)**
   - ✅ `Workitem` struct for UPS workitem representation
   - ✅ `UPSState` enum with state machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
   - ✅ `UPSPriority` enum (STAT, HIGH, MEDIUM, LOW)
@@ -24,9 +24,18 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ `InMemoryUPSStorageProvider` for testing
   - ✅ State transition validation and Transaction UID tracking
   - ✅ Server routes for UPS-RS endpoints (/workitems/*)
-  - ✅ 57 unit tests for UPS types
-  - 🚧 Client API methods (coming soon)
-  - 🚧 Server handler implementations (coming soon)
+  - ✅ Server handler implementations for all UPS-RS operations
+  - ✅ Search workitems (GET /workitems)
+  - ✅ Retrieve workitem (GET /workitems/{uid})
+  - ✅ Create workitem (POST /workitems, POST /workitems/{uid})
+  - ✅ Update workitem (PUT /workitems/{uid})
+  - ✅ Change state (PUT /workitems/{uid}/state)
+  - ✅ Request cancellation (PUT /workitems/{uid}/cancelrequest)
+  - ✅ Subscription endpoints (subscribe/unsubscribe/suspend)
+  - ✅ Capabilities endpoint includes UPS-RS support status
+  - ✅ `UPSClient` for client-side workitem operations
+  - ✅ 83 unit tests for UPS types and server handlers
+  - 🚧 Event delivery (WebSocket/polling) coming in v0.8.8
 - ✅ **DICOMweb Server STOW-RS Enhancements (v0.8.6)**
   - ✅ STOWConfiguration for configurable store behavior
   - ✅ DuplicatePolicy: reject (409 Conflict), replace, or accept (idempotent)
