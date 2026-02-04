@@ -64,6 +64,16 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Procedure Reported and Language of Content support
     - ✅ Validation ensures tracking identifiers are provided
     - ✅ 60 unit tests for comprehensive coverage
+  - ✅ **KeyObjectSelectionBuilder** - Specialized builder for Key Object Selection (KOS) Documents (NEW in v0.9.8)
+    - ✅ DICOM Key Object Selection Document (SOP Class UID: 1.2.840.10008.5.1.4.1.1.88.59)
+    - ✅ Flag significant images for teaching, quality control, or referral
+    - ✅ Standard purpose codes from CID 7010 (For Teaching, Quality Issue, etc.)
+    - ✅ 9 predefined purpose codes plus custom concept support
+    - ✅ Simple fluent API for adding key objects (referenced instances)
+    - ✅ Optional text descriptions for each key object
+    - ✅ Frame number support for multi-frame images
+    - ✅ Validation ensures at least one key object is present
+    - ✅ 38 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
@@ -2487,6 +2497,96 @@ let multiLesionReport = try Comprehensive3DSRBuilder()
 print("3D ROIs: \(multiLesionReport.rootContent.contentItems.count)")
 ```
 
+#### Using KeyObjectSelectionBuilder for Flagging Key Images (NEW in v0.9.8)
+
+`KeyObjectSelectionBuilder` provides a simple fluent API for creating DICOM Key Object Selection (KOS) documents, which are used to flag significant images for teaching, quality control, referral, or other purposes.
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// Create a teaching file collection
+let teachingFile = try KeyObjectSelectionBuilder()
+    .withPatientID("PAT12345")
+    .withPatientName("Teaching^Case^^^")
+    .withStudyInstanceUID("1.2.840.10008.999.1")
+    .withStudyDate("20240115")
+    .withStudyDescription("CT Abdomen with Contrast")
+    .withDocumentTitle(.forTeaching)
+    .withCompletionFlag(.complete)
+    .withVerificationFlag(.verified)
+    .addKeyObject(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.2", // CT Image Storage
+        sopInstanceUID: "1.2.840.10008.999.1.1.1",
+        description: "Classic presentation of hepatic lesion"
+    )
+    .addKeyObject(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+        sopInstanceUID: "1.2.840.10008.999.1.1.2",
+        description: "Portal venous phase showing washout"
+    )
+    .addKeyObject(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+        sopInstanceUID: "1.2.840.10008.999.1.1.3"
+    )
+    .build()
+
+print("KOS Document: \(teachingFile.documentTitle?.codeMeaning ?? "")")
+print("Key objects: \(teachingFile.rootContent.contentItems.count / 2)")
+
+// Quality control - reject images with problems
+let qualityReject = try KeyObjectSelectionBuilder()
+    .withPatientID("QC001")
+    .withStudyDate("20240116")
+    .withDocumentTitle(.rejectedForQuality)
+    .addKeyObject(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.1", // CR Image Storage
+        sopInstanceUID: "1.2.3.4.5.6",
+        description: "Motion artifact - reject"
+    )
+    .addKeyObject(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.1",
+        sopInstanceUID: "1.2.3.4.5.7",
+        description: "Incorrect positioning"
+    )
+    .build()
+
+// Best images for referral
+let referralImages = try KeyObjectSelectionBuilder()
+    .withDocumentTitle(.forReferringProvider)
+    .addKeyObject(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.4", // MR Image Storage
+        sopInstanceUID: "1.2.3.4.5.8"
+    )
+    .build()
+
+// Custom purpose code
+let customPurpose = try KeyObjectSelectionBuilder()
+    .withDocumentTitle(CodedConcept(
+        codeValue: "CUSTOM001",
+        codingSchemeDesignator: "LOCAL",
+        codeMeaning: "Images for Conference Presentation"
+    ))
+    .addKeyObject(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+        sopInstanceUID: "1.2.3.4.5.9",
+        frames: [1, 3, 5] // Specific frames in multi-frame image
+    )
+    .build()
+```
+
+**Available Purpose Codes** (from CID 7010):
+- `.ofInterest` - General interest (default if not specified)
+- `.rejectedForQuality` - Quality control rejection
+- `.forReferringProvider` - For referring physician
+- `.forSurgery` - Surgical planning
+- `.forTeaching` - Educational/teaching files
+- `.qualityIssue` - Quality concern flagged
+- `.bestInSet` - Best image in series
+- `.forPrinting` - Selected for printing
+- `.forReportAttachment` - Attach to radiology report
+- `.custom(CodedConcept)` - Custom purpose code
+
 ### Coded Terminology Support (v0.9.4)
 
 DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
@@ -2772,6 +2872,10 @@ High-level API:
 - `MeasurementGroupData` - Data structure for measurement group configuration
 - `ImageLibraryEntry` - Entry in an image library (TID 1600)
 - `MeasurementReportDocumentTitle` - Common document title codes (CID 7021)
+- `KeyObjectSelectionBuilder` - Specialized builder for Key Object Selection documents (NEW in v0.9.8)
+- `KeyObjectSelectionBuilder.BuildError` - Builder validation errors
+- `KeyObject` - Referenced instance in a KOS document (NEW in v0.9.8)
+- `DocumentTitle` - Standard purpose codes for KOS documents from CID 7010 (NEW in v0.9.8)
 - `CodedConcept.findings`, `.impression`, `.clinicalHistory`, etc. - Common section concepts
 - `CodedConcept.measurements`, `.diameter`, `.length`, `.area`, `.volume` - Measurement concepts
 - `CodedConcept.imageRegion`, `.regionOfInterest`, `.measurementLocation`, `.temporalExtent` - Coordinate concepts (NEW in v0.9.8)
@@ -2934,4 +3038,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, and Comprehensive 3D SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, and the new `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), and Key Object Selection documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions, `MeasurementReportBuilder` implements the TID 1500 template for structured measurement reporting, and `KeyObjectSelectionBuilder` enables flagging significant images for teaching, quality control, or referral purposes. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
