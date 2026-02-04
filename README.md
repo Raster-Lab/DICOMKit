@@ -140,6 +140,33 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `findMeasurements(forConceptString:)` - Measurements by string
     - ✅ `findMeasurementGroups()` - Containers with measurements
     - ✅ `getMeasurementValue(forConcept:)` - Direct value access
+- ✅ **Structured Reporting Document Creation (v0.9.6)** (NEW)
+  - ✅ **SRDocumentBuilder** - Fluent API for creating SR documents
+    - ✅ Document type selection (Basic Text, Enhanced, Comprehensive, 3D)
+    - ✅ Patient, Study, Series, and Document information setters
+    - ✅ Completion, Verification, and Preliminary flag configuration
+    - ✅ Template identifier support
+    - ✅ UID auto-generation for new documents
+  - ✅ **Content Item Creation**
+    - ✅ `addText()`, `addCode()`, `addNumeric()` - Basic value types
+    - ✅ `addDate()`, `addTime()`, `addDateTime()` - Temporal values
+    - ✅ `addPersonName()`, `addUIDRef()` - Person and UID references
+    - ✅ `addContainer()` - Nested container support
+    - ✅ `addImageReference()`, `addCompositeReference()`, `addWaveformReference()` - Object references
+    - ✅ `addSpatialCoordinates()`, `addSpatialCoordinates3D()` - Spatial coordinates
+    - ✅ `addTemporalCoordinates()` - Temporal coordinates
+  - ✅ **SRDocumentSerializer** - Convert SRDocument to DataSet
+    - ✅ Content Sequence generation from content tree
+    - ✅ Code Sequence serialization
+    - ✅ Measured Value Sequence for numeric content
+    - ✅ Referenced SOP Sequence for object references
+  - ✅ **Validation**
+    - ✅ Value type compatibility checking per document type
+    - ✅ Configurable validation (enabled/disabled)
+  - ✅ **Result Builder Syntax**
+    - ✅ `@ContainerBuilder` for declarative container construction
+  - ✅ **Round-Trip Support**
+    - ✅ Create → Serialize → Parse produces valid documents
 - ✅ **Structured Reporting Document Parsing (v0.9.2)**
   - ✅ **SR Document Parser**
     - ✅ `SRDocumentParser` - Parse DICOM SR data sets into content item trees
@@ -1879,6 +1906,140 @@ print("TLS Required: \(statement.security.tlsSupport.required)")
 print("Auth Methods: \(statement.security.authenticationMethods.joined(separator: ", "))")
 ```
 
+### SR Document Creation (v0.9.6)
+
+DICOMKit provides a fluent builder API for creating DICOM Structured Reporting documents programmatically.
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// Create an SR document with the builder API
+let document = try SRDocumentBuilder(documentType: .comprehensiveSR)
+    // Document identification
+    .withPatientID("PAT001")
+    .withPatientName("Doe^John")
+    .withStudyDate("20240115")
+    .withStudyTime("143022")
+    
+    // Document title and status
+    .withDocumentTitle(CodedConcept(
+        codeValue: "126001",
+        codingSchemeDesignator: "DCM",
+        codeMeaning: "Imaging Report"
+    ))
+    .withCompletionFlag(.complete)
+    .withVerificationFlag(.verified)
+    
+    // Add text findings
+    .addText(
+        conceptName: CodedConcept.finding,
+        value: "Normal liver parenchyma with no focal lesions."
+    )
+    
+    // Add numeric measurements
+    .addNumeric(
+        conceptName: CodedConcept.measurement,
+        value: 15.5,
+        units: CodedConcept.unitCentimeter
+    )
+    
+    // Add coded findings
+    .addCode(
+        conceptName: CodedConcept.finding,
+        value: CodedConcept(
+            codeValue: "17621005",
+            codingSchemeDesignator: "SCT",
+            codeMeaning: "Normal"
+        )
+    )
+    
+    // Add image references
+    .addImageReference(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.2",  // CT Image Storage
+        sopInstanceUID: "1.2.3.4.5.6.7.8.9",
+        frameNumbers: [1]
+    )
+    
+    // Add spatial coordinates (ROI markup)
+    .addSpatialCoordinates(
+        graphicType: .polygon,
+        graphicData: [100.0, 100.0, 200.0, 100.0, 200.0, 200.0, 100.0, 200.0]
+    )
+    
+    // Add nested containers for organized structure
+    .addContainer(
+        conceptName: CodedConcept(
+            codeValue: "121070",
+            codingSchemeDesignator: "DCM",
+            codeMeaning: "Findings"
+        ),
+        items: [
+            .text(value: "No pleural effusion"),
+            .text(value: "Heart size is normal"),
+            .numeric(value: 12.5, units: CodedConcept.unitMillimeter)
+        ]
+    )
+    .build()
+
+// Serialize to DICOM DataSet for storage
+let dataSet = try document.toDataSet()
+print("Created SR with \(document.contentItemCount) content items")
+
+// Round-trip: serialize and parse back
+let parser = SRDocumentParser()
+let parsedDocument = try parser.parse(dataSet: dataSet)
+print("Parsed document: \(parsedDocument.documentType?.displayName ?? "Unknown")")
+
+// Access content from the created document
+for textItem in document.findTextItems() {
+    print("Finding: \(textItem.textValue)")
+}
+
+for numericItem in document.findNumericItems() {
+    if let value = numericItem.value, let units = numericItem.measurementUnits {
+        print("Measurement: \(value) \(units.codeMeaning)")
+    }
+}
+```
+
+#### Using ContainerBuilder for Declarative Construction
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// Use result builder syntax for complex document structure
+let document = try SRDocumentBuilder(documentType: .enhancedSR)
+    .withDocumentTitle(CodedConcept(
+        codeValue: "18782-3",
+        codingSchemeDesignator: "LN",
+        codeMeaning: "Radiology Study Observation"
+    ))
+    .addContainer(conceptName: LOINCCode.findings.concept) {
+        AnyContentItem(TextContentItem(
+            conceptName: CodedConcept.finding,
+            textValue: "Lungs are clear bilaterally"
+        ))
+        AnyContentItem(TextContentItem(
+            conceptName: CodedConcept.finding,
+            textValue: "No cardiomegaly"
+        ))
+        AnyContentItem(CodeContentItem(
+            conceptName: CodedConcept.finding,
+            conceptCode: SNOMEDCode.normal.concept
+        ))
+    }
+    .addContainer(conceptName: LOINCCode.impression.concept) {
+        AnyContentItem(TextContentItem(
+            textValue: "Normal chest radiograph"
+        ))
+    }
+    .build()
+
+print("Document: \(document.description)")
+```
+
 ### Coded Terminology Support (v0.9.4)
 
 DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
@@ -2130,6 +2291,15 @@ High-level API:
 - `VerificationFlag` - Document verification status (VERIFIED, UNVERIFIED)
 - `PreliminaryFlag` - Document preliminary status (PRELIMINARY, FINAL)
 
+**Structured Reporting Document Creation (NEW in v0.9.6):**
+- `SRDocumentBuilder` - Fluent builder API for creating SR documents
+- `SRDocumentBuilder.BuildError` - Builder validation errors
+- `SRDocumentSerializer` - Convert SRDocument to DICOM DataSet
+- `SRDocumentSerializer.SerializationError` - Serialization errors
+- `ContainerBuilder` - Result builder for declarative container construction
+- Extension: `SRDocument.toDataSet()` - Serialize document to DataSet
+- Extension: `SRDocumentType.allowsValueType()` - Check value type compatibility
+
 **Measurement and Coordinate Extraction (NEW in v0.9.5):**
 - `Measurement` - Extracted numeric measurement with value, unit, and context
 - `MeasurementGroup` - Related measurements grouped together
@@ -2288,4 +2458,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.5 - implementing Measurement and Coordinate Extraction for DICOM Structured Reporting. This version adds the `MeasurementExtractor` API for extracting quantitative measurements, spatial coordinates (2D/3D), temporal coordinates, and regions of interest from SR documents with computed properties like area, perimeter, and centroids. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.6 - implementing SR Document Creation for DICOM Structured Reporting. This version adds the `SRDocumentBuilder` fluent API for programmatically creating valid DICOM SR documents with content items, references, and coordinates, along with `SRDocumentSerializer` for converting documents to DICOM DataSet format with full round-trip support. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

@@ -926,20 +926,18 @@ public struct SRDocumentParser: Sendable {
 }
 
 // MARK: - Additional Tag Extensions for SR Parsing
+// Note: contentDate and contentTime are already defined in Tag+ImageInformation.swift
 
 extension Tag {
-    /// Content Date (0008,0023)
-    static let contentDate = Tag(group: 0x0008, element: 0x0023)
-    
-    /// Content Time (0008,0033)
-    static let contentTime = Tag(group: 0x0008, element: 0x0033)
-    
     /// Measured Value Sequence (0040,A300)
+    /// VR: SQ, VM: 1
     static let measuredValueSequence = Tag(group: 0x0040, element: 0xA300)
     
     /// Floating Point Value (0040,A161)
+    /// VR: FD, VM: 1-n
     static let floatingPointValue = Tag(group: 0x0040, element: 0xA161)
     
     /// Observation UID (0040,A171)
+    /// VR: UI, VM: 1
     static let observationUID = Tag(group: 0x0040, element: 0xA171)
 }
