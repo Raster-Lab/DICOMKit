@@ -2193,11 +2193,13 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Minimal coding requirements
   - [x] `BasicTextSRBuilder` specialized builder
   - [x] Unit tests for Basic Text SR (53 tests)
-- [ ] Enhanced SR (1.2.840.10008.5.1.4.1.1.88.22):
-  - [ ] Text with coded entries
-  - [ ] Numeric measurements
-  - [ ] Image references
-  - [ ] `EnhancedSRBuilder` specialized builder
+- [x] Enhanced SR (1.2.840.10008.5.1.4.1.1.88.22):
+  - [x] Text with coded entries
+  - [x] Numeric measurements
+  - [x] Image references
+  - [x] Waveform references
+  - [x] `EnhancedSRBuilder` specialized builder
+  - [x] Unit tests for Enhanced SR (82 tests)
 - [ ] Comprehensive SR (1.2.840.10008.5.1.4.1.1.88.33):
   - [ ] Full value type support
   - [ ] Spatial and temporal coordinates
@@ -2270,7 +2272,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 | 9.5 Measurement Extraction | v0.9.5 | High | ✅ Completed | Measurements, ROIs, coordinates |
 | 9.6 SR Document Creation | v0.9.6 | High | ✅ Completed | Builder API, serialization, validation |
 | 9.7 Template Support | v0.9.7 | Very High | ✅ Completed | TID parsing, validation, template-guided creation |
-| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), TID 1500, CAD SR, Key Object Selection |
+| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), TID 1500, CAD SR, Key Object Selection |
 
 ### Overall Technical Notes
 - Reference: PS3.3 Part 3 Section C.17 - SR Document IODs
