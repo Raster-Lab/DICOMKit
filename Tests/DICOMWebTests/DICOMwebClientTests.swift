@@ -559,3 +559,305 @@ struct DICOMwebClientErrorHandlingTests {
         }
     }
 }
+
+// MARK: - DICOMwebClient UPS-RS Tests
+
+@Suite("DICOMwebClient UPS-RS Tests")
+struct DICOMwebClientUPSTests {
+    
+    let testURL = URL(string: "https://pacs.example.com/dicom-web")!
+    
+    // MARK: - URL Building Tests
+    
+    @Test("Workitems URL construction")
+    func testWorkitemsURL() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let url = client.urlBuilder.workitemsURL
+        #expect(url.absoluteString == "https://pacs.example.com/dicom-web/workitems")
+    }
+    
+    @Test("Workitem URL construction")
+    func testWorkitemURL() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let url = client.urlBuilder.workitemURL(workitemUID: "1.2.3.4.5")
+        #expect(url.absoluteString == "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5")
+    }
+    
+    @Test("Workitem state URL construction")
+    func testWorkitemStateURL() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let url = client.urlBuilder.workitemStateURL(workitemUID: "1.2.3.4.5")
+        #expect(url.absoluteString == "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/state")
+    }
+    
+    @Test("Workitem cancel request URL construction")
+    func testWorkitemCancelRequestURL() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let url = client.urlBuilder.workitemCancelRequestURL(workitemUID: "1.2.3.4.5")
+        #expect(url.absoluteString == "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/cancelrequest")
+    }
+    
+    @Test("Workitem subscription URL construction")
+    func testWorkitemSubscriptionURL() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let url = client.urlBuilder.workitemSubscriptionURL(workitemUID: "1.2.3.4.5", aeTitle: "MY_AE")
+        #expect(url.absoluteString == "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/subscribers/MY_AE")
+    }
+    
+    @Test("Global workitem subscription URL construction")
+    func testGlobalWorkitemSubscriptionURL() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let url = client.urlBuilder.globalWorkitemSubscriptionURL(aeTitle: "MY_AE")
+        #expect(url.absoluteString == "https://pacs.example.com/dicom-web/workitems/1.2.840.10008.5.1.4.34.5/subscribers/MY_AE")
+    }
+    
+    @Test("Workitem subscription suspend URL construction")
+    func testWorkitemSubscriptionSuspendURL() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let url = client.urlBuilder.workitemSubscriptionSuspendURL(workitemUID: "1.2.3.4.5", aeTitle: "MY_AE")
+        #expect(url.absoluteString == "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/subscribers/MY_AE/suspend")
+    }
+    
+    @Test("Search workitems URL with query parameters")
+    func testSearchWorkitemsURLWithParams() {
+        let config = DICOMwebConfiguration(baseURL: testURL)
+        let client = DICOMwebClient(configuration: config)
+        
+        let params = [
+            "PatientID": "PAT001",
+            "limit": "10"
+        ]
+        let url = client.urlBuilder.searchWorkitemsURL(parameters: params)
+        #expect(url.absoluteString.contains("/workitems?"))
+        #expect(url.absoluteString.contains("PatientID=PAT001"))
+        #expect(url.absoluteString.contains("limit=10"))
+    }
+    
+    // MARK: - UPS Query Building Tests
+    
+    @Test("UPS query with default parameters")
+    func testUPSQueryDefault() {
+        let query = UPSQuery()
+        let params = query.toParameters()
+        
+        #expect(params.isEmpty)
+    }
+    
+    @Test("UPS query for scheduled workitems")
+    func testUPSQueryScheduled() {
+        let query = UPSQuery.scheduled()
+        let params = query.toParameters()
+        
+        #expect(params["00741000"] == "SCHEDULED")
+    }
+    
+    @Test("UPS query for in-progress workitems")
+    func testUPSQueryInProgress() {
+        let query = UPSQuery.inProgress()
+        let params = query.toParameters()
+        
+        #expect(params["00741000"] == "IN PROGRESS")
+    }
+    
+    @Test("UPS query with patient ID")
+    func testUPSQueryWithPatientID() {
+        let query = UPSQuery().patientID("PAT001")
+        let params = query.toParameters()
+        
+        #expect(params["00100020"] == "PAT001")
+    }
+    
+    @Test("UPS query with priority")
+    func testUPSQueryWithPriority() {
+        let query = UPSQuery().priority(.high)
+        let params = query.toParameters()
+        
+        #expect(params["00741200"] == "HIGH")
+    }
+    
+    @Test("UPS query with pagination")
+    func testUPSQueryWithPagination() {
+        let query = UPSQuery().limit(10).offset(20)
+        let params = query.toParameters()
+        
+        #expect(params["limit"] == "10")
+        #expect(params["offset"] == "20")
+    }
+    
+    // MARK: - UPS Result Types Tests
+    
+    @Test("UPSCreateResponse initialization")
+    func testUPSCreateResponse() {
+        let response = UPSCreateResponse(
+            workitemUID: "1.2.3.4.5",
+            retrieveURL: "https://pacs.example.com/workitems/1.2.3.4.5",
+            warnings: ["Warning 1"]
+        )
+        
+        #expect(response.workitemUID == "1.2.3.4.5")
+        #expect(response.retrieveURL == "https://pacs.example.com/workitems/1.2.3.4.5")
+        #expect(response.warnings.count == 1)
+        #expect(response.warnings[0] == "Warning 1")
+    }
+    
+    @Test("UPSStateChangeResponse initialization")
+    func testUPSStateChangeResponse() {
+        let response = UPSStateChangeResponse(
+            workitemUID: "1.2.3.4.5",
+            newState: UPSState.inProgress,
+            transactionUID: "2.16.840.1.113883.3.1",
+            warnings: []
+        )
+        
+        #expect(response.workitemUID == "1.2.3.4.5")
+        #expect(response.newState == UPSState.inProgress)
+        #expect(response.transactionUID == "2.16.840.1.113883.3.1")
+        #expect(response.warnings.isEmpty)
+    }
+    
+    @Test("UPSCancellationResponse accepted")
+    func testUPSCancellationResponseAccepted() {
+        let response = UPSCancellationResponse(
+            workitemUID: "1.2.3.4.5",
+            accepted: true,
+            rejectionReason: nil,
+            warnings: []
+        )
+        
+        #expect(response.workitemUID == "1.2.3.4.5")
+        #expect(response.accepted)
+        #expect(response.rejectionReason == nil)
+    }
+    
+    @Test("UPSCancellationResponse rejected")
+    func testUPSCancellationResponseRejected() {
+        let response = UPSCancellationResponse(
+            workitemUID: "1.2.3.4.5",
+            accepted: false,
+            rejectionReason: "Workitem already in progress",
+            warnings: []
+        )
+        
+        #expect(response.workitemUID == "1.2.3.4.5")
+        #expect(!response.accepted)
+        #expect(response.rejectionReason == "Workitem already in progress")
+    }
+    
+    @Test("UPSCancellationRequest initialization")
+    func testUPSCancellationRequest() {
+        let request = UPSCancellationRequest(
+            workitemUID: "1.2.3.4.5",
+            reason: "No longer needed",
+            contactDisplayName: "Dr. Smith",
+            contactURI: "mailto:dr.smith@hospital.com"
+        )
+        
+        #expect(request.workitemUID == "1.2.3.4.5")
+        #expect(request.reason == "No longer needed")
+        #expect(request.contactDisplayName == "Dr. Smith")
+        #expect(request.contactURI == "mailto:dr.smith@hospital.com")
+    }
+    
+    // MARK: - UPS Query Result Tests
+    
+    @Test("UPSQueryResult empty result")
+    func testUPSQueryResultEmpty() {
+        let result = UPSQueryResult.empty
+        
+        #expect(result.workitems.isEmpty)
+        #expect(result.totalCount == 0)
+        #expect(!result.hasMore)
+    }
+    
+    @Test("UPSQueryResult parsing from JSON")
+    func testUPSQueryResultParsing() {
+        let jsonArray: [[String: Any]] = [
+            [
+                UPSTag.sopInstanceUID: ["vr": "UI", "Value": ["1.2.3.4.5"]],
+                UPSTag.procedureStepState: ["vr": "CS", "Value": ["SCHEDULED"]]
+            ],
+            [
+                UPSTag.sopInstanceUID: ["vr": "UI", "Value": ["1.2.3.4.6"]],
+                UPSTag.procedureStepState: ["vr": "CS", "Value": ["IN PROGRESS"]]
+            ]
+        ]
+        
+        let result = UPSQueryResult.parse(
+            jsonArray: jsonArray,
+            totalCount: 10,
+            offset: 0,
+            limit: 2
+        )
+        
+        #expect(result.workitems.count == 2)
+        #expect(result.totalCount == 10)
+        #expect(result.hasMore)
+    }
+    
+    // MARK: - Workitem Tests
+    
+    @Test("Workitem basic initialization")
+    func testWorkitemBasicInit() {
+        let workitem = Workitem(workitemUID: "1.2.3.4.5")
+        
+        #expect(workitem.workitemUID == "1.2.3.4.5")
+        #expect(workitem.state == UPSState.scheduled)
+        #expect(workitem.priority == UPSPriority.medium)
+    }
+    
+    @Test("Workitem full initialization")
+    func testWorkitemFullInit() {
+        let scheduledDate = Date()
+        let workitem = Workitem(
+            workitemUID: "1.2.3.4.5",
+            scheduledStartDateTime: scheduledDate,
+            patientName: "Smith^John",
+            patientID: "PAT001",
+            procedureStepLabel: "CT Scan",
+            priority: .high
+        )
+        
+        #expect(workitem.workitemUID == "1.2.3.4.5")
+        #expect(workitem.state == UPSState.scheduled)
+        #expect(workitem.priority == UPSPriority.high)
+        #expect(workitem.patientName == "Smith^John")
+        #expect(workitem.patientID == "PAT001")
+        #expect(workitem.procedureStepLabel == "CT Scan")
+    }
+    
+    // MARK: - WorkitemResult Tests
+    
+    @Test("WorkitemResult parsing from JSON")
+    func testWorkitemResultParsing() {
+        let json: [String: Any] = [
+            UPSTag.sopInstanceUID: ["vr": "UI", "Value": ["1.2.3.4.5"]],
+            UPSTag.procedureStepState: ["vr": "CS", "Value": ["SCHEDULED"]],
+            UPSTag.scheduledProcedureStepPriority: ["vr": "CS", "Value": ["HIGH"]],
+            UPSTag.patientName: ["vr": "PN", "Value": [["Alphabetic": "Smith^John"]]],
+            UPSTag.patientID: ["vr": "LO", "Value": ["PAT001"]]
+        ]
+        
+        let result = WorkitemResult.parse(json: json)
+        
+        #expect(result != nil)
+        #expect(result?.workitemUID == "1.2.3.4.5")
+        #expect(result?.state == UPSState.scheduled)
+        #expect(result?.priority == UPSPriority.high)
+        #expect(result?.patientName == "Smith^John")
+        #expect(result?.patientID == "PAT001")
+    }
+}
