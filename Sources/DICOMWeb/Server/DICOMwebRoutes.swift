@@ -243,6 +243,20 @@ public enum RouteHandlerType: Sendable {
     case deleteSeries
     case deleteInstance
     
+    // UPS-RS endpoints
+    case searchWorkitems
+    case retrieveWorkitem
+    case createWorkitem
+    case createWorkitemWithUID
+    case updateWorkitem
+    case changeWorkitemState
+    case requestWorkitemCancellation
+    case subscribeWorkitem
+    case unsubscribeWorkitem
+    case subscribeGlobal
+    case unsubscribeGlobal
+    case suspendSubscription
+    
     // Capabilities
     case capabilities
 }
@@ -457,6 +471,80 @@ public struct DICOMwebRouter: Sendable {
                     "frames": components[7]
                 ],
                 handlerType: .retrieveRendered
+            )
+            
+        // ============ UPS-RS Endpoints ============
+        
+        // GET /workitems - Search workitems (UPS-RS)
+        case (.get, 1) where components[0] == "workitems":
+            return RouteMatch(pattern: "/workitems", parameters: [:], handlerType: .searchWorkitems)
+            
+        // POST /workitems - Create workitem (UPS-RS)
+        case (.post, 1) where components[0] == "workitems":
+            return RouteMatch(pattern: "/workitems", parameters: [:], handlerType: .createWorkitem)
+            
+        // GET /workitems/{workitemUID} - Retrieve workitem (UPS-RS)
+        case (.get, 2) where components[0] == "workitems":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}",
+                parameters: ["workitemUID": components[1]],
+                handlerType: .retrieveWorkitem
+            )
+            
+        // POST /workitems/{workitemUID} - Create workitem with specific UID (UPS-RS)
+        case (.post, 2) where components[0] == "workitems":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}",
+                parameters: ["workitemUID": components[1]],
+                handlerType: .createWorkitemWithUID
+            )
+            
+        // PUT /workitems/{workitemUID} - Update workitem (UPS-RS)
+        case (.put, 2) where components[0] == "workitems":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}",
+                parameters: ["workitemUID": components[1]],
+                handlerType: .updateWorkitem
+            )
+            
+        // PUT /workitems/{workitemUID}/state - Change workitem state (UPS-RS)
+        case (.put, 3) where components[0] == "workitems" && components[2] == "state":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}/state",
+                parameters: ["workitemUID": components[1]],
+                handlerType: .changeWorkitemState
+            )
+            
+        // PUT /workitems/{workitemUID}/cancelrequest - Request cancellation (UPS-RS)
+        case (.put, 3) where components[0] == "workitems" && components[2] == "cancelrequest":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}/cancelrequest",
+                parameters: ["workitemUID": components[1]],
+                handlerType: .requestWorkitemCancellation
+            )
+            
+        // POST /workitems/{workitemUID}/subscribers/{aeTitle} - Subscribe to workitem
+        case (.post, 4) where components[0] == "workitems" && components[2] == "subscribers":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}/subscribers/{aeTitle}",
+                parameters: ["workitemUID": components[1], "aeTitle": components[3]],
+                handlerType: .subscribeWorkitem
+            )
+            
+        // DELETE /workitems/{workitemUID}/subscribers/{aeTitle} - Unsubscribe from workitem
+        case (.delete, 4) where components[0] == "workitems" && components[2] == "subscribers":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}/subscribers/{aeTitle}",
+                parameters: ["workitemUID": components[1], "aeTitle": components[3]],
+                handlerType: .unsubscribeWorkitem
+            )
+            
+        // POST /workitems/{workitemUID}/subscribers/{aeTitle}/suspend - Suspend subscription
+        case (.post, 5) where components[0] == "workitems" && components[2] == "subscribers" && components[4] == "suspend":
+            return RouteMatch(
+                pattern: "/workitems/{workitemUID}/subscribers/{aeTitle}/suspend",
+                parameters: ["workitemUID": components[1], "aeTitle": components[3]],
+                handlerType: .suspendSubscription
             )
             
         default:

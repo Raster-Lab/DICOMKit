@@ -1438,34 +1438,34 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 8.7: UPS-RS Worklist Services (v0.8.7)
 
-**Status**: Planned  
+**Status**: In Progress  
 **Goal**: Implement Unified Procedure Step RESTful Services for worklist management  
 **Complexity**: Very High  
 **Dependencies**: Milestone 8.5, Milestone 8.6
 
 #### Deliverables
 - [ ] UPS-RS Worklist Query (client and server):
-  - [ ] `GET /workitems` - Search workitems
-  - [ ] Query parameters for UPS attributes
-  - [ ] Scheduled, In Progress, Completed, Canceled states
+  - [x] `GET /workitems` - Search workitems (route defined)
+  - [x] Query parameters for UPS attributes (`UPSQuery` builder)
+  - [x] Scheduled, In Progress, Completed, Canceled states (`UPSState` enum)
 - [ ] UPS-RS Worklist Retrieval (client and server):
-  - [ ] `GET /workitems/{workitemUID}` - Retrieve specific workitem
+  - [x] `GET /workitems/{workitemUID}` - Retrieve specific workitem (route defined)
   - [ ] JSON/XML metadata response
 - [ ] UPS-RS Worklist Creation (client and server):
-  - [ ] `POST /workitems` - Create new workitem
-  - [ ] `POST /workitems/{workitemUID}` - Create with specific UID
+  - [x] `POST /workitems` - Create new workitem (route defined)
+  - [x] `POST /workitems/{workitemUID}` - Create with specific UID (route defined)
   - [ ] Required UPS attributes validation
 - [ ] UPS-RS State Management (client and server):
-  - [ ] `PUT /workitems/{workitemUID}/state` - Change state
-  - [ ] State transitions: SCHEDULED → IN PROGRESS → COMPLETED/CANCELED
-  - [ ] Transaction UID tracking
-  - [ ] Performer information
+  - [x] `PUT /workitems/{workitemUID}/state` - Change state (route defined)
+  - [x] State transitions: SCHEDULED → IN PROGRESS → COMPLETED/CANCELED (`UPSState.canTransition`)
+  - [x] Transaction UID tracking (`InMemoryUPSStorageProvider`)
+  - [x] Performer information (`HumanPerformer` struct)
 - [ ] UPS-RS Cancellation:
-  - [ ] `PUT /workitems/{workitemUID}/cancelrequest` - Request cancellation
-  - [ ] Cancellation request dataset
+  - [x] `PUT /workitems/{workitemUID}/cancelrequest` - Request cancellation (route defined)
+  - [x] Cancellation request dataset (`UPSCancellationRequest` struct)
 - [ ] UPS-RS Subscription (Event Service):
-  - [ ] `POST /workitems/{workitemUID}/subscribers/{AETitle}` - Subscribe
-  - [ ] `DELETE /workitems/{workitemUID}/subscribers/{AETitle}` - Unsubscribe
+  - [x] `POST /workitems/{workitemUID}/subscribers/{AETitle}` - Subscribe (route defined)
+  - [x] `DELETE /workitems/{workitemUID}/subscribers/{AETitle}` - Unsubscribe (route defined)
   - [ ] `POST /workitems/1.2.840.10008.5.1.4.34.5/subscribers/{AETitle}` - Global subscription
   - [ ] WebSocket event delivery
   - [ ] Long polling fallback
@@ -1475,11 +1475,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] UPS Cancel Requested
   - [ ] UPS Assigned
   - [ ] UPS Completed/Canceled
-- [ ] Workitem data model:
-  - [ ] `Workitem` struct with UPS attributes
-  - [ ] Scheduled Procedure Step attributes
-  - [ ] Performed Procedure Step attributes
-  - [ ] Progress information
+- [x] Workitem data model:
+  - [x] `Workitem` struct with UPS attributes
+  - [x] Scheduled Procedure Step attributes
+  - [x] Performed Procedure Step attributes
+  - [x] Progress information (`ProgressInformation` struct)
 - [ ] `UPSClient` API:
   - [ ] `func searchWorkitems(query: UPSQuery) async throws -> [Workitem]`
   - [ ] `func retrieveWorkitem(uid: String) async throws -> Workitem`
@@ -1487,11 +1487,18 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] `func changeState(uid: String, state: UPSState, transaction: String?) async throws`
   - [ ] `func requestCancellation(uid: String, reason: String?) async throws`
   - [ ] `func subscribe(uid: String?, events: AsyncStream<UPSEvent>) async throws`
-- [ ] `UPSServer` additions:
-  - [ ] Workitem storage and retrieval
-  - [ ] State machine enforcement
+- [x] `UPSServer` additions:
+  - [x] Workitem storage and retrieval (`UPSStorageProvider` protocol)
+  - [x] State machine enforcement (`InMemoryUPSStorageProvider`)
   - [ ] Event generation and delivery
   - [ ] Subscription management
+- [x] Additional types:
+  - [x] `UPSQuery` builder for search queries
+  - [x] `UPSQueryResult` and `WorkitemResult` for query results
+  - [x] `UPSError` for error handling
+  - [x] `CodedEntry`, `HumanPerformer`, `ReferencedInstance` supporting types
+  - [x] `UPSTag` constants for DICOM tags
+  - [x] 57 unit tests for UPS types
 
 #### Technical Notes
 - Reference: PS3.18 Section 11 - UPS-RS

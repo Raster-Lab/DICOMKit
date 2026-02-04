@@ -177,6 +177,32 @@ public actor DICOMwebServer {
         case .deleteInstance:
             return try await handleDeleteInstance(parameters: match.parameters)
             
+        // UPS-RS (Not yet implemented - return 501 Not Implemented)
+        case .searchWorkitems:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .retrieveWorkitem:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .createWorkitem:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .createWorkitemWithUID:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .updateWorkitem:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .changeWorkitemState:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .requestWorkitemCancellation:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .subscribeWorkitem:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .unsubscribeWorkitem:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .subscribeGlobal:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .unsubscribeGlobal:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+        case .suspendSubscription:
+            return .init(statusCode: 501, headers: ["Content-Type": "application/json"], body: "{\"error\": \"UPS-RS not yet implemented\"}".data(using: .utf8))
+            
         case .capabilities:
             return handleCapabilities()
         }
