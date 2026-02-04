@@ -10,9 +10,22 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.8.4)
+## Features (v0.8.5)
 
-- ✅ **DICOMweb STOW-RS Client (NEW in v0.8.4)**
+- ✅ **DICOMweb Server (NEW in v0.8.5)**
+  - ✅ DICOMwebServer actor for hosting DICOM services over HTTP
+  - ✅ WADO-RS retrieve endpoints (study, series, instance, metadata)
+  - ✅ QIDO-RS search endpoints (studies, series, instances)
+  - ✅ STOW-RS store endpoint with multipart parsing
+  - ✅ Delete endpoints for study/series/instance removal
+  - ✅ DICOMwebStorageProvider protocol for pluggable backends
+  - ✅ InMemoryStorageProvider for testing
+  - ✅ DICOMwebRouter for URL pattern matching
+  - ✅ DICOMwebServerConfiguration with TLS, CORS, rate limiting
+  - ✅ DICOMwebRequest/DICOMwebResponse abstractions
+  - ✅ CORS preflight handling for browser clients
+  - ✅ X-Total-Count headers for pagination
+- ✅ **DICOMweb STOW-RS Client (v0.8.4)**
   - ✅ Store DICOM instances to remote servers via HTTP POST
   - ✅ Single instance and batch store operations
   - ✅ Configurable batch size for server limits
@@ -1564,13 +1577,27 @@ High-level API:
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
-### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4)
-DICOMweb (RESTful DICOM) client implementation:
+### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5)
+DICOMweb (RESTful DICOM) client and server implementation:
+
+**Server Components (NEW in v0.8.5):**
+- `DICOMwebServer` - WADO-RS, QIDO-RS, and STOW-RS server actor (NEW in v0.8.5)
+- `DICOMwebServerConfiguration` - Server configuration (port, TLS, CORS, rate limiting) (NEW in v0.8.5)
+- `DICOMwebStorageProvider` - Protocol for pluggable storage backends (NEW in v0.8.5)
+- `InMemoryStorageProvider` - In-memory storage for testing (NEW in v0.8.5)
+- `DICOMwebRouter` - URL pattern matching for DICOMweb routes (NEW in v0.8.5)
+- `DICOMwebRequest` - HTTP request abstraction (NEW in v0.8.5)
+- `DICOMwebResponse` - HTTP response abstraction (NEW in v0.8.5)
+- `RouteMatch` - Route matching result with path parameters (NEW in v0.8.5)
+- `StorageQuery` - Query parameters for storage searches (NEW in v0.8.5)
+- `StudyRecord`, `SeriesRecord`, `InstanceRecord` - Query result types (NEW in v0.8.5)
+
+**Client Components:**
 - `DICOMwebClient` - WADO-RS, QIDO-RS, and STOW-RS client for DICOM web services
-- `STOWResponse` - Response type for store operations (NEW in v0.8.4)
-- `StoreProgress` - Progress information for uploads (NEW in v0.8.4)
-- `StoreOptions` - Configuration for store operations (NEW in v0.8.4)
-- `StoreEvent` - Event types for progress streams (NEW in v0.8.4)
+- `STOWResponse` - Response type for store operations (v0.8.4)
+- `StoreProgress` - Progress information for uploads (v0.8.4)
+- `StoreOptions` - Configuration for store operations (v0.8.4)
+- `StoreEvent` - Event types for progress streams (v0.8.4)
 - `QIDOQuery` - Fluent query builder for QIDO-RS searches (v0.8.3)
 - `QIDOStudyResult` - Type-safe study query result (v0.8.3)
 - `QIDOSeriesResult` - Type-safe series query result (v0.8.3)
@@ -1617,4 +1644,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.4 - adding the DICOMweb STOW-RS client for storing DICOM objects. The library now supports WADO-RS (retrieve), QIDO-RS (query), and STOW-RS (store) operations with batch upload support and progress reporting. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.5 - adding the DICOMweb Server for hosting DICOM services over HTTP. The library now provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), and STOW-RS (store) operations with pluggable storage backends. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

@@ -54,7 +54,7 @@ let package = Package(
         ),
         .target(
             name: "DICOMWeb",
-            dependencies: ["DICOMCore"],
+            dependencies: ["DICOMCore", "DICOMKit"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
@@ -84,7 +84,7 @@ let package = Package(
         ),
         .testTarget(
             name: "DICOMWebTests",
-            dependencies: ["DICOMWeb"]
+            dependencies: ["DICOMWeb", "DICOMKit"]
         )
     ]
 )
