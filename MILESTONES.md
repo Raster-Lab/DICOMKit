@@ -1572,7 +1572,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Conformance statement generation (`ConformanceStatement`, `ConformanceStatementGenerator`)
 - [x] Extended Negotiation (partial):
   - [ ] `accept-charset` parameter handling
-  - [ ] Compression (gzip, deflate) for responses
+  - [x] Compression (gzip, deflate) for responses (`CompressionConfiguration`, `CompressionMiddleware`)
   - [x] ETag and conditional requests (`CacheControlDirective`)
   - [ ] Range requests for partial content
 - [x] Caching:

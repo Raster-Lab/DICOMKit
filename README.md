@@ -57,6 +57,15 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ ETag and conditional request support
     - ✅ Cache-Control header parsing
     - ✅ Cache key generation utilities
+  - ✅ **HTTP Response Compression (NEW in v0.8.8)**
+    - ✅ `CompressionConfiguration` for configurable compression settings
+    - ✅ `CompressionMiddleware` for server response compression
+    - ✅ gzip and deflate algorithm support
+    - ✅ Accept-Encoding header parsing with quality values
+    - ✅ Content-type filtering (compressible vs excluded types)
+    - ✅ Configurable minimum response size threshold
+    - ✅ Vary header management for proper caching
+    - ✅ Platform-aware implementation (Apple Compression framework)
   - ✅ **Monitoring and Logging**
     - ✅ `DICOMwebRequestLogger` protocol
     - ✅ `OSLogRequestLogger` for Apple platform integration
@@ -1812,6 +1821,10 @@ DICOMweb (RESTful DICOM) client and server implementation:
 - `InMemoryCache` - LRU in-memory cache actor
 - `CacheKeyGenerator` - Cache key utilities
 - `CacheControlDirective` - Cache-Control header parsing
+- `CompressionConfiguration` - HTTP response compression settings (NEW in v0.8.8)
+- `CompressionAlgorithm` - Supported compression algorithms (gzip, deflate) (NEW in v0.8.8)
+- `CompressionMiddleware` - Server response compression (NEW in v0.8.8)
+- `AcceptEncodingEntry` - Accept-Encoding header entry with quality value (NEW in v0.8.8)
 - `DICOMwebRequestLogger` - Request/response logging protocol
 - `OSLogRequestLogger` - OSLog-based logger
 - `ConsoleRequestLogger` - Console debug logger
