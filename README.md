@@ -22,6 +22,18 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Authorization code flow with PKCE support
     - ✅ SMART on FHIR compatibility with standard scopes
     - ✅ `StaticTokenProvider` for testing
+  - ✅ **Server Authentication Middleware (NEW in v0.8.8)**
+    - ✅ `JWTClaims` struct for JWT token claim parsing
+    - ✅ `JWTVerifier` protocol for pluggable token verification
+    - ✅ `UnsafeJWTParser` for token parsing without signature verification
+    - ✅ `HMACJWTVerifier` for HMAC-SHA256/384/512 signature verification
+    - ✅ `AuthenticationMiddleware` for request authentication
+    - ✅ `AuthenticatedUser` struct for authenticated context
+    - ✅ `DICOMwebRole` enum (reader, writer, deleter, worklistManager, admin)
+    - ✅ `RoleBasedAccessPolicy` for role-based access control
+    - ✅ `AccessPolicy` protocol for custom authorization rules
+    - ✅ Study-level and patient-level access control
+    - ✅ SMART on FHIR patient context support
   - ✅ **Capability Discovery**
     - ✅ `DICOMwebCapabilities` struct for server capabilities
     - ✅ `GET /capabilities` server endpoint
@@ -1672,6 +1684,23 @@ DICOMweb (RESTful DICOM) client and server implementation:
 - `DICOMwebMetrics` - Performance metrics actor
 - `MetricTimer` - Operation timing helper
 
+**Server Authentication Middleware (NEW in v0.8.8):**
+- `JWTClaims` - JWT token claims parsing
+- `JWTVerifier` - Protocol for JWT verification
+- `JWTVerificationError` - JWT verification error types
+- `UnsafeJWTParser` - JWT parser without signature verification
+- `HMACJWTVerifier` - HMAC-based JWT verifier (HS256/384/512)
+- `AuthenticatedUser` - Authenticated user context
+- `DICOMwebRole` - Standard DICOM roles (reader, writer, deleter, worklistManager, admin)
+- `DICOMwebOperation` - Operations (search, retrieve, store, delete, worklist*)
+- `DICOMwebResource` - Resource types with UIDs
+- `AccessPolicy` - Protocol for authorization policies
+- `RoleBasedAccessPolicy` - Role-based access control with presets
+- `AuthenticationConfiguration` - Authentication configuration
+- `AuthenticationMiddleware` - Request authentication and authorization
+- `AuthenticationError` - Authentication error types
+- `AuthorizationError` - Authorization error types
+
 **UPS-RS (Unified Procedure Step) Components (NEW in v0.8.7):**
 - `Workitem` - UPS workitem representation with scheduling and state
 - `UPSState` - State machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
@@ -1761,4 +1790,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.8 - implementing advanced DICOMweb features including OAuth2/OpenID Connect authentication, capability discovery, client-side caching, and monitoring/logging. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.8 - implementing advanced DICOMweb features including OAuth2/OpenID Connect authentication, server authentication middleware with JWT verification and role-based access control, capability discovery, client-side caching, and monitoring/logging. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
