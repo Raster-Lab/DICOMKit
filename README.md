@@ -10,8 +10,17 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.9.7)
+## Features (v0.9.8)
 
+- ✅ **Common SR Templates (NEW in v0.9.8)**
+  - ✅ **BasicTextSRBuilder** - Specialized builder for Basic Text SR documents
+    - ✅ Simple hierarchical text structure with sections
+    - ✅ Section headings and content with result builder syntax
+    - ✅ Common section helpers: Findings, Impression, Clinical History, etc.
+    - ✅ `@SectionContentBuilder` for declarative section content
+    - ✅ `CodedConcept` extensions for common section types
+    - ✅ Validation ensures only Basic Text SR compatible value types
+    - ✅ 53 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
@@ -2077,6 +2086,65 @@ let document = try SRDocumentBuilder(documentType: .enhancedSR)
 print("Document: \(document.description)")
 ```
 
+#### Using BasicTextSRBuilder for Simple Text Reports (NEW in v0.9.8)
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// BasicTextSRBuilder provides a simplified API for text-based reports
+let document = try BasicTextSRBuilder()
+    // Patient and study information
+    .withPatientID("PAT12345")
+    .withPatientName("Doe^John")
+    .withStudyDate("20240115")
+    .withAccessionNumber("ACC-2024-001")
+    
+    // Document title (string or coded concept)
+    .withDocumentTitle("CT Chest Report")
+    .withCompletionFlag(.complete)
+    .withVerificationFlag(.verified)
+    
+    // Use built-in section helpers
+    .addClinicalHistory("Chronic cough for 3 weeks. Rule out malignancy.")
+    .addComparison("CT Chest from 2023-06-15")
+    .addFindings("""
+        The lungs are clear bilaterally without evidence of consolidation, \
+        mass, or nodule. Heart size is normal. No pleural effusion.
+        """)
+    .addImpression("Normal CT chest examination.")
+    .addRecommendation("No follow-up imaging required.")
+    .build()
+
+print("Created Basic Text SR: \(document.documentType?.displayName ?? "Unknown")")
+print("Content items: \(document.contentItemCount)")
+
+// Create sections with nested content using result builder
+let detailedReport = try BasicTextSRBuilder()
+    .withPatientID("PAT67890")
+    .withDocumentTitle("Radiology Report")
+    .addSection("Technique") {
+        SectionContent.text("CT of the chest with contrast. 64-slice scanner.")
+    }
+    .addSection("Findings") {
+        SectionContent.subsection(title: "Lungs", items: [
+            SectionContent.text("Clear bilaterally"),
+            SectionContent.text("No nodules or masses")
+        ])
+        SectionContent.subsection(title: "Heart", items: [
+            SectionContent.text("Normal size and configuration"),
+            SectionContent.text("No pericardial effusion")
+        ])
+        SectionContent.subsection(title: "Mediastinum", items: [
+            SectionContent.text("No lymphadenopathy")
+        ])
+    }
+    .addImpression("Normal chest CT examination")
+    .build()
+
+print("Detailed report sections: \(detailedReport.rootContent.contentItems.count)")
+```
+
 ### Coded Terminology Support (v0.9.4)
 
 DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
@@ -2337,6 +2405,13 @@ High-level API:
 - Extension: `SRDocument.toDataSet()` - Serialize document to DataSet
 - Extension: `SRDocumentType.allowsValueType()` - Check value type compatibility
 
+**Common SR Templates (NEW in v0.9.8):**
+- `BasicTextSRBuilder` - Specialized builder for Basic Text SR documents (NEW in v0.9.8)
+- `BasicTextSRBuilder.BuildError` - Builder validation errors
+- `SectionContentBuilder` - Result builder for declarative section content
+- `SectionContent` - Helper enum for building section content
+- `CodedConcept.findings`, `.impression`, `.clinicalHistory`, etc. - Common section concepts
+
 **Measurement and Coordinate Extraction (NEW in v0.9.5):**
 - `Measurement` - Extracted numeric measurement with value, unit, and context
 - `MeasurementGroup` - Related measurements grouped together
@@ -2495,4 +2570,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.6 - implementing SR Document Creation for DICOM Structured Reporting. This version adds the `SRDocumentBuilder` fluent API for programmatically creating valid DICOM SR documents with content items, references, and coordinates, along with `SRDocumentSerializer` for converting documents to DICOM DataSet format with full round-trip support. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds the `BasicTextSRBuilder` specialized builder for creating Basic Text SR documents with section headings and text content, including common section helpers for Findings, Impression, Clinical History, and more. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
