@@ -41,6 +41,17 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Temporal coordinate helpers for sample positions, time offsets, and datetimes
     - ✅ Validation ensures only Comprehensive SR compatible value types (no SCOORD3D)
     - ✅ 83 unit tests for comprehensive coverage
+  - ✅ **Comprehensive3DSRBuilder** - Specialized builder for Comprehensive 3D SR documents (NEW in v0.9.8)
+    - ✅ All Comprehensive SR features plus 3D spatial coordinates
+    - ✅ 3D Spatial Coordinates (SCOORD3D): points, polylines, polygons, ellipses, ellipsoids, multipoint
+    - ✅ Frame of Reference UID support for 3D coordinate systems
+    - ✅ 3D ROI definition helpers with volume measurements
+    - ✅ `@Comprehensive3DSectionContentBuilder` for declarative section content
+    - ✅ `Comprehensive3DSectionContent` helpers for 3D coordinates and measurements
+    - ✅ Convenience methods: `addPoint3D`, `addPolyline3D`, `addPolygon3D`, `addEllipse3D`, `addEllipsoid`, `addMultipoint3D`
+    - ✅ `add3DROI` helper for complete 3D region of interest with ellipsoid shape
+    - ✅ Validation ensures Frame of Reference UID for all 3D coordinates
+    - ✅ 66 unit tests for comprehensive coverage
   - ✅ **MeasurementReportBuilder** - Specialized builder for TID 1500 Measurement Reports (NEW)
     - ✅ DICOM TID 1500 compliant measurement report structure
     - ✅ Image Library (TID 1600) for source image references
@@ -2356,6 +2367,126 @@ let annotatedReport = try ComprehensiveSRBuilder()
 print("Annotations: \(annotatedReport.rootContent.contentItems.count)")
 ```
 
+#### Using Comprehensive3DSRBuilder for 3D Measurement Reports (NEW in v0.9.8)
+
+`Comprehensive3DSRBuilder` adds support for 3D spatial coordinates (SCOORD3D) to Comprehensive SR capabilities. This is essential for volumetric imaging modalities like CT, MRI, and PET where measurements and annotations are referenced in a common 3D coordinate system defined by a Frame of Reference UID.
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// Comprehensive3DSRBuilder adds 3D spatial coordinates for volumetric measurements
+let lesionReport = try Comprehensive3DSRBuilder()
+    .withPatientID("PAT12345")
+    .withPatientName("Doe^John")
+    .withStudyInstanceUID("1.2.840.113619.2.1.1.1.1")
+    .withDocumentTitle("3D Lesion Analysis")
+    .withFrameOfReferenceUID("1.2.840.10008.5.1.4.1.1.88.34.1")
+    
+    .addSection("Findings") {
+        Comprehensive3DSectionContent.text("Focal lesion identified in liver segment VII")
+        
+        Comprehensive3DSectionContent.measurement(
+            label: "Maximum Diameter",
+            value: 25.5,
+            units: UCUMUnit.millimeter.concept
+        )
+        
+        Comprehensive3DSectionContent.measurement(
+            label: "Volume",
+            value: 8654.3,
+            units: UCUMUnit.cubicMillimeter.concept
+        )
+        
+        // 3D ellipsoid annotation marking the lesion
+        Comprehensive3DSectionContent.spatialCoordinates3D(
+            conceptName: CodedConcept(
+                codeValue: "111030",
+                codingSchemeDesignator: "DCM",
+                codeMeaning: "Image Region"
+            ),
+            graphicType: .ellipsoid,
+            graphicData: [
+                100.0, 100.0, 50.0,  // First axis endpoint 1
+                120.0, 100.0, 50.0,  // First axis endpoint 2
+                110.0, 110.0, 50.0,  // Second axis endpoint 1
+                110.0, 90.0, 50.0,   // Second axis endpoint 2
+                110.0, 100.0, 60.0,  // Third axis endpoint 1
+                110.0, 100.0, 40.0   // Third axis endpoint 2
+            ],
+            frameOfReferenceUID: "1.2.840.10008.5.1.4.1.1.88.34.1"
+        )
+    }
+    
+    .addImpression("Focal liver lesion compatible with hemangioma")
+    .build()
+
+print("Created Comprehensive 3D SR: \(lesionReport.documentType?.displayName ?? "Unknown")")
+
+// Using 3D coordinate convenience methods and ROI helpers
+let multiLesionReport = try Comprehensive3DSRBuilder()
+    .withDocumentTitle("Multi-Lesion Analysis")
+    .withFrameOfReferenceUID("1.2.840.10008.5.1.4.1.1.88.34.1")
+    
+    // 3D point marker
+    .addPoint3D(
+        conceptName: CodedConcept.imageRegion,
+        x: 150.0,
+        y: 200.0,
+        z: 75.0
+    )
+    
+    // 3D polyline (measurement line in 3D space)
+    .addPolyline3D(points: [
+        (x: 100.0, y: 100.0, z: 50.0),
+        (x: 150.0, y: 150.0, z: 60.0),
+        (x: 200.0, y: 200.0, z: 70.0)
+    ])
+    
+    // 3D ROI with ellipsoid shape and volume measurement
+    .add3DROI(
+        label: "Lesion 1",
+        ellipsoidAxes: (
+            first: (
+                point1: (x: 100.0, y: 100.0, z: 50.0),
+                point2: (x: 120.0, y: 100.0, z: 50.0)
+            ),
+            second: (
+                point1: (x: 110.0, y: 90.0, z: 50.0),
+                point2: (x: 110.0, y: 110.0, z: 50.0)
+            ),
+            third: (
+                point1: (x: 110.0, y: 100.0, z: 40.0),
+                point2: (x: 110.0, y: 100.0, z: 60.0)
+            )
+        ),
+        volume: 523.6
+    )
+    
+    .add3DROI(
+        label: "Lesion 2",
+        ellipsoidAxes: (
+            first: (
+                point1: (x: 200.0, y: 200.0, z: 80.0),
+                point2: (x: 215.0, y: 200.0, z: 80.0)
+            ),
+            second: (
+                point1: (x: 207.5, y: 192.0, z: 80.0),
+                point2: (x: 207.5, y: 208.0, z: 80.0)
+            ),
+            third: (
+                point1: (x: 207.5, y: 200.0, z: 72.0),
+                point2: (x: 207.5, y: 200.0, z: 88.0)
+            )
+        ),
+        volume: 314.2
+    )
+    
+    .build()
+
+print("3D ROIs: \(multiLesionReport.rootContent.contentItems.count)")
+```
+
 ### Coded Terminology Support (v0.9.4)
 
 DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
@@ -2629,6 +2760,10 @@ High-level API:
 - `ComprehensiveSRBuilder.BuildError` - Builder validation errors
 - `ComprehensiveSectionContentBuilder` - Result builder for Comprehensive SR section content
 - `ComprehensiveSectionContent` - Helper enum for coordinates, measurements, and text content
+- `Comprehensive3DSRBuilder` - Specialized builder for Comprehensive 3D SR documents with 3D spatial coordinates (NEW in v0.9.8)
+- `Comprehensive3DSRBuilder.BuildError` - Builder validation errors
+- `Comprehensive3DSectionContentBuilder` - Result builder for Comprehensive 3D SR section content
+- `Comprehensive3DSectionContent` - Helper enum for 3D coordinates, measurements, and text content
 - `MeasurementReportBuilder` - Specialized builder for TID 1500 Measurement Reports (NEW in v0.9.8)
 - `MeasurementReportBuilder.BuildError` - Builder validation errors
 - `MeasurementGroupContentBuilder` - Result builder for measurement group content
@@ -2799,4 +2934,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, and Comprehensive SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, and the new `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, and Comprehensive 3D SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, and the new `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

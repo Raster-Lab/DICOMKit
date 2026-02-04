@@ -2231,10 +2231,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [ ] Nodule detection results
   - [ ] `ChestCADSRBuilder` specialized builder
 - [ ] Comprehensive 3D SR (1.2.840.10008.5.1.4.1.1.88.34):
-  - [ ] 3D coordinate support
-  - [ ] 3D ROI definitions
-  - [ ] Frame of reference handling
-  - [ ] `Comprehensive3DSRBuilder` specialized builder
+  - [x] 3D coordinate support
+  - [x] 3D ROI definitions
+  - [x] Frame of reference handling
+  - [x] `Comprehensive3DSRBuilder` specialized builder
+  - [x] Unit tests for Comprehensive 3D SR (66 tests)
 - [ ] High-level extraction APIs:
   - [ ] `MeasurementReport.extract(from: SRDocument) throws -> MeasurementReport`
   - [ ] `CADFindings.extract(from: SRDocument) throws -> CADFindings`
@@ -2258,7 +2259,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [ ] CAD SR templates correctly encode detection results
 - [ ] Key Object Selection works for image flagging
 - [ ] AI/ML integration produces valid SR documents
-- [x] Unit tests for core SR types (218 tests completed: BasicTextSRBuilder 53, EnhancedSRBuilder 82, ComprehensiveSRBuilder 83)
+- [x] Unit tests for core SR types (284 tests completed: BasicTextSRBuilder 53, EnhancedSRBuilder 82, ComprehensiveSRBuilder 83, Comprehensive3DSRBuilder 66)
 - [x] Unit tests for TID 1500 MeasurementReportBuilder (60 tests)
 - [ ] Unit tests for remaining templates (target: additional 40+ tests for CAD SR, Key Object Selection)
 - [ ] Example applications for common workflows
@@ -2277,7 +2278,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 | 9.5 Measurement Extraction | v0.9.5 | High | ✅ Completed | Measurements, ROIs, coordinates |
 | 9.6 SR Document Creation | v0.9.6 | High | ✅ Completed | Builder API, serialization, validation |
 | 9.7 Template Support | v0.9.7 | Very High | ✅ Completed | TID parsing, validation, template-guided creation |
-| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), MeasurementReportBuilder (60 tests), CAD SR, Key Object Selection |
+| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), Comprehensive3DSRBuilder (66 tests), MeasurementReportBuilder (60 tests), CAD SR, Key Object Selection |
 
 ### Overall Technical Notes
 - Reference: PS3.3 Part 3 Section C.17 - SR Document IODs
