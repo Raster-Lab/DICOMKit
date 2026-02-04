@@ -34,6 +34,16 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `AccessPolicy` protocol for custom authorization rules
     - ✅ Study-level and patient-level access control
     - ✅ SMART on FHIR patient context support
+  - ✅ **DICOMweb Server TLS Configuration (NEW in v0.8.8)**
+    - ✅ `TLSConfiguration` struct for HTTPS settings
+    - ✅ TLS 1.2/1.3 protocol version support
+    - ✅ Certificate and private key loading (PEM/DER formats)
+    - ✅ Mutual TLS (mTLS) client authentication
+    - ✅ `TLSVersion` enum with protocol version comparison
+    - ✅ `CertificateValidationMode` (strict, standard, permissive)
+    - ✅ Configuration presets (strict, compatible, development, mutualTLS)
+    - ✅ Configuration validation with detailed error messages
+    - ✅ PEM content extraction and format detection
   - ✅ **Capability Discovery**
     - ✅ `DICOMwebCapabilities` struct for server capabilities
     - ✅ `GET /capabilities` server endpoint
@@ -1551,6 +1561,68 @@ let fuzzyQuery = QIDOQuery()
     .fuzzyMatching()
 ```
 
+### DICOMweb Server TLS Configuration (v0.8.8)
+
+DICOMKit provides comprehensive TLS configuration for secure DICOMweb server deployment.
+
+```swift
+import DICOMWeb
+
+// Basic HTTPS server configuration
+let tlsConfig = DICOMwebServerConfiguration.TLSConfiguration(
+    certificatePath: "/path/to/server.pem",
+    privateKeyPath: "/path/to/server.key"
+)
+
+let serverConfig = DICOMwebServerConfiguration(
+    port: 443,
+    host: "0.0.0.0",
+    pathPrefix: "/dicom-web",
+    tlsConfiguration: tlsConfig
+)
+
+// TLS 1.3 strict mode (highest security)
+let strictTLS = DICOMwebServerConfiguration.TLSConfiguration.strict(
+    certificatePath: "/path/to/server.pem",
+    privateKeyPath: "/path/to/server.key"
+)
+
+// Compatible mode (TLS 1.2+, works with older clients)
+let compatibleTLS = DICOMwebServerConfiguration.TLSConfiguration.compatible(
+    certificatePath: "/path/to/server.pem",
+    privateKeyPath: "/path/to/server.key"
+)
+
+// Mutual TLS (mTLS) - requires client certificates
+let mtlsConfig = DICOMwebServerConfiguration.TLSConfiguration.mutualTLS(
+    certificatePath: "/path/to/server.pem",
+    privateKeyPath: "/path/to/server.key",
+    clientCACertificatePath: "/path/to/ca.pem"
+)
+
+// Development mode (for testing with self-signed certs)
+// WARNING: Never use in production!
+let devTLS = DICOMwebServerConfiguration.TLSConfiguration.development(
+    certificatePath: "/path/to/dev-cert.pem",
+    privateKeyPath: "/path/to/dev-key.pem"
+)
+
+// Validate configuration before use
+do {
+    try tlsConfig.validate()
+    print("TLS configuration is valid")
+} catch let error as DICOMwebServerConfiguration.TLSConfigurationError {
+    print("TLS configuration error: \(error.description)")
+}
+
+// Production preset with TLS and rate limiting
+let productionConfig = DICOMwebServerConfiguration.production(
+    port: 443,
+    certificatePath: "/path/to/server.pem",
+    privateKeyPath: "/path/to/server.key"
+)
+```
+
 ## Architecture
 
 DICOMKit is organized into four modules:
@@ -1725,6 +1797,10 @@ DICOMweb (RESTful DICOM) client and server implementation:
 **Server Components:**
 - `DICOMwebServer` - WADO-RS, QIDO-RS, and STOW-RS server actor (v0.8.5)
 - `DICOMwebServerConfiguration` - Server configuration (port, TLS, CORS, rate limiting, STOW) (v0.8.5, v0.8.6)
+- `DICOMwebServerConfiguration.TLSConfiguration` - TLS/HTTPS configuration with presets (NEW in v0.8.8)
+- `DICOMwebServerConfiguration.TLSVersion` - TLS protocol version enum (NEW in v0.8.8)
+- `DICOMwebServerConfiguration.CertificateValidationMode` - Client certificate validation modes (NEW in v0.8.8)
+- `DICOMwebServerConfiguration.TLSConfigurationError` - TLS configuration error types (NEW in v0.8.8)
 - `DICOMwebServerConfiguration.STOWConfiguration` - STOW-RS configuration (duplicate policy, validation) (NEW in v0.8.6)
 - `DICOMwebStorageProvider` - Protocol for pluggable storage backends (v0.8.5)
 - `InMemoryStorageProvider` - In-memory storage for testing (v0.8.5)

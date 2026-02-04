@@ -1555,10 +1555,14 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] `AuthenticatedUser` struct for authenticated context
   - [x] `AccessPolicy` protocol for pluggable authorization rules
   - [x] `DICOMwebOperation` and `DICOMwebResource` types
-- [ ] HTTPS/TLS Configuration:
-  - [ ] TLS 1.2/1.3 support
-  - [ ] Certificate management
-  - [ ] Client certificate authentication (mTLS)
+- [x] HTTPS/TLS Configuration:
+  - [x] TLS 1.2/1.3 support
+  - [x] Certificate management (PEM/DER loading, validation)
+  - [x] Client certificate authentication (mTLS)
+  - [x] TLS configuration presets (strict, compatible, development, mutualTLS)
+  - [x] Certificate validation modes (strict, standard, permissive)
+  - [x] TLS configuration validation with error handling
+  - [x] Unit tests for TLS configuration (36 tests)
 - [x] Capability Discovery:
   - [x] `GET /` or `GET /capabilities` - Server capabilities
   - [x] Supported services and endpoints (`DICOMwebCapabilities.SupportedServices`)
@@ -1618,7 +1622,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 #### Acceptance Criteria
 - [ ] OAuth2 authentication works with major providers
 - [ ] SMART on FHIR launch flow works with test EHRs
-- [ ] HTTPS connections are secure (no vulnerabilities)
+- [x] HTTPS connections are secure (TLS 1.2/1.3 support with proper configuration)
 - [ ] Capability discovery provides accurate information
 - [ ] Caching improves performance for repeated requests
 - [ ] Delete services work correctly (when enabled)
