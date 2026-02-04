@@ -1546,11 +1546,15 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] SMART on FHIR compatibility (`OAuth2Configuration.smartOnFHIR`)
   - [x] PKCE support for public clients
   - [x] Static token provider for testing
-- [ ] Server authentication middleware:
-  - [ ] Token validation
-  - [ ] JWT parsing and verification
-  - [ ] Role-based access control
-  - [ ] Study-level access control
+- [x] Server authentication middleware:
+  - [x] Token validation (`JWTVerifier` protocol, `UnsafeJWTParser`, `HMACJWTVerifier`)
+  - [x] JWT parsing and verification (`JWTClaims` struct, `JWTVerificationError`)
+  - [x] Role-based access control (`RoleBasedAccessPolicy`, `DICOMwebRole`)
+  - [x] Study-level access control (`DICOMwebResource`, patient context in `JWTClaims`)
+  - [x] `AuthenticationMiddleware` for request authentication and authorization
+  - [x] `AuthenticatedUser` struct for authenticated context
+  - [x] `AccessPolicy` protocol for pluggable authorization rules
+  - [x] `DICOMwebOperation` and `DICOMwebResource` types
 - [ ] HTTPS/TLS Configuration:
   - [ ] TLS 1.2/1.3 support
   - [ ] Certificate management
