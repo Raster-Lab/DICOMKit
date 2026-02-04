@@ -992,6 +992,87 @@ if let pixelData = dicomFile.pixelData() {
 #endif
 ```
 
+### Grayscale Presentation State (GSPS) (v1.0.1)
+
+```swift
+import DICOMKit
+#if canImport(CoreGraphics)
+import CoreGraphics
+
+// Parse a GSPS DICOM file
+let gspsData = try Data(contentsOf: gspsFileURL)
+let gspsFile = try DICOMFile.read(from: gspsData)
+let parser = GrayscalePresentationStateParser()
+let presentationState = try parser.parse(dataSet: gspsFile.dataSet)
+
+print("Presentation Label: \(presentationState.presentationLabel ?? "Untitled")")
+print("Referenced Series: \(presentationState.referencedSeries.count)")
+
+// Apply presentation state to an image
+let imageData = try Data(contentsOf: imageFileURL)
+let imageFile = try DICOMFile.read(from: imageData)
+
+let applicator = PresentationStateApplicator()
+if let renderedImage = try applicator.apply(
+    presentationState: presentationState,
+    to: imageFile,
+    frameNumber: 0
+) {
+    // Use the rendered image with presentation state applied
+    // Includes window/level, spatial transformations, and annotations
+}
+
+// Access presentation state components
+if let voiLUT = presentationState.voiLUT {
+    switch voiLUT {
+    case .windowLevel(let center, let width, let explanation):
+        print("Window: Center=\(center), Width=\(width)")
+        print("Explanation: \(explanation ?? "none")")
+    case .lut(let lutData):
+        print("Using explicit VOI LUT with \(lutData.numberOfEntries) entries")
+    }
+}
+
+// Access graphic annotations
+for layer in presentationState.graphicLayers {
+    print("Layer: \(layer.layerName), Order: \(layer.layerOrder)")
+}
+
+for annotation in presentationState.graphicAnnotations {
+    print("Annotation on layer: \(annotation.graphicLayer ?? "default")")
+    
+    for graphicObject in annotation.graphicObjects {
+        print("  Graphic type: \(graphicObject.graphicType)")
+        print("  Points: \(graphicObject.graphicData.count)")
+    }
+    
+    for textObject in annotation.textObjects {
+        print("  Text: \(textObject.unformattedTextValue)")
+    }
+}
+
+// Access display shutters
+if let shutter = presentationState.displayShutter {
+    switch shutter {
+    case .rectangular(let left, let right, let top, let bottom, let presentationValue):
+        print("Rectangular shutter: (\(left), \(top)) to (\(right), \(bottom))")
+    case .circular(let centerX, let centerY, let radius, let presentationValue):
+        print("Circular shutter at (\(centerX), \(centerY)) radius \(radius)")
+    case .polygonal(let points, let presentationValue):
+        print("Polygonal shutter with \(points.count) points")
+    case .bitmap(let rows, let columns, let origin, let data, let presentationValue):
+        print("Bitmap shutter: \(columns)x\(rows)")
+    }
+}
+
+// Access spatial transformations
+if let transform = presentationState.spatialTransformation {
+    print("Rotation: \(transform.rotation)°")
+    print("Horizontal flip: \(transform.horizontalFlip)")
+}
+#endif
+```
+
 ### DICOM File Writing (v0.5)
 
 ```swift
