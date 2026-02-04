@@ -2890,6 +2890,128 @@ if let sctScheme = registry.scheme(forDesignator: "SCT") {
 }
 ```
 
+## Examples
+
+DICOMKit includes comprehensive examples demonstrating common Structured Reporting workflows. These examples cover creating, parsing, and working with DICOM SR documents for clinical and research use cases.
+
+### Available Examples
+
+The `Examples/` directory contains the following example files:
+
+1. **BasicTextSRExample.swift** - Simple narrative reports with hierarchical sections
+   - Radiology reports, clinical notes, consultation reports
+   - Demonstrates Basic Text SR builder API
+
+2. **EnhancedSRExample.swift** - Reports with numeric measurements and references
+   - CT/MR reports with measurements, ECG interpretation, laboratory results
+   - Demonstrates Enhanced SR builder with UCUM units
+
+3. **ComprehensiveSRExample.swift** - Reports with spatial and temporal coordinates
+   - Lung nodule ROI annotations, cardiac perfusion analysis, tumor characterization
+   - Demonstrates 2D coordinates (points, polylines, polygons, circles, ellipses)
+
+4. **MeasurementReportExample.swift** - TID 1500 quantitative imaging reports
+   - Tumor measurement tracking, RECIST response assessments
+   - Demonstrates image library, measurement groups, tracking identifiers
+
+5. **CADSRExample.swift** - Computer-aided detection results
+   - Mammography CAD, chest CAD, AI/ML integration
+   - Demonstrates findings with confidence scores and spatial locations
+
+### Quick Example: Creating a Basic Text SR
+
+```swift
+import DICOMKit
+
+let document = try BasicTextSRBuilder()
+    .withPatientID("12345678")
+    .withPatientName("Doe^John^^^")
+    .withDocumentTitle("Radiology Report")
+    
+    .addSection("Findings") { section in
+        section.addText("The lungs are clear bilaterally.")
+        section.addText("No evidence of consolidation or pleural effusion.")
+    }
+    
+    .addSection("Impression") { section in
+        section.addText("Normal chest radiograph.")
+    }
+    
+    .build()
+
+// Serialize and save
+let dataSet = try SRDocumentSerializer.serialize(document)
+let writer = DICOMWriter()
+let fileData = try writer.write(dataSet: dataSet, transferSyntax: .explicitVRLittleEndian)
+try fileData.write(to: fileURL)
+```
+
+### Quick Example: Creating a Measurement Report (TID 1500)
+
+```swift
+import DICOMKit
+
+let imageRef = ImageReference(
+    referencedSOPClassUID: "1.2.840.10008.5.1.4.1.1.2",
+    referencedSOPInstanceUID: "1.2.840.113619.2.55.3.100"
+)
+
+let document = try MeasurementReportBuilder()
+    .withPatientID("98765432")
+    .withPatientName("Smith^Jane^^^")
+    .withDocumentTitle(.imagingMeasurementReport)
+    
+    .addToImageLibrary(imageRef, description: "Baseline CT")
+    
+    .addMeasurementGroup(
+        trackingIdentifier: "LESION-001",
+        trackingUID: "1.2.840.113619.2.55.3.TRACK.001"
+    ) { group in
+        group.addLength(value: 42.5, unit: .millimeters, imageReference: imageRef)
+        group.addLength(value: 31.2, unit: .millimeters, imageReference: imageRef)
+        group.addVolume(value: 27800.0, unit: .cubicMillimeters, derivation: .calculated)
+    }
+    
+    .build()
+```
+
+### Quick Example: Creating a CAD SR
+
+```swift
+import DICOMKit
+
+let mammogramRef = ImageReference(
+    referencedSOPClassUID: "1.2.840.10008.5.1.4.1.1.1.2",
+    referencedSOPInstanceUID: "1.2.840.113619.2.55.3.MAMMO.100"
+)
+
+let document = try MammographyCADSRBuilder()
+    .withPatientID("55566677")
+    .withPatientName("Garcia^Maria^^^")
+    .withDocumentTitle("Mammography CAD Report")
+    
+    .withAlgorithmName("BreastCAD v3.2")
+    .withAlgorithmVersion("3.2.1")
+    
+    .addFinding(
+        type: .mass,
+        confidence: 0.92,
+        location: .point(x: 458.3, y: 612.5, imageReference: mammogramRef)
+    ) { finding in
+        finding.addCharacteristic(
+            CodedConcept(
+                codeValue: "111320",
+                codingSchemeDesignator: .dcm,
+                codeMeaning: "Spiculated margin"
+            )
+        )
+    }
+    
+    .build()
+```
+
+For complete examples with detailed documentation, see the [`Examples/` directory](Examples/README.md).
+
 ## Architecture
 
 DICOMKit is organized into four modules:
