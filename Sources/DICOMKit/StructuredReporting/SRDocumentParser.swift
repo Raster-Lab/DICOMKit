@@ -230,7 +230,7 @@ public struct SRDocumentParser: Sendable {
         let conceptName = try? parseCodedConceptFromItem(item, tag: .conceptNameCodeSequence)
         let relationshipType = item.string(for: .relationshipType).flatMap { RelationshipType(rawValue: $0) }
         let observationDateTime = item.string(for: .observationDateTime)
-        let observationUID = item.string(for: Tag(group: 0x0040, element: 0xA171)) // Observation UID
+        let observationUID = item.string(for: .observationUID)
         
         // Parse based on value type
         switch valueType {
@@ -939,4 +939,7 @@ extension Tag {
     
     /// Floating Point Value (0040,A161)
     static let floatingPointValue = Tag(group: 0x0040, element: 0xA161)
+    
+    /// Observation UID (0040,A171)
+    static let observationUID = Tag(group: 0x0040, element: 0xA171)
 }

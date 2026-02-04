@@ -362,7 +362,7 @@ struct VerificationFlagTests {
 
 // MARK: - PreliminaryFlag Tests
 
-@Suite("PreliminaryFlagTests")
+@Suite("PreliminaryFlag Tests")
 struct PreliminaryFlagTests {
     
     @Test("Raw value parsing")

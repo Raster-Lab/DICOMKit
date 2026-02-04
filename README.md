@@ -10,9 +10,33 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.9.1)
+## Features (v0.9.2)
 
-- ✅ **Structured Reporting Core Infrastructure (NEW in v0.9.1)**
+- ✅ **Structured Reporting Document Parsing (NEW in v0.9.2)**
+  - ✅ **SR Document Parser**
+    - ✅ `SRDocumentParser` - Parse DICOM SR data sets into content item trees
+    - ✅ `SRDocument` - Parsed SR document representation with metadata
+    - ✅ Configurable validation levels (strict, lenient)
+    - ✅ Maximum depth protection for deeply nested documents
+  - ✅ **SR Document Model**
+    - ✅ Document type detection from SOP Class UID
+    - ✅ Patient, Study, and Series information extraction
+    - ✅ Completion, Verification, and Preliminary flags
+    - ✅ Content tree traversal and search APIs
+  - ✅ **Content Item Parsing**
+    - ✅ All 15 value types parsed from Content Sequence
+    - ✅ Concept Name Code Sequence parsing
+    - ✅ Relationship Type extraction
+    - ✅ Observation DateTime and UID support
+  - ✅ **Reference Parsing**
+    - ✅ Referenced SOP Sequence parsing
+    - ✅ Frame and Segment number extraction
+    - ✅ Purpose of Reference code support
+  - ✅ **Coordinate Parsing**
+    - ✅ 2D Spatial Coordinates (SCOORD) with Graphic Type
+    - ✅ 3D Spatial Coordinates (SCOORD3D) with Frame of Reference
+    - ✅ Temporal Coordinates (TCOORD) with Range Type
+- ✅ **Structured Reporting Core Infrastructure (v0.9.1)**
   - ✅ **Content Item Value Types** - All 15 DICOM SR value types
     - ✅ `TextContentItem` - Unstructured text (TEXT)
     - ✅ `CodeContentItem` - Coded concept from terminology (CODE)
@@ -1845,12 +1869,22 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit
+### DICOMKit (v0.9.2)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
+
+**Structured Reporting Document Parsing (NEW in v0.9.2):**
+- `SRDocument` - Parsed SR document with metadata and content tree
+- `SRDocumentParser` - Parse DICOM data sets into SR documents
+- `SRDocumentParser.Configuration` - Parser configuration options
+- `SRDocumentParser.ValidationLevel` - Strict or lenient parsing
+- `SRDocumentParser.ParseError` - Detailed parsing errors
+- `CompletionFlag` - Document completion status (COMPLETE, PARTIAL)
+- `VerificationFlag` - Document verification status (VERIFIED, UNVERIFIED)
+- `PreliminaryFlag` - Document preliminary status (PRELIMINARY, FINAL)
 
 ### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6, v0.8.7, v0.8.8)
 DICOMweb (RESTful DICOM) client and server implementation:
@@ -1998,4 +2032,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.1 - implementing Core SR Infrastructure for DICOM Structured Reporting. This version adds foundational data structures including all 15 content item types, coded concept support, relationship types, and SR document type definitions. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.2 - implementing SR Document Parsing for DICOM Structured Reporting. This version adds the ability to parse DICOM SR documents into typed content item trees with full support for all value types, relationship types, and document metadata. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
