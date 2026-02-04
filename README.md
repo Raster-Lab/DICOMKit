@@ -10,9 +10,60 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.9.3)
+## Features (v0.9.4)
 
-- ✅ **Content Item Navigation and Tree Traversal (NEW in v0.9.3)**
+- ✅ **Coded Terminology Support (NEW in v0.9.4)**
+  - ✅ **Coding Scheme Infrastructure**
+    - ✅ `CodingScheme` struct with designator, name, version, UID
+    - ✅ `CodingSchemeRegistry` for managing known coding schemes
+    - ✅ Built-in support for DCM, SCT, LN, RADLEX, UCUM, FMA, ICD-10, and more
+    - ✅ Coding scheme validation
+  - ✅ **SNOMED CT Support**
+    - ✅ `SNOMEDCode` specialized type with concept ID and display name
+    - ✅ Common anatomical codes (organs, body regions, laterality)
+    - ✅ Common finding codes (mass, nodule, lesion, calcification)
+    - ✅ Common procedure codes (CT, MRI, ultrasound, mammography)
+    - ✅ Severity and qualifier codes
+  - ✅ **LOINC Support**
+    - ✅ `LOINCCode` specialized type with LOINC number
+    - ✅ Vital sign codes (heart rate, blood pressure, temperature)
+    - ✅ Measurement type codes (diameter, area, volume, density)
+    - ✅ Radiology report section codes (findings, impression, technique)
+    - ✅ Document type codes
+  - ✅ **RadLex Support**
+    - ✅ `RadLexCode` specialized type with RadLex ID
+    - ✅ Imaging modality codes (CT, MRI, PET, ultrasound)
+    - ✅ Common radiology finding codes (mass, nodule, consolidation)
+    - ✅ Anatomical codes and qualitative descriptors
+    - ✅ Temporal and size descriptors
+  - ✅ **DCM (DICOM) Codes**
+    - ✅ `DICOMCode` specialized type for DCM codes
+    - ✅ SR document structure codes (finding, measurement, report)
+    - ✅ Observer and subject context codes
+    - ✅ Measurement and reference codes
+    - ✅ Relationship type codes
+  - ✅ **UCUM (Units of Measurement)**
+    - ✅ `UCUMUnit` type with dimension and conversion support
+    - ✅ Length, area, volume, mass, time, temperature, angle units
+    - ✅ Medical-specific units (Hounsfield, SUV, Becquerel)
+    - ✅ Unit conversion between compatible dimensions
+    - ✅ Well-known unit lookup registry
+  - ✅ **Context Group Support (PS3.16)**
+    - ✅ `ContextGroup` struct for CID definitions
+    - ✅ Extensible vs. non-extensible context groups
+    - ✅ CID 218 - Quantitative Temporal Relation
+    - ✅ CID 244 - Laterality
+    - ✅ CID 4021 - Finding Site
+    - ✅ CID 6147 - Response Evaluation
+    - ✅ CID 7021 - Measurement Report Document Titles
+    - ✅ CID 7464 - ROI Measurement Units
+    - ✅ `ContextGroupRegistry` for group lookup and validation
+  - ✅ **Code Mapping Utilities**
+    - ✅ `CodeMapper` for cross-terminology mapping
+    - ✅ SNOMED CT ↔ RadLex mappings for anatomical and finding concepts
+    - ✅ `CodeEquivalent` protocol for semantic equivalence
+    - ✅ Equivalent code lookup and display name resolution
+- ✅ **Content Item Navigation and Tree Traversal (v0.9.3)**
   - ✅ **Tree Traversal APIs**
     - ✅ `ContentTreeIterator` - Depth-first tree traversal
     - ✅ `BreadthFirstIterator` - Breadth-first tree traversal
@@ -1788,11 +1839,94 @@ print("TLS Required: \(statement.security.tlsSupport.required)")
 print("Auth Methods: \(statement.security.authenticationMethods.joined(separator: ", "))")
 ```
 
+### Coded Terminology Support (v0.9.4)
+
+DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
+
+```swift
+import DICOMCore
+
+// SNOMED CT codes for anatomy and findings
+let liver = SNOMEDCode.liver
+print(liver.concept.description) // "(10200004, SCT, \"Liver\")"
+
+let mass = SNOMEDCode.mass
+let calcification = SNOMEDCode.calcification
+let rightLung = SNOMEDCode.rightLung
+
+// Laterality
+let right = SNOMEDCode.right
+let bilateral = SNOMEDCode.bilateral
+
+// LOINC codes for measurements and reports
+let bodyWeight = LOINCCode.bodyWeight
+let radiologyReport = LOINCCode.radiologyReport
+let findings = LOINCCode.findings
+let impression = LOINCCode.impression
+
+// RadLex codes for radiology concepts
+let ct = RadLexCode.computedTomography
+let mri = RadLexCode.magneticResonanceImaging
+let nodule = RadLexCode.nodule
+let groundGlass = RadLexCode.groundGlassOpacity
+
+// UCUM units with conversion
+let mm = UCUMUnit.millimeter
+let cm = UCUMUnit.centimeter
+
+// Convert 25.4 mm to cm
+if let result = mm.convert(25.4, to: cm) {
+    print("25.4 mm = \(result) cm") // 2.54
+}
+
+// Temperature conversion
+let celsius = UCUMUnit.celsius
+let fahrenheit = UCUMUnit.fahrenheit
+if let tempF = celsius.convert(100.0, to: fahrenheit) {
+    print("100°C = \(tempF)°F") // 212.0
+}
+
+// Context group validation
+let lateralityGroup = ContextGroup.laterality  // CID 244
+let rightCode = CodedConcept(codeValue: "24028007", scheme: .SCT, codeMeaning: "Right")
+
+switch lateralityGroup.validate(rightCode) {
+case .valid:
+    print("Code is a valid laterality")
+case .extensionCode:
+    print("Code is allowed as an extension")
+case .invalid(let reason):
+    print("Invalid: \(reason)")
+}
+
+// Cross-terminology mapping
+let snomedLiver = SNOMEDCode.liver.concept
+if let radlexLiver = snomedLiver.map(to: .RADLEX) {
+    print("SNOMED liver maps to RadLex: \(radlexLiver.codeValue)")
+}
+
+// Code equivalence checking
+let code1 = SNOMEDCode.brain
+let code2 = RadLexCode.brain
+print("Equivalent: \(code1.isEquivalent(to: code2))") // true
+
+// DCM codes for SR structure
+let finding = DICOMCode.finding
+let measurement = DICOMCode.measurement
+let imageReference = DICOMCode.imageReference
+
+// Coding scheme registry
+let registry = CodingSchemeRegistry.shared
+if let sctScheme = registry.scheme(forDesignator: "SCT") {
+    print("SNOMED CT UID: \(sctScheme.uid ?? "none")")
+}
+```
+
 ## Architecture
 
 DICOMKit is organized into four modules:
 
-### DICOMCore (v0.9.1)
+### DICOMCore (v0.9.1, v0.9.4)
 Core data types and utilities:
 - `VR` - All 31 Value Representations from DICOM PS3.5
 - `Tag` - Data element tags (group, element pairs)
@@ -1839,6 +1973,19 @@ Core data types and utilities:
 - `ContinuityOfContent` - Continuity of content for containers
 - `NumericValueQualifier` - Qualifiers for special numeric values
 - `ReferencedSOP`, `ImageReference`, `WaveformReference` - SOP reference types
+
+**Coded Terminology (NEW in v0.9.4):**
+- `CodingScheme` - Full coding scheme representation with metadata
+- `CodingSchemeRegistry` - Registry of known coding schemes
+- `SNOMEDCode` - SNOMED CT code support with anatomical, finding, and procedure codes
+- `LOINCCode` - LOINC code support with vital signs, measurements, and report sections
+- `RadLexCode` - RadLex code support with modalities, findings, and descriptors
+- `DICOMCode` - DCM controlled terminology codes
+- `UCUMUnit` - UCUM unit support with dimension and conversion
+- `ContextGroup` - DICOM context group definitions (CIDs)
+- `ContextGroupRegistry` - Registry for context group lookup and validation
+- `CodeMapper` - Cross-terminology code mapping utilities
+- `CodeEquivalent` - Protocol for semantic code equivalence
 
 ### DICOMDictionary
 Standard DICOM dictionaries:
@@ -2089,4 +2236,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.3 - implementing Content Item Navigation and Tree Traversal for DICOM Structured Reporting. This version adds intuitive APIs for navigating SR content trees including depth-first/breadth-first iterators, path-based access (e.g., "/Finding[0]/Measurement"), query and filtering methods, relationship navigation, and measurement-specific navigation. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.4 - implementing comprehensive Coded Terminology Support for DICOM Structured Reporting. This version adds support for major medical coding schemes (SNOMED CT, LOINC, RadLex, UCUM, DCM), context groups per PS3.16, and cross-terminology code mapping. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
