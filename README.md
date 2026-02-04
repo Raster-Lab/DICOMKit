@@ -21,6 +21,16 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `CodedConcept` extensions for common section types
     - ✅ Validation ensures only Basic Text SR compatible value types
     - ✅ 53 unit tests for comprehensive coverage
+  - ✅ **EnhancedSRBuilder** - Specialized builder for Enhanced SR documents (NEW)
+    - ✅ All Basic Text SR features plus numeric measurements
+    - ✅ Numeric content items with units (millimeters, centimeters, etc.)
+    - ✅ Waveform reference support for ECG and other waveform data
+    - ✅ `@EnhancedSectionContentBuilder` for declarative section content
+    - ✅ `EnhancedSectionContent` helpers for measurements and text
+    - ✅ Convenience methods: `addMeasurementMM`, `addMeasurementCM`, `addMeasurements`
+    - ✅ `CodedConcept` extensions for measurement types (diameter, length, area, volume)
+    - ✅ Validation ensures only Enhanced SR compatible value types
+    - ✅ 82 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
@@ -2145,6 +2155,81 @@ let detailedReport = try BasicTextSRBuilder()
 print("Detailed report sections: \(detailedReport.rootContent.contentItems.count)")
 ```
 
+#### Using EnhancedSRBuilder for Reports with Measurements (NEW in v0.9.8)
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// EnhancedSRBuilder adds numeric measurements to Basic Text SR capabilities
+let measurementReport = try EnhancedSRBuilder()
+    // Patient and study information
+    .withPatientID("PAT12345")
+    .withPatientName("Doe^John")
+    .withStudyDate("20240115")
+    .withAccessionNumber("ACC-2024-002")
+    
+    // Document title
+    .withDocumentTitle("CT Measurement Report")
+    .withCompletionFlag(.complete)
+    .withVerificationFlag(.verified)
+    
+    // Clinical context
+    .addClinicalHistory("Follow-up for known liver lesion")
+    
+    // Findings section with nested measurements
+    .addSection("Findings") {
+        EnhancedSectionContent.text("Hepatic lesion in segment 7")
+        EnhancedSectionContent.subsection("Measurements", items: [
+            EnhancedSectionContent.measurement(
+                label: "Axial Diameter",
+                value: 25.5,
+                units: UCUMUnit.millimeter.concept
+            ),
+            EnhancedSectionContent.measurement(
+                label: "Craniocaudal Length",
+                value: 30.2,
+                units: UCUMUnit.millimeter.concept
+            )
+        ])
+    }
+    
+    // Add measurements using convenience methods
+    .addMeasurements {
+        EnhancedSectionContent.numeric(
+            conceptName: CodedConcept.diameter,
+            value: 25.5,
+            units: UCUMUnit.millimeter.concept
+        )
+        EnhancedSectionContent.numeric(
+            conceptName: CodedConcept.volume,
+            value: 12.3,
+            units: UCUMUnit.cubicCentimeter.concept
+        )
+    }
+    
+    .addImpression("Stable hepatic lesion compared to prior")
+    .addRecommendation("Follow-up CT in 6 months")
+    .build()
+
+print("Created Enhanced SR: \(measurementReport.documentType?.displayName ?? "Unknown")")
+print("SOP Class UID: \(measurementReport.sopClassUID)")
+
+// Add individual measurements at root level
+let simpleReport = try EnhancedSRBuilder()
+    .withDocumentTitle("Quick Measurement")
+    .addMeasurementMM(label: "Tumor Diameter", value: 15.0)  // Helper for mm
+    .addMeasurementCM(label: "Lesion Length", value: 3.5)    // Helper for cm
+    .addNumeric(
+        conceptName: CodedConcept.area,
+        value: 450.0,
+        units: UCUMUnit.squareMillimeter.concept
+    )
+    .build()
+
+print("Simple report measurements: \(simpleReport.rootContent.contentItems.count)")
+```
+
 ### Coded Terminology Support (v0.9.4)
 
 DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
@@ -2410,7 +2495,12 @@ High-level API:
 - `BasicTextSRBuilder.BuildError` - Builder validation errors
 - `SectionContentBuilder` - Result builder for declarative section content
 - `SectionContent` - Helper enum for building section content
+- `EnhancedSRBuilder` - Specialized builder for Enhanced SR documents with measurements (NEW in v0.9.8)
+- `EnhancedSRBuilder.BuildError` - Builder validation errors
+- `EnhancedSectionContentBuilder` - Result builder for Enhanced SR section content
+- `EnhancedSectionContent` - Helper enum for measurements and text content
 - `CodedConcept.findings`, `.impression`, `.clinicalHistory`, etc. - Common section concepts
+- `CodedConcept.measurements`, `.diameter`, `.length`, `.area`, `.volume` - Measurement concepts
 
 **Measurement and Coordinate Extraction (NEW in v0.9.5):**
 - `Measurement` - Extracted numeric measurement with value, unit, and context
@@ -2570,4 +2660,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds the `BasicTextSRBuilder` specialized builder for creating Basic Text SR documents with section headings and text content, including common section helpers for Findings, Impression, Clinical History, and more. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR and Enhanced SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, while the new `EnhancedSRBuilder` extends this with numeric measurements, waveform references, and UCUM unit support. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
