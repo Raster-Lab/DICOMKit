@@ -2277,7 +2277,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [x] Unit tests for Chest CAD SR (50 tests)
 - [x] Unit tests for extraction APIs (140 tests)
 - [x] Unit tests for AI/ML integration (26 tests)
-- [ ] Example applications for common workflows
+- [x] Example applications for common workflows (5 comprehensive examples in Examples/ directory)
 - [ ] Integration tests with DICOM viewers (OHIF, etc.)
 
 ---
