@@ -1569,7 +1569,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Supported transfer syntaxes
   - [x] `DICOMwebCapabilities` type with all capability metadata
   - [x] Server handler for capabilities endpoint
-  - [ ] Conformance statement generation
+  - [x] Conformance statement generation (`ConformanceStatement`, `ConformanceStatementGenerator`)
 - [x] Extended Negotiation (partial):
   - [ ] `accept-charset` parameter handling
   - [ ] Compression (gzip, deflate) for responses

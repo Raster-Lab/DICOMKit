@@ -49,6 +49,8 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `GET /capabilities` server endpoint
     - ✅ Service, media type, and transfer syntax reporting
     - ✅ Query and store capability details
+    - ✅ `ConformanceStatement` for DICOM conformance documents (NEW in v0.8.8)
+    - ✅ `ConformanceStatementGenerator` for auto-generating statements (NEW in v0.8.8)
   - ✅ **Client-Side Caching**
     - ✅ `CacheConfiguration` with presets (default, minimal, aggressive)
     - ✅ `InMemoryCache` actor with LRU eviction
@@ -1631,6 +1633,58 @@ let productionConfig = DICOMwebServerConfiguration.production(
 )
 ```
 
+### Conformance Statement Generation (v0.8.8)
+
+DICOMKit can automatically generate DICOM conformance statements documenting your server's capabilities.
+
+```swift
+import DICOMWeb
+
+// Generate from server configuration and capabilities
+let serverConfig = DICOMwebServerConfiguration.development
+let capabilities = DICOMwebCapabilities.dicomKitServer
+
+let statement = ConformanceStatementGenerator.generate(
+    from: serverConfig,
+    capabilities: capabilities
+)
+
+// Or with custom implementation info
+let customImplementation = ConformanceStatement.Implementation(
+    name: "MyPACS",
+    version: "2.0.0",
+    vendor: "My Healthcare Company",
+    description: "Enterprise PACS Solution"
+)
+
+let customStatement = ConformanceStatementGenerator.generate(
+    from: serverConfig,
+    capabilities: capabilities,
+    implementation: customImplementation
+)
+
+// Export as JSON (PS3.2 format)
+let jsonData = try statement.toJSON()
+
+// Export as human-readable text document
+let textDocument = statement.toText()
+print(textDocument)
+
+// Access individual conformance details
+if let wado = statement.networkServices.dicomWeb.wadoRS {
+    print("WADO-RS: \(wado.supported ? "Enabled" : "Disabled")")
+    print("Transfer Syntaxes: \(wado.transferSyntaxes.count)")
+}
+
+if let qido = statement.networkServices.dicomWeb.qidoRS {
+    print("Query Levels: \(qido.queryLevels.joined(separator: ", "))")
+}
+
+// Check security information
+print("TLS Required: \(statement.security.tlsSupport.required)")
+print("Auth Methods: \(statement.security.authenticationMethods.joined(separator: ", "))")
+```
+
 ## Architecture
 
 DICOMKit is organized into four modules:
@@ -1750,6 +1804,8 @@ DICOMweb (RESTful DICOM) client and server implementation:
 - `DICOMwebCapabilities.SupportedServices` - Supported services info
 - `DICOMwebCapabilities.QueryCapabilities` - Query feature support
 - `DICOMwebCapabilities.StoreCapabilities` - Store feature support
+- `ConformanceStatement` - DICOM conformance statement document (NEW in v0.8.8)
+- `ConformanceStatementGenerator` - Auto-generate conformance statements (NEW in v0.8.8)
 - `CacheConfiguration` - Cache configuration with presets
 - `CacheEntry` - Cached response with TTL
 - `CacheStorage` - Protocol for cache storage
