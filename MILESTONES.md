@@ -2230,10 +2230,11 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Finding site localization
   - [x] `MammographyCADSRBuilder` specialized builder
   - [x] Unit tests for Mammography CAD SR (50 tests)
-- [ ] Chest CAD SR (1.2.840.10008.5.1.4.1.1.88.65):
-  - [ ] Chest-specific CAD findings
-  - [ ] Nodule detection results
-  - [ ] `ChestCADSRBuilder` specialized builder
+- [x] Chest CAD SR (1.2.840.10008.5.1.4.1.1.88.65):
+  - [x] Chest-specific CAD findings
+  - [x] Nodule detection results
+  - [x] `ChestCADSRBuilder` specialized builder
+  - [x] Unit tests for Chest CAD SR (50 tests)
 - [ ] Comprehensive 3D SR (1.2.840.10008.5.1.4.1.1.88.34):
   - [x] 3D coordinate support
   - [x] 3D ROI definitions
@@ -2262,12 +2263,12 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [x] TID 1500 Measurement Report fully supported (builder, templates, 60 tests)
 - [x] Mammography CAD SR template correctly encodes detection results (50 tests)
 - [x] Key Object Selection works for image flagging (38 tests)
-- [ ] Chest CAD SR templates correctly encode detection results (remaining)
+- [x] Chest CAD SR templates correctly encode detection results (50 tests)
 - [ ] AI/ML integration produces valid SR documents
-- [x] Unit tests for core SR types (372 tests completed: BasicTextSRBuilder 53, EnhancedSRBuilder 82, ComprehensiveSRBuilder 83, Comprehensive3DSRBuilder 66, KeyObjectSelectionBuilder 38, MammographyCADSRBuilder 50)
+- [x] Unit tests for core SR types (422 tests completed: BasicTextSRBuilder 53, EnhancedSRBuilder 82, ComprehensiveSRBuilder 83, Comprehensive3DSRBuilder 66, KeyObjectSelectionBuilder 38, MammographyCADSRBuilder 50, ChestCADSRBuilder 50)
 - [x] Unit tests for TID 1500 MeasurementReportBuilder (60 tests)
 - [x] Unit tests for Mammography CAD SR (50 tests)
-- [ ] Unit tests for remaining templates (target: additional 40+ tests for Chest CAD SR)
+- [x] Unit tests for Chest CAD SR (50 tests)
 - [ ] Example applications for common workflows
 - [ ] Integration tests with DICOM viewers (OHIF, etc.)
 
@@ -2284,7 +2285,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 | 9.5 Measurement Extraction | v0.9.5 | High | ✅ Completed | Measurements, ROIs, coordinates |
 | 9.6 SR Document Creation | v0.9.6 | High | ✅ Completed | Builder API, serialization, validation |
 | 9.7 Template Support | v0.9.7 | Very High | ✅ Completed | TID parsing, validation, template-guided creation |
-| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), Comprehensive3DSRBuilder (66 tests), MeasurementReportBuilder (60 tests), KeyObjectSelectionBuilder (38 tests), MammographyCADSRBuilder (50 tests), Chest CAD SR (remaining) |
+| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), Comprehensive3DSRBuilder (66 tests), MeasurementReportBuilder (60 tests), KeyObjectSelectionBuilder (38 tests), MammographyCADSRBuilder (50 tests), ChestCADSRBuilder (50 tests) |
 
 ### Overall Technical Notes
 - Reference: PS3.3 Part 3 Section C.17 - SR Document IODs

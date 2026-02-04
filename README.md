@@ -83,7 +83,18 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Spatial location support: 2D point, ROI polygon, circular region
     - ✅ Optional finding characteristics (spiculated margin, high density, etc.)
     - ✅ Image reference linking for each finding
-    - ✅ Validation ensures algorithm name and at least one finding
+    - ✅ Validation ensures algorithm name and at least one finding present
+    - ✅ 50 unit tests for comprehensive coverage
+  - ✅ **ChestCADSRBuilder** - Specialized builder for Chest CAD SR Documents (NEW in v0.9.8)
+    - ✅ DICOM Chest CAD SR (SOP Class UID: 1.2.840.10008.5.1.4.1.1.88.65)
+    - ✅ Computer-aided detection results for chest radiology and CT images
+    - ✅ CAD Processing Summary (algorithm name, version, manufacturer)
+    - ✅ CAD Findings with confidence scores (0.0-1.0)
+    - ✅ Finding types: Lung Nodule, Lung Mass, Lesion of Lung, Pulmonary Consolidation, Tree-in-Bud Pattern
+    - ✅ Spatial location support: 2D point, ROI polygon, circular region
+    - ✅ Optional finding characteristics for detailed detection results
+    - ✅ Image reference linking for each finding
+    - ✅ Validation ensures algorithm name and at least one finding present
     - ✅ 50 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
@@ -2677,6 +2688,91 @@ try DICOMFile(document: cadReport).write(to: "cad_analysis.dcm")
 - Values must be between 0.0 (no confidence) and 1.0 (high confidence)
 - Typically represents the CAD algorithm's confidence in the detection
 
+#### Using ChestCADSRBuilder for Chest Nodule Detection (NEW in v0.9.8)
+
+`ChestCADSRBuilder` provides a specialized API for creating Chest Computer-Aided Detection (CAD) Structured Report documents that encode the results of CAD algorithms detecting findings in chest radiography and CT images.
+
+```swift
+import DICOMKit
+
+// Reference to the chest CT image being analyzed
+let ctImageRef = ImageReference(
+    sopReference: ReferencedSOP(
+        sopClassUID: "1.2.840.10008.5.1.4.1.1.2", // CT Image Storage
+        sopInstanceUID: "1.2.3.4.5.6.7.8.9"
+    ),
+    frameNumbers: nil,
+    segmentNumbers: nil,
+    purposeOfReference: nil
+)
+
+// Create a CAD report with algorithm information and findings
+let chestCADReport = try ChestCADSRBuilder()
+    .withPatientID("CT-2024-042")
+    .withPatientName("Doe^John^David")
+    .withStudyInstanceUID("1.2.840.113619.2.5.1762583153.215519.978957063.79")
+    .withCADProcessingSummary(
+        algorithmName: "LungNoduleCAD",
+        algorithmVersion: "4.1.2",
+        manufacturer: "Medical AI Systems Inc",
+        processingDateTime: "20240115150000"
+    )
+    // High confidence lung nodule
+    .addFinding(
+        type: .nodule,
+        probability: 0.92,
+        location: .circle2D(
+            centerX: 256.5,
+            centerY: 384.7,
+            radius: 8.2,
+            imageReference: ctImageRef
+        ),
+        characteristics: [
+            CodedConcept(
+                codeValue: "46621007",
+                codingSchemeDesignator: "SRT",
+                codeMeaning: "Solid nodule"
+            )
+        ]
+    )
+    // Medium confidence mass
+    .addFinding(
+        type: .mass,
+        probability: 0.75,
+        location: .roi2D(
+            points: [150.0, 200.0, 180.0, 210.0, 170.0, 230.0, 140.0, 220.0],
+            imageReference: ctImageRef
+        )
+    )
+    // Consolidation finding
+    .addFinding(
+        type: .consolidation,
+        probability: 0.68,
+        location: .point2D(x: 320.5, y: 450.2, imageReference: ctImageRef)
+    )
+    .build()
+
+// Write to file
+try DICOMFile(document: chestCADReport).write(to: "chest_cad_analysis.dcm")
+```
+
+**Finding Types**:
+- `.nodule` - Lung nodule (SRT 39607008)
+- `.mass` - Lung mass (SRT 126952004)
+- `.lesion` - Lesion of lung (SRT 126601007)
+- `.consolidation` - Pulmonary consolidation (SRT 3128005)
+- `.treeInBud` - Tree-in-bud pattern (SRT 44914007)
+- `.custom(CodedConcept)` - Custom finding type
+
+**Location Types**:
+- `.point2D(x, y, imageReference)` - Single point location
+- `.roi2D(points, imageReference)` - Polygon region of interest
+- `.circle2D(centerX, centerY, radius, imageReference)` - Circular region
+
+**Probability Scores**:
+- Values must be between 0.0 (no confidence) and 1.0 (high confidence)
+- Represents the CAD algorithm's confidence in the nodule/finding detection
+
 
 ### Coded Terminology Support (v0.9.4)
 
@@ -2972,6 +3068,11 @@ High-level API:
 - `CADFinding` - CAD finding with type, probability, and location (NEW in v0.9.8)
 - `FindingType` - CAD finding types (mass, calcification, etc.) (NEW in v0.9.8)
 - `FindingLocation` - Spatial location types (point2D, roi2D, circle2D) (NEW in v0.9.8)
+- `ChestCADSRBuilder` - Specialized builder for Chest CAD SR documents (NEW in v0.9.8)
+- `ChestCADSRBuilder.BuildError` - Builder validation errors
+- `ChestCADFinding` - Chest CAD finding with type, probability, and location (NEW in v0.9.8)
+- `ChestFindingType` - Chest finding types (nodule, mass, lesion, consolidation, tree-in-bud) (NEW in v0.9.8)
+- `ChestFindingLocation` - Spatial location types for chest findings (point2D, roi2D, circle2D) (NEW in v0.9.8)
 - `CodedConcept.findings`, `.impression`, `.clinicalHistory`, etc. - Common section concepts
 - `CodedConcept.measurements`, `.diameter`, `.length`, `.area`, `.volume` - Measurement concepts
 - `CodedConcept.imageRegion`, `.regionOfInterest`, `.measurementLocation`, `.temporalExtent` - Coordinate concepts (NEW in v0.9.8)
@@ -3134,4 +3235,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), Key Object Selection, and Mammography CAD SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions, `MeasurementReportBuilder` implements the TID 1500 template for structured measurement reporting, `KeyObjectSelectionBuilder` enables flagging significant images for teaching, quality control, or referral purposes, and `MammographyCADSRBuilder` supports encoding computer-aided detection results with findings, confidence scores, and spatial locations. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), Key Object Selection, Mammography CAD SR, and Chest CAD SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions, `MeasurementReportBuilder` implements the TID 1500 template for structured measurement reporting, `KeyObjectSelectionBuilder` enables flagging significant images for teaching, quality control, or referral purposes, `MammographyCADSRBuilder` supports encoding mammography computer-aided detection results with findings, confidence scores, and spatial locations, and `ChestCADSRBuilder` supports encoding chest radiology computer-aided detection results for lung nodule detection and other chest findings. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
