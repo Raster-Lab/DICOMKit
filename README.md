@@ -10,7 +10,7 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.9.5)
+## Features (v0.9.7)
 
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
@@ -167,6 +167,43 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `@ContainerBuilder` for declarative container construction
   - ✅ **Round-Trip Support**
     - ✅ Create → Serialize → Parse produces valid documents
+- ✅ **Template Support (v0.9.7)** (NEW in v0.9.7)
+  - ✅ **Template Infrastructure**
+    - ✅ `SRTemplate` protocol for template definitions
+    - ✅ `TemplateIdentifier` for TID references with version support
+    - ✅ `TemplateRegistry` for template lookup by TID
+    - ✅ Template version handling
+    - ✅ Extensible template system
+  - ✅ **Template Constraint Types**
+    - ✅ `TemplateRow` - Single template row definition with all constraints
+    - ✅ `RequirementLevel` enum (Mandatory, Mandatory Conditional, User Conditional, Conditional)
+    - ✅ `Cardinality` struct (1, 0-1, 1-n, 0-n, custom ranges)
+    - ✅ `ConceptNameConstraint` - Concept name validation
+    - ✅ `ValueConstraint` - Value validation for coded/numeric items
+    - ✅ `TemplateRowCondition` - Conditional row application
+  - ✅ **Template Validation**
+    - ✅ `TemplateValidator` for checking content compliance
+    - ✅ `TemplateViolation` for detailed violation reporting
+    - ✅ `TemplateValidationResult` with errors and warnings
+    - ✅ Strict vs. lenient validation modes
+    - ✅ Warning vs. error classification
+    - ✅ Factory methods for common violations
+  - ✅ **Template Detection**
+    - ✅ `TemplateDetector` for auto-detecting applicable templates
+    - ✅ Confidence-based template matching
+    - ✅ Multiple template detection with ranking
+  - ✅ **Core Templates (PS3.16)**
+    - ✅ TID 300 - Measurement
+    - ✅ TID 320 - Image Library Entry
+    - ✅ TID 1001 - Observation Context
+    - ✅ TID 1002 - Observer Context
+    - ✅ TID 1204 - Language of Content
+  - ✅ **Measurement Templates**
+    - ✅ TID 1400 - Linear Measurements
+    - ✅ TID 1410 - Planar ROI Measurements
+    - ✅ TID 1411 - Volumetric ROI Measurements
+    - ✅ TID 1419 - ROI Measurements
+    - ✅ TID 1420 - Measurements Derived from Multiple ROI Measurements
 - ✅ **Structured Reporting Document Parsing (v0.9.2)**
   - ✅ **SR Document Parser**
     - ✅ `SRDocumentParser` - Parse DICOM SR data sets into content item trees
