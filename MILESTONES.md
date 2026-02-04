@@ -2208,14 +2208,14 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] `ComprehensiveSectionContent` helper for section content
   - [x] `ComprehensiveSectionContentBuilder` result builder
   - [x] Unit tests for Comprehensive SR (83 tests)
-- [ ] TID 1500 - Measurement Report:
-  - [ ] Image Library (TID 1600)
-  - [ ] Imaging Measurements Container
-  - [ ] Measurement Groups (TID 1501)
-  - [ ] Tracking Identifiers
-  - [ ] Qualitative Evaluations
-  - [ ] `MeasurementReportBuilder` specialized builder
-  - [ ] `MeasurementReport` extraction type
+- [x] TID 1500 - Measurement Report:
+  - [x] Image Library (TID 1600)
+  - [x] Imaging Measurements Container
+  - [x] Measurement Groups (TID 1501)
+  - [x] Tracking Identifiers
+  - [x] Qualitative Evaluations
+  - [x] `MeasurementReportBuilder` specialized builder
+  - [ ] `MeasurementReport` extraction type (deferred - can use existing SRDocumentParser)
 - [ ] Key Object Selection (1.2.840.10008.5.1.4.1.1.88.59):
   - [ ] Referenced instances
   - [ ] Key object description
@@ -2254,12 +2254,13 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 #### Acceptance Criteria
 - [ ] All listed SR document types can be created and parsed
-- [ ] TID 1500 Measurement Report fully supported
+- [x] TID 1500 Measurement Report fully supported (builder, templates, 60 tests)
 - [ ] CAD SR templates correctly encode detection results
 - [ ] Key Object Selection works for image flagging
 - [ ] AI/ML integration produces valid SR documents
 - [x] Unit tests for core SR types (218 tests completed: BasicTextSRBuilder 53, EnhancedSRBuilder 82, ComprehensiveSRBuilder 83)
-- [ ] Unit tests for remaining templates (target: additional 100+ tests for TID 1500, CAD SR, Key Object Selection)
+- [x] Unit tests for TID 1500 MeasurementReportBuilder (60 tests)
+- [ ] Unit tests for remaining templates (target: additional 40+ tests for CAD SR, Key Object Selection)
 - [ ] Example applications for common workflows
 - [ ] Integration tests with DICOM viewers (OHIF, etc.)
 
@@ -2276,7 +2277,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 | 9.5 Measurement Extraction | v0.9.5 | High | ✅ Completed | Measurements, ROIs, coordinates |
 | 9.6 SR Document Creation | v0.9.6 | High | ✅ Completed | Builder API, serialization, validation |
 | 9.7 Template Support | v0.9.7 | Very High | ✅ Completed | TID parsing, validation, template-guided creation |
-| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), TID 1500, CAD SR, Key Object Selection |
+| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), MeasurementReportBuilder (60 tests), CAD SR, Key Object Selection |
 
 ### Overall Technical Notes
 - Reference: PS3.3 Part 3 Section C.17 - SR Document IODs

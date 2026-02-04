@@ -31,7 +31,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `CodedConcept` extensions for measurement types (diameter, length, area, volume)
     - ✅ Validation ensures only Enhanced SR compatible value types
     - ✅ 82 unit tests for comprehensive coverage
-  - ✅ **ComprehensiveSRBuilder** - Specialized builder for Comprehensive SR documents (NEW)
+  - ✅ **ComprehensiveSRBuilder** - Specialized builder for Comprehensive SR documents
     - ✅ All Enhanced SR features plus spatial and temporal coordinates
     - ✅ 2D Spatial Coordinates (SCOORD): points, polylines, polygons, circles, ellipses
     - ✅ Temporal Coordinates (TCOORD): sample positions, time offsets, datetimes
@@ -41,6 +41,18 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Temporal coordinate helpers for sample positions, time offsets, and datetimes
     - ✅ Validation ensures only Comprehensive SR compatible value types (no SCOORD3D)
     - ✅ 83 unit tests for comprehensive coverage
+  - ✅ **MeasurementReportBuilder** - Specialized builder for TID 1500 Measurement Reports (NEW)
+    - ✅ DICOM TID 1500 compliant measurement report structure
+    - ✅ Image Library (TID 1600) for source image references
+    - ✅ Measurement Groups (TID 1501) with tracking identifiers
+    - ✅ Tracking Identifier and Tracking Unique Identifier support
+    - ✅ `@MeasurementGroupContentBuilder` for declarative measurement content
+    - ✅ `MeasurementGroupContentHelper` for common measurements (length, area, volume)
+    - ✅ Document title codes: Imaging Measurement Report, Lesion Measurement Report, etc.
+    - ✅ Qualitative evaluations support
+    - ✅ Procedure Reported and Language of Content support
+    - ✅ Validation ensures tracking identifiers are provided
+    - ✅ 60 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
@@ -233,6 +245,10 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ TID 1411 - Volumetric ROI Measurements
     - ✅ TID 1419 - ROI Measurements
     - ✅ TID 1420 - Measurements Derived from Multiple ROI Measurements
+  - ✅ **Document Templates (NEW in v0.9.8)**
+    - ✅ TID 1500 - Measurement Report (root template for quantitative imaging)
+    - ✅ TID 1501 - Measurement Group (grouped measurements with tracking)
+    - ✅ TID 1600 - Image Library (source image references)
 - ✅ **Structured Reporting Document Parsing (v0.9.2)**
   - ✅ **SR Document Parser**
     - ✅ `SRDocumentParser` - Parse DICOM SR data sets into content item trees
@@ -2613,6 +2629,14 @@ High-level API:
 - `ComprehensiveSRBuilder.BuildError` - Builder validation errors
 - `ComprehensiveSectionContentBuilder` - Result builder for Comprehensive SR section content
 - `ComprehensiveSectionContent` - Helper enum for coordinates, measurements, and text content
+- `MeasurementReportBuilder` - Specialized builder for TID 1500 Measurement Reports (NEW in v0.9.8)
+- `MeasurementReportBuilder.BuildError` - Builder validation errors
+- `MeasurementGroupContentBuilder` - Result builder for measurement group content
+- `MeasurementGroupContent` - Content types for measurement groups
+- `MeasurementGroupContentHelper` - Helper for creating common measurements
+- `MeasurementGroupData` - Data structure for measurement group configuration
+- `ImageLibraryEntry` - Entry in an image library (TID 1600)
+- `MeasurementReportDocumentTitle` - Common document title codes (CID 7021)
 - `CodedConcept.findings`, `.impression`, `.clinicalHistory`, etc. - Common section concepts
 - `CodedConcept.measurements`, `.diameter`, `.length`, `.area`, `.volume` - Measurement concepts
 - `CodedConcept.imageRegion`, `.regionOfInterest`, `.measurementLocation`, `.temporalExtent` - Coordinate concepts (NEW in v0.9.8)
