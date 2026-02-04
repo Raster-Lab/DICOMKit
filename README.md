@@ -74,6 +74,17 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Frame number support for multi-frame images
     - ✅ Validation ensures at least one key object is present
     - ✅ 38 unit tests for comprehensive coverage
+  - ✅ **MammographyCADSRBuilder** - Specialized builder for Mammography CAD SR Documents (NEW in v0.9.8)
+    - ✅ DICOM Mammography CAD SR (SOP Class UID: 1.2.840.10008.5.1.4.1.1.88.50)
+    - ✅ Computer-aided detection results for mammography images
+    - ✅ CAD Processing Summary (algorithm name, version, manufacturer)
+    - ✅ CAD Findings with confidence scores (0.0-1.0)
+    - ✅ Finding types: Mass, Calcification, Architectural Distortion, Asymmetry
+    - ✅ Spatial location support: 2D point, ROI polygon, circular region
+    - ✅ Optional finding characteristics (spiculated margin, high density, etc.)
+    - ✅ Image reference linking for each finding
+    - ✅ Validation ensures algorithm name and at least one finding
+    - ✅ 50 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
@@ -2587,6 +2598,86 @@ let customPurpose = try KeyObjectSelectionBuilder()
 - `.forReportAttachment` - Attach to radiology report
 - `.custom(CodedConcept)` - Custom purpose code
 
+#### Using MammographyCADSRBuilder for CAD Analysis Results (NEW in v0.9.8)
+
+`MammographyCADSRBuilder` provides a specialized API for creating Mammography Computer-Aided Detection (CAD) Structured Report documents that encode the results of CAD algorithms detecting findings in mammography images.
+
+```swift
+import DICOMKit
+
+// Reference to the mammography image being analyzed
+let mammoImageRef = ImageReference(
+    sopClassUID: "1.2.840.10008.5.1.4.1.1.1.2", // Digital Mammography X-Ray Image Storage
+    sopInstanceUID: "1.2.3.4.5.6.7.8.9"
+)
+
+// Create a CAD report with algorithm information and findings
+let cadReport = try MammographyCADSRBuilder()
+    .withPatientID("MM-2024-001")
+    .withPatientName("Smith^Jane^Marie")
+    .withStudyInstanceUID("1.2.840.113619.2.5.1762583153.215519.978957063.78")
+    .withCADProcessingSummary(
+        algorithmName: "MammoCare CAD",
+        algorithmVersion: "3.2.1",
+        manufacturer: "Digital Mammography Systems Inc",
+        processingDateTime: "20240115144500"
+    )
+    // High confidence mass with spiculated margin
+    .addFinding(
+        type: .mass,
+        probability: 0.87,
+        location: .circle2D(
+            centerX: 245.5,
+            centerY: 389.2,
+            radius: 18.5,
+            imageReference: mammoImageRef
+        ),
+        characteristics: [
+            CodedConcept(
+                codeValue: "M-78060",
+                codingSchemeDesignator: "SRT",
+                codeMeaning: "Spiculated margin"
+            )
+        ]
+    )
+    // Calcification cluster
+    .addFinding(
+        type: .calcification,
+        probability: 0.64,
+        location: .point2D(x: 156.3, y: 425.8, imageReference: mammoImageRef)
+    )
+    // Architectural distortion
+    .addFinding(
+        type: .architecturalDistortion,
+        probability: 0.58,
+        location: .roi2D(
+            points: [100.0, 150.0, 120.0, 160.0, 140.0, 155.0, 130.0, 145.0],
+            imageReference: mammoImageRef
+        )
+    )
+    .build()
+
+// Write to file
+try DICOMFile(document: cadReport).write(to: "cad_analysis.dcm")
+```
+
+**Finding Types**:
+- `.mass` - Mass finding (SRT F-01796)
+- `.calcification` - Calcification (SRT F-61769)
+- `.architecturalDistortion` - Architectural distortion (SRT F-01775)
+- `.asymmetry` - Asymmetry (SRT F-01710)
+- `.custom(CodedConcept)` - Custom finding type
+
+**Location Types**:
+- `.point2D(x, y, imageReference)` - Single point location
+- `.roi2D(points, imageReference)` - Polygon region of interest
+- `.circle2D(centerX, centerY, radius, imageReference)` - Circular region
+
+**Probability Scores**:
+- Values must be between 0.0 (no confidence) and 1.0 (high confidence)
+- Typically represents the CAD algorithm's confidence in the detection
+
+
 ### Coded Terminology Support (v0.9.4)
 
 DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
@@ -2876,6 +2967,11 @@ High-level API:
 - `KeyObjectSelectionBuilder.BuildError` - Builder validation errors
 - `KeyObject` - Referenced instance in a KOS document (NEW in v0.9.8)
 - `DocumentTitle` - Standard purpose codes for KOS documents from CID 7010 (NEW in v0.9.8)
+- `MammographyCADSRBuilder` - Specialized builder for Mammography CAD SR documents (NEW in v0.9.8)
+- `MammographyCADSRBuilder.BuildError` - Builder validation errors
+- `CADFinding` - CAD finding with type, probability, and location (NEW in v0.9.8)
+- `FindingType` - CAD finding types (mass, calcification, etc.) (NEW in v0.9.8)
+- `FindingLocation` - Spatial location types (point2D, roi2D, circle2D) (NEW in v0.9.8)
 - `CodedConcept.findings`, `.impression`, `.clinicalHistory`, etc. - Common section concepts
 - `CodedConcept.measurements`, `.diameter`, `.length`, `.area`, `.volume` - Measurement concepts
 - `CodedConcept.imageRegion`, `.regionOfInterest`, `.measurementLocation`, `.temporalExtent` - Coordinate concepts (NEW in v0.9.8)
@@ -3038,4 +3134,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), and Key Object Selection documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions, `MeasurementReportBuilder` implements the TID 1500 template for structured measurement reporting, and `KeyObjectSelectionBuilder` enables flagging significant images for teaching, quality control, or referral purposes. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), Key Object Selection, and Mammography CAD SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions, `MeasurementReportBuilder` implements the TID 1500 template for structured measurement reporting, `KeyObjectSelectionBuilder` enables flagging significant images for teaching, quality control, or referral purposes, and `MammographyCADSRBuilder` supports encoding computer-aided detection results with findings, confidence scores, and spatial locations. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
