@@ -10,9 +10,42 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.8.8)
+## Features (v0.9.1)
 
-- ✅ **Advanced DICOMweb Features (NEW in v0.8.8)**
+- ✅ **Structured Reporting Core Infrastructure (NEW in v0.9.1)**
+  - ✅ **Content Item Value Types** - All 15 DICOM SR value types
+    - ✅ `TextContentItem` - Unstructured text (TEXT)
+    - ✅ `CodeContentItem` - Coded concept from terminology (CODE)
+    - ✅ `NumericContentItem` - Quantitative value with units (NUM)
+    - ✅ `DateContentItem`, `TimeContentItem`, `DateTimeContentItem` - Temporal values
+    - ✅ `PersonNameContentItem` - Person name (PNAME)
+    - ✅ `UIDRefContentItem` - DICOM UID reference (UIDREF)
+    - ✅ `ContainerContentItem` - Groups other content items (CONTAINER)
+    - ✅ `CompositeContentItem`, `ImageContentItem`, `WaveformContentItem` - References
+    - ✅ `SpatialCoordinatesContentItem` - 2D spatial coordinates (SCOORD)
+    - ✅ `SpatialCoordinates3DContentItem` - 3D spatial coordinates (SCOORD3D)
+    - ✅ `TemporalCoordinatesContentItem` - Temporal coordinates (TCOORD)
+  - ✅ **Coded Concept Support**
+    - ✅ `CodedConcept` struct with Code Value, Coding Scheme Designator, Code Meaning
+    - ✅ `CodingSchemeDesignator` enum (DCM, SCT, LOINC, UCUM, FMA, RADLEX, etc.)
+    - ✅ Coded concept validation and common concept constants
+  - ✅ **Relationship Types**
+    - ✅ `RelationshipType` enum (CONTAINS, HAS PROPERTIES, INFERRED FROM, etc.)
+    - ✅ Relationship validation per value type constraints
+  - ✅ **Content Item Protocol and Tree Building**
+    - ✅ `ContentItem` protocol for polymorphic tree building
+    - ✅ `AnyContentItem` type-erased wrapper for heterogeneous collections
+    - ✅ `ContinuityOfContent` for CONTAINER semantics
+  - ✅ **SR Document Types**
+    - ✅ `SRDocumentType` enum with 18 document types
+    - ✅ SOP Class UID constants for all SR types
+    - ✅ Value type constraints per document type
+  - ✅ **Supporting Types**
+    - ✅ `GraphicType`, `GraphicType3D` for spatial coordinates
+    - ✅ `TemporalRangeType` for temporal coordinates
+    - ✅ `NumericValueQualifier` for special numeric values
+    - ✅ `ReferencedSOP`, `ImageReference`, `WaveformReference` for object references
+- ✅ **Advanced DICOMweb Features (v0.8.8)**
   - ✅ **OAuth2/OpenID Connect Authentication**
     - ✅ `OAuth2Configuration` for OAuth2 settings
     - ✅ `OAuth2Token` for token representation with expiration tracking
@@ -1698,7 +1731,7 @@ print("Auth Methods: \(statement.security.authenticationMethods.joined(separator
 
 DICOMKit is organized into four modules:
 
-### DICOMCore
+### DICOMCore (v0.9.1)
 Core data types and utilities:
 - `VR` - All 31 Value Representations from DICOM PS3.5
 - `Tag` - Data element tags (group, element pairs)
@@ -1724,6 +1757,27 @@ Core data types and utilities:
 - `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
 - Little Endian and Big Endian byte reading/writing utilities
+
+**Structured Reporting (NEW in v0.9.1):**
+- `ContentItemValueType` - All 15 SR value types enum
+- `ContentItem` - Protocol for SR content items
+- `AnyContentItem` - Type-erased wrapper for heterogeneous collections
+- `TextContentItem`, `CodeContentItem`, `NumericContentItem` - Value content items
+- `DateContentItem`, `TimeContentItem`, `DateTimeContentItem` - Temporal content items
+- `PersonNameContentItem`, `UIDRefContentItem` - Person and UID content items
+- `CompositeContentItem`, `ImageContentItem`, `WaveformContentItem` - Reference content items
+- `SpatialCoordinatesContentItem`, `SpatialCoordinates3DContentItem` - Spatial coordinate items
+- `TemporalCoordinatesContentItem` - Temporal coordinate items
+- `ContainerContentItem` - Container for grouping content items
+- `CodedConcept` - Coded concept (Code Value, Coding Scheme Designator, Code Meaning)
+- `CodingSchemeDesignator` - Common coding scheme designators (DCM, SCT, LOINC, UCUM, etc.)
+- `RelationshipType` - SR relationship types (CONTAINS, HAS PROPERTIES, etc.)
+- `SRDocumentType` - 18 SR document types with SOP Class UIDs
+- `GraphicType`, `GraphicType3D` - Graphic types for spatial coordinates
+- `TemporalRangeType` - Temporal range types for temporal coordinates
+- `ContinuityOfContent` - Continuity of content for containers
+- `NumericValueQualifier` - Qualifiers for special numeric values
+- `ReferencedSOP`, `ImageReference`, `WaveformReference` - SOP reference types
 
 ### DICOMDictionary
 Standard DICOM dictionaries:
@@ -1919,6 +1973,7 @@ DICOMweb (RESTful DICOM) client and server implementation:
 ## DICOM Standard Compliance
 
 DICOMKit implements:
+- **DICOM PS3.3 2025e** - Information Object Definitions (Structured Reporting modules)
 - **DICOM PS3.5 2025e** - Data Structures and Encoding
 - **DICOM PS3.6 2025e** - Data Dictionary (partial, essential tags only)
 - **DICOM PS3.7 2025e** - Message Exchange (DIMSE-C services)
@@ -1943,4 +1998,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.8 - implementing advanced DICOMweb features including OAuth2/OpenID Connect authentication, server authentication middleware with JWT verification and role-based access control, capability discovery, client-side caching, and monitoring/logging. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.1 - implementing Core SR Infrastructure for DICOM Structured Reporting. This version adds foundational data structures including all 15 content item types, coded concept support, relationship types, and SR document type definitions. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

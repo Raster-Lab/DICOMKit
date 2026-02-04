@@ -1674,50 +1674,57 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 9.1: Core SR Infrastructure (v0.9.1)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Establish foundational data structures for DICOM Structured Reporting  
 **Complexity**: High  
 **Dependencies**: Milestone 5 (DICOM Writing)
 
 #### Deliverables
-- [ ] Content Item value types (PS3.3 Table C.17.3-1):
-  - [ ] `ContentItemValueType` enum for all SR value types
-  - [ ] `TextContentItem` - Unstructured text (TEXT)
-  - [ ] `CodeContentItem` - Coded concept from terminology (CODE)
-  - [ ] `NumericContentItem` - Quantitative value with units (NUM)
-  - [ ] `DateContentItem` - Date value (DATE)
-  - [ ] `TimeContentItem` - Time value (TIME)
-  - [ ] `DateTimeContentItem` - Combined date/time (DATETIME)
-  - [ ] `PersonNameContentItem` - Person name (PNAME)
-  - [ ] `UIDRefContentItem` - DICOM UID reference (UIDREF)
-  - [ ] `ContainerContentItem` - Groups other content items (CONTAINER)
-- [ ] Reference content item types:
-  - [ ] `CompositeContentItem` - Reference to DICOM composite object (COMPOSITE)
-  - [ ] `ImageContentItem` - Reference to DICOM image (IMAGE)
-  - [ ] `WaveformContentItem` - Reference to waveform data (WAVEFORM)
-- [ ] Coordinate content item types:
-  - [ ] `SpatialCoordinatesContentItem` - 2D spatial coordinates (SCOORD)
-  - [ ] `SpatialCoordinates3DContentItem` - 3D spatial coordinates (SCOORD3D)
-  - [ ] `TemporalCoordinatesContentItem` - Temporal coordinates (TCOORD)
-- [ ] Coded concept support:
-  - [ ] `CodedConcept` struct (Code Value, Coding Scheme Designator, Code Meaning)
-  - [ ] `CodeSequence` for encoding/decoding code sequences
-  - [ ] Common coding scheme designators (DCM, SRT, LN, FMA, etc.)
-  - [ ] Code validation utilities
-- [ ] Relationship types (PS3.3 Table C.17.3-8):
-  - [ ] `RelationshipType` enum (CONTAINS, HAS PROPERTIES, INFERRED FROM, etc.)
-  - [ ] `SRRelationship` struct for relationship encoding
-  - [ ] Relationship validation per value type constraints
-- [ ] Content item base protocol:
-  - [ ] `ContentItem` protocol with common properties
-  - [ ] Concept name (coded name of the item)
-  - [ ] Relationship type to parent
-  - [ ] Child content items (for CONTAINER)
-  - [ ] Observation context support
-- [ ] SR Document type definitions:
-  - [ ] `SRDocumentType` enum (Basic Text, Enhanced, Comprehensive, etc.)
-  - [ ] IOD-specific constraints per document type
-  - [ ] SOP Class UID constants for all SR types
+- [x] Content Item value types (PS3.3 Table C.17.3-1):
+  - [x] `ContentItemValueType` enum for all SR value types
+  - [x] `TextContentItem` - Unstructured text (TEXT)
+  - [x] `CodeContentItem` - Coded concept from terminology (CODE)
+  - [x] `NumericContentItem` - Quantitative value with units (NUM)
+  - [x] `DateContentItem` - Date value (DATE)
+  - [x] `TimeContentItem` - Time value (TIME)
+  - [x] `DateTimeContentItem` - Combined date/time (DATETIME)
+  - [x] `PersonNameContentItem` - Person name (PNAME)
+  - [x] `UIDRefContentItem` - DICOM UID reference (UIDREF)
+  - [x] `ContainerContentItem` - Groups other content items (CONTAINER)
+- [x] Reference content item types:
+  - [x] `CompositeContentItem` - Reference to DICOM composite object (COMPOSITE)
+  - [x] `ImageContentItem` - Reference to DICOM image (IMAGE)
+  - [x] `WaveformContentItem` - Reference to waveform data (WAVEFORM)
+- [x] Coordinate content item types:
+  - [x] `SpatialCoordinatesContentItem` - 2D spatial coordinates (SCOORD)
+  - [x] `SpatialCoordinates3DContentItem` - 3D spatial coordinates (SCOORD3D)
+  - [x] `TemporalCoordinatesContentItem` - Temporal coordinates (TCOORD)
+- [x] Coded concept support:
+  - [x] `CodedConcept` struct (Code Value, Coding Scheme Designator, Code Meaning)
+  - [x] `CodingSchemeDesignator` enum for common coding schemes (DCM, SRT, LN, FMA, etc.)
+  - [x] Code validation utilities
+  - [ ] `CodeSequence` for encoding/decoding code sequences (deferred to Milestone 9.2)
+- [x] Relationship types (PS3.3 Table C.17.3-8):
+  - [x] `RelationshipType` enum (CONTAINS, HAS PROPERTIES, INFERRED FROM, etc.)
+  - [x] Relationship validation per value type constraints
+  - [ ] `SRRelationship` struct for relationship encoding (deferred to Milestone 9.2)
+- [x] Content item base protocol:
+  - [x] `ContentItem` protocol with common properties
+  - [x] Concept name (coded name of the item)
+  - [x] Relationship type to parent
+  - [x] Child content items (for CONTAINER)
+  - [x] `AnyContentItem` type-erased wrapper for heterogeneous collections
+  - [x] Observation context support
+- [x] SR Document type definitions:
+  - [x] `SRDocumentType` enum (Basic Text, Enhanced, Comprehensive, etc.)
+  - [x] Value type constraints per document type
+  - [x] SOP Class UID constants for all 18 SR types
+- [x] Supporting types:
+  - [x] `GraphicType`, `GraphicType3D` for spatial coordinates
+  - [x] `TemporalRangeType` for temporal coordinates
+  - [x] `ContinuityOfContent` for CONTAINER semantics
+  - [x] `NumericValueQualifier` for special numeric values
+  - [x] `ReferencedSOP`, `ImageReference`, `WaveformReference` for object references
 
 #### Technical Notes
 - Reference: PS3.3 Section C.17.3 - SR Document Content Module
@@ -1728,12 +1735,12 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - Relationship types constrain which value types can be children
 
 #### Acceptance Criteria
-- [ ] All 15 content item value types are implemented
-- [ ] Coded concepts can be created and validated
-- [ ] Relationship types are correctly defined
-- [ ] Content item protocol enables polymorphic tree building
-- [ ] Unit tests for all content item types (target: 60+ tests)
-- [ ] Documentation for SR data model
+- [x] All 15 content item value types are implemented
+- [x] Coded concepts can be created and validated
+- [x] Relationship types are correctly defined
+- [x] Content item protocol enables polymorphic tree building
+- [x] Unit tests for all content item types (148 tests, exceeds target of 60+)
+- [x] Documentation for SR data model (README updated)
 
 ---
 
@@ -2246,16 +2253,16 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 9 Summary
 
-| Sub-Milestone | Version | Complexity | Key Deliverables |
-|--------------|---------|------------|------------------|
-| 9.1 Core SR Infrastructure | v0.9.1 | High | Content item types, coded concepts, relationships |
-| 9.2 SR Document Parsing | v0.9.2 | High | Parse SR into content tree model |
-| 9.3 Content Navigation | v0.9.3 | Medium | Tree traversal, query, filtering APIs |
-| 9.4 Coded Terminology | v0.9.4 | High | SNOMED, LOINC, RadLex, UCUM, context groups |
-| 9.5 Measurement Extraction | v0.9.5 | High | Measurements, ROIs, coordinates |
-| 9.6 SR Document Creation | v0.9.6 | High | Builder API, serialization, validation |
-| 9.7 Template Support | v0.9.7 | Very High | TID parsing, validation, template-guided creation |
-| 9.8 Common Templates | v0.9.8 | High | TID 1500, CAD SR, Key Object Selection, AI integration |
+| Sub-Milestone | Version | Complexity | Status | Key Deliverables |
+|--------------|---------|------------|--------|------------------|
+| 9.1 Core SR Infrastructure | v0.9.1 | High | ✅ Completed | Content item types, coded concepts, relationships |
+| 9.2 SR Document Parsing | v0.9.2 | High | Planned | Parse SR into content tree model |
+| 9.3 Content Navigation | v0.9.3 | Medium | Planned | Tree traversal, query, filtering APIs |
+| 9.4 Coded Terminology | v0.9.4 | High | Planned | SNOMED, LOINC, RadLex, UCUM, context groups |
+| 9.5 Measurement Extraction | v0.9.5 | High | Planned | Measurements, ROIs, coordinates |
+| 9.6 SR Document Creation | v0.9.6 | High | Planned | Builder API, serialization, validation |
+| 9.7 Template Support | v0.9.7 | Very High | Planned | TID parsing, validation, template-guided creation |
+| 9.8 Common Templates | v0.9.8 | High | Planned | TID 1500, CAD SR, Key Object Selection, AI integration |
 
 ### Overall Technical Notes
 - Reference: PS3.3 Part 3 Section C.17 - SR Document IODs
