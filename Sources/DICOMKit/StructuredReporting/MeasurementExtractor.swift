@@ -867,12 +867,17 @@ public struct MeasurementExtractor: Sendable {
     
     // MARK: - Aggregation
     
-    /// Groups measurements by anatomical location
+    /// Groups measurements by their concept name
+    ///
+    /// This is a simplified grouping that uses the measurement's concept name as the key.
+    /// For true anatomical location-based grouping, you would need to traverse the SR tree
+    /// to find the anatomical location context associated with each measurement.
+    ///
     /// - Parameter measurements: The measurements to group
-    /// - Returns: Dictionary mapping location concept to measurements
+    /// - Returns: Dictionary mapping concept to measurements
+    /// - Note: This groups by concept name, not by anatomical location context.
+    ///         Future versions may add support for SR tree traversal to find location context.
     public func groupByLocation(_ measurements: [Measurement]) -> [CodedConcept: [Measurement]] {
-        // This would require traversing the SR tree to find location context
-        // For now, return all measurements under a single key or by concept name
         var result: [CodedConcept: [Measurement]] = [:]
         for measurement in measurements {
             if let concept = measurement.conceptName {
