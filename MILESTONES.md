@@ -1957,64 +1957,64 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 9.5: Measurement and Coordinate Extraction (v0.9.5)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Extract quantitative measurements and spatial/temporal coordinates from SR  
 **Complexity**: High  
 **Dependencies**: Milestone 9.3, Milestone 9.4
 
 #### Deliverables
-- [ ] Measurement extraction:
-  - [ ] `Measurement` struct with value, unit, and context
-  - [ ] `MeasurementGroup` for related measurements (e.g., lesion dimensions)
-  - [ ] Numeric precision handling (significant figures)
-  - [ ] Measurement qualifier extraction (mean, max, min, etc.)
-  - [ ] Derivation method tracking (manual, automated, calculated)
-- [ ] Measurement value handling:
-  - [ ] Single numeric values
-  - [ ] Value ranges (min-max)
-  - [ ] Multiple values (e.g., multi-frame measurements)
-  - [ ] Null/missing value handling with reason codes
-- [ ] Unit conversion:
-  - [ ] Automatic unit normalization
-  - [ ] Common conversions (mm↔cm, mL↔L, etc.)
-  - [ ] Configurable output units
-  - [ ] Lossless value preservation
-- [ ] Spatial coordinate extraction (SCOORD):
-  - [ ] `SpatialCoordinates` struct with graphic type and points
-  - [ ] Point coordinates (x, y)
-  - [ ] Polyline (open contour)
-  - [ ] Polygon (closed contour)
-  - [ ] Circle (center + radius point)
-  - [ ] Ellipse (four points)
-  - [ ] Image reference linkage
-- [ ] 3D coordinate extraction (SCOORD3D):
-  - [ ] `SpatialCoordinates3D` struct
-  - [ ] 3D point coordinates (x, y, z)
-  - [ ] 3D polyline and polygon
-  - [ ] Frame of reference handling
-  - [ ] Coordinate system transformation utilities
-- [ ] Temporal coordinate extraction (TCOORD):
-  - [ ] `TemporalCoordinates` struct
-  - [ ] Point in time references
-  - [ ] Time ranges (begin-end)
-  - [ ] Multi-point temporal data
-  - [ ] Frame number references
-- [ ] Region of Interest (ROI) helpers:
-  - [ ] `ROI` struct combining coordinates with measurements
-  - [ ] Area/volume calculation from coordinates
-  - [ ] Bounding box computation
-  - [ ] Centroid calculation
-  - [ ] ROI-to-image coordinate mapping
-- [ ] Measurement aggregation:
-  - [ ] Group measurements by anatomical location
-  - [ ] Group measurements by finding
-  - [ ] Time series of measurements
-  - [ ] Statistical summaries (mean, std dev, etc.)
-- [ ] `MeasurementExtractor` API:
-  - [ ] `func extractAllMeasurements(from: SRDocument) -> [Measurement]`
-  - [ ] `func extractMeasurements(forConcept:) -> [Measurement]`
-  - [ ] `func extractROIs(from: SRDocument) -> [ROI]`
-  - [ ] `func extractTimeSeries(forConcept:) -> TimeSeries`
+- [x] Measurement extraction:
+  - [x] `Measurement` struct with value, unit, and context
+  - [x] `MeasurementGroup` for related measurements (e.g., lesion dimensions)
+  - [x] Numeric precision handling (significant figures)
+  - [x] Measurement qualifier extraction (mean, max, min, etc.)
+  - [x] Derivation method tracking (manual, automated, calculated)
+- [x] Measurement value handling:
+  - [x] Single numeric values
+  - [x] Value ranges (min-max)
+  - [x] Multiple values (e.g., multi-frame measurements)
+  - [x] Null/missing value handling with reason codes
+- [x] Unit conversion:
+  - [x] Automatic unit normalization
+  - [x] Common conversions (mm↔cm, mL↔L, etc.)
+  - [x] Configurable output units
+  - [x] Lossless value preservation
+- [x] Spatial coordinate extraction (SCOORD):
+  - [x] `SpatialCoordinates` struct with graphic type and points
+  - [x] Point coordinates (x, y)
+  - [x] Polyline (open contour)
+  - [x] Polygon (closed contour)
+  - [x] Circle (center + radius point)
+  - [x] Ellipse (four points)
+  - [x] Image reference linkage
+- [x] 3D coordinate extraction (SCOORD3D):
+  - [x] `SpatialCoordinates3D` struct
+  - [x] 3D point coordinates (x, y, z)
+  - [x] 3D polyline and polygon
+  - [x] Frame of reference handling
+  - [ ] Coordinate system transformation utilities (deferred to future version)
+- [x] Temporal coordinate extraction (TCOORD):
+  - [x] `TemporalCoordinates` struct
+  - [x] Point in time references
+  - [x] Time ranges (begin-end)
+  - [x] Multi-point temporal data
+  - [x] Frame number references
+- [x] Region of Interest (ROI) helpers:
+  - [x] `ROI` struct combining coordinates with measurements
+  - [x] Area/volume calculation from coordinates
+  - [x] Bounding box computation
+  - [x] Centroid calculation
+  - [ ] ROI-to-image coordinate mapping (deferred to future version)
+- [x] Measurement aggregation:
+  - [x] Group measurements by anatomical location
+  - [x] Group measurements by finding
+  - [ ] Time series of measurements (deferred to future version)
+  - [x] Statistical summaries (mean, std dev, etc.)
+- [x] `MeasurementExtractor` API:
+  - [x] `func extractAllMeasurements(from: SRDocument) -> [Measurement]`
+  - [x] `func extractMeasurements(forConcept:) -> [Measurement]`
+  - [x] `func extractROIs(from: SRDocument) -> [ROI]`
+  - [ ] `func extractTimeSeries(forConcept:) -> TimeSeries` (deferred to future version)
 
 #### Technical Notes
 - Reference: PS3.3 C.17.3.2 - Numeric measurement encoding
@@ -2025,13 +2025,13 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - TCOORD references specific frames or time points in multi-frame images
 
 #### Acceptance Criteria
-- [ ] Measurements are accurately extracted with units
-- [ ] All graphic types are correctly parsed
-- [ ] 3D coordinates handle frame of reference correctly
-- [ ] ROI calculations produce accurate results
-- [ ] Unit conversion maintains precision
-- [ ] Unit tests for measurement scenarios (target: 60+ tests)
-- [ ] Integration tests with real SR measurement reports
+- [x] Measurements are accurately extracted with units
+- [x] All graphic types are correctly parsed
+- [x] 3D coordinates handle frame of reference correctly
+- [x] ROI calculations produce accurate results
+- [x] Unit conversion maintains precision
+- [x] Unit tests for measurement scenarios (target: 60+ tests)
+- [ ] Integration tests with real SR measurement reports (requires sample files)
 
 ---
 
