@@ -10,9 +10,37 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.8.7)
+## Features (v0.8.8)
 
-- ✅ **UPS-RS Worklist Services (NEW in v0.8.7)**
+- ✅ **Advanced DICOMweb Features (NEW in v0.8.8)**
+  - ✅ **OAuth2/OpenID Connect Authentication**
+    - ✅ `OAuth2Configuration` for OAuth2 settings
+    - ✅ `OAuth2Token` for token representation with expiration tracking
+    - ✅ `OAuth2TokenProvider` protocol for token management
+    - ✅ `OAuth2TokenManager` actor with automatic token refresh
+    - ✅ Client credentials flow (machine-to-machine)
+    - ✅ Authorization code flow with PKCE support
+    - ✅ SMART on FHIR compatibility with standard scopes
+    - ✅ `StaticTokenProvider` for testing
+  - ✅ **Capability Discovery**
+    - ✅ `DICOMwebCapabilities` struct for server capabilities
+    - ✅ `GET /capabilities` server endpoint
+    - ✅ Service, media type, and transfer syntax reporting
+    - ✅ Query and store capability details
+  - ✅ **Client-Side Caching**
+    - ✅ `CacheConfiguration` with presets (default, minimal, aggressive)
+    - ✅ `InMemoryCache` actor with LRU eviction
+    - ✅ ETag and conditional request support
+    - ✅ Cache-Control header parsing
+    - ✅ Cache key generation utilities
+  - ✅ **Monitoring and Logging**
+    - ✅ `DICOMwebRequestLogger` protocol
+    - ✅ `OSLogRequestLogger` for Apple platform integration
+    - ✅ `ConsoleRequestLogger` for debugging
+    - ✅ `DICOMwebMetrics` actor for performance tracking
+    - ✅ Latency percentiles (p50, p95, p99)
+    - ✅ Success/error rate tracking
+- ✅ **UPS-RS Worklist Services (v0.8.7)**
   - ✅ `Workitem` struct for UPS workitem representation
   - ✅ `UPSState` enum with state machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
   - ✅ `UPSPriority` enum (STAT, HIGH, MEDIUM, LOW)
@@ -1615,8 +1643,34 @@ High-level API:
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
-### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6, v0.8.7)
+### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6, v0.8.7, v0.8.8)
 DICOMweb (RESTful DICOM) client and server implementation:
+
+**Advanced Features (NEW in v0.8.8):**
+- `OAuth2Configuration` - OAuth2 client configuration
+- `OAuth2Token` - Token representation with expiration tracking
+- `OAuth2Error` - OAuth2 error handling
+- `PKCE` - Proof Key for Code Exchange for public clients
+- `OAuth2TokenProvider` - Protocol for token management
+- `OAuth2TokenManager` - Actor for token lifecycle management
+- `StaticTokenProvider` - Simple token provider for testing
+- `DICOMwebCapabilities` - Server capabilities representation
+- `DICOMwebCapabilities.SupportedServices` - Supported services info
+- `DICOMwebCapabilities.QueryCapabilities` - Query feature support
+- `DICOMwebCapabilities.StoreCapabilities` - Store feature support
+- `CacheConfiguration` - Cache configuration with presets
+- `CacheEntry` - Cached response with TTL
+- `CacheStorage` - Protocol for cache storage
+- `InMemoryCache` - LRU in-memory cache actor
+- `CacheKeyGenerator` - Cache key utilities
+- `CacheControlDirective` - Cache-Control header parsing
+- `DICOMwebRequestLogger` - Request/response logging protocol
+- `OSLogRequestLogger` - OSLog-based logger
+- `ConsoleRequestLogger` - Console debug logger
+- `NullRequestLogger` - No-op logger
+- `CompositeRequestLogger` - Multiple logger aggregation
+- `DICOMwebMetrics` - Performance metrics actor
+- `MetricTimer` - Operation timing helper
 
 **UPS-RS (Unified Procedure Step) Components (NEW in v0.8.7):**
 - `Workitem` - UPS workitem representation with scheduling and state
@@ -1707,4 +1761,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.7 - implementing UPS-RS (Unified Procedure Step - RESTful Services) data model, query builder, client API, and storage provider for worklist management. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and now UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.8 - implementing advanced DICOMweb features including OAuth2/OpenID Connect authentication, capability discovery, client-side caching, and monitoring/logging. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

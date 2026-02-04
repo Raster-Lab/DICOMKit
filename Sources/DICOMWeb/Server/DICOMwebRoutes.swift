@@ -295,6 +295,13 @@ public struct DICOMwebRouter: Sendable {
     private func matchRoute(components: [String], method: DICOMwebRequest.HTTPMethod) -> RouteMatch? {
         switch (method, components.count) {
         
+        // GET / or GET /capabilities - Server capabilities
+        case (.get, 0):
+            return RouteMatch(pattern: "/", parameters: [:], handlerType: .capabilities)
+            
+        case (.get, 1) where components[0] == "capabilities":
+            return RouteMatch(pattern: "/capabilities", parameters: [:], handlerType: .capabilities)
+        
         // GET /studies - Search studies (QIDO-RS)
         case (.get, 1) where components[0] == "studies":
             return RouteMatch(pattern: "/studies", parameters: [:], handlerType: .searchStudies)
