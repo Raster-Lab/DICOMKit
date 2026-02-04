@@ -37,6 +37,9 @@ public actor DICOMwebServer {
     /// UPS storage provider for workitem operations (optional)
     private var upsStorage: (any UPSStorageProvider)?
     
+    /// Compression middleware for response compression
+    private let compressionMiddleware: CompressionMiddleware
+    
     // MARK: - Initialization
     
     /// Creates a DICOMweb server
@@ -50,6 +53,7 @@ public actor DICOMwebServer {
         self.configuration = configuration
         self.storage = storage
         self.router = DICOMwebRouter(pathPrefix: configuration.pathPrefix)
+        self.compressionMiddleware = CompressionMiddleware(configuration: configuration.compressionConfiguration)
     }
     
     /// Creates a DICOMweb server with default development configuration
@@ -72,6 +76,7 @@ public actor DICOMwebServer {
         self.storage = storage
         self.upsStorage = upsStorage
         self.router = DICOMwebRouter(pathPrefix: configuration.pathPrefix)
+        self.compressionMiddleware = CompressionMiddleware(configuration: configuration.compressionConfiguration)
     }
     
     /// Sets the UPS storage provider
@@ -141,7 +146,6 @@ public actor DICOMwebServer {
             response.headers["Server"] = configuration.serverName
             
             // Apply compression if configured and appropriate
-            let compressionMiddleware = CompressionMiddleware(configuration: configuration.compressionConfiguration)
             response = compressionMiddleware.compressResponse(response, acceptEncoding: request.acceptEncoding)
             
             return response

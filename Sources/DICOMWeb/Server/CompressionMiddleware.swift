@@ -545,7 +545,11 @@ extension CompressionMiddleware {
     
     /// Decompresses deflate (zlib) data
     private func decompressDeflate(data: Data) -> Data? {
-        return decompressZlib(data: data, expectedSize: data.count * 10) // Estimate
+        // Use 10x compressed size as initial estimate for decompressed size.
+        // Typical text/JSON compression achieves 5-10x compression ratios,
+        // so 10x provides a reasonable buffer. The decompressZlib function
+        // also uses max(expectedSize, compressedSize * 4) as a safety margin.
+        return decompressZlib(data: data, expectedSize: data.count * 10)
     }
     
     /// Decompresses zlib data
