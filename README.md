@@ -1647,6 +1647,7 @@ DICOMweb (RESTful DICOM) client and server implementation:
 
 **Client Components:**
 - `DICOMwebClient` - WADO-RS, QIDO-RS, and STOW-RS client for DICOM web services
+- `UPSClient` - UPS-RS (Unified Procedure Step) client for worklist management (NEW in v0.8.7)
 - `STOWResponse` - Response type for store operations (v0.8.4)
 - `StoreProgress` - Progress information for uploads (v0.8.4)
 - `StoreOptions` - Configuration for store operations (v0.8.4)
@@ -1697,4 +1698,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.7 - implementing UPS-RS (Unified Procedure Step - RESTful Services) data model, query builder, and storage provider for worklist management. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and now UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.7 - implementing UPS-RS (Unified Procedure Step - RESTful Services) data model, query builder, client API, and storage provider for worklist management. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and now UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
