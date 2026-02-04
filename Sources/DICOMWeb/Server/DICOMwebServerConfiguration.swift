@@ -31,6 +31,9 @@ public struct DICOMwebServerConfiguration: Sendable {
     /// Rate limiting configuration
     public let rateLimitConfiguration: RateLimitConfiguration?
     
+    /// STOW-RS configuration
+    public let stowConfiguration: STOWConfiguration
+    
     /// Server name for response headers
     public let serverName: String
     
@@ -44,6 +47,7 @@ public struct DICOMwebServerConfiguration: Sendable {
     ///   - maxConcurrentRequests: Maximum concurrent requests (default: 100)
     ///   - corsConfiguration: Optional CORS configuration
     ///   - rateLimitConfiguration: Optional rate limiting
+    ///   - stowConfiguration: STOW-RS configuration (default: .default)
     ///   - serverName: Server name for headers (default: "DICOMKit/1.0")
     public init(
         port: Int = 8042,
@@ -54,6 +58,7 @@ public struct DICOMwebServerConfiguration: Sendable {
         maxConcurrentRequests: Int = 100,
         corsConfiguration: CORSConfiguration? = nil,
         rateLimitConfiguration: RateLimitConfiguration? = nil,
+        stowConfiguration: STOWConfiguration = .default,
         serverName: String = "DICOMKit/1.0"
     ) {
         self.port = port
@@ -64,6 +69,7 @@ public struct DICOMwebServerConfiguration: Sendable {
         self.maxConcurrentRequests = maxConcurrentRequests
         self.corsConfiguration = corsConfiguration
         self.rateLimitConfiguration = rateLimitConfiguration
+        self.stowConfiguration = stowConfiguration
         self.serverName = serverName
     }
     
@@ -236,5 +242,88 @@ extension DICOMwebServerConfiguration {
             ),
             rateLimitConfiguration: RateLimitConfiguration()
         )
+    }
+}
+
+// MARK: - STOW-RS Configuration
+
+extension DICOMwebServerConfiguration {
+    /// Configuration for STOW-RS (Store) operations
+    ///
+    /// Controls how the server handles incoming DICOM instances via STOW-RS,
+    /// including duplicate handling, validation, and allowed SOP Classes.
+    ///
+    /// Reference: PS3.18 Section 10.5 - STOW-RS
+    public struct STOWConfiguration: Sendable {
+        /// How to handle duplicate instances (same SOP Instance UID)
+        public let duplicatePolicy: DuplicatePolicy
+        
+        /// Whether to validate required DICOM attributes
+        public let validateRequiredAttributes: Bool
+        
+        /// Whether to validate SOP Class UIDs against allowed list
+        public let validateSOPClasses: Bool
+        
+        /// Allowed SOP Class UIDs (empty means all are allowed)
+        public let allowedSOPClasses: Set<String>
+        
+        /// Whether to validate UID format
+        public let validateUIDFormat: Bool
+        
+        /// Additional required tags beyond the standard ones
+        public let additionalRequiredTags: [UInt32]
+        
+        /// Creates a STOW-RS configuration
+        /// - Parameters:
+        ///   - duplicatePolicy: How to handle duplicates (default: .replace)
+        ///   - validateRequiredAttributes: Whether to validate required attributes (default: true)
+        ///   - validateSOPClasses: Whether to validate SOP Classes (default: false)
+        ///   - allowedSOPClasses: Set of allowed SOP Class UIDs (default: empty, allows all)
+        ///   - validateUIDFormat: Whether to validate UID format (default: true)
+        ///   - additionalRequiredTags: Additional tags that must be present (default: empty)
+        public init(
+            duplicatePolicy: DuplicatePolicy = .replace,
+            validateRequiredAttributes: Bool = true,
+            validateSOPClasses: Bool = false,
+            allowedSOPClasses: Set<String> = [],
+            validateUIDFormat: Bool = true,
+            additionalRequiredTags: [UInt32] = []
+        ) {
+            self.duplicatePolicy = duplicatePolicy
+            self.validateRequiredAttributes = validateRequiredAttributes
+            self.validateSOPClasses = validateSOPClasses
+            self.allowedSOPClasses = allowedSOPClasses
+            self.validateUIDFormat = validateUIDFormat
+            self.additionalRequiredTags = additionalRequiredTags
+        }
+        
+        /// Default STOW-RS configuration
+        public static let `default` = STOWConfiguration()
+        
+        /// Strict STOW-RS configuration with full validation
+        public static let strict = STOWConfiguration(
+            duplicatePolicy: .reject,
+            validateRequiredAttributes: true,
+            validateSOPClasses: true,
+            validateUIDFormat: true
+        )
+        
+        /// Permissive STOW-RS configuration (accepts and replaces)
+        public static let permissive = STOWConfiguration(
+            duplicatePolicy: .accept,
+            validateRequiredAttributes: false,
+            validateSOPClasses: false,
+            validateUIDFormat: false
+        )
+        
+        /// Policy for handling duplicate SOP Instance UIDs
+        public enum DuplicatePolicy: Sendable {
+            /// Reject duplicates with 409 Conflict
+            case reject
+            /// Replace existing instance with new one
+            case replace
+            /// Accept silently (idempotent - returns success without storing)
+            case accept
+        }
     }
 }

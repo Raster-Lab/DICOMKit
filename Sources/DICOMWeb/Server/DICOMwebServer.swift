@@ -31,6 +31,9 @@ public actor DICOMwebServer {
     /// Server delegate for events
     public weak var delegate: DICOMwebServerDelegate?
     
+    /// Store delegate for STOW-RS events
+    public weak var storeDelegate: STOWDelegate?
+    
     // MARK: - Initialization
     
     /// Creates a DICOMweb server
@@ -348,65 +351,375 @@ public actor DICOMwebServer {
     // MARK: - STOW-RS Handlers
     
     private func handleStoreInstances(studyUID: String?, request: DICOMwebRequest) async throws -> DICOMwebResponse {
+        let stowConfig = configuration.stowConfiguration
+        
+        // Validate request body exists
         guard let body = request.body, !body.isEmpty else {
             return .badRequest(message: "Missing request body")
         }
         
+        // Validate request body size
+        if body.count > configuration.maxRequestBodySize {
+            return DICOMwebResponse(
+                statusCode: 413,
+                headers: ["Content-Type": "application/json"],
+                body: "{\"error\": \"Request body too large\"}".data(using: .utf8)
+            )
+        }
+        
+        // Validate and parse content type
         guard let contentType = request.contentType else {
             return .unsupportedMediaType()
         }
         
-        // Parse multipart content
-        guard let boundary = contentType.parameters["boundary"] else {
-            return .badRequest(message: "Missing multipart boundary")
+        // Parse DICOM instances based on content type
+        let dicomParts: [Data]
+        
+        if contentType.type == "multipart" && contentType.subtype == "related" {
+            // Multipart request (standard STOW-RS)
+            guard let boundary = contentType.parameters["boundary"] else {
+                return .badRequest(message: "Missing multipart boundary")
+            }
+            
+            let parts = MultipartMIMEParser.parse(data: body, boundary: boundary)
+            dicomParts = parts.map { $0.body }
+        } else if contentType.type == "application" && contentType.subtype == "dicom" {
+            // Single DICOM instance
+            dicomParts = [body]
+        } else {
+            return .unsupportedMediaType()
         }
         
-        let parts = MultipartMIMEParser.parse(data: body, boundary: boundary)
+        // Process each DICOM instance
+        var storedInstances: [STOWStoredInstance] = []
+        var failedInstances: [STOWFailedInstance] = []
+        var hasWarnings = false
         
-        var storedInstances: [String] = []
-        var failedInstances: [(uid: String, reason: String)] = []
-        
-        for part in parts {
-            do {
-                // Parse the DICOM data
-                guard let dicomFile = try? DICOMFile.read(from: part.body, force: true) else {
-                    failedInstances.append((uid: "unknown", reason: "Invalid DICOM data"))
-                    continue
+        for partData in dicomParts {
+            let result = await processSTOWInstance(
+                data: partData,
+                expectedStudyUID: studyUID,
+                configuration: stowConfig
+            )
+            
+            switch result {
+            case .stored(let instance):
+                storedInstances.append(instance)
+            case .duplicate(let instance):
+                // Handle according to duplicate policy
+                switch stowConfig.duplicatePolicy {
+                case .reject:
+                    failedInstances.append(STOWFailedInstance(
+                        sopInstanceUID: instance.sopInstanceUID,
+                        sopClassUID: instance.sopClassUID,
+                        failureReason: .duplicateSOPInstance
+                    ))
+                case .replace:
+                    // Already replaced in storage
+                    storedInstances.append(instance)
+                    hasWarnings = true
+                case .accept:
+                    // Accept silently
+                    storedInstances.append(instance)
                 }
-                
-                let dataSet = dicomFile.dataSet
-                
-                // Extract UIDs
-                guard let sopInstanceUID = dataSet.string(for: Tag.sopInstanceUID),
-                      let instanceSeriesUID = dataSet.string(for: Tag.seriesInstanceUID),
-                      let instanceStudyUID = dataSet.string(for: Tag.studyInstanceUID) else {
-                    failedInstances.append((uid: "unknown", reason: "Missing required UIDs"))
-                    continue
-                }
-                
-                // If studyUID was provided in path, validate it matches
-                if let expectedStudyUID = studyUID, expectedStudyUID != instanceStudyUID {
-                    failedInstances.append((uid: sopInstanceUID, reason: "Study UID mismatch"))
-                    continue
-                }
-                
-                // Store the instance
-                try await storage.storeInstance(
-                    data: part.body,
-                    studyUID: instanceStudyUID,
-                    seriesUID: instanceSeriesUID,
-                    instanceUID: sopInstanceUID
-                )
-                
-                storedInstances.append(sopInstanceUID)
-            } catch {
-                failedInstances.append((uid: "unknown", reason: error.localizedDescription))
+            case .failed(let failure):
+                failedInstances.append(failure)
             }
         }
         
-        // Build STOW-RS response
-        let responseJSON = buildSTOWResponse(stored: storedInstances, failed: failedInstances)
-        return .ok(json: responseJSON)
+        // Notify delegate
+        await notifyStoreDelegate(stored: storedInstances, failed: failedInstances)
+        
+        // Build STOW-RS response with proper status codes
+        return buildSTOWResponseWithStatus(
+            stored: storedInstances,
+            failed: failedInstances,
+            hasWarnings: hasWarnings
+        )
+    }
+    
+    /// Result of processing a single STOW-RS instance
+    private enum STOWProcessResult {
+        case stored(STOWStoredInstance)
+        case duplicate(STOWStoredInstance)
+        case failed(STOWFailedInstance)
+    }
+    
+    /// Information about a successfully stored instance
+    private struct STOWStoredInstance {
+        let sopInstanceUID: String
+        let sopClassUID: String
+        let studyUID: String
+        let seriesUID: String
+    }
+    
+    /// Information about a failed instance
+    private struct STOWFailedInstance {
+        let sopInstanceUID: String
+        let sopClassUID: String?
+        let failureReason: STOWFailureReason
+    }
+    
+    /// STOW-RS failure reason codes per PS3.18
+    private enum STOWFailureReason: UInt16 {
+        case processingFailure = 0x0110  // A700 - Processing failure
+        case duplicateSOPInstance = 0x0111  // Duplicate rejected
+        case invalidDICOMData = 0x0112
+        case missingRequiredAttribute = 0x0120
+        case invalidAttributeValue = 0x0121
+        case sopClassNotSupported = 0x0122
+        case studyUIDMismatch = 0x0123
+        case invalidUIDFormat = 0x0124
+        
+        var description: String {
+            switch self {
+            case .processingFailure: return "Processing failure"
+            case .duplicateSOPInstance: return "Duplicate SOP Instance"
+            case .invalidDICOMData: return "Invalid DICOM data"
+            case .missingRequiredAttribute: return "Missing required attribute"
+            case .invalidAttributeValue: return "Invalid attribute value"
+            case .sopClassNotSupported: return "SOP Class not supported"
+            case .studyUIDMismatch: return "Study UID mismatch"
+            case .invalidUIDFormat: return "Invalid UID format"
+            }
+        }
+    }
+    
+    /// Processes a single DICOM instance for STOW-RS storage
+    private func processSTOWInstance(
+        data: Data,
+        expectedStudyUID: String?,
+        configuration stowConfig: DICOMwebServerConfiguration.STOWConfiguration
+    ) async -> STOWProcessResult {
+        // Parse the DICOM data
+        guard let dicomFile = try? DICOMFile.read(from: data, force: true) else {
+            return .failed(STOWFailedInstance(
+                sopInstanceUID: "unknown",
+                sopClassUID: nil,
+                failureReason: .invalidDICOMData
+            ))
+        }
+        
+        let dataSet = dicomFile.dataSet
+        
+        // Extract required UIDs
+        guard let sopInstanceUID = dataSet.string(for: Tag.sopInstanceUID),
+              let seriesUID = dataSet.string(for: Tag.seriesInstanceUID),
+              let studyUID = dataSet.string(for: Tag.studyInstanceUID) else {
+            return .failed(STOWFailedInstance(
+                sopInstanceUID: dataSet.string(for: Tag.sopInstanceUID) ?? "unknown",
+                sopClassUID: dataSet.string(for: Tag.sopClassUID),
+                failureReason: .missingRequiredAttribute
+            ))
+        }
+        
+        let sopClassUID = dataSet.string(for: Tag.sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.2"
+        
+        // Validate UID format if enabled
+        if stowConfig.validateUIDFormat {
+            if !isValidUID(sopInstanceUID) || !isValidUID(seriesUID) || !isValidUID(studyUID) {
+                return .failed(STOWFailedInstance(
+                    sopInstanceUID: sopInstanceUID,
+                    sopClassUID: sopClassUID,
+                    failureReason: .invalidUIDFormat
+                ))
+            }
+        }
+        
+        // Validate Study UID matches path parameter if provided
+        if let expectedStudyUID = expectedStudyUID, expectedStudyUID != studyUID {
+            return .failed(STOWFailedInstance(
+                sopInstanceUID: sopInstanceUID,
+                sopClassUID: sopClassUID,
+                failureReason: .studyUIDMismatch
+            ))
+        }
+        
+        // Validate SOP Class if enabled
+        if stowConfig.validateSOPClasses && !stowConfig.allowedSOPClasses.isEmpty {
+            if !stowConfig.allowedSOPClasses.contains(sopClassUID) {
+                return .failed(STOWFailedInstance(
+                    sopInstanceUID: sopInstanceUID,
+                    sopClassUID: sopClassUID,
+                    failureReason: .sopClassNotSupported
+                ))
+            }
+        }
+        
+        // Validate additional required tags
+        if stowConfig.validateRequiredAttributes {
+            for tagValue in stowConfig.additionalRequiredTags {
+                // Convert UInt32 to group/element (upper 16 bits = group, lower 16 bits = element)
+                let group = UInt16(tagValue >> 16)
+                let element = UInt16(tagValue & 0xFFFF)
+                let tag = Tag(group: group, element: element)
+                if dataSet[tag] == nil {
+                    return .failed(STOWFailedInstance(
+                        sopInstanceUID: sopInstanceUID,
+                        sopClassUID: sopClassUID,
+                        failureReason: .missingRequiredAttribute
+                    ))
+                }
+            }
+        }
+        
+        // Check for duplicate
+        let existing = try? await storage.getInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: sopInstanceUID
+        )
+        
+        let isDuplicate = existing != nil
+        
+        // Store the instance (replaces if exists)
+        do {
+            try await storage.storeInstance(
+                data: data,
+                studyUID: studyUID,
+                seriesUID: seriesUID,
+                instanceUID: sopInstanceUID
+            )
+            
+            let storedInstance = STOWStoredInstance(
+                sopInstanceUID: sopInstanceUID,
+                sopClassUID: sopClassUID,
+                studyUID: studyUID,
+                seriesUID: seriesUID
+            )
+            
+            if isDuplicate {
+                return .duplicate(storedInstance)
+            } else {
+                return .stored(storedInstance)
+            }
+        } catch {
+            return .failed(STOWFailedInstance(
+                sopInstanceUID: sopInstanceUID,
+                sopClassUID: sopClassUID,
+                failureReason: .processingFailure
+            ))
+        }
+    }
+    
+    /// Validates a DICOM UID format
+    private func isValidUID(_ uid: String) -> Bool {
+        // DICOM UID: 1-64 characters, only digits and dots, no leading/trailing dots
+        // Components are numeric (no leading zeros except for 0 itself)
+        guard !uid.isEmpty, uid.count <= 64 else { return false }
+        guard !uid.hasPrefix("."), !uid.hasSuffix(".") else { return false }
+        
+        let components = uid.split(separator: ".")
+        for component in components {
+            // Each component must be a valid number (no leading zeros unless it's just "0")
+            guard !component.isEmpty else { return false }
+            guard component.allSatisfy({ $0.isNumber }) else { return false }
+            if component.count > 1 && component.first == "0" {
+                return false
+            }
+        }
+        
+        return true
+    }
+    
+    /// Notifies the store delegate about stored and failed instances
+    private func notifyStoreDelegate(stored: [STOWStoredInstance], failed: [STOWFailedInstance]) async {
+        guard let delegate = storeDelegate else { return }
+        
+        for instance in stored {
+            await delegate.server(self, didStoreInstance: instance.sopInstanceUID, studyUID: instance.studyUID, seriesUID: instance.seriesUID)
+        }
+        
+        for instance in failed {
+            await delegate.server(self, didFailToStoreInstance: instance.sopInstanceUID, reason: instance.failureReason.description)
+        }
+    }
+    
+    /// Builds a STOW-RS response with appropriate HTTP status code
+    private func buildSTOWResponseWithStatus(
+        stored: [STOWStoredInstance],
+        failed: [STOWFailedInstance],
+        hasWarnings: Bool
+    ) -> DICOMwebResponse {
+        // Determine HTTP status code per PS3.18
+        let statusCode: Int
+        if failed.isEmpty && !hasWarnings {
+            // All instances stored successfully
+            statusCode = 200
+        } else if !stored.isEmpty && !failed.isEmpty {
+            // Partial success - some stored, some failed
+            statusCode = 202
+        } else if stored.isEmpty && !failed.isEmpty {
+            // All failed
+            if failed.allSatisfy({ $0.failureReason == .duplicateSOPInstance }) {
+                statusCode = 409  // Conflict - all duplicates
+            } else {
+                statusCode = 400  // Bad request
+            }
+        } else {
+            // All stored with warnings (e.g., duplicates replaced)
+            statusCode = 200
+        }
+        
+        // Build response JSON
+        let responseJSON = buildSTOWResponseJSON(stored: stored, failed: failed)
+        
+        var headers: [String: String] = [
+            "Content-Type": "application/dicom+json",
+            "Content-Length": "\(responseJSON.count)"
+        ]
+        
+        // Add warning header if there were any issues
+        if hasWarnings || !failed.isEmpty {
+            headers["Warning"] = "299 - \"Some instances may have had issues during storage\""
+        }
+        
+        return DICOMwebResponse(statusCode: statusCode, headers: headers, body: responseJSON)
+    }
+    
+    /// Builds the STOW-RS response JSON body
+    private func buildSTOWResponseJSON(stored: [STOWStoredInstance], failed: [STOWFailedInstance]) -> Data {
+        var response: [String: Any] = [:]
+        
+        // Referenced SOP Sequence - stored instances (00081199)
+        if !stored.isEmpty {
+            var referencedSOPSequence: [[String: Any]] = []
+            for instance in stored {
+                var item: [String: Any] = [:]
+                // Referenced SOP Class UID (00081150)
+                item["00081150"] = createDICOMJSONValue(vr: "UI", value: instance.sopClassUID)
+                // Referenced SOP Instance UID (00081155)
+                item["00081155"] = createDICOMJSONValue(vr: "UI", value: instance.sopInstanceUID)
+                // Retrieve URL (00081190) - optional
+                let retrieveURL = "\(configuration.baseURL)/studies/\(instance.studyUID)/series/\(instance.seriesUID)/instances/\(instance.sopInstanceUID)"
+                item["00081190"] = createDICOMJSONValue(vr: "UR", value: retrieveURL)
+                referencedSOPSequence.append(item)
+            }
+            response["00081199"] = ["vr": "SQ", "Value": referencedSOPSequence]
+        }
+        
+        // Failed SOP Sequence (00081198)
+        if !failed.isEmpty {
+            var failedSOPSequence: [[String: Any]] = []
+            for instance in failed {
+                var item: [String: Any] = [:]
+                // Referenced SOP Class UID (00081150) - if available
+                if let sopClassUID = instance.sopClassUID {
+                    item["00081150"] = createDICOMJSONValue(vr: "UI", value: sopClassUID)
+                }
+                // Referenced SOP Instance UID (00081155)
+                item["00081155"] = createDICOMJSONValue(vr: "UI", value: instance.sopInstanceUID)
+                // Failure Reason (00081197) - US value should be numeric
+                item["00081197"] = createDICOMJSONValue(vr: "US", intValue: Int(instance.failureReason.rawValue))
+                failedSOPSequence.append(item)
+            }
+            response["00081198"] = ["vr": "SQ", "Value": failedSOPSequence]
+        }
+        
+        if let data = try? JSONSerialization.data(withJSONObject: [response]) {
+            return data
+        }
+        return Data()
     }
     
     // MARK: - Delete Handlers
@@ -673,37 +986,8 @@ public actor DICOMwebServer {
         return ["vr": vr, "Value": values]
     }
     
-    private func buildSTOWResponse(stored: [String], failed: [(uid: String, reason: String)]) -> Data {
-        var response: [String: Any] = [:]
-        
-        // Referenced SOP Sequence - stored instances
-        if !stored.isEmpty {
-            var referencedSOPSequence: [[String: Any]] = []
-            for uid in stored {
-                var item: [String: Any] = [:]
-                item["00081155"] = createDICOMJSONValue(vr: "UI", value: uid)
-                item["00081150"] = createDICOMJSONValue(vr: "UI", value: "1.2.840.10008.5.1.4.1.1.2") // Generic
-                referencedSOPSequence.append(item)
-            }
-            response["00081199"] = ["vr": "SQ", "Value": referencedSOPSequence]
-        }
-        
-        // Failed SOP Sequence
-        if !failed.isEmpty {
-            var failedSOPSequence: [[String: Any]] = []
-            for (uid, _) in failed {
-                var item: [String: Any] = [:]
-                item["00081155"] = createDICOMJSONValue(vr: "UI", value: uid)
-                item["00081197"] = createDICOMJSONValue(vr: "US", value: "A700") // Processing failure
-                failedSOPSequence.append(item)
-            }
-            response["00081198"] = ["vr": "SQ", "Value": failedSOPSequence]
-        }
-        
-        if let data = try? JSONSerialization.data(withJSONObject: [response]) {
-            return data
-        }
-        return Data()
+    private func createDICOMJSONValue(vr: String, intValue: Int) -> [String: Any] {
+        return ["vr": vr, "Value": [intValue]]
     }
     
     private func errorResponse(for error: DICOMwebError) -> DICOMwebResponse {
@@ -743,6 +1027,54 @@ extension DICOMwebServerDelegate {
     public func serverDidStop(_ server: DICOMwebServer) async {}
     public func server(_ server: DICOMwebServer, didReceiveRequest request: DICOMwebRequest) async {}
     public func server(_ server: DICOMwebServer, didSendResponse response: DICOMwebResponse, forRequest request: DICOMwebRequest) async {}
+}
+
+// MARK: - STOW-RS Delegate
+
+/// Delegate for STOW-RS (Store) operations
+///
+/// Implement this protocol to be notified when DICOM instances are stored
+/// or when storage fails. This allows for custom handling such as:
+/// - Logging store operations
+/// - Triggering post-storage processing
+/// - Implementing custom rejection logic
+/// - Updating external indexes or databases
+///
+/// Reference: PS3.18 Section 10.5 - STOW-RS
+public protocol STOWDelegate: AnyObject, Sendable {
+    /// Called when an instance is successfully stored
+    /// - Parameters:
+    ///   - server: The DICOMweb server
+    ///   - sopInstanceUID: The SOP Instance UID of the stored instance
+    ///   - studyUID: The Study Instance UID
+    ///   - seriesUID: The Series Instance UID
+    func server(_ server: DICOMwebServer, didStoreInstance sopInstanceUID: String, studyUID: String, seriesUID: String) async
+    
+    /// Called when storing an instance fails
+    /// - Parameters:
+    ///   - server: The DICOMweb server
+    ///   - sopInstanceUID: The SOP Instance UID (may be "unknown" if not available)
+    ///   - reason: The failure reason
+    func server(_ server: DICOMwebServer, didFailToStoreInstance sopInstanceUID: String, reason: String) async
+    
+    /// Called before storing an instance to determine if it should be accepted
+    ///
+    /// This optional method allows implementing custom rejection logic beyond
+    /// the standard STOW-RS validation. Return false to reject the instance.
+    /// - Parameters:
+    ///   - server: The DICOMweb server
+    ///   - sopInstanceUID: The SOP Instance UID
+    ///   - sopClassUID: The SOP Class UID
+    ///   - studyUID: The Study Instance UID
+    /// - Returns: True to accept the instance, false to reject
+    func server(_ server: DICOMwebServer, shouldAcceptInstance sopInstanceUID: String, sopClassUID: String, studyUID: String) async -> Bool
+}
+
+/// Default implementations for optional STOW delegate methods
+extension STOWDelegate {
+    public func server(_ server: DICOMwebServer, didStoreInstance sopInstanceUID: String, studyUID: String, seriesUID: String) async {}
+    public func server(_ server: DICOMwebServer, didFailToStoreInstance sopInstanceUID: String, reason: String) async {}
+    public func server(_ server: DICOMwebServer, shouldAcceptInstance sopInstanceUID: String, sopClassUID: String, studyUID: String) async -> Bool { true }
 }
 
 // MARK: - Multipart Parser

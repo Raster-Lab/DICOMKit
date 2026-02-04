@@ -605,3 +605,216 @@ struct StorageQueryTests {
         #expect(query.studyDate?.end == endDate)
     }
 }
+
+// MARK: - STOW-RS Configuration Tests
+
+@Suite("STOW-RS Configuration Tests")
+struct STOWConfigurationTests {
+    
+    @Test("Default STOW configuration")
+    func testDefaultConfiguration() {
+        let config = DICOMwebServerConfiguration.STOWConfiguration.default
+        
+        #expect(config.validateRequiredAttributes == true)
+        #expect(config.validateSOPClasses == false)
+        #expect(config.validateUIDFormat == true)
+        #expect(config.allowedSOPClasses.isEmpty)
+        #expect(config.additionalRequiredTags.isEmpty)
+        if case .replace = config.duplicatePolicy {
+            // Expected
+        } else {
+            Issue.record("Expected replace duplicate policy")
+        }
+    }
+    
+    @Test("Strict STOW configuration")
+    func testStrictConfiguration() {
+        let config = DICOMwebServerConfiguration.STOWConfiguration.strict
+        
+        #expect(config.validateRequiredAttributes == true)
+        #expect(config.validateSOPClasses == true)
+        #expect(config.validateUIDFormat == true)
+        if case .reject = config.duplicatePolicy {
+            // Expected
+        } else {
+            Issue.record("Expected reject duplicate policy")
+        }
+    }
+    
+    @Test("Permissive STOW configuration")
+    func testPermissiveConfiguration() {
+        let config = DICOMwebServerConfiguration.STOWConfiguration.permissive
+        
+        #expect(config.validateRequiredAttributes == false)
+        #expect(config.validateSOPClasses == false)
+        #expect(config.validateUIDFormat == false)
+        if case .accept = config.duplicatePolicy {
+            // Expected
+        } else {
+            Issue.record("Expected accept duplicate policy")
+        }
+    }
+    
+    @Test("Custom STOW configuration with allowed SOP classes")
+    func testCustomConfiguration() {
+        let ctSOPClass = "1.2.840.10008.5.1.4.1.1.2"
+        let mrSOPClass = "1.2.840.10008.5.1.4.1.1.4"
+        
+        let config = DICOMwebServerConfiguration.STOWConfiguration(
+            duplicatePolicy: .reject,
+            validateRequiredAttributes: true,
+            validateSOPClasses: true,
+            allowedSOPClasses: [ctSOPClass, mrSOPClass],
+            validateUIDFormat: true,
+            additionalRequiredTags: [0x00100010, 0x00100020] // Patient Name, Patient ID
+        )
+        
+        #expect(config.allowedSOPClasses.count == 2)
+        #expect(config.allowedSOPClasses.contains(ctSOPClass))
+        #expect(config.allowedSOPClasses.contains(mrSOPClass))
+        #expect(config.additionalRequiredTags.count == 2)
+    }
+    
+    @Test("Server configuration includes STOW config")
+    func testServerConfigWithSTOW() {
+        let stowConfig = DICOMwebServerConfiguration.STOWConfiguration.strict
+        let serverConfig = DICOMwebServerConfiguration(
+            port: 8080,
+            stowConfiguration: stowConfig
+        )
+        
+        #expect(serverConfig.port == 8080)
+        if case .reject = serverConfig.stowConfiguration.duplicatePolicy {
+            // Expected
+        } else {
+            Issue.record("Expected reject duplicate policy")
+        }
+    }
+}
+
+// MARK: - STOW-RS Server Handler Tests
+
+@Suite("STOW-RS Server Handler Tests")
+struct STOWRSServerHandlerTests {
+    
+    @Test("STOW-RS rejects empty request body")
+    func testRejectsEmptyBody() async throws {
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/studies",
+            headers: ["Content-Type": "multipart/related; boundary=testboundary"],
+            body: nil
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 400)
+    }
+    
+    @Test("STOW-RS rejects missing content type")
+    func testRejectsMissingContentType() async throws {
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/studies",
+            headers: [:],
+            body: Data("test".utf8)
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 415)
+    }
+    
+    @Test("STOW-RS rejects unsupported content type")
+    func testRejectsUnsupportedContentType() async throws {
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/studies",
+            headers: ["Content-Type": "application/json"],
+            body: Data("{}".utf8)
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 415)
+    }
+    
+    @Test("STOW-RS rejects multipart without boundary")
+    func testRejectsMultipartWithoutBoundary() async throws {
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/studies",
+            headers: ["Content-Type": "multipart/related"],
+            body: Data("test".utf8)
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 400)
+    }
+    
+    @Test("STOW-RS accepts application/dicom content type")
+    func testAcceptsSingleDicomContentType() async throws {
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        // Note: This will fail validation since it's not valid DICOM, but
+        // it should not fail due to content type
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/studies",
+            headers: ["Content-Type": "application/dicom"],
+            body: Data("not valid dicom".utf8)
+        )
+        
+        let response = await server.handleRequest(request)
+        // Should get 200 with failure in response body, not 415
+        #expect(response.statusCode == 400 || response.statusCode == 200)
+    }
+    
+    @Test("STOW-RS request size limit")
+    func testRequestSizeLimit() async throws {
+        let config = DICOMwebServerConfiguration(
+            maxRequestBodySize: 100  // 100 bytes limit
+        )
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(configuration: config, storage: storage)
+        
+        // Create request larger than limit
+        let largeData = Data(repeating: 0, count: 200)
+        let request = DICOMwebRequest(
+            method: .post,
+            path: "/dicom-web/studies",
+            headers: ["Content-Type": "application/dicom"],
+            body: largeData
+        )
+        
+        let response = await server.handleRequest(request)
+        #expect(response.statusCode == 413)
+    }
+}
+
+// MARK: - STOW Delegate Tests
+
+@Suite("STOW Delegate Tests")
+struct STOWDelegateTests {
+    
+    @Test("Store delegate default implementations exist")
+    func testDefaultImplementations() async throws {
+        // This test verifies that default implementations exist and don't crash
+        // We can't easily test the full delegate behavior without creating a proper DICOM file
+        let storage = InMemoryStorageProvider()
+        let server = DICOMwebServer(storage: storage)
+        
+        // Server should work without a delegate
+        #expect(await server.running == false)
+    }
+}

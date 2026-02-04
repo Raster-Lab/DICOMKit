@@ -10,9 +10,23 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.8.5)
+## Features (v0.8.6)
 
-- ✅ **DICOMweb Server (NEW in v0.8.5)**
+- ✅ **DICOMweb Server STOW-RS Enhancements (NEW in v0.8.6)**
+  - ✅ STOWConfiguration for configurable store behavior
+  - ✅ DuplicatePolicy: reject (409 Conflict), replace, or accept (idempotent)
+  - ✅ SOP Class validation with allowedSOPClasses whitelist
+  - ✅ UID format validation per DICOM standard
+  - ✅ Required attribute validation with additionalRequiredTags
+  - ✅ Request body size validation (413 Payload Too Large)
+  - ✅ STOWDelegate protocol for custom store handling
+  - ✅ Support for single instance uploads (application/dicom)
+  - ✅ Enhanced STOW-RS response with proper SOP Class UIDs
+  - ✅ Failure reason codes (0x0110-0x0124)
+  - ✅ Partial success responses (HTTP 202) with warnings
+  - ✅ Retrieve URL in success response
+  - ✅ Preset configurations: default, strict, permissive
+- ✅ **DICOMweb Server (v0.8.5)**
   - ✅ DICOMwebServer actor for hosting DICOM services over HTTP
   - ✅ WADO-RS retrieve endpoints (study, series, instance, metadata)
   - ✅ QIDO-RS search endpoints (studies, series, instances)
@@ -1577,20 +1591,23 @@ High-level API:
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
-### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5)
+### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6)
 DICOMweb (RESTful DICOM) client and server implementation:
 
-**Server Components (NEW in v0.8.5):**
-- `DICOMwebServer` - WADO-RS, QIDO-RS, and STOW-RS server actor (NEW in v0.8.5)
-- `DICOMwebServerConfiguration` - Server configuration (port, TLS, CORS, rate limiting) (NEW in v0.8.5)
-- `DICOMwebStorageProvider` - Protocol for pluggable storage backends (NEW in v0.8.5)
-- `InMemoryStorageProvider` - In-memory storage for testing (NEW in v0.8.5)
-- `DICOMwebRouter` - URL pattern matching for DICOMweb routes (NEW in v0.8.5)
-- `DICOMwebRequest` - HTTP request abstraction (NEW in v0.8.5)
-- `DICOMwebResponse` - HTTP response abstraction (NEW in v0.8.5)
-- `RouteMatch` - Route matching result with path parameters (NEW in v0.8.5)
-- `StorageQuery` - Query parameters for storage searches (NEW in v0.8.5)
-- `StudyRecord`, `SeriesRecord`, `InstanceRecord` - Query result types (NEW in v0.8.5)
+**Server Components:**
+- `DICOMwebServer` - WADO-RS, QIDO-RS, and STOW-RS server actor (v0.8.5)
+- `DICOMwebServerConfiguration` - Server configuration (port, TLS, CORS, rate limiting, STOW) (v0.8.5, v0.8.6)
+- `DICOMwebServerConfiguration.STOWConfiguration` - STOW-RS configuration (duplicate policy, validation) (NEW in v0.8.6)
+- `DICOMwebStorageProvider` - Protocol for pluggable storage backends (v0.8.5)
+- `InMemoryStorageProvider` - In-memory storage for testing (v0.8.5)
+- `DICOMwebRouter` - URL pattern matching for DICOMweb routes (v0.8.5)
+- `DICOMwebRequest` - HTTP request abstraction (v0.8.5)
+- `DICOMwebResponse` - HTTP response abstraction (v0.8.5)
+- `RouteMatch` - Route matching result with path parameters (v0.8.5)
+- `StorageQuery` - Query parameters for storage searches (v0.8.5)
+- `StudyRecord`, `SeriesRecord`, `InstanceRecord` - Query result types (v0.8.5)
+- `STOWDelegate` - Protocol for STOW-RS event handling (NEW in v0.8.6)
+- `DICOMwebServerDelegate` - Protocol for server lifecycle events (v0.8.5)
 
 **Client Components:**
 - `DICOMwebClient` - WADO-RS, QIDO-RS, and STOW-RS client for DICOM web services
@@ -1644,4 +1661,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.5 - adding the DICOMweb Server for hosting DICOM services over HTTP. The library now provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), and STOW-RS (store) operations with pluggable storage backends. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.6 - enhancing the DICOMweb Server STOW-RS with advanced validation, configurable duplicate handling, and a delegate protocol for custom store behavior. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), and STOW-RS (store) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
