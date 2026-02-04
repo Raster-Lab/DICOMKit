@@ -10,9 +10,24 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.8.6)
+## Features (v0.8.7)
 
-- ✅ **DICOMweb Server STOW-RS Enhancements (NEW in v0.8.6)**
+- 🚧 **UPS-RS Worklist Services - Data Model (NEW in v0.8.7)**
+  - ✅ `Workitem` struct for UPS workitem representation
+  - ✅ `UPSState` enum with state machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
+  - ✅ `UPSPriority` enum (STAT, HIGH, MEDIUM, LOW)
+  - ✅ `ProgressInformation` for tracking workitem progress
+  - ✅ `HumanPerformer`, `CodedEntry`, `ReferencedInstance` supporting types
+  - ✅ `UPSQuery` builder with fluent API for workitem searches
+  - ✅ `UPSQueryResult` and `WorkitemResult` for query results
+  - ✅ `UPSStorageProvider` protocol for workitem storage
+  - ✅ `InMemoryUPSStorageProvider` for testing
+  - ✅ State transition validation and Transaction UID tracking
+  - ✅ Server routes for UPS-RS endpoints (/workitems/*)
+  - ✅ 57 unit tests for UPS types
+  - 🚧 Client API methods (coming soon)
+  - 🚧 Server handler implementations (coming soon)
+- ✅ **DICOMweb Server STOW-RS Enhancements (v0.8.6)**
   - ✅ STOWConfiguration for configurable store behavior
   - ✅ DuplicatePolicy: reject (409 Conflict), replace, or accept (idempotent)
   - ✅ SOP Class validation with allowedSOPClasses whitelist
@@ -1591,8 +1606,29 @@ High-level API:
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
 
-### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6)
+### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6, v0.8.7)
 DICOMweb (RESTful DICOM) client and server implementation:
+
+**UPS-RS (Unified Procedure Step) Components (NEW in v0.8.7):**
+- `Workitem` - UPS workitem representation with scheduling and state
+- `UPSState` - State machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
+- `UPSPriority` - Priority levels (STAT, HIGH, MEDIUM, LOW)
+- `ProgressInformation` - Workitem progress tracking
+- `HumanPerformer` - Performer information
+- `CodedEntry` - Coded values (SNOMED, LOINC, etc.)
+- `ReferencedInstance` - Referenced DICOM instance
+- `UPSQuery` - Fluent query builder for workitem searches
+- `UPSQueryAttribute` - Standard UPS-RS query attribute tags
+- `UPSQueryResult` - Paginated workitem query results
+- `WorkitemResult` - Individual workitem result
+- `UPSStorageProvider` - Protocol for workitem storage backends
+- `InMemoryUPSStorageProvider` - In-memory workitem storage for testing
+- `UPSStorageQuery` - Query parameters for workitem searches
+- `UPSError` - Error types for UPS operations
+- `UPSStateChangeRequest` - State change request
+- `UPSCancellationRequest` - Cancellation request
+- `UPSCreateResponse`, `UPSStateChangeResponse`, `UPSCancellationResponse` - Response types
+- `UPSTag` - DICOM tag constants for UPS attributes
 
 **Server Components:**
 - `DICOMwebServer` - WADO-RS, QIDO-RS, and STOW-RS server actor (v0.8.5)
@@ -1661,4 +1697,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.8.6 - enhancing the DICOMweb Server STOW-RS with advanced validation, configurable duplicate handling, and a delegate protocol for custom store behavior. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), and STOW-RS (store) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.8.7 - implementing UPS-RS (Unified Procedure Step - RESTful Services) data model, query builder, and storage provider for worklist management. The library provides both client and server implementations for WADO-RS (retrieve), QIDO-RS (query), STOW-RS (store), and now UPS-RS (worklist) operations. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
