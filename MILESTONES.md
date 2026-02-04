@@ -2111,7 +2111,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 9.7: Template Support (v0.9.7)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Parse and apply DICOM SR Templates (TID) for structured content  
 **Complexity**: Very High  
 **Dependencies**: Milestone 9.2, Milestone 9.4, Milestone 9.6
@@ -2258,7 +2258,8 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [ ] CAD SR templates correctly encode detection results
 - [ ] Key Object Selection works for image flagging
 - [ ] AI/ML integration produces valid SR documents
-- [ ] Unit tests for each template (target: 100+ tests)
+- [x] Unit tests for core SR types (218 tests completed: BasicTextSRBuilder 53, EnhancedSRBuilder 82, ComprehensiveSRBuilder 83)
+- [ ] Unit tests for remaining templates (target: additional 100+ tests for TID 1500, CAD SR, Key Object Selection)
 - [ ] Example applications for common workflows
 - [ ] Integration tests with DICOM viewers (OHIF, etc.)
 
@@ -2275,7 +2276,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 | 9.5 Measurement Extraction | v0.9.5 | High | ✅ Completed | Measurements, ROIs, coordinates |
 | 9.6 SR Document Creation | v0.9.6 | High | ✅ Completed | Builder API, serialization, validation |
 | 9.7 Template Support | v0.9.7 | Very High | ✅ Completed | TID parsing, validation, template-guided creation |
-| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), TID 1500, CAD SR, Key Object Selection |
+| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), TID 1500, CAD SR, Key Object Selection |
 
 ### Overall Technical Notes
 - Reference: PS3.3 Part 3 Section C.17 - SR Document IODs
