@@ -21,7 +21,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `CodedConcept` extensions for common section types
     - ✅ Validation ensures only Basic Text SR compatible value types
     - ✅ 53 unit tests for comprehensive coverage
-  - ✅ **EnhancedSRBuilder** - Specialized builder for Enhanced SR documents (NEW)
+  - ✅ **EnhancedSRBuilder** - Specialized builder for Enhanced SR documents
     - ✅ All Basic Text SR features plus numeric measurements
     - ✅ Numeric content items with units (millimeters, centimeters, etc.)
     - ✅ Waveform reference support for ECG and other waveform data
@@ -31,6 +31,16 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ `CodedConcept` extensions for measurement types (diameter, length, area, volume)
     - ✅ Validation ensures only Enhanced SR compatible value types
     - ✅ 82 unit tests for comprehensive coverage
+  - ✅ **ComprehensiveSRBuilder** - Specialized builder for Comprehensive SR documents (NEW)
+    - ✅ All Enhanced SR features plus spatial and temporal coordinates
+    - ✅ 2D Spatial Coordinates (SCOORD): points, polylines, polygons, circles, ellipses
+    - ✅ Temporal Coordinates (TCOORD): sample positions, time offsets, datetimes
+    - ✅ `@ComprehensiveSectionContentBuilder` for declarative section content
+    - ✅ `ComprehensiveSectionContent` helpers for coordinates and measurements
+    - ✅ Convenience methods: `addPoint`, `addPolyline`, `addPolygon`, `addCircle`, `addEllipse`
+    - ✅ Temporal coordinate helpers for sample positions, time offsets, and datetimes
+    - ✅ Validation ensures only Comprehensive SR compatible value types (no SCOORD3D)
+    - ✅ 83 unit tests for comprehensive coverage
 - ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
   - ✅ **Measurement Extraction**
     - ✅ `Measurement` struct with value, unit, concept, and context
@@ -2230,6 +2240,106 @@ let simpleReport = try EnhancedSRBuilder()
 print("Simple report measurements: \(simpleReport.rootContent.contentItems.count)")
 ```
 
+#### Using ComprehensiveSRBuilder for Reports with Spatial Coordinates (NEW in v0.9.8)
+
+`ComprehensiveSRBuilder` adds support for 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) to Enhanced SR capabilities. This is ideal for measurement reports that need to annotate specific regions on images.
+
+```swift
+import DICOMKit
+import DICOMCore
+
+// ComprehensiveSRBuilder adds spatial and temporal coordinates
+let coordinateReport = try ComprehensiveSRBuilder()
+    .withPatientID("PAT789")
+    .withPatientName("Wilson^Robert")
+    .withStudyInstanceUID("1.2.3.4.5.6.7")
+    .withDocumentTitle("Liver Lesion Measurement Report")
+    .withCompletionFlag(.complete)
+    .withVerificationFlag(.verified)
+    
+    // Clinical context
+    .addClinicalHistory("Follow-up for previously identified hepatic lesion")
+    
+    // Findings with spatial coordinates
+    .addSection("Findings") {
+        ComprehensiveSectionContent.text("Hepatic lesion identified in segment VII")
+        
+        // Numeric measurement
+        ComprehensiveSectionContent.measurement(
+            label: "Lesion Diameter",
+            value: 25.0,
+            units: UCUMUnit.millimeter.concept
+        )
+        
+        // Circle annotation marking the lesion
+        ComprehensiveSectionContent.circle(
+            conceptName: CodedConcept.imageRegion,
+            centerColumn: 256.0,
+            centerRow: 256.0,
+            edgeColumn: 276.0,  // 20 pixel radius
+            edgeRow: 256.0
+        )
+    }
+    
+    // Measurements section with polygon ROI
+    .addSection("ROI Measurements") {
+        // Define a polygon region of interest
+        ComprehensiveSectionContent.polygon(
+            conceptName: CodedConcept.regionOfInterest,
+            points: [
+                (column: 100.0, row: 100.0),
+                (column: 200.0, row: 100.0),
+                (column: 200.0, row: 180.0),
+                (column: 100.0, row: 180.0)
+            ]
+        )
+        
+        // Measurements derived from the ROI
+        ComprehensiveSectionContent.numeric(
+            conceptName: CodedConcept.area,
+            value: 8000.0,
+            units: UCUMUnit.squareMillimeter.concept
+        )
+    }
+    
+    .addImpression("Stable hepatic lesion, recommend follow-up in 6 months")
+    .build()
+
+print("Created Comprehensive SR: \(coordinateReport.documentType?.displayName ?? "Unknown")")
+print("SOP Class UID: \(coordinateReport.sopClassUID)")
+
+// Using spatial coordinate convenience methods
+let annotatedReport = try ComprehensiveSRBuilder()
+    .withDocumentTitle("Annotation Report")
+    
+    // Point annotation
+    .addPoint(column: 150.0, row: 200.0)
+    
+    // Polyline (measurement line)
+    .addPolyline(points: [
+        (column: 100.0, row: 100.0),
+        (column: 200.0, row: 200.0)
+    ])
+    
+    // Circle annotation
+    .addCircle(
+        centerColumn: 256.0,
+        centerRow: 256.0,
+        edgeColumn: 280.0,
+        edgeRow: 256.0
+    )
+    
+    // Temporal coordinate (time point in waveform)
+    .addTemporalCoordinates(
+        temporalRangeType: .point,
+        timeOffsets: [0.5, 1.0, 1.5]  // Time offsets in seconds
+    )
+    
+    .build()
+
+print("Annotations: \(annotatedReport.rootContent.contentItems.count)")
+```
+
 ### Coded Terminology Support (v0.9.4)
 
 DICOMKit provides comprehensive support for medical terminologies used in DICOM Structured Reporting.
@@ -2499,8 +2609,13 @@ High-level API:
 - `EnhancedSRBuilder.BuildError` - Builder validation errors
 - `EnhancedSectionContentBuilder` - Result builder for Enhanced SR section content
 - `EnhancedSectionContent` - Helper enum for measurements and text content
+- `ComprehensiveSRBuilder` - Specialized builder for Comprehensive SR documents with spatial/temporal coordinates (NEW in v0.9.8)
+- `ComprehensiveSRBuilder.BuildError` - Builder validation errors
+- `ComprehensiveSectionContentBuilder` - Result builder for Comprehensive SR section content
+- `ComprehensiveSectionContent` - Helper enum for coordinates, measurements, and text content
 - `CodedConcept.findings`, `.impression`, `.clinicalHistory`, etc. - Common section concepts
 - `CodedConcept.measurements`, `.diameter`, `.length`, `.area`, `.volume` - Measurement concepts
+- `CodedConcept.imageRegion`, `.regionOfInterest`, `.measurementLocation`, `.temporalExtent` - Coordinate concepts (NEW in v0.9.8)
 
 **Measurement and Coordinate Extraction (NEW in v0.9.5):**
 - `Measurement` - Extracted numeric measurement with value, unit, and context
@@ -2660,4 +2775,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR and Enhanced SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, while the new `EnhancedSRBuilder` extends this with numeric measurements, waveform references, and UCUM unit support. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, and Comprehensive SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, and the new `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.

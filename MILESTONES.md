@@ -2200,11 +2200,14 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Waveform references
   - [x] `EnhancedSRBuilder` specialized builder
   - [x] Unit tests for Enhanced SR (82 tests)
-- [ ] Comprehensive SR (1.2.840.10008.5.1.4.1.1.88.33):
-  - [ ] Full value type support
-  - [ ] Spatial and temporal coordinates
-  - [ ] By-reference relationships
-  - [ ] `ComprehensiveSRBuilder` specialized builder
+- [x] Comprehensive SR (1.2.840.10008.5.1.4.1.1.88.33):
+  - [x] Full value type support
+  - [x] Spatial and temporal coordinates
+  - [ ] By-reference relationships (deferred)
+  - [x] `ComprehensiveSRBuilder` specialized builder
+  - [x] `ComprehensiveSectionContent` helper for section content
+  - [x] `ComprehensiveSectionContentBuilder` result builder
+  - [x] Unit tests for Comprehensive SR (83 tests)
 - [ ] TID 1500 - Measurement Report:
   - [ ] Image Library (TID 1600)
   - [ ] Imaging Measurements Container
