@@ -658,7 +658,7 @@ final class ChestCADSRBuilderTests: XCTestCase {
         XCTAssertNotNil(document)
     }
     
-    func testBuildWithAllLocationType() throws {
+    func testBuildWithAllLocationTypes() throws {
         let imageRef = createSampleImageReference()
         
         let builder = createBasicBuilder()
