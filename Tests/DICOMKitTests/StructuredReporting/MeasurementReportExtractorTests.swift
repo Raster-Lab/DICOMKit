@@ -241,7 +241,7 @@ final class MeasurementReportExtractorTests: XCTestCase {
     
     func testExtractMeasurementGroupWithFindingType() throws {
         let original = try MeasurementReportBuilder()
-            .addMeasurementGroup(trackingIdentifier: "Lesion 1") {            }
+            .addMeasurementGroup(trackingIdentifier: "Lesion 1") {}
             .build()
         let parsed = try serializeAndParse(original)
         
@@ -255,7 +255,7 @@ final class MeasurementReportExtractorTests: XCTestCase {
     
     func testExtractMeasurementGroupWithFindingSite() throws{
         let original = try MeasurementReportBuilder()
-            .addMeasurementGroup(trackingIdentifier: "Lesion 1") {            }
+            .addMeasurementGroup(trackingIdentifier: "Lesion 1") {}
             .build()
         let parsed = try serializeAndParse(original)
         
