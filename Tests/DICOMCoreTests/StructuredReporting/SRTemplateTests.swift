@@ -581,6 +581,81 @@ struct TemplateViolationTests {
         #expect(violation.message.contains("TEXT"))
     }
     
+    @Test("Factory method - relationship mismatch")
+    func testRelationshipMismatchFactory() {
+        let violation = TemplateViolation.relationshipMismatch(
+            rowID: "4",
+            expected: .contains,
+            actual: .hasProperties,
+            path: "/Report/Finding"
+        )
+        
+        #expect(violation.severity == .error)
+        #expect(violation.templateRowID == "4")
+        #expect(violation.contentPath == "/Report/Finding")
+        #expect(violation.message.contains("CONTAINS"))
+        #expect(violation.message.contains("HAS PROPERTIES"))
+    }
+    
+    @Test("Factory method - invalid concept")
+    func testInvalidConceptFactory() {
+        let actualConcept = CodedConcept(
+            codeValue: "121072",
+            codingSchemeDesignator: "DCM",
+            codeMeaning: "Observation"
+        )
+        let expectedConstraint = ConceptNameConstraint.exact(CodedConcept(
+            codeValue: "121071",
+            codingSchemeDesignator: "DCM",
+            codeMeaning: "Finding"
+        ))
+        
+        let violation = TemplateViolation.invalidConcept(
+            rowID: "5",
+            expected: expectedConstraint,
+            actual: actualConcept,
+            path: "/Report/Item"
+        )
+        
+        #expect(violation.severity == .error)
+        #expect(violation.templateRowID == "5")
+        #expect(violation.contentPath == "/Report/Item")
+        #expect(violation.message.contains("Observation"))
+    }
+    
+    @Test("Factory method - invalid value")
+    func testInvalidValueFactory() {
+        let constraint = ValueConstraint.numericUnits(unitCode: CodedConcept(
+            codeValue: "mm",
+            codingSchemeDesignator: "UCUM",
+            codeMeaning: "mm"
+        ))
+        
+        let violation = TemplateViolation.invalidValue(
+            rowID: "6",
+            constraint: constraint,
+            path: "/Report/Measurement"
+        )
+        
+        #expect(violation.severity == .error)
+        #expect(violation.templateRowID == "6")
+        #expect(violation.contentPath == "/Report/Measurement")
+        #expect(violation.message.contains("constraint"))
+    }
+    
+    @Test("Factory method - unexpected content")
+    func testUnexpectedContentFactory() {
+        let violation = TemplateViolation.unexpectedContent(
+            path: "/Report/Extra",
+            message: "Found unexpected NUM content item"
+        )
+        
+        #expect(violation.severity == .warning)
+        #expect(violation.templateRowID == nil)
+        #expect(violation.contentPath == "/Report/Extra")
+        #expect(violation.message.contains("unexpected"))
+    }
+    
     @Test("Violation description")
     func testViolationDescription() {
         let violation = TemplateViolation(

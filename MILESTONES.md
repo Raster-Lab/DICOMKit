@@ -2174,7 +2174,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [x] Template validation correctly identifies violations
 - [ ] Template-guided creation produces compliant documents (deferred to future version)
 - [x] Nested template includes work correctly
-- [x] Unit tests for template scenarios (target: 70+ tests) - 68 tests implemented
+- [x] Unit tests for template scenarios (target: 70+ tests) - 72 tests implemented
 - [x] Documentation for template system (README updated)
 
 ---
