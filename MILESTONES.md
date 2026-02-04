@@ -1480,13 +1480,22 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Scheduled Procedure Step attributes
   - [x] Performed Procedure Step attributes
   - [x] Progress information (`ProgressInformation` struct)
-- [ ] `UPSClient` API:
-  - [ ] `func searchWorkitems(query: UPSQuery) async throws -> [Workitem]`
-  - [ ] `func retrieveWorkitem(uid: String) async throws -> Workitem`
-  - [ ] `func createWorkitem(workitem: Workitem) async throws -> String`
-  - [ ] `func changeState(uid: String, state: UPSState, transaction: String?) async throws`
-  - [ ] `func requestCancellation(uid: String, reason: String?) async throws`
-  - [ ] `func subscribe(uid: String?, events: AsyncStream<UPSEvent>) async throws`
+- [x] `UPSClient` API:
+  - [x] `func searchWorkitems(query: UPSQuery) async throws -> UPSQueryResult`
+  - [x] `func retrieveWorkitem(uid: String) async throws -> [String: Any]`
+  - [x] `func retrieveWorkitemResult(uid: String) async throws -> WorkitemResult`
+  - [x] `func createWorkitem(workitem:uid:) async throws -> UPSCreateResponse`
+  - [x] `func createWorkitem(_:) async throws -> UPSCreateResponse`
+  - [x] `func updateWorkitem(uid:updates:) async throws`
+  - [x] `func changeState(uid:state:transactionUID:) async throws -> UPSStateChangeResponse`
+  - [x] `func requestCancellation(uid:reason:contactDisplayName:contactURI:) async throws -> UPSCancellationResponse`
+  - [x] `func subscribe(uid:aeTitle:deletionLock:) async throws`
+  - [x] `func subscribeGlobally(aeTitle:deletionLock:) async throws`
+  - [x] `func unsubscribe(uid:aeTitle:) async throws`
+  - [x] `func unsubscribeGlobally(aeTitle:) async throws`
+  - [x] `func suspendSubscription(uid:aeTitle:) async throws`
+  - [x] UPS-RS URL building methods in `DICOMwebURLBuilder`
+  - [x] Unit tests for UPSClient initialization and URL builder (15 tests)
 - [x] `UPSServer` additions:
   - [x] Workitem storage and retrieval (`UPSStorageProvider` protocol)
   - [x] State machine enforcement (`InMemoryUPSStorageProvider`)

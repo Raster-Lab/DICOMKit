@@ -766,3 +766,146 @@ final class InMemoryUPSStorageProviderTests: XCTestCase {
         XCTAssertEqual(retrieved?.progressInformation?.progressDescription, "Halfway done")
     }
 }
+
+// MARK: - UPS URL Builder Tests
+
+final class UPSURLBuilderTests: XCTestCase {
+    
+    var urlBuilder: DICOMwebURLBuilder!
+    
+    override func setUp() {
+        super.setUp()
+        urlBuilder = try! DICOMwebURLBuilder(baseURLString: "https://pacs.example.com/dicom-web")
+    }
+    
+    func testWorkitemsURL() {
+        let url = urlBuilder.workitemsURL
+        XCTAssertEqual(url.absoluteString, "https://pacs.example.com/dicom-web/workitems")
+    }
+    
+    func testWorkitemURL() {
+        let url = urlBuilder.workitemURL(workitemUID: "1.2.3.4.5")
+        XCTAssertEqual(url.absoluteString, "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5")
+    }
+    
+    func testWorkitemStateURL() {
+        let url = urlBuilder.workitemStateURL(workitemUID: "1.2.3.4.5")
+        XCTAssertEqual(url.absoluteString, "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/state")
+    }
+    
+    func testWorkitemCancelRequestURL() {
+        let url = urlBuilder.workitemCancelRequestURL(workitemUID: "1.2.3.4.5")
+        XCTAssertEqual(url.absoluteString, "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/cancelrequest")
+    }
+    
+    func testWorkitemSubscriptionURL() {
+        let url = urlBuilder.workitemSubscriptionURL(workitemUID: "1.2.3.4.5", aeTitle: "MYAE")
+        XCTAssertEqual(url.absoluteString, "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/subscribers/MYAE")
+    }
+    
+    func testGlobalWorkitemSubscriptionURL() {
+        let url = urlBuilder.globalWorkitemSubscriptionURL(aeTitle: "MYAE")
+        XCTAssertEqual(url.absoluteString, "https://pacs.example.com/dicom-web/workitems/1.2.840.10008.5.1.4.34.5/subscribers/MYAE")
+    }
+    
+    func testWorkitemSubscriptionSuspendURL() {
+        let url = urlBuilder.workitemSubscriptionSuspendURL(workitemUID: "1.2.3.4.5", aeTitle: "MYAE")
+        XCTAssertEqual(url.absoluteString, "https://pacs.example.com/dicom-web/workitems/1.2.3.4.5/subscribers/MYAE/suspend")
+    }
+    
+    func testSearchWorkitemsURL() {
+        let url = urlBuilder.searchWorkitemsURL(parameters: [
+            "00741000": "SCHEDULED",
+            "limit": "10"
+        ])
+        let urlString = url.absoluteString
+        XCTAssertTrue(urlString.hasPrefix("https://pacs.example.com/dicom-web/workitems?"))
+        XCTAssertTrue(urlString.contains("00741000=SCHEDULED") || urlString.contains("00741000=SCHEDULED"))
+        XCTAssertTrue(urlString.contains("limit=10"))
+    }
+}
+
+// MARK: - UPS Response Types Tests
+
+final class UPSResponseTypesTests: XCTestCase {
+    
+    func testUPSCreateResponse() {
+        let response = UPSCreateResponse(
+            workitemUID: "1.2.3.4.5",
+            retrieveURL: "https://pacs.example.com/workitems/1.2.3.4.5",
+            warnings: ["Warning 1"]
+        )
+        
+        XCTAssertEqual(response.workitemUID, "1.2.3.4.5")
+        XCTAssertEqual(response.retrieveURL, "https://pacs.example.com/workitems/1.2.3.4.5")
+        XCTAssertEqual(response.warnings.count, 1)
+    }
+    
+    func testUPSStateChangeResponse() {
+        let response = UPSStateChangeResponse(
+            workitemUID: "1.2.3.4.5",
+            newState: .inProgress,
+            transactionUID: "2.25.12345",
+            warnings: []
+        )
+        
+        XCTAssertEqual(response.workitemUID, "1.2.3.4.5")
+        XCTAssertEqual(response.newState, .inProgress)
+        XCTAssertEqual(response.transactionUID, "2.25.12345")
+        XCTAssertTrue(response.warnings.isEmpty)
+    }
+    
+    func testUPSCancellationResponseAccepted() {
+        let response = UPSCancellationResponse(
+            workitemUID: "1.2.3.4.5",
+            accepted: true,
+            rejectionReason: nil,
+            warnings: []
+        )
+        
+        XCTAssertTrue(response.accepted)
+        XCTAssertNil(response.rejectionReason)
+    }
+    
+    func testUPSCancellationResponseRejected() {
+        let response = UPSCancellationResponse(
+            workitemUID: "1.2.3.4.5",
+            accepted: false,
+            rejectionReason: "Workitem is already in progress",
+            warnings: []
+        )
+        
+        XCTAssertFalse(response.accepted)
+        XCTAssertEqual(response.rejectionReason, "Workitem is already in progress")
+    }
+}
+
+// MARK: - UPS Client Initialization Tests
+
+#if canImport(FoundationNetworking) || os(macOS) || os(iOS) || os(visionOS)
+final class UPSClientTests: XCTestCase {
+    
+    func testClientInitializationWithConfiguration() throws {
+        let config = try DICOMwebConfiguration(baseURLString: "https://pacs.example.com/dicom-web")
+        let client = UPSClient(configuration: config)
+        
+        XCTAssertEqual(client.configuration.baseURL.absoluteString, "https://pacs.example.com/dicom-web")
+    }
+    
+    func testClientInitializationWithHTTPClient() throws {
+        let config = try DICOMwebConfiguration(baseURLString: "https://pacs.example.com/dicom-web")
+        let httpClient = HTTPClient(configuration: config)
+        let client = UPSClient(httpClient: httpClient)
+        
+        XCTAssertEqual(client.configuration.baseURL.absoluteString, "https://pacs.example.com/dicom-web")
+    }
+    
+    func testURLBuilderAccess() throws {
+        let config = try DICOMwebConfiguration(baseURLString: "https://pacs.example.com/dicom-web")
+        let client = UPSClient(configuration: config)
+        
+        let workitemsURL = client.urlBuilder.workitemsURL
+        XCTAssertEqual(workitemsURL.absoluteString, "https://pacs.example.com/dicom-web/workitems")
+    }
+}
+#endif
