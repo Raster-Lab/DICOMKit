@@ -2297,28 +2297,823 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 **Status**: Planned  
 **Goal**: Production-ready release with comprehensive feature set
 
-### Deliverables
-- [ ] Presentation State support (GSPS, CSPS)
-- [ ] Hanging Protocol support
-- [ ] DICOM-RT (Radiation Therapy) basic support
-- [ ] Segmentation objects (SEG)
-- [ ] Parametric maps
-- [ ] Real-world value mapping (RWV LUT)
-- [ ] ICC profile color management
-- [ ] Extended character set support (all ISO 2022 escapes)
-- [ ] Private tag handling improvements
-- [ ] Performance optimizations
-- [ ] Comprehensive documentation
-- [ ] Example applications
+This milestone is divided into modular sub-milestones based on feature complexity and domain, allowing for incremental development and testing. Each sub-milestone builds upon the core infrastructure established in previous milestones.
 
-### Technical Notes
+---
+
+### Milestone 10.1: Grayscale Presentation State (GSPS) (v1.0.1)
+
+**Status**: Planned  
+**Goal**: Implement Grayscale Softcopy Presentation State for standardized image display  
+**Complexity**: High  
+**Dependencies**: Milestone 3 (Pixel Data Access), Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [ ] Presentation State IOD parsing:
+  - [ ] `PresentationState` base protocol with common attributes
+  - [ ] `GrayscalePresentationState` struct conforming to PS3.3 A.33
+  - [ ] Presentation State Identification Module parsing
+  - [ ] Presentation State Relationship Module (referenced series/images)
+- [ ] Display transformation pipeline:
+  - [ ] `VOILUTTransformation` for window/level application
+  - [ ] `ModalityLUTTransformation` for modality-specific transforms
+  - [ ] `PresentationLUTTransformation` for final output mapping
+  - [ ] LUT data parsing (explicit LUT tables, window specifications)
+- [ ] Spatial transformation support:
+  - [ ] `SpatialTransformation` for image rotation and flipping
+  - [ ] `DisplayedAreaSelection` for zoom and pan state
+  - [ ] `GraphicAnnotation` module parsing
+  - [ ] `TextAnnotation` module parsing
+- [ ] Graphic layers:
+  - [ ] `GraphicLayer` struct with layer order and display properties
+  - [ ] `GraphicObject` types (POINT, POLYLINE, INTERPOLATED, CIRCLE, ELLIPSE)
+  - [ ] `TextObject` with bounding box and anchor point specifications
+- [ ] Shutter modules:
+  - [ ] `DisplayShutter` protocol for region masking
+  - [ ] Rectangular, circular, polygonal shutter implementations
+  - [ ] Bitmap display shutter support
+- [ ] Presentation State application:
+  - [ ] `PresentationStateApplicator` to apply GSPS to images
+  - [ ] Integration with CGImage rendering pipeline
+  - [ ] Multiple presentation state overlay support
+
+#### Technical Notes
+- Reference: PS3.3 Part 3 Section A.33 - Grayscale Softcopy Presentation State IOD
+- Reference: PS3.3 C.11.1 - Modality LUT Module
+- Reference: PS3.3 C.11.2 - VOI LUT Module
+- Reference: PS3.3 C.10.4 - Display Shutter Module
+- LUT application order: Modality LUT → VOI LUT → Presentation LUT
+- Graphic annotations rendered on separate layers above image
+
+#### Acceptance Criteria
+- [ ] Parse GSPS objects from clinical PACS sources
+- [ ] Apply presentation state transformations to images correctly
+- [ ] Render graphic and text annotations at correct positions
+- [ ] Display shutters mask image regions appropriately
+- [ ] Round-trip test: create → write → read → apply produces consistent results
+- [ ] Unit tests cover all presentation state modules (target: 80+ tests)
+
+---
+
+### Milestone 10.2: Color Presentation State (CSPS) and Pseudo-Color (v1.0.2)
+
+**Status**: Planned  
+**Goal**: Implement Color Softcopy Presentation State and pseudo-color mapping  
+**Complexity**: Medium  
+**Dependencies**: Milestone 10.1 (GSPS)
+
+#### Deliverables
+- [ ] Color Softcopy Presentation State:
+  - [ ] `ColorPresentationState` struct conforming to PS3.3 A.34
+  - [ ] ICC Profile Module parsing and application
+  - [ ] Color space management (sRGB, Adobe RGB, Display P3)
+  - [ ] Device-independent color pipeline
+- [ ] Pseudo-Color Softcopy Presentation State:
+  - [ ] `PseudoColorPresentationState` struct conforming to PS3.3 A.35
+  - [ ] RGB LUT Data parsing for pseudo-color mapping
+  - [ ] Palette Color LUT integration with GSPS VOI processing
+  - [ ] Custom color map support
+- [ ] Blending Softcopy Presentation State:
+  - [ ] `BlendingPresentationState` struct conforming to PS3.3 A.36
+  - [ ] Multi-image blending specifications
+  - [ ] Blending ratio and mode configurations
+  - [ ] PET/CT and PET/MR fusion display support
+- [ ] Advanced color management:
+  - [ ] `ColorProfile` wrapper for ICC profile data
+  - [ ] `ColorTransform` for color space conversions
+  - [ ] Display calibration support
+  - [ ] Wide color gamut handling for ProMotion displays
+
+#### Technical Notes
+- Reference: PS3.3 A.34 - Color Softcopy Presentation State IOD
+- Reference: PS3.3 A.35 - Pseudo-Color Softcopy Presentation State IOD
+- Reference: PS3.3 A.36 - Blending Softcopy Presentation State IOD
+- Reference: PS3.14 - Grayscale Standard Display Function
+- ICC profiles typically stored as embedded binary data in DICOM
+- Use ColorSync framework on Apple platforms for ICC profile handling
+
+#### Acceptance Criteria
+- [ ] Parse and apply Color Presentation States correctly
+- [ ] Pseudo-color mapping produces expected visualization
+- [ ] ICC profile color management matches reference implementations
+- [ ] Blending presentation state enables multi-modality fusion viewing
+- [ ] Unit tests for all color presentation state types (target: 50+ tests)
+
+---
+
+### Milestone 10.3: Hanging Protocol Support (v1.0.3)
+
+**Status**: Planned  
+**Goal**: Implement Hanging Protocol storage and basic interpretation  
+**Complexity**: High  
+**Dependencies**: Milestone 5 (DICOM Writing), Milestone 6 (Query/Retrieve)
+
+#### Deliverables
+- [ ] Hanging Protocol IOD:
+  - [ ] `HangingProtocol` struct conforming to PS3.3 A.38
+  - [ ] Hanging Protocol Definition Module parsing
+  - [ ] Hanging Protocol Environment Module
+  - [ ] Hanging Protocol Display Module
+- [ ] Image Set definition:
+  - [ ] `ImageSetDefinition` for matching criteria
+  - [ ] `ImageSetSelector` with attribute-based filtering
+  - [ ] Sort criteria specifications (by position, time, instance number)
+  - [ ] Series-level and instance-level selectors
+- [ ] Display Set specifications:
+  - [ ] `DisplaySet` struct with layout information
+  - [ ] Image box configurations
+  - [ ] Scrolling and navigation behaviors
+  - [ ] Reformat operations (MPR orientation hints)
+- [ ] Screen layout:
+  - [ ] `ScreenComposition` for multi-monitor configurations
+  - [ ] `LayoutRegion` with position and size
+  - [ ] Grid layouts and freeform positioning
+  - [ ] Portrait/landscape orientation support
+- [ ] Protocol matching:
+  - [ ] `HangingProtocolMatcher` for study-to-protocol matching
+  - [ ] Anatomic region matching
+  - [ ] Modality-based protocol selection
+  - [ ] Prior study inclusion rules
+- [ ] Hanging Protocol storage:
+  - [ ] Serialization to DICOM format
+  - [ ] C-STORE for protocol upload to PACS
+
+#### Technical Notes
+- Reference: PS3.3 A.38 - Hanging Protocol IOD
+- Reference: PS3.3 C.23 - Hanging Protocol Module
+- Reference: PS3.4 Annex W - Hanging Protocol Query/Retrieve Service Class
+- Hanging Protocols define how studies should be displayed
+- Matching uses Study Description, Modality, Anatomic Region, etc.
+- Display Sets reference Image Sets through index values
+
+#### Acceptance Criteria
+- [ ] Parse Hanging Protocol objects from clinical systems
+- [ ] Match studies to appropriate protocols by criteria
+- [ ] Extract display layout information for viewer integration
+- [ ] Create and store new Hanging Protocol objects
+- [ ] Unit tests for protocol parsing and matching (target: 60+ tests)
+
+---
+
+### Milestone 10.4: DICOM-RT Structure Set Support (v1.0.4)
+
+**Status**: Planned  
+**Goal**: Implement Radiation Therapy Structure Set parsing and basic support  
+**Complexity**: Very High  
+**Dependencies**: Milestone 3 (Pixel Data Access), Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [ ] RT Structure Set IOD:
+  - [ ] `RTStructureSet` struct conforming to PS3.3 A.19
+  - [ ] Structure Set Module parsing
+  - [ ] ROI Contour Module parsing
+  - [ ] RT ROI Observations Module
+- [ ] Region of Interest (ROI) support:
+  - [ ] `RTRegionOfInterest` struct with geometric data
+  - [ ] `ROIContour` with contour sequences
+  - [ ] Contour geometric types (POINT, OPEN_PLANAR, CLOSED_PLANAR, OPEN_NONPLANAR, CLOSED_NONPLANAR)
+  - [ ] Contour data point extraction
+- [ ] Structure relationships:
+  - [ ] Referenced Frame of Reference handling
+  - [ ] ROI-to-image registration
+  - [ ] Structure Set ROI Sequence parsing
+  - [ ] ROI observations (interpreted type, interpreter)
+- [ ] Contour visualization:
+  - [ ] `ContourRenderer` for 2D contour overlay on images
+  - [ ] Color mapping per ROI type
+  - [ ] Slice-by-slice contour interpolation
+  - [ ] Contour fill and outline rendering options
+- [ ] RT-specific metadata:
+  - [ ] `RTROIInterpretedType` enum (PTV, CTV, GTV, ORGAN, EXTERNAL, etc.)
+  - [ ] ROI physical properties (density, mass)
+  - [ ] ROI generation algorithm identification
+
+#### Technical Notes
+- Reference: PS3.3 A.19 - RT Structure Set IOD
+- Reference: PS3.3 C.8.8.5 - Structure Set Module
+- Reference: PS3.3 C.8.8.6 - ROI Contour Module
+- Contour points are in patient coordinate system (mm)
+- Each ROI can have contours on multiple image slices
+- RT Structure Sets reference CT/MR series for spatial registration
+
+#### Acceptance Criteria
+- [ ] Parse RT Structure Set from radiation oncology systems
+- [ ] Extract all ROI contours with geometric data
+- [ ] Render contours overlaid on referenced images
+- [ ] Support common ROI interpreted types
+- [ ] Unit tests for RT structure parsing (target: 70+ tests)
+
+---
+
+### Milestone 10.5: RT Plan and RT Dose Support (v1.0.5)
+
+**Status**: Planned  
+**Goal**: Implement Radiation Therapy Plan and Dose parsing  
+**Complexity**: Very High  
+**Dependencies**: Milestone 10.4 (RT Structure Set)
+
+#### Deliverables
+- [ ] RT Plan IOD:
+  - [ ] `RTPlan` struct conforming to PS3.3 A.20
+  - [ ] RT General Plan Module parsing
+  - [ ] Fraction Group Sequence parsing
+  - [ ] Beam Sequence (external beam) parsing
+  - [ ] Brachy Application Setup Sequence (brachytherapy) parsing
+- [ ] Beam definitions:
+  - [ ] `RTBeam` struct with beam parameters
+  - [ ] Control Point Sequence parsing
+  - [ ] Beam limiting device (MLC, jaws) positions
+  - [ ] Gantry, collimator, couch angles
+  - [ ] Source-to-surface distance (SSD)
+- [ ] RT Dose IOD:
+  - [ ] `RTDose` struct conforming to PS3.3 A.18
+  - [ ] Dose grid data extraction
+  - [ ] Dose units and scaling
+  - [ ] Dose summation type
+- [ ] Dose visualization:
+  - [ ] `DoseRenderer` for 2D dose overlay
+  - [ ] Isodose line generation
+  - [ ] Color wash display with opacity control
+  - [ ] DVH (Dose Volume Histogram) data extraction
+- [ ] Treatment planning integration:
+  - [ ] Fraction scheme parsing
+  - [ ] Prescribed dose information
+  - [ ] Referenced RT Structure Set linking
+
+#### Technical Notes
+- Reference: PS3.3 A.18 - RT Dose IOD
+- Reference: PS3.3 A.20 - RT Plan IOD
+- Reference: PS3.3 C.8.8 - RT Module Definitions
+- Dose grids are 3D volumetric data (16-bit or 32-bit)
+- Dose values scaled by Dose Grid Scaling factor
+- Control points define beam state at each position
+
+#### Acceptance Criteria
+- [ ] Parse RT Plan from treatment planning systems
+- [ ] Extract beam parameters and control points
+- [ ] Parse RT Dose grids with correct scaling
+- [ ] Render dose distributions overlaid on images
+- [ ] Unit tests for RT Plan and Dose (target: 80+ tests)
+
+---
+
+### Milestone 10.6: Segmentation Objects (SEG) (v1.0.6)
+
+**Status**: Planned  
+**Goal**: Implement DICOM Segmentation IOD for labeled image regions  
+**Complexity**: High  
+**Dependencies**: Milestone 3 (Pixel Data Access), Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [ ] Segmentation IOD:
+  - [ ] `Segmentation` struct conforming to PS3.3 A.51
+  - [ ] Segmentation Series Module parsing
+  - [ ] Segmentation Image Module parsing
+  - [ ] Multi-frame Functional Groups parsing
+- [ ] Segment definitions:
+  - [ ] `Segment` struct with identification and properties
+  - [ ] `SegmentIdentification` (segment number, label)
+  - [ ] `SegmentCategoryTypeCode` using CID 7150
+  - [ ] `SegmentPropertyTypeCode` using CID 7151
+  - [ ] Anatomic region coding
+- [ ] Segmentation types:
+  - [ ] `SegmentationType` enum (BINARY, FRACTIONAL)
+  - [ ] Binary segmentation frame extraction
+  - [ ] Fractional segmentation (probability maps)
+  - [ ] Maximum fractional value handling
+- [ ] Segmentation pixel data:
+  - [ ] Frame-by-frame segment mask extraction
+  - [ ] Per-frame functional group parsing
+  - [ ] Derivation Image Functional Group (source image reference)
+  - [ ] Segment Identification Functional Group
+- [ ] Segmentation visualization:
+  - [ ] `SegmentationRenderer` for overlay display
+  - [ ] Color mapping per segment
+  - [ ] Opacity/transparency control
+  - [ ] Multiple segment overlay compositing
+- [ ] Segmentation creation:
+  - [ ] `SegmentationBuilder` for creating new SEG objects
+  - [ ] Binary mask to segmentation conversion
+  - [ ] AI/ML prediction output encoding
+  - [ ] Segment metadata assignment
+
+#### Technical Notes
+- Reference: PS3.3 A.51 - Segmentation IOD
+- Reference: PS3.3 C.8.20 - Segmentation Modules
+- Reference: PS3.3 C.7.6.16 - Multi-frame Functional Groups
+- Segmentations use multi-frame format with one frame per segment per slice
+- Binary uses 1 bit per pixel, packed into bytes
+- Fractional uses 8 or 16 bits with probability values
+
+#### Acceptance Criteria
+- [ ] Parse segmentation objects from AI/ML tools (e.g., MONAI, nnU-Net)
+- [ ] Extract binary and fractional segment masks
+- [ ] Map segments to source image frames correctly
+- [ ] Render segmentation overlays on referenced images
+- [ ] Create segmentations from mask data
+- [ ] Unit tests for segmentation support (target: 70+ tests)
+
+---
+
+### Milestone 10.7: Parametric Maps (v1.0.7)
+
+**Status**: Planned  
+**Goal**: Implement Parametric Map IOD for quantitative imaging  
+**Complexity**: Medium  
+**Dependencies**: Milestone 3 (Pixel Data Access), Milestone 10.6 (Segmentation)
+
+#### Deliverables
+- [ ] Parametric Map IOD:
+  - [ ] `ParametricMap` struct conforming to PS3.3 A.75
+  - [ ] Parametric Map Series Module parsing
+  - [ ] Parametric Map Image Module parsing
+  - [ ] Multi-frame Functional Groups support
+- [ ] Quantity definitions:
+  - [ ] `QuantityDefinition` with coded value types
+  - [ ] `MeasurementUnits` using UCUM coding
+  - [ ] Real World Value Mapping Functional Group
+  - [ ] Derivation code sequences
+- [ ] Parametric data extraction:
+  - [ ] Float pixel data handling (32-bit IEEE float)
+  - [ ] Double pixel data handling (64-bit IEEE float)
+  - [ ] Integer-to-real value mapping
+  - [ ] Frame-by-frame quantity access
+- [ ] Common parametric map types:
+  - [ ] ADC (Apparent Diffusion Coefficient) maps
+  - [ ] T1/T2 relaxation maps
+  - [ ] Perfusion parameter maps (Ktrans, Ve, Vp)
+  - [ ] SUV (Standardized Uptake Value) maps
+- [ ] Parametric visualization:
+  - [ ] `ParametricMapRenderer` with color mapping
+  - [ ] Configurable window/level for parametric values
+  - [ ] Color lookup table application
+  - [ ] Threshold-based display
+
+#### Technical Notes
+- Reference: PS3.3 A.75 - Parametric Map IOD
+- Reference: PS3.3 C.7.6.16.2.11 - Real World Value Mapping Functional Group
+- Reference: PS3.3 C.8.23 - Parametric Map Modules
+- Parametric maps often store floating point pixel data
+- Values represent physical quantities (e.g., diffusion coefficient in mm²/s)
+- Real World Value Mapping converts stored values to physical units
+
+#### Acceptance Criteria
+- [ ] Parse parametric map objects from quantitative imaging tools
+- [ ] Extract floating point parametric values correctly
+- [ ] Apply real world value mapping transformations
+- [ ] Visualize parametric maps with appropriate color scales
+- [ ] Unit tests for parametric map support (target: 50+ tests)
+
+---
+
+### Milestone 10.8: Real-World Value Mapping (RWV LUT) (v1.0.8)
+
+**Status**: Planned  
+**Goal**: Implement comprehensive Real World Value LUT support  
+**Complexity**: Medium  
+**Dependencies**: Milestone 3 (Pixel Data Access), Milestone 10.1 (GSPS)
+
+#### Deliverables
+- [ ] Real World Value Mapping:
+  - [ ] `RealWorldValueMapping` struct for value transformations
+  - [ ] `RealWorldValueMappingSequence` parsing
+  - [ ] Linear transformation (slope/intercept) support
+  - [ ] LUT-based transformation support
+- [ ] Quantity specification:
+  - [ ] `RealWorldValueUnits` coded entry parsing
+  - [ ] `MeasurementUnitsCodeSequence` support
+  - [ ] UCUM unit validation
+  - [ ] Unit conversion utilities
+- [ ] Multi-mapping support:
+  - [ ] Multiple RWV mappings per image
+  - [ ] Context-based mapping selection
+  - [ ] First frame/all frames mapping scope
+  - [ ] Mapping to different physical quantities
+- [ ] PET SUV calculations:
+  - [ ] `SUVCalculator` for Standardized Uptake Value
+  - [ ] Body weight normalized SUV (SUVbw)
+  - [ ] Lean body mass normalized SUV (SUVlbm)
+  - [ ] Body surface area normalized SUV (SUVbsa)
+  - [ ] Decay correction handling
+- [ ] Integration with rendering:
+  - [ ] RWV-aware pixel value display
+  - [ ] Measurement tools using real world values
+  - [ ] ROI statistics in physical units
+
+#### Technical Notes
+- Reference: PS3.3 C.7.6.16.2.11 - Real World Value Mapping Functional Group
+- Reference: PS3.3 C.11.1 - Modality LUT Module (Rescale Slope/Intercept)
+- Reference: PS3.16 CID 83 - Units of Measurement
+- RWV LUT transforms stored pixel values to physical quantities
+- PET SUV requires patient weight, injection dose, decay correction
+- Multiple RWV mappings allow different physical interpretations
+
+#### Acceptance Criteria
+- [ ] Parse RWV mapping sequences correctly
+- [ ] Apply linear and LUT-based transformations
+- [ ] Calculate SUV values for PET images
+- [ ] Display physical quantity values in measurement tools
+- [ ] Unit tests for RWV LUT support (target: 40+ tests)
+
+---
+
+### Milestone 10.9: Extended Character Set Support (v1.0.9)
+
+**Status**: Planned  
+**Goal**: Implement comprehensive international character set support  
+**Complexity**: High  
+**Dependencies**: Milestone 1 (Core Infrastructure)
+
+#### Deliverables
+- [ ] ISO 2022 escape sequence handling:
+  - [ ] `CharacterSetHandler` for ISO 2022 processing
+  - [ ] G0, G1, G2, G3 character set designation
+  - [ ] Single-shift (SS2, SS3) handling
+  - [ ] Locking-shift (LS0-LS3) handling
+- [ ] Supported character repertoires:
+  - [ ] ISO IR 6 (ASCII)
+  - [ ] ISO IR 13 (Japanese Katakana)
+  - [ ] ISO IR 14 (Japanese Romaji)
+  - [ ] ISO IR 87 (JIS X 0208 - Japanese Kanji)
+  - [ ] ISO IR 100 (Latin-1)
+  - [ ] ISO IR 101 (Latin-2, Central European)
+  - [ ] ISO IR 109 (Latin-3)
+  - [ ] ISO IR 110 (Latin-4, Baltic)
+  - [ ] ISO IR 126 (Greek)
+  - [ ] ISO IR 127 (Arabic)
+  - [ ] ISO IR 138 (Hebrew)
+  - [ ] ISO IR 144 (Cyrillic)
+  - [ ] ISO IR 148 (Latin-5, Turkish)
+  - [ ] ISO IR 149 (Korean)
+  - [ ] ISO IR 166 (Thai)
+  - [ ] ISO IR 192 (UTF-8)
+- [ ] Character set detection:
+  - [ ] Specific Character Set (0008,0005) parsing
+  - [ ] Multi-valued character set handling
+  - [ ] Default character set fallback
+  - [ ] Character set auto-detection heuristics
+- [ ] String encoding/decoding:
+  - [ ] Value representation-aware encoding
+  - [ ] Person Name (PN) component group handling
+  - [ ] Long String (LO), Short String (SH) encoding
+  - [ ] Unlimited Text (UT), Long Text (LT) encoding
+- [ ] Unicode normalization:
+  - [ ] NFC normalization for display
+  - [ ] Combining character handling
+  - [ ] Bidirectional text support (Arabic, Hebrew)
+
+#### Technical Notes
+- Reference: PS3.5 Section 6.1 - Support of Character Repertoires
+- Reference: PS3.5 Annex H - ISO 2022 Escape Sequences
+- Reference: PS3.3 C.12.1.1.2 - Specific Character Set
+- DICOM uses ISO 2022 escape sequences for character set switching
+- Person Name uses component groups with potentially different character sets
+- UTF-8 (ISO IR 192) is the recommended modern approach
+
+#### Acceptance Criteria
+- [ ] Correctly decode strings with ISO 2022 escape sequences
+- [ ] Support all common character repertoires (ISO IR 6-192)
+- [ ] Handle multi-valued Specific Character Set correctly
+- [ ] Encode strings with appropriate character set designators
+- [ ] Unit tests for international character support (target: 60+ tests)
+
+---
+
+### Milestone 10.10: Private Tag Handling Improvements (v1.0.10)
+
+**Status**: Planned  
+**Goal**: Enhanced private tag support for vendor interoperability  
+**Complexity**: Medium  
+**Dependencies**: Milestone 1 (Core Infrastructure)
+
+#### Deliverables
+- [ ] Private creator identification:
+  - [ ] `PrivateCreator` struct with identification info
+  - [ ] Private creator dictionary (vendor mappings)
+  - [ ] Creator ID to tag block mapping
+  - [ ] Private group allocation tracking
+- [ ] Private tag dictionary:
+  - [ ] Known vendor private tag definitions
+  - [ ] Siemens private tags (common modalities)
+  - [ ] GE Healthcare private tags
+  - [ ] Philips private tags
+  - [ ] Canon/Toshiba private tags
+  - [ ] Custom private tag definition loading
+- [ ] Private data element handling:
+  - [ ] `PrivateDataElement` with creator reference
+  - [ ] Private VR inference from known dictionaries
+  - [ ] Private sequence parsing improvements
+  - [ ] Unknown private tag preservation
+- [ ] Private tag creation:
+  - [ ] `PrivateTagAllocator` for creating private elements
+  - [ ] Private creator block reservation
+  - [ ] Conflict-free private group selection
+  - [ ] Private tag serialization
+- [ ] Vendor-specific features:
+  - [ ] Siemens CSA headers parsing
+  - [ ] GE Protocol Data Block parsing
+  - [ ] Philips private overlay data
+  - [ ] Vendor-specific pixel data handling
+
+#### Technical Notes
+- Reference: PS3.5 Section 7.8 - Private Data Elements
+- Reference: PS3.5 Section 6.1.4 - Private Creator Data Element
+- Private tags use odd group numbers (gggg where gggg is odd)
+- Private creator reserves element range xx10-xxFF
+- Vendor dictionaries help interpret proprietary data
+
+#### Acceptance Criteria
+- [ ] Correctly parse files with complex private tag structures
+- [ ] Recognize common vendor private tags by name
+- [ ] Create private tags with proper creator identification
+- [ ] Preserve unknown private tags during read/modify/write
+- [ ] Unit tests for private tag handling (target: 50+ tests)
+
+---
+
+### Milestone 10.11: ICC Profile Color Management (v1.0.11)
+
+**Status**: Planned  
+**Goal**: Implement ICC profile-based color management pipeline  
+**Complexity**: Medium  
+**Dependencies**: Milestone 10.2 (Color Presentation State)
+
+#### Deliverables
+- [ ] ICC Profile parsing:
+  - [ ] `ICCProfile` struct for profile data
+  - [ ] Profile header parsing
+  - [ ] Tag table parsing
+  - [ ] Common profile tags (A2B, B2A, TRC, etc.)
+- [ ] Profile types support:
+  - [ ] Input device profiles
+  - [ ] Display device profiles
+  - [ ] Output device profiles
+  - [ ] ColorSpace conversion profiles
+  - [ ] DeviceLink profiles
+- [ ] Color space conversions:
+  - [ ] sRGB to Profile Connection Space (PCS)
+  - [ ] PCS to display profile
+  - [ ] Matrix-based conversions
+  - [ ] LUT-based conversions
+- [ ] DICOM-specific color management:
+  - [ ] ICC Profile Module (0028,2000) extraction
+  - [ ] Color Space (0028,2002) handling
+  - [ ] Optical Path (Whole Slide Imaging) color
+  - [ ] Wide color gamut display support (P3, Rec2020)
+- [ ] Platform integration:
+  - [ ] ColorSync framework integration (macOS)
+  - [ ] Core Graphics color space mapping
+  - [ ] EDR (Extended Dynamic Range) support
+  - [ ] HDR display handling
+
+#### Technical Notes
+- Reference: PS3.3 C.11.15 - ICC Profile Module
+- Reference: ICC.1:2004-10 - ICC Profile Format Specification
+- ColorSync on Apple platforms provides ICC profile support
+- Display profiles calibrate output to device characteristics
+- Medical displays often have custom profiles for GSDF compliance
+
+#### Acceptance Criteria
+- [ ] Parse ICC profiles embedded in DICOM files
+- [ ] Apply color management to rendered images
+- [ ] Support display profile selection
+- [ ] Handle wide color gamut displays correctly
+- [ ] Unit tests for ICC profile support (target: 40+ tests)
+
+---
+
+### Milestone 10.12: Performance Optimizations (v1.0.12)
+
+**Status**: Planned  
+**Goal**: Optimize performance for production deployment  
+**Complexity**: High  
+**Dependencies**: All previous milestones
+
+#### Deliverables
+- [ ] Memory optimization:
+  - [ ] Memory-mapped file access for large DICOM files
+  - [ ] Lazy loading of pixel data
+  - [ ] Reference counting for shared data
+  - [ ] Memory pool for frequent allocations
+- [ ] Parsing performance:
+  - [ ] Streaming parser for large files
+  - [ ] Partial parsing (metadata-only mode)
+  - [ ] Skip-to-tag seeking optimization
+  - [ ] Binary search for sorted tag lookup
+- [ ] Image processing optimization:
+  - [ ] Metal compute shaders for GPU acceleration
+  - [ ] SIMD vectorization for CPU processing
+  - [ ] Concurrent multi-frame processing
+  - [ ] Image cache with LRU eviction
+- [ ] Network performance:
+  - [ ] Connection pooling for DICOMweb
+  - [ ] Parallel transfer for multi-frame retrieval
+  - [ ] Request batching optimization
+  - [ ] Compression negotiation (GZIP, Brotli)
+- [ ] Benchmarking infrastructure:
+  - [ ] `DICOMBenchmark` test harness
+  - [ ] Memory usage tracking
+  - [ ] Processing time measurement
+  - [ ] Comparison against other toolkits
+
+#### Technical Notes
+- Metal shaders available on all Apple platforms
+- Memory mapping reduces peak memory for large files
+- Lazy loading defers pixel decompression until access
+- Network optimizations reduce latency for clinical workflows
+
+#### Acceptance Criteria
+- [ ] 50% reduction in memory usage for large files (>100MB)
+- [ ] 2x improvement in parsing speed for common operations
+- [ ] GPU acceleration available for supported image processing
+- [ ] Performance benchmarks documented and published
+- [ ] No regression in functionality or accuracy
+
+---
+
+### Milestone 10.13: Comprehensive Documentation (v1.0.13)
+
+**Status**: Planned  
+**Goal**: Complete documentation for production readiness  
+**Complexity**: Medium  
+**Dependencies**: All previous milestones
+
+#### Deliverables
+- [ ] API documentation:
+  - [ ] DocC documentation for all public APIs
+  - [ ] Code examples for common use cases
+  - [ ] Tutorial-style guides (Getting Started, Advanced Topics)
+  - [ ] Migration guides from other DICOM libraries
+- [ ] Architecture documentation:
+  - [ ] Module dependency diagrams
+  - [ ] Data flow documentation
+  - [ ] Threading and concurrency model
+  - [ ] Memory management patterns
+- [ ] DICOM conformance documentation:
+  - [ ] Conformance Statement template
+  - [ ] Supported SOP Classes table
+  - [ ] Transfer Syntax support matrix
+  - [ ] Character set support details
+- [ ] Integration guides:
+  - [ ] iOS app integration guide
+  - [ ] macOS app integration guide
+  - [ ] visionOS spatial computing guide
+  - [ ] PACS/RIS integration patterns
+- [ ] Troubleshooting resources:
+  - [ ] Common issues and solutions
+  - [ ] Debugging techniques
+  - [ ] Error code reference
+  - [ ] FAQ document
+
+#### Technical Notes
+- DocC is Apple's documentation compiler for Swift
+- Conformance Statement follows DICOM PS3.2 template
+- Integration guides target specific platform patterns
+
+#### Acceptance Criteria
+- [ ] 100% documentation coverage for public APIs
+- [ ] DocC documentation builds without warnings
+- [ ] All tutorials verified to work with current release
+- [ ] Conformance Statement reviewed by DICOM experts
+
+---
+
+### Milestone 10.14: Example Applications (v1.0.14)
+
+**Status**: Planned  
+**Goal**: Production-quality example applications demonstrating DICOMKit  
+**Complexity**: Medium  
+**Dependencies**: All previous milestones
+
+#### Deliverables
+- [ ] DICOMViewer iOS app:
+  - [ ] File browser for local DICOM files
+  - [ ] Multi-frame image viewer with gestures
+  - [ ] Window/level adjustment
+  - [ ] Presentation state application
+  - [ ] Basic measurement tools
+  - [ ] Share functionality
+- [ ] DICOMViewer macOS app:
+  - [ ] Drag-and-drop file import
+  - [ ] Multi-window viewing
+  - [ ] Series comparison layout
+  - [ ] PACS query/retrieve integration
+  - [ ] Print support
+- [ ] DICOMViewer visionOS app:
+  - [ ] Spatial image viewing
+  - [ ] 3D volume rendering preview
+  - [ ] Hand tracking for measurements
+  - [ ] Immersive viewing mode
+- [ ] DICOMTools CLI:
+  - [ ] dicom-info: File information dump
+  - [ ] dicom-convert: Transfer syntax conversion
+  - [ ] dicom-anon: Anonymization tool
+  - [ ] dicom-validate: Conformance validation
+- [ ] Sample code snippets:
+  - [ ] Playground-ready examples
+  - [ ] SwiftUI integration patterns
+  - [ ] Async/await network examples
+  - [ ] Unit testing examples
+
+#### Technical Notes
+- Example apps use latest SwiftUI patterns
+- CLI tools useful for scripting and automation
+- Playground examples enable quick experimentation
+
+#### Acceptance Criteria
+- [ ] All example apps build and run without errors
+- [ ] Example apps demonstrate major DICOMKit features
+- [ ] CLI tools pass integration tests
+- [ ] Sample code snippets are verified runnable
+
+---
+
+### Milestone 10.15: Production Release Preparation (v1.0.15)
+
+**Status**: Planned  
+**Goal**: Final preparation for v1.0 production release  
+**Complexity**: Medium  
+**Dependencies**: Milestones 10.1-10.14
+
+#### Deliverables
+- [ ] Release validation:
+  - [ ] Full test suite passes (target: 95%+ coverage)
+  - [ ] Integration tests with real PACS systems
+  - [ ] Stress testing with large datasets
+  - [ ] Memory leak verification
+- [ ] Compatibility verification:
+  - [ ] iOS 17+ compatibility testing
+  - [ ] macOS 14+ compatibility testing
+  - [ ] visionOS 1+ compatibility testing
+  - [ ] Swift 6 strict concurrency compliance
+- [ ] Security audit:
+  - [ ] Code security review
+  - [ ] Dependency vulnerability scan
+  - [ ] Privacy compliance check
+  - [ ] HIPAA guideline verification
+- [ ] Release artifacts:
+  - [ ] Version bump to 1.0.0
+  - [ ] CHANGELOG.md finalization
+  - [ ] GitHub release with notes
+  - [ ] Swift Package Index submission
+  - [ ] CocoaPods podspec (optional)
+- [ ] Community preparation:
+  - [ ] Contribution guidelines finalization
+  - [ ] Issue template updates
+  - [ ] Discussion forum setup
+  - [ ] Support channel documentation
+
+#### Technical Notes
+- Semantic versioning: 1.0.0 indicates stable public API
+- Swift Package Index provides discoverability
+- HIPAA considerations for medical data handling
+
+#### Acceptance Criteria
+- [ ] All milestone 10 sub-deliverables complete
+- [ ] No critical or high-severity issues open
+- [ ] Documentation complete and reviewed
+- [ ] Performance benchmarks meet targets
+- [ ] Community feedback incorporated
+
+---
+
+### Milestone 10 Summary
+
+| Sub-Milestone | Version | Complexity | Status | Key Deliverables |
+|--------------|---------|------------|--------|------------------|
+| 10.1 GSPS | v1.0.1 | High | Planned | Grayscale Presentation State, LUT transforms, annotations |
+| 10.2 CSPS/Pseudo-Color | v1.0.2 | Medium | Planned | Color/Pseudo-Color PS, ICC profiles, blending |
+| 10.3 Hanging Protocol | v1.0.3 | High | Planned | Protocol definition, matching, display sets |
+| 10.4 RT Structure Set | v1.0.4 | Very High | Planned | ROI contours, structure visualization |
+| 10.5 RT Plan/Dose | v1.0.5 | Very High | Planned | Beam definitions, dose grids, DVH |
+| 10.6 Segmentation | v1.0.6 | High | Planned | SEG IOD, binary/fractional masks, overlay |
+| 10.7 Parametric Maps | v1.0.7 | Medium | Planned | Quantitative imaging, float pixel data |
+| 10.8 RWV LUT | v1.0.8 | Medium | Planned | Real world value mapping, SUV calculation |
+| 10.9 Character Sets | v1.0.9 | High | Planned | ISO 2022, international text support |
+| 10.10 Private Tags | v1.0.10 | Medium | Planned | Vendor private tag dictionaries |
+| 10.11 ICC Color | v1.0.11 | Medium | Planned | ICC profile color management |
+| 10.12 Performance | v1.0.12 | High | Planned | Memory, parsing, GPU optimization |
+| 10.13 Documentation | v1.0.13 | Medium | Planned | DocC, guides, conformance statement |
+| 10.14 Example Apps | v1.0.14 | Medium | Planned | iOS, macOS, visionOS viewers, CLI tools |
+| 10.15 Release Prep | v1.0.15 | Medium | Planned | Testing, security audit, release artifacts |
+
+### Overall Technical Notes
 - Reference: PS3.3 for all Information Object Definitions
+- Reference: PS3.5 for encoding and character set specifications
+- Reference: PS3.14 for display function standards
 - Consider Metal compute shaders for image processing
+- Build on infrastructure from Milestones 1-9
+- All APIs use Swift concurrency where applicable
+- Memory efficiency critical for mobile platforms
 
-### Acceptance Criteria
+### Overall Acceptance Criteria
 - Feature parity with major DICOM toolkits for common use cases
-- Production deployment validation
-- Performance benchmarks published
+- Production deployment validation with real clinical data
+- Performance benchmarks published and competitive
+- Comprehensive test coverage (target: 95%+)
+- Complete documentation with examples
+- Security review completed with no critical issues
+- v1.0.0 release published to Swift Package Index
 
 ---
 
@@ -2370,4 +3165,4 @@ We welcome contributions at any milestone! Please see [CONTRIBUTING.md](CONTRIBU
 
 ---
 
-*This roadmap is subject to change based on community feedback and project priorities. Last updated: January 2026*
+*This roadmap is subject to change based on community feedback and project priorities. Last updated: February 2026*
