@@ -10,9 +10,49 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.9.4)
+## Features (v0.9.5)
 
-- ✅ **Coded Terminology Support (NEW in v0.9.4)**
+- ✅ **Measurement and Coordinate Extraction (NEW in v0.9.5)**
+  - ✅ **Measurement Extraction**
+    - ✅ `Measurement` struct with value, unit, concept, and context
+    - ✅ `MeasurementGroup` for related measurements (e.g., lesion dimensions)
+    - ✅ `MeasurementQualifier` for special values (NaN, infinity, overflow)
+    - ✅ `DerivationMethod` tracking (manual, automatic, calculated)
+    - ✅ Unit conversion via UCUM-aware `converted(to:)` method
+  - ✅ **Spatial Coordinate Extraction**
+    - ✅ `SpatialCoordinates` struct wrapping SCOORD content items
+    - ✅ Support for all graphic types (POINT, POLYLINE, POLYGON, CIRCLE, ELLIPSE)
+    - ✅ Bounding box and centroid computation
+    - ✅ Area calculation for polygons, circles, and ellipses
+    - ✅ Perimeter/length calculation
+    - ✅ Image reference linkage
+  - ✅ **3D Coordinate Extraction**
+    - ✅ `SpatialCoordinates3D` struct wrapping SCOORD3D content items
+    - ✅ 3D bounding box and centroid computation
+    - ✅ Path length calculation
+    - ✅ Frame of Reference UID tracking
+  - ✅ **Temporal Coordinate Extraction**
+    - ✅ `TemporalCoordinates` struct wrapping TCOORD content items
+    - ✅ Sample positions, time offsets, and datetime references
+    - ✅ Duration calculation for temporal ranges
+    - ✅ Point vs. range type detection
+  - ✅ **Region of Interest (ROI) Support**
+    - ✅ `ROI` struct combining coordinates with measurements
+    - ✅ Area and perimeter from 2D coordinates
+    - ✅ 2D and 3D bounding boxes
+    - ✅ Centroid calculation
+    - ✅ Associated measurement extraction
+  - ✅ **MeasurementExtractor API**
+    - ✅ `extractAllMeasurements(from:)` - All measurements from document
+    - ✅ `extractMeasurements(forConcept:from:)` - Filter by concept
+    - ✅ `extractMeasurementGroups(from:)` - Grouped measurements
+    - ✅ `extractSpatialCoordinates(from:)` - All 2D coordinates
+    - ✅ `extractSpatialCoordinates3D(from:)` - All 3D coordinates
+    - ✅ `extractTemporalCoordinates(from:)` - All temporal coordinates
+    - ✅ `extractROIs(from:)` - All regions of interest
+    - ✅ `computeStatistics(_:)` - Statistical summaries (mean, std dev, min, max)
+    - ✅ `groupByLocation(_:)` - Group measurements by concept
+- ✅ **Coded Terminology Support (v0.9.4)**
   - ✅ **Coding Scheme Infrastructure**
     - ✅ `CodingScheme` struct with designator, name, version, UID
     - ✅ `CodingSchemeRegistry` for managing known coding schemes
@@ -2053,7 +2093,7 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -2089,6 +2129,18 @@ High-level API:
 - `CompletionFlag` - Document completion status (COMPLETE, PARTIAL)
 - `VerificationFlag` - Document verification status (VERIFIED, UNVERIFIED)
 - `PreliminaryFlag` - Document preliminary status (PRELIMINARY, FINAL)
+
+**Measurement and Coordinate Extraction (NEW in v0.9.5):**
+- `Measurement` - Extracted numeric measurement with value, unit, and context
+- `MeasurementGroup` - Related measurements grouped together
+- `MeasurementQualifier` - Special value qualifiers (NaN, infinity, overflow)
+- `DerivationMethod` - How measurement was obtained (manual, automatic, calculated)
+- `MeasurementStatistics` - Statistical summary (mean, min, max, std dev)
+- `SpatialCoordinates` - 2D coordinates with computed geometry (area, perimeter, centroid)
+- `SpatialCoordinates3D` - 3D coordinates with bounding box and centroid
+- `TemporalCoordinates` - Temporal coordinates with duration calculation
+- `ROI` - Region of Interest combining coordinates with measurements
+- `MeasurementExtractor` - API for extracting measurements and coordinates from SR documents
 
 ### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6, v0.8.7, v0.8.8)
 DICOMweb (RESTful DICOM) client and server implementation:
@@ -2236,4 +2288,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.4 - implementing comprehensive Coded Terminology Support for DICOM Structured Reporting. This version adds support for major medical coding schemes (SNOMED CT, LOINC, RadLex, UCUM, DCM), context groups per PS3.16, and cross-terminology code mapping. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v0.9.5 - implementing Measurement and Coordinate Extraction for DICOM Structured Reporting. This version adds the `MeasurementExtractor` API for extracting quantitative measurements, spatial coordinates (2D/3D), temporal coordinates, and regions of interest from SR documents with computed properties like area, perimeter, and centroids. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
