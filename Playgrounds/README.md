@@ -6,9 +6,9 @@ Comprehensive sample code and examples demonstrating DICOMKit usage across all f
 
 This collection contains 27+ interactive Swift playground files organized into 6 categories, covering everything from basic file reading to advanced medical imaging workflows. Each playground is a standalone Swift file with multiple examples, comprehensive comments, and quick reference guides.
 
-**Status**: In Progress (Category 1 complete, Category 2 in progress)  
-**Total Examples**: 42+ across completed categories  
-**Lines of Code**: 66KB+ of sample code  
+**Status**: In Progress (Categories 1-2 complete)  
+**Total Examples**: 75+ across completed categories  
+**Lines of Code**: 114KB+ of sample code  
 **Target Audience**: Developers integrating DICOMKit into medical imaging applications
 
 ## Quick Start
@@ -74,7 +74,7 @@ Essential concepts for working with DICOM files using DICOMKit.
 - Logging and async/await patterns
 - 10 complete examples
 
-### 🚧 2. Image Processing (4 playgrounds - IN PROGRESS)
+### ✅ 2. Image Processing (4 playgrounds - COMPLETE)
 Advanced image display and manipulation techniques.
 
 **2.1 Window/Level** (`2.1_WindowLevel.swift`) ✅ COMPLETE
@@ -88,26 +88,42 @@ Advanced image display and manipulation techniques.
 - MR-specific windowing
 - 9 complete examples
 
-**2.2 Image Export** (COMING SOON)
+**2.2 Image Export** (`2.2_ImageExport.swift`) ✅ COMPLETE
 - Export to PNG, JPEG, TIFF
 - Quality settings and compression
-- Applying transformations before export
+- Applying window/level before export
+- Multi-frame export
 - Batch export
-- Burn-in annotations
-- Export to Photos library
+- Export with metadata preservation
+- Photos library integration (iOS)
+- Smart format selection
+- Cross-platform implementations
+- 9 complete examples
 
-**2.3 Multi-frame Series** (COMING SOON)
-- Cine playback
-- Frame navigation
-- Synchronizing multiple series
-- Frame rate control
-- Memory-efficient loading
+**2.3 Multi-frame Series** (`2.3_MultiframeSeries.swift`) ✅ COMPLETE
+- Basic multi-frame access
+- Frame timing information
+- Simple cine playback loop
+- Frame caching for smooth playback
+- Timer-based cine playback
+- Frame extraction by time
+- Memory-efficient frame iteration
+- Frame sequence information
+- Adaptive FPS calculation
+- 9 complete examples
 
-**2.4 Transfer Syntax** (COMING SOON)
-- Supported transfer syntaxes
-- Detecting compression
-- Converting between syntaxes
+**2.4 Transfer Syntax** (`2.4_TransferSyntax.swift`) ✅ COMPLETE
+- Detecting transfer syntax
+- Common transfer syntaxes by modality
+- Working with uncompressed pixel data
 - Handling compressed pixel data
+- Transfer syntax by modality
+- Checking transfer syntax support
+- Byte order considerations
+- Encapsulated vs native pixel data
+- Transfer syntax negotiation concepts
+- Best practices
+- 10 complete examples
 
 ### 📋 3. Network Operations (5 playgrounds - PLANNED)
 PACS integration and DICOMweb protocols.
@@ -319,25 +335,31 @@ Found an issue or want to add an example?
 
 | Category | Playgrounds | Examples | Lines of Code | Status |
 |----------|-------------|----------|---------------|--------|
-| Getting Started | 4 | 33 | 48.3 KB | ✅ Complete |
-| Image Processing | 1/4 | 9 | 17.8 KB | 🚧 In Progress |
+| Getting Started | 4/4 | 33 | 48.3 KB | ✅ Complete |
+| Image Processing | 4/4 | 37 | 65.9 KB | ✅ Complete |
 | Network Operations | 0/5 | 0 | 0 KB | 📋 Planned |
 | Structured Reporting | 0/4 | 0 | 0 KB | 📋 Planned |
 | SwiftUI Integration | 0/5 | 0 | 0 KB | 📋 Planned |
 | Advanced Topics | 0/5 | 0 | 0 KB | 📋 Planned |
-| **TOTAL** | **5/27** | **42** | **66.1 KB** | **19% Complete** |
+| **TOTAL** | **8/27** | **70** | **114.2 KB** | **30% Complete** |
 
 ## Changelog
 
 ### February 2026
 - ✅ Created playground structure
 - ✅ Completed Category 1: Getting Started (4 playgrounds, 33 examples)
-- ✅ Added 2.1 Window/Level playground (9 examples)
+- ✅ Completed Category 2: Image Processing (4 playgrounds, 37 examples)
+  - ✅ 2.1 Window/Level (9 examples)
+  - ✅ 2.2 Image Export (9 examples)
+  - ✅ 2.3 Multi-frame Series (9 examples)
+  - ✅ 2.4 Transfer Syntax (10 examples)
 - 📝 Created this README
 
 ### Planned
-- Complete Category 2: Image Processing
-- Add Categories 3-6
+- Add Category 3: Network Operations (5 playgrounds)
+- Add Category 4: Structured Reporting (4 playgrounds)
+- Add Category 5: SwiftUI Integration (5 playgrounds)
+- Add Category 6: Advanced Topics (5 playgrounds)
 - Create Xcode Playground workspace
 - Add interactive elements
 - Include sample DICOM files

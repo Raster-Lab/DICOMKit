@@ -3354,11 +3354,11 @@ This milestone delivers comprehensive demo applications across all Apple platfor
     - [x] Accessing Metadata (9 examples, 13.4KB)
     - [x] Pixel Data Access (9 examples, 15.3KB)
     - [x] Error Handling (10 examples, 14.6KB)
-  - [ ] **Image Processing** (4 playgrounds): 🚧 1/4 COMPLETE
+  - [x] **Image Processing** (4 playgrounds): ✅ COMPLETE
     - [x] Window/Level (9 examples, 17.8KB)
-    - [ ] Image Export
-    - [ ] Multi-frame Series
-    - [ ] Transfer Syntax
+    - [x] Image Export (9 examples, 15.2KB)
+    - [x] Multi-frame Series (9 examples, 16.4KB)
+    - [x] Transfer Syntax (10 examples, 16.5KB)
   - [ ] **Network Operations** (5 playgrounds):
     - [ ] PACS Query (C-FIND)
     - [ ] PACS Retrieve (C-MOVE)
@@ -3397,7 +3397,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | macOS Viewer | 250+ | 70+ | 40+ | 360+ | Planned |
 | visionOS Viewer | 205+ | 45+ | 20+ | 270+ | Planned |
 | CLI Tools | 370+ | 125+ | - | 495+ | Planned |
-| Sample Code | 5 (19% complete) | - | - | 575+ (target) | 🚧 In Progress |
+| Sample Code | 8 (30% complete) | - | - | 575+ (target) | 🚧 In Progress |
 | **TOTAL** | **1,435+** | **240+** | **60+** | **1,735+** | In Progress |
 
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.
