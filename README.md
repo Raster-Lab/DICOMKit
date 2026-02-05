@@ -68,6 +68,39 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ **Region of Interest (ROI) Support** - Anatomical and planning structures
     - ✅ `RTRegionOfInterest` struct with geometric data and metadata
     - ✅ ROI identification (number, name, description)
+
+- ✅ **Radiation Therapy Plan and Dose Support (NEW in v1.0.5)**
+  - ✅ **RT Plan IOD** - Complete implementation of RT Plan Storage (PS3.3 A.20)
+    - ✅ `RTPlan` struct with fraction groups, beams, and dose references
+    - ✅ `RTPlanParser` for parsing RT Plan DICOM objects
+    - ✅ Plan identification (label, name, description, date/time, geometry)
+    - ✅ Dose Reference Sequence for target and organ-at-risk prescriptions
+    - ✅ Fraction Group Sequence with treatment scheduling
+    - ✅ Referenced Structure Set and Dose linking
+    - ✅ 90+ DICOM tags in group 0x300A for comprehensive RT Plan support
+  - ✅ **RT Beam Support** - External beam radiation therapy beams
+    - ✅ `RTBeam` struct with beam parameters and control points
+    - ✅ Beam identification (number, name, type, radiation type)
+    - ✅ Machine parameters (treatment machine, dosimeter unit, SAD)
+    - ✅ Control Point Sequence with gantry, collimator, and couch angles
+    - ✅ Beam Limiting Device positions (jaws, MLC)
+    - ✅ Dose rate and energy specifications
+    - ✅ Support for STATIC, DYNAMIC, IMRT, and VMAT beams
+  - ✅ **RT Dose IOD** - Dose distribution and DVH support (PS3.3 A.18)
+    - ✅ `RTDose` struct for 3D dose grid representation
+    - ✅ `RTDoseParser` for parsing RT Dose DICOM objects
+    - ✅ Dose grid geometry (image position, orientation, pixel spacing)
+    - ✅ Dose scaling and units (GY, RELATIVE)
+    - ✅ Dose summation types (PLAN, MULTI_PLAN, FRACTION, BEAM)
+    - ✅ DVH (Dose Volume Histogram) data extraction
+    - ✅ Referenced RT Plan and Structure Set linking
+    - ✅ Support for 16-bit and 32-bit dose grids
+    - ✅ Dose value access with automatic scaling
+  - ✅ **Brachytherapy Support** - High/low dose rate brachytherapy
+    - ✅ `BrachyApplicationSetup` for applicator configurations
+    - ✅ `BrachyChannel` with source positioning and dwell times
+    - ✅ Brachytherapy Control Point Sequence
+    - ✅ Source isotope and air kerma rate specifications
     - ✅ Generation algorithm tracking (manual, automatic, AI)
     - ✅ Frame of Reference UID for spatial registration
     - ✅ ROI physical properties (density, mass)
@@ -3377,7 +3410,7 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -3462,6 +3495,22 @@ High-level API:
 - `RTROIObservation` - Clinical observation and interpretation
 - `RTROIInterpretedType` - ROI clinical types (PTV, CTV, GTV, ORGAN, EXTERNAL, AVOIDANCE, etc.)
 - `ROIPhysicalProperty` - Physical property specification (density, mass)
+
+**Radiation Therapy Plan and Dose Support (NEW in v1.0.5):**
+- `RTPlan` - Complete RT Plan structure (PS3.3 A.20)
+- `RTPlanParser` - Parse DICOM RT Plan objects
+- `DoseReference` - Dose prescription references for targets and OARs
+- `FractionGroup` - Treatment fraction scheduling and beam grouping
+- `RTBeam` - External beam radiation therapy beam definition
+- `BeamControlPoint` - Beam state at specific delivery positions
+- `BeamLimitingDevicePosition` - Jaw and MLC positions
+- `WedgePosition` - Wedge configuration and orientation
+- `BrachyApplicationSetup` - Brachytherapy applicator setup
+- `BrachyChannel` - Brachytherapy source channel
+- `BrachyControlPoint` - Source position and dwell time
+- `RTDose` - 3D dose distribution grid (PS3.3 A.18)
+- `RTDoseParser` - Parse DICOM RT Dose objects
+- `DVHData` - Dose Volume Histogram data
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -3703,4 +3752,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.4 - implementing Radiation Therapy Structure Set Support. This version adds comprehensive support for RT Structure Set Storage (PS3.3 A.19), enabling radiation therapy planning structure management for diagnostic and treatment planning systems. The implementation includes complete RT Structure Set IOD parsing with ROI definitions, contour geometry (5 geometric types), 3D point extraction in patient coordinates, clinical observations with 18 interpreted types (PTV, CTV, GTV, ORGAN, etc.), physical properties, and display color support. The implementation features 33 comprehensive unit tests (100% pass rate) covering data structures, parsing, and complete integration scenarios. This builds upon v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.5 - implementing Radiation Therapy Plan and Dose Support. This version adds comprehensive support for RT Plan Storage (PS3.3 A.20) and RT Dose Storage (PS3.3 A.18), enabling treatment planning and dose distribution management for radiation oncology systems. The implementation includes complete RT Plan IOD parsing with fraction groups, external beam and brachytherapy beam definitions, control point sequences (gantry/collimator/couch angles), beam limiting device positions (MLC, jaws), dose prescriptions, and RT Dose IOD parsing with 3D dose grids (16-bit/32-bit), dose scaling, DVH data extraction, and dose summation types. The implementation features 35 comprehensive unit tests (100% pass rate) covering RT Plan, RT Beam, and RT Dose data structures with complete integration scenarios. This builds upon v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
