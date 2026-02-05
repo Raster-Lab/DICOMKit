@@ -4,9 +4,9 @@
 
 This document provides a comprehensive plan for creating production-quality demo applications that showcase DICOMKit's capabilities across iOS, macOS, and visionOS platforms. These applications will serve as reference implementations for developers integrating DICOMKit into their medical imaging solutions.
 
-**Status**: Ready for Implementation (Post-Milestone 10)  
+**Status**: In Progress (iOS Viewer Complete, others pending)  
 **Target Version**: v1.0.14 - v1.0.15  
-**Estimated Duration**: 6-8 weeks  
+**Estimated Duration**: 6-8 weeks (iOS: ✅ Complete, remaining: 10-14 weeks)  
 **Dependencies**: All Milestone 10 sub-milestones (10.1-10.13)
 
 ### Detailed Implementation Plans
@@ -14,12 +14,14 @@ This document provides a comprehensive plan for creating production-quality demo
 This document provides a high-level overview. For detailed phase-by-phase implementation plans with comprehensive test cases, see:
 
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 370+ unit tests, 125+ integration tests)
-- **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 160+ unit tests, 30+ integration tests, 30+ UI tests)
+- **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS ✅ **IMPLEMENTED** (35+ unit tests, comprehensive documentation)
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 250+ unit tests, 70+ integration tests, 40+ UI tests)
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 205+ unit tests, 45+ integration tests, 20+ device tests)
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Sample Code & Playgrounds (27 playgrounds, 1 week, 575+ test cases)
 
-**Total Test Coverage**: 1,560+ unit tests, 270+ integration tests, 70+ UI tests, 575+ playground tests across all demo applications.
+**iOS Viewer Status**: Complete (February 2026) - All 4 phases implemented with 21 Swift files, 35+ tests. See [DICOMViewer-iOS/STATUS.md](DICOMViewer-iOS/STATUS.md).
+
+**Total Test Coverage**: 1,235+ unit tests, 240+ integration tests, 60+ UI tests, 575+ playground tests across all demo applications (iOS complete, others planned).
 
 ---
 
@@ -1161,7 +1163,7 @@ This comprehensive demo application plan provides a roadmap for creating product
 | Component | Detailed Plan | Duration | Test Coverage |
 |-----------|---------------|----------|---------------|
 | **CLI Tools Suite** | [CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md) | 2-3 weeks | 370+ unit, 125+ integration tests |
-| **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) | 3-4 weeks | 160+ unit, 30+ integration, 30+ UI tests |
+| **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) ✅ Complete | 3-4 weeks | 35+ unit tests (actual implementation) |
 | **macOS Viewer** | [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) | 4-5 weeks | 250+ unit, 70+ integration, 40+ UI tests |
 | **visionOS Viewer** | [VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md) | 3-4 weeks | 205+ unit, 45+ integration, 20+ device tests |
 | **Sample Code** | [SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md) | 1 week | 575+ playground tests across 27 playgrounds |

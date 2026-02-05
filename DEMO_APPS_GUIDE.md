@@ -20,7 +20,7 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 | Component | Plan Document | Duration | Tests | Key Features |
 |-----------|---------------|----------|-------|--------------|
 | **CLI Tools** | [CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md) | 2-3 weeks | 495+ | 7 tools: info, convert, anon, validate, query, send, dump |
-| **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) | 3-4 weeks | 220+ | Gestures, measurements, GSPS, cine playback |
+| **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) ✅ Complete | 3-4 weeks | 35+ | Gestures, measurements, GSPS, cine playback |
 | **macOS Viewer** | [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) | 4-5 weeks | 360+ | PACS integration, MPR, 3D, printing |
 | **visionOS Viewer** | [VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md) | 3-4 weeks | 270+ | Spatial 3D, hand tracking, SharePlay |
 | **Sample Code** | [SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md) | 1 week | 575+ | 27 playgrounds in 6 categories |
