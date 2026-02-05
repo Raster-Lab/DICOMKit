@@ -2611,59 +2611,69 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 ### Milestone 10.6: Segmentation Objects (SEG) (v1.0.6)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Implement DICOM Segmentation IOD for labeled image regions  
 **Complexity**: High  
 **Dependencies**: Milestone 3 (Pixel Data Access), Milestone 5 (DICOM Writing)
 
 #### Deliverables
-- [ ] Segmentation IOD:
-  - [ ] `Segmentation` struct conforming to PS3.3 A.51
-  - [ ] Segmentation Series Module parsing
-  - [ ] Segmentation Image Module parsing
-  - [ ] Multi-frame Functional Groups parsing
-- [ ] Segment definitions:
-  - [ ] `Segment` struct with identification and properties
-  - [ ] `SegmentIdentification` (segment number, label)
-  - [ ] `SegmentCategoryTypeCode` using CID 7150
-  - [ ] `SegmentPropertyTypeCode` using CID 7151
-  - [ ] Anatomic region coding
-- [ ] Segmentation types:
-  - [ ] `SegmentationType` enum (BINARY, FRACTIONAL)
-  - [ ] Binary segmentation frame extraction
-  - [ ] Fractional segmentation (probability maps)
-  - [ ] Maximum fractional value handling
-- [ ] Segmentation pixel data:
-  - [ ] Frame-by-frame segment mask extraction
-  - [ ] Per-frame functional group parsing
-  - [ ] Derivation Image Functional Group (source image reference)
-  - [ ] Segment Identification Functional Group
-- [ ] Segmentation visualization:
-  - [ ] `SegmentationRenderer` for overlay display
-  - [ ] Color mapping per segment
-  - [ ] Opacity/transparency control
-  - [ ] Multiple segment overlay compositing
-- [ ] Segmentation creation:
-  - [ ] `SegmentationBuilder` for creating new SEG objects
-  - [ ] Binary mask to segmentation conversion
-  - [ ] AI/ML prediction output encoding
-  - [ ] Segment metadata assignment
+- [x] Segmentation IOD:
+  - [x] `Segmentation` struct conforming to PS3.3 A.51
+  - [x] Segmentation Series Module parsing
+  - [x] Segmentation Image Module parsing
+  - [x] Multi-frame Functional Groups parsing
+- [x] Segment definitions:
+  - [x] `Segment` struct with identification and properties
+  - [x] `SegmentIdentification` (segment number, label)
+  - [x] `CodedConcept` for category (CID 7150) and type (CID 7151)
+  - [x] Anatomic region coding
+  - [x] `SegmentAlgorithmType` enum (AUTOMATIC, SEMIAUTOMATIC, MANUAL)
+- [x] Segmentation types:
+  - [x] `SegmentationType` enum (BINARY, FRACTIONAL)
+  - [x] Binary segmentation frame extraction (1-bit packed, MSB first)
+  - [x] Fractional segmentation (8/16-bit probability maps)
+  - [x] Maximum fractional value handling
+  - [x] `SegmentationFractionalType` enum (PROBABILITY, OCCUPANCY)
+- [x] Segmentation pixel data:
+  - [x] Frame-by-frame segment mask extraction
+  - [x] Per-frame functional group parsing
+  - [x] Derivation Image Functional Group (source image reference)
+  - [x] Segment Identification Functional Group
+  - [x] `SegmentationPixelDataExtractor` with comprehensive extraction methods
+- [x] Segmentation visualization:
+  - [x] `SegmentationRenderer` for overlay display
+  - [x] Color mapping per segment (CIELab to RGB conversion)
+  - [x] Opacity/transparency control (0.0-1.0)
+  - [x] Multiple segment overlay compositing with alpha blending
+  - [x] CGImage integration for Apple platforms
+  - [x] Custom color support and visibility filtering
+- [x] Segmentation creation:
+  - [x] `SegmentationBuilder` for creating new SEG objects
+  - [x] Binary mask to segmentation conversion (bit-packing)
+  - [x] Fractional mask conversion (8/16-bit encoding)
+  - [x] AI/ML prediction output encoding
+  - [x] Segment metadata assignment (label, category, type, algorithm)
+  - [x] Source image reference tracking
+  - [x] Per-frame functional groups generation
 
 #### Technical Notes
 - Reference: PS3.3 A.51 - Segmentation IOD
 - Reference: PS3.3 C.8.20 - Segmentation Modules
 - Reference: PS3.3 C.7.6.16 - Multi-frame Functional Groups
+- Reference: PS3.5 Section 8.1.1 - Bit packing for binary segmentations (MSB first)
 - Segmentations use multi-frame format with one frame per segment per slice
-- Binary uses 1 bit per pixel, packed into bytes
+- Binary uses 1 bit per pixel, packed into bytes (8 pixels per byte)
 - Fractional uses 8 or 16 bits with probability values
+- DICOM tags in group 0x0062 for segmentation-specific attributes
+- DICOM tags in group 0x5200 for multi-frame functional groups
 
 #### Acceptance Criteria
-- [ ] Parse segmentation objects from AI/ML tools (e.g., MONAI, nnU-Net)
-- [ ] Extract binary and fractional segment masks
-- [ ] Map segments to source image frames correctly
-- [ ] Render segmentation overlays on referenced images
-- [ ] Create segmentations from mask data
-- [ ] Unit tests for segmentation support (target: 70+ tests)
+- [x] Parse segmentation objects from AI/ML tools (e.g., MONAI, nnU-Net) - Parser implemented
+- [x] Extract binary and fractional segment masks - SegmentationPixelDataExtractor created
+- [x] Map segments to source image frames correctly - Functional groups parsed
+- [x] Render segmentation overlays on referenced images - SegmentationRenderer with compositing
+- [x] Create segmentations from mask data - SegmentationBuilder with fluent API
+- [x] Unit tests for segmentation support (target: 70+ tests) - **98 tests created, all passing**
 
 ---
 
@@ -3138,7 +3148,7 @@ This milestone is divided into modular sub-milestones based on feature complexit
 | 10.3 Hanging Protocol | v1.0.3 | High | ✅ Completed | Protocol definition, matching, display sets (147 tests, 98% pass rate) |
 | 10.4 RT Structure Set | v1.0.4 | Very High | ✅ Completed | ROI contours, structure visualization (33 tests, 100% pass rate) |
 | 10.5 RT Plan/Dose | v1.0.5 | Very High | ✅ Completed | Beam definitions, dose grids, DVH (35 tests, 100% pass rate) |
-| 10.6 Segmentation | v1.0.6 | High | Planned | SEG IOD, binary/fractional masks, overlay |
+| 10.6 Segmentation | v1.0.6 | High | ✅ Completed | SEG IOD, binary/fractional masks, rendering, builder (98 tests, 100% pass rate) |
 | 10.7 Parametric Maps | v1.0.7 | Medium | Planned | Quantitative imaging, float pixel data |
 | 10.8 RWV LUT | v1.0.8 | Medium | Planned | Real world value mapping, SUV calculation |
 | 10.9 Character Sets | v1.0.9 | High | Planned | ISO 2022, international text support |
