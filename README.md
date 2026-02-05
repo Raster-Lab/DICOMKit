@@ -10,7 +10,37 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v0.9.8)
+## Features (v1.0.1)
+
+- ✅ **Grayscale Presentation State (GSPS) (NEW in v1.0.1)**
+  - ✅ **Presentation State IOD Support** - Complete implementation of Grayscale Softcopy Presentation State (PS3.3 A.33)
+    - ✅ `PresentationState` base protocol with common attributes
+    - ✅ `GrayscalePresentationState` struct for grayscale image display parameters
+    - ✅ `GrayscalePresentationStateParser` for parsing GSPS DICOM objects
+    - ✅ Referenced series and image tracking (`ReferencedSeries`, `ReferencedImage`)
+  - ✅ **Display Transformation Pipeline** - Complete LUT transformation chain
+    - ✅ `ModalityLUT` for modality-specific pixel value transforms
+    - ✅ `VOILUT` for Value of Interest (window/level) transformations
+    - ✅ `PresentationLUT` for final output intensity mapping
+    - ✅ `LUTData` for explicit lookup table specifications
+  - ✅ **Spatial Transformations** - Image geometry and display area control
+    - ✅ `SpatialTransformation` for rotation (0°, 90°, 180°, 270°) and flipping
+    - ✅ `DisplayedArea` for zoom, pan, and viewport management
+    - ✅ `PresentationSizeMode` for scaling behavior (scale to fit, true size, magnify)
+  - ✅ **Graphic Annotations** - Overlay graphics and text on images
+    - ✅ `GraphicLayer` for multi-layer annotation organization
+    - ✅ `GraphicObject` with full geometric type support (POINT, POLYLINE, INTERPOLATED, CIRCLE, ELLIPSE)
+    - ✅ `TextObject` for text annotations with positioning and formatting
+    - ✅ `AnnotationUnits` for display (PIXEL) and DICOM (DISPLAY) coordinate systems
+  - ✅ **Display Shutters** - Region masking and privacy protection
+    - ✅ `DisplayShutter` enum with rectangular, circular, and polygonal shapes
+    - ✅ Bitmap overlay shutter support for arbitrary masking
+    - ✅ Shutter presentation value for masked areas
+  - ✅ **Presentation State Application** - Apply GSPS to images
+    - ✅ `PresentationStateApplicator` for rendering images with presentation state
+    - ✅ Integration with `CGImage` rendering pipeline
+    - ✅ Annotation overlay rendering on top of processed images
+    - ✅ Multiple presentation state support for comparison viewing
 
 - ✅ **Common SR Templates (NEW in v0.9.8)**
   - ✅ **BasicTextSRBuilder** - Specialized builder for Basic Text SR documents
@@ -958,6 +988,87 @@ if let pixelData = dicomFile.pixelData() {
             // Process each frame
         }
     }
+}
+#endif
+```
+
+### Grayscale Presentation State (GSPS) (v1.0.1)
+
+```swift
+import DICOMKit
+#if canImport(CoreGraphics)
+import CoreGraphics
+
+// Parse a GSPS DICOM file
+let gspsData = try Data(contentsOf: gspsFileURL)
+let gspsFile = try DICOMFile.read(from: gspsData)
+let parser = GrayscalePresentationStateParser()
+let presentationState = try parser.parse(dataSet: gspsFile.dataSet)
+
+print("Presentation Label: \(presentationState.presentationLabel ?? "Untitled")")
+print("Referenced Series: \(presentationState.referencedSeries.count)")
+
+// Apply presentation state to an image
+let imageData = try Data(contentsOf: imageFileURL)
+let imageFile = try DICOMFile.read(from: imageData)
+
+let applicator = PresentationStateApplicator()
+if let renderedImage = try applicator.apply(
+    presentationState: presentationState,
+    to: imageFile,
+    frameNumber: 0
+) {
+    // Use the rendered image with presentation state applied
+    // Includes window/level, spatial transformations, and annotations
+}
+
+// Access presentation state components
+if let voiLUT = presentationState.voiLUT {
+    switch voiLUT {
+    case .windowLevel(let center, let width, let explanation):
+        print("Window: Center=\(center), Width=\(width)")
+        print("Explanation: \(explanation ?? "none")")
+    case .lut(let lutData):
+        print("Using explicit VOI LUT with \(lutData.numberOfEntries) entries")
+    }
+}
+
+// Access graphic annotations
+for layer in presentationState.graphicLayers {
+    print("Layer: \(layer.layerName), Order: \(layer.layerOrder)")
+}
+
+for annotation in presentationState.graphicAnnotations {
+    print("Annotation on layer: \(annotation.graphicLayer ?? "default")")
+    
+    for graphicObject in annotation.graphicObjects {
+        print("  Graphic type: \(graphicObject.graphicType)")
+        print("  Points: \(graphicObject.graphicData.count)")
+    }
+    
+    for textObject in annotation.textObjects {
+        print("  Text: \(textObject.unformattedTextValue)")
+    }
+}
+
+// Access display shutters
+if let shutter = presentationState.displayShutter {
+    switch shutter {
+    case .rectangular(let left, let right, let top, let bottom, let presentationValue):
+        print("Rectangular shutter: (\(left), \(top)) to (\(right), \(bottom))")
+    case .circular(let centerX, let centerY, let radius, let presentationValue):
+        print("Circular shutter at (\(centerX), \(centerY)) radius \(radius)")
+    case .polygonal(let points, let presentationValue):
+        print("Polygonal shutter with \(points.count) points")
+    case .bitmap(let rows, let columns, let origin, let data, let presentationValue):
+        print("Bitmap shutter: \(columns)x\(rows)")
+    }
+}
+
+// Access spatial transformations
+if let transform = presentationState.spatialTransformation {
+    print("Rotation: \(transform.rotation)°")
+    print("Horizontal flip: \(transform.horizontalFlip)")
 }
 #endif
 ```
@@ -3143,12 +3254,35 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
 - `PixelDataRenderer` - CGImage rendering for Apple platforms (iOS, macOS, visionOS)
 - Public API umbrella
+
+**Grayscale Presentation State (GSPS) (NEW in v1.0.1):**
+- `PresentationState` - Base protocol for presentation state objects
+- `GrayscalePresentationState` - Grayscale Softcopy Presentation State struct (PS3.3 A.33)
+- `GrayscalePresentationStateParser` - Parse GSPS DICOM objects into structured format
+- `ReferencedSeries` - Referenced series in a presentation state
+- `ReferencedImage` - Referenced image instance with frame numbers
+- `ModalityLUT` - Modality LUT transformation (linear, lookup table)
+- `VOILUT` - VOI LUT transformation (window/level, lookup table)
+- `PresentationLUT` - Presentation LUT transformation (identity, inverse, lookup table)
+- `LUTData` - Lookup table data with descriptor
+- `SpatialTransformation` - Image rotation and flipping transformations
+- `DisplayedArea` - Zoom and pan state with presentation size mode
+- `PresentationSizeMode` - Scaling behavior (scale to fit, true size, magnify)
+- `GraphicLayer` - Graphic annotation layer with ordering
+- `GraphicAnnotation` - Annotation with graphic and text objects
+- `GraphicObject` - Geometric annotation (point, polyline, circle, ellipse, etc.)
+- `PresentationGraphicType` - Annotation graphic types
+- `TextObject` - Text annotation with positioning and formatting
+- `AnnotationUnits` - Coordinate system for annotations (pixel, display)
+- `DisplayShutter` - Region masking (rectangular, circular, polygonal, bitmap)
+- `ShutterShape` - Shutter shape enumeration
+- `PresentationStateApplicator` - Apply GSPS to images and render with annotations
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -3365,7 +3499,7 @@ DICOMweb (RESTful DICOM) client and server implementation:
 ## DICOM Standard Compliance
 
 DICOMKit implements:
-- **DICOM PS3.3 2025e** - Information Object Definitions (Structured Reporting modules)
+- **DICOM PS3.3 2025e** - Information Object Definitions (Structured Reporting, Presentation State modules)
 - **DICOM PS3.5 2025e** - Data Structures and Encoding
 - **DICOM PS3.6 2025e** - Data Dictionary (partial, essential tags only)
 - **DICOM PS3.7 2025e** - Message Exchange (DIMSE-C services)
@@ -3390,4 +3524,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v0.9.8 - implementing Common SR Templates for DICOM Structured Reporting. This version adds specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), Key Object Selection, Mammography CAD SR, and Chest CAD SR documents. The `BasicTextSRBuilder` provides simple text-based reports with section headings, `EnhancedSRBuilder` extends this with numeric measurements and waveform references, `ComprehensiveSRBuilder` adds 2D spatial coordinates (SCOORD) and temporal coordinates (TCOORD) for measurement reports with image annotations, `Comprehensive3DSRBuilder` adds 3D spatial coordinates (SCOORD3D) for volumetric measurements and 3D ROI definitions, `MeasurementReportBuilder` implements the TID 1500 template for structured measurement reporting, `KeyObjectSelectionBuilder` enables flagging significant images for teaching, quality control, or referral purposes, `MammographyCADSRBuilder` supports encoding mammography computer-aided detection results with findings, confidence scores, and spatial locations, and `ChestCADSRBuilder` supports encoding chest radiology computer-aided detection results for lung nodule detection and other chest findings. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.1 - implementing Grayscale Presentation State (GSPS) support. This version adds comprehensive support for DICOM Grayscale Softcopy Presentation States (PS3.3 A.33), enabling standardized image display with window/level settings, annotations, shutters, and spatial transformations. The implementation includes the complete LUT transformation pipeline (Modality LUT → VOI LUT → Presentation LUT), graphic annotation layers with multiple geometric types, display shutters for privacy protection, and the `PresentationStateApplicator` for rendering images with presentation states applied. This builds upon v0.9.8 which added specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), Key Object Selection, Mammography CAD SR, and Chest CAD SR documents. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
