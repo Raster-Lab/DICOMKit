@@ -30,6 +30,9 @@ public struct ICCProfile: Sendable, Hashable {
     /// Profile description/name
     public let description: String?
     
+    /// Parsed profile information (lazy parsing)
+    private var parsedProfile: ParsedICCProfile?
+    
     /// Initialize an ICC profile
     public init(
         profileData: Data,
@@ -39,6 +42,43 @@ public struct ICCProfile: Sendable, Hashable {
         self.profileData = profileData
         self.colorSpace = colorSpace
         self.description = description
+        self.parsedProfile = nil
+    }
+    
+    /// Initialize from parsed ICC profile
+    public init(parsed: ParsedICCProfile, profileData: Data) {
+        self.profileData = profileData
+        self.parsedProfile = parsed
+        
+        // Infer color space from profile class and description
+        if let desc = parsed.description.lowercased() as String? {
+            if desc.contains("srgb") {
+                self.colorSpace = .sRGB
+            } else if desc.contains("adobe rgb") {
+                self.colorSpace = .adobeRGB
+            } else if desc.contains("display p3") || desc.contains("p3") {
+                self.colorSpace = .displayP3
+            } else if desc.contains("prophoto") {
+                self.colorSpace = .proPhotoRGB
+            } else {
+                self.colorSpace = .custom
+            }
+        } else {
+            self.colorSpace = .custom
+        }
+        
+        self.description = parsed.description
+    }
+    
+    /// Parse the ICC profile data
+    ///
+    /// - Returns: Parsed ICC profile information
+    /// - Throws: ICCProfileParser.ParseError if parsing fails
+    public func parse() throws -> ParsedICCProfile {
+        if let parsed = parsedProfile {
+            return parsed
+        }
+        return try ICCProfileParser.parse(profileData)
     }
     
     #if canImport(CoreGraphics)
@@ -47,6 +87,30 @@ public struct ICCProfile: Sendable, Hashable {
         return CGColorSpace(iccData: profileData as CFData)
     }
     #endif
+    
+    /// Extract ICC Profile from DICOM DataSet
+    ///
+    /// Reads ICC Profile from the ICC Profile Module (0028,2000)
+    ///
+    /// - Parameter dataSet: DICOM DataSet to extract from
+    /// - Returns: ICC Profile if present, nil otherwise
+    public static func extract(from dataSet: [Tag: DataElement]) -> ICCProfile? {
+        // ICC Profile tag (0028,2000)
+        let tag = Tag(group: 0x0028, element: 0x2000)
+        guard let element = dataSet[tag] else {
+            return nil
+        }
+        
+        let profileData = element.valueData
+        
+        // Try to parse the profile to get description
+        if let parsed = try? ICCProfileParser.parse(profileData) {
+            return ICCProfile(parsed: parsed, profileData: profileData)
+        }
+        
+        // Fallback: create with unknown color space
+        return ICCProfile(profileData: profileData, colorSpace: .custom)
+    }
 }
 
 // MARK: - Color Space
