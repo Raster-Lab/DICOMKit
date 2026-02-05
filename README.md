@@ -10,7 +10,38 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.1)
+## Features (v1.0.2)
+
+- ✅ **Color Presentation States (NEW in v1.0.2)**
+  - ✅ **Color Softcopy Presentation State (CSPS)** - ICC profile-based color management (PS3.3 A.34)
+    - ✅ `ColorPresentationState` struct for color image display with ICC profiles
+    - ✅ `ICCProfile` support for device-independent color management
+    - ✅ `ColorSpace` enum for sRGB, Adobe RGB, Display P3, ProPhoto RGB, and generic RGB
+    - ✅ CoreGraphics integration for CGColorSpace creation on Apple platforms
+    - ✅ Full spatial transformation and annotation support
+  - ✅ **Pseudo-Color Softcopy Presentation State** - False-color mapping for grayscale images (PS3.3 A.35)
+    - ✅ `PseudoColorPresentationState` struct for pseudo-color display
+    - ✅ `PaletteColorLUT` extension with `applyNormalized` for color mapping
+    - ✅ `ColorMapPreset` with 6 preset color maps:
+      - ✅ Grayscale (linear mapping)
+      - ✅ Hot (black → red → yellow → white)
+      - ✅ Cool (cyan → blue → magenta)
+      - ✅ Jet (rainbow: blue → cyan → yellow → red)
+      - ✅ Bone (grayscale with blue tint)
+      - ✅ Copper (black → copper → yellow)
+    - ✅ Integration with existing VOI LUT and Modality LUT pipelines
+  - ✅ **Blending Softcopy Presentation State** - Multi-modality image fusion (PS3.3 A.36)
+    - ✅ `BlendingPresentationState` struct for PET/CT, PET/MR fusion
+    - ✅ `BlendingDisplaySet` with multiple blending configurations
+    - ✅ `ReferencedImageForBlending` with frame and presentation state references
+    - ✅ `BlendingMode` enum with 6 blending algorithms:
+      - ✅ Alpha blending (weighted average)
+      - ✅ Maximum intensity projection (MIP)
+      - ✅ Minimum intensity projection (MinIP)
+      - ✅ Average intensity
+      - ✅ Additive blending
+      - ✅ Subtractive blending
+    - ✅ Per-image relative opacity control
 
 - ✅ **Grayscale Presentation State (GSPS) (NEW in v1.0.1)**
   - ✅ **Presentation State IOD Support** - Complete implementation of Grayscale Softcopy Presentation State (PS3.3 A.33)
@@ -3254,7 +3285,7 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -3264,9 +3295,18 @@ High-level API:
 **Grayscale Presentation State (GSPS) (NEW in v1.0.1):**
 - `PresentationState` - Base protocol for presentation state objects
 - `GrayscalePresentationState` - Grayscale Softcopy Presentation State struct (PS3.3 A.33)
+- `ColorPresentationState` - Color Softcopy Presentation State struct (PS3.3 A.34) (NEW in v1.0.2)
+- `PseudoColorPresentationState` - Pseudo-Color Softcopy Presentation State struct (PS3.3 A.35) (NEW in v1.0.2)
+- `BlendingPresentationState` - Blending Softcopy Presentation State struct (PS3.3 A.36) (NEW in v1.0.2)
 - `GrayscalePresentationStateParser` - Parse GSPS DICOM objects into structured format
 - `ReferencedSeries` - Referenced series in a presentation state
 - `ReferencedImage` - Referenced image instance with frame numbers
+- `ICCProfile` - ICC color profile for device-independent color management (NEW in v1.0.2)
+- `ColorSpace` - Supported color spaces (sRGB, Adobe RGB, Display P3, etc.) (NEW in v1.0.2)
+- `ColorMapPreset` - Preset pseudo-color maps (grayscale, hot, cool, jet, bone, copper) (NEW in v1.0.2)
+- `BlendingDisplaySet` - Blending configuration for multi-modality fusion (NEW in v1.0.2)
+- `ReferencedImageForBlending` - Image reference with blending metadata (NEW in v1.0.2)
+- `BlendingMode` - Blending algorithms (alpha, MIP, MinIP, average, add, subtract) (NEW in v1.0.2)
 - `ModalityLUT` - Modality LUT transformation (linear, lookup table)
 - `VOILUT` - VOI LUT transformation (window/level, lookup table)
 - `PresentationLUT` - Presentation LUT transformation (identity, inverse, lookup table)
@@ -3524,4 +3564,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.1 - implementing Grayscale Presentation State (GSPS) support. This version adds comprehensive support for DICOM Grayscale Softcopy Presentation States (PS3.3 A.33), enabling standardized image display with window/level settings, annotations, shutters, and spatial transformations. The implementation includes the complete LUT transformation pipeline (Modality LUT → VOI LUT → Presentation LUT), graphic annotation layers with multiple geometric types, display shutters for privacy protection, and the `PresentationStateApplicator` for rendering images with presentation states applied. This builds upon v0.9.8 which added specialized builders for creating Basic Text SR, Enhanced SR, Comprehensive SR, Comprehensive 3D SR, Measurement Report (TID 1500), Key Object Selection, Mammography CAD SR, and Chest CAD SR documents. The library provides both client and server implementations for DICOMweb operations (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) and DICOM networking. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.2 - implementing Color Presentation State (CSPS) and Pseudo-Color support. This version adds comprehensive support for Color Softcopy Presentation State (PS3.3 A.34), Pseudo-Color Softcopy Presentation State (PS3.3 A.35), and Blending Softcopy Presentation State (PS3.3 A.36). The implementation includes ICC profile-based color management for device-independent color reproduction, pseudo-color mapping with 6 preset color maps (grayscale, hot, cool, jet, bone, copper) for false-color visualization of grayscale images, and multi-modality image fusion with 6 blending modes (alpha, MIP, MinIP, average, additive, subtractive) for PET/CT and PET/MR workflows. This builds upon v1.0.1 which implemented Grayscale Presentation State (GSPS) with complete LUT transformation pipeline, graphic annotations, and display shutters. See [MILESTONES.md](MILESTONES.md) for the development roadmap.
