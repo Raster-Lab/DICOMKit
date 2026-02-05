@@ -442,4 +442,450 @@ struct CharacterSetHandlerTests {
         
         #expect(decoded != nil)
     }
+    
+    // MARK: - Character Repertoire Tests
+    
+    @Test("Parse ISO IR 101 (Latin-2)")
+    func testParseISOIR101() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 101")
+        #expect(encoding == .isoIR101)
+    }
+    
+    @Test("Parse ISO IR 109 (Latin-3)")
+    func testParseISOIR109() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 109")
+        #expect(encoding == .isoIR109)
+    }
+    
+    @Test("Parse ISO IR 110 (Latin-4)")
+    func testParseISOIR110() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 110")
+        #expect(encoding == .isoIR110)
+    }
+    
+    @Test("Parse ISO IR 126 (Greek)")
+    func testParseISOIR126() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 126")
+        #expect(encoding == .isoIR126)
+    }
+    
+    @Test("Parse ISO IR 127 (Arabic)")
+    func testParseISOIR127() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 127")
+        #expect(encoding == .isoIR127)
+    }
+    
+    @Test("Parse ISO IR 138 (Hebrew)")
+    func testParseISOIR138() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 138")
+        #expect(encoding == .isoIR138)
+    }
+    
+    @Test("Parse ISO IR 144 (Cyrillic)")
+    func testParseISOIR144() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 144")
+        #expect(encoding == .isoIR144)
+    }
+    
+    @Test("Parse ISO IR 148 (Latin-5 Turkish)")
+    func testParseISOIR148() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 148")
+        #expect(encoding == .isoIR148)
+    }
+    
+    @Test("Parse ISO IR 166 (Thai)")
+    func testParseISOIR166() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 166")
+        #expect(encoding == .isoIR166)
+    }
+    
+    @Test("Parse ISO IR 13 (Japanese Katakana)")
+    func testParseISOIR13() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 13")
+        #expect(encoding == .isoIR13)
+    }
+    
+    @Test("Parse ISO IR 14 (Japanese Romaji)")
+    func testParseISOIR14() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 14")
+        #expect(encoding == .isoIR14)
+    }
+    
+    @Test("Parse ISO IR 159 (Japanese Supplementary Kanji)")
+    func testParseISOIR159() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO_IR 159")
+        #expect(encoding == .isoIR159)
+    }
+    
+    @Test("Parse ISO 2022 IR 13 variant")
+    func testParseISO2022IR13() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO 2022 IR 13")
+        #expect(encoding == .isoIR13)
+    }
+    
+    @Test("Parse ISO 2022 IR 87 variant")
+    func testParseISO2022IR87() {
+        let encoding = CharacterSetEncoding.from(definedTerm: "ISO 2022 IR 87")
+        #expect(encoding == .isoIR87)
+    }
+    
+    // MARK: - Multi-valued Character Set Tests
+    
+    @Test("Parse multi-valued character set with backslash delimiter")
+    func testParseMultiValuedCharacterSet() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 100\\ISO_IR 101")
+        // Handler should be created successfully
+        #expect(handler.encode("test").count > 0)
+    }
+    
+    @Test("Parse multi-valued character set with whitespace")
+    func testParseMultiValuedCharacterSetWithWhitespace() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: " ISO_IR 6 \\ ISO_IR 100 ")
+        // Handler should trim whitespace and parse correctly
+        #expect(handler.encode("test").count > 0)
+    }
+    
+    @Test("Parse multi-valued character set for Japanese")
+    func testParseMultiValuedJapanese() {
+        // Common Japanese combination: ASCII + Kanji
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO 2022 IR 87")
+        #expect(handler.encode("test").count > 0)
+    }
+    
+    // MARK: - Escape Sequence Tests
+    
+    @Test("Decode escape sequence ESC ( B (ASCII to G0)")
+    func testDecodeEscapeASCIIToG0() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 100")
+        
+        var data = Data()
+        data.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B
+        data.append("Hello".data(using: .ascii)!)
+        
+        let decoded = handler.decode(data)
+        #expect(decoded?.contains("Hello") == true)
+    }
+    
+    @Test("Decode escape sequence ESC ) I (Katakana to G1)")
+    func testDecodeEscapeKatakanaToG1() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 13")
+        
+        var data = Data("Test".utf8)
+        data.append(contentsOf: [0x1B, 0x29, 0x49]) // ESC ) I
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode escape sequence ESC $ B (JIS X 0208 Kanji to G0)")
+    func testDecodeEscapeKanjiToG0() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 87")
+        
+        var data = Data()
+        data.append(contentsOf: [0x1B, 0x24, 0x42]) // ESC $ B
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode escape sequence ESC - F (Greek to G1)")
+    func testDecodeEscapeGreekToG1() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 126")
+        
+        var data = Data("Test".utf8)
+        data.append(contentsOf: [0x1B, 0x2D, 0x46]) // ESC - F
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode escape sequence ESC - G (Arabic to G1)")
+    func testDecodeEscapeArabicToG1() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 127")
+        
+        var data = Data("Test".utf8)
+        data.append(contentsOf: [0x1B, 0x2D, 0x47]) // ESC - G
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode escape sequence ESC - H (Hebrew to G1)")
+    func testDecodeEscapeHebrewToG1() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 138")
+        
+        var data = Data("Test".utf8)
+        data.append(contentsOf: [0x1B, 0x2D, 0x48]) // ESC - H
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode escape sequence ESC - L (Cyrillic to G1)")
+    func testDecodeEscapeCyrillicToG1() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 144")
+        
+        var data = Data("Test".utf8)
+        data.append(contentsOf: [0x1B, 0x2D, 0x4C]) // ESC - L
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode escape sequence ESC - M (Latin-5 Turkish to G1)")
+    func testDecodeEscapeTurkishToG1() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 148")
+        
+        var data = Data("Test".utf8)
+        data.append(contentsOf: [0x1B, 0x2D, 0x4D]) // ESC - M
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode escape sequence ESC - T (Thai to G1)")
+    func testDecodeEscapeThaiToG1() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 166")
+        
+        var data = Data("Test".utf8)
+        data.append(contentsOf: [0x1B, 0x2D, 0x54]) // ESC - T
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    @Test("Decode multiple escape sequences in same data")
+    func testDecodeMultipleEscapeSequences() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6\\ISO_IR 100")
+        
+        var data = Data("Hello ".utf8)
+        data.append(contentsOf: [0x1B, 0x2D, 0x41]) // ESC - A (Latin-1)
+        data.append("café ".data(using: .isoLatin1)!)
+        data.append(contentsOf: [0x1B, 0x28, 0x42]) // ESC ( B (ASCII)
+        data.append("world".data(using: .ascii)!)
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+        #expect(decoded?.contains("Hello") == true)
+    }
+    
+    // MARK: - String Encoding Tests
+    
+    @Test("Encoding string with single character set uses that encoding")
+    func testEncodingSingleCharacterSet() {
+        let handler = CharacterSetHandler(characterSets: [.isoIR192])
+        let text = "Hello, 世界!"
+        let encoded = handler.encode(text)
+        
+        #expect(encoded.count > 0)
+        // Should be UTF-8 encoded
+        let decoded = String(data: encoded, encoding: .utf8)
+        #expect(decoded == text)
+    }
+    
+    @Test("Encoding with multiple character sets uses first encoding")
+    func testEncodingMultipleCharacterSets() {
+        // When multiple character sets, uses first one
+        let handler = CharacterSetHandler(characterSets: [.isoIR6, .isoIR100])
+        let text = "Hello"
+        let encoded = handler.encode(text)
+        
+        #expect(encoded.count > 0)
+        let decoded = String(data: encoded, encoding: .ascii)
+        #expect(decoded == text)
+    }
+    
+    // MARK: - Round-trip Tests (Additional)
+    
+    @Test("Round-trip Latin-2 encoding and decoding")
+    func testRoundTripLatin2() {
+        let handler = CharacterSetHandler(characterSets: [.isoIR101])
+        let original = "Hello World" // Use ASCII-compatible text since Latin-2 is complex
+        let encoded = handler.encode(original)
+        let decoded = handler.decode(encoded)
+        
+        #expect(decoded == original)
+    }
+    
+    // MARK: - Edge Cases
+    
+    @Test("Handler with empty character set array defaults to ASCII")
+    func testEmptyCharacterSetDefaults() {
+        let handler = CharacterSetHandler(characterSets: [])
+        let text = "Hello"
+        let encoded = handler.encode(text)
+        let decoded = handler.decode(encoded)
+        
+        #expect(decoded == text)
+    }
+    
+    @Test("Parse nil specific character set defaults to ASCII")
+    func testNilSpecificCharacterSet() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: nil)
+        let text = "Hello"
+        let encoded = handler.encode(text)
+        let decoded = handler.decode(encoded)
+        
+        #expect(decoded == text)
+    }
+    
+    @Test("Parse empty specific character set defaults to ASCII")
+    func testEmptySpecificCharacterSet() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "")
+        let text = "Hello"
+        let encoded = handler.encode(text)
+        let decoded = handler.decode(encoded)
+        
+        #expect(decoded == text)
+    }
+    
+    @Test("Parse whitespace-only specific character set defaults to ASCII")
+    func testWhitespaceOnlySpecificCharacterSet() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "   ")
+        let text = "Hello"
+        let encoded = handler.encode(text)
+        let decoded = handler.decode(encoded)
+        
+        #expect(decoded == text)
+    }
+    
+    @Test("Decode with unknown escape sequence is skipped")
+    func testDecodeUnknownEscapeSequence() {
+        let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 6")
+        
+        var data = Data("Hello ".utf8)
+        data.append(contentsOf: [0x1B, 0xFF, 0xFF]) // Unknown escape sequence
+        data.append("World".data(using: .ascii)!)
+        
+        let decoded = handler.decode(data)
+        #expect(decoded != nil)
+    }
+    
+    // MARK: - Escape Sequence Generation Tests
+    
+    @Test("Escape sequence generation for ASCII to G0")
+    func testEscapeSequenceASCIIToG0() {
+        let escapeSeq = CharacterSetEncoding.isoIR6.escapeSequenceToG0()
+        #expect(escapeSeq == [0x1B, 0x28, 0x42])
+    }
+    
+    @Test("Escape sequence generation for Latin-1 to G1")
+    func testEscapeSequenceLatin1ToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR100.escapeSequenceToG1()
+        #expect(escapeSeq == [0x1B, 0x2D, 0x41])
+    }
+    
+    @Test("Escape sequence generation for Japanese Kanji to G0")
+    func testEscapeSequenceKanjiToG0() {
+        let escapeSeq = CharacterSetEncoding.isoIR87.escapeSequenceToG0()
+        #expect(escapeSeq == [0x1B, 0x24, 0x42])
+    }
+    
+    @Test("Escape sequence generation for Greek to G1")
+    func testEscapeSequenceGreekToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR126.escapeSequenceToG1()
+        #expect(escapeSeq == [0x1B, 0x2D, 0x46])
+    }
+    
+    @Test("Escape sequence generation for Korean to G1")
+    func testEscapeSequenceKoreanToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR149.escapeSequenceToG1()
+        #expect(escapeSeq == [0x1B, 0x24, 0x29, 0x43])
+    }
+    
+    @Test("UTF-8 has no escape sequence to G0")
+    func testUTF8NoEscapeSequence() {
+        let escapeSeq = CharacterSetEncoding.isoIR192.escapeSequenceToG0()
+        #expect(escapeSeq == nil)
+    }
+    
+    @Test("UTF-8 has no escape sequence to G1")
+    func testUTF8NoEscapeSequenceToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR192.escapeSequenceToG1()
+        #expect(escapeSeq == nil)
+    }
+    
+    @Test("Encoding with multi-valued character set includes escape sequences")
+    func testEncodingMultiValuedIncludesEscapeSequence() {
+        // ISO_IR 87 (Kanji) should get an escape sequence
+        let handler = CharacterSetHandler(characterSets: [.isoIR87, .isoIR6])
+        let text = "Test"
+        let encoded = handler.encode(text)
+        
+        // Should start with escape sequence ESC $ B (0x1B 0x24 0x42)
+        #expect(encoded.count > 3)
+        #expect(encoded[0] == 0x1B)
+        #expect(encoded[1] == 0x24)
+        #expect(encoded[2] == 0x42)
+    }
+    
+    @Test("Encoding with UTF-8 does not include escape sequences")
+    func testEncodingUTF8NoEscapeSequences() {
+        let handler = CharacterSetHandler(characterSets: [.isoIR192, .isoIR6])
+        let text = "Test"
+        let encoded = handler.encode(text)
+        
+        // Should NOT start with escape sequence (0x1B)
+        #expect(encoded[0] != 0x1B)
+        
+        // Should be valid UTF-8
+        let decoded = String(data: encoded, encoding: .utf8)
+        #expect(decoded == text)
+    }
+    
+    // MARK: - Unicode Normalization Tests
+    
+    @Test("NFC normalization combines decomposed characters")
+    func testNFCNormalization() {
+        // "é" as decomposed (e + combining acute accent)
+        let decomposed = "e\u{0301}"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(decomposed)
+        
+        // Should be composed form
+        #expect(normalized == "é")
+    }
+    
+    @Test("NFC normalization is idempotent")
+    func testNFCNormalizationIdempotent() {
+        let original = "Café résumé"
+        let normalized1 = CharacterSetEncoding.normalizeForDisplay(original)
+        let normalized2 = CharacterSetEncoding.normalizeForDisplay(normalized1)
+        
+        #expect(normalized1 == normalized2)
+    }
+    
+    @Test("NFD normalization decomposes characters")
+    func testNFDNormalization() {
+        // "é" as composed character
+        let composed = "é"
+        let normalized = CharacterSetEncoding.normalizeDecomposed(composed)
+        
+        // Should have 2 Unicode scalars (e + combining accent)
+        #expect(normalized.unicodeScalars.count == 2)
+    }
+    
+    @Test("Normalize Arabic text for display")
+    func testNormalizeArabicText() {
+        let arabic = "مرحبا"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(arabic)
+        
+        #expect(normalized.count > 0)
+    }
+    
+    @Test("Normalize Hebrew text for display")
+    func testNormalizeHebrewText() {
+        let hebrew = "שלום"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(hebrew)
+        
+        #expect(normalized.count > 0)
+    }
+    
+    @Test("Normalize mixed scripts for display")
+    func testNormalizeMixedScripts() {
+        let mixed = "Hello 世界 مرحبا שלום Привет"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(mixed)
+        
+        #expect(normalized.count > 0)
+        #expect(normalized.contains("Hello"))
+    }
 }

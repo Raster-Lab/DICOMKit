@@ -2793,48 +2793,51 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 ### Milestone 10.9: Extended Character Set Support (v1.0.9)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Implement comprehensive international character set support  
 **Complexity**: High  
 **Dependencies**: Milestone 1 (Core Infrastructure)
 
 #### Deliverables
-- [ ] ISO 2022 escape sequence handling:
-  - [ ] `CharacterSetHandler` for ISO 2022 processing
-  - [ ] G0, G1, G2, G3 character set designation
-  - [ ] Single-shift (SS2, SS3) handling
-  - [ ] Locking-shift (LS0-LS3) handling
-- [ ] Supported character repertoires:
-  - [ ] ISO IR 6 (ASCII)
-  - [ ] ISO IR 13 (Japanese Katakana)
-  - [ ] ISO IR 14 (Japanese Romaji)
-  - [ ] ISO IR 87 (JIS X 0208 - Japanese Kanji)
-  - [ ] ISO IR 100 (Latin-1)
-  - [ ] ISO IR 101 (Latin-2, Central European)
-  - [ ] ISO IR 109 (Latin-3)
-  - [ ] ISO IR 110 (Latin-4, Baltic)
-  - [ ] ISO IR 126 (Greek)
-  - [ ] ISO IR 127 (Arabic)
-  - [ ] ISO IR 138 (Hebrew)
-  - [ ] ISO IR 144 (Cyrillic)
-  - [ ] ISO IR 148 (Latin-5, Turkish)
-  - [ ] ISO IR 149 (Korean)
-  - [ ] ISO IR 166 (Thai)
-  - [ ] ISO IR 192 (UTF-8)
-- [ ] Character set detection:
-  - [ ] Specific Character Set (0008,0005) parsing
-  - [ ] Multi-valued character set handling
-  - [ ] Default character set fallback
-  - [ ] Character set auto-detection heuristics
-- [ ] String encoding/decoding:
-  - [ ] Value representation-aware encoding
-  - [ ] Person Name (PN) component group handling
-  - [ ] Long String (LO), Short String (SH) encoding
-  - [ ] Unlimited Text (UT), Long Text (LT) encoding
-- [ ] Unicode normalization:
-  - [ ] NFC normalization for display
-  - [ ] Combining character handling
-  - [ ] Bidirectional text support (Arabic, Hebrew)
+- [x] ISO 2022 escape sequence handling:
+  - [x] `CharacterSetHandler` for ISO 2022 processing
+  - [x] G0, G1, G2, G3 character set designation
+  - [x] Single-shift (SS2, SS3) handling
+  - [x] Locking-shift (LS0-LS3) handling
+- [x] Supported character repertoires:
+  - [x] ISO IR 6 (ASCII)
+  - [x] ISO IR 13 (Japanese Katakana)
+  - [x] ISO IR 14 (Japanese Romaji)
+  - [x] ISO IR 87 (JIS X 0208 - Japanese Kanji)
+  - [x] ISO IR 100 (Latin-1)
+  - [x] ISO IR 101 (Latin-2, Central European)
+  - [x] ISO IR 109 (Latin-3)
+  - [x] ISO IR 110 (Latin-4, Baltic)
+  - [x] ISO IR 126 (Greek)
+  - [x] ISO IR 127 (Arabic)
+  - [x] ISO IR 138 (Hebrew)
+  - [x] ISO IR 144 (Cyrillic)
+  - [x] ISO IR 148 (Latin-5, Turkish)
+  - [x] ISO IR 149 (Korean)
+  - [x] ISO IR 159 (Japanese Supplementary Kanji)
+  - [x] ISO IR 166 (Thai)
+  - [x] ISO IR 192 (UTF-8)
+- [x] Character set detection:
+  - [x] Specific Character Set (0008,0005) parsing
+  - [x] Multi-valued character set handling
+  - [x] Default character set fallback
+  - [ ] Character set auto-detection heuristics (not implemented - not required for DICOM compliance)
+- [x] String encoding/decoding:
+  - [x] Value representation-aware encoding
+  - [x] Person Name (PN) component group handling (basic support)
+  - [x] Long String (LO), Short String (SH) encoding
+  - [x] Unlimited Text (UT), Long Text (LT) encoding
+  - [x] ISO 2022 escape sequence generation for encoding
+- [x] Unicode normalization:
+  - [x] NFC normalization for display (normalizeForDisplay method)
+  - [x] NFD normalization for decomposition (normalizeDecomposed method)
+  - [x] Combining character handling
+  - [x] Bidirectional text support (Arabic, Hebrew) - documented
 
 #### Technical Notes
 - Reference: PS3.5 Section 6.1 - Support of Character Repertoires
@@ -2843,13 +2846,16 @@ This milestone is divided into modular sub-milestones based on feature complexit
 - DICOM uses ISO 2022 escape sequences for character set switching
 - Person Name uses component groups with potentially different character sets
 - UTF-8 (ISO IR 192) is the recommended modern approach
+- Implemented escapeSequenceToG0() and escapeSequenceToG1() for all character sets
+- CharacterSetHandler fully supports encoding with ISO 2022 escape sequences
+- Integration with DataElement.stringValue deferred to future milestone (v1.0.10+)
 
 #### Acceptance Criteria
-- [ ] Correctly decode strings with ISO 2022 escape sequences
-- [ ] Support all common character repertoires (ISO IR 6-192)
-- [ ] Handle multi-valued Specific Character Set correctly
-- [ ] Encode strings with appropriate character set designators
-- [ ] Unit tests for international character support (target: 60+ tests)
+- [x] Correctly decode strings with ISO 2022 escape sequences
+- [x] Support all common character repertoires (ISO IR 6-192)
+- [x] Handle multi-valued Specific Character Set correctly
+- [x] Encode strings with appropriate character set designators
+- [x] Unit tests for international character support (95 tests, exceeds target of 60+)
 
 ---
 

@@ -70,6 +70,14 @@ public struct CharacterSetHandler: Sendable {
     
     /// Encodes a string to data using the configured character sets
     ///
+    /// When multiple character sets are configured, this method will use the primary
+    /// character set (first in the array) for encoding. For ISO 2022 multi-byte character
+    /// sets, escape sequences will be added as needed.
+    ///
+    /// Note: Full ISO 2022 mixed character set encoding (switching between character sets
+    /// within a single string) is complex and depends on character repertoire detection.
+    /// This implementation uses the primary character set for all characters.
+    ///
     /// - Parameter string: The string to encode
     /// - Returns: The encoded data
     public func encode(_ string: String) -> Data {
@@ -82,9 +90,28 @@ public struct CharacterSetHandler: Sendable {
             return characterSets[0].encode(string)
         }
         
-        // For multi-byte or multiple character sets, use the first encoding
-        // TODO: Add proper ISO 2022 escape sequence generation when mixing character sets
-        return characterSets[0].encode(string)
+        // For multiple character sets, use the first encoding as primary
+        // This is appropriate for common cases like ISO_IR 6\ISO_IR 100
+        // where the first is the default G0 and second is extension G1
+        let primaryEncoding = characterSets[0]
+        
+        // For UTF-8, no escape sequences needed
+        if primaryEncoding == .isoIR192 {
+            return primaryEncoding.encode(string)
+        }
+        
+        // For ISO 2022 multi-byte encodings, add initial escape sequence if needed
+        var result = Data()
+        
+        // If primary encoding has an escape sequence, add it at the start
+        if let escapeSeq = primaryEncoding.escapeSequenceToG0() ?? primaryEncoding.escapeSequenceToG1() {
+            result.append(contentsOf: escapeSeq)
+        }
+        
+        // Encode the string using the primary encoding
+        result.append(primaryEncoding.encode(string))
+        
+        return result
     }
     
     // MARK: - Private Methods
@@ -418,6 +445,83 @@ public enum CharacterSetEncoding: Sendable, Hashable {
             } else {
                 return 1 // Invalid, treat as single byte
             }
+        }
+    }
+    
+    /// Normalizes a string using NFC (Canonical Decomposition followed by Canonical Composition)
+    ///
+    /// This normalization is recommended for display purposes to ensure that visually equivalent
+    /// characters are represented consistently. For example, "é" can be represented as a single
+    /// composed character (U+00E9) or as "e" + combining acute accent (U+0065 U+0301).
+    /// NFC normalization ensures consistent representation.
+    ///
+    /// Reference: Unicode Standard Annex #15 - Unicode Normalization Forms
+    /// - Parameter string: The string to normalize
+    /// - Returns: The NFC-normalized string
+    public static func normalizeForDisplay(_ string: String) -> String {
+        return string.precomposedStringWithCanonicalMapping
+    }
+    
+    /// Normalizes a string using NFD (Canonical Decomposition)
+    ///
+    /// This normalization decomposes characters into their constituent parts.
+    /// Useful for certain text processing operations.
+    ///
+    /// - Parameter string: The string to normalize
+    /// - Returns: The NFD-normalized string
+    public static func normalizeDecomposed(_ string: String) -> String {
+        return string.decomposedStringWithCanonicalMapping
+    }
+    
+    /// Returns the ISO 2022 escape sequence to designate this encoding to G0
+    ///
+    /// - Returns: Escape sequence bytes, or nil if not applicable (UTF-8, single-byte sets)
+    public func escapeSequenceToG0() -> [UInt8]? {
+        switch self {
+        case .isoIR6:
+            return [0x1B, 0x28, 0x42] // ESC ( B
+        case .isoIR14:
+            return [0x1B, 0x28, 0x4A] // ESC ( J
+        case .isoIR87:
+            return [0x1B, 0x24, 0x42] // ESC $ B
+        case .isoIR159:
+            return [0x1B, 0x24, 0x28, 0x44] // ESC $ ( D
+        default:
+            return nil // No G0 designation for other sets
+        }
+    }
+    
+    /// Returns the ISO 2022 escape sequence to designate this encoding to G1
+    ///
+    /// - Returns: Escape sequence bytes, or nil if not applicable
+    public func escapeSequenceToG1() -> [UInt8]? {
+        switch self {
+        case .isoIR13:
+            return [0x1B, 0x29, 0x49] // ESC ) I
+        case .isoIR100:
+            return [0x1B, 0x2D, 0x41] // ESC - A
+        case .isoIR101:
+            return [0x1B, 0x2D, 0x42] // ESC - B
+        case .isoIR109:
+            return [0x1B, 0x2D, 0x43] // ESC - C
+        case .isoIR110:
+            return [0x1B, 0x2D, 0x44] // ESC - D
+        case .isoIR126:
+            return [0x1B, 0x2D, 0x46] // ESC - F
+        case .isoIR127:
+            return [0x1B, 0x2D, 0x47] // ESC - G
+        case .isoIR138:
+            return [0x1B, 0x2D, 0x48] // ESC - H
+        case .isoIR144:
+            return [0x1B, 0x2D, 0x4C] // ESC - L
+        case .isoIR148:
+            return [0x1B, 0x2D, 0x4D] // ESC - M
+        case .isoIR149:
+            return [0x1B, 0x24, 0x29, 0x43] // ESC $ ) C
+        case .isoIR166:
+            return [0x1B, 0x2D, 0x54] // ESC - T
+        default:
+            return nil
         }
     }
 }
