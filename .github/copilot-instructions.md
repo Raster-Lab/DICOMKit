@@ -186,3 +186,122 @@ This helps maintain accurate and up-to-date documentation for users of DICOMKit.
 - API additions or changes
 
 Failure to update these files can lead to inconsistent documentation and make it difficult for users and contributors to understand the current state of the project.
+
+## Demo Application Development (Post-Milestone 10)
+
+**IMPORTANT**: After completing all Milestone 10 sub-milestones (10.1-10.15), the next priority is to develop comprehensive demo applications that showcase DICOMKit's capabilities.
+
+### Demo Application Plan Reference
+
+A comprehensive plan for demo application development is documented in:
+**`DEMO_APPLICATION_PLAN.md`**
+
+This plan includes:
+- **DICOMViewer iOS App**: Mobile medical image viewing with gestures, measurements, and presentation state support
+- **DICOMViewer macOS App**: Professional diagnostic workstation with PACS integration, MPR, and advanced features
+- **DICOMViewer visionOS App**: Spatial computing medical imaging with 3D volume rendering and hand tracking
+- **DICOMTools CLI Suite**: Command-line tools for automation (dicom-info, dicom-convert, dicom-anon, dicom-validate, etc.)
+- **Sample Code Snippets**: Xcode Playgrounds demonstrating DICOMKit integration
+
+### When to Start Demo Development
+
+Demo application development should begin ONLY after:
+- ✅ All Milestone 10 sub-milestones (10.1 through 10.13) are completed
+- ✅ Comprehensive documentation is finalized (Milestone 10.13)
+- ✅ Performance optimizations are complete (Milestone 10.12)
+- ✅ All APIs are stable and tested
+
+### Demo Development Workflow
+
+When starting demo application work:
+
+1. **Review the Plan**: 
+   - Read `DEMO_APPLICATION_PLAN.md` in detail
+   - Understand the architecture and technical requirements
+   - Note the implementation phases and timelines
+
+2. **Follow the Implementation Strategy**:
+   - Phase 1 (Weeks 1-2): Foundation and iOS app core
+   - Phase 2 (Weeks 3-5): Advanced features for iOS and macOS
+   - Phase 3 (Weeks 6-7): visionOS and CLI tools
+   - Phase 4 (Week 8): Polish, testing, and release preparation
+
+3. **Maintain Quality Standards**:
+   - Write unit tests for ViewModels (80%+ coverage)
+   - Create integration tests for PACS connectivity
+   - Build UI tests for critical user flows
+   - Profile performance and optimize as needed
+   - Follow SwiftUI best practices
+
+4. **Document Progress**:
+   - Update MILESTONES.md as demo features are completed
+   - Create user documentation and guides
+   - Record demo videos/screenshots for App Store
+   - Write developer documentation for integration
+
+5. **Testing and Validation**:
+   - Test on physical devices (iOS, macOS, visionOS)
+   - Validate against real PACS systems
+   - Perform accessibility audit
+   - Memory and performance profiling
+   - App Store submission preparation
+
+### Demo Application Guidelines
+
+**Code Organization**:
+- Create separate Xcode workspace or projects for demo apps
+- Share common code via DICOMKit framework
+- Use Swift Package Manager for dependencies
+- Follow Apple's Human Interface Guidelines for each platform
+
+**UI/UX Standards**:
+- SwiftUI-first approach for modern, declarative UI
+- Support Dark Mode and accessibility features
+- Implement proper error handling and user feedback
+- Use haptic feedback and animations appropriately
+- Ensure responsive layouts for all device sizes
+
+**Performance Requirements**:
+- 60fps scrolling for multi-frame series
+- <200MB memory usage on iOS
+- <100ms UI interaction latency
+- Smooth gesture recognition
+- Efficient thumbnail generation
+
+**Security and Privacy**:
+- Handle PHI (Protected Health Information) appropriately
+- Implement proper anonymization in export features
+- Follow HIPAA guidelines where applicable
+- No network logging of sensitive data
+- Secure storage with encryption for saved files
+
+### Quick Reference: Demo Apps
+
+| Application | Platform | Primary Purpose | Complexity | Timeline |
+|------------|----------|-----------------|------------|----------|
+| DICOMViewer iOS | iOS 17+ | Mobile viewing, measurements | High | 3-4 weeks |
+| DICOMViewer macOS | macOS 14+ | Diagnostic workstation, PACS | Very High | 4-5 weeks |
+| DICOMViewer visionOS | visionOS 1+ | Spatial 3D imaging | Very High | 3-4 weeks |
+| DICOMTools CLI | macOS/Linux | Automation, scripting | Medium | 2-3 weeks |
+| Sample Playgrounds | Xcode | Learning, examples | Low | 1 week |
+
+### Integration with Milestones
+
+Demo application work corresponds to:
+- **Milestone 10.14**: Example Applications (v1.0.14)
+- **Milestone 10.15**: Production Release Preparation (v1.0.15)
+
+Track progress in the Milestone 10 Summary table in MILESTONES.md.
+
+### Support Resources
+
+For questions during demo development:
+- Reference `DEMO_APPLICATION_PLAN.md` for detailed specifications
+- Review existing Examples/ directory for SR examples
+- Consult DICOMKit README.md for API usage
+- Check DICOM standard documentation (PS3.3, PS3.4, etc.)
+- Review Apple's platform documentation (SwiftUI, RealityKit, etc.)
+
+---
+
+**Remember**: Demo applications are the showcase for DICOMKit. They should be polished, well-documented, and demonstrate best practices for medical imaging app development on Apple platforms.
