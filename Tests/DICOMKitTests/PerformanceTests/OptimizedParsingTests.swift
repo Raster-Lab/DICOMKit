@@ -54,7 +54,7 @@ final class OptimizedParsingTests: XCTestCase {
         
         XCTAssertGreaterThanOrEqual(file.dataSet.count, 2) // At least Patient Name and Study UID
         // Pixel data should be included
-        if let pixelData = file.dataSet.element(for: .pixelData) {
+        if let pixelData = file.dataSet[.pixelData] {
             XCTAssertNotNil(pixelData)
         }
     }
@@ -68,7 +68,7 @@ final class OptimizedParsingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(file.dataSet.count, 2)
         
         // Pixel data should NOT be included
-        let pixelData = file.dataSet.element(for: .pixelData)
+        let pixelData = file.dataSet[.pixelData]
         XCTAssertNil(pixelData)
     }
     
@@ -81,7 +81,7 @@ final class OptimizedParsingTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(file.dataSet.count, 2)
         
         // Pixel data element should exist but with empty value
-        if let pixelData = file.dataSet.element(for: .pixelData) {
+        if let pixelData = file.dataSet[.pixelData] {
             XCTAssertEqual(pixelData.valueData.count, 0)
         }
     }
@@ -97,7 +97,7 @@ final class OptimizedParsingTests: XCTestCase {
         
         // Should have only patient name (stopped after it)
         XCTAssertEqual(file.dataSet.count, 1)
-        XCTAssertNotNil(file.dataSet.element(for: .patientName))
+        XCTAssertNotNil(file.dataSet[.patientName])
     }
     
     func testMaxElementsOption() throws {
