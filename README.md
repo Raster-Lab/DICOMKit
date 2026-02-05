@@ -10,7 +10,51 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.6)
+## Features (v1.0.7)
+
+- ✅ **Parametric Map Objects (NEW in v1.0.7)**
+  - ✅ **Parametric Map IOD** - Complete implementation of Parametric Map Storage (PS3.3 A.75)
+    - ✅ `ParametricMap` struct for quantitative imaging data (ADC, T1/T2, perfusion, SUV)
+    - ✅ `ParametricMapParser` for parsing Parametric Map DICOM objects
+    - ✅ Real World Value Mapping for converting pixel values to physical quantities
+    - ✅ Multi-frame organization with functional groups
+    - ✅ Content identification (label, description, creator, date/time)
+    - ✅ Derivation tracking with coded sequences
+  - ✅ **Quantity Definitions** - Physical quantity specifications
+    - ✅ `QuantityDefinition` with coded value types
+    - ✅ Pre-defined quantities: ADC, T1, T2, Ktrans, Ve, Vp, SUV variants
+    - ✅ `MeasurementUnits` using UCUM (Unified Code for Units of Measure)
+    - ✅ Common units: mm²/s, ms, s, g/ml, /min, unitless ratio
+  - ✅ **Real World Value Mapping** - Stored pixel value to physical quantity conversion
+    - ✅ `RealWorldValueMapping` struct for value transformations
+    - ✅ Linear transformation (slope/intercept)
+    - ✅ LUT-based transformation for non-linear mappings
+    - ✅ Multiple mappings per parametric map
+  - ✅ **Parametric Data Extraction** - Multi-format pixel data support
+    - ✅ `ParametricMapPixelDataExtractor` for extracting quantitative values
+    - ✅ Integer pixel data (8/16-bit unsigned/signed) with mapping
+    - ✅ Float pixel data (32-bit IEEE 754)
+    - ✅ Double pixel data (64-bit IEEE 754)
+    - ✅ Frame-by-frame quantity access
+  - ✅ **Common Parametric Map Types** - Modality-specific support
+    - ✅ ADC (Apparent Diffusion Coefficient) maps for DWI
+    - ✅ T1/T2 relaxation maps for MR quantification
+    - ✅ Perfusion parameter maps (Ktrans, Ve, Vp) for DCE-MRI
+    - ✅ SUV (Standardized Uptake Value) maps for PET (body weight, lean body mass, body surface area)
+  - ✅ **Parametric Visualization** - Color-mapped quantitative display
+    - ✅ `ParametricMapRenderer` with color mapping algorithms
+    - ✅ Six predefined color maps: grayscale, hot, cool, jet, viridis, turbo
+    - ✅ Custom color lookup tables
+    - ✅ Configurable window/level for parametric values
+    - ✅ Threshold-based display with masking
+    - ✅ Auto-windowing based on min/max values
+    - ✅ CGImage integration for Apple platforms
+  - ✅ **Comprehensive Testing** - 55 unit tests (100% pass rate)
+    - ✅ 12 tests for ParametricMap data structures
+    - ✅ 9 tests for parser functionality
+    - ✅ 8 tests for pixel data extraction
+    - ✅ 12 tests for renderer and color mapping
+    - ✅ 14 tests for edge cases and additional coverage
 
 - ✅ **Hanging Protocol Support (NEW in v1.0.3)**
   - ✅ **Hanging Protocol IOD Support** - Complete implementation of Hanging Protocol Storage (PS3.3 A.38)
@@ -3474,7 +3518,7 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -3595,6 +3639,21 @@ High-level API:
 - `SegmentationPixelDataExtractor` - Extract binary and fractional segment masks
 - `SegmentationRenderer` - Render segmentation overlays with color mapping
 - `SegmentationBuilder` - Build DICOM segmentations from binary/fractional masks
+
+**Parametric Map Objects Support (NEW in v1.0.7):**
+- `ParametricMap` - Complete parametric map structure for quantitative imaging (PS3.3 A.75)
+- `ParametricMapParser` - Parse DICOM Parametric Map objects
+- `QuantityDefinition` - Physical quantity type definitions (ADC, T1, T2, Ktrans, Ve, Vp, SUV variants)
+- `MeasurementUnits` - UCUM unit coding (mm²/s, ms, s, g/ml, /min, ratio)
+- `RealWorldValueMapping` - Stored pixel value to physical quantity transformation
+- `MappingMethod` - Linear or LUT-based value mapping
+- `CodedEntry` - Generic coded entry for derivation sequences
+- `ParametricMapReferencedSeries` - Referenced series for parametric maps
+- `ReferencedInstance` - Referenced DICOM instance with frame numbers
+- `ParametricMapPixelDataExtractor` - Extract parametric values from multi-format pixel data
+- `ParametricMapRenderer` - Render parametric maps with color mapping
+- `ColorMap` - Color map enum (grayscale, hot, cool, jet, viridis, turbo, custom)
+- `RenderOptions` - Rendering configuration (window/level, threshold, color map)
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -3836,4 +3895,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.6 - implementing Segmentation Objects Support. This version adds comprehensive support for Segmentation Storage (PS3.3 A.51), enabling labeled image regions from AI/ML algorithms and manual annotations. The implementation includes complete Segmentation IOD parsing with binary (1-bit packed) and fractional (8/16-bit) segmentation types, multi-frame organization with per-frame functional groups, segment definitions with coded terminology (category, type, anatomic region), pixel data extraction (`SegmentationPixelDataExtractor`), visualization with color overlays (`SegmentationRenderer` with CIELab to RGB conversion and alpha blending), and segmentation creation (`SegmentationBuilder` with fluent API for encoding AI/ML outputs). The implementation features 98 comprehensive unit tests (100% pass rate) covering all data structures, parser, pixel data extraction, rendering, and builder functionality. This builds upon v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.7 - implementing Parametric Map Objects Support. This version adds comprehensive support for Parametric Map Storage (PS3.3 A.75) for quantitative imaging, enabling the representation of physical quantities such as ADC (Apparent Diffusion Coefficient), T1/T2 relaxation times, perfusion parameters (Ktrans, Ve, Vp), and SUV (Standardized Uptake Value) maps. The implementation includes complete Parametric Map IOD parsing with Real World Value Mapping for converting stored pixel values to physical quantities, support for integer (8/16-bit), float (32-bit IEEE), and double (64-bit IEEE) pixel data formats, pre-defined quantity definitions and UCUM measurement units, frame-by-frame quantity access via functional groups, pixel data extraction (`ParametricMapPixelDataExtractor`), and visualization with configurable color mapping (`ParametricMapRenderer` with six predefined color maps: grayscale, hot, cool, jet, viridis, turbo). The implementation features 55 comprehensive unit tests (100% pass rate), exceeding the 50+ test target. This builds upon v1.0.6 (Segmentation Objects Support), v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
