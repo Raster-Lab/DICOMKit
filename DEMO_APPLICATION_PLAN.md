@@ -9,6 +9,18 @@ This document provides a comprehensive plan for creating production-quality demo
 **Estimated Duration**: 6-8 weeks  
 **Dependencies**: All Milestone 10 sub-milestones (10.1-10.13)
 
+### Detailed Implementation Plans
+
+This document provides a high-level overview. For detailed phase-by-phase implementation plans with comprehensive test cases, see:
+
+- **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 370+ unit tests, 125+ integration tests)
+- **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 160+ unit tests, 30+ integration tests, 30+ UI tests)
+- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 250+ unit tests, 70+ integration tests, 40+ UI tests)
+- **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 205+ unit tests, 45+ integration tests, 20+ device tests)
+- **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Sample Code & Playgrounds (27 playgrounds, 1 week, 575+ test cases)
+
+**Total Test Coverage**: 1,560+ unit tests, 270+ integration tests, 70+ UI tests, 575+ playground tests across all demo applications.
+
 ---
 
 ## Strategic Goals
@@ -1144,13 +1156,42 @@ DICOMKit.playgroundbook/
 
 This comprehensive demo application plan provides a roadmap for creating production-quality reference implementations that showcase DICOMKit's capabilities. The applications will serve as both educational resources and proof points for the library's readiness for clinical and research use.
 
-**Next Steps**:
-1. Review and approve this plan
-2. Complete all Milestone 10 sub-milestones (10.1-10.13)
-3. Begin Phase 1 implementation
-4. Regular progress reviews at end of each phase
-5. Release demo applications alongside v1.0 release
+### Detailed Plan Summary
 
-**Estimated Total Effort**: 6-8 weeks (1 senior developer full-time)  
+| Component | Detailed Plan | Duration | Test Coverage |
+|-----------|---------------|----------|---------------|
+| **CLI Tools Suite** | [CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md) | 2-3 weeks | 370+ unit, 125+ integration tests |
+| **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) | 3-4 weeks | 160+ unit, 30+ integration, 30+ UI tests |
+| **macOS Viewer** | [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) | 4-5 weeks | 250+ unit, 70+ integration, 40+ UI tests |
+| **visionOS Viewer** | [VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md) | 3-4 weeks | 205+ unit, 45+ integration, 20+ device tests |
+| **Sample Code** | [SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md) | 1 week | 575+ playground tests across 27 playgrounds |
+| **TOTAL** | 5 detailed plans | **13-17 weeks** | **2,475+ total tests** |
+
+### Implementation Approach
+
+**Sequential Development** (recommended):
+1. **Weeks 1-3**: CLI Tools Suite (Foundation)
+2. **Weeks 4-7**: iOS Viewer (Mobile platform)
+3. **Weeks 8-12**: macOS Viewer (Desktop platform)
+4. **Weeks 13-16**: visionOS Viewer (Spatial computing)
+5. **Week 17**: Sample Code & Playgrounds (Education)
+
+**Parallel Development** (if resources available):
+- iOS and CLI Tools simultaneously (Weeks 1-4)
+- macOS and Sample Code simultaneously (Weeks 5-9)
+- visionOS standalone (Weeks 10-13)
+- Polish and integration (Week 14)
+
+**Next Steps**:
+1. Review and approve all detailed plans (CLI_TOOLS_PLAN.md, IOS_VIEWER_PLAN.md, MACOS_VIEWER_PLAN.md, VISIONOS_VIEWER_PLAN.md, SAMPLE_CODE_PLAN.md)
+2. Complete all Milestone 10 sub-milestones (10.1-10.13)
+3. Choose development approach (sequential vs. parallel)
+4. Begin implementation following detailed phase plans
+5. Regular progress reviews at end of each phase
+6. Release demo applications alongside v1.0 release
+
+**Estimated Total Effort**: 13-17 weeks sequential (1 senior developer) OR 6-8 weeks parallel (3-4 developers)  
 **Target Completion**: Milestone 10.14 (v1.0.14)  
 **Dependencies**: Milestones 10.1-10.13 must be complete
+
+For detailed implementation instructions, phase-by-phase tasks, and comprehensive test requirements, refer to the individual plan documents linked above.

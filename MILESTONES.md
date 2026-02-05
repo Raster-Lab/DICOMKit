@@ -6,6 +6,19 @@ This document outlines the development roadmap for DICOMKit, a pure Swift DICOM 
 
 DICOMKit aims to provide a comprehensive, Swift-native implementation for working with DICOM medical imaging files. The development is structured in phases, each building upon the previous to deliver incremental value while maintaining stability and quality.
 
+### Demo Application Plans
+
+For Milestone 10.14 (Example Applications), detailed phase-by-phase implementation plans with comprehensive test cases have been created:
+
+- **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 495+ tests)
+- **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 220+ tests)
+- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 360+ tests)
+- **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 270+ tests)
+- **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - 27 Playgrounds (1 week, 575+ tests)
+- **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview and strategy
+
+**Total**: 5 detailed plans, 13-17 weeks development, 1,920+ total tests
+
 ---
 
 ## Milestone 1: Core Infrastructure (v0.1) ✅ COMPLETED
@@ -3132,49 +3145,242 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 **Status**: Planned  
 **Goal**: Production-quality example applications demonstrating DICOMKit  
-**Complexity**: Medium  
-**Dependencies**: All previous milestones
+**Complexity**: High  
+**Dependencies**: All previous milestones (10.1-10.13)  
+**Duration**: 13-17 weeks sequential OR 6-8 weeks parallel
+
+#### Overview
+
+This milestone delivers comprehensive demo applications across all Apple platforms, complete command-line tools, and educational playgrounds. Each component has a detailed implementation plan with phase-by-phase tasks and comprehensive test requirements.
+
+**Detailed Implementation Plans**:
+- **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification
+- **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan
+- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan
+- **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - visionOS app detailed plan
+- **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan
+- **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview
 
 #### Deliverables
-- [ ] DICOMViewer iOS app:
-  - [ ] File browser for local DICOM files
-  - [ ] Multi-frame image viewer with gestures
-  - [ ] Window/level adjustment
-  - [ ] Presentation state application
-  - [ ] Basic measurement tools
-  - [ ] Share functionality
-- [ ] DICOMViewer macOS app:
-  - [ ] Drag-and-drop file import
-  - [ ] Multi-window viewing
-  - [ ] Series comparison layout
-  - [ ] PACS query/retrieve integration
-  - [ ] Print support
-- [ ] DICOMViewer visionOS app:
-  - [ ] Spatial image viewing
-  - [ ] 3D volume rendering preview
-  - [ ] Hand tracking for measurements
-  - [ ] Immersive viewing mode
-- [ ] DICOMTools CLI:
-  - [ ] dicom-info: File information dump
-  - [ ] dicom-convert: Transfer syntax conversion
-  - [ ] dicom-anon: Anonymization tool
-  - [ ] dicom-validate: Conformance validation
-- [ ] Sample code snippets:
-  - [ ] Playground-ready examples
-  - [ ] SwiftUI integration patterns
-  - [ ] Async/await network examples
-  - [ ] Unit testing examples
+
+##### DICOMViewer iOS App (3-4 weeks)
+- [ ] File management:
+  - [ ] Document picker integration
+  - [ ] Study browser with thumbnails
+  - [ ] Search and filter functionality
+  - [ ] Storage management
+- [ ] Image viewer:
+  - [ ] Multi-frame display with cine playback
+  - [ ] Gesture controls (pinch zoom, pan, window/level)
+  - [ ] Frame navigation and scrubber
+  - [ ] Window/level presets
+- [ ] Presentation states:
+  - [ ] GSPS loading and application
+  - [ ] Grayscale LUT chain (Modality → VOI → Presentation)
+  - [ ] Annotation rendering
+  - [ ] Shutter display
+- [ ] Measurement tools:
+  - [ ] Length measurement (calibrated in mm)
+  - [ ] Angle measurement
+  - [ ] ROI tools (ellipse, rectangle, freehand)
+  - [ ] Statistics calculation (mean, std dev, min/max)
+- [ ] Export and sharing:
+  - [ ] PNG/JPEG export
+  - [ ] Share sheet integration
+  - [ ] Save to Photos
+  - [ ] Burn-in annotations
+- [ ] Testing: 160+ unit tests, 30+ integration tests, 30+ UI tests
+
+##### DICOMViewer macOS App (4-5 weeks)
+- [ ] Advanced file management:
+  - [ ] Study database (SQLite/SwiftData)
+  - [ ] Drag-and-drop import
+  - [ ] Watch folder auto-import
+  - [ ] DICOMDIR support
+- [ ] Professional viewer:
+  - [ ] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
+  - [ ] Hanging protocols
+  - [ ] Viewport linking (scroll, W/L, zoom)
+  - [ ] Cine playback with keyboard shortcuts
+- [ ] PACS integration:
+  - [ ] C-FIND query (Patient/Study/Series/Instance)
+  - [ ] C-MOVE retrieve with queue
+  - [ ] C-STORE send with verification
+  - [ ] QIDO-RS/WADO-RS/STOW-RS support
+  - [ ] Multiple server configurations
+- [ ] MPR and 3D:
+  - [ ] 2D MPR (axial, sagittal, coronal)
+  - [ ] Oblique MPR
+  - [ ] Maximum Intensity Projection (MIP)
+  - [ ] Volume rendering with Metal
+  - [ ] Transfer function editor
+- [ ] Advanced measurements:
+  - [ ] All iOS measurements plus 3D tools
+  - [ ] Time-series analysis
+  - [ ] Measurement reports (PDF, DICOM SR)
+- [ ] Printing:
+  - [ ] Film composer with layouts
+  - [ ] DICOM Print (C-PRINT)
+  - [ ] PDF export
+  - [ ] Local printer support
+- [ ] Testing: 250+ unit tests, 70+ integration tests, 40+ UI tests
+
+##### DICOMViewer visionOS App (3-4 weeks)
+- [ ] Spatial viewing:
+  - [ ] Floating image windows in space
+  - [ ] Multiple windows simultaneously
+  - [ ] Window management with hand gestures
+  - [ ] Immersive mode for focused viewing
+- [ ] 3D volume rendering:
+  - [ ] Volumetric display in space
+  - [ ] Walk around volumes
+  - [ ] Scale from miniature to life-size
+  - [ ] MIP and direct volume rendering
+  - [ ] Transfer function editor in space
+- [ ] Clipping and slicing:
+  - [ ] Hand-placed clipping planes
+  - [ ] Multiple clip planes
+  - [ ] Animated clipping
+  - [ ] MPR slices as floating planes
+- [ ] Spatial measurements:
+  - [ ] 3D length and angle measurements
+  - [ ] Volume ROI
+  - [ ] Spatial annotations
+- [ ] Hand tracking:
+  - [ ] Custom medical imaging gestures
+  - [ ] Window/level hand gestures
+  - [ ] Measurement placement with pinch
+  - [ ] Volume manipulation
+- [ ] Eye tracking:
+  - [ ] Gaze-based selection
+  - [ ] Gaze-activated menus
+  - [ ] Window focus follows gaze
+- [ ] Collaboration:
+  - [ ] SharePlay integration
+  - [ ] Multi-user viewing sessions
+  - [ ] Shared measurements and annotations
+  - [ ] Spatial voice chat
+- [ ] Testing: 205+ unit tests, 45+ integration tests, 20+ device tests
+
+##### DICOMTools CLI Suite (2-3 weeks)
+- [ ] dicom-info: File metadata display
+  - [ ] Plain text, JSON, CSV, XML output
+  - [ ] Tag filtering and search
+  - [ ] Statistics mode
+  - [ ] 50+ unit tests, 20+ integration tests
+- [ ] dicom-convert: Transfer syntax conversion and image export
+  - [ ] Convert between transfer syntaxes
+  - [ ] Export to PNG/JPEG/TIFF
+  - [ ] Batch conversion with parallelization
+  - [ ] 60+ unit tests, 15+ integration tests
+- [ ] dicom-anon: Anonymization tool
+  - [ ] Basic, clinical trial, research profiles
+  - [ ] Date shifting, UID regeneration
+  - [ ] Audit logging
+  - [ ] PHI detection
+  - [ ] 50+ unit tests, 20+ integration tests
+- [ ] dicom-validate: Conformance validation
+  - [ ] DICOM Part 10 validation
+  - [ ] IOD-specific validation (CT, MR, CR, US, SC, GSPS, SR)
+  - [ ] VR/VM validation
+  - [ ] JSON report output
+  - [ ] 70+ unit tests, 25+ integration tests
+- [ ] dicom-query: PACS query tool
+  - [ ] C-FIND and QIDO-RS support
+  - [ ] Patient/Study/Series/Instance queries
+  - [ ] Table, JSON, CSV output
+  - [ ] 40+ unit tests, 15+ integration tests
+- [ ] dicom-send: PACS send tool
+  - [ ] C-STORE and STOW-RS support
+  - [ ] Batch upload with progress
+  - [ ] Verification and retry
+  - [ ] 40+ unit tests, 15+ integration tests
+- [ ] dicom-dump: Hexadecimal dump with DICOM overlay
+  - [ ] Hex and ASCII display
+  - [ ] Tag boundary highlighting
+  - [ ] VR and length annotations
+  - [ ] 30+ unit tests, 10+ integration tests
+- [ ] Distribution:
+  - [ ] Homebrew formula
+  - [ ] Binary releases (macOS Intel, Apple Silicon, Linux)
+  - [ ] Man pages
+  - [ ] Installation documentation
+
+##### Sample Code and Playgrounds (1 week)
+- [ ] 27 comprehensive playgrounds organized in 6 categories:
+  - [ ] **Getting Started** (4 playgrounds):
+    - [ ] Reading DICOM Files
+    - [ ] Accessing Metadata
+    - [ ] Pixel Data Access
+    - [ ] Error Handling
+  - [ ] **Image Processing** (4 playgrounds):
+    - [ ] Window/Level
+    - [ ] Image Export
+    - [ ] Multi-frame Series
+    - [ ] Transfer Syntax
+  - [ ] **Network Operations** (5 playgrounds):
+    - [ ] PACS Query (C-FIND)
+    - [ ] PACS Retrieve (C-MOVE)
+    - [ ] PACS Send (C-STORE)
+    - [ ] DICOMweb (QIDO, WADO, STOW)
+    - [ ] Modality Worklist
+  - [ ] **Structured Reporting** (4 playgrounds):
+    - [ ] Reading SR Documents
+    - [ ] Creating Basic SR
+    - [ ] Measurement Reports
+    - [ ] CAD SR
+  - [ ] **SwiftUI Integration** (5 playgrounds):
+    - [ ] Basic Image Viewer
+    - [ ] Study Browser
+    - [ ] Async Loading
+    - [ ] Measurement Tools
+    - [ ] MVVM Pattern
+  - [ ] **Advanced Topics** (5 playgrounds):
+    - [ ] 3D Volume Reconstruction
+    - [ ] Presentation States (GSPS)
+    - [ ] RT Structure Sets
+    - [ ] Custom Plugins
+    - [ ] Performance Optimization
+- [ ] Interactive elements: sliders, buttons, live previews
+- [ ] Sample DICOM files included
+- [ ] 575+ test cases across all playgrounds
+
+#### Testing Summary
+
+| Component | Unit Tests | Integration Tests | UI/Device Tests | Total |
+|-----------|------------|-------------------|-----------------|-------|
+| iOS Viewer | 160+ | 30+ | 30+ | 220+ |
+| macOS Viewer | 250+ | 70+ | 40+ | 360+ |
+| visionOS Viewer | 205+ | 45+ | 20+ | 270+ |
+| CLI Tools | 370+ | 125+ | - | 495+ |
+| Sample Code | 575+ (playground tests) | - | - | 575+ |
+| **TOTAL** | **1,560+** | **270+** | **90+** | **1,920+** |
+
+**Target Code Coverage**: 80%+ across all components
 
 #### Technical Notes
-- Example apps use latest SwiftUI patterns
-- CLI tools useful for scripting and automation
-- Playground examples enable quick experimentation
+- All apps use latest SwiftUI patterns
+- macOS viewer uses Metal for GPU acceleration
+- visionOS app uses RealityKit and ARKit
+- CLI tools support macOS and Linux
+- All code follows Swift API Design Guidelines
+- Comprehensive documentation for each component
 
 #### Acceptance Criteria
-- [ ] All example apps build and run without errors
-- [ ] Example apps demonstrate major DICOMKit features
-- [ ] CLI tools pass integration tests
-- [ ] Sample code snippets are verified runnable
+- [ ] All apps build and run without errors on respective platforms
+- [ ] All CLI tools pass unit and integration tests
+- [ ] All playgrounds run successfully in Xcode
+- [ ] Code coverage >80% for all components
+- [ ] No memory leaks detected
+- [ ] Performance benchmarks met:
+  - [ ] iOS: 60fps scrolling, <200MB memory
+  - [ ] macOS: 30fps volume rendering, <500MB memory
+  - [ ] visionOS: 60fps immersive mode, <1GB memory
+  - [ ] CLI: Process 100MB file in <5 seconds
+- [ ] All detailed plans reviewed and approved
+- [ ] Documentation complete for all components
+- [ ] TestFlight beta for iOS/macOS/visionOS (optional)
+- [ ] App Store submission approved (optional)
 
 ---
 
