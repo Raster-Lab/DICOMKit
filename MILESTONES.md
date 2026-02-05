@@ -3347,15 +3347,15 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [ ] Man pages
   - [ ] Installation documentation
 
-##### Sample Code and Playgrounds (1 week)
-- [ ] 27 comprehensive playgrounds organized in 6 categories:
-  - [ ] **Getting Started** (4 playgrounds):
-    - [ ] Reading DICOM Files
-    - [ ] Accessing Metadata
-    - [ ] Pixel Data Access
-    - [ ] Error Handling
-  - [ ] **Image Processing** (4 playgrounds):
-    - [ ] Window/Level
+##### Sample Code and Playgrounds (1 week) - 🚧 IN PROGRESS
+- [x] 27 comprehensive playgrounds organized in 6 categories:
+  - [x] **Getting Started** (4 playgrounds): ✅ COMPLETE
+    - [x] Reading DICOM Files (5 examples, 4.9KB)
+    - [x] Accessing Metadata (9 examples, 13.4KB)
+    - [x] Pixel Data Access (9 examples, 15.3KB)
+    - [x] Error Handling (10 examples, 14.6KB)
+  - [ ] **Image Processing** (4 playgrounds): 🚧 1/4 COMPLETE
+    - [x] Window/Level (9 examples, 17.8KB)
     - [ ] Image Export
     - [ ] Multi-frame Series
     - [ ] Transfer Syntax
@@ -3380,11 +3380,14 @@ This milestone delivers comprehensive demo applications across all Apple platfor
     - [ ] 3D Volume Reconstruction
     - [ ] Presentation States (GSPS)
     - [ ] RT Structure Sets
-    - [ ] Custom Plugins
+    - [ ] Segmentation
     - [ ] Performance Optimization
-- [ ] Interactive elements: sliders, buttons, live previews
-- [ ] Sample DICOM files included
-- [ ] 575+ test cases across all playgrounds
+- [x] Directory structure created (6 categories + resources)
+- [x] Comprehensive README.md with usage guide
+- [x] .gitignore for sample files
+- [ ] Interactive elements: sliders, buttons, live previews (future enhancement)
+- [ ] Sample DICOM files included (user downloads separately)
+- [ ] 575+ test cases across all playgrounds (in progress)
 
 #### Testing Summary
 
@@ -3394,7 +3397,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | macOS Viewer | 250+ | 70+ | 40+ | 360+ | Planned |
 | visionOS Viewer | 205+ | 45+ | 20+ | 270+ | Planned |
 | CLI Tools | 370+ | 125+ | - | 495+ | Planned |
-| Sample Code | 575+ (playground tests) | - | - | 575+ | Planned |
+| Sample Code | 5 (19% complete) | - | - | 575+ (target) | 🚧 In Progress |
 | **TOTAL** | **1,435+** | **240+** | **60+** | **1,735+** | In Progress |
 
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.

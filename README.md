@@ -3450,6 +3450,30 @@ if let sctScheme = registry.scheme(forDesignator: "SCT") {
 
 ## Examples
 
+DICOMKit includes two types of comprehensive examples:
+
+### 1. Sample Code Playgrounds (NEW - February 2026)
+
+The `Playgrounds/` directory contains 27+ interactive Swift playground files organized into 6 categories, covering everything from basic file reading to advanced medical imaging workflows. **Status: 5 of 27 complete (19%)**
+
+**Getting Started** (4 playgrounds) ✅ COMPLETE
+- Reading DICOM Files (5 examples)
+- Accessing Metadata (9 examples)
+- Pixel Data Access (9 examples)
+- Error Handling (10 examples)
+
+**Image Processing** (4 playgrounds) 🚧 IN PROGRESS
+- Window/Level (9 examples) ✅
+- Image Export (planned)
+- Multi-frame Series (planned)
+- Transfer Syntax (planned)
+
+**Network Operations, Structured Reporting, SwiftUI Integration, Advanced Topics** (17 playgrounds) - Planned
+
+Each playground includes multiple examples, comprehensive comments, and quick reference guides. See [Playgrounds/README.md](Playgrounds/README.md) for details.
+
+### 2. Structured Reporting Examples
+
 DICOMKit includes comprehensive examples demonstrating common Structured Reporting workflows. These examples cover creating, parsing, and working with DICOM SR documents for clinical and research use cases.
 
 ### Available Examples
