@@ -3164,16 +3164,16 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 #### Deliverables
 
 ##### DICOMViewer iOS App (3-4 weeks)
-- [ ] File management:
-  - [ ] Document picker integration
-  - [ ] Study browser with thumbnails
-  - [ ] Search and filter functionality
-  - [ ] Storage management
-- [ ] Image viewer:
-  - [ ] Multi-frame display with cine playback
-  - [ ] Gesture controls (pinch zoom, pan, window/level)
-  - [ ] Frame navigation and scrubber
-  - [ ] Window/level presets
+- [x] File management:
+  - [x] Document picker integration
+  - [x] Study browser with thumbnails
+  - [x] Search and filter functionality
+  - [x] Storage management
+- [x] Image viewer:
+  - [x] Multi-frame display with cine playback
+  - [x] Gesture controls (pinch zoom, pan, window/level)
+  - [x] Frame navigation and scrubber
+  - [x] Window/level presets
 - [ ] Presentation states:
   - [ ] GSPS loading and application
   - [ ] Grayscale LUT chain (Modality → VOI → Presentation)
