@@ -10,9 +10,36 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.12)
+## Features (v1.0.13)
 
-- ✅ **Performance Optimizations (NEW in v1.0.12)**
+- ✅ **Comprehensive Documentation (NEW in v1.0.13)**
+  - ✅ **DocC API Documentation** - Apple-native documentation
+    - ✅ DocC catalogs for all 5 modules (DICOMKit, DICOMCore, DICOMNetwork, DICOMWeb, DICOMDictionary)
+    - ✅ Tutorial-style guides (Getting Started, Reading Files, Rendering Images)
+    - ✅ Code examples for common use cases
+  - ✅ **Platform Integration Guides** - Platform-specific best practices
+    - ✅ iOS Integration Guide (SwiftUI, UIKit, file import, memory management)
+    - ✅ macOS Integration Guide (document-based apps, PACS integration, printing)
+    - ✅ visionOS Integration Guide (spatial computing, RealityKit, hand gestures)
+    - ✅ DICOM Networking Guide (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE)
+    - ✅ DICOMweb Guide (QIDO-RS, WADO-RS, STOW-RS, OAuth2)
+  - ✅ **Architecture Documentation** - Design and patterns
+    - ✅ Module dependency diagrams
+    - ✅ Threading and concurrency model
+    - ✅ Memory management patterns
+    - ✅ Data flow documentation
+  - ✅ **DICOM Conformance Statement** - Standards compliance
+    - ✅ Supported SOP Classes table
+    - ✅ Transfer Syntax support matrix
+    - ✅ Character set support details
+    - ✅ DICOMweb capabilities (QIDO, WADO, STOW, UPS)
+  - ✅ **Troubleshooting Resources** - Problem solving
+    - ✅ Common issues and solutions
+    - ✅ Debugging techniques
+    - ✅ Error code reference
+    - ✅ FAQ document
+
+- ✅ **Performance Optimizations (v1.0.12)**
   - ✅ **Memory Optimization** - Efficient large file handling
     - ✅ Memory-mapped file access for files >100MB (50% memory reduction)
     - ✅ Lazy loading of pixel data with `LazyPixelDataLoader`
