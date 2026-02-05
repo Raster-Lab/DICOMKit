@@ -274,4 +274,39 @@ struct DICOMMetadata: Sendable {
     // File
     let filePath: String
     let fileSize: Int64
+    
+    /// Creates a copy of this metadata with an updated file path
+    /// - Parameter path: The new file path
+    /// - Returns: A new DICOMMetadata instance with the updated path
+    func withFilePath(_ path: String) -> DICOMMetadata {
+        DICOMMetadata(
+            patientName: patientName,
+            patientID: patientID,
+            patientSex: patientSex,
+            patientBirthDate: patientBirthDate,
+            studyInstanceUID: studyInstanceUID,
+            studyDate: studyDate,
+            studyDescription: studyDescription,
+            accessionNumber: accessionNumber,
+            seriesInstanceUID: seriesInstanceUID,
+            seriesNumber: seriesNumber,
+            seriesDescription: seriesDescription,
+            modality: modality,
+            sopInstanceUID: sopInstanceUID,
+            sopClassUID: sopClassUID,
+            instanceNumber: instanceNumber,
+            numberOfFrames: numberOfFrames,
+            rows: rows,
+            columns: columns,
+            bitsAllocated: bitsAllocated,
+            bitsStored: bitsStored,
+            photometricInterpretation: photometricInterpretation,
+            windowCenter: windowCenter,
+            windowWidth: windowWidth,
+            pixelSpacing: pixelSpacing,
+            transferSyntaxUID: transferSyntaxUID,
+            filePath: path,
+            fileSize: fileSize
+        )
+    }
 }

@@ -124,36 +124,7 @@ final class LibraryViewModel {
                 let importedURL = try await fileService.importFile(from: url)
                 
                 // Update metadata with new path
-                var updatedMetadata = metadata
-                updatedMetadata = DICOMMetadata(
-                    patientName: metadata.patientName,
-                    patientID: metadata.patientID,
-                    patientSex: metadata.patientSex,
-                    patientBirthDate: metadata.patientBirthDate,
-                    studyInstanceUID: metadata.studyInstanceUID,
-                    studyDate: metadata.studyDate,
-                    studyDescription: metadata.studyDescription,
-                    accessionNumber: metadata.accessionNumber,
-                    seriesInstanceUID: metadata.seriesInstanceUID,
-                    seriesNumber: metadata.seriesNumber,
-                    seriesDescription: metadata.seriesDescription,
-                    modality: metadata.modality,
-                    sopInstanceUID: metadata.sopInstanceUID,
-                    sopClassUID: metadata.sopClassUID,
-                    instanceNumber: metadata.instanceNumber,
-                    numberOfFrames: metadata.numberOfFrames,
-                    rows: metadata.rows,
-                    columns: metadata.columns,
-                    bitsAllocated: metadata.bitsAllocated,
-                    bitsStored: metadata.bitsStored,
-                    photometricInterpretation: metadata.photometricInterpretation,
-                    windowCenter: metadata.windowCenter,
-                    windowWidth: metadata.windowWidth,
-                    pixelSpacing: metadata.pixelSpacing,
-                    transferSyntaxUID: metadata.transferSyntaxUID,
-                    filePath: importedURL.path,
-                    fileSize: metadata.fileSize
-                )
+                let updatedMetadata = metadata.withFilePath(importedURL.path)
                 
                 // Group by study UID
                 if studyGroups[metadata.studyInstanceUID] == nil {
