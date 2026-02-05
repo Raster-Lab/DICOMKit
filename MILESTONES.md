@@ -2374,7 +2374,7 @@ This milestone is divided into modular sub-milestones based on feature complexit
 - [x] Render graphic and text annotations at correct positions
 - [x] Display shutters mask image regions appropriately
 - [x] All presentation state modules implemented with core functionality
-- [ ] Unit tests cover all presentation state modules (target: 80+ tests) - tests to be added in future
+- [x] Unit tests cover all presentation state modules (target: 80+ tests) - **116 tests created** covering all core modules
 - [ ] Round-trip test: create → write → read → apply produces consistent results - to be validated in integration
 
 ---
