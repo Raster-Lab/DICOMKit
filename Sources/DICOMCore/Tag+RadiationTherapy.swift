@@ -132,4 +132,252 @@ extension Tag {
     
     /// RT Referenced Series Sequence (3006,0014)
     public static let rtReferencedSeriesSequence = Tag(group: 0x3006, element: 0x0014)
+    
+    // MARK: - RT Plan Module (PS3.3 C.8.8.14, C.8.8.15, C.8.8.16)
+    // Group 300A
+    
+    /// RT Plan Label (300A,0002)
+    public static let rtPlanLabel = Tag(group: 0x300A, element: 0x0002)
+    
+    /// RT Plan Name (300A,0003)
+    public static let rtPlanName = Tag(group: 0x300A, element: 0x0003)
+    
+    /// RT Plan Description (300A,0004)
+    public static let rtPlanDescription = Tag(group: 0x300A, element: 0x0004)
+    
+    /// RT Plan Date (300A,0006)
+    public static let rtPlanDate = Tag(group: 0x300A, element: 0x0006)
+    
+    /// RT Plan Time (300A,0007)
+    public static let rtPlanTime = Tag(group: 0x300A, element: 0x0007)
+    
+    /// RT Plan Geometry (300A,000C)
+    public static let rtPlanGeometry = Tag(group: 0x300A, element: 0x000C)
+    
+    /// Prescription Description (300A,000E)
+    public static let prescriptionDescription = Tag(group: 0x300A, element: 0x000E)
+    
+    /// Dose Reference Sequence (300A,0010)
+    public static let doseReferenceSequence = Tag(group: 0x300A, element: 0x0010)
+    
+    /// Dose Reference Number (300A,0012)
+    public static let doseReferenceNumber = Tag(group: 0x300A, element: 0x0012)
+    
+    /// Dose Reference UID (300A,0013)
+    public static let doseReferenceUID = Tag(group: 0x300A, element: 0x0013)
+    
+    /// Dose Reference Structure Type (300A,0014)
+    public static let doseReferenceStructureType = Tag(group: 0x300A, element: 0x0014)
+    
+    /// Dose Reference Description (300A,0016)
+    public static let doseReferenceDescription = Tag(group: 0x300A, element: 0x0016)
+    
+    /// Dose Reference Type (300A,0020)
+    public static let doseReferenceType = Tag(group: 0x300A, element: 0x0020)
+    
+    /// Target Prescription Dose (300A,0026)
+    public static let targetPrescriptionDose = Tag(group: 0x300A, element: 0x0026)
+    
+    /// Target Maximum Dose (300A,0027)
+    public static let targetMaximumDose = Tag(group: 0x300A, element: 0x0027)
+    
+    /// Target Minimum Dose (300A,0025)
+    public static let targetMinimumDose = Tag(group: 0x300A, element: 0x0025)
+    
+    /// Organ at Risk Full-Volume Dose (300A,002A)
+    public static let organAtRiskFullVolumeDose = Tag(group: 0x300A, element: 0x002A)
+    
+    /// Organ at Risk Maximum Dose (300A,002C)
+    public static let organAtRiskMaximumDose = Tag(group: 0x300A, element: 0x002C)
+    
+    /// Fraction Group Sequence (300A,0070)
+    public static let fractionGroupSequence = Tag(group: 0x300A, element: 0x0070)
+    
+    /// Fraction Group Number (300A,0071)
+    public static let fractionGroupNumber = Tag(group: 0x300A, element: 0x0071)
+    
+    /// Fraction Group Description (300A,0072)
+    public static let fractionGroupDescription = Tag(group: 0x300A, element: 0x0072)
+    
+    /// Number of Fractions Planned (300A,0078)
+    public static let numberOfFractionsPlanned = Tag(group: 0x300A, element: 0x0078)
+    
+    /// Number of Fraction Pattern Digits Per Day (300A,0079)
+    public static let numberOfFractionPatternDigitsPerDay = Tag(group: 0x300A, element: 0x0079)
+    
+    /// Repeat Fraction Cycle Length (300A,007A)
+    public static let repeatFractionCycleLength = Tag(group: 0x300A, element: 0x007A)
+    
+    /// Fraction Pattern (300A,007B)
+    public static let fractionPattern = Tag(group: 0x300A, element: 0x007B)
+    
+    /// Number of Beams (300A,0080)
+    public static let numberOfBeams = Tag(group: 0x300A, element: 0x0080)
+    
+    /// Beam Sequence (300A,00B0)
+    public static let beamSequence = Tag(group: 0x300A, element: 0x00B0)
+    
+    /// Beam Number (300A,00C0)
+    public static let beamNumber = Tag(group: 0x300A, element: 0x00C0)
+    
+    /// Beam Name (300A,00C2)
+    public static let beamName = Tag(group: 0x300A, element: 0x00C2)
+    
+    /// Beam Description (300A,00C3)
+    public static let beamDescription = Tag(group: 0x300A, element: 0x00C3)
+    
+    /// Beam Type (300A,00C4)
+    public static let beamType = Tag(group: 0x300A, element: 0x00C4)
+    
+    /// Radiation Type (300A,00C6)
+    public static let radiationType = Tag(group: 0x300A, element: 0x00C6)
+    
+    /// Treatment Machine Name (300A,00B2)
+    public static let treatmentMachineName = Tag(group: 0x300A, element: 0x00B2)
+    
+    /// Manufacturer (0008,0070) - Already defined in core tags
+    
+    /// Primary Dosimeter Unit (300A,00B3)
+    public static let primaryDosimeterUnit = Tag(group: 0x300A, element: 0x00B3)
+    
+    /// Source-Axis Distance (300A,00B4)
+    public static let sourceAxisDistance = Tag(group: 0x300A, element: 0x00B4)
+    
+    /// Control Point Sequence (300A,0111)
+    public static let controlPointSequence = Tag(group: 0x300A, element: 0x0111)
+    
+    /// Control Point Index (300A,0112)
+    public static let controlPointIndex = Tag(group: 0x300A, element: 0x0112)
+    
+    /// Cumulative Meterset Weight (300A,0134)
+    public static let cumulativeMetersetWeight = Tag(group: 0x300A, element: 0x0134)
+    
+    /// Gantry Angle (300A,011E)
+    public static let gantryAngle = Tag(group: 0x300A, element: 0x011E)
+    
+    /// Gantry Rotation Direction (300A,011F)
+    public static let gantryRotationDirection = Tag(group: 0x300A, element: 0x011F)
+    
+    /// Beam Limiting Device Angle (300A,0120)
+    public static let beamLimitingDeviceAngle = Tag(group: 0x300A, element: 0x0120)
+    
+    /// Beam Limiting Device Rotation Direction (300A,0121)
+    public static let beamLimitingDeviceRotationDirection = Tag(group: 0x300A, element: 0x0121)
+    
+    /// Patient Support Angle (300A,0122)
+    public static let patientSupportAngle = Tag(group: 0x300A, element: 0x0122)
+    
+    /// Patient Support Rotation Direction (300A,0123)
+    public static let patientSupportRotationDirection = Tag(group: 0x300A, element: 0x0123)
+    
+    /// Table Top Vertical Position (300A,0128)
+    public static let tableTopVerticalPosition = Tag(group: 0x300A, element: 0x0128)
+    
+    /// Table Top Longitudinal Position (300A,0129)
+    public static let tableTopLongitudinalPosition = Tag(group: 0x300A, element: 0x0129)
+    
+    /// Table Top Lateral Position (300A,012A)
+    public static let tableTopLateralPosition = Tag(group: 0x300A, element: 0x012A)
+    
+    /// Isocenter Position (300A,012C)
+    public static let isocenterPosition = Tag(group: 0x300A, element: 0x012C)
+    
+    /// Surface Entry Point (300A,012E)
+    public static let surfaceEntryPoint = Tag(group: 0x300A, element: 0x012E)
+    
+    /// Source to Surface Distance (300A,0130)
+    public static let sourceToSurfaceDistance = Tag(group: 0x300A, element: 0x0130)
+    
+    /// Beam Limiting Device Position Sequence (300A,011A)
+    public static let beamLimitingDevicePositionSequence = Tag(group: 0x300A, element: 0x011A)
+    
+    /// RT Beam Limiting Device Type (300A,00B8)
+    public static let rtBeamLimitingDeviceType = Tag(group: 0x300A, element: 0x00B8)
+    
+    /// Leaf/Jaw Positions (300A,011C)
+    public static let leafJawPositions = Tag(group: 0x300A, element: 0x011C)
+    
+    /// Nominal Beam Energy (300A,0114)
+    public static let nominalBeamEnergy = Tag(group: 0x300A, element: 0x0114)
+    
+    /// Dose Rate Set (300A,0115)
+    public static let doseRateSet = Tag(group: 0x300A, element: 0x0115)
+    
+    /// Final Cumulative Meterset Weight (300A,010E)
+    public static let finalCumulativeMetersetWeight = Tag(group: 0x300A, element: 0x010E)
+    
+    /// Referenced Structure Set Sequence (300C,0060)
+    public static let referencedStructureSetSequence = Tag(group: 0x300C, element: 0x0060)
+    
+    /// Referenced Dose Sequence (300C,0080)
+    public static let referencedDoseSequence = Tag(group: 0x300C, element: 0x0080)
+    
+    /// Referenced Beam Number (300C,0006)
+    public static let referencedBeamNumber = Tag(group: 0x300C, element: 0x0006)
+    
+    /// Number of Brachy Application Setups (300A,00A0)
+    public static let numberOfBrachyApplicationSetups = Tag(group: 0x300A, element: 0x00A0)
+    
+    /// Brachy Application Setup Sequence (300A,0230)
+    public static let brachyApplicationSetupSequence = Tag(group: 0x300A, element: 0x0230)
+    
+    /// Application Setup Number (300A,0232)
+    public static let applicationSetupNumber = Tag(group: 0x300A, element: 0x0232)
+    
+    /// Application Setup Type (300A,0234)
+    public static let applicationSetupType = Tag(group: 0x300A, element: 0x0234)
+    
+    // MARK: - RT Dose Module (PS3.3 C.8.8.3)
+    // Group 3004
+    
+    /// DVH Sequence (3004,0050)
+    public static let dvhSequence = Tag(group: 0x3004, element: 0x0050)
+    
+    /// DVH Type (3004,0001)
+    public static let dvhType = Tag(group: 0x3004, element: 0x0001)
+    
+    /// Dose Units (3004,0002)
+    public static let doseUnits = Tag(group: 0x3004, element: 0x0002)
+    
+    /// Dose Type (3004,0004)
+    public static let doseType = Tag(group: 0x3004, element: 0x0004)
+    
+    /// Dose Comment (3004,0006)
+    public static let doseComment = Tag(group: 0x3004, element: 0x0006)
+    
+    /// Dose Summation Type (3004,000A)
+    public static let doseSummationType = Tag(group: 0x3004, element: 0x000A)
+    
+    /// Grid Frame Offset Vector (3004,000C)
+    public static let gridFrameOffsetVector = Tag(group: 0x3004, element: 0x000C)
+    
+    /// Dose Grid Scaling (3004,000E)
+    public static let doseGridScaling = Tag(group: 0x3004, element: 0x000E)
+    
+    /// Tissue Heterogeneity Correction (3004,0014)
+    public static let tissueHeterogeneityCorrection = Tag(group: 0x3004, element: 0x0014)
+    
+    /// Referenced RT Plan Sequence (300C,0002)
+    public static let referencedRTPlanSequence = Tag(group: 0x300C, element: 0x0002)
+    
+    /// Referenced Fraction Group Number (300C,0022)
+    public static let referencedFractionGroupNumber = Tag(group: 0x300C, element: 0x0022)
+    
+    /// DVH Normalization Point (3004,0040)
+    public static let dvhNormalizationPoint = Tag(group: 0x3004, element: 0x0040)
+    
+    /// DVH Normalization Dose Value (3004,0042)
+    public static let dvhNormalizationDoseValue = Tag(group: 0x3004, element: 0x0042)
+    
+    /// DVH Data (3004,0058)
+    public static let dvhData = Tag(group: 0x3004, element: 0x0058)
+    
+    /// DVH Minimum Dose (3004,0070)
+    public static let dvhMinimumDose = Tag(group: 0x3004, element: 0x0070)
+    
+    /// DVH Maximum Dose (3004,0072)
+    public static let dvhMaximumDose = Tag(group: 0x3004, element: 0x0072)
+    
+    /// DVH Mean Dose (3004,0074)
+    public static let dvhMeanDose = Tag(group: 0x3004, element: 0x0074)
 }
