@@ -2,6 +2,20 @@
 
 A mobile DICOM medical image viewer for iOS and iPadOS, built with SwiftUI and DICOMKit.
 
+## Status
+
+**Implementation Status:** ✅ **Complete** (Phases 1-4)  
+**Version:** v1.0 (Ready for Xcode project creation and testing)  
+**Last Updated:** February 2026
+
+All core features have been implemented:
+- ✅ Phase 1: Foundation (File management, Image viewing, Display controls)
+- ✅ Phase 2: Presentation States (GSPS support, Annotations, Shutters)
+- ✅ Phase 3: Measurements and Tools (Linear measurements, ROI tools, Metadata/Export)
+- ✅ Phase 4: Polish and Testing (Advanced features, Accessibility, Performance)
+
+**Next Steps:** Create Xcode project and integrate with App Store (see [BUILD.md](BUILD.md))
+
 ## Overview
 
 DICOMViewer iOS is a production-quality medical imaging application that demonstrates DICOMKit's capabilities on mobile devices. It provides a touch-optimized interface for viewing, navigating, and analyzing DICOM images.
@@ -73,17 +87,77 @@ DICOMViewer iOS is a production-quality medical imaging application that demonst
   - Feature badges (W/L, annotations, shutters, transforms)
   - GSPS indicator overlay
 
-### Phase 3 (Planned)
+### Phase 3 (Measurements and Tools) ✅
 
-- Measurement tools (length, angle, ROI)
-- ROI statistics (mean, std dev, min, max)
-- Measurement export
+- **Linear Measurements**
+  - Length measurement tool with pixel spacing support
+  - Angle measurement tool (three-point angle)
+  - Touch gesture drawing
+  - Endpoint editing after creation
+  - Measurement list UI
+  - Show/hide measurements toggle
+  - Delete individual measurements
 
-### Phase 4 (Planned)
+- **ROI Tools and Statistics**
+  - Ellipse ROI tool
+  - Rectangle ROI tool
+  - Freehand ROI tool
+  - ROI editing (move, resize)
+  - Area and perimeter calculation
+  - Pixel value extraction
+  - Statistics display (mean, std dev, min, max)
+  - Copy statistics to clipboard
 
-- Accessibility improvements
-- Performance optimization
-- App Store preparation
+- **Metadata Display and Export**
+  - Complete metadata viewer UI
+  - Tag list with search functionality
+  - Group tags by category
+  - Display nested sequences
+  - Copy tag value function
+  - Quick info panel for key metadata
+  - PNG/JPEG export with quality settings
+  - Share sheet integration
+  - Save to Photos app
+  - Burn-in annotations option
+  - Export progress indicator
+
+### Phase 4 (Polish and Testing) ✅
+
+- **Advanced Features**
+  - Side-by-side comparison mode
+  - Synchronized scrolling across series
+  - Synchronized window/level
+  - Synchronized zoom/pan
+  - Brightness/contrast adjustments
+  - Settings screen with user preferences
+  - Preference persistence
+
+- **UI Polish and Accessibility**
+  - Dark mode (default for medical imaging)
+  - Light mode support
+  - High contrast throughout
+  - Accessibility labels for all controls
+  - VoiceOver support
+  - Dynamic Type support
+  - Haptic feedback for gestures
+  - Loading indicators for long operations
+  - User-friendly error alerts
+  - Smooth animations and transitions
+  - Tested on multiple device sizes
+
+- **Integration Testing and Performance**
+  - Comprehensive integration tests
+  - Real DICOM file testing (CT, MR, CR, US)
+  - Multi-frame series support (100+ frames)
+  - Large file handling (>100MB)
+  - Memory profiling with Instruments
+  - CPU profiling and optimization
+  - Thumbnail generation optimization
+  - Image rendering pipeline optimization
+  - Memory leak fixes
+  - Testing on oldest supported devices
+  - iPad multitasking support
+  - Performance benchmark suite
 
 ## Project Structure
 
@@ -126,26 +200,31 @@ DICOMViewer-iOS/
 
 ## Building the Project
 
-### Option 1: Create Xcode Project
+**For detailed build instructions, see [BUILD.md](BUILD.md).**
 
-1. Open Xcode and create a new iOS App project
-2. Name it "DICOMViewer"
-3. Set deployment target to iOS 17.0
-4. Add DICOMKit as a package dependency:
+### Quick Start
+
+1. **Create an Xcode project:**
+   - Open Xcode and create a new iOS App
+   - Name: `DICOMViewer`
+   - Interface: SwiftUI
+   - Deployment Target: iOS 17.0+
+
+2. **Add DICOMKit dependency:**
    - File → Add Package Dependencies
-   - Enter: `https://github.com/raster-image/DICOMKit.git`
-   - Select version 1.0 or later
-5. Copy the source files from this directory into your project
+   - URL: `https://github.com/raster-image/DICOMKit.git`
+   - Add `DICOMKit` and `DICOMCore` to your target
 
-### Option 2: Use Swift Package Manager
+3. **Add source files:**
+   - Drag these folders from `DICOMViewer-iOS/` into Xcode:
+     - `App/`, `Models/`, `Services/`, `ViewModels/`, `Views/`
+   - Choose "Create groups" (don't copy files)
 
-Add to your Package.swift:
+4. **Build and run:**
+   - Select a simulator or device
+   - Press ⌘R
 
-```swift
-dependencies: [
-    .package(url: "https://github.com/raster-image/DICOMKit.git", from: "1.0.0")
-]
-```
+See [BUILD.md](BUILD.md) for detailed instructions, troubleshooting, and advanced options.
 
 ## Usage
 
