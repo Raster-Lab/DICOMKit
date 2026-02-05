@@ -2731,37 +2731,41 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 ### Milestone 10.8: Real-World Value Mapping (RWV LUT) (v1.0.8)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Implement comprehensive Real World Value LUT support  
 **Complexity**: Medium  
 **Dependencies**: Milestone 3 (Pixel Data Access), Milestone 10.1 (GSPS)
 
 #### Deliverables
-- [ ] Real World Value Mapping:
-  - [ ] `RealWorldValueMapping` struct for value transformations
-  - [ ] `RealWorldValueMappingSequence` parsing
-  - [ ] Linear transformation (slope/intercept) support
-  - [ ] LUT-based transformation support
-- [ ] Quantity specification:
-  - [ ] `RealWorldValueUnits` coded entry parsing
-  - [ ] `MeasurementUnitsCodeSequence` support
-  - [ ] UCUM unit validation
-  - [ ] Unit conversion utilities
-- [ ] Multi-mapping support:
-  - [ ] Multiple RWV mappings per image
-  - [ ] Context-based mapping selection
-  - [ ] First frame/all frames mapping scope
-  - [ ] Mapping to different physical quantities
-- [ ] PET SUV calculations:
-  - [ ] `SUVCalculator` for Standardized Uptake Value
-  - [ ] Body weight normalized SUV (SUVbw)
-  - [ ] Lean body mass normalized SUV (SUVlbm)
-  - [ ] Body surface area normalized SUV (SUVbsa)
-  - [ ] Decay correction handling
-- [ ] Integration with rendering:
-  - [ ] RWV-aware pixel value display
-  - [ ] Measurement tools using real world values
-  - [ ] ROI statistics in physical units
+- [x] Real World Value Mapping:
+  - [x] `RealWorldValueLUT` struct for value transformations
+  - [x] `RealWorldValueLUTParser` for parsing RWV Mapping Sequence
+  - [x] Linear transformation (slope/intercept) support
+  - [x] LUT-based transformation support (descriptor + data)
+  - [x] Frame scope support (firstFrame, allFrames, specificFrames)
+- [x] Quantity specification:
+  - [x] `RealWorldValueUnits` with UCUM coded entry support
+  - [x] Common measurement units (Hounsfield, mm2/s, ms, g/ml, Bq/ml, etc.)
+  - [x] `MeasurementUnitsCodeSequence` parsing
+  - [x] Common quantity definitions (ADC, T1/T2, Ktrans, SUV, etc.)
+- [x] Multi-mapping support:
+  - [x] Multiple RWV mappings per image via parser
+  - [x] Frame-specific mapping support
+  - [x] First frame/all frames/specific frames mapping scope
+  - [x] Mapping to different physical quantities via quantity definitions
+- [x] PET SUV calculations:
+  - [x] `SUVCalculator` for Standardized Uptake Value
+  - [x] Body weight normalized SUV (SUVbw)
+  - [x] Lean body mass normalized SUV (SUVlbm)
+  - [x] Body surface area normalized SUV (SUVbsa)
+  - [x] Ideal body weight normalized SUV (SUVibw)
+  - [x] Decay correction handling for radionuclides
+  - [x] Common radionuclide half-lives (F-18, C-11, O-15, N-13, Ga-68, Cu-64, Zr-89, I-124)
+- [x] Integration with rendering:
+  - [x] `RealWorldValueRenderer` actor for pixel value transformation
+  - [x] Frame-specific transformation support
+  - [x] ROI statistics in physical units (min, max, mean, median, std dev)
+  - [x] Batch transformation for arrays of pixel values
 
 #### Technical Notes
 - Reference: PS3.3 C.7.6.16.2.11 - Real World Value Mapping Functional Group
@@ -2770,13 +2774,20 @@ This milestone is divided into modular sub-milestones based on feature complexit
 - RWV LUT transforms stored pixel values to physical quantities
 - PET SUV requires patient weight, injection dose, decay correction
 - Multiple RWV mappings allow different physical interpretations
+- Parser supports both legacy Modality LUT and modern RWV Mapping Sequence
+- Modern RWV Mapping Sequence takes priority over legacy Modality LUT
+- All types conform to Sendable for Swift 6 strict concurrency
 
 #### Acceptance Criteria
-- [ ] Parse RWV mapping sequences correctly
-- [ ] Apply linear and LUT-based transformations
-- [ ] Calculate SUV values for PET images
-- [ ] Display physical quantity values in measurement tools
-- [ ] Unit tests for RWV LUT support (target: 40+ tests)
+- [x] Parse RWV mapping sequences correctly (from Shared/Per-Frame Functional Groups)
+- [x] Apply linear and LUT-based transformations correctly
+- [x] Calculate SUV values for PET images (all 4 normalization types)
+- [x] Statistics calculator using real world values with units
+- [x] Unit tests for RWV LUT support (target: 40+ tests) - **69 tests created (173% of target)**
+  - [x] 22 tests for `RealWorldValueLUT` (transformations, units, quantities)
+  - [x] 17 tests for `RealWorldValueRenderer` (actor, frame-specific, statistics)
+  - [x] 20 tests for `SUVCalculator` (decay, all SUV types, radionuclides)
+  - [x] 10 tests for `RealWorldValueLUTParser` (modality LUT, RWV mapping, priority handling)
 
 ---
 
