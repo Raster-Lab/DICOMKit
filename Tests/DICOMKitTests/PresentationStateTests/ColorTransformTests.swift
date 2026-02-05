@@ -200,6 +200,8 @@ final class ColorTransformTests: XCTestCase {
         }
     }
     
+    #if canImport(CoreGraphics)
+    
     // MARK: - RGB to LAB Tests
     
     func test_rgbToLAB_black() {
@@ -255,6 +257,8 @@ final class ColorTransformTests: XCTestCase {
             XCTAssertEqual(backToRGB.blue, original.blue, accuracy: 0.01)
         }
     }
+    
+    #endif // canImport(CoreGraphics)
     
     #if canImport(CoreGraphics)
     

@@ -777,12 +777,6 @@ struct TemplateValidatorTests {
 @Suite("Template Detector Tests")
 struct TemplateDetectorTests {
     
-    @Test("Detector initialization")
-    func testDetectorInitialization() {
-        let detector = TemplateDetector()
-        #expect(detector != nil)
-    }
-    
     @Test("Detect template from empty content")
     func testDetectFromEmptyContent() {
         let detector = TemplateDetector()
