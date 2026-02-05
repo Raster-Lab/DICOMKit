@@ -10,9 +10,62 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.10)
+## Features (v1.0.11)
 
-- ✅ **Private Tag Support (NEW in v1.0.10)**
+- ✅ **ICC Profile Color Management (NEW in v1.0.11)**
+  - ✅ **ICC Profile Parsing** - Complete ICC.1:2004-10 profile parsing
+    - ✅ `ICCProfile` struct for profile data with lazy parsing
+    - ✅ `ICCProfileParser` for ICC v2 and v4 profile formats
+    - ✅ Profile header parsing (128-byte ICC header specification)
+    - ✅ Tag table parsing with offset-based tag access
+    - ✅ TRC (Tone Reproduction Curve) extraction for gamma correction
+    - ✅ XYZ colorant tag extraction for white point and primaries
+  - ✅ **Profile Type Support** - All ICC profile device classes
+    - ✅ Input device profiles (scanners, cameras)
+    - ✅ Display device profiles (monitors, projectors)
+    - ✅ Output device profiles (printers)
+    - ✅ Color space conversion profiles
+    - ✅ Device link profiles
+  - ✅ **Color Space Conversions** - Comprehensive color transformation pipeline
+    - ✅ sRGB ↔ XYZ ↔ LAB color space conversions
+    - ✅ Matrix-based color transformations (ColorMatrix)
+    - ✅ LUT-based color transformations (A2B, B2A tags)
+    - ✅ Gamma correction (sRGB to/from linear RGB)
+    - ✅ Core Graphics integration for Apple platforms (CGColorSpace)
+  - ✅ **Wide Color Gamut Support** - Modern display technologies
+    - ✅ Display P3 color space (Apple wide gamut displays)
+    - ✅ Rec. 2020 (ITU-R BT.2020) for Ultra HD and HDR
+    - ✅ Adobe RGB (1998) for professional workflows
+    - ✅ ProPhoto RGB for very wide gamut applications
+  - ✅ **DICOM Color Integration** - DICOM-specific color management
+    - ✅ ICC Profile Module (0028,2000) extraction from DICOM files
+    - ✅ Color Space tag (0028,2002) parsing and mapping
+    - ✅ YBR color space support (YBR_FULL, YBR_FULL_422, YBR_PARTIAL_420)
+  - ✅ **HDR and EDR Display Support** - Extended dynamic range for medical imaging
+    - ✅ `EDRDisplayCapabilities` for querying display headroom
+    - ✅ `HDRToneMapping` with multiple tone mapping operators (Linear, Perceptual, Reinhard, ACES)
+    - ✅ Target peak luminance configuration (nits/cd/m²)
+    - ✅ Highlight preservation for diagnostic detail
+  - ✅ **Optical Path Color (Whole Slide Imaging)** - Microscopy color management
+    - ✅ `OpticalPathColor` for WSI illumination and color properties
+    - ✅ Illumination type support (Brightfield, Darkfield, Fluorescence, Phase Contrast, DIC)
+    - ✅ Illumination wavelength and color specifications
+    - ✅ Per-path ICC profile support for multi-channel imaging
+  - ✅ **LUT-Based Color Transformations** - Advanced ICC profile processing
+    - ✅ `LUTColorTransform` for multi-dimensional color lookup
+    - ✅ 1D LUT support for single-channel curves
+    - ✅ 3D CLUT support for full color transformations
+    - ✅ Gamma curve generation and application
+    - ✅ Legacy lut8/lut16 and modern lutAToB/lutBToA tag parsing
+  - ✅ **Comprehensive Testing** - 84 unit tests (210% of 40+ target)
+    - ✅ 24 tests for ICC profile parsing (headers, tags, errors)
+    - ✅ 24 tests for color transformations (RGB, XYZ, LAB, gamma)
+    - ✅ 21 tests for color matrices (transformations, predefined matrices)
+    - ✅ 15 tests for advanced ICC features (Rec2020, TRC, XYZ, DICOM tags)
+    - ✅ 31 tests for display features (HDR/EDR, optical paths, tone mapping)
+    - ✅ 38 tests for LUT color transforms (1D/3D LUTs, gamma, pipelines)
+
+- ✅ **Private Tag Support (v1.0.10)**
   - ✅ **Private Creator Management** - Complete implementation of Private Data Elements (PS3.5 Section 7.8)
     - ✅ `PrivateCreator` struct with block number allocation
     - ✅ `PrivateTagAllocator` actor for thread-safe block management

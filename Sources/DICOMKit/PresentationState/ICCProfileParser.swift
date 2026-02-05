@@ -334,6 +334,68 @@ public struct ICCTagData: Sendable, Hashable {
         
         return nil
     }
+    
+    /// Extract TRC (Tone Reproduction Curve) data
+    ///
+    /// TRC defines the gamma curve for color reproduction
+    ///
+    /// - Returns: Array of curve values if TRC tag, nil otherwise
+    public func extractTRCCurve() -> [UInt16]? {
+        guard data.count >= 12 else { return nil }
+        
+        // TRC type signature (4 bytes): 'curv' or 'para'
+        let typeSignature = data.readUInt32BE(at: 0) ?? 0
+        
+        if typeSignature == 0x63757276 { // 'curv'
+            // Reserved (4 bytes)
+            // Count (4 bytes)
+            let count = Int(data.readUInt32BE(at: 8) ?? 0)
+            
+            guard count > 0, data.count >= 12 + (count * 2) else {
+                return nil
+            }
+            
+            var curve: [UInt16] = []
+            curve.reserveCapacity(count)
+            
+            for i in 0..<count {
+                let offset = 12 + (i * 2)
+                if let value = data.readUInt16BE(at: offset) {
+                    curve.append(value)
+                }
+            }
+            
+            return curve
+        }
+        
+        return nil
+    }
+    
+    /// Extract XYZ color coordinates
+    ///
+    /// Used for colorant tags (rXYZ, gXYZ, bXYZ) and white point
+    ///
+    /// - Returns: XYZ coordinates if XYZ tag, nil otherwise
+    public func extractXYZ() -> (x: Double, y: Double, z: Double)? {
+        guard data.count >= 20 else { return nil }
+        
+        // XYZ type signature: 'XYZ '
+        let typeSignature = data.readUInt32BE(at: 0) ?? 0
+        guard typeSignature == 0x58595A20 else { return nil }
+        
+        // Reserved (4 bytes)
+        // X, Y, Z values (4 bytes each, s15Fixed16Number format)
+        let xRaw = Int32(bitPattern: data.readUInt32BE(at: 8) ?? 0)
+        let yRaw = Int32(bitPattern: data.readUInt32BE(at: 12) ?? 0)
+        let zRaw = Int32(bitPattern: data.readUInt32BE(at: 16) ?? 0)
+        
+        // Convert s15Fixed16Number to Double (divide by 2^16)
+        let x = Double(xRaw) / 65536.0
+        let y = Double(yRaw) / 65536.0
+        let z = Double(zRaw) / 65536.0
+        
+        return (x: x, y: y, z: z)
+    }
 }
 
 /// ICC profile use cases

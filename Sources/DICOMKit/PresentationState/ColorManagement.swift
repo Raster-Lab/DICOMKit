@@ -60,6 +60,8 @@ public struct ICCProfile: Sendable, Hashable {
                 self.colorSpace = .displayP3
             } else if desc.contains("prophoto") {
                 self.colorSpace = .proPhotoRGB
+            } else if desc.contains("rec") && (desc.contains("2020") || desc.contains("bt.2020")) {
+                self.colorSpace = .rec2020
             } else {
                 self.colorSpace = .custom
             }
@@ -111,6 +113,41 @@ public struct ICCProfile: Sendable, Hashable {
         // Fallback: create with unknown color space
         return ICCProfile(profileData: profileData, colorSpace: .custom)
     }
+    
+    /// Extract color space from DICOM Color Space tag (0028,2002)
+    ///
+    /// - Parameter dataSet: DICOM DataSet to extract from
+    /// - Returns: ColorSpace if tag is present, nil otherwise
+    public static func extractColorSpace(from dataSet: [Tag: DataElement]) -> ColorSpace? {
+        // Color Space tag (0028,2002) - optional in DICOM
+        let colorSpaceTag = Tag(group: 0x0028, element: 0x2002)
+        guard let element = dataSet[colorSpaceTag],
+              let colorSpaceString = element.stringValue else {
+            return nil
+        }
+        
+        // Map DICOM color space strings to ColorSpace enum
+        switch colorSpaceString.trimmingCharacters(in: .whitespaces) {
+        case "SRGB":
+            return .sRGB
+        case "ADOBERGB":
+            return .adobeRGB
+        case "ROMMRGB", "PROPHOTO":
+            return .proPhotoRGB
+        case "P3":
+            return .displayP3
+        case "REC2020", "BT2020":
+            return .rec2020
+        case "YBR_FULL":
+            return .ybrFull
+        case "YBR_FULL_422":
+            return .ybrFull422
+        case "YBR_PARTIAL_420":
+            return .ybrPartial420
+        default:
+            return .custom
+        }
+    }
 }
 
 // MARK: - Color Space
@@ -129,8 +166,20 @@ public enum ColorSpace: String, Sendable, Hashable, CaseIterable {
     /// ProPhoto RGB - very wide gamut
     case proPhotoRGB = "ProPhoto RGB"
     
+    /// Rec. 2020 (ITU-R BT.2020) - Ultra HD and HDR color space
+    case rec2020 = "Rec. 2020"
+    
     /// Generic RGB
     case genericRGB = "Generic RGB"
+    
+    /// YBR_FULL (DICOM color space)
+    case ybrFull = "YBR_FULL"
+    
+    /// YBR_FULL_422 (DICOM color space)
+    case ybrFull422 = "YBR_FULL_422"
+    
+    /// YBR_PARTIAL_420 (DICOM color space) 
+    case ybrPartial420 = "YBR_PARTIAL_420"
     
     /// Custom color space (requires ICC profile)
     case custom
@@ -147,8 +196,18 @@ public enum ColorSpace: String, Sendable, Hashable, CaseIterable {
             return CGColorSpace(name: CGColorSpace.displayP3)
         case .proPhotoRGB:
             return CGColorSpace(name: CGColorSpace.rommrgb)
+        case .rec2020:
+            // Rec. 2020 color space (available on iOS 9.3+, macOS 10.11.2+)
+            if #available(iOS 9.3, macOS 10.11.2, *) {
+                return CGColorSpace(name: CGColorSpace.itur_2020)
+            } else {
+                return CGColorSpace(name: CGColorSpace.sRGB) // Fallback
+            }
         case .genericRGB:
             return CGColorSpace(name: CGColorSpace.genericRGBLinear)
+        case .ybrFull, .ybrFull422, .ybrPartial420:
+            // YBR color spaces require conversion to RGB first
+            return CGColorSpace(name: CGColorSpace.sRGB) // Default to sRGB after conversion
         case .custom:
             return nil // Requires ICC profile data
         }
