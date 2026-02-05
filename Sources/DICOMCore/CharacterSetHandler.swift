@@ -448,6 +448,31 @@ public enum CharacterSetEncoding: Sendable, Hashable {
         }
     }
     
+    /// Normalizes a string using NFC (Canonical Decomposition followed by Canonical Composition)
+    ///
+    /// This normalization is recommended for display purposes to ensure that visually equivalent
+    /// characters are represented consistently. For example, "é" can be represented as a single
+    /// composed character (U+00E9) or as "e" + combining acute accent (U+0065 U+0301).
+    /// NFC normalization ensures consistent representation.
+    ///
+    /// Reference: Unicode Standard Annex #15 - Unicode Normalization Forms
+    /// - Parameter string: The string to normalize
+    /// - Returns: The NFC-normalized string
+    public static func normalizeForDisplay(_ string: String) -> String {
+        return string.precomposedStringWithCanonicalMapping
+    }
+    
+    /// Normalizes a string using NFD (Canonical Decomposition)
+    ///
+    /// This normalization decomposes characters into their constituent parts.
+    /// Useful for certain text processing operations.
+    ///
+    /// - Parameter string: The string to normalize
+    /// - Returns: The NFD-normalized string
+    public static func normalizeDecomposed(_ string: String) -> String {
+        return string.decomposedStringWithCanonicalMapping
+    }
+    
     /// Returns the ISO 2022 escape sequence to designate this encoding to G0
     ///
     /// - Returns: Escape sequence bytes, or nil if not applicable (UTF-8, single-byte sets)

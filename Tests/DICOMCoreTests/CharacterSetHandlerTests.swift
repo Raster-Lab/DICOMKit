@@ -832,4 +832,60 @@ struct CharacterSetHandlerTests {
         let decoded = String(data: encoded, encoding: .utf8)
         #expect(decoded == text)
     }
+    
+    // MARK: - Unicode Normalization Tests
+    
+    @Test("NFC normalization combines decomposed characters")
+    func testNFCNormalization() {
+        // "é" as decomposed (e + combining acute accent)
+        let decomposed = "e\u{0301}"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(decomposed)
+        
+        // Should be composed form
+        #expect(normalized == "é")
+    }
+    
+    @Test("NFC normalization is idempotent")
+    func testNFCNormalizationIdempotent() {
+        let original = "Café résumé"
+        let normalized1 = CharacterSetEncoding.normalizeForDisplay(original)
+        let normalized2 = CharacterSetEncoding.normalizeForDisplay(normalized1)
+        
+        #expect(normalized1 == normalized2)
+    }
+    
+    @Test("NFD normalization decomposes characters")
+    func testNFDNormalization() {
+        // "é" as composed character
+        let composed = "é"
+        let normalized = CharacterSetEncoding.normalizeDecomposed(composed)
+        
+        // Should have 2 Unicode scalars (e + combining accent)
+        #expect(normalized.unicodeScalars.count == 2)
+    }
+    
+    @Test("Normalize Arabic text for display")
+    func testNormalizeArabicText() {
+        let arabic = "مرحبا"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(arabic)
+        
+        #expect(normalized.count > 0)
+    }
+    
+    @Test("Normalize Hebrew text for display")
+    func testNormalizeHebrewText() {
+        let hebrew = "שלום"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(hebrew)
+        
+        #expect(normalized.count > 0)
+    }
+    
+    @Test("Normalize mixed scripts for display")
+    func testNormalizeMixedScripts() {
+        let mixed = "Hello 世界 مرحبا שלום Привет"
+        let normalized = CharacterSetEncoding.normalizeForDisplay(mixed)
+        
+        #expect(normalized.count > 0)
+        #expect(normalized.contains("Hello"))
+    }
 }

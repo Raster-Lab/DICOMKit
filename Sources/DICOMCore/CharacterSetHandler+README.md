@@ -132,9 +132,48 @@ The CharacterSetHandler is designed to integrate with DICOM parsing workflows:
 
 ### Future Integration Points
 
-- Integration with `DataElement.stringValue` for automatic character set handling
+- Integration with `DataElement.stringValue` for automatic character set handling (planned for v1.0.10)
 - Support in `DICOMPersonName` for proper multi-byte character parsing
 - Automatic encoding selection in `DICOMWriter` for string serialization
+
+## Unicode Normalization
+
+The CharacterSetHandler provides Unicode normalization utilities for consistent text representation:
+
+```swift
+// NFC normalization for display (combines decomposed characters)
+let decomposed = "e\u{0301}" // e + combining acute accent
+let normalized = CharacterSetEncoding.normalizeForDisplay(decomposed)
+// Result: "é" (single composed character)
+
+// NFD normalization (decomposes characters)
+let composed = "é"
+let decomposed = CharacterSetEncoding.normalizeDecomposed(composed)
+// Result: "e" + combining acute accent
+```
+
+**Use Cases:**
+- **NFC (Canonical Composition)**: Recommended for display and storage. Ensures visually equivalent characters have consistent representation.
+- **NFD (Canonical Decomposition)**: Useful for text processing, searching, and comparison operations.
+
+## Bidirectional Text Support
+
+The CharacterSetHandler correctly handles bidirectional (BiDi) text for languages like Arabic and Hebrew:
+
+- **Right-to-Left (RTL) Scripts**: Arabic (ISO IR 127), Hebrew (ISO IR 138)
+- **Left-to-Right (LTR) Scripts**: Latin, Cyrillic, Greek, etc.
+- **Mixed Directionality**: Text containing both LTR and RTL characters
+
+The handler preserves the logical order of characters. Display rendering is handled by the UI framework (UIKit, AppKit) according to Unicode BiDi algorithm.
+
+```swift
+// Arabic text (RTL)
+let handler = CharacterSetHandler.from(specificCharacterSet: "ISO_IR 192")
+let arabicText = "مرحبا بك في عالم DICOM"
+let encoded = handler.encode(arabicText)
+let decoded = handler.decode(encoded)
+// Logical order is preserved; rendering direction handled by UI
+```
 
 ## Notes
 
@@ -143,15 +182,18 @@ The CharacterSetHandler is designed to integrate with DICOM parsing workflows:
 - Some character sets use UTF-8 fallback due to limited platform support
 - Multi-valued Specific Character Set enables different encodings for different text components
 - The handler maintains separate G0, G1, G2, G3 character set designations per ISO 2022 standard
+- ISO 2022 escape sequences are automatically generated when encoding with multi-valued character sets
 
 ## Testing
 
-Comprehensive test coverage (60+ tests) validates:
-- Character set parsing from Defined Terms
+Comprehensive test coverage (95+ tests) validates:
+- Character set parsing from Defined Terms (all 17 ISO IR character sets)
 - Encoding/decoding for all supported character sets
-- ISO 2022 escape sequence processing
-- Multi-byte character handling (UTF-8, Japanese, Korean)
+- ISO 2022 escape sequence processing and generation
+- Multi-byte character handling (UTF-8, Japanese, Korean, Thai)
 - Round-trip encode/decode validation
-- Edge cases (empty data, incomplete sequences, null bytes)
+- Unicode normalization (NFC/NFD)
+- Bidirectional text handling (Arabic, Hebrew)
+- Edge cases (empty data, incomplete sequences, null bytes, unknown escape sequences)
 
 See `Tests/DICOMCoreTests/CharacterSetHandlerTests.swift` for detailed test cases.
