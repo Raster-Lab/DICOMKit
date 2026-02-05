@@ -10,7 +10,7 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.3)
+## Features (v1.0.4)
 
 - ✅ **Hanging Protocol Support (NEW in v1.0.3)**
   - ✅ **Hanging Protocol IOD Support** - Complete implementation of Hanging Protocol Storage (PS3.3 A.38)
@@ -57,6 +57,52 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ 28 tests for image set definitions
     - ✅ 27 tests for display set specifications
     - ✅ 15 tests for basic data structures
+
+- ✅ **Radiation Therapy Structure Set Support (NEW in v1.0.4)**
+  - ✅ **RT Structure Set IOD** - Complete implementation of RT Structure Set Storage (PS3.3 A.19)
+    - ✅ `RTStructureSet` struct for radiation therapy planning structures
+    - ✅ `RTStructureSetParser` for parsing RT Structure Set DICOM objects
+    - ✅ Structure Set identification (label, name, description, date/time)
+    - ✅ Referenced Frame of Reference and series tracking
+    - ✅ 45+ DICOM tags in group 0x3006 for complete RT specification
+  - ✅ **Region of Interest (ROI) Support** - Anatomical and planning structures
+    - ✅ `RTRegionOfInterest` struct with geometric data and metadata
+    - ✅ ROI identification (number, name, description)
+    - ✅ Generation algorithm tracking (manual, automatic, AI)
+    - ✅ Frame of Reference UID for spatial registration
+    - ✅ ROI physical properties (density, mass)
+  - ✅ **Contour Geometry** - 3D structure definitions
+    - ✅ `Contour` struct with geometric type and points
+    - ✅ `ContourGeometricType` enum (POINT, OPEN_PLANAR, CLOSED_PLANAR, OPEN_NONPLANAR, CLOSED_NONPLANAR)
+    - ✅ `Point3D` for 3D contour points in patient coordinate system (mm)
+    - ✅ Contour slab thickness and offset vector support
+    - ✅ Referenced SOP Instance UID for image registration
+    - ✅ Multiple contours per ROI across image slices
+  - ✅ **ROI Display and Visualization** - Visual representation
+    - ✅ `ROIContour` struct linking ROIs to contour geometry
+    - ✅ `DisplayColor` for ROI display colors (RGB 0-255)
+    - ✅ Color-coded structure visualization
+  - ✅ **Clinical Observations** - RT planning metadata
+    - ✅ `RTROIObservation` struct with clinical interpretations
+    - ✅ `RTROIInterpretedType` enum with 18 standard types:
+      - ✅ Target volumes: PTV, CTV, GTV
+      - ✅ Organs at risk: ORGAN, AVOIDANCE
+      - ✅ External structures: EXTERNAL, CAVITY
+      - ✅ Planning structures: ISOCENTER, MARKER, CONTROL
+      - ✅ Dose regions: DOSE_REGION, TREATED_VOLUME, IRRADIATED_VOLUME
+      - ✅ Accessories: BOLUS, FIXATION_DEVICE, SUPPORT
+      - ✅ Registration and contrast: REGISTRATION, CONTRAST_AGENT
+    - ✅ ROI interpreter tracking (person or algorithm)
+    - ✅ `ROIPhysicalProperty` for material properties
+  - ✅ **Supporting Types** - Geometric and visualization helpers
+    - ✅ `Vector3D` for 3D offset vectors
+    - ✅ Sendable and Hashable conformance for all types
+    - ✅ Identifiable protocol support for SwiftUI integration
+  - ✅ **Comprehensive Testing** - 33 unit tests (100% pass rate)
+    - ✅ 21 tests for data structure initialization and conformance
+    - ✅ 12 tests for RT Structure Set parsing
+    - ✅ Complete integration test with full structure set
+    - ✅ Contour point parsing and geometric type validation
 
 - ✅ **Color Presentation States (in v1.0.2)**
   - ✅ **Color Softcopy Presentation State (CSPS)** - ICC profile-based color management (PS3.3 A.34)
@@ -3331,7 +3377,7 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -3402,6 +3448,20 @@ High-level API:
 - `StudyInfo` - Study information for protocol matching
 - `InstanceInfo` - Instance information for image set filtering
 - `ImageSetMatcher` - Matcher for applying image set selection criteria
+
+**Radiation Therapy Structure Set Support (NEW in v1.0.4):**
+- `RTStructureSet` - Complete RT Structure Set structure (PS3.3 A.19)
+- `RTStructureSetParser` - Parse DICOM RT Structure Set objects
+- `RTRegionOfInterest` - ROI definition with identification and metadata
+- `ROIContour` - ROI contour geometry linkage
+- `Contour` - Individual contour with geometric type and 3D points
+- `ContourGeometricType` - Contour types (POINT, OPEN_PLANAR, CLOSED_PLANAR, OPEN_NONPLANAR, CLOSED_NONPLANAR)
+- `Point3D` - 3D point in patient coordinate system (mm)
+- `Vector3D` - 3D vector for contour offsets
+- `DisplayColor` - RGB color (0-255) for ROI visualization
+- `RTROIObservation` - Clinical observation and interpretation
+- `RTROIInterpretedType` - ROI clinical types (PTV, CTV, GTV, ORGAN, EXTERNAL, AVOIDANCE, etc.)
+- `ROIPhysicalProperty` - Physical property specification (density, mass)
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -3643,4 +3703,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.3 - implementing Hanging Protocol Support. This version adds comprehensive support for Hanging Protocol Storage (PS3.3 A.38), enabling standardized study layout definitions for diagnostic viewing workstations. The implementation includes protocol definition with environment matching (modality, laterality), image set selection with 9 filter operators, display set specifications with layout configuration (STACK, TILED layouts), reformatting operations (MPR, MIP, CPR), multi-monitor screen definitions, and an intelligent protocol matcher with priority-based selection (USER > GROUP > SITE). The implementation features 147 comprehensive unit tests (98% pass rate) covering parsing, serialization, matching algorithms, and all data structures. This builds upon v1.0.2 (Color Presentation States) and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.4 - implementing Radiation Therapy Structure Set Support. This version adds comprehensive support for RT Structure Set Storage (PS3.3 A.19), enabling radiation therapy planning structure management for diagnostic and treatment planning systems. The implementation includes complete RT Structure Set IOD parsing with ROI definitions, contour geometry (5 geometric types), 3D point extraction in patient coordinates, clinical observations with 18 interpreted types (PTV, CTV, GTV, ORGAN, etc.), physical properties, and display color support. The implementation features 33 comprehensive unit tests (100% pass rate) covering data structures, parsing, and complete integration scenarios. This builds upon v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
