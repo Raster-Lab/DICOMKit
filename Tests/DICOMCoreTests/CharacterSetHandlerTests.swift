@@ -760,4 +760,76 @@ struct CharacterSetHandlerTests {
         let decoded = handler.decode(data)
         #expect(decoded != nil)
     }
+    
+    // MARK: - Escape Sequence Generation Tests
+    
+    @Test("Escape sequence generation for ASCII to G0")
+    func testEscapeSequenceASCIIToG0() {
+        let escapeSeq = CharacterSetEncoding.isoIR6.escapeSequenceToG0()
+        #expect(escapeSeq == [0x1B, 0x28, 0x42])
+    }
+    
+    @Test("Escape sequence generation for Latin-1 to G1")
+    func testEscapeSequenceLatin1ToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR100.escapeSequenceToG1()
+        #expect(escapeSeq == [0x1B, 0x2D, 0x41])
+    }
+    
+    @Test("Escape sequence generation for Japanese Kanji to G0")
+    func testEscapeSequenceKanjiToG0() {
+        let escapeSeq = CharacterSetEncoding.isoIR87.escapeSequenceToG0()
+        #expect(escapeSeq == [0x1B, 0x24, 0x42])
+    }
+    
+    @Test("Escape sequence generation for Greek to G1")
+    func testEscapeSequenceGreekToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR126.escapeSequenceToG1()
+        #expect(escapeSeq == [0x1B, 0x2D, 0x46])
+    }
+    
+    @Test("Escape sequence generation for Korean to G1")
+    func testEscapeSequenceKoreanToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR149.escapeSequenceToG1()
+        #expect(escapeSeq == [0x1B, 0x24, 0x29, 0x43])
+    }
+    
+    @Test("UTF-8 has no escape sequence to G0")
+    func testUTF8NoEscapeSequence() {
+        let escapeSeq = CharacterSetEncoding.isoIR192.escapeSequenceToG0()
+        #expect(escapeSeq == nil)
+    }
+    
+    @Test("UTF-8 has no escape sequence to G1")
+    func testUTF8NoEscapeSequenceToG1() {
+        let escapeSeq = CharacterSetEncoding.isoIR192.escapeSequenceToG1()
+        #expect(escapeSeq == nil)
+    }
+    
+    @Test("Encoding with multi-valued character set includes escape sequences")
+    func testEncodingMultiValuedIncludesEscapeSequence() {
+        // ISO_IR 87 (Kanji) should get an escape sequence
+        let handler = CharacterSetHandler(characterSets: [.isoIR87, .isoIR6])
+        let text = "Test"
+        let encoded = handler.encode(text)
+        
+        // Should start with escape sequence ESC $ B (0x1B 0x24 0x42)
+        #expect(encoded.count > 3)
+        #expect(encoded[0] == 0x1B)
+        #expect(encoded[1] == 0x24)
+        #expect(encoded[2] == 0x42)
+    }
+    
+    @Test("Encoding with UTF-8 does not include escape sequences")
+    func testEncodingUTF8NoEscapeSequences() {
+        let handler = CharacterSetHandler(characterSets: [.isoIR192, .isoIR6])
+        let text = "Test"
+        let encoded = handler.encode(text)
+        
+        // Should NOT start with escape sequence (0x1B)
+        #expect(encoded[0] != 0x1B)
+        
+        // Should be valid UTF-8
+        let decoded = String(data: encoded, encoding: .utf8)
+        #expect(decoded == text)
+    }
 }
