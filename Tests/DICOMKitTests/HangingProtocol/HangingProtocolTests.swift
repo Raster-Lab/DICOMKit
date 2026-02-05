@@ -1,0 +1,208 @@
+//
+// HangingProtocolTests.swift
+// DICOMKit
+//
+// Created by DICOMKit on 2026-02-05.
+// Copyright © 2026 DICOMKit. All rights reserved.
+//
+
+import XCTest
+import DICOMCore
+@testable import DICOMKit
+
+final class HangingProtocolTests: XCTestCase {
+    
+    // MARK: - HangingProtocol Tests
+    
+    func test_hangingProtocol_initialization_withRequiredParameters() {
+        let protocol = HangingProtocol(name: "Test Protocol")
+        
+        XCTAssertEqual(protocol.name, "Test Protocol", "Name should be set correctly")
+        XCTAssertNil(protocol.description, "Description should be nil by default")
+        XCTAssertEqual(protocol.level, .user, "Level should default to USER")
+        XCTAssertNil(protocol.creator, "Creator should be nil by default")
+        XCTAssertNil(protocol.creationDateTime, "Creation date time should be nil by default")
+        XCTAssertNil(protocol.numberOfPriorsReferenced, "Number of priors should be nil by default")
+        XCTAssertEqual(protocol.environments.count, 0, "Environments should be empty by default")
+        XCTAssertEqual(protocol.userGroups.count, 0, "User groups should be empty by default")
+        XCTAssertEqual(protocol.imageSets.count, 0, "Image sets should be empty by default")
+        XCTAssertEqual(protocol.numberOfScreens, 1, "Number of screens should default to 1")
+        XCTAssertEqual(protocol.screenDefinitions.count, 0, "Screen definitions should be empty by default")
+        XCTAssertEqual(protocol.displaySets.count, 0, "Display sets should be empty by default")
+    }
+    
+    func test_hangingProtocol_initialization_withAllParameters() {
+        let environment = HangingProtocolEnvironment(modality: "CT", laterality: "L")
+        let imageSet = ImageSetDefinition(number: 1, label: "Primary")
+        let screen = ScreenDefinition(verticalPixels: 1080, horizontalPixels: 1920)
+        let displaySet = DisplaySet(number: 1, label: "Main View")
+        let dateTime = DICOMDateTime(date: DICOMDate(year: 2024, month: 1, day: 15), time: nil)
+        
+        let `protocol` = HangingProtocol(
+            name: "Chest CT Protocol",
+            description: "Standard chest CT viewing",
+            level: .site,
+            creator: "Dr. Smith",
+            creationDateTime: dateTime,
+            numberOfPriorsReferenced: 2,
+            environments: [environment],
+            userGroups: ["Radiology"],
+            imageSets: [imageSet],
+            numberOfScreens: 2,
+            screenDefinitions: [screen],
+            displaySets: [displaySet]
+        )
+        
+        XCTAssertEqual(`protocol`.name, "Chest CT Protocol")
+        XCTAssertEqual(`protocol`.description, "Standard chest CT viewing")
+        XCTAssertEqual(`protocol`.level, .site)
+        XCTAssertEqual(`protocol`.creator, "Dr. Smith")
+        XCTAssertNotNil(`protocol`.creationDateTime)
+        XCTAssertEqual(`protocol`.numberOfPriorsReferenced, 2)
+        XCTAssertEqual(`protocol`.environments.count, 1)
+        XCTAssertEqual(`protocol`.userGroups.count, 1)
+        XCTAssertEqual(`protocol`.imageSets.count, 1)
+        XCTAssertEqual(`protocol`.numberOfScreens, 2)
+        XCTAssertEqual(`protocol`.screenDefinitions.count, 1)
+        XCTAssertEqual(`protocol`.displaySets.count, 1)
+    }
+    
+    func test_hangingProtocol_multipleEnvironments() {
+        let env1 = HangingProtocolEnvironment(modality: "CT", laterality: nil)
+        let env2 = HangingProtocolEnvironment(modality: "MR", laterality: "R")
+        
+        let `protocol` = HangingProtocol(
+            name: "Multi-Modal",
+            environments: [env1, env2]
+        )
+        
+        XCTAssertEqual(`protocol`.environments.count, 2, "Should have 2 environments")
+        XCTAssertEqual(`protocol`.environments[0].modality, "CT")
+        XCTAssertEqual(`protocol`.environments[1].modality, "MR")
+    }
+    
+    // MARK: - HangingProtocolLevel Tests
+    
+    func test_hangingProtocolLevel_rawValues() {
+        XCTAssertEqual(HangingProtocolLevel.site.rawValue, "SITE")
+        XCTAssertEqual(HangingProtocolLevel.group.rawValue, "GROUP")
+        XCTAssertEqual(HangingProtocolLevel.user.rawValue, "USER")
+    }
+    
+    func test_hangingProtocolLevel_fromString() {
+        XCTAssertEqual(HangingProtocolLevel(rawValue: "SITE"), .site)
+        XCTAssertEqual(HangingProtocolLevel(rawValue: "GROUP"), .group)
+        XCTAssertEqual(HangingProtocolLevel(rawValue: "USER"), .user)
+        XCTAssertNil(HangingProtocolLevel(rawValue: "INVALID"))
+    }
+    
+    // MARK: - HangingProtocolEnvironment Tests
+    
+    func test_environment_initialization_withModality() {
+        let environment = HangingProtocolEnvironment(modality: "CT")
+        
+        XCTAssertEqual(environment.modality, "CT")
+        XCTAssertNil(environment.laterality)
+    }
+    
+    func test_environment_initialization_withLaterality() {
+        let environment = HangingProtocolEnvironment(laterality: "L")
+        
+        XCTAssertNil(environment.modality)
+        XCTAssertEqual(environment.laterality, "L")
+    }
+    
+    func test_environment_initialization_withBoth() {
+        let environment = HangingProtocolEnvironment(modality: "MR", laterality: "R")
+        
+        XCTAssertEqual(environment.modality, "MR")
+        XCTAssertEqual(environment.laterality, "R")
+    }
+    
+    func test_environment_initialization_withNeither() {
+        let environment = HangingProtocolEnvironment()
+        
+        XCTAssertNil(environment.modality, "Modality should be nil")
+        XCTAssertNil(environment.laterality, "Laterality should be nil")
+    }
+    
+    // MARK: - ScreenDefinition Tests
+    
+    func test_screenDefinition_initialization_withRequiredParameters() {
+        let screen = ScreenDefinition(verticalPixels: 1080, horizontalPixels: 1920)
+        
+        XCTAssertEqual(screen.verticalPixels, 1080)
+        XCTAssertEqual(screen.horizontalPixels, 1920)
+        XCTAssertNil(screen.spatialPosition)
+        XCTAssertNil(screen.minimumGrayscaleBitDepth)
+        XCTAssertNil(screen.minimumColorBitDepth)
+        XCTAssertNil(screen.maximumRepaintTime)
+    }
+    
+    func test_screenDefinition_initialization_withAllParameters() {
+        let screen = ScreenDefinition(
+            verticalPixels: 2160,
+            horizontalPixels: 3840,
+            spatialPosition: [0.0, 0.0, 1.0],
+            minimumGrayscaleBitDepth: 8,
+            minimumColorBitDepth: 24,
+            maximumRepaintTime: 100
+        )
+        
+        XCTAssertEqual(screen.verticalPixels, 2160)
+        XCTAssertEqual(screen.horizontalPixels, 3840)
+        XCTAssertEqual(screen.spatialPosition, [0.0, 0.0, 1.0])
+        XCTAssertEqual(screen.minimumGrayscaleBitDepth, 8)
+        XCTAssertEqual(screen.minimumColorBitDepth, 24)
+        XCTAssertEqual(screen.maximumRepaintTime, 100)
+    }
+    
+    func test_screenDefinition_4KResolution() {
+        let screen = ScreenDefinition(verticalPixels: 2160, horizontalPixels: 3840)
+        
+        XCTAssertEqual(screen.verticalPixels, 2160, "Should have 4K vertical resolution")
+        XCTAssertEqual(screen.horizontalPixels, 3840, "Should have 4K horizontal resolution")
+    }
+    
+    func test_screenDefinition_dualMonitorSetup() {
+        let screen1 = ScreenDefinition(
+            verticalPixels: 1080,
+            horizontalPixels: 1920,
+            spatialPosition: [0.0, 0.0, 0.0]
+        )
+        let screen2 = ScreenDefinition(
+            verticalPixels: 1080,
+            horizontalPixels: 1920,
+            spatialPosition: [1920.0, 0.0, 0.0]
+        )
+        
+        XCTAssertNotNil(screen1.spatialPosition)
+        XCTAssertNotNil(screen2.spatialPosition)
+        XCTAssertNotEqual(screen1.spatialPosition?[0], screen2.spatialPosition?[0], 
+                         "Screens should have different spatial positions")
+    }
+    
+    func test_screenDefinition_medicalGradeDisplay() {
+        let screen = ScreenDefinition(
+            verticalPixels: 2048,
+            horizontalPixels: 2560,
+            minimumGrayscaleBitDepth: 10,
+            maximumRepaintTime: 50
+        )
+        
+        XCTAssertEqual(screen.minimumGrayscaleBitDepth, 10, "Medical displays often have 10-bit grayscale")
+        XCTAssertEqual(screen.maximumRepaintTime, 50, "Fast repaint for diagnostic viewing")
+    }
+    
+    func test_hangingProtocol_multipleUserGroups() {
+        let `protocol` = HangingProtocol(
+            name: "Shared Protocol",
+            userGroups: ["Radiology", "Cardiology", "Neurology"]
+        )
+        
+        XCTAssertEqual(`protocol`.userGroups.count, 3, "Should support multiple user groups")
+        XCTAssertTrue(`protocol`.userGroups.contains("Radiology"))
+        XCTAssertTrue(`protocol`.userGroups.contains("Cardiology"))
+        XCTAssertTrue(`protocol`.userGroups.contains("Neurology"))
+    }
+}
