@@ -135,7 +135,7 @@ public struct CharacterSetHandler: Sendable {
             index = endIndex
         }
         
-        return result.isEmpty ? nil : result
+        return result
     }
     
     /// Parses an ISO 2022 escape sequence
@@ -177,6 +177,9 @@ public struct CharacterSetHandler: Sendable {
         case (0x28, 0x4A): // ESC ( J - JIS X 0201 Romaji to G0
             g0 = .isoIR14
             return (g0, 3)
+        case (0x24, 0x42): // ESC $ B - JIS X 0208 Kanji to G0
+            g0 = .isoIR87
+            return (g0, 3)
         default:
             break
         }
@@ -186,9 +189,6 @@ public struct CharacterSetHandler: Sendable {
             let byte3 = bytes[startIndex + 3]
             
             switch (byte1, byte2, byte3) {
-            case (0x24, 0x42, _): // ESC $ B - JIS X 0208 Kanji to G0
-                g0 = .isoIR87
-                return (g0, 3)
             case (0x24, 0x28, 0x44): // ESC $ ( D - JIS X 0212 to G0
                 g0 = .isoIR159
                 return (g0, 4)
