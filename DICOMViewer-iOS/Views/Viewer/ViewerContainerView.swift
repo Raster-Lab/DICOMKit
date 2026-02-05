@@ -6,6 +6,8 @@
 
 import SwiftUI
 import SwiftData
+import DICOMKit
+import DICOMCore
 
 /// Container view for the DICOM image viewer
 struct ViewerContainerView: View {
@@ -14,6 +16,7 @@ struct ViewerContainerView: View {
     @State private var selectedSeries: DICOMSeries?
     @State private var showingSeriesPicker = false
     @State private var showingMetadata = false
+    @State private var showingPresentationStatePicker = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -21,12 +24,24 @@ struct ViewerContainerView: View {
             ImageViewerView(viewModel: viewModel)
             
             // Bottom controls
-            ViewerControlBar(viewModel: viewModel)
+            ViewerControlBar(
+                viewModel: viewModel,
+                showingPresentationStatePicker: $showingPresentationStatePicker
+            )
         }
         .navigationTitle(viewModel.patientName ?? study.displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
+                // Presentation State indicator
+                if !viewModel.availablePresentationStates.isEmpty || viewModel.presentationState != nil {
+                    PresentationStateInfoView(
+                        presentationState: viewModel.presentationState
+                    ) {
+                        showingPresentationStatePicker = true
+                    }
+                }
+                
                 // Series picker
                 Button {
                     showingSeriesPicker = true
@@ -56,11 +71,29 @@ struct ViewerContainerView: View {
         .sheet(isPresented: $showingMetadata) {
             MetadataView(study: study, series: selectedSeries)
         }
+        .sheet(isPresented: $showingPresentationStatePicker) {
+            PresentationStatePickerView(
+                presentationStates: viewModel.availablePresentationStates,
+                selectedPresentationState: Binding(
+                    get: { viewModel.presentationState },
+                    set: { _ in } // Selection handled by onSelect callback
+                ),
+                onSelect: { gsps in
+                    Task { await viewModel.applyPresentationState(gsps) }
+                }
+            )
+        }
         .task {
             // Load first series
             if let series = study.series?.first {
                 selectedSeries = series
                 await viewModel.loadSeries(series)
+                
+                // Try to load presentation states from study directory
+                if let storagePath = study.storagePath {
+                    let storageURL = URL(fileURLWithPath: storagePath)
+                    await viewModel.loadPresentationStates(from: storageURL)
+                }
             }
         }
     }
@@ -86,17 +119,35 @@ struct ImageViewerView: View {
                 // Image
                 if let cgImage = viewModel.currentImage {
                     #if canImport(UIKit)
-                    Image(uiImage: UIImage(cgImage: cgImage))
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .scaleEffect(viewModel.zoomScale * magnifyState)
-                        .offset(
-                            x: viewModel.panOffset.width + dragState.width,
-                            y: viewModel.panOffset.height + dragState.height
-                        )
-                        .rotationEffect(.degrees(viewModel.rotationAngle))
-                        .scaleEffect(x: viewModel.isFlippedHorizontal ? -1 : 1, y: viewModel.isFlippedVertical ? -1 : 1)
-                        .gesture(combinedGesture)
+                    ZStack {
+                        Image(uiImage: UIImage(cgImage: cgImage))
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .scaleEffect(viewModel.zoomScale * magnifyState)
+                            .offset(
+                                x: viewModel.panOffset.width + dragState.width,
+                                y: viewModel.panOffset.height + dragState.height
+                            )
+                            .rotationEffect(.degrees(viewModel.rotationAngle))
+                            .scaleEffect(x: viewModel.isFlippedHorizontal ? -1 : 1, y: viewModel.isFlippedVertical ? -1 : 1)
+                        
+                        // Presentation State Overlay (annotations and shutters)
+                        if viewModel.isPresentationStateEnabled, let ps = viewModel.presentationState {
+                            PresentationStateOverlayView(
+                                presentationState: ps,
+                                imageSize: viewModel.imageSize,
+                                viewSize: geometry.size,
+                                zoomScale: viewModel.zoomScale * magnifyState,
+                                panOffset: CGSize(
+                                    width: viewModel.panOffset.width + dragState.width,
+                                    height: viewModel.panOffset.height + dragState.height
+                                )
+                            )
+                            .rotationEffect(.degrees(viewModel.rotationAngle))
+                            .scaleEffect(x: viewModel.isFlippedHorizontal ? -1 : 1, y: viewModel.isFlippedVertical ? -1 : 1)
+                        }
+                    }
+                    .gesture(combinedGesture)
                     #endif
                 } else if viewModel.isLoading {
                     ProgressView()
@@ -107,21 +158,38 @@ struct ImageViewerView: View {
                         .foregroundStyle(.secondary)
                 }
                 
-                // Frame counter overlay
-                if viewModel.isMultiFrame {
-                    VStack {
-                        Spacer()
-                        HStack {
+                // Frame counter and GSPS indicator overlay
+                VStack {
+                    Spacer()
+                    HStack {
+                        // Frame counter
+                        if viewModel.isMultiFrame {
                             Text(viewModel.frameCounterString)
                                 .font(.caption)
                                 .padding(.horizontal, 8)
                                 .padding(.vertical, 4)
                                 .background(.ultraThinMaterial)
                                 .cornerRadius(4)
-                            Spacer()
                         }
-                        .padding()
+                        
+                        Spacer()
+                        
+                        // GSPS indicator
+                        if viewModel.isPresentationStateEnabled, viewModel.presentationState != nil {
+                            HStack(spacing: 4) {
+                                Image(systemName: "doc.text.fill")
+                                    .font(.caption2)
+                                Text("GSPS")
+                                    .font(.caption2)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Color.blue.opacity(0.8))
+                            .foregroundStyle(.white)
+                            .cornerRadius(4)
+                        }
                     }
+                    .padding()
                 }
                 
                 // Error message
@@ -183,6 +251,7 @@ struct ImageViewerView: View {
 /// Viewer control bar
 struct ViewerControlBar: View {
     @Bindable var viewModel: ViewerViewModel
+    @Binding var showingPresentationStatePicker: Bool
     @State private var showingWindowLevel = false
     @State private var showingTools = false
     
@@ -197,71 +266,90 @@ struct ViewerControlBar: View {
             }
             
             // Control buttons
-            HStack(spacing: 24) {
-                // Window/Level
-                Button {
-                    showingWindowLevel.toggle()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "sun.max")
-                            .font(.title2)
-                        Text("W/L")
-                            .font(.caption2)
-                    }
-                }
-                
-                // Playback (for multi-frame)
-                if viewModel.isMultiFrame {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 20) {
+                    // Window/Level
                     Button {
-                        viewModel.togglePlayback()
+                        showingWindowLevel.toggle()
                     } label: {
                         VStack(spacing: 4) {
-                            Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                            Image(systemName: "sun.max")
                                 .font(.title2)
-                            Text(viewModel.isPlaying ? "Pause" : "Play")
+                            Text("W/L")
+                                .font(.caption2)
+                        }
+                    }
+                    
+                    // Presentation State
+                    Button {
+                        showingPresentationStatePicker = true
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: viewModel.isPresentationStateEnabled ? "doc.text.fill" : "doc.text")
+                                .font(.title2)
+                                .foregroundStyle(viewModel.isPresentationStateEnabled ? .blue : .primary)
+                            Text("GSPS")
+                                .font(.caption2)
+                        }
+                    }
+                    
+                    // Playback (for multi-frame)
+                    if viewModel.isMultiFrame {
+                        Button {
+                            viewModel.togglePlayback()
+                        } label: {
+                            VStack(spacing: 4) {
+                                Image(systemName: viewModel.isPlaying ? "pause.fill" : "play.fill")
+                                    .font(.title2)
+                                Text(viewModel.isPlaying ? "Pause" : "Play")
+                                    .font(.caption2)
+                            }
+                        }
+                    }
+                    
+                    // Invert
+                    Button {
+                        viewModel.toggleInvert()
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "circle.lefthalf.filled")
+                                .font(.title2)
+                            Text("Invert")
+                                .font(.caption2)
+                        }
+                    }
+                    
+                    // Rotate
+                    Button {
+                        viewModel.rotateClockwise()
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "rotate.right")
+                                .font(.title2)
+                            Text("Rotate")
+                                .font(.caption2)
+                        }
+                    }
+                    
+                    // Reset
+                    Button {
+                        Task {
+                            viewModel.resetView()
+                            viewModel.resetWindowLevel()
+                            await viewModel.clearPresentationState()
+                        }
+                    } label: {
+                        VStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.title2)
+                            Text("Reset")
                                 .font(.caption2)
                         }
                     }
                 }
-                
-                // Invert
-                Button {
-                    viewModel.toggleInvert()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "circle.lefthalf.filled")
-                            .font(.title2)
-                        Text("Invert")
-                            .font(.caption2)
-                    }
-                }
-                
-                // Rotate
-                Button {
-                    viewModel.rotateClockwise()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "rotate.right")
-                            .font(.title2)
-                        Text("Rotate")
-                            .font(.caption2)
-                    }
-                }
-                
-                // Reset
-                Button {
-                    viewModel.resetView()
-                    viewModel.resetWindowLevel()
-                } label: {
-                    VStack(spacing: 4) {
-                        Image(systemName: "arrow.counterclockwise")
-                            .font(.title2)
-                        Text("Reset")
-                            .font(.caption2)
-                    }
-                }
+                .padding(.horizontal)
             }
-            .padding()
+            .padding(.vertical)
             .background(Color(.systemBackground))
         }
         .sheet(isPresented: $showingWindowLevel) {

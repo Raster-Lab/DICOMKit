@@ -3174,11 +3174,11 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] Gesture controls (pinch zoom, pan, window/level)
   - [x] Frame navigation and scrubber
   - [x] Window/level presets
-- [ ] Presentation states:
-  - [ ] GSPS loading and application
-  - [ ] Grayscale LUT chain (Modality → VOI → Presentation)
-  - [ ] Annotation rendering
-  - [ ] Shutter display
+- [x] Presentation states:
+  - [x] GSPS loading and application
+  - [x] Grayscale LUT chain (Modality → VOI → Presentation)
+  - [x] Annotation rendering
+  - [x] Shutter display
 - [ ] Measurement tools:
   - [ ] Length measurement (calibrated in mm)
   - [ ] Angle measurement
