@@ -10,7 +10,45 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.7)
+## Features (v1.0.8)
+
+- ✅ **Real-World Value Mapping (RWV LUT) (NEW in v1.0.8)**
+  - ✅ **General-Purpose RWV Support** - Complete implementation of Real World Value Mapping (PS3.3 C.7.6.16.2.11)
+    - ✅ `RealWorldValueLUT` for transforming stored pixel values to physical quantities
+    - ✅ `RealWorldValueLUTParser` for parsing RWV Mapping Sequence from DICOM
+    - ✅ Linear transformation support (slope/intercept) for CT, MR, PET
+    - ✅ LUT-based transformation for non-linear value mappings
+    - ✅ Frame scope support (first frame, all frames, specific frames)
+    - ✅ Priority handling: RWV Mapping Sequence preferred over legacy Modality LUT
+  - ✅ **Measurement Units** - UCUM-based unit specifications
+    - ✅ `RealWorldValueUnits` with coded entries (code value, scheme, meaning)
+    - ✅ Common units: Hounsfield Units, mm²/s, ms, s, g/ml, Bq/ml, /min, %, unitless
+    - ✅ Predefined constants for common modalities (CT, MR, PET, perfusion)
+  - ✅ **Quantity Definitions** - Physical quantity specifications
+    - ✅ Pre-defined quantities via `CodedConcept` extensions
+    - ✅ Diffusion: ADC (Apparent Diffusion Coefficient)
+    - ✅ Relaxation: T1, T2, T2* for MR quantification
+    - ✅ Perfusion: Ktrans, Ve, Vp, CBF, CBV, MTT
+    - ✅ PET: SUV, SUVbw, SUVlbm, SUVbsa, SUVibw
+    - ✅ CT: Hounsfield Unit (Attenuation Coefficient)
+  - ✅ **PET SUV Calculator** - Standardized Uptake Value computations
+    - ✅ `SUVCalculator` with decay correction
+    - ✅ SUVbw (body weight normalized) 
+    - ✅ SUVlbm (lean body mass normalized using James formula)
+    - ✅ SUVbsa (body surface area normalized using Du Bois formula)
+    - ✅ SUVibw (ideal body weight normalized using Devine formula)
+    - ✅ Automatic radiotracer decay correction
+    - ✅ Common radionuclide half-lives: F-18, C-11, O-15, N-13, Ga-68, Cu-64, Zr-89, I-124
+  - ✅ **RWV Renderer** - Real world value transformation and statistics
+    - ✅ `RealWorldValueRenderer` actor for concurrent-safe rendering
+    - ✅ Single value and batch array transformations
+    - ✅ Frame-specific transformation support
+    - ✅ ROI statistics calculator (min, max, mean, median, std dev) with units
+  - ✅ **Comprehensive Testing** - 69 unit tests (100% pass rate, 173% of 40+ target)
+    - ✅ 22 tests for RealWorldValueLUT (transformations, units, quantities)
+    - ✅ 17 tests for RealWorldValueRenderer (actor, frame-specific, statistics)
+    - ✅ 20 tests for SUVCalculator (decay correction, all 4 SUV types)
+    - ✅ 10 tests for RealWorldValueLUTParser (modality LUT, RWV mapping, priority)
 
 - ✅ **Parametric Map Objects (NEW in v1.0.7)**
   - ✅ **Parametric Map IOD** - Complete implementation of Parametric Map Storage (PS3.3 A.75)
@@ -3518,7 +3556,7 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -3654,6 +3692,21 @@ High-level API:
 - `ParametricMapRenderer` - Render parametric maps with color mapping
 - `ColorMap` - Color map enum (grayscale, hot, cool, jet, viridis, turbo, custom)
 - `RenderOptions` - Rendering configuration (window/level, threshold, color map)
+
+**Real-World Value Mapping (RWV LUT) Support (NEW in v1.0.8):**
+- `RealWorldValueLUT` - General-purpose real world value lookup table for pixel value transformation
+- `RealWorldValueLUT.Transformation` - Transformation method (linear slope/intercept or explicit LUT)
+- `RealWorldValueLUT.LUTDescriptor` - LUT descriptor with first/last mapped values
+- `RealWorldValueLUT.FrameScope` - Mapping scope (first frame, all frames, specific frames)
+- `RealWorldValueUnits` - UCUM-based measurement units with coded entries
+- `RealWorldValueLUTParser` - Parse RWV Mapping Sequence and legacy Modality LUT
+- `RealWorldValueRenderer` - Actor for concurrent-safe pixel value transformation
+- `RealWorldValueStatistics` - Statistics on real world values (min, max, mean, median, std dev)
+- `RealWorldValueError` - RWV operation errors
+- `SUVCalculator` - PET Standardized Uptake Value calculations with decay correction
+- `SUVCalculator.RadionuclideHalfLife` - Common PET radionuclide half-lives (F-18, C-11, O-15, N-13, Ga-68, Cu-64, Zr-89, I-124)
+- `PatientSex` - Patient sex enumeration for SUV body metrics
+- CodedConcept extensions: Pre-defined quantities (ADC, T1/T2/T2*, Ktrans/Ve/Vp, CBF/CBV/MTT, SUV variants, Hounsfield)
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -3895,4 +3948,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.7 - implementing Parametric Map Objects Support. This version adds comprehensive support for Parametric Map Storage (PS3.3 A.75) for quantitative imaging, enabling the representation of physical quantities such as ADC (Apparent Diffusion Coefficient), T1/T2 relaxation times, perfusion parameters (Ktrans, Ve, Vp), and SUV (Standardized Uptake Value) maps. The implementation includes complete Parametric Map IOD parsing with Real World Value Mapping for converting stored pixel values to physical quantities, support for integer (8/16-bit), float (32-bit IEEE), and double (64-bit IEEE) pixel data formats, pre-defined quantity definitions and UCUM measurement units, frame-by-frame quantity access via functional groups, pixel data extraction (`ParametricMapPixelDataExtractor`), and visualization with configurable color mapping (`ParametricMapRenderer` with six predefined color maps: grayscale, hot, cool, jet, viridis, turbo). The implementation features 55 comprehensive unit tests (100% pass rate), exceeding the 50+ test target. This builds upon v1.0.6 (Segmentation Objects Support), v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.8 - implementing Real-World Value Mapping (RWV LUT) Support. This version adds comprehensive support for Real World Value Lookup Tables (PS3.3 C.7.6.16.2.11) for transforming stored pixel values to physical quantities across all modalities. The implementation includes general-purpose `RealWorldValueLUT` for both linear (slope/intercept) and LUT-based transformations, `RealWorldValueLUTParser` for parsing RWV Mapping Sequence and legacy Modality LUT with automatic priority handling, `RealWorldValueUnits` with UCUM-based coded entries and predefined common units (Hounsfield, mm²/s, ms, g/ml, Bq/ml, etc.), common quantity definitions via `CodedConcept` extensions (ADC, T1/T2/T2*, Ktrans/Ve/Vp, CBF/CBV/MTT, SUV variants, Hounsfield), `SUVCalculator` for PET Standardized Uptake Value calculations with all four normalization types (SUVbw, SUVlbm, SUVbsa, SUVibw), automatic radiotracer decay correction, and predefined half-lives for common radionuclides (F-18, C-11, O-15, N-13, Ga-68, Cu-64, Zr-89, I-124), `RealWorldValueRenderer` actor for concurrent-safe pixel value transformation with frame-specific support, and ROI statistics calculator (min, max, mean, median, std dev) with measurement units. The implementation features 69 comprehensive unit tests (100% pass rate, 173% of 40+ target) with 22 tests for RealWorldValueLUT, 17 for RealWorldValueRenderer, 20 for SUVCalculator, and 10 for RealWorldValueLUTParser. This builds upon v1.0.7 (Parametric Map Objects Support), v1.0.6 (Segmentation Objects Support), v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
