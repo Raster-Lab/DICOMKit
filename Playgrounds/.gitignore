@@ -1,0 +1,23 @@
+# Playgrounds .gitignore
+
+# Sample DICOM files (can be large, user should download separately)
+Resources/SampleDICOMFiles/*.dcm
+Resources/SampleDICOMFiles/*.dicom
+Resources/SampleDICOMFiles/*.dic
+
+# Xcode Playground data
+*.xcplayground/
+*playground*/
+
+# Generated images and exports
+*.png
+*.jpg
+*.jpeg
+*.tiff
+
+# macOS
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
