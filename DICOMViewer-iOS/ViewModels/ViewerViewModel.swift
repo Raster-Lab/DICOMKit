@@ -107,9 +107,24 @@ final class ViewerViewModel {
     /// Patient name
     var patientName: String?
     
+    // MARK: - Presentation State
+    
+    /// Currently applied presentation state
+    var presentationState: GrayscalePresentationState?
+    
+    /// Available presentation states for current image
+    var availablePresentationStates: [PresentationStateInfo] = []
+    
+    /// Whether presentation state is being applied
+    var isPresentationStateEnabled: Bool = false
+    
+    /// Original window settings (before GSPS applied)
+    private var originalWindowSettings: WindowSettings?
+    
     // MARK: - Dependencies
     
     private let renderingService = ImageRenderingService.shared
+    private let presentationStateService = PresentationStateService.shared
     
     /// Currently loaded DICOM file
     private var dicomFile: DICOMFile?
@@ -119,6 +134,9 @@ final class ViewerViewModel {
     
     /// Current instance being viewed
     private var currentInstance: DICOMInstance?
+    
+    /// Current pixel data for presentation state rendering
+    private var currentPixelData: PixelData?
     
     // MARK: - Initialization
     
@@ -425,5 +443,197 @@ final class ViewerViewModel {
     /// Whether this is a multi-frame image
     var isMultiFrame: Bool {
         frameCount > 1
+    }
+    
+    // MARK: - Presentation State
+    
+    /// Loads available presentation states from a directory
+    /// - Parameter directoryURL: Directory containing GSPS files
+    func loadPresentationStates(from directoryURL: URL) async {
+        guard let sopInstanceUID = currentInstance?.sopInstanceUID ?? dicomFile?.dataSet.string(for: .sopInstanceUID),
+              let seriesInstanceUID = currentSeries?.seriesInstanceUID ?? dicomFile?.dataSet.string(for: .seriesInstanceUID) else {
+            return
+        }
+        
+        var loadedStates: [GrayscalePresentationState] = []
+        
+        do {
+            let fileURLs = try FileManager.default.contentsOfDirectory(at: directoryURL, includingPropertiesForKeys: nil)
+            
+            for fileURL in fileURLs {
+                guard fileURL.pathExtension.lowercased() == "dcm" || fileURL.pathExtension.isEmpty else {
+                    continue
+                }
+                
+                if let gsps = try? await presentationStateService.loadGSPS(from: fileURL) {
+                    loadedStates.append(gsps)
+                }
+            }
+        } catch {
+            // Directory may not exist or be empty
+        }
+        
+        // Filter to applicable presentation states
+        let applicable = await presentationStateService.findApplicablePresentationStates(
+            for: sopInstanceUID,
+            seriesInstanceUID: seriesInstanceUID,
+            from: loadedStates
+        )
+        
+        availablePresentationStates = applicable.map { PresentationStateInfo(from: $0) }
+    }
+    
+    /// Adds a presentation state to the available list
+    /// - Parameter gsps: The presentation state to add
+    func addPresentationState(_ gsps: GrayscalePresentationState) {
+        let info = PresentationStateInfo(from: gsps)
+        if !availablePresentationStates.contains(where: { $0.id == info.id }) {
+            availablePresentationStates.append(info)
+        }
+    }
+    
+    /// Applies a presentation state to the current image
+    /// - Parameter gsps: The presentation state to apply (nil to remove)
+    func applyPresentationState(_ gsps: GrayscalePresentationState?) async {
+        // Store original window settings before first GSPS application
+        if presentationState == nil && gsps != nil && originalWindowSettings == nil {
+            originalWindowSettings = WindowSettings(center: windowCenter, width: windowWidth)
+        }
+        
+        presentationState = gsps
+        isPresentationStateEnabled = (gsps != nil)
+        
+        if let gsps = gsps {
+            // Apply VOI LUT settings from presentation state
+            if let voiLUT = gsps.voiLUT {
+                switch voiLUT {
+                case .window(let center, let width, _, _):
+                    windowCenter = center
+                    windowWidth = width
+                case .lut:
+                    // LUT-based VOI is applied during rendering
+                    break
+                }
+            }
+            
+            // Apply Presentation LUT settings
+            if let presLUT = gsps.presentationLUT {
+                switch presLUT {
+                case .inverse:
+                    isInverted = true
+                case .identity:
+                    isInverted = false
+                case .lut:
+                    // LUT-based presentation is applied during rendering
+                    break
+                }
+            }
+            
+            // Apply spatial transformation
+            if let spatial = gsps.spatialTransformation {
+                rotationAngle = Double(spatial.rotation)
+                isFlippedHorizontal = spatial.isFlipped
+            }
+            
+            // Apply displayed area
+            if let displayedArea = gsps.displayedArea {
+                // Calculate zoom based on displayed area
+                if let dims = imageDimensions {
+                    let areaWidth = displayedArea.bottomRight.column - displayedArea.topLeft.column
+                    let areaHeight = displayedArea.bottomRight.row - displayedArea.topLeft.row
+                    
+                    if areaWidth > 0 && areaHeight > 0 {
+                        let zoomX = CGFloat(dims.columns) / CGFloat(areaWidth)
+                        let zoomY = CGFloat(dims.rows) / CGFloat(areaHeight)
+                        zoomScale = min(zoomX, zoomY)
+                        
+                        // Calculate pan offset to center the displayed area
+                        let centerX = CGFloat(displayedArea.topLeft.column + areaWidth / 2)
+                        let centerY = CGFloat(displayedArea.topLeft.row + areaHeight / 2)
+                        let imageCenterX = CGFloat(dims.columns) / 2
+                        let imageCenterY = CGFloat(dims.rows) / 2
+                        
+                        panOffset = CGSize(
+                            width: (imageCenterX - centerX) * zoomScale,
+                            height: (imageCenterY - centerY) * zoomScale
+                        )
+                    }
+                }
+            }
+        } else {
+            // Restore original settings
+            if let original = originalWindowSettings {
+                windowCenter = original.center
+                windowWidth = original.width
+            }
+            isInverted = false
+            resetView()
+        }
+        
+        // Render with presentation state
+        await loadCurrentFrameWithPresentationState()
+    }
+    
+    /// Renders the current frame with presentation state applied
+    private func loadCurrentFrameWithPresentationState() async {
+        guard let file = dicomFile else { return }
+        
+        do {
+            if let gsps = presentationState, isPresentationStateEnabled {
+                // Get pixel data for GSPS rendering
+                guard let pixelData = file.dataSet.pixelData() else {
+                    throw ImageRenderingError.noPixelData
+                }
+                
+                currentPixelData = pixelData
+                
+                // Apply presentation state through the applicator
+                currentImage = await presentationStateService.applyPresentationState(
+                    gsps,
+                    to: pixelData,
+                    frameIndex: currentFrame
+                )
+            } else {
+                // Standard rendering without GSPS
+                currentImage = try await renderingService.renderFrame(
+                    from: file,
+                    frameIndex: currentFrame,
+                    windowCenter: windowCenter,
+                    windowWidth: windowWidth,
+                    invert: isInverted
+                )
+            }
+        } catch {
+            errorMessage = "Failed to render frame: \(error.localizedDescription)"
+        }
+    }
+    
+    /// Toggles presentation state on/off
+    func togglePresentationState() async {
+        if isPresentationStateEnabled {
+            // Disable but keep the selected state
+            isPresentationStateEnabled = false
+            await loadCurrentFrame()
+        } else if presentationState != nil {
+            // Re-enable the selected state
+            isPresentationStateEnabled = true
+            await loadCurrentFrameWithPresentationState()
+        }
+    }
+    
+    /// Clears all presentation state settings
+    func clearPresentationState() async {
+        presentationState = nil
+        isPresentationStateEnabled = false
+        originalWindowSettings = nil
+        await loadCurrentFrame()
+    }
+    
+    /// Gets the image size for overlay calculations
+    var imageSize: CGSize {
+        if let dims = imageDimensions {
+            return CGSize(width: dims.columns, height: dims.rows)
+        }
+        return CGSize(width: 512, height: 512)
     }
 }

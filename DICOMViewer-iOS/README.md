@@ -45,11 +45,33 @@ DICOMViewer iOS is a production-quality medical imaging application that demonst
   - Study, Series, Instance hierarchy
   - Measurement model with pixel spacing support
 
-### Phase 2 (Planned)
+### Phase 2 (Presentation States) ✅
 
-- Advanced window/level with two-finger gesture
-- Presentation state (GSPS) support
-- Cine playback modes (loop, bounce)
+- **GSPS (Grayscale Softcopy Presentation State) Support**
+  - Load and apply GSPS objects automatically
+  - Grayscale LUT chain (Modality LUT → VOI LUT → Presentation LUT)
+  - Window/level from presentation state
+  - Spatial transformations (rotation, flip)
+  - Display area selection (zoom, pan)
+  
+- **Annotation Rendering**
+  - Graphic objects (point, polyline, circle, ellipse)
+  - Text annotations with bounding boxes
+  - Anchor points with connecting lines
+  - Multi-layer support with layer ordering
+  - Layer colors (grayscale and RGB)
+  
+- **Shutter Display**
+  - Rectangular shutters
+  - Circular shutters
+  - Polygonal shutters
+  - Configurable shutter presentation value
+  
+- **Presentation State Management**
+  - List available presentation states
+  - Apply/remove presentation state
+  - Feature badges (W/L, annotations, shutters, transforms)
+  - GSPS indicator overlay
 
 ### Phase 3 (Planned)
 
@@ -77,21 +99,27 @@ DICOMViewer-iOS/
 │   └── Measurement.swift         # Measurement models
 ├── ViewModels/
 │   ├── LibraryViewModel.swift    # Library management
-│   └── ViewerViewModel.swift     # Image viewer state
+│   └── ViewerViewModel.swift     # Image viewer state with GSPS support
 ├── Views/
 │   ├── Library/
 │   │   └── LibraryView.swift     # Study browser
 │   ├── Viewer/
-│   │   ├── ViewerContainerView.swift
-│   │   └── SeriesPickerView.swift
+│   │   ├── ViewerContainerView.swift     # Main viewer with GSPS integration
+│   │   ├── SeriesPickerView.swift
+│   │   ├── PresentationStateOverlayView.swift  # GSPS annotation/shutter rendering
+│   │   └── PresentationStatePickerView.swift   # GSPS selection UI
 │   ├── Metadata/
 │   │   └── MetadataView.swift
 │   └── Settings/
 │       └── SettingsView.swift
 ├── Services/
-│   ├── DICOMFileService.swift    # File I/O
-│   ├── ThumbnailService.swift    # Thumbnail cache
-│   └── ImageRenderingService.swift
+│   ├── DICOMFileService.swift         # File I/O
+│   ├── ThumbnailService.swift         # Thumbnail cache
+│   ├── ImageRenderingService.swift    # Image rendering
+│   └── PresentationStateService.swift # GSPS loading and management
+├── Tests/
+│   ├── MeasurementTests.swift         # Measurement model tests
+│   └── PresentationStateTests.swift   # GSPS functionality tests
 └── Resources/
     └── (Assets, Localization)
 ```
@@ -142,6 +170,22 @@ dependencies: [
 3. Tap Invert to toggle grayscale inversion
 4. Tap Rotate to rotate 90° clockwise
 5. Tap Reset to restore default view
+
+### Using Presentation States (GSPS)
+
+1. If a study has associated GSPS files, a presentation state indicator appears in the toolbar
+2. Tap the GSPS button in the control bar to open the presentation state picker
+3. Select a presentation state to apply its display settings:
+   - Window/level values are applied automatically
+   - Annotations (graphic and text objects) are rendered as overlays
+   - Shutters mask specified regions of the image
+   - Spatial transformations (rotation, flip) are applied
+4. Feature badges show what each presentation state includes:
+   - W/L: Contains window/level settings
+   - Numbered badges: Count of annotations or shutters
+   - Rotate icon: Contains spatial transformation
+5. Select "None" to remove the presentation state and return to default display
+6. A blue "GSPS" indicator appears in the image overlay when a presentation state is active
 
 ## Architecture
 
