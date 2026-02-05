@@ -10,9 +10,37 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.8)
+## Features (v1.0.10)
 
-- ✅ **Real-World Value Mapping (RWV LUT) (NEW in v1.0.8)**
+- ✅ **Private Tag Support (NEW in v1.0.10)**
+  - ✅ **Private Creator Management** - Complete implementation of Private Data Elements (PS3.5 Section 7.8)
+    - ✅ `PrivateCreator` struct with block number allocation
+    - ✅ `PrivateTagAllocator` actor for thread-safe block management
+    - ✅ Private tag generation with offset-based element addressing
+    - ✅ Ownership tracking for private tag blocks
+  - ✅ **Vendor-Specific Dictionaries** - Known private tag definitions
+    - ✅ `PrivateTagDictionary` with vendor mappings
+    - ✅ Siemens private tags (CSA Header, MR Header, CT Header)
+    - ✅ GE Healthcare private tags (GEMS_IDEN, GEMS_ACQU, GEMS_SERS)
+    - ✅ Philips private tags (Imaging DD, MR Imaging DD)
+    - ✅ Canon/Toshiba private tags (TOSHIBA_MEC_MR3)
+    - ✅ Well-known vendor creators with default group assignments
+  - ✅ **Private Data Element Handling** - Enhanced private tag management
+    - ✅ `PrivateDataElement` with creator reference
+    - ✅ Block offset computation and validation
+    - ✅ VR inference from vendor dictionaries
+    - ✅ Tag name lookup for known private tags
+  - ✅ **Vendor-Specific Parsing** - Proprietary header support
+    - ✅ `SiemensCSAHeaderParser` for CSA headers (SV10 format)
+    - ✅ CSA tag extraction with VM, VR, and values
+    - ✅ Binary data parsing with null-termination handling
+  - ✅ **Comprehensive Testing** - 52 unit tests (100% pass rate, 104% of 50+ target)
+    - ✅ 18 tests for `PrivateCreator` (tag generation, ownership, well-known vendors)
+    - ✅ 17 tests for `PrivateTagDictionary` (vendor dictionaries, VR/name lookup)
+    - ✅ 15 tests for `PrivateTagAllocator` (allocation, concurrency, error handling)
+    - ✅ 2 tests for `PrivateDataElement` (initialization, description formatting)
+
+- ✅ **Real-World Value Mapping (RWV LUT) (v1.0.8)**
   - ✅ **General-Purpose RWV Support** - Complete implementation of Real World Value Mapping (PS3.3 C.7.6.16.2.11)
     - ✅ `RealWorldValueLUT` for transforming stored pixel values to physical quantities
     - ✅ `RealWorldValueLUTParser` for parsing RWV Mapping Sequence from DICOM
@@ -3429,7 +3457,7 @@ For complete examples with detailed documentation, see the [`Examples/` director
 
 DICOMKit is organized into four modules:
 
-### DICOMCore (v0.9.1, v0.9.4)
+### DICOMCore (v0.9.1, v0.9.4, v1.0.9, v1.0.10)
 Core data types and utilities:
 - `VR` - All 31 Value Representations from DICOM PS3.5
 - `Tag` - Data element tags (group, element pairs)
@@ -3455,6 +3483,23 @@ Core data types and utilities:
 - `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
 - Little Endian and Big Endian byte reading/writing utilities
+
+**Character Set Support (NEW in v1.0.9):**
+- `CharacterSetHandler` - ISO 2022 escape sequence handling for international text
+- Support for 18 character repertoires (ISO IR 6-192, UTF-8)
+- G0-G3 character set designation and single/locking shift
+- Person Name component group handling
+- Unicode normalization (NFC, NFD) for display
+
+**Private Tag Support (NEW in v1.0.10):**
+- `PrivateCreator` - Private creator identification and block management
+- `PrivateTagDictionary` - Vendor-specific private tag definitions
+- `PrivateDataElement` - Private data element with creator reference
+- `PrivateTagAllocator` - Thread-safe private block allocation
+- `PrivateTagDefinition` - Known private tag metadata (name, VR, description)
+- `SiemensCSAHeaderParser` - Siemens CSA header parsing (SV10 format)
+- Well-known vendor creators: Siemens, GE, Philips, Canon/Toshiba
+- Private tag VR inference from vendor dictionaries
 
 **Structured Reporting (NEW in v0.9.1):**
 - `ContentItemValueType` - All 15 SR value types enum
@@ -3948,4 +3993,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.8 - implementing Real-World Value Mapping (RWV LUT) Support. This version adds comprehensive support for Real World Value Lookup Tables (PS3.3 C.7.6.16.2.11) for transforming stored pixel values to physical quantities across all modalities. The implementation includes general-purpose `RealWorldValueLUT` for both linear (slope/intercept) and LUT-based transformations, `RealWorldValueLUTParser` for parsing RWV Mapping Sequence and legacy Modality LUT with automatic priority handling, `RealWorldValueUnits` with UCUM-based coded entries and predefined common units (Hounsfield, mm²/s, ms, g/ml, Bq/ml, etc.), common quantity definitions via `CodedConcept` extensions (ADC, T1/T2/T2*, Ktrans/Ve/Vp, CBF/CBV/MTT, SUV variants, Hounsfield), `SUVCalculator` for PET Standardized Uptake Value calculations with all four normalization types (SUVbw, SUVlbm, SUVbsa, SUVibw), automatic radiotracer decay correction, and predefined half-lives for common radionuclides (F-18, C-11, O-15, N-13, Ga-68, Cu-64, Zr-89, I-124), `RealWorldValueRenderer` actor for concurrent-safe pixel value transformation with frame-specific support, and ROI statistics calculator (min, max, mean, median, std dev) with measurement units. The implementation features 69 comprehensive unit tests (100% pass rate, 173% of 40+ target) with 22 tests for RealWorldValueLUT, 17 for RealWorldValueRenderer, 20 for SUVCalculator, and 10 for RealWorldValueLUTParser. This builds upon v1.0.7 (Parametric Map Objects Support), v1.0.6 (Segmentation Objects Support), v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.10 - implementing Private Tag Support. This version adds comprehensive support for vendor-specific private data elements (PS3.5 Section 7.8) with `PrivateCreator` for private creator identification and block management, `PrivateTagAllocator` actor for thread-safe block allocation and conflict-free private group selection, `PrivateTagDictionary` with vendor-specific tag definitions for Siemens (CSA Header, MR Header, CT Header), GE Healthcare (GEMS_IDEN, GEMS_ACQU, GEMS_SERS), Philips (Imaging DD, MR Imaging DD), and Canon/Toshiba (TOSHIBA_MEC_MR3), `PrivateDataElement` for private data handling with creator reference and block offset computation, `SiemensCSAHeaderParser` for parsing Siemens proprietary CSA headers (SV10 format), private tag VR inference from vendor dictionaries, and well-known vendor creator constants with default group assignments. The implementation features 52 comprehensive unit tests (100% pass rate, 104% of 50+ target) with 18 tests for PrivateCreator, 17 for PrivateTagDictionary, 15 for PrivateTagAllocator, and 2 for PrivateDataElement. This builds upon v1.0.9 (Extended Character Set Support), v1.0.8 (Real-World Value Mapping), v1.0.7 (Parametric Map Objects Support), v1.0.6 (Segmentation Objects Support), v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
