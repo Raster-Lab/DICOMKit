@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import DICOMCore
 #if canImport(CoreGraphics)
 import CoreGraphics
 #endif
@@ -91,50 +92,23 @@ public enum ColorSpace: String, Sendable, Hashable, CaseIterable {
     #endif
 }
 
-// MARK: - Palette Color LUT
+// MARK: - Palette Color LUT Extensions
 
-/// Palette Color Lookup Table for pseudo-color mapping
-///
-/// Maps grayscale pixel values to RGB colors for false-color display.
-/// Commonly used in nuclear medicine, thermal imaging, and other modalities
-/// where color highlights specific value ranges.
-///
-/// Reference: PS3.3 Section C.7.6.3.1.5 - Palette Color Lookup Table Module
-public struct PaletteColorLUT: Sendable, Hashable {
-    /// Red channel LUT data
-    public let redLUT: LUTData
-    
-    /// Green channel LUT data
-    public let greenLUT: LUTData
-    
-    /// Blue channel LUT data
-    public let blueLUT: LUTData
-    
-    /// Palette explanation/name
-    public let explanation: String?
-    
-    /// Initialize a palette color LUT
-    public init(
-        redLUT: LUTData,
-        greenLUT: LUTData,
-        blueLUT: LUTData,
-        explanation: String? = nil
-    ) {
-        self.redLUT = redLUT
-        self.greenLUT = greenLUT
-        self.blueLUT = blueLUT
-        self.explanation = explanation
-    }
-    
+// Note: PaletteColorLUT is defined in DICOMCore
+// This extension adds helper methods for pseudo-color presentation states
+
+extension PaletteColorLUT {
     /// Apply the palette color LUT to a pixel value
     ///
     /// - Parameter value: Input grayscale pixel value
     /// - Returns: RGB color components (each in 0.0-1.0 range)
-    public func apply(to value: Int) -> (red: Double, green: Double, blue: Double) {
-        let r = redLUT.lookup(value) / Double(redLUT.maxOutputValue)
-        let g = greenLUT.lookup(value) / Double(greenLUT.maxOutputValue)
-        let b = blueLUT.lookup(value) / Double(blueLUT.maxOutputValue)
-        return (r, g, b)
+    public func applyNormalized(to value: Int) -> (red: Double, green: Double, blue: Double) {
+        let (r, g, b) = lookup(value)
+        return (
+            Double(r) / 255.0,
+            Double(g) / 255.0,
+            Double(b) / 255.0
+        )
     }
     
     /// Common preset color maps
@@ -169,47 +143,39 @@ public enum ColorMapPreset: String, Sendable, CaseIterable {
     func createLUT() -> PaletteColorLUT {
         let numberOfEntries = 256
         let bitsPerEntry = 16
-        let maxValue = (1 << bitsPerEntry) - 1
+        let maxValue = UInt16((1 << 16) - 1)
         
-        var redData: [Int] = []
-        var greenData: [Int] = []
-        var blueData: [Int] = []
+        var redData: [UInt16] = []
+        var greenData: [UInt16] = []
+        var blueData: [UInt16] = []
+        
+        redData.reserveCapacity(numberOfEntries)
+        greenData.reserveCapacity(numberOfEntries)
+        blueData.reserveCapacity(numberOfEntries)
         
         for i in 0..<numberOfEntries {
             let t = Double(i) / Double(numberOfEntries - 1)
             let (r, g, b) = colorForValue(t)
             
-            redData.append(Int(r * Double(maxValue)))
-            greenData.append(Int(g * Double(maxValue)))
-            blueData.append(Int(b * Double(maxValue)))
+            // Convert 0.0-1.0 to 16-bit values (stored in high byte per DICOM convention)
+            redData.append(UInt16(r * Double(maxValue)))
+            greenData.append(UInt16(g * Double(maxValue)))
+            blueData.append(UInt16(b * Double(maxValue)))
         }
         
-        let redLUT = LUTData(
+        let descriptor = PaletteColorLUT.Descriptor(
             numberOfEntries: numberOfEntries,
-            firstValueMapped: 0,
-            bitsPerEntry: bitsPerEntry,
-            data: redData
-        )
-        
-        let greenLUT = LUTData(
-            numberOfEntries: numberOfEntries,
-            firstValueMapped: 0,
-            bitsPerEntry: bitsPerEntry,
-            data: greenData
-        )
-        
-        let blueLUT = LUTData(
-            numberOfEntries: numberOfEntries,
-            firstValueMapped: 0,
-            bitsPerEntry: bitsPerEntry,
-            data: blueData
+            firstMappedValue: 0,
+            bitsPerEntry: bitsPerEntry
         )
         
         return PaletteColorLUT(
-            redLUT: redLUT,
-            greenLUT: greenLUT,
-            blueLUT: blueLUT,
-            explanation: rawValue.capitalized
+            redDescriptor: descriptor,
+            greenDescriptor: descriptor,
+            blueDescriptor: descriptor,
+            redLUT: redData,
+            greenLUT: greenData,
+            blueLUT: blueData
         )
     }
     
