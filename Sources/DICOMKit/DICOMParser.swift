@@ -14,10 +14,12 @@ import DICOMDictionary
 struct DICOMParser {
     private var data: Data
     private var offset: Int
+    private let options: ParsingOptions
     
-    init(data: Data) {
+    init(data: Data, options: ParsingOptions = .default) {
         self.data = data
         self.offset = 0
+        self.options = options
     }
     
     /// Parses File Meta Information elements
@@ -84,9 +86,15 @@ struct DICOMParser {
         let isEncapsulated = transferSyntax.isEncapsulated
         
         var elements: [DataElement] = []
+        var elementCount = 0
         
         // Parse elements until we reach the end or pixel data
         while offset < data.count {
+            // Check max elements limit
+            if let maxElements = options.maxElements, elementCount >= maxElements {
+                break
+            }
+            
             // Check for pixel data (7FE0,0010)
             guard let groupNumber = readUInt16(at: offset, byteOrder: byteOrder) else {
                 break
@@ -95,26 +103,68 @@ struct DICOMParser {
                 break
             }
             
-            // Handle pixel data
-            if groupNumber == 0x7FE0 && elementNumber == 0x0010 {
-                // Parse pixel data element
-                let pixelDataElement: DataElement
-                if isEncapsulated {
-                    pixelDataElement = try parseEncapsulatedPixelData(isExplicitVR: isExplicitVR, byteOrder: byteOrder)
-                } else {
-                    if isExplicitVR {
-                        guard let parsed = try? parseExplicitVRElement(byteOrder: byteOrder) else {
-                            break
-                        }
-                        pixelDataElement = parsed
-                    } else {
-                        guard let parsed = try? parseImplicitVRElement(byteOrder: byteOrder) else {
-                            break
-                        }
-                        pixelDataElement = parsed
+            let currentTag = Tag(group: groupNumber, element: elementNumber)
+            
+            // Check stopAfterTag option
+            if let stopTag = options.stopAfterTag, currentTag == stopTag {
+                // Parse this element and stop
+                let element: DataElement
+                if isExplicitVR {
+                    guard let parsed = try? parseExplicitVRElement(byteOrder: byteOrder) else {
+                        break
                     }
+                    element = parsed
+                } else {
+                    guard let parsed = try? parseImplicitVRElement(byteOrder: byteOrder) else {
+                        break
+                    }
+                    element = parsed
                 }
-                elements.append(pixelDataElement)
+                elements.append(element)
+                elementCount += 1
+                break
+            }
+            
+            // Handle pixel data based on parsing mode
+            if groupNumber == 0x7FE0 && elementNumber == 0x0010 {
+                switch options.mode {
+                case .metadataOnly:
+                    // Skip pixel data entirely
+                    break
+                    
+                case .lazyPixelData:
+                    // Parse pixel data tag but don't load the value
+                    let pixelDataElement = try parsePixelDataMetadataOnly(
+                        isExplicitVR: isExplicitVR,
+                        byteOrder: byteOrder,
+                        isEncapsulated: isEncapsulated
+                    )
+                    elements.append(pixelDataElement)
+                    break
+                    
+                case .full:
+                    // Parse pixel data element fully
+                    let pixelDataElement: DataElement
+                    if isEncapsulated {
+                        pixelDataElement = try parseEncapsulatedPixelData(isExplicitVR: isExplicitVR, byteOrder: byteOrder)
+                    } else {
+                        if isExplicitVR {
+                            guard let parsed = try? parseExplicitVRElement(byteOrder: byteOrder) else {
+                                break
+                            }
+                            pixelDataElement = parsed
+                        } else {
+                            guard let parsed = try? parseImplicitVRElement(byteOrder: byteOrder) else {
+                                break
+                            }
+                            pixelDataElement = parsed
+                        }
+                    }
+                    elements.append(pixelDataElement)
+                    break
+                }
+                
+                // Always stop after pixel data
                 break
             }
             
@@ -133,6 +183,7 @@ struct DICOMParser {
             }
             
             elements.append(element)
+            elementCount += 1
         }
         
         return DataSet(elements: elements)
@@ -284,6 +335,105 @@ struct DICOMParser {
             encapsulatedFragments: fragments,
             encapsulatedOffsetTable: offsetTable
         )
+    }
+    
+    /// Parses pixel data metadata without loading the pixel values (lazy loading)
+    ///
+    /// This method reads the tag, VR, and length of pixel data but skips the actual
+    /// pixel values. This significantly reduces memory usage when pixel data is not needed.
+    ///
+    /// - Parameters:
+    ///   - isExplicitVR: Whether the transfer syntax uses explicit VR
+    ///   - byteOrder: Byte order for reading
+    ///   - isEncapsulated: Whether pixel data is encapsulated (compressed)
+    /// - Returns: Data element with pixel data tag but empty value
+    /// - Throws: DICOMError if parsing fails
+    private mutating func parsePixelDataMetadataOnly(
+        isExplicitVR: Bool,
+        byteOrder: ByteOrder,
+        isEncapsulated: Bool
+    ) throws -> DataElement {
+        // Read tag (should be 7FE0,0010)
+        guard let groupNumber = readUInt16(at: offset, byteOrder: byteOrder),
+              let elementNumber = readUInt16(at: offset + 2, byteOrder: byteOrder) else {
+            throw DICOMError.unexpectedEndOfData
+        }
+        offset += 4
+        
+        let tag = Tag(group: groupNumber, element: elementNumber)
+        
+        // Read VR and length
+        let vr: VR
+        let valueLength: UInt32
+        
+        if isExplicitVR {
+            guard offset + 2 <= data.count else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            
+            let vrByte0 = data[offset]
+            let vrByte1 = data[offset + 1]
+            offset += 2
+            
+            guard let vrString = String(bytes: [vrByte0, vrByte1], encoding: .ascii),
+                  let parsedVR = VR(rawValue: vrString) else {
+                // Default to OB for pixel data if VR is invalid
+                vr = .OB
+                offset -= 2 // backtrack
+                valueLength = 0
+                return DataElement(tag: tag, vr: vr, length: 0, valueData: Data())
+            }
+            vr = parsedVR
+            
+            // Skip 2 reserved bytes and read 4-byte length
+            offset += 2
+            guard let length32 = readUInt32(at: offset, byteOrder: byteOrder) else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            offset += 4
+            valueLength = length32
+        } else {
+            // Implicit VR - use OW for pixel data
+            vr = .OW
+            guard let length32 = readUInt32(at: offset, byteOrder: byteOrder) else {
+                throw DICOMError.unexpectedEndOfData
+            }
+            offset += 4
+            valueLength = length32
+        }
+        
+        // Skip the actual pixel data value
+        if valueLength != 0xFFFFFFFF {
+            // Defined length - skip it
+            offset += Int(valueLength)
+        } else {
+            // Undefined length (encapsulated) - skip to sequence delimiter
+            while offset < data.count {
+                guard let itemTag = readItemTag(byteOrder: byteOrder) else {
+                    break
+                }
+                
+                if itemTag == .sequenceDelimitationItem {
+                    offset += 4 // Skip tag
+                    offset += 4 // Skip length
+                    break
+                }
+                
+                guard itemTag == .item else {
+                    throw DICOMError.parsingFailed("Expected Item or Sequence Delimitation tag")
+                }
+                offset += 4
+                
+                guard let fragmentLength = readUInt32(at: offset, byteOrder: byteOrder) else {
+                    throw DICOMError.unexpectedEndOfData
+                }
+                offset += 4
+                offset += Int(fragmentLength)
+            }
+        }
+        
+        // Return element with metadata but no value data
+        return DataElement(tag: tag, vr: vr, length: valueLength, valueData: Data())
     }
     
     /// Reads an Item or Delimiter tag

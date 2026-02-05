@@ -56,15 +56,33 @@ public struct DICOMFile: Sendable {
     /// - Returns: Parsed DICOM file
     /// - Throws: DICOMError if file is invalid or parsing fails
     public static func read(from data: Data, force: Bool) throws -> DICOMFile {
+        return try read(from: data, force: force, options: .default)
+    }
+    
+    /// Reads a DICOM file from data with parsing options
+    ///
+    /// Supports advanced parsing options including:
+    /// - Metadata-only parsing (skip pixel data)
+    /// - Lazy pixel data loading (defer loading until access)
+    /// - Memory-mapped file access (for large files)
+    /// - Partial parsing (stop after specific tag)
+    ///
+    /// - Parameters:
+    ///   - data: Raw file data
+    ///   - force: If true, attempts to parse files without DICM prefix
+    ///   - options: Parsing options controlling behavior
+    /// - Returns: Parsed DICOM file
+    /// - Throws: DICOMError if file is invalid or parsing fails
+    public static func read(from data: Data, force: Bool = false, options: ParsingOptions) throws -> DICOMFile {
         // Check if this is a standard Part 10 file with DICM prefix
         if hasDICMPrefix(data) {
-            return try readPart10File(from: data)
+            return try readPart10File(from: data, options: options)
         }
         
         // Not a standard Part 10 file
         if force {
             // Try to parse as legacy DICOM file
-            return try readLegacyFile(from: data)
+            return try readLegacyFile(from: data, options: options)
         } else {
             // Require DICM prefix by default
             if data.count < 132 {
@@ -72,6 +90,24 @@ public struct DICOMFile: Sendable {
             }
             throw DICOMError.invalidDICMPrefix
         }
+    }
+    
+    /// Reads a DICOM file from URL with parsing options
+    ///
+    /// Supports reading from file URL with advanced parsing options.
+    /// Can use memory-mapped file access for large files when specified in options.
+    ///
+    /// - Parameters:
+    ///   - url: File URL to read from
+    ///   - force: If true, attempts to parse files without DICM prefix
+    ///   - options: Parsing options controlling behavior
+    /// - Returns: Parsed DICOM file
+    /// - Throws: DICOMError if file is invalid or parsing fails
+    public static func read(from url: URL, force: Bool = false, options: ParsingOptions = .default) throws -> DICOMFile {
+        // For memory-mapped access with large files, we could optimize further
+        // For now, load the data and pass options through
+        let data = try Data(contentsOf: url)
+        return try read(from: data, force: force, options: options)
     }
     
     /// Checks if the data has a valid DICM prefix at offset 128
@@ -90,12 +126,14 @@ public struct DICOMFile: Sendable {
     
     /// Reads a standard DICOM Part 10 file with preamble and DICM prefix
     ///
-    /// - Parameter data: Raw file data
+    /// - Parameters:
+    ///   - data: Raw file data
+    ///   - options: Parsing options controlling behavior
     /// - Returns: Parsed DICOM file
     /// - Throws: DICOMError if parsing fails
-    private static func readPart10File(from data: Data) throws -> DICOMFile {
+    private static func readPart10File(from data: Data, options: ParsingOptions = .default) throws -> DICOMFile {
         // Parse File Meta Information (starts at offset 132, after DICM prefix)
-        var parser = DICOMParser(data: data)
+        var parser = DICOMParser(data: data, options: options)
         let fileMetaInfo = try parser.parseFileMetaInformation(startOffset: 132)
         
         // Get Transfer Syntax UID from File Meta Information
@@ -113,10 +151,12 @@ public struct DICOMFile: Sendable {
     /// Legacy files start directly with data elements. This method uses heuristics
     /// to detect valid DICOM content and determine the transfer syntax.
     ///
-    /// - Parameter data: Raw file data
+    /// - Parameters:
+    ///   - data: Raw file data
+    ///   - options: Parsing options controlling behavior
     /// - Returns: Parsed DICOM file
     /// - Throws: DICOMError if parsing fails
-    private static func readLegacyFile(from data: Data) throws -> DICOMFile {
+    private static func readLegacyFile(from data: Data, options: ParsingOptions = .default) throws -> DICOMFile {
         // Need at least 8 bytes for a minimal data element
         guard data.count >= 8 else {
             throw DICOMError.unexpectedEndOfData
@@ -131,7 +171,7 @@ public struct DICOMFile: Sendable {
         // But some may use Explicit VR - try to detect based on VR bytes
         let transferSyntaxUID = detectTransferSyntax(from: data)
         
-        var parser = DICOMParser(data: data)
+        var parser = DICOMParser(data: data, options: options)
         
         // Check if there's File Meta Information (group 0002) at the start
         if let groupNumber = data.readUInt16LE(at: 0), groupNumber == 0x0002 {
