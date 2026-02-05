@@ -10,7 +10,7 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.4)
+## Features (v1.0.6)
 
 - ✅ **Hanging Protocol Support (NEW in v1.0.3)**
   - ✅ **Hanging Protocol IOD Support** - Complete implementation of Hanging Protocol Storage (PS3.3 A.38)
@@ -136,6 +136,70 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ 12 tests for RT Structure Set parsing
     - ✅ Complete integration test with full structure set
     - ✅ Contour point parsing and geometric type validation
+
+- ✅ **Segmentation Objects (NEW in v1.0.6)**
+  - ✅ **Segmentation IOD** - Complete implementation of Segmentation Storage (PS3.3 A.51)
+    - ✅ `Segmentation` struct for labeled image regions from AI/ML or manual annotation
+    - ✅ `SegmentationParser` for parsing Segmentation DICOM objects
+    - ✅ Binary segmentation (1-bit per pixel, presence/absence encoding)
+    - ✅ Fractional segmentation (8/16-bit, probability or occupancy values)
+    - ✅ Multi-frame organization with per-frame functional groups
+    - ✅ Content identification (label, description, creator, date/time)
+    - ✅ 30+ DICOM tags in group 0x0062 for segmentation specification
+  - ✅ **Segment Definitions** - Anatomical and pathological structure descriptions
+    - ✅ `Segment` struct with identification and coded terminology
+    - ✅ `SegmentAlgorithmType` enum (AUTOMATIC, SEMIAUTOMATIC, MANUAL)
+    - ✅ `CodedConcept` for standardized terminology (CID 7150, CID 7151)
+    - ✅ Segment category and type (Tissue, Organ, Lesion, etc.)
+    - ✅ Anatomic region and modifier sequences
+    - ✅ Recommended display CIELab colors for visualization
+    - ✅ Tracking ID and UID for longitudinal studies
+  - ✅ **Functional Groups** - Multi-frame metadata organization
+    - ✅ `FunctionalGroup` with per-frame and shared attributes
+    - ✅ `SegmentIdentification` linking frames to segments
+    - ✅ `DerivationImage` with source image references
+    - ✅ `FrameContent` for acquisition metadata
+    - ✅ `PlanePosition` and `PlaneOrientation` for spatial registration
+    - ✅ Shared and per-frame functional groups sequences
+  - ✅ **Pixel Data Extraction** - Binary and fractional mask extraction
+    - ✅ `SegmentationPixelDataExtractor` for extracting segment masks
+    - ✅ Binary frame extraction (1-bit packed, MSB first per DICOM spec)
+    - ✅ Fractional frame extraction (8/16-bit with normalization)
+    - ✅ Individual segment mask extraction by segment number
+    - ✅ Batch extraction of all segments
+    - ✅ Frame-to-segment mapping via functional groups
+  - ✅ **Visualization and Rendering** - Segmentation overlay display
+    - ✅ `SegmentationRenderer` for colored overlay generation
+    - ✅ CIELab to RGB color conversion for display colors
+    - ✅ Configurable opacity/transparency (0.0-1.0)
+    - ✅ Multi-segment compositing with alpha blending
+    - ✅ Selective segment visibility filtering
+    - ✅ Custom color mapping per segment
+    - ✅ CGImage integration for Apple platforms
+    - ✅ Composite with base image for overlay visualization
+  - ✅ **Segmentation Creation** - Build segmentations from masks
+    - ✅ `SegmentationBuilder` for creating DICOM Segmentation objects
+    - ✅ Binary mask to segmentation conversion (0/1 → bit-packed)
+    - ✅ Fractional mask conversion (0-255 → 8/16-bit)
+    - ✅ Fluent API with builder pattern
+    - ✅ Segment metadata assignment (label, category, type, algorithm)
+    - ✅ RGB to CIELab color conversion for display colors
+    - ✅ Source image reference tracking
+    - ✅ Per-frame functional groups generation
+    - ✅ Comprehensive validation and error handling
+  - ✅ **AI/ML Integration** - Encode AI segmentation outputs
+    - ✅ Support for common AI frameworks (MONAI, nnU-Net, etc.)
+    - ✅ Binary and probabilistic segmentation encoding
+    - ✅ Algorithm metadata tracking (type, name, version)
+    - ✅ Proper DICOM compliance for medical AI workflows
+  - ✅ **Comprehensive Testing** - 98 unit tests (100% pass rate)
+    - ✅ 27 tests for Segmentation data structures
+    - ✅ 12 tests for SegmentationParser with mock data
+    - ✅ 22 tests for SegmentationPixelDataExtractor
+    - ✅ 19 tests for SegmentationRenderer
+    - ✅ 18 tests for SegmentationBuilder
+    - ✅ Binary and fractional segmentation scenarios
+    - ✅ Multi-segment, multi-frame integration tests
 
 - ✅ **Color Presentation States (in v1.0.2)**
   - ✅ **Color Softcopy Presentation State (CSPS)** - ICC profile-based color management (PS3.3 A.34)
@@ -3512,6 +3576,26 @@ High-level API:
 - `RTDoseParser` - Parse DICOM RT Dose objects
 - `DVHData` - Dose Volume Histogram data
 
+**Segmentation Objects Support (NEW in v1.0.6):**
+- `Segmentation` - Complete segmentation structure (PS3.3 A.51)
+- `SegmentationParser` - Parse DICOM Segmentation objects
+- `Segment` - Segment definition with coded terminology
+- `SegmentationType` - Segmentation type enum (BINARY, FRACTIONAL)
+- `SegmentationFractionalType` - Fractional type enum (PROBABILITY, OCCUPANCY)
+- `SegmentAlgorithmType` - Algorithm type enum (AUTOMATIC, SEMIAUTOMATIC, MANUAL)
+- `CodedConcept` - Coded concept for standardized terminology
+- `CIELabColor` - CIELab color representation for display colors
+- `FunctionalGroup` - Multi-frame functional group container
+- `SegmentIdentification` - Segment identification per frame
+- `DerivationImage` - Derivation image with source references
+- `SourceImage` - Source image reference
+- `FrameContent` - Frame content metadata
+- `PlanePosition` - Image position in patient coordinate system
+- `PlaneOrientation` - Image orientation in patient coordinate system
+- `SegmentationPixelDataExtractor` - Extract binary and fractional segment masks
+- `SegmentationRenderer` - Render segmentation overlays with color mapping
+- `SegmentationBuilder` - Build DICOM segmentations from binary/fractional masks
+
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
 - `BreadthFirstIterator` - Breadth-first iterator for SR content trees
@@ -3752,4 +3836,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.5 - implementing Radiation Therapy Plan and Dose Support. This version adds comprehensive support for RT Plan Storage (PS3.3 A.20) and RT Dose Storage (PS3.3 A.18), enabling treatment planning and dose distribution management for radiation oncology systems. The implementation includes complete RT Plan IOD parsing with fraction groups, external beam and brachytherapy beam definitions, control point sequences (gantry/collimator/couch angles), beam limiting device positions (MLC, jaws), dose prescriptions, and RT Dose IOD parsing with 3D dose grids (16-bit/32-bit), dose scaling, DVH data extraction, and dose summation types. The implementation features 35 comprehensive unit tests (100% pass rate) covering RT Plan, RT Beam, and RT Dose data structures with complete integration scenarios. This builds upon v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.6 - implementing Segmentation Objects Support. This version adds comprehensive support for Segmentation Storage (PS3.3 A.51), enabling labeled image regions from AI/ML algorithms and manual annotations. The implementation includes complete Segmentation IOD parsing with binary (1-bit packed) and fractional (8/16-bit) segmentation types, multi-frame organization with per-frame functional groups, segment definitions with coded terminology (category, type, anatomic region), pixel data extraction (`SegmentationPixelDataExtractor`), visualization with color overlays (`SegmentationRenderer` with CIELab to RGB conversion and alpha blending), and segmentation creation (`SegmentationBuilder` with fluent API for encoding AI/ML outputs). The implementation features 98 comprehensive unit tests (100% pass rate) covering all data structures, parser, pixel data extraction, rendering, and builder functionality. This builds upon v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
