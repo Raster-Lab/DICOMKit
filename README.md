@@ -3570,6 +3570,30 @@ let document = try MammographyCADSRBuilder()
 
 For complete examples with detailed documentation, see the [`Examples/` directory](Examples/README.md).
 
+### Demo Applications (v1.0.14+)
+
+DICOMKit includes demo applications that showcase the library's capabilities in production-quality apps:
+
+#### DICOMViewer iOS (In Progress)
+
+A mobile DICOM viewer for iOS and iPadOS featuring:
+
+- **File Management**: Import from Files app, iCloud, email; study browser with thumbnails
+- **Image Viewing**: Multi-frame display, pinch-to-zoom, pan, cine playback
+- **Display Controls**: Window/level adjustment with CT presets (lung, bone, soft tissue)
+- **Navigation**: Frame scrubber, series picker, metadata viewer
+- **Settings**: Dark/light mode, storage management
+
+Located in `DICOMViewer-iOS/` - see the [README](DICOMViewer-iOS/README.md) for details.
+
+#### Planned Demo Applications
+
+- **DICOMViewer macOS** - Professional diagnostic workstation with PACS integration, MPR, 3D
+- **DICOMViewer visionOS** - Spatial 3D medical imaging with hand tracking
+- **DICOMTools CLI** - Command-line utilities (dicom-info, dicom-convert, dicom-anon)
+
+See [DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md) for complete plans.
+
 ## Architecture
 
 DICOMKit is organized into four modules:
