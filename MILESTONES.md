@@ -1663,7 +1663,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ## Milestone 9: Structured Reporting (v0.9)
 
-**Status**: Planned  
+**Status**: Completed  
 **Goal**: Full support for DICOM Structured Reporting
 
 DICOM Structured Reporting (SR) enables the encoding of clinical reports as structured, machine-readable documents. SR documents contain hierarchical trees of "Content Items" with coded concepts, enabling semantic interoperability for measurements, observations, and findings. This milestone implements comprehensive SR support for parsing, creating, and working with structured reports.
@@ -2181,7 +2181,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 9.8: Common SR Templates Implementation (v0.9.8)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Full implementation of commonly used SR document templates  
 **Complexity**: High  
 **Dependencies**: Milestone 9.7
@@ -2293,7 +2293,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 | 9.5 Measurement Extraction | v0.9.5 | High | ✅ Completed | Measurements, ROIs, coordinates |
 | 9.6 SR Document Creation | v0.9.6 | High | ✅ Completed | Builder API, serialization, validation |
 | 9.7 Template Support | v0.9.7 | Very High | ✅ Completed | TID parsing, validation, template-guided creation |
-| 9.8 Common Templates | v0.9.8 | High | In Progress | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), Comprehensive3DSRBuilder (66 tests), MeasurementReportBuilder (60 tests), KeyObjectSelectionBuilder (38 tests), MammographyCADSRBuilder (50 tests), ChestCADSRBuilder (50 tests) |
+| 9.8 Common Templates | v0.9.8 | High | ✅ Completed | BasicTextSRBuilder (53 tests), EnhancedSRBuilder (82 tests), ComprehensiveSRBuilder (83 tests), Comprehensive3DSRBuilder (66 tests), MeasurementReportBuilder (60 tests), KeyObjectSelectionBuilder (38 tests), MammographyCADSRBuilder (50 tests), ChestCADSRBuilder (50 tests) |
 
 ### Overall Technical Notes
 - Reference: PS3.3 Part 3 Section C.17 - SR Document IODs
