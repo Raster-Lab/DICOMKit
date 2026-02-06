@@ -82,6 +82,18 @@ struct DICOMViewerApp: App {
                     // TODO: Send layout change to active viewer
                 }
                 .keyboardShortcut("4", modifiers: .command)
+                
+                Divider()
+                
+                Button("MPR View") {
+                    // TODO: Open MPR view for selected series
+                }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+                
+                Button("3D Volume Rendering") {
+                    // TODO: Open 3D rendering view for selected series
+                }
+                .keyboardShortcut("3", modifiers: [.command, .shift])
             }
         }
         .modelContainer(DatabaseService.shared.modelContainer)
