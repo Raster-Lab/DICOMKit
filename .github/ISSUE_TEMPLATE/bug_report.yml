@@ -1,0 +1,128 @@
+name: Bug Report
+description: Report a bug or unexpected behavior in DICOMKit
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill out the form below to help us investigate and fix the issue.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is.
+      placeholder: What went wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior
+      placeholder: |
+        1. Import DICOMKit
+        2. Call function X with parameter Y
+        3. Observe error Z
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Describe the expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened?
+      placeholder: Describe what actually occurred
+    validations:
+      required: true
+
+  - type: textarea
+    id: code-sample
+    attributes:
+      label: Code Sample
+      description: If applicable, provide a minimal code sample that demonstrates the issue
+      render: swift
+      placeholder: |
+        import DICOMKit
+        
+        // Your code here
+
+  - type: textarea
+    id: dicom-file
+    attributes:
+      label: DICOM File Information
+      description: If the bug relates to a specific DICOM file, provide details (but DO NOT upload PHI/patient data)
+      placeholder: |
+        - Transfer Syntax:
+        - SOP Class UID:
+        - Modality:
+        - Any other relevant metadata
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which platform(s) does this occur on?
+      multiple: true
+      options:
+        - iOS
+        - macOS
+        - visionOS
+    validations:
+      required: true
+
+  - type: input
+    id: platform-version
+    attributes:
+      label: Platform Version
+      description: e.g., iOS 17.1, macOS 14.2
+      placeholder: "17.0"
+    validations:
+      required: true
+
+  - type: input
+    id: dicomkit-version
+    attributes:
+      label: DICOMKit Version
+      description: Which version of DICOMKit are you using?
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: swift-version
+    attributes:
+      label: Swift Version
+      description: Output of `swift --version`
+      placeholder: "Swift version 6.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here (logs, screenshots, etc.)
+      placeholder: Any other information that might be helpful
+
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Privacy & Data Protection
+      description: Before submitting, please confirm
+      options:
+        - label: I have NOT included any PHI (Protected Health Information) or patient data in this report
+          required: true
+        - label: I have searched existing issues and this is not a duplicate
+          required: true

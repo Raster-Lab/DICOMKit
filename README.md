@@ -10,7 +10,9 @@ A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
 DICOMKit is a modern, Swift-native library for reading, writing, and parsing DICOM (Digital Imaging and Communications in Medicine) files. Built with Swift 6 strict concurrency and value semantics, it provides a type-safe, efficient interface for working with medical imaging data on Apple platforms.
 
-## Features (v1.0.13)
+**Status**: Production-ready v1.0 release with comprehensive DICOM support, example applications, and professional documentation.
+
+## Features (v1.0)
 
 - ✅ **Comprehensive Documentation (NEW in v1.0.13)**
   - ✅ **DocC API Documentation** - Apple-native documentation
@@ -4162,6 +4164,28 @@ DICOMKit implements:
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
 
+## Support & Community
+
+### Getting Help
+
+- **Documentation**: Browse the comprehensive [documentation](Documentation/) including API reference, platform guides, and tutorials
+- **Issues**: Report bugs or request features via [GitHub Issues](https://github.com/Raster-Lab/DICOMKit/issues)
+- **Discussions**: Ask questions and share ideas in [GitHub Discussions](https://github.com/Raster-Lab/DICOMKit/discussions)
+- **Examples**: See working code in [Example Applications](DICOMViewer-iOS/) and [Playgrounds](Playgrounds/)
+
+### Reporting Issues
+
+When reporting issues:
+- Use the appropriate issue template (Bug Report, Feature Request, Documentation)
+- **Never include PHI (Protected Health Information)** or patient data
+- Provide DICOM file metadata (Transfer Syntax, SOP Class, Modality) but not the actual file if it contains patient data
+- Include platform version (iOS/macOS/visionOS) and DICOMKit version
+- Search existing issues before creating a new one
+
+### Security Vulnerabilities
+
+For security issues, please use [GitHub Security Advisories](https://github.com/Raster-Lab/DICOMKit/security/advisories/new) for private disclosure rather than public issues.
+
 ## Contributing
 
 Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
@@ -4176,4 +4200,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.10 - implementing Private Tag Support. This version adds comprehensive support for vendor-specific private data elements (PS3.5 Section 7.8) with `PrivateCreator` for private creator identification and block management, `PrivateTagAllocator` actor for thread-safe block allocation and conflict-free private group selection, `PrivateTagDictionary` with vendor-specific tag definitions for Siemens (CSA Header, MR Header, CT Header), GE Healthcare (GEMS_IDEN, GEMS_ACQU, GEMS_SERS), Philips (Imaging DD, MR Imaging DD), and Canon/Toshiba (TOSHIBA_MEC_MR3), `PrivateDataElement` for private data handling with creator reference and block offset computation, `SiemensCSAHeaderParser` for parsing Siemens proprietary CSA headers (SV10 format), private tag VR inference from vendor dictionaries, and well-known vendor creator constants with default group assignments. The implementation features 52 comprehensive unit tests (100% pass rate, 104% of 50+ target) with 18 tests for PrivateCreator, 17 for PrivateTagDictionary, 15 for PrivateTagAllocator, and 2 for PrivateDataElement. This builds upon v1.0.9 (Extended Character Set Support), v1.0.8 (Real-World Value Mapping), v1.0.7 (Parametric Map Objects Support), v1.0.6 (Segmentation Objects Support), v1.0.5 (RT Plan and Dose Support), v1.0.4 (RT Structure Set Support), v1.0.3 (Hanging Protocol Support), v1.0.2 (Color Presentation States), and v1.0.1 (Grayscale Presentation States). See [MILESTONES.md](MILESTONES.md) for the development roadmap.
+**Note**: This is v1.0.0 - the first production-ready release of DICOMKit. This major milestone includes comprehensive DICOM support spanning file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes four production-ready example applications: DICOMViewer iOS with gesture controls and PACS integration, DICOMViewer macOS with multi-monitor support and MPR, DICOMViewer visionOS with 3D spatial rendering, seven CLI tools (dicom-info, dicom-convert, dicom-validate, dicom-anon, dicom-dump, dicom-query, dicom-send), and 27 Xcode Playgrounds for learning (v1.0.14). The entire codebase features 1,920+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation (v1.0.15). See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
