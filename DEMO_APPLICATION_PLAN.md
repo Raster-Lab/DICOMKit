@@ -917,34 +917,34 @@ DICOMKit.playgroundbook/
 
 ## Implementation Strategy
 
-### Phase 1: Foundation (Weeks 1-2)
+### Phase 1: Foundation (Weeks 1-2) ✅ iOS COMPLETE
 **Focus**: Core infrastructure and iOS app foundation
 
-#### Week 1: Project Setup
-- [ ] Create Xcode workspace with all app targets
-- [ ] Set up SwiftUI architecture (MVVM, observable objects)
-- [ ] Design data models (Study, Series, Instance)
-- [ ] Implement file service layer
-- [ ] Set up unit testing infrastructure
+#### Week 1: Project Setup ✅
+- [x] Create Xcode workspace with all app targets (iOS viewer implemented)
+- [x] Set up SwiftUI architecture (MVVM, observable objects)
+- [x] Design data models (Study, Series, Instance)
+- [x] Implement file service layer
+- [x] Set up unit testing infrastructure
 
-#### Week 2: iOS Core Viewer
-- [ ] Implement LibraryView with file browser
-- [ ] Build ImageViewerView with basic display
-- [ ] Add window/level adjustment gestures
-- [ ] Implement thumbnail generation service
-- [ ] Create measurement data models
+#### Week 2: iOS Core Viewer ✅
+- [x] Implement LibraryView with file browser
+- [x] Build ImageViewerView with basic display
+- [x] Add window/level adjustment gestures
+- [x] Implement thumbnail generation service
+- [x] Create measurement data models
 
-**Milestone**: Basic iOS app can open and display DICOM files
+**Milestone**: ✅ **iOS COMPLETE** - Basic iOS app can open and display DICOM files
 
 ### Phase 2: Feature Development (Weeks 3-5)
 **Focus**: Advanced features across iOS and macOS
 
-#### Week 3: iOS Advanced Features
-- [ ] Implement all measurement tools
-- [ ] Add presentation state support
-- [ ] Build SR document viewer
-- [ ] Create metadata browser
-- [ ] Add export functionality
+#### Week 3: iOS Advanced Features ✅
+- [x] Implement all measurement tools (Length, Angle, ROI - Ellipse, Rectangle, Freehand)
+- [x] Add presentation state support (GSPS rendering, annotations, shutters)
+- [ ] Build SR document viewer (Not included in iOS v1.0 - deferred)
+- [x] Create metadata browser (Complete with search and grouping)
+- [x] Add export functionality (PNG/JPEG export with burn-in option)
 
 #### Week 4: macOS Foundation
 - [ ] Port iOS viewer to macOS AppKit/SwiftUI
@@ -960,7 +960,7 @@ DICOMKit.playgroundbook/
 - [ ] Add DICOMweb client UI
 - [ ] Create workspace management
 
-**Milestone**: iOS app feature-complete, macOS app functional
+**Milestone**: ✅ **iOS app feature-complete** (February 2026), macOS app pending
 
 ### Phase 3: visionOS and CLI (Weeks 6-7)
 **Focus**: Spatial computing and automation tools
@@ -985,16 +985,16 @@ DICOMKit.playgroundbook/
 **Focus**: Testing, documentation, and release preparation
 
 #### Week 8: Finalization
-- [ ] Comprehensive testing on all platforms
-- [ ] Performance optimization and profiling
-- [ ] UI/UX refinement and polish
-- [ ] Create sample playgrounds
-- [ ] Write user documentation
-- [ ] Record demo videos/screenshots
-- [ ] App Store submission preparation
-- [ ] Homebrew formula for CLI tools
+- [x] Comprehensive testing on all platforms (iOS complete: 35+ unit tests)
+- [x] Performance optimization and profiling (iOS complete: thumbnails, rendering, memory optimized)
+- [x] UI/UX refinement and polish (iOS complete: dark mode, accessibility, haptics)
+- [ ] Create sample playgrounds (Planned - see SAMPLE_CODE_PLAN.md)
+- [x] Write user documentation (iOS complete: BUILD.md, QUICK_START.md, STATUS.md, ASSETS.md, Tests/README.md)
+- [ ] Record demo videos/screenshots (Ready for user creation)
+- [ ] App Store submission preparation (Ready for user submission)
+- [ ] Homebrew formula for CLI tools (Planned - see CLI_TOOLS_PLAN.md)
 
-**Milestone**: All apps ready for release
+**Milestone**: ✅ **iOS app ready for release**, others pending
 
 ---
 
@@ -1172,23 +1172,24 @@ This comprehensive demo application plan provides a roadmap for creating product
 ### Implementation Approach
 
 **Sequential Development** (recommended):
-1. **Weeks 1-3**: CLI Tools Suite (Foundation)
-2. **Weeks 4-7**: iOS Viewer (Mobile platform)
-3. **Weeks 8-12**: macOS Viewer (Desktop platform)
-4. **Weeks 13-16**: visionOS Viewer (Spatial computing)
-5. **Week 17**: Sample Code & Playgrounds (Education)
+1. ✅ **COMPLETE**: iOS Viewer (February 2026) - All 4 phases done, 21 Swift files, 35+ tests
+2. **Next**: CLI Tools Suite (Foundation) - 2-3 weeks
+3. **Then**: macOS Viewer (Desktop platform) - 4-5 weeks
+4. **Then**: visionOS Viewer (Spatial computing) - 3-4 weeks
+5. **Finally**: Sample Code & Playgrounds (Education) - 1 week
 
 **Parallel Development** (if resources available):
-- iOS and CLI Tools simultaneously (Weeks 1-4)
-- macOS and Sample Code simultaneously (Weeks 5-9)
+- ✅ iOS viewer complete (February 2026)
+- CLI Tools and Sample Code can be developed simultaneously (Weeks 1-4)
+- macOS Viewer (Weeks 5-9)
 - visionOS standalone (Weeks 10-13)
 - Polish and integration (Week 14)
 
 **Next Steps**:
-1. Review and approve all detailed plans (CLI_TOOLS_PLAN.md, IOS_VIEWER_PLAN.md, MACOS_VIEWER_PLAN.md, VISIONOS_VIEWER_PLAN.md, SAMPLE_CODE_PLAN.md)
-2. Complete all Milestone 10 sub-milestones (10.1-10.13)
-3. Choose development approach (sequential vs. parallel)
-4. Begin implementation following detailed phase plans
+1. ✅ iOS Viewer complete - See [DICOMViewer-iOS/STATUS.md](DICOMViewer-iOS/STATUS.md)
+2. Review CLI_TOOLS_PLAN.md and begin CLI suite implementation
+3. OR Review MACOS_VIEWER_PLAN.md and begin macOS viewer implementation  
+4. OR Review SAMPLE_CODE_PLAN.md and begin playground creation
 5. Regular progress reviews at end of each phase
 6. Release demo applications alongside v1.0 release
 
