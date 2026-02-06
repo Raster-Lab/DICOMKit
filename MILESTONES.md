@@ -3149,7 +3149,7 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 ### Milestone 10.14: Example Applications (v1.0.14)
 
-**Status**: In Progress (iOS ✅ Complete, macOS 🚧 Phase 5: 70%, others pending)  
+**Status**: In Progress (iOS ✅ Complete, macOS ✅ Complete (docs finished), CLI ✅ Complete, Playgrounds ✅ Complete, visionOS pending)  
 **Goal**: Production-quality example applications demonstrating DICOMKit  
 **Complexity**: High  
 **Dependencies**: All previous milestones (10.1-10.13)  
@@ -3161,16 +3161,16 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 **Progress**: 
 - DICOMViewer iOS is complete (February 2026) with 21 Swift files, 35+ tests, and comprehensive documentation. 
-- DICOMViewer macOS Phase 5 at 70% (February 2026) with 60 files, ~13,000 lines, 302 tests. Export (CSV/JSON/text), PDF reports, and watch folder complete. MPR reconstruction (axial/sagittal/coronal), MIP/MinIP/AverageIP projections, volume rendering with transfer function presets, and 2×2 MPR grid view with reference lines.
+- DICOMViewer macOS Phase 5 complete (February 2026) with 61 files, ~15,000 lines, 379+ tests (302 unit + 37 integration + 40+ UI). All Phase 5 features implemented: measurement export (CSV/JSON/text), PDF reports, watch folder auto-import, comprehensive testing. Documentation enhanced with feature details, format examples, troubleshooting guides, and testing documentation.
 - CLI Tools suite complete with 7 tools and 160+ tests.
 - Sample code/playgrounds complete with 27 playgrounds and 241 examples.
 
 **Detailed Implementation Plans**:
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification ✅ **COMPLETE**
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan ✅ **COMPLETE**
-- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan 🚧 **Phase 4/5 COMPLETE**
+- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan ✅ **COMPLETE (docs finished)**
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - visionOS app detailed plan
-- **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan
+- **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan ✅ **COMPLETE**
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview
 
 #### Deliverables
