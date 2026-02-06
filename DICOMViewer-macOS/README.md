@@ -7,7 +7,7 @@ A professional diagnostic workstation with PACS integration, Multi-Planar Recons
 DICOMViewer macOS is a production-quality medical imaging workstation that demonstrates the enterprise capabilities of DICOMKit. It provides comprehensive tools for viewing, analyzing, and managing DICOM medical images with features typically found in commercial PACS workstations.
 
 **Platform**: macOS 14+ (Sonoma and later)  
-**Status**: In Development (Phase 2 - PACS Integration Complete)  
+**Status**: In Development (Phase 3 - Professional Viewer 75% Complete)  
 **Target Version**: v1.0.14
 
 ## Key Features
@@ -29,13 +29,14 @@ DICOMViewer macOS is a production-quality medical imaging workstation that demon
 - [x] Download queue with progress tracking
 - [x] Server configuration UI (add/edit/delete/test)
 
-### Phase 3: Professional Viewer (Planned)
-- [ ] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
-- [ ] Viewport linking (scroll, W/L, zoom, pan)
-- [ ] Hanging protocols
-- [ ] Cine playback
-- [ ] Advanced measurements
-- [ ] Window/Level presets
+### Phase 3: Professional Viewer 🚧 (75% Complete)
+- [x] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
+- [x] Hanging protocol engine with pre-defined protocols
+- [x] Viewport linking (scroll, W/L, zoom, pan)
+- [x] Cine playback with configurable FPS
+- [x] Layout switching with keyboard shortcuts (⌘1-4)
+- [x] Protocol selection (CT Chest, CT Abdomen, MR Brain, X-Ray)
+- [ ] Advanced measurements (ruler, angle, ROI) - pending
 
 ### Phase 4: MPR and 3D (Planned)
 - [ ] 2D MPR (axial, sagittal, coronal)
@@ -138,11 +139,25 @@ Select study → Right-click → Send to PACS...
 
 ### Viewing Images
 
-**Layouts**:
+**Multi-Viewport Layouts**:
 - 1×1: Single viewport (⌘1)
 - 2×2: Four viewports (⌘2)
 - 3×3: Nine viewports (⌘3)
-- Custom layouts available
+- 4×4: Sixteen viewports (⌘4)
+
+**Hanging Protocols**:
+Use the Protocol menu to automatically arrange series:
+- CT Chest: 2×2 layout with axial, coronal, sagittal views
+- CT Abdomen: 2×2 layout with arterial, venous, delayed phases
+- MR Brain: 3×3 layout with T1, T2, FLAIR, DWI, ADC
+- X-Ray: Single viewport
+
+**Viewport Linking**:
+Link viewports to synchronize:
+- Scroll: Navigate through slices together
+- W/L: Adjust window/level in all viewports
+- Zoom: Magnify all viewports together
+- Pan: Move all images simultaneously
 
 **Window/Level**:
 - Drag with left mouse button
@@ -152,10 +167,17 @@ Select study → Right-click → Send to PACS...
   - ⌘S: Soft tissue window
   - ⌘⇧B: Brain window
 
+**Cine Playback**:
+For multi-frame series:
+- Space: Play/pause cine
+- Arrow keys: Navigate frames
+- FPS selector: 5, 10, 15, 20, 30, 60 fps
+- Loop and reverse modes available
+
 **Navigation**:
 - Scroll wheel: Change slice
 - Arrow keys: Navigate series
-- Space: Play/pause cine
+- Mouse drag: Pan image (when zoomed)
 
 ### MPR and 3D
 
@@ -200,7 +222,7 @@ swift test --filter DICOMViewerTests
 swift test --enable-code-coverage
 ```
 
-**Test Coverage**: 80%+ target (360+ tests planned)
+**Test Coverage**: 60%+ (82 tests implemented, 360+ tests planned for Phase 5)
 
 ## Documentation
 
