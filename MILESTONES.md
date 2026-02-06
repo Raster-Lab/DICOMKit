@@ -3359,12 +3359,12 @@ This milestone delivers comprehensive demo applications across all Apple platfor
     - [x] Image Export (9 examples, 15.2KB)
     - [x] Multi-frame Series (9 examples, 16.4KB)
     - [x] Transfer Syntax (10 examples, 16.5KB)
-  - [ ] **Network Operations** (5 playgrounds):
-    - [ ] PACS Query (C-FIND)
-    - [ ] PACS Retrieve (C-MOVE)
-    - [ ] PACS Send (C-STORE)
-    - [ ] DICOMweb (QIDO, WADO, STOW)
-    - [ ] Modality Worklist
+  - [x] **Network Operations** (5 playgrounds): ✅ COMPLETE
+    - [x] PACS Query (C-FIND)
+    - [x] PACS Retrieve (C-MOVE)
+    - [x] PACS Send (C-STORE)
+    - [x] DICOMweb (QIDO, WADO, STOW)
+    - [x] Modality Worklist
   - [ ] **Structured Reporting** (4 playgrounds):
     - [ ] Reading SR Documents
     - [ ] Creating Basic SR
@@ -3397,7 +3397,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | macOS Viewer | 250+ | 70+ | 40+ | 360+ | Planned |
 | visionOS Viewer | 205+ | 45+ | 20+ | 270+ | Planned |
 | CLI Tools | 370+ | 125+ | - | 495+ | Planned |
-| Sample Code | 8 (30% complete) | - | - | 575+ (target) | 🚧 In Progress |
+| Sample Code | 13 (48% complete) | - | - | 575+ (target) | 🚧 In Progress |
 | **TOTAL** | **1,435+** | **240+** | **60+** | **1,735+** | In Progress |
 
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.
