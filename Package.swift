@@ -65,6 +65,10 @@ let package = Package(
         .executable(
             name: "dicom-retrieve",
             targets: ["dicom-retrieve"]
+        ),
+        .executable(
+            name: "dicom-split",
+            targets: ["dicom-split"]
         )
     ],
     dependencies: [
@@ -229,6 +233,17 @@ let package = Package(
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
+        ),
+        .executableTarget(
+            name: "dicom-split",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-split",
+            exclude: ["README.md"]
         )
     ]
 )
