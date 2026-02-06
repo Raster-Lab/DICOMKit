@@ -61,6 +61,10 @@ let package = Package(
         .executable(
             name: "dicom-diff",
             targets: ["dicom-diff"]
+        ),
+        .executable(
+            name: "dicom-retrieve",
+            targets: ["dicom-retrieve"]
         )
     ],
     dependencies: [
@@ -212,6 +216,19 @@ let package = Package(
             ],
             path: "Sources/dicom-diff",
             exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-retrieve",
+            dependencies: [
+                "DICOMCore",
+                "DICOMNetwork",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-retrieve",
+            exclude: ["README.md"],
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
         )
     ]
 )
