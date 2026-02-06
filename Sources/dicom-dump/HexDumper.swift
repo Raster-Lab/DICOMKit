@@ -186,18 +186,37 @@ class HexDumper {
     
     /// Checks if group/element looks like a valid DICOM tag
     private func isValidTagPattern(group: UInt16, element: UInt16) -> Bool {
-        // Group 0000 is only valid for specific elements
+        // Group 0000 is only valid for specific command elements
         if group == 0x0000 {
             return [0x0000, 0x0002, 0x0100, 0x0120, 0x0900, 0x0901, 0x0902].contains(element)
         }
-        
+
         // Group 0002 is file meta information
         if group == 0x0002 {
             return true
         }
-        
-        // Even groups are standard, odd groups are private
-        // Both are valid
+
+        // Reject any other groups below 0008 – there are no standard data element
+        // groups defined here, so accepting them tends to create false positives.
+        if group < 0x0008 {
+            return false
+        }
+
+        // Element 0000 is a (retired) group length element and should not normally
+        // appear in regular datasets; treat it as invalid for heuristic purposes.
+        if element == 0x0000 {
+            return false
+        }
+
+        // Elements 0001–000F are generally reserved and rarely used in practice.
+        // Requiring element >= 0010 significantly reduces random matches when
+        // scanning arbitrary byte sequences for plausible tags.
+        if element < 0x0010 {
+            return false
+        }
+
+        // For all other cases (standard even groups and private odd groups with
+        // reasonably sized element numbers), consider the pattern plausible.
         return true
     }
     

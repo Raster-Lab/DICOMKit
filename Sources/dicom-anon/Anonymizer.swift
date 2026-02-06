@@ -251,17 +251,19 @@ public class Anonymizer {
         #if canImport(CryptoKit)
         let data = Data(value.utf8)
         let hash = SHA256.hash(data: data)
-        // Use 16 hex characters (64 bits) for pseudonymization
-        // This provides 2^64 possible values, sufficient for medical datasets
-        // while keeping values human-readable in DICOM tags
-        return hash.compactMap { String(format: "%02x", $0) }.joined().prefix(16).uppercased()
+        // Use 32 hex characters (128 bits) for pseudonymization.
+        // This provides 2^128 possible values, significantly reducing collision
+        // probability for large medical datasets while keeping values human-readable
+        // in DICOM tags.
+        let fullHex = hash.map { String(format: "%02x", $0) }.joined().uppercased()
+        return String(fullHex.prefix(32))
         #else
-        // Fallback to simple hash for platforms without CryptoKit
-        var hash = value.hashValue
-        if hash < 0 {
-            hash = -hash
-        }
-        return String(format: "%016X", hash)
+        // Fallback to a deterministic 128-bit hex representation for platforms
+        // without CryptoKit by combining two 64-bit hash values.
+        let h1 = UInt64(bitPattern: Int64(value.hashValue))
+        let reversedValue = String(value.reversed())
+        let h2 = UInt64(bitPattern: Int64(reversedValue.hashValue))
+        return String(format: "%016llX%016llX", h1, h2)
         #endif
     }
     
@@ -328,7 +330,7 @@ public class Anonymizer {
             if tag.isPrivate {
                 if let element = dataSet[tag], let value = extractValue(from: element) {
                     if containsSuspiciousPHI(value) {
-                        warnings.append("Potential PHI detected in private tag \(tag): \(value.prefix(20))...")
+                        warnings.append("Potential PHI detected in private tag \(tag); value omitted to protect privacy.")
                     }
                 }
             }

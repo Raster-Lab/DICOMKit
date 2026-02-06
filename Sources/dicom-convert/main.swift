@@ -79,13 +79,13 @@ struct DICOMConvert: AsyncParsableCommand {
         }
         
         if isDirectory.boolValue {
-            try await convertDirectory(input: inputURL, output: outputURL)
+            try convertDirectory(input: inputURL, output: outputURL)
         } else {
-            try await convertFile(input: inputURL, output: outputURL)
+            try convertFile(input: inputURL, output: outputURL)
         }
     }
     
-    private func convertDirectory(input: URL, output: URL) async throws {
+    private func convertDirectory(input: URL, output: URL) throws {
         guard recursive else {
             throw ValidationError("Directory conversion requires --recursive flag")
         }
@@ -124,7 +124,7 @@ struct DICOMConvert: AsyncParsableCommand {
             try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
             
             do {
-                try await convertFile(input: fileURL, output: outputFileURL)
+                try convertFile(input: fileURL, output: outputFileURL)
                 successCount += 1
                 print("✓ \(relativePath)")
             } catch {
@@ -136,7 +136,7 @@ struct DICOMConvert: AsyncParsableCommand {
         print("\nConversion complete: \(successCount)/\(fileCount) succeeded, \(errorCount) failed")
     }
     
-    private func convertFile(input: URL, output: URL) async throws {
+    private func convertFile(input: URL, output: URL) throws {
         let fileData = try Data(contentsOf: input)
         
         // Read DICOM file
@@ -145,9 +145,9 @@ struct DICOMConvert: AsyncParsableCommand {
         // Process based on output format
         switch format {
         case .dicom:
-            try await convertTransferSyntax(dicomFile: dicomFile, output: output)
+            try convertTransferSyntax(dicomFile: dicomFile, output: output)
         case .png, .jpeg, .tiff:
-            try await exportImage(dicomFile: dicomFile, output: output)
+            try exportImage(dicomFile: dicomFile, output: output)
         }
         
         // Validate if requested
@@ -157,7 +157,7 @@ struct DICOMConvert: AsyncParsableCommand {
         }
     }
     
-    private func convertTransferSyntax(dicomFile: DICOMFile, output: URL) async throws {
+    private func convertTransferSyntax(dicomFile: DICOMFile, output: URL) throws {
         guard let transferSyntaxName = transferSyntax else {
             throw ValidationError("--transfer-syntax required for DICOM output")
         }
@@ -190,7 +190,7 @@ struct DICOMConvert: AsyncParsableCommand {
         try outputData.write(to: output)
     }
     
-    private func exportImage(dicomFile: DICOMFile, output: URL) async throws {
+    private func exportImage(dicomFile: DICOMFile, output: URL) throws {
         #if canImport(CoreGraphics)
         // Extract pixel data
         guard let pixelData = try? dicomFile.extractPixelData() else {
@@ -265,10 +265,14 @@ struct DICOMConvert: AsyncParsableCommand {
             return WindowSettings(center: center, width: max(1.0, width))
         }
         
-        // Default fallback window settings for 8-bit display range
-        // These values are appropriate for converting to 8-bit output formats (PNG, JPEG)
-        // Center: 128 (middle of 0-255 range), Width: 256 (full 0-255 range)
-        return WindowSettings(center: 128.0, width: 256.0)
+        // Default fallback window settings when no explicit window or pixel range is available.
+        // Assume a conservative 16-bit pixel depth to avoid implicitly restricting to an 8-bit [0, 255] range.
+        // This provides a wide window suitable for mapping higher dynamic range data to 8-bit output formats.
+        let assumedBitDepth = 16
+        let maxPixelValue = (1 << assumedBitDepth) - 1
+        let defaultCenter = Double(maxPixelValue) / 2.0
+        let defaultWidth = Double(maxPixelValue)
+        return WindowSettings(center: defaultCenter, width: max(1.0, defaultWidth))
     }
     
     private func parseTransferSyntax(_ name: String) throws -> TransferSyntax {
