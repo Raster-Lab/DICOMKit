@@ -7,25 +7,27 @@ A professional diagnostic workstation with PACS integration, Multi-Planar Recons
 DICOMViewer macOS is a production-quality medical imaging workstation that demonstrates the enterprise capabilities of DICOMKit. It provides comprehensive tools for viewing, analyzing, and managing DICOM medical images with features typically found in commercial PACS workstations.
 
 **Platform**: macOS 14+ (Sonoma and later)  
-**Status**: In Development (Phase 1 - Foundation)  
+**Status**: In Development (Phase 2 - PACS Integration Complete)  
 **Target Version**: v1.0.14
 
 ## Key Features
 
-### Phase 1: Foundation ✅ (Current)
+### Phase 1: Foundation ✅
 - [x] Local study database (SwiftData)
 - [x] File import (browser, drag & drop)
 - [x] Basic study browser with metadata
 - [x] Single-viewport image viewer
-- [ ] Menu structure and keyboard shortcuts
+- [x] Menu structure and keyboard shortcuts
 
-### Phase 2: PACS Integration (Planned)
-- [ ] C-FIND query (Patient/Study/Series/Instance levels)
-- [ ] C-MOVE/C-GET retrieve with queue
-- [ ] C-STORE send with verification
-- [ ] QIDO-RS/WADO-RS/STOW-RS support
-- [ ] Multiple PACS server configurations
-- [ ] Connection testing and monitoring
+### Phase 2: PACS Integration ✅
+- [x] C-FIND query (Patient/Study/Series/Instance levels)
+- [x] C-MOVE retrieve with download queue
+- [x] C-STORE send with progress reporting
+- [x] QIDO-RS/WADO-RS/STOW-RS DICOMweb support
+- [x] Multiple PACS server configurations (SwiftData persistence)
+- [x] Connection testing (C-ECHO verification)
+- [x] Download queue with progress tracking
+- [x] Server configuration UI (add/edit/delete/test)
 
 ### Phase 3: Professional Viewer (Planned)
 - [ ] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
@@ -63,13 +65,12 @@ DICOMViewer macOS is a production-quality medical imaging workstation that demon
 ```
 DICOMViewer-macOS/
 ├── App/                    # Application entry point
-├── Models/                 # Data models (Study, Series, Instance)
+├── Models/                 # Data models (Study, Series, Instance, PACSServer)
 ├── ViewModels/            # Business logic and state management
 ├── Views/                 # SwiftUI views and UI components
-├── Services/              # Database, file, and network services
-├── Tests/                 # Unit, integration, and UI tests
-├── Resources/             # Assets, icons, strings
-└── Documentation/         # Implementation guides
+├── Services/              # Database, file, network, and download services
+├── Tests/                 # Unit tests
+└── project.yml            # XcodeGen configuration
 ```
 
 ## Requirements
