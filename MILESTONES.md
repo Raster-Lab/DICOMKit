@@ -3149,7 +3149,7 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 ### Milestone 10.14: Example Applications (v1.0.14)
 
-**Status**: In Progress (iOS ✅ Complete, macOS 🚧 Phase 1/5, others pending)  
+**Status**: In Progress (iOS ✅ Complete, macOS 🚧 Phase 2/5, others pending)  
 **Goal**: Production-quality example applications demonstrating DICOMKit  
 **Complexity**: High  
 **Dependencies**: All previous milestones (10.1-10.13)  
@@ -3161,14 +3161,14 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 **Progress**: 
 - DICOMViewer iOS is complete (February 2026) with 21 Swift files, 35+ tests, and comprehensive documentation. 
-- DICOMViewer macOS Phase 1 complete (February 2026) with 17 files, ~1,500 lines, 8 tests. Foundation layer with SwiftData database, file import, study browser, and basic image viewer working.
+- DICOMViewer macOS Phase 2 complete (February 2026) with 27 files, ~3,500 lines, 30 tests. PACS Integration layer with C-ECHO/C-FIND/C-MOVE/C-STORE, DICOMweb (QIDO-RS/WADO-RS/STOW-RS), server configuration, query UI, and download queue.
 - CLI Tools suite complete with 7 tools and 160+ tests.
 - Sample code/playgrounds complete with 27 playgrounds and 241 examples.
 
 **Detailed Implementation Plans**:
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification ✅ **COMPLETE**
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan ✅ **COMPLETE**
-- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan 🚧 **Phase 1/5 COMPLETE**
+- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan 🚧 **Phase 2/5 COMPLETE**
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - visionOS app detailed plan
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview
@@ -3242,10 +3242,10 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] STATUS.md (implementation report)
   - [x] Tests/README.md (test documentation)
 
-##### DICOMViewer macOS App (4-5 weeks) - 🚧 In Progress (Phase 1 ✅ Complete)
-**Status**: Phase 1/5 complete (February 2026)  
+##### DICOMViewer macOS App (4-5 weeks) - 🚧 In Progress (Phase 2 ✅ Complete)
+**Status**: Phase 2/5 complete (February 2026)  
 **Location**: `DICOMViewer-macOS/` - See [README.md](DICOMViewer-macOS/README.md)  
-**Code**: 17 files (~1,500 lines), 8 unit tests
+**Code**: 27 files (~3,500 lines), 30 unit tests
 
 - [x] **Phase 1: Foundation (Week 1)** ✅ COMPLETE:
   - [x] Xcode project structure with XcodeGen
@@ -3256,13 +3256,16 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] Study browser with list view, search, filter
   - [x] Basic image viewer with W/L controls
   - [x] Menu structure and Info.plist
-- [ ] **Phase 2: PACS Integration (Week 2)**:
-  - [ ] C-FIND query (Patient/Study/Series/Instance)
-  - [ ] C-MOVE retrieve with queue
-  - [ ] C-STORE send with verification
-  - [ ] QIDO-RS/WADO-RS/STOW-RS support
-  - [ ] Multiple server configurations
-  - [ ] Connection testing (C-ECHO)
+- [x] **Phase 2: PACS Integration (Week 2)** ✅ COMPLETE:
+  - [x] PACSServer SwiftData model for server configuration
+  - [x] PACSService wrapping C-ECHO, C-FIND, C-MOVE, C-STORE
+  - [x] DICOMWebService wrapping QIDO-RS, WADO-RS, STOW-RS
+  - [x] DownloadManager actor for download queue management
+  - [x] Server configuration UI (add, edit, delete, test connection)
+  - [x] PACS query view with search form and results table
+  - [x] Download queue view with progress tracking
+  - [x] Menu integration (Query PACS ⌘K, Configure Servers ⌘⇧,, Download Queue ⌘⇧D)
+  - [x] 22 new unit tests (PACSServerTests: 8, DownloadManagerTests: 14)
 - [ ] **Phase 3: Professional Viewer (Week 3)**:
   - [ ] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
   - [ ] Hanging protocols
@@ -3415,7 +3418,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | Component | Unit Tests | Integration Tests | UI/Device Tests | Total | Status |
 |-----------|------------|-------------------|-----------------|-------|--------|
 | iOS Viewer | 35+ | N/A | N/A | 35+ | ✅ Complete |
-| macOS Viewer | 8 (Phase 1) | 0 | 0 | 8+ | 🚧 Phase 1/5 |
+| macOS Viewer | 30 (Phase 1-2) | 0 | 0 | 30+ | 🚧 Phase 2/5 |
 | visionOS Viewer | 205+ | 45+ | 20+ | 270+ | Planned |
 | CLI Tools | 160+ | - | - | 160+ | ✅ Complete |
 | Sample Code | 27 playgrounds (100% complete) | 143 tests | - | 241 examples | ✅ Complete |
@@ -3423,7 +3426,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.
 
-**macOS Viewer Phase 1 Tests** (February 2026): 8 unit tests for DatabaseService (CRUD operations, search, filter). Phase 1 focuses on foundation layer. Full test suite (250+ unit, 70+ integration, 40+ UI) planned for Phases 2-5.
+**macOS Viewer Phase 2 Tests** (February 2026): 30 unit tests total - 8 for DatabaseService (CRUD operations, search, filter), 8 for PACSServer model (initialization, computed properties), 14 for DownloadManager (queue operations, status transitions, progress tracking). Full test suite (250+ unit, 70+ integration, 40+ UI) planned for Phases 3-5.
 
 **CLI Tools Actual Tests** (February 2026): 160+ unit tests across 7 tools (dicom-info, dicom-convert, dicom-validate, dicom-anon, dicom-dump, dicom-query, dicom-send). All core functionality tested. Integration tests (network operations) omitted as they require live PACS servers, but tools are production-ready with comprehensive error handling and mocking capabilities.
 
@@ -3521,7 +3524,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | 10.11 ICC Color | v1.0.11 | Medium | ✅ Completed | ICC profile color management (84 tests, 100% pass rate) |
 | 10.12 Performance | v1.0.12 | High | ✅ Completed | Memory, parsing, SIMD optimization (49 tests, 100% pass rate) |
 | 10.13 Documentation | v1.0.13 | Medium | ✅ Completed | DocC catalogs, platform guides, conformance statement |
-| 10.14 Example Apps | v1.0.14 | Medium | In Progress | iOS viewer ✅, CLI tools ✅, macOS/visionOS viewers pending |
+| 10.14 Example Apps | v1.0.14 | Medium | In Progress | iOS viewer ✅, CLI tools ✅, macOS Phase 2/5 ✅, visionOS pending |
 | 10.15 Release Prep | v1.0.15 | Medium | Planned | Testing, security audit, release artifacts |
 
 ### Overall Technical Notes

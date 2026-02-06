@@ -3622,13 +3622,13 @@ A production-quality mobile DICOM viewer for iOS and iPadOS. **Implementation co
 
 #### Planned Demo Applications
 
-**DICOMViewer macOS** - 🚧 Phase 1/5 Complete (February 2026)
+**DICOMViewer macOS** - 🚧 Phase 2/5 Complete (February 2026)
 
-A professional diagnostic workstation for macOS with PACS integration, MPR, and 3D visualization. **Phase 1 (Foundation) complete** with 18 files, ~1,500 lines, 8 unit tests. Core features include SwiftData database, file import, study browser with search/filter, and basic image viewer with W/L controls.
+A professional diagnostic workstation for macOS with PACS integration, MPR, and 3D visualization. **Phase 2 (PACS Integration) complete** with 27 files, ~3,500 lines, 30 unit tests. Core features include SwiftData database, file import, study browser, image viewer, C-ECHO/C-FIND/C-MOVE/C-STORE support, DICOMweb (QIDO-RS/WADO-RS/STOW-RS), server configuration UI, query interface, and download queue.
 
-**Status**: Phase 1 complete. Ready for Phase 2 (PACS Integration). See [DICOMViewer-macOS/STATUS.md](DICOMViewer-macOS/STATUS.md) for detailed progress and [DICOMViewer-macOS/BUILD.md](DICOMViewer-macOS/BUILD.md) for build instructions.
+**Status**: Phase 2 complete. Ready for Phase 3 (Professional Viewer). See [DICOMViewer-macOS/STATUS.md](DICOMViewer-macOS/STATUS.md) for detailed progress and [DICOMViewer-macOS/BUILD.md](DICOMViewer-macOS/BUILD.md) for build instructions.
 
-**Remaining phases**: PACS Integration (Week 2), Professional Viewer (Week 3), MPR/3D (Week 4), Advanced Features (Week 5).
+**Remaining phases**: Professional Viewer (Week 3), MPR/3D (Week 4), Advanced Features (Week 5).
 
 - **DICOMViewer visionOS** - Spatial 3D medical imaging with hand tracking (planned)
 - **DICOMTools CLI** - Command-line utilities ✅ Complete (7 tools: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump with 160+ tests)

@@ -25,6 +25,8 @@ targets:
         product: DICOMCore
       - package: DICOMKit
         product: DICOMNetwork
+      - package: DICOMKit
+        product: DICOMWeb
     settings:
       PRODUCT_NAME: DICOMViewer
       PRODUCT_BUNDLE_IDENTIFIER: com.rasterlab.dicomviewer.macos

@@ -27,7 +27,8 @@ final class DatabaseService {
         let schema = Schema([
             DicomStudy.self,
             DicomSeries.self,
-            DicomInstance.self
+            DicomInstance.self,
+            PACSServer.self
         ])
         
         let modelConfiguration = ModelConfiguration(
