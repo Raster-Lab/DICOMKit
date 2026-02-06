@@ -251,6 +251,9 @@ public class Anonymizer {
         #if canImport(CryptoKit)
         let data = Data(value.utf8)
         let hash = SHA256.hash(data: data)
+        // Use 16 hex characters (64 bits) for pseudonymization
+        // This provides 2^64 possible values, sufficient for medical datasets
+        // while keeping values human-readable in DICOM tags
         return hash.compactMap { String(format: "%02x", $0) }.joined().prefix(16).uppercased()
         #else
         // Fallback to simple hash for platforms without CryptoKit
