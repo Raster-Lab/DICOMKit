@@ -11,6 +11,7 @@ DICOMKit aims to provide a comprehensive, Swift-native implementation for workin
 For Milestone 10.14 (Example Applications), detailed phase-by-phase implementation plans with comprehensive test cases have been created:
 
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 495+ tests)
+- **[CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md)** - Complete CLI Milestone Roadmap (29 tools across 6 phases, 695+ tests) 🆕
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 220+ tests)
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 360+ tests)
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 270+ tests)
@@ -3640,11 +3641,114 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 ---
 
+### Milestone 11.2: CLI Tools Enhancement (v1.1.1-v1.3.5)
+
+**Status**: 📋 Planned (Phase 2: 🚧 In Progress)  
+**Goal**: Expand CLI toolkit with additional utilities for comprehensive DICOM workflows  
+**Complexity**: Varies by tool (Low to Very High)  
+**Dependencies**: DICOMKit v1.0, DICOMNetwork, Milestone 11.1 (for PDF tools)
+
+#### Overview
+
+Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this milestone encompasses Phases 2-6 of CLI tool development, adding 22 additional utilities to create a comprehensive command-line toolkit comparable to dcm4che utilities.
+
+**Complete Plan**: See **[CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md)** for detailed specifications
+
+#### Phase 2: Enhanced Workflow Tools (v1.1.1-v1.1.2) 🚧
+
+**Status**: 🚧 In Progress (1 of 4 tools complete)  
+**Timeline**: 3-4 weeks
+
+##### Tools
+- [x] **dicom-diff** (v1.1.1) - File comparison and diff reporting ✅ Complete
+- [ ] **dicom-retrieve** (v1.1.2) - C-MOVE/C-GET PACS retrieval
+- [ ] **dicom-split** (v1.1.2) - Multi-frame extraction
+- [ ] **dicom-merge** (v1.1.2) - Multi-frame creation
+
+#### Phase 3: Format Conversion Tools (v1.1.3-v1.1.6)
+
+**Status**: 📋 Planned  
+**Timeline**: 2-3 weeks
+
+##### Tools
+- [ ] **dicom-json** (v1.1.3) - JSON conversion (DICOM JSON Model)
+- [ ] **dicom-xml** (v1.1.4) - XML conversion (Part 19 format)
+- [ ] **dicom-pdf** (v1.1.5) - Encapsulated PDF/CDA extraction and creation
+- [ ] **dicom-image** (v1.1.6) - Image-to-DICOM conversion (Secondary Capture)
+
+#### Phase 4: DICOMDIR and Archive Tools (v1.2.0-v1.2.2)
+
+**Status**: 📋 Planned  
+**Timeline**: 2 weeks
+
+##### Tools
+- [ ] **dicom-dcmdir** (v1.2.0) - DICOMDIR management (create, update, validate)
+- [ ] **dicom-archive** (v1.2.1) - Local DICOM archive with query/retrieve
+- [ ] **dicom-export** (v1.2.2) - Advanced export with metadata embedding
+
+#### Phase 5: Network and Workflow Tools (v1.2.3-v1.2.7)
+
+**Status**: 📋 Planned  
+**Timeline**: 3-4 weeks
+
+##### Tools
+- [ ] **dicom-qr** (v1.2.3) - Integrated query-retrieve workflow
+- [ ] **dicom-wado** (v1.2.4) - DICOMweb client (WADO-RS, QIDO-RS, STOW-RS)
+- [ ] **dicom-mwl** (v1.2.5) - Modality Worklist Management
+- [ ] **dicom-mpps** (v1.2.6) - MPPS operations (N-CREATE, N-SET)
+- [ ] **dicom-echo** (v1.2.7) - Network testing and diagnostics
+
+#### Phase 6: Advanced and Specialized Tools (v1.3.0-v1.3.5)
+
+**Status**: 📋 Planned  
+**Timeline**: 3-4 weeks
+
+##### Tools
+- [ ] **dicom-pixedit** (v1.3.0) - Pixel data manipulation
+- [ ] **dicom-tags** (v1.3.1) - Tag manipulation and bulk operations
+- [ ] **dicom-uid** (v1.3.2) - UID generation and management
+- [ ] **dicom-compress** (v1.3.3) - Compression/decompression utilities
+- [ ] **dicom-study** (v1.3.4) - Study/Series organization
+- [ ] **dicom-script** (v1.3.5) - Workflow scripting and automation
+
+#### Summary Statistics
+
+| Phase | Tools | Priority | Tests | LOC Est. | Status |
+|-------|-------|----------|-------|----------|--------|
+| Phase 1 (Done) | 7 | Critical-High | 160+ | 4,338 | ✅ Complete |
+| Phase 2 | 4 | High | 105+ | 2,100-2,550 | 🚧 25% |
+| Phase 3 | 4 | Medium | 80+ | 1,550-2,050 | 📋 Planned |
+| Phase 4 | 3 | Medium | 95+ | 1,700-2,100 | 📋 Planned |
+| Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | 📋 Planned |
+| Phase 6 | 6 | Low-Medium | 130+ | 2,700-3,300 | 📋 Planned |
+| **Total** | **29** | - | **695+** | **14,688-17,138** | **28%** |
+
+#### Technical Notes
+- All tools support macOS and Linux platforms
+- Swift 6 strict concurrency compliance required
+- Integration with existing DICOMKit framework features
+- Comprehensive test coverage target: 80%+
+- Performance benchmarks defined per tool
+- Man pages and documentation for all tools
+
+#### Acceptance Criteria
+- [ ] All 29 tools implemented and tested
+- [ ] 695+ unit tests passing
+- [ ] Cross-platform compatibility verified (macOS, Linux)
+- [ ] Performance benchmarks met
+- [ ] Documentation complete with examples
+- [ ] Homebrew formula updated for all tools
+- [ ] Integration tests with real PACS systems
+- [ ] CI/CD pipeline for all tools
+
+---
+
 ### Milestone 11 Summary
 
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
+| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress | 22 additional CLI tools across 5 phases (535+ tests) |
 
 ---
 
