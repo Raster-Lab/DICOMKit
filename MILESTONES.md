@@ -3570,12 +3570,90 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 ---
 
+## Milestone 11: Post-v1.0 Enhancements (v1.1)
+
+**Status**: In Progress  
+**Goal**: Additional DICOM IOD support and enterprise features
+
+---
+
+### Milestone 11.1: Encapsulated Document Support (v1.1.0)
+
+**Status**: ✅ Completed  
+**Goal**: Implement DICOM Encapsulated Document IODs for PDF, CDA, and 3D model storage  
+**Complexity**: Medium  
+**Dependencies**: Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [x] Encapsulated Document IOD:
+  - [x] `EncapsulatedDocument` struct conforming to PS3.3 A.45
+  - [x] `EncapsulatedDocumentType` enum (PDF, CDA, STL, OBJ, MTL)
+  - [x] SOP Class UID constants for all 5 encapsulated document types
+  - [x] Document type inference from SOP Class UID
+  - [x] Document size tracking
+- [x] DICOM tags for Encapsulated Document Module:
+  - [x] `Tag.encapsulatedDocument` (0042,0011) - Document data
+  - [x] `Tag.mimeTypeOfEncapsulatedDocument` (0042,0012) - MIME type
+  - [x] `Tag.documentTitle` (0042,0010) - Document title
+  - [x] `Tag.sourceInstanceSequence` (0042,0013) - Source references
+  - [x] `Tag.listOfMIMETypes` (0042,0014) - Additional MIME types
+  - [x] `Tag.hl7InstanceIdentifier` (0040,E001) - HL7 CDA identifier
+- [x] Encapsulated Document parsing:
+  - [x] `EncapsulatedDocumentParser` for extracting documents from DICOM DataSets
+  - [x] Required attribute validation (SOP Instance UID, Study/Series UIDs, MIME type, document data)
+  - [x] Concept Name Code Sequence parsing
+  - [x] Source Instance Sequence parsing
+  - [x] HL7 Instance Identifier parsing
+  - [x] Patient and series metadata extraction
+- [x] Encapsulated Document creation:
+  - [x] `EncapsulatedDocumentBuilder` fluent API
+  - [x] Patient metadata setting (name, ID)
+  - [x] Document metadata (title, modality, series description)
+  - [x] Concept Name Code Sequence creation
+  - [x] Source Instance reference tracking
+  - [x] Auto-generated SOP Instance UID
+  - [x] Validation of required data (non-empty document, MIME type)
+- [x] DataSet conversion:
+  - [x] `EncapsulatedDocument.toDataSet()` for serialization
+  - [x] `EncapsulatedDocumentBuilder.buildDataSet()` for direct DataSet creation
+  - [x] Integration with `DICOMFile.create()` for DICOM Part 10 file creation
+- [x] Supporting types:
+  - [x] `ConceptNameCode` for coded document description
+  - [x] `SourceInstanceReference` for source DICOM instance references
+
+#### Technical Notes
+- Reference: PS3.3 A.45 - Encapsulated PDF IOD
+- Reference: PS3.3 A.45.2 - Encapsulated CDA IOD
+- Reference: PS3.3 C.24 - Encapsulated Document Module
+- Encapsulated documents use OB VR for binary document data
+- MIME type stored as LO (Long String) in tag (0042,0012)
+- Document data padded to even length per DICOM specification
+- All types conform to Sendable for Swift 6 strict concurrency
+
+#### Acceptance Criteria
+- [x] Parse encapsulated PDF documents from DICOM files
+- [x] Parse encapsulated CDA documents from DICOM files
+- [x] Create DICOM-wrapped PDF files with proper metadata
+- [x] Round-trip: build → serialize → parse produces equivalent documents
+- [x] DICOM Part 10 file creation works with encapsulated documents
+- [x] Unit tests for all encapsulated document types (40+ tests)
+
+---
+
+### Milestone 11 Summary
+
+| Sub-Milestone | Version | Complexity | Status | Key Deliverables |
+|--------------|---------|------------|--------|------------------|
+| 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
+
+---
+
 ## Future Considerations (Post v1.0)
 
 These features may be considered for future development based on community needs:
 
 ### Enhanced Imaging Support
-- DICOM Encapsulated PDF
+- ~~DICOM Encapsulated PDF~~ ✅ Completed (v1.1.0) - Encapsulated Document support for PDF, CDA, STL, OBJ, MTL
 - Video playback (MPEG2, MPEG4, HEVC)
 - 3D rendering and MPR reconstruction
 - Volume rendering integration

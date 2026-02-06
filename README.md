@@ -1165,6 +1165,19 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **Strict concurrency** - Full Swift 6 concurrency support
 - ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
 - ✅ **Universal architecture** - Supports both Apple Silicon (M-series) and Intel (x86_64) processors
+- ✅ **Encapsulated Document Support (NEW in v1.1.0)** - Store non-DICOM documents as DICOM objects
+  - ✅ Encapsulated PDF Storage (1.2.840.10008.5.1.4.1.1.104.1)
+  - ✅ Encapsulated CDA Storage (1.2.840.10008.5.1.4.1.1.104.2)
+  - ✅ Encapsulated STL Storage (1.2.840.10008.5.1.4.1.1.104.3)
+  - ✅ Encapsulated OBJ Storage (1.2.840.10008.5.1.4.1.1.104.4)
+  - ✅ Encapsulated MTL Storage (1.2.840.10008.5.1.4.1.1.104.5)
+  - ✅ `EncapsulatedDocumentParser` for extracting documents from DICOM files
+  - ✅ `EncapsulatedDocumentBuilder` fluent API for creating DICOM-wrapped documents
+  - ✅ Concept Name Code Sequence support
+  - ✅ Source Instance reference tracking
+  - ✅ HL7 CDA instance identifier support
+  - ✅ Round-trip build → serialize → parse support
+  - ✅ 40+ unit tests
 
 ## Limitations (v0.7.5)
 
@@ -3785,7 +3798,7 @@ DICOM network protocol implementation:
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8, v1.1.0)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -3936,6 +3949,15 @@ High-level API:
 - `SUVCalculator.RadionuclideHalfLife` - Common PET radionuclide half-lives (F-18, C-11, O-15, N-13, Ga-68, Cu-64, Zr-89, I-124)
 - `PatientSex` - Patient sex enumeration for SUV body metrics
 - CodedConcept extensions: Pre-defined quantities (ADC, T1/T2/T2*, Ktrans/Ve/Vp, CBF/CBV/MTT, SUV variants, Hounsfield)
+
+**Encapsulated Document Support (NEW in v1.1.0):**
+- `EncapsulatedDocument` - DICOM Encapsulated Document IOD (PS3.3 A.45)
+- `EncapsulatedDocumentType` - Document type enum (PDF, CDA, STL, OBJ, MTL)
+- `EncapsulatedDocumentParser` - Parse encapsulated documents from DICOM data sets
+- `EncapsulatedDocumentBuilder` - Fluent builder API for creating DICOM-wrapped documents
+- `ConceptNameCode` - Coded concept for document content description
+- `SourceInstanceReference` - Reference to source DICOM instances
+- SOP Class UID constants for all 5 encapsulated document types
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -4200,4 +4222,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: This is v1.0.0 - the first production-ready release of DICOMKit. This major milestone includes comprehensive DICOM support spanning file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes four production-ready example applications: DICOMViewer iOS with gesture controls and PACS integration, DICOMViewer macOS with multi-monitor support and MPR, DICOMViewer visionOS with 3D spatial rendering, seven CLI tools (dicom-info, dicom-convert, dicom-validate, dicom-anon, dicom-dump, dicom-query, dicom-send), and 27 Xcode Playgrounds for learning (v1.0.14). The entire codebase features 1,920+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation (v1.0.15). See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
+**Note**: DICOMKit v1.1.0 adds Encapsulated Document support (PDF, CDA, STL, OBJ, MTL) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes four production-ready example applications: DICOMViewer iOS, macOS, visionOS, seven CLI tools, and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 1,960+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
