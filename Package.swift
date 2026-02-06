@@ -41,6 +41,7 @@ let package = Package(
     targets: [
         .target(
             name: "DICOMCore",
+            exclude: ["CharacterSetHandler+README.md"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
@@ -69,6 +70,7 @@ let package = Package(
         .target(
             name: "DICOMKit",
             dependencies: ["DICOMCore", "DICOMDictionary"],
+            exclude: ["AI/SIMPLIFIED_README.md"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
@@ -105,7 +107,8 @@ let package = Package(
                 "DICOMDictionary",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
-            path: "Sources/dicom-info"
+            path: "Sources/dicom-info",
+            exclude: ["README.md"]
         )
     ]
 )

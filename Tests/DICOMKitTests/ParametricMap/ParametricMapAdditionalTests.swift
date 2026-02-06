@@ -201,9 +201,6 @@ final class ParametricMapAdditionalTests: XCTestCase {
             frameAcquisitionNumber: 1,
             frameReferenceDateTime: nil,
             frameAcquisitionDateTime: nil,
-            frameAcquisitionDuration: nil,
-            cardiacCyclePosition: nil,
-            respiratoryCyclePosition: nil,
             dimensionIndexValues: []
         )
         
