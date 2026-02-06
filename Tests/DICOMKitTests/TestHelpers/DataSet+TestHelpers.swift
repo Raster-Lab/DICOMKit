@@ -69,10 +69,7 @@ extension DataSet {
         } else {
             // Use int32 array for SL VR
             let writer = DICOMWriter()
-            var data = Data()
-            for value in int32Values {
-                data.append(writer.serializeInt32(value))
-            }
+            let data = writer.serializeInt32s(int32Values)
             self[tag] = DataElement(tag: tag, vr: .SL, length: UInt32(data.count), valueData: data)
         }
     }
