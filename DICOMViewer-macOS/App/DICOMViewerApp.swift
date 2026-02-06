@@ -60,6 +60,29 @@ struct DICOMViewerApp: App {
                 }
                 .keyboardShortcut("d", modifiers: [.command, .shift])
             }
+            
+            // Layout shortcuts
+            CommandGroup(after: .windowArrangement) {
+                Button("1×1 Layout") {
+                    // TODO: Send layout change to active viewer
+                }
+                .keyboardShortcut("1", modifiers: .command)
+                
+                Button("2×2 Layout") {
+                    // TODO: Send layout change to active viewer
+                }
+                .keyboardShortcut("2", modifiers: .command)
+                
+                Button("3×3 Layout") {
+                    // TODO: Send layout change to active viewer
+                }
+                .keyboardShortcut("3", modifiers: .command)
+                
+                Button("4×4 Layout") {
+                    // TODO: Send layout change to active viewer
+                }
+                .keyboardShortcut("4", modifiers: .command)
+            }
         }
         .modelContainer(DatabaseService.shared.modelContainer)
     }
