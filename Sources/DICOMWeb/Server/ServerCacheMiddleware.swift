@@ -187,7 +187,7 @@ public actor ServerCacheMiddleware {
 
         // Also sample the end of the data if it's larger than sampleSize
         if data.count > sampleSize {
-            let tailStart = data.count - min(sampleSize, data.count)
+            let tailStart = data.count - sampleSize
             data.suffix(from: tailStart).prefix(sampleSize).withUnsafeBytes { buffer in
                 if let baseAddress = buffer.baseAddress {
                     hasher.combine(bytes: UnsafeRawBufferPointer(start: baseAddress, count: min(sampleSize, buffer.count)))
