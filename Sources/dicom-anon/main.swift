@@ -4,8 +4,7 @@ import DICOMKit
 import DICOMCore
 import DICOMDictionary
 
-@available(macOS 10.15, iOS 13, *)
-struct DICOMAnon: AsyncParsableCommand {
+struct DICOMAnon: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-anon",
         abstract: "Anonymize DICOM files by removing or replacing patient identifiers",
@@ -66,7 +65,7 @@ struct DICOMAnon: AsyncParsableCommand {
     @Flag(name: .long, help: "Verbose output")
     var verbose: Bool = false
     
-    mutating func run() async throws {
+    mutating func run() throws {
         let inputURL = URL(fileURLWithPath: inputPath)
         
         var isDirectory: ObjCBool = false
@@ -100,13 +99,13 @@ struct DICOMAnon: AsyncParsableCommand {
             guard let outputPath = output else {
                 throw ValidationError("Directory anonymization requires --output directory")
             }
-            results = try await anonymizeDirectory(
+            results = try anonymizeDirectory(
                 inputURL: inputURL,
                 outputURL: URL(fileURLWithPath: outputPath),
                 anonymizer: anonymizer
             )
         } else {
-            let result = try await anonymizeFile(
+            let result = try anonymizeFile(
                 inputURL: inputURL,
                 outputURL: output.map { URL(fileURLWithPath: $0) },
                 anonymizer: anonymizer
@@ -223,7 +222,7 @@ struct DICOMAnon: AsyncParsableCommand {
         inputURL: URL,
         outputURL: URL,
         anonymizer: Anonymizer
-    ) async throws -> [AnonymizationResult] {
+    ) throws -> [AnonymizationResult] {
         // Create output directory
         try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
         
@@ -258,7 +257,7 @@ struct DICOMAnon: AsyncParsableCommand {
             )
             
             do {
-                let result = try await anonymizeFile(
+                let result = try anonymizeFile(
                     inputURL: fileURL,
                     outputURL: outputFileURL,
                     anonymizer: anonymizer
@@ -288,7 +287,7 @@ struct DICOMAnon: AsyncParsableCommand {
         inputURL: URL,
         outputURL: URL?,
         anonymizer: Anonymizer
-    ) async throws -> AnonymizationResult {
+    ) throws -> AnonymizationResult {
         // Read DICOM file
         let fileData = try Data(contentsOf: inputURL)
         let dicomFile = try DICOMFile.read(from: fileData, force: force)
@@ -372,4 +371,4 @@ extension Substring {
     }
 }
 
-await DICOMAnon.main()
+DICOMAnon.main()
