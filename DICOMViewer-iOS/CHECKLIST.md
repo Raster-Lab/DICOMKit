@@ -2,6 +2,33 @@
 
 Use this checklist to track your progress setting up the DICOMViewer iOS app.
 
+## 🚀 NEW: Automated Setup ⏱️ 1 minute
+
+**For the fastest setup, use automation instead of the manual steps below:**
+
+### Prerequisites
+- [ ] macOS 14.0+ installed
+- [ ] Xcode 15.0+ installed (`xcodebuild -version` to check)
+- [ ] XcodeGen installed (`brew install xcodegen`)
+
+### Automated Project Generation
+- [ ] Navigate to DICOMViewer-iOS directory
+- [ ] Run `xcodegen generate`
+- [ ] Open `DICOMViewer.xcodeproj`
+- [ ] Select your development team in project settings
+- [ ] Press ⌘R to build and run
+- [ ] App launches successfully
+
+**✅ Checkpoint:** App builds and runs in simulator (< 1 minute!)
+
+**For more details, see [SETUP_AUTOMATION.md](SETUP_AUTOMATION.md)**
+
+---
+
+## Manual Setup (Alternative)
+
+If you prefer manual setup or don't want to install XcodeGen, follow the steps below.
+
 ## Phase 1: Initial Setup ⏱️ 5-10 minutes
 
 ### Prerequisites
