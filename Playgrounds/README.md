@@ -7,7 +7,7 @@ Comprehensive sample code and examples demonstrating DICOMKit usage across all f
 This collection contains 27+ interactive Swift playground files organized into 6 categories, covering everything from basic file reading to advanced medical imaging workflows. Each playground is a standalone Swift file with multiple examples, comprehensive comments, and quick reference guides.
 
 **Status**: ✅ Complete (All 27 playgrounds finished, 100%)  
-**Total Examples**: 243 across all categories  
+**Total Examples**: 241 across all categories  
 **Lines of Code**: ~640KB+ of sample code  
 **Test Cases**: 143+ test cases in network operations  
 **Target Audience**: Developers integrating DICOMKit into medical imaging applications
