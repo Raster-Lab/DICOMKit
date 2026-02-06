@@ -33,11 +33,15 @@ final class ParametricMapPixelDataExtractorTests: XCTestCase {
         )
         
         XCTAssertNotNil(values)
-        XCTAssertEqual(values?.count, 4)
-        XCTAssertEqual(values?[0], 100.0, accuracy: 0.001)  // 2.0 * 0 + 100
-        XCTAssertEqual(values?[1], 228.0, accuracy: 0.001)  // 2.0 * 64 + 100
-        XCTAssertEqual(values?[2], 356.0, accuracy: 0.001)  // 2.0 * 128 + 100
-        XCTAssertEqual(values?[3], 610.0, accuracy: 0.001)  // 2.0 * 255 + 100
+        guard let values = values else {
+            XCTFail("Expected non-nil values")
+            return
+        }
+        XCTAssertEqual(values.count, 4)
+        XCTAssertEqual(values[0], 100.0, accuracy: 0.001)  // 2.0 * 0 + 100
+        XCTAssertEqual(values[1], 228.0, accuracy: 0.001)  // 2.0 * 64 + 100
+        XCTAssertEqual(values[2], 356.0, accuracy: 0.001)  // 2.0 * 128 + 100
+        XCTAssertEqual(values[3], 610.0, accuracy: 0.001)  // 2.0 * 255 + 100
     }
     
     func test_extractIntegerFrame_unsigned16bit_withLinearMapping_succeeds() {
@@ -64,11 +68,15 @@ final class ParametricMapPixelDataExtractorTests: XCTestCase {
         )
         
         XCTAssertNotNil(values)
-        XCTAssertEqual(values?.count, 4)
-        XCTAssertEqual(values?[0], 0.0, accuracy: 0.001)
-        XCTAssertEqual(values?[1], 500.0, accuracy: 0.001)
-        XCTAssertEqual(values?[2], 1000.0, accuracy: 0.001)
-        XCTAssertEqual(values?[3], 1500.0, accuracy: 0.001)
+        guard let values = values else {
+            XCTFail("Expected non-nil values")
+            return
+        }
+        XCTAssertEqual(values.count, 4)
+        XCTAssertEqual(values[0], 0.0, accuracy: 0.001)
+        XCTAssertEqual(values[1], 500.0, accuracy: 0.001)
+        XCTAssertEqual(values[2], 1000.0, accuracy: 0.001)
+        XCTAssertEqual(values[3], 1500.0, accuracy: 0.001)
     }
     
     // MARK: - Float Pixel Data Extraction Tests
@@ -90,11 +98,15 @@ final class ParametricMapPixelDataExtractorTests: XCTestCase {
         )
         
         XCTAssertNotNil(values)
-        XCTAssertEqual(values?.count, 4)
-        XCTAssertEqual(values?[0], 0.5, accuracy: 0.0001)
-        XCTAssertEqual(values?[1], 1.0, accuracy: 0.0001)
-        XCTAssertEqual(values?[2], 1.5, accuracy: 0.0001)
-        XCTAssertEqual(values?[3], 2.0, accuracy: 0.0001)
+        guard let values = values else {
+            XCTFail("Expected non-nil values")
+            return
+        }
+        XCTAssertEqual(values.count, 4)
+        XCTAssertEqual(values[0], 0.5, accuracy: 0.0001)
+        XCTAssertEqual(values[1], 1.0, accuracy: 0.0001)
+        XCTAssertEqual(values[2], 1.5, accuracy: 0.0001)
+        XCTAssertEqual(values[3], 2.0, accuracy: 0.0001)
     }
     
     func test_extractFloatFrame_withLinearMapping_succeeds() {
@@ -119,10 +131,14 @@ final class ParametricMapPixelDataExtractorTests: XCTestCase {
         )
         
         XCTAssertNotNil(values)
-        XCTAssertEqual(values?[0], 0.001, accuracy: 0.00001)
-        XCTAssertEqual(values?[1], 0.002, accuracy: 0.00001)
-        XCTAssertEqual(values?[2], 0.003, accuracy: 0.00001)
-        XCTAssertEqual(values?[3], 0.004, accuracy: 0.00001)
+        guard let values = values else {
+            XCTFail("Expected non-nil values")
+            return
+        }
+        XCTAssertEqual(values[0], 0.001, accuracy: 0.00001)
+        XCTAssertEqual(values[1], 0.002, accuracy: 0.00001)
+        XCTAssertEqual(values[2], 0.003, accuracy: 0.00001)
+        XCTAssertEqual(values[3], 0.004, accuracy: 0.00001)
     }
     
     // MARK: - Double Pixel Data Extraction Tests
@@ -143,11 +159,15 @@ final class ParametricMapPixelDataExtractorTests: XCTestCase {
         )
         
         XCTAssertNotNil(values)
-        XCTAssertEqual(values?.count, 4)
-        XCTAssertEqual(values?[0], 0.123, accuracy: 0.000001)
-        XCTAssertEqual(values?[1], 0.456, accuracy: 0.000001)
-        XCTAssertEqual(values?[2], 0.789, accuracy: 0.000001)
-        XCTAssertEqual(values?[3], 1.234, accuracy: 0.000001)
+        guard let values = values else {
+            XCTFail("Expected non-nil values")
+            return
+        }
+        XCTAssertEqual(values.count, 4)
+        XCTAssertEqual(values[0], 0.123, accuracy: 0.000001)
+        XCTAssertEqual(values[1], 0.456, accuracy: 0.000001)
+        XCTAssertEqual(values[2], 0.789, accuracy: 0.000001)
+        XCTAssertEqual(values[3], 1.234, accuracy: 0.000001)
     }
     
     // MARK: - Multi-frame Extraction Tests
