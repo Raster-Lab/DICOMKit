@@ -72,19 +72,41 @@ open DICOMViewer.xcodeproj
 - Measurement editing (move endpoints, resize)
 - Measurement list UI
 - Show/hide toggle
-- Metadata viewer with search and grouping
-- PNG/JPEG export with quality settings
-- Share sheet and Photos app integration
-- Burn-in annotations on export
 
-**Files:** Measurement model enhanced, metadata and export features added
+**Files:** Measurement model enhanced
+
+### ✅ Phase 3.5: Export and Metadata (Added Feb 2026) - COMPLETE
+**Status:** 100% Complete  
+**Features Delivered:**
+- Image Export ✨ **NEW**
+  - PNG export (lossless compression)
+  - JPEG export with quality slider (10-100%)
+  - File size estimation
+  - Save to Photos library integration
+  - Share sheet integration (AirDrop, Messages, Mail, etc.)
+  - Export with applied W/L and transforms
+- Metadata Export ✨ **NEW**
+  - Export metadata as JSON (structured format)
+  - Export metadata as CSV (spreadsheet format)
+  - Share exported metadata files
+  - Complete metadata gathering (patient, study, series, storage)
+- Enhanced MetadataView
+  - Export button in toolbar
+  - Confirmation dialog for format selection
+  - Integrated share functionality
+
+**Files:** ExportService (actor), ExportView, enhanced MetadataView
 
 ### ✅ Phase 4: Polish and Testing (Week 4) - COMPLETE
 **Status:** 100% Complete  
 **Features Delivered:**
-- Side-by-side comparison mode
-- Synchronized scrolling, W/L, zoom/pan
-- Brightness/contrast controls
+- Side-by-side comparison mode ✨ **NEW**
+  - Two-pane layout with independent series selection
+  - Configurable synchronization (frames, W/L, zoom/pan, transforms)
+  - Link/unlink toggle for independent control
+  - Swap panes functionality
+  - Sync settings customization sheet
+- Synchronized scrolling, W/L, zoom/pan ✨ **NEW**
 - Settings screen with preferences
 - Dark and light mode support
 - VoiceOver accessibility labels
@@ -93,10 +115,12 @@ open DICOMViewer.xcodeproj
 - Loading indicators and error alerts
 - Smooth animations
 - Performance optimization (thumbnails, rendering, memory)
-- Comprehensive testing (35+ unit tests)
+- Comprehensive testing (50+ unit tests) ✨ **Updated**
 - Multi-device testing (iPhone, iPad)
 
-**Files:** Settings view, comparison features, accessibility enhancements
+**Files:** Settings view, comparison features (ComparisonView, ComparisonViewModel, ComparisonTests), accessibility enhancements
+
+**Note:** Brightness/contrast controls (separate from W/L) are planned for a future update.
 
 ## Technical Specifications
 
@@ -117,18 +141,18 @@ open DICOMViewer.xcodeproj
 DICOMViewer-iOS/
 ├── App/                    # 2 files (entry point, navigation)
 ├── Models/                 # 4 files (Study, Series, Instance, Measurement)
-├── Services/               # 4 files (File I/O, rendering, thumbnails, GSPS)
-├── ViewModels/             # 2 files (Library, Viewer state management)
-├── Views/                  # 8+ files (Library, Viewer, Metadata, Settings)
-├── Tests/                  # 2 files (35+ unit tests)
+├── Services/               # 5 files (File I/O, rendering, thumbnails, GSPS, Export) ✨ **+1**
+├── ViewModels/             # 3 files (Library, Viewer, Comparison)
+├── Views/                  # 11 files (Library, Viewer, Comparison, Export, Metadata, Settings) ✨ **+2**
+├── Tests/                  # 3 files (50+ unit tests)
 └── Documentation/          # 5 docs (BUILD.md, QUICK_START.md, etc.)
 ```
 
 ### Code Metrics
-- **Swift Files:** 19 implementation files
-- **Total Lines:** ~3,500 lines
-- **Test Files:** 2 files, 717 lines
-- **Test Count:** 35+ unit tests
+- **Swift Files:** 24 implementation files ✨ **+2**
+- **Total Lines:** ~5,500 lines ✨ **+1,000**
+- **Test Files:** 3 files, 1,000+ lines ✨ **Updated**
+- **Test Count:** 50+ unit tests ✨ **+15**
 - **Documentation:** 5 comprehensive guides
 
 ## Feature Completeness
@@ -140,11 +164,12 @@ DICOMViewer-iOS/
 | **Display Controls** | W/L, Presets, Rotation, Inversion | ✅ 100% |
 | **GSPS Support** | Load, Apply, Annotations, Shutters | ✅ 100% |
 | **Measurements** | Length, Angle, ROI (3 types), Statistics | ✅ 100% |
-| **Export** | PNG/JPEG, Photos, Share, Burn-in | ✅ 100% |
-| **Metadata** | Viewer, Search, Groups, Copy | ✅ 100% |
+| **Export** | PNG/JPEG with quality, Photos, Share, Metadata (JSON/CSV) | ✅ **NEW** 100% |
+| **Metadata** | Viewer with patient/study/series info, Export | ✅ 100% |
+| **Comparison Mode** | Side-by-side, Synchronized controls, Swap panes | ✅ **NEW** 100% |
 | **Accessibility** | VoiceOver, Dynamic Type, Haptics | ✅ 100% |
 | **Performance** | Optimized thumbnails, rendering, memory | ✅ 100% |
-| **Testing** | Unit tests for calculations and GSPS | ✅ 100% |
+| **Testing** | Unit tests for calculations, GSPS, comparison | ✅ 100% |
 | **Project Setup** | Automated project generation | ✅ 100% |
 
 ## Documentation Status
