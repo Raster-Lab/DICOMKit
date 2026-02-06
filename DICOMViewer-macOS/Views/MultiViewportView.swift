@@ -15,23 +15,70 @@ struct MultiViewportView: View {
     @State private var showingLayoutPicker = false
     @State private var showingProtocolPicker = false
     @State private var showingCineControls = false
+    @State private var showingMeasurements = false
+    @State private var measurementViewModel = MeasurementViewModel()
     
     var body: some View {
-        VStack(spacing: 0) {
-            // Toolbar
-            toolbarView
-            
-            Divider()
-            
-            // Viewport grid
-            viewportGridView
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(Color.black)
-            
-            // Cine controls (if enabled)
-            if showingCineControls {
+        HStack(spacing: 0) {
+            // Main content
+            VStack(spacing: 0) {
+                // Toolbar
+                toolbarView
+                
                 Divider()
-                cineControlsView
+                
+                // Measurement toolbar (if enabled)
+                if showingMeasurements {
+                    MeasurementToolbar(
+                        selectedTool: $measurementViewModel.selectedTool,
+                        showLabels: $measurementViewModel.showLabels,
+                        showValues: $measurementViewModel.showValues,
+                        onClearAll: {
+                            confirmClearAll()
+                        },
+                        onExport: {
+                            exportMeasurements()
+                        },
+                        onImport: {
+                            importMeasurements()
+                        }
+                    )
+                    
+                    Divider()
+                }
+                
+                // Viewport grid
+                viewportGridView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black)
+                
+                // Cine controls (if enabled)
+                if showingCineControls {
+                    Divider()
+                    cineControlsView
+                }
+            }
+            
+            // Measurement list sidebar (if enabled)
+            if showingMeasurements {
+                Divider()
+                
+                MeasurementListView(
+                    measurements: measurementViewModel.currentMeasurements,
+                    selectedIDs: measurementViewModel.selectedMeasurementIDs,
+                    onToggleVisibility: { id in
+                        measurementViewModel.toggleVisibility(id: id)
+                    },
+                    onDelete: { id in
+                        measurementViewModel.deleteMeasurement(id: id)
+                    },
+                    onSelect: { id, addToSelection in
+                        measurementViewModel.selectMeasurement(id: id, addToSelection: addToSelection)
+                    },
+                    onUpdateLabel: { id, label in
+                        measurementViewModel.updateLabel(id: id, label: label)
+                    }
+                )
             }
         }
         .task {
@@ -44,6 +91,54 @@ struct MultiViewportView: View {
         } message: {
             if let error = viewModel.errorMessage {
                 Text(error)
+            }
+        }
+        .alert("Clear All Measurements", isPresented: $showingClearConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) {
+                measurementViewModel.clearAllMeasurements()
+            }
+        } message: {
+            Text("Are you sure you want to clear all measurements? This action cannot be undone.")
+        }
+    }
+    
+    @State private var showingClearConfirmation = false
+    
+    private func confirmClearAll() {
+        showingClearConfirmation = true
+    }
+    
+    private func exportMeasurements() {
+        do {
+            let data = try measurementViewModel.exportMeasurements()
+            let panel = NSSavePanel()
+            panel.allowedContentTypes = [.json]
+            panel.nameFieldStringValue = "measurements.json"
+            
+            panel.begin { response in
+                if response == .OK, let url = panel.url {
+                    try? data.write(to: url)
+                }
+            }
+        } catch {
+            viewModel.errorMessage = "Failed to export measurements: \(error.localizedDescription)"
+        }
+    }
+    
+    private func importMeasurements() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                do {
+                    let data = try Data(contentsOf: url)
+                    try measurementViewModel.importMeasurements(from: data)
+                } catch {
+                    viewModel.errorMessage = "Failed to import measurements: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -128,6 +223,15 @@ struct MultiViewportView: View {
                 Label("Cine", systemImage: "play.circle")
             }
             
+            Divider()
+            
+            // Measurements toggle
+            Toggle(isOn: $showingMeasurements) {
+                Label("Measurements", systemImage: "ruler")
+            }
+            .toggleStyle(.button)
+            .help("Show measurement tools")
+            
             Spacer()
         }
         .padding(8)
@@ -180,7 +284,22 @@ struct MultiViewportView: View {
                     isSelected: isSelected,
                     onSelect: {
                         viewModel.layoutService.selectViewport(viewport.id)
-                    }
+                        // Update measurement context when viewport is selected
+                        if showingMeasurements, 
+                           viewModelForViewport.currentIndex < viewModelForViewport.instances.count {
+                            let instance = viewModelForViewport.instances[viewModelForViewport.currentIndex]
+                            measurementViewModel.updateContext(
+                                instanceUID: instance.sopInstanceUID,
+                                frameIndex: viewModelForViewport.currentIndex,
+                                pixelSpacing: nil // TODO: Extract from DICOM file if available
+                            )
+                        }
+                    },
+                    measurements: showingMeasurements ? measurementViewModel.currentMeasurements : [],
+                    selectedMeasurementIDs: measurementViewModel.selectedMeasurementIDs,
+                    showMeasurements: showingMeasurements,
+                    showLabels: measurementViewModel.showLabels,
+                    showValues: measurementViewModel.showValues
                 )
             } else {
                 EmptyViewportView(isSelected: isSelected) {
@@ -274,46 +393,67 @@ private struct ViewportContentView: View {
     @Bindable var viewModel: ImageViewerViewModel
     let isSelected: Bool
     let onSelect: () -> Void
+    let measurements: [Measurement]
+    let selectedMeasurementIDs: Set<UUID>
+    let showMeasurements: Bool
+    let showLabels: Bool
+    let showValues: Bool
     
     var body: some View {
-        ZStack {
-            Color.black
-            
-            if viewModel.isLoading {
-                ProgressView("Loading...")
-            } else if let image = viewModel.currentImage {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFit()
-                    .scaleEffect(viewModel.zoomLevel)
-                    .rotationEffect(.degrees(viewModel.rotationAngle))
-                    .offset(viewModel.panOffset)
-            } else {
-                Text("No image")
-                    .foregroundStyle(.secondary)
-            }
-            
-            // Series info overlay
-            VStack {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(series.seriesDescription ?? "Unknown")
-                            .font(.caption)
-                            .foregroundStyle(.white)
-                        Text("Series \(series.seriesNumber)")
-                            .font(.caption2)
-                            .foregroundStyle(.white.opacity(0.7))
+        GeometryReader { geometry in
+            ZStack {
+                Color.black
+                
+                if viewModel.isLoading {
+                    ProgressView("Loading...")
+                } else if let image = viewModel.currentImage {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFit()
+                        .scaleEffect(viewModel.zoomLevel)
+                        .rotationEffect(.degrees(viewModel.rotationAngle))
+                        .offset(viewModel.panOffset)
+                    
+                    // Measurement overlay (if enabled)
+                    if showMeasurements && !measurements.isEmpty {
+                        MeasurementOverlayView(
+                            measurements: measurements,
+                            selectedIDs: selectedMeasurementIDs,
+                            showLabels: showLabels,
+                            showValues: showValues,
+                            imageSize: CGSize(width: image.size.width, height: image.size.height),
+                            viewSize: geometry.size,
+                            zoom: viewModel.zoomLevel,
+                            offset: viewModel.panOffset
+                        )
                     }
+                } else {
+                    Text("No image")
+                        .foregroundStyle(.secondary)
+                }
+                
+                // Series info overlay
+                VStack {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(series.seriesDescription ?? "Unknown")
+                                .font(.caption)
+                                .foregroundStyle(.white)
+                            Text("Series \(series.seriesNumber)")
+                                .font(.caption2)
+                                .foregroundStyle(.white.opacity(0.7))
+                        }
+                        Spacer()
+                    }
+                    .padding(4)
+                    .background(Color.black.opacity(0.6))
+                    
                     Spacer()
                 }
-                .padding(4)
-                .background(Color.black.opacity(0.6))
-                
-                Spacer()
             }
-        }
-        .onTapGesture {
-            onSelect()
+            .onTapGesture {
+                onSelect()
+            }
         }
     }
 }
