@@ -110,16 +110,18 @@ DICOMViewer iOS is a production-quality medical imaging application that demonst
 
 - **Metadata Display and Export**
   - Complete metadata viewer UI
-  - Tag list with search functionality
-  - Group tags by category
-  - Display nested sequences
-  - Copy tag value function
+  - Patient, study, series, and storage information
+  - Export metadata as JSON or CSV
+  - Share exported metadata files
   - Quick info panel for key metadata
-  - PNG/JPEG export with quality settings
+
+- **Image Export** ✨ **NEW**
+  - PNG export (lossless)
+  - JPEG export with quality settings (10-100%)
+  - File size estimation
+  - Save to Photos library
   - Share sheet integration
-  - Save to Photos app
-  - Burn-in annotations option
-  - Export progress indicator
+  - Export current frame with applied W/L and transforms
 
 ### Phase 4 (Polish and Testing) ✅
 
@@ -173,7 +175,8 @@ DICOMViewer-iOS/
 │   └── Measurement.swift         # Measurement models
 ├── ViewModels/
 │   ├── LibraryViewModel.swift    # Library management
-│   └── ViewerViewModel.swift     # Image viewer state with GSPS support
+│   ├── ViewerViewModel.swift     # Image viewer state with GSPS support
+│   └── ComparisonViewModel.swift # NEW: Comparison mode synchronization
 ├── Views/
 │   ├── Library/
 │   │   └── LibraryView.swift     # Study browser
@@ -181,7 +184,9 @@ DICOMViewer-iOS/
 │   │   ├── ViewerContainerView.swift     # Main viewer with GSPS integration
 │   │   ├── SeriesPickerView.swift
 │   │   ├── PresentationStateOverlayView.swift  # GSPS annotation/shutter rendering
-│   │   └── PresentationStatePickerView.swift   # GSPS selection UI
+│   │   ├── PresentationStatePickerView.swift   # GSPS selection UI
+│   │   ├── ComparisonView.swift                # NEW: Side-by-side comparison view
+│   │   └── ExportView.swift                    # NEW: Image export interface
 │   ├── Metadata/
 │   │   └── MetadataView.swift
 │   └── Settings/
@@ -190,10 +195,12 @@ DICOMViewer-iOS/
 │   ├── DICOMFileService.swift         # File I/O
 │   ├── ThumbnailService.swift         # Thumbnail cache
 │   ├── ImageRenderingService.swift    # Image rendering
-│   └── PresentationStateService.swift # GSPS loading and management
+│   ├── PresentationStateService.swift # GSPS loading and management
+│   └── ExportService.swift            # NEW: Image and metadata export
 ├── Tests/
 │   ├── MeasurementTests.swift         # Measurement model tests
-│   └── PresentationStateTests.swift   # GSPS functionality tests
+│   ├── PresentationStateTests.swift   # GSPS functionality tests
+│   └── ComparisonTests.swift          # NEW: Comparison mode tests (15+ tests)
 └── Resources/
     └── (Assets, Localization)
 ```
@@ -283,6 +290,64 @@ See [BUILD.md](BUILD.md) for detailed instructions, troubleshooting, and advance
    - Rotate icon: Contains spatial transformation
 5. Select "None" to remove the presentation state and return to default display
 6. A blue "GSPS" indicator appears in the image overlay when a presentation state is active
+
+### Using Comparison Mode (NEW)
+
+1. Open an image in the viewer
+2. Tap the "Compare" button (split rectangle icon) in the toolbar
+3. The comparison view opens with two side-by-side viewers:
+   - Left pane shows the current series
+   - Right pane shows a second series (or the same series if only one is available)
+4. Tap the series icon in either pane header to select a different series
+5. Use the link icon at the bottom to toggle synchronization:
+   - When linked (blue): Controls are synchronized between both viewers
+   - When unlinked (gray): Each viewer can be controlled independently
+6. Tap the gear icon to customize what is synchronized:
+   - Frame Navigation: Navigate frames in both viewers together
+   - Window/Level: Apply same W/L settings to both images
+   - Zoom & Pan: Synchronize zoom level and pan position
+   - Rotation & Flip: Apply same transforms to both images
+7. Use the "Swap" button to exchange the left and right images
+8. When synchronized, use gestures on either pane to control both:
+   - Pinch to zoom both images simultaneously
+   - Pan to move both images together
+   - Use frame controls at the bottom to navigate both series
+9. Tap "Done" to exit comparison mode and return to single viewer
+
+**Use Cases:**
+- Compare pre/post treatment images
+- Compare different sequences (T1 vs T2 MRI)
+- Compare same anatomy at different time points
+- Review left/right anatomical symmetry
+
+### Exporting Images and Metadata (NEW)
+
+**Exporting Images:**
+1. Open an image in the viewer
+2. Tap the "Export" button (up arrow icon) in the toolbar
+3. Choose export format:
+   - **PNG**: Lossless compression, larger file size
+   - **JPEG**: Lossy compression with adjustable quality (10-100%)
+4. For JPEG, adjust the quality slider to balance size vs quality
+5. Toggle "Save to Photos" to automatically add to your Photos library
+6. Tap "Export Image" to save the file
+7. After export, you can:
+   - Share via AirDrop, Messages, Mail, etc.
+   - Save to Files app
+   - Tap "Done" to close
+
+**Exporting Metadata:**
+1. Open the Info (ℹ️) view for a study
+2. Tap the Export button in the toolbar
+3. Choose format:
+   - **Export as JSON**: Structured data format
+   - **Export as CSV**: Spreadsheet-compatible format
+4. Share the exported file via share sheet
+
+**What's Exported:**
+- Current window/level settings applied to image
+- Current zoom, pan, and rotation state
+- Metadata includes patient info, study/series details, and storage info
 
 ## Architecture
 
