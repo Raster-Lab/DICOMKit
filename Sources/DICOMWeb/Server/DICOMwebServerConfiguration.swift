@@ -40,6 +40,9 @@ public struct DICOMwebServerConfiguration: Sendable {
     /// Compression configuration for HTTP responses
     public let compressionConfiguration: CompressionConfiguration
     
+    /// Server-side cache configuration for HTTP responses
+    public let cacheConfiguration: CacheConfiguration
+    
     /// Creates a DICOMweb server configuration
     /// - Parameters:
     ///   - port: The port to listen on (default: 8042)
@@ -53,6 +56,7 @@ public struct DICOMwebServerConfiguration: Sendable {
     ///   - stowConfiguration: STOW-RS configuration (default: .default)
     ///   - serverName: Server name for headers (default: "DICOMKit/1.0")
     ///   - compressionConfiguration: HTTP response compression settings (default: .default)
+    ///   - cacheConfiguration: Server-side cache settings (default: .disabled)
     public init(
         port: Int = 8042,
         host: String = "0.0.0.0",
@@ -64,7 +68,8 @@ public struct DICOMwebServerConfiguration: Sendable {
         rateLimitConfiguration: RateLimitConfiguration? = nil,
         stowConfiguration: STOWConfiguration = .default,
         serverName: String = "DICOMKit/1.0",
-        compressionConfiguration: CompressionConfiguration = .default
+        compressionConfiguration: CompressionConfiguration = .default,
+        cacheConfiguration: CacheConfiguration = .disabled
     ) {
         self.port = port
         self.host = host
@@ -77,6 +82,7 @@ public struct DICOMwebServerConfiguration: Sendable {
         self.stowConfiguration = stowConfiguration
         self.serverName = serverName
         self.compressionConfiguration = compressionConfiguration
+        self.cacheConfiguration = cacheConfiguration
     }
     
     /// The base URL for the server (computed without TLS)
