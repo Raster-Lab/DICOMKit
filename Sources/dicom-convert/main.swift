@@ -265,7 +265,9 @@ struct DICOMConvert: AsyncParsableCommand {
             return WindowSettings(center: center, width: max(1.0, width))
         }
         
-        // Default fallback
+        // Default fallback window settings for 8-bit display range
+        // These values are appropriate for converting to 8-bit output formats (PNG, JPEG)
+        // Center: 128 (middle of 0-255 range), Width: 256 (full 0-255 range)
         return WindowSettings(center: 128.0, width: 256.0)
     }
     
