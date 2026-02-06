@@ -1,0 +1,148 @@
+# DICOMViewer iOS - XcodeGen Project Configuration
+#
+# This file is used by XcodeGen (https://github.com/yonaskolb/XcodeGen)
+# to automatically generate an Xcode project.
+#
+# Installation:
+#   brew install xcodegen
+#
+# Usage:
+#   xcodegen generate
+#
+# This will create DICOMViewer.xcodeproj in the current directory.
+
+name: DICOMViewer
+options:
+  bundleIdPrefix: com.example
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  defaultConfig: Debug
+  
+settings:
+  base:
+    PRODUCT_NAME: DICOMViewer
+    PRODUCT_BUNDLE_IDENTIFIER: com.example.DICOMViewer
+    SWIFT_VERSION: "5.9"
+    IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+    TARGETED_DEVICE_FAMILY: "1,2"  # iPhone and iPad
+    SUPPORTS_MACCATALYST: false
+    SWIFT_EMIT_LOC_STRINGS: true
+    ENABLE_PREVIEWS: true
+    INFOPLIST_FILE: Info.plist
+    GENERATE_INFOPLIST_FILE: false
+    ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+packages:
+  DICOMKit:
+    url: https://github.com/raster-image/DICOMKit.git
+    from: 1.0.0
+
+targets:
+  DICOMViewer:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: App
+        name: App
+        type: group
+      - path: Models
+        name: Models
+        type: group
+      - path: Services
+        name: Services
+        type: group
+      - path: ViewModels
+        name: ViewModels
+        type: group
+      - path: Views
+        name: Views
+        type: group
+        group: Views
+    dependencies:
+      - package: DICOMKit
+        product: DICOMKit
+      - package: DICOMKit
+        product: DICOMCore
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.DICOMViewer
+        INFOPLIST_FILE: Info.plist
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""  # User must set their team ID
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: DEBUG
+        Release:
+          SWIFT_OPTIMIZATION_LEVEL: "-O"
+          SWIFT_COMPILATION_MODE: wholemodule
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDevelopmentRegion: en
+        CFBundleDisplayName: DICOMViewer
+        CFBundleExecutable: $(EXECUTABLE_NAME)
+        CFBundleIdentifier: $(PRODUCT_BUNDLE_IDENTIFIER)
+        CFBundleInfoDictionaryVersion: "6.0"
+        CFBundleName: $(PRODUCT_NAME)
+        CFBundlePackageType: APPL
+        CFBundleShortVersionString: "1.0"
+        CFBundleVersion: "1"
+        LSRequiresIPhoneOS: true
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        UISupportsDocumentBrowser: true
+        NSPhotoLibraryAddUsageDescription: "DICOMViewer needs permission to save exported images to your photo library."
+
+  DICOMViewerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests
+        name: Tests
+    dependencies:
+      - target: DICOMViewer
+      - package: DICOMKit
+        product: DICOMKit
+      - package: DICOMKit
+        product: DICOMCore
+    settings:
+      base:
+        BUNDLE_LOADER: $(TEST_HOST)
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/DICOMViewer.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/DICOMViewer
+        CODE_SIGN_STYLE: Automatic
+        DEVELOPMENT_TEAM: ""  # User must set their team ID
+
+schemes:
+  DICOMViewer:
+    build:
+      targets:
+        DICOMViewer: all
+        DICOMViewerTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - DICOMViewerTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

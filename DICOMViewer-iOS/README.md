@@ -202,7 +202,25 @@ DICOMViewer-iOS/
 
 **For detailed build instructions, see [BUILD.md](BUILD.md).**
 
-### Quick Start
+### Automated Setup (Recommended - NEW!)
+
+The fastest way to get started:
+
+```bash
+# Install XcodeGen (one-time setup)
+brew install xcodegen
+
+# Generate and open project
+cd DICOMViewer-iOS
+xcodegen generate
+open DICOMViewer.xcodeproj
+```
+
+Then in Xcode, select your development team and press ⌘R to run!
+
+See [SETUP_AUTOMATION.md](SETUP_AUTOMATION.md) for automation details and alternative methods.
+
+### Manual Setup
 
 1. **Create an Xcode project:**
    - Open Xcode and create a new iOS App

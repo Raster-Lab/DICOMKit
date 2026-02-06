@@ -9,6 +9,16 @@ This guide explains how to build and run the DICOMViewer iOS application.
 - **iOS 17.0+ device or simulator**
 - **DICOMKit 1.0+** (included in parent repository)
 
+## 🚀 Automated Setup (NEW!)
+
+**For the fastest setup, use our automation tools:**
+
+See [SETUP_AUTOMATION.md](SETUP_AUTOMATION.md) for one-command project generation using:
+- **XcodeGen** (recommended - `brew install xcodegen` then `xcodegen generate`)
+- **Setup Script** (`./create-xcode-project.sh`)
+
+Otherwise, continue with the manual setup below.
+
 ## Quick Start
 
 ### Option 1: Create Xcode Project (Recommended)
