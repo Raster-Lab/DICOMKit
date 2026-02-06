@@ -305,15 +305,6 @@ public struct DICOMValidator {
     }
     
     private func validateBestPractices(dataSet: DataSet, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        // Check for deprecated tags
-        if dataSet[Tag(group: 0x0028, element: 0x0004)] != nil {
-            warnings.append(ValidationIssue(
-                level: .warning,
-                message: "Tag (0028,0004) Photometric Interpretation is deprecated in some contexts",
-                tag: Tag(group: 0x0028, element: 0x0004)
-            ))
-        }
-        
         // Recommend Character Set specification
         if dataSet[.specificCharacterSet] == nil {
             warnings.append(ValidationIssue(
@@ -395,6 +386,15 @@ public struct DICOMValidator {
         guard year >= 1900 && year <= 9999 else { return false }
         guard month >= 1 && month <= 12 else { return false }
         guard day >= 1 && day <= 31 else { return false }
+        
+        // Ensure the date is a valid Gregorian calendar date
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        
+        let calendar = Calendar(identifier: .gregorian)
+        guard calendar.date(from: components) != nil else { return false }
         
         return true
     }

@@ -67,9 +67,9 @@ struct DICOMValidate: AsyncParsableCommand {
             guard recursive else {
                 throw ValidationError("Directory validation requires --recursive flag")
             }
-            results = try await validateDirectory(url: inputURL)
+            results = try validateDirectory(url: inputURL)
         } else {
-            let result = try await validateFile(url: inputURL)
+            let result = try validateFile(url: inputURL)
             results = [result]
         }
         
@@ -89,7 +89,7 @@ struct DICOMValidate: AsyncParsableCommand {
         }
     }
     
-    private func validateDirectory(url: URL) async throws -> [ValidationResult] {
+    private func validateDirectory(url: URL) throws -> [ValidationResult] {
         let enumerator = FileManager.default.enumerator(
             at: url,
             includingPropertiesForKeys: [.isRegularFileKey],
@@ -107,7 +107,7 @@ struct DICOMValidate: AsyncParsableCommand {
             guard resourceValues.isRegularFile == true else { continue }
             
             do {
-                let result = try await validateFile(url: fileURL)
+                let result = try validateFile(url: fileURL)
                 results.append(result)
             } catch {
                 let result = ValidationResult(
@@ -123,7 +123,7 @@ struct DICOMValidate: AsyncParsableCommand {
         return results
     }
     
-    private func validateFile(url: URL) async throws -> ValidationResult {
+    private func validateFile(url: URL) throws -> ValidationResult {
         let fileData = try Data(contentsOf: url)
         
         let validator = DICOMValidator(level: level, iod: iod, force: force)
