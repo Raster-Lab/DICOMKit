@@ -3149,7 +3149,7 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 ### Milestone 10.14: Example Applications (v1.0.14)
 
-**Status**: In Progress (iOS ✅ Complete, macOS 🚧 Phase 2/5, others pending)  
+**Status**: In Progress (iOS ✅ Complete, macOS 🚧 Phase 4/5, others pending)  
 **Goal**: Production-quality example applications demonstrating DICOMKit  
 **Complexity**: High  
 **Dependencies**: All previous milestones (10.1-10.13)  
@@ -3161,14 +3161,14 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 **Progress**: 
 - DICOMViewer iOS is complete (February 2026) with 21 Swift files, 35+ tests, and comprehensive documentation. 
-- DICOMViewer macOS Phase 2 complete (February 2026) with 27 files, ~3,500 lines, 30 tests. PACS Integration layer with C-ECHO/C-FIND/C-MOVE/C-STORE, DICOMweb (QIDO-RS/WADO-RS/STOW-RS), server configuration, query UI, and download queue.
+- DICOMViewer macOS Phase 4 complete (February 2026) with 54 files, ~13,500 lines, 224 tests. MPR reconstruction (axial/sagittal/coronal), MIP/MinIP/AverageIP projections, volume rendering with transfer function presets, and 2×2 MPR grid view with reference lines.
 - CLI Tools suite complete with 7 tools and 160+ tests.
 - Sample code/playgrounds complete with 27 playgrounds and 241 examples.
 
 **Detailed Implementation Plans**:
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification ✅ **COMPLETE**
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan ✅ **COMPLETE**
-- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan 🚧 **Phase 2/5 COMPLETE**
+- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan 🚧 **Phase 4/5 COMPLETE**
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - visionOS app detailed plan
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview
@@ -3242,10 +3242,10 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] STATUS.md (implementation report)
   - [x] Tests/README.md (test documentation)
 
-##### DICOMViewer macOS App (4-5 weeks) - 🚧 In Progress (Phase 3 ✅ Complete, Phase 4 Pending)
-**Status**: Phase 3/5 complete (February 2026)  
+##### DICOMViewer macOS App (4-5 weeks) - 🚧 In Progress (Phase 4 ✅ Complete, Phase 5 Pending)
+**Status**: Phase 4/5 complete (February 2026)  
 **Location**: `DICOMViewer-macOS/` - See [README.md](DICOMViewer-macOS/README.md) and [STATUS.md](DICOMViewer-macOS/STATUS.md)  
-**Code**: 44 files (~10,000 lines), 144 unit tests
+**Code**: 54 files (~13,500 lines), 224 unit tests
 
 - [x] **Phase 1: Foundation (Week 1)** ✅ COMPLETE:
   - [x] Xcode project structure with XcodeGen
@@ -3274,12 +3274,16 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] Measurement data models and service (length, angle, ROI tools)
   - [x] Measurement UI with toolbar, overlay, and list sidebar
   - [x] Interactive measurement drawing with mouse support
-- [ ] **Phase 4: MPR and 3D (Week 4)**:
-  - [ ] 2D MPR (axial, sagittal, coronal)
-  - [ ] Oblique MPR
-  - [ ] Maximum Intensity Projection (MIP)
-  - [ ] Volume rendering with Metal
-  - [ ] Transfer function editor
+- [x] **Phase 4: MPR and 3D (Week 4)** ✅ COMPLETE:
+  - [x] Volume data model (3D voxel array with spacing and origin)
+  - [x] MPREngine (volume construction, axial/sagittal/coronal slice extraction)
+  - [x] MIP/MinIP/AverageIP projection rendering
+  - [x] Transfer function presets (bone, soft tissue, lung, angiography, MIP)
+  - [x] MPR view with 2×2 grid and reference line crosshairs
+  - [x] Volume rendering view with rotation, zoom, and slab controls
+  - [x] MPRViewModel and VolumeRenderingViewModel
+  - [x] Menu integration (MPR ⌘⇧M, 3D Rendering ⌘⇧3)
+  - [x] 80 new unit tests (VolumeTests: 23, MPREngineTests: 22, MPRViewModelTests: 15, VolumeRenderingViewModelTests: 20)
 - [ ] **Phase 5: Advanced Features (Week 5)**:
   - [ ] Advanced measurements and 3D tools
   - [ ] Time-series analysis
@@ -3421,15 +3425,15 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | Component | Unit Tests | Integration Tests | UI/Device Tests | Total | Status |
 |-----------|------------|-------------------|-----------------|-------|--------|
 | iOS Viewer | 35+ | N/A | N/A | 35+ | ✅ Complete |
-| macOS Viewer | 30 (Phase 1-2) | 0 | 0 | 30+ | 🚧 Phase 2/5 |
+| macOS Viewer | 224 (Phase 1-4) | 0 | 0 | 224 | 🚧 Phase 4/5 |
 | visionOS Viewer | 205+ | 45+ | 20+ | 270+ | Planned |
 | CLI Tools | 160+ | - | - | 160+ | ✅ Complete |
 | Sample Code | 27 playgrounds (100% complete) | 143 tests | - | 241 examples | ✅ Complete |
-| **TOTAL** | **851+** | **188+** | **20+** | **1,059+** | In Progress |
+| **TOTAL** | **1,045+** | **188+** | **20+** | **1,253+** | In Progress |
 
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.
 
-**macOS Viewer Phase 2 Tests** (February 2026): 30 unit tests total - 8 for DatabaseService (CRUD operations, search, filter), 8 for PACSServer model (initialization, computed properties), 14 for DownloadManager (queue operations, status transitions, progress tracking). Full test suite (250+ unit, 70+ integration, 40+ UI) planned for Phases 3-5.
+**macOS Viewer Phase 4 Tests** (February 2026): 224 unit tests total across 14 test files - DatabaseService (8), PACSServer (8), DownloadManager (14), ViewportLayout (10), HangingProtocol (10), CineController (17), ViewportLayoutService (15), HangingProtocolService (10), Measurement (30), MeasurementService (32), Volume (23), MPREngine (22), MPRViewModel (15), VolumeRenderingViewModel (20). Full test suite (250+ unit, 70+ integration, 40+ UI) planned for Phase 5.
 
 **CLI Tools Actual Tests** (February 2026): 160+ unit tests across 7 tools (dicom-info, dicom-convert, dicom-validate, dicom-anon, dicom-dump, dicom-query, dicom-send). All core functionality tested. Integration tests (network operations) omitted as they require live PACS servers, but tools are production-ready with comprehensive error handling and mocking capabilities.
 

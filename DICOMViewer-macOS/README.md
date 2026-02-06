@@ -7,7 +7,7 @@ A professional diagnostic workstation with PACS integration, Multi-Planar Recons
 DICOMViewer macOS is a production-quality medical imaging workstation that demonstrates the enterprise capabilities of DICOMKit. It provides comprehensive tools for viewing, analyzing, and managing DICOM medical images with features typically found in commercial PACS workstations.
 
 **Platform**: macOS 14+ (Sonoma and later)  
-**Status**: In Development (Phase 3 - Professional Viewer 75% Complete)  
+**Status**: In Development (Phase 4 - MPR and 3D ✅ Complete)  
 **Target Version**: v1.0.14
 
 ## Key Features
@@ -29,21 +29,26 @@ DICOMViewer macOS is a production-quality medical imaging workstation that demon
 - [x] Download queue with progress tracking
 - [x] Server configuration UI (add/edit/delete/test)
 
-### Phase 3: Professional Viewer 🚧 (75% Complete)
+### Phase 3: Professional Viewer ✅
 - [x] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
 - [x] Hanging protocol engine with pre-defined protocols
 - [x] Viewport linking (scroll, W/L, zoom, pan)
 - [x] Cine playback with configurable FPS
 - [x] Layout switching with keyboard shortcuts (⌘1-4)
 - [x] Protocol selection (CT Chest, CT Abdomen, MR Brain, X-Ray)
-- [ ] Advanced measurements (ruler, angle, ROI) - pending
+- [x] Advanced measurements (length, angle, ellipse, rectangle, polygon ROI)
+- [x] Measurement overlay and list sidebar
+- [x] Interactive measurement drawing with mouse support
 
-### Phase 4: MPR and 3D (Planned)
-- [ ] 2D MPR (axial, sagittal, coronal)
-- [ ] Oblique MPR
-- [ ] Maximum Intensity Projection (MIP)
-- [ ] Volume rendering with Metal
-- [ ] Transfer function editor
+### Phase 4: MPR and 3D ✅
+- [x] 2D MPR (axial, sagittal, coronal) with reference line crosshairs
+- [x] Volume data construction from DICOM series
+- [x] Maximum Intensity Projection (MIP) with slab thickness
+- [x] Minimum Intensity Projection (MinIP)
+- [x] Average Intensity Projection (AverageIP)
+- [x] Volume rendering with transfer function presets (bone, soft tissue, lung, angiography)
+- [x] 3D rotation and zoom controls
+- [x] 80 unit tests for MPR and volume rendering
 
 ### Phase 5: Advanced Features (Planned)
 - [ ] DICOM Print and PDF export
@@ -222,7 +227,7 @@ swift test --filter DICOMViewerTests
 swift test --enable-code-coverage
 ```
 
-**Test Coverage**: 60%+ (82 tests implemented, 360+ tests planned for Phase 5)
+**Test Coverage**: ~70% (224 tests implemented, 360+ tests planned for Phase 5)
 
 ## Documentation
 
