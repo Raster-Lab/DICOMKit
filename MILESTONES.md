@@ -3242,10 +3242,10 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] STATUS.md (implementation report)
   - [x] Tests/README.md (test documentation)
 
-##### DICOMViewer macOS App (4-5 weeks) - 🚧 In Progress (Phase 2 ✅ Complete)
-**Status**: Phase 2/5 complete (February 2026)  
-**Location**: `DICOMViewer-macOS/` - See [README.md](DICOMViewer-macOS/README.md)  
-**Code**: 27 files (~3,500 lines), 30 unit tests
+##### DICOMViewer macOS App (4-5 weeks) - 🚧 In Progress (Phase 3 85% Complete)
+**Status**: Phase 3/5 in progress (February 2026)  
+**Location**: `DICOMViewer-macOS/` - See [README.md](DICOMViewer-macOS/README.md) and [STATUS.md](DICOMViewer-macOS/STATUS.md)  
+**Code**: 40 files (~7,000 lines), 144 unit tests
 
 - [x] **Phase 1: Foundation (Week 1)** ✅ COMPLETE:
   - [x] Xcode project structure with XcodeGen
@@ -3266,11 +3266,13 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] Download queue view with progress tracking
   - [x] Menu integration (Query PACS ⌘K, Configure Servers ⌘⇧,, Download Queue ⌘⇧D)
   - [x] 22 new unit tests (PACSServerTests: 8, DownloadManagerTests: 14)
-- [ ] **Phase 3: Professional Viewer (Week 3)**:
-  - [ ] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
-  - [ ] Hanging protocols
-  - [ ] Viewport linking (scroll, W/L, zoom)
-  - [ ] Cine playback with keyboard shortcuts
+- [x] **Phase 3: Professional Viewer (Week 3)** - 85% Complete:
+  - [x] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
+  - [x] Hanging protocols with automatic series assignment
+  - [x] Viewport linking (scroll, W/L, zoom, pan)
+  - [x] Cine playback with keyboard shortcuts and configurable FPS
+  - [x] Measurement data models and service (length, angle, ROI tools)
+  - [ ] Measurement UI and rendering (in progress)
 - [ ] **Phase 4: MPR and 3D (Week 4)**:
   - [ ] 2D MPR (axial, sagittal, coronal)
   - [ ] Oblique MPR

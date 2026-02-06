@@ -2,7 +2,7 @@
 
 **Last Updated**: February 6, 2026  
 **Current Phase**: Phase 3 (Professional Viewer) - 🚧 IN PROGRESS  
-**Overall Progress**: 60% (2.5 of 5 phases complete)
+**Overall Progress**: 68% (2.7 of 5 phases complete)
 
 ---
 
@@ -12,7 +12,7 @@
 |-------|--------|----------|----------|------------------|
 | 1. Foundation | ✅ Complete | 100% | Week 1 | Database, import, basic viewer |
 | 2. PACS Integration | ✅ Complete | 100% | Week 2 | C-FIND, C-MOVE, C-STORE, DICOMweb |
-| 3. Professional Viewer | 🚧 In Progress | 75% | Week 3 | Multi-viewport, hanging protocols, cine ✅ |
+| 3. Professional Viewer | 🚧 In Progress | 85% | Week 3 | Multi-viewport, hanging protocols, cine, measurements 🚧 |
 | 4. MPR and 3D | ⏳ Pending | 0% | Week 4 | MPR, volume rendering, Metal |
 | 5. Advanced Features | ⏳ Pending | 0% | Week 5 | Print, reports, testing, polish |
 
@@ -384,15 +384,33 @@ All Phase 2 deliverables have been completed:
   - [x] Series assignment
   - [x] Custom protocols
 
-### ⏳ Remaining Features (25%)
+### ⏳ Remaining Features (15%)
 
-#### Advanced Measurements (Day 5)
-- [ ] Ruler measurement tool
-- [ ] Angle measurement tool
-- [ ] ROI (region of interest) tool
-- [ ] Measurement overlay rendering
-- [ ] Measurement persistence
-- [ ] Measurement tests
+#### Advanced Measurements (Day 5) - 60% Complete
+- [x] Measurement data models (Measurement, ImagePoint, ROIStatistics)
+  - [x] MeasurementType enum (length, angle, ellipse, rectangle, polygon)
+  - [x] Calculation methods (length, angle, area, perimeter)
+  - [x] Pixel spacing calibration support
+  - [x] Codable support for persistence
+- [x] MeasurementService for measurement management
+  - [x] CRUD operations (add, update, remove)
+  - [x] Frame-based filtering
+  - [x] Visibility toggling
+  - [x] Export/import to JSON
+  - [x] Persistent storage
+- [x] MeasurementViewModel for UI integration
+  - [x] Context management
+  - [x] Tool selection
+  - [x] Active measurement tracking
+  - [x] Measurement editing support
+- [x] Comprehensive tests (62 tests)
+  - [x] 30 measurement model tests
+  - [x] 32 measurement service tests
+- [ ] Measurement overlay rendering view
+- [ ] Measurement toolbar with tool selection
+- [ ] Interactive measurement drawing
+- [ ] Measurement list UI with show/hide
+- [ ] Measurement editing UI (move, resize, delete)
 
 #### Integration & Testing (Day 6)
 - [ ] Integration tests for multi-viewport
@@ -405,17 +423,17 @@ All Phase 2 deliverables have been completed:
 
 | Metric | Value |
 |--------|-------|
-| Total Files | 35 |
-| Source Files | 31 |
-| Test Files | 8 |
+| Total Files | 40 |
+| Source Files | 34 |
+| Test Files | 10 |
 | Documentation | 3 |
-| Lines of Code | ~5,500+ |
-| Models | 6 |
-| Services | 8 |
-| ViewModels | 6 |
+| Lines of Code | ~7,000+ |
+| Models | 7 |
+| Services | 9 |
+| ViewModels | 7 |
 | Views | 7 |
-| Unit Tests | 82 |
-| Test Coverage | ~60% (database, PACS, viewport layers) |
+| Unit Tests | 144 |
+| Test Coverage | ~65% (database, PACS, viewport, measurement layers) |
 
 ### 🎯 Phase 3 Goals Progress
 
@@ -423,9 +441,10 @@ All Phase 2 deliverables have been completed:
 - ✅ Hanging protocols auto-arrange common study types
 - ✅ Viewport linking synchronizes scroll, W/L, zoom, pan
 - ✅ Cine playback with configurable FPS
-- ⏳ Advanced measurement tools (pending)
-- ✅ 52 new unit tests added
+- 🚧 Advanced measurement tools (models and service complete, UI pending)
+- ✅ 114 new unit tests added (52 viewport + 62 measurement)
 - ✅ **Can display studies in multiple viewports with hanging protocols** 🎉
+- 🚧 **Measurement infrastructure complete, UI integration in progress** 🛠️
 
 ---
 
