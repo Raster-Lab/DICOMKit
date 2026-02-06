@@ -1595,7 +1595,12 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] `CacheConfiguration` with presets
   - [x] `CacheEntry` with TTL and validation support
   - [x] Cache key generation utilities
-  - [ ] Server-side response caching
+  - [x] Server-side response caching (`ServerCacheMiddleware`)
+    - [x] ETag-based conditional requests (If-None-Match → 304 Not Modified)
+    - [x] Cache-Control response headers
+    - [x] Cache invalidation on mutations (STOW-RS, DELETE)
+    - [x] Cache statistics tracking
+    - [x] Configurable via `DICOMwebServerConfiguration.cacheConfiguration`
 - [ ] Performance Optimizations:
   - [ ] Connection pooling (HTTP/2 multiplexing)
   - [ ] Request pipelining
@@ -1638,6 +1643,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [x] HTTPS connections are secure (TLS 1.2/1.3 support with proper configuration)
 - [ ] Capability discovery provides accurate information
 - [ ] Caching improves performance for repeated requests
+- [x] Server-side caching with ETag-based conditional requests (22 tests)
 - [ ] Delete services work correctly (when enabled)
 - [ ] Performance acceptable for production workloads
 - [ ] Security scan passes

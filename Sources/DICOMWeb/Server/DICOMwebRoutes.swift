@@ -122,6 +122,16 @@ public struct DICOMwebResponse: Sendable {
         DICOMwebResponse(statusCode: 204)
     }
     
+    /// Creates a 304 Not Modified response
+    /// - Parameter etag: The ETag of the cached resource
+    public static func notModified(etag: String? = nil) -> DICOMwebResponse {
+        var headers: [String: String] = [:]
+        if let etag = etag {
+            headers["ETag"] = etag
+        }
+        return DICOMwebResponse(statusCode: 304, headers: headers)
+    }
+    
     /// Creates a 400 Bad Request response
     public static func badRequest(message: String) -> DICOMwebResponse {
         let body = "{\"error\": \"\(message)\"}"

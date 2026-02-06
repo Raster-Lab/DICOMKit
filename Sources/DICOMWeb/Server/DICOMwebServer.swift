@@ -40,6 +40,9 @@ public actor DICOMwebServer {
     /// Compression middleware for response compression
     private let compressionMiddleware: CompressionMiddleware
     
+    /// Server-side cache middleware for response caching
+    private let cacheMiddleware: ServerCacheMiddleware
+    
     // MARK: - Initialization
     
     /// Creates a DICOMweb server
@@ -54,6 +57,7 @@ public actor DICOMwebServer {
         self.storage = storage
         self.router = DICOMwebRouter(pathPrefix: configuration.pathPrefix)
         self.compressionMiddleware = CompressionMiddleware(configuration: configuration.compressionConfiguration)
+        self.cacheMiddleware = ServerCacheMiddleware(configuration: configuration.cacheConfiguration)
     }
     
     /// Creates a DICOMweb server with default development configuration
@@ -77,6 +81,7 @@ public actor DICOMwebServer {
         self.upsStorage = upsStorage
         self.router = DICOMwebRouter(pathPrefix: configuration.pathPrefix)
         self.compressionMiddleware = CompressionMiddleware(configuration: configuration.compressionConfiguration)
+        self.cacheMiddleware = ServerCacheMiddleware(configuration: configuration.cacheConfiguration)
     }
     
     /// Sets the UPS storage provider
@@ -135,9 +140,29 @@ public actor DICOMwebServer {
             return .notFound(message: "No route matched for \(request.method.rawValue) \(request.path)")
         }
         
+        // Check server-side cache for GET requests
+        if request.method == .get {
+            if let cachedResponse = await cacheMiddleware.cachedResponse(for: request) {
+                var response = cachedResponse
+                addCORSHeaders(to: &response, request: request)
+                response.headers["Server"] = configuration.serverName
+                return response
+            }
+        }
+        
         // Handle the request based on handler type
         do {
             var response = try await handleRoute(match: match, request: request)
+            
+            // Store response in server-side cache for GET requests
+            if request.method == .get {
+                response = await cacheMiddleware.cacheResponse(response, for: request)
+            }
+            
+            // Invalidate cache on mutations (STOW-RS, DELETE)
+            if request.method == .post || request.method == .put || request.method == .delete {
+                await cacheMiddleware.invalidateAll()
+            }
             
             // Add CORS headers if configured
             addCORSHeaders(to: &response, request: request)
