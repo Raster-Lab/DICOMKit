@@ -29,7 +29,14 @@ let package = Package(
         .library(
             name: "DICOMWeb",
             targets: ["DICOMWeb"]
+        ),
+        .executable(
+            name: "dicom-info",
+            targets: ["dicom-info"]
         )
+    ],
+    dependencies: [
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [
         .target(
@@ -85,6 +92,20 @@ let package = Package(
         .testTarget(
             name: "DICOMWebTests",
             dependencies: ["DICOMWeb", "DICOMKit"]
+        ),
+        .testTarget(
+            name: "DICOMToolsTests",
+            dependencies: ["DICOMKit", "DICOMCore", "DICOMDictionary"]
+        ),
+        .executableTarget(
+            name: "dicom-info",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-info"
         )
     ]
 )
