@@ -68,8 +68,8 @@ struct TransferSyntaxConverter {
             )
         }
         
-        // Implementation Version Name
-        if let versionData = "DICOMKIT_1_0".data(using: .ascii) {
+        // Implementation Version Name (using DICOM naming convention)
+        if let versionData = "DICOMKIT-1.0".data(using: .ascii) {
             let versionTag = Tag.implementationVersionName
             fileMeta[versionTag] = DataElement(
                 tag: versionTag,
