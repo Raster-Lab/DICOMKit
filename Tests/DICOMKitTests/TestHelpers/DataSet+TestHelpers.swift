@@ -20,8 +20,8 @@ extension DataSet {
     mutating func append(_ tag: Tag, _ value: String) {
         // Determine VR based on tag
         let vr: VR
-        if let entry = DataElementDictionary.lookup(tag: tag) {
-            vr = entry.vr
+        if let entry = DataElementDictionary.lookup(tag: tag), let firstVR = entry.vr.first {
+            vr = firstVR
         } else {
             // Default to LO for unknown tags
             vr = .LO
@@ -56,8 +56,8 @@ extension DataSet {
         let int32Values = values.map { Int32($0) }
         // Determine VR - for frame numbers and similar, use IS (Integer String)
         let vr: VR
-        if let entry = DataElementDictionary.lookup(tag: tag) {
-            vr = entry.vr
+        if let entry = DataElementDictionary.lookup(tag: tag), let firstVR = entry.vr.first {
+            vr = firstVR
         } else {
             vr = .IS
         }
