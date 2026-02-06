@@ -18,6 +18,7 @@ struct ViewerContainerView: View {
     @State private var showingMetadata = false
     @State private var showingPresentationStatePicker = false
     @State private var showingComparison = false
+    @State private var showingExport = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -49,6 +50,14 @@ struct ViewerContainerView: View {
                 } label: {
                     Label("Compare", systemImage: "rectangle.split.2x1")
                 }
+                
+                // Export button
+                Button {
+                    showingExport = true
+                } label: {
+                    Label("Export", systemImage: "square.and.arrow.up")
+                }
+                .disabled(viewModel.currentImage == nil)
                 
                 // Series picker
                 Button {
@@ -93,6 +102,11 @@ struct ViewerContainerView: View {
         }
         .fullScreenCover(isPresented: $showingComparison) {
             ComparisonView(study: study, initialSeries: selectedSeries)
+        }
+        .sheet(isPresented: $showingExport) {
+            if let image = viewModel.currentImage {
+                ExportView(image: image, series: selectedSeries)
+            }
         }
         .task {
             // Load first series
