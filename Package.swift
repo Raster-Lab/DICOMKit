@@ -33,6 +33,10 @@ let package = Package(
         .executable(
             name: "dicom-info",
             targets: ["dicom-info"]
+        ),
+        .executable(
+            name: "dicom-convert",
+            targets: ["dicom-convert"]
         )
     ],
     dependencies: [
@@ -108,6 +112,17 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-info",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-convert",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-convert",
             exclude: ["README.md"]
         )
     ]
