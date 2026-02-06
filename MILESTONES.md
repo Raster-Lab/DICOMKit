@@ -3149,7 +3149,7 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 ### Milestone 10.14: Example Applications (v1.0.14)
 
-**Status**: In Progress (iOS Viewer ✅ Complete, others pending)  
+**Status**: In Progress (iOS ✅ Complete, macOS 🚧 Phase 1/5, others pending)  
 **Goal**: Production-quality example applications demonstrating DICOMKit  
 **Complexity**: High  
 **Dependencies**: All previous milestones (10.1-10.13)  
@@ -3159,12 +3159,16 @@ This milestone is divided into modular sub-milestones based on feature complexit
 
 This milestone delivers comprehensive demo applications across all Apple platforms, complete command-line tools, and educational playgrounds. Each component has a detailed implementation plan with phase-by-phase tasks and comprehensive test requirements.
 
-**Progress**: DICOMViewer iOS is complete (February 2026) with 21 Swift files, 35+ tests, and comprehensive documentation. Ready for Xcode project creation and user testing.
+**Progress**: 
+- DICOMViewer iOS is complete (February 2026) with 21 Swift files, 35+ tests, and comprehensive documentation. 
+- DICOMViewer macOS Phase 1 complete (February 2026) with 17 files, ~1,500 lines, 8 tests. Foundation layer with SwiftData database, file import, study browser, and basic image viewer working.
+- CLI Tools suite complete with 7 tools and 160+ tests.
+- Sample code/playgrounds complete with 27 playgrounds and 241 examples.
 
 **Detailed Implementation Plans**:
-- **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification
-- **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan ✅ **IMPLEMENTED**
-- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan
+- **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification ✅ **COMPLETE**
+- **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan ✅ **COMPLETE**
+- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan 🚧 **Phase 1/5 COMPLETE**
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - visionOS app detailed plan
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview
@@ -3238,39 +3242,49 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] STATUS.md (implementation report)
   - [x] Tests/README.md (test documentation)
 
-##### DICOMViewer macOS App (4-5 weeks)
-- [ ] Advanced file management:
-  - [ ] Study database (SQLite/SwiftData)
-  - [ ] Drag-and-drop import
-  - [ ] Watch folder auto-import
-  - [ ] DICOMDIR support
-- [ ] Professional viewer:
-  - [ ] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
-  - [ ] Hanging protocols
-  - [ ] Viewport linking (scroll, W/L, zoom)
-  - [ ] Cine playback with keyboard shortcuts
-- [ ] PACS integration:
+##### DICOMViewer macOS App (4-5 weeks) - 🚧 In Progress (Phase 1 ✅ Complete)
+**Status**: Phase 1/5 complete (February 2026)  
+**Location**: `DICOMViewer-macOS/` - See [README.md](DICOMViewer-macOS/README.md)  
+**Code**: 17 files (~1,500 lines), 8 unit tests
+
+- [x] **Phase 1: Foundation (Week 1)** ✅ COMPLETE:
+  - [x] Xcode project structure with XcodeGen
+  - [x] SwiftUI + MVVM architecture
+  - [x] Study database (SwiftData with Study/Series/Instance models)
+  - [x] File import (file browser, metadata extraction)
+  - [x] Drag-and-drop import (UI ready)
+  - [x] Study browser with list view, search, filter
+  - [x] Basic image viewer with W/L controls
+  - [x] Menu structure and Info.plist
+- [ ] **Phase 2: PACS Integration (Week 2)**:
   - [ ] C-FIND query (Patient/Study/Series/Instance)
   - [ ] C-MOVE retrieve with queue
   - [ ] C-STORE send with verification
   - [ ] QIDO-RS/WADO-RS/STOW-RS support
   - [ ] Multiple server configurations
-- [ ] MPR and 3D:
+  - [ ] Connection testing (C-ECHO)
+- [ ] **Phase 3: Professional Viewer (Week 3)**:
+  - [ ] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
+  - [ ] Hanging protocols
+  - [ ] Viewport linking (scroll, W/L, zoom)
+  - [ ] Cine playback with keyboard shortcuts
+- [ ] **Phase 4: MPR and 3D (Week 4)**:
   - [ ] 2D MPR (axial, sagittal, coronal)
   - [ ] Oblique MPR
   - [ ] Maximum Intensity Projection (MIP)
   - [ ] Volume rendering with Metal
   - [ ] Transfer function editor
-- [ ] Advanced measurements:
-  - [ ] All iOS measurements plus 3D tools
+- [ ] **Phase 5: Advanced Features (Week 5)**:
+  - [ ] Advanced measurements and 3D tools
   - [ ] Time-series analysis
   - [ ] Measurement reports (PDF, DICOM SR)
-- [ ] Printing:
   - [ ] Film composer with layouts
   - [ ] DICOM Print (C-PRINT)
-  - [ ] PDF export
-  - [ ] Local printer support
-- [ ] Testing: 250+ unit tests, 70+ integration tests, 40+ UI tests
+  - [ ] PDF export and local printer support
+  - [ ] Watch folder auto-import
+  - [ ] DICOMDIR support
+  - [ ] Comprehensive testing (250+ unit, 70+ integration, 40+ UI tests)
+  - [ ] Documentation and polish
 
 ##### DICOMViewer visionOS App (3-4 weeks)
 - [ ] Spatial viewing:
@@ -3401,13 +3415,15 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | Component | Unit Tests | Integration Tests | UI/Device Tests | Total | Status |
 |-----------|------------|-------------------|-----------------|-------|--------|
 | iOS Viewer | 35+ | N/A | N/A | 35+ | ✅ Complete |
-| macOS Viewer | 250+ | 70+ | 40+ | 360+ | Planned |
+| macOS Viewer | 8 (Phase 1) | 0 | 0 | 8+ | 🚧 Phase 1/5 |
 | visionOS Viewer | 205+ | 45+ | 20+ | 270+ | Planned |
 | CLI Tools | 160+ | - | - | 160+ | ✅ Complete |
 | Sample Code | 27 playgrounds (100% complete) | 143 tests | - | 241 examples | ✅ Complete |
-| **TOTAL** | **1,103+** | **213+** | **60+** | **1,376+** | In Progress |
+| **TOTAL** | **851+** | **188+** | **20+** | **1,059+** | In Progress |
 
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.
+
+**macOS Viewer Phase 1 Tests** (February 2026): 8 unit tests for DatabaseService (CRUD operations, search, filter). Phase 1 focuses on foundation layer. Full test suite (250+ unit, 70+ integration, 40+ UI) planned for Phases 2-5.
 
 **CLI Tools Actual Tests** (February 2026): 160+ unit tests across 7 tools (dicom-info, dicom-convert, dicom-validate, dicom-anon, dicom-dump, dicom-query, dicom-send). All core functionality tested. Integration tests (network operations) omitted as they require live PACS servers, but tools are production-ready with comprehensive error handling and mocking capabilities.
 
