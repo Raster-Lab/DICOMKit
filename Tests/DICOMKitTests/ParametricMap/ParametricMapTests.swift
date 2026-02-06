@@ -257,9 +257,10 @@ final class ParametricMapTests: XCTestCase {
     // MARK: - FunctionalGroup Tests
     
     func test_functionalGroup_initialization_succeeds() {
-        let dataSet = DataSet()
-        let functionalGroup = FunctionalGroup(dataSet: dataSet)
+        let functionalGroup = FunctionalGroup()
         
-        XCTAssertNotNil(functionalGroup.dataSet)
+        XCTAssertNil(functionalGroup.segmentIdentification)
+        XCTAssertNil(functionalGroup.derivationImage)
+        XCTAssertNil(functionalGroup.frameContent)
     }
 }

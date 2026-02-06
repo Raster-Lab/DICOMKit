@@ -1,26 +1,70 @@
 # DICOMViewer macOS - Keyboard Shortcuts Reference
 
-Quick reference guide for all keyboard shortcuts in DICOMViewer macOS.
+Quick reference guide for keyboard shortcuts in DICOMViewer macOS.
+
+## Currently Implemented Shortcuts (v1.0.14)
+
+The following shortcuts are **fully functional** in the current release:
+
+### File & Import
+- **⌘O** - Import Files...
+- **⌘⇧O** - Import Folder...
+
+### PACS Operations
+- **⌘K** - Query PACS...
+- **⌘⇧,** - Configure Servers...
+- **⌘⇧D** - Download Queue...
+
+### Viewport Layouts
+- **⌘1** - 1×1 Layout (Single viewport)
+- **⌘2** - 2×2 Layout (Four viewports)
+- **⌘3** - 3×3 Layout (Nine viewports)
+- **⌘4** - 4×4 Layout (Sixteen viewports)
+
+### Advanced Views
+- **⌘⇧M** - MPR View...
+- **⌘⇧3** - 3D Volume Rendering...
+
+### Export (Phase 5)
+- **⌘⇧E** - Export Measurements... (CSV/JSON/Text)
+- **⌘⇧R** - Generate PDF Report...
+
+**Total Implemented**: 13 keyboard shortcuts
+
+---
+
+## Complete Shortcut Reference
+
+The sections below document both implemented and planned shortcuts for the complete feature set.
+
+**Status Legend:**
+- ✅ **Implemented** - Shortcut is fully functional in v1.0.14
+- 🚧 **Planned** - Shortcut documented for future implementation
+- ⏸️ **Deferred** - Feature depends on external component not yet available
+
+**Note**: Most image manipulation shortcuts (zoom, pan, window/level, measurements) are planned for future releases and require implementing custom NSView keyboard event handling.
+
+---
 
 ## File Management
 
-| Shortcut | Action | Description |
-|----------|--------|-------------|
-| **⌘O** | Import Files... | Open file picker to import DICOM files |
-| **⌘⇧O** | Import Folder... | Import all DICOM files from a folder |
-| **⌘W** | Close Window | Close current window |
-| **⌘Q** | Quit Application | Exit DICOMViewer |
+| Shortcut | Action | Description | Status |
+|----------|--------|-------------|--------|
+| **⌘O** | Import Files... | Open file picker to import DICOM files | ✅ Implemented |
+| **⌘⇧O** | Import Folder... | Import all DICOM files from a folder | ✅ Implemented |
+| **⌘W** | Close Window | Close current window | 🚧 Planned |
+| **⌘Q** | Quit Application | Exit DICOMViewer | 🚧 Planned |
 
 ## Search and Navigation
 
-| Shortcut | Action | Description |
-|----------|--------|-------------|
-| **⌘F** | Focus Search | Move cursor to search field in Study Browser |
-| **↑** | Previous Study | Select previous study in list |
-| **↓** | Next Study | Select next study in list |
-| **⌘↑** | Scroll to Top | Jump to first study |
-| **⌘↓** | Scroll to Bottom | Jump to last study |
-| **Enter** | Open Study | View selected study's series |
+| Shortcut | Action | Description | Status |
+|----------|--------|-------------|--------|
+| **⌘F** | Focus Search | Move cursor to search field in Study Browser | 🚧 Planned |
+| **↑** | Previous Study | Select previous study in list | 🚧 Planned |
+| **↓** | Next Study | Select next study in list | 🚧 Planned |
+| **⌘↑** | Scroll to Top | Jump to first study | 🚧 Planned |
+| **⌘↓** | Scroll to Bottom | Jump to last study | 🚧 Planned |
+| **Enter** | Open Study | View selected study's series | 🚧 Planned |
 
 ## Image Viewer - Frame Navigation
 
