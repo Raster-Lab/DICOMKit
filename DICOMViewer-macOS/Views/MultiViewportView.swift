@@ -299,7 +299,14 @@ struct MultiViewportView: View {
                     selectedMeasurementIDs: measurementViewModel.selectedMeasurementIDs,
                     showMeasurements: showingMeasurements,
                     showLabels: measurementViewModel.showLabels,
-                    showValues: measurementViewModel.showValues
+                    showValues: measurementViewModel.showValues,
+                    selectedTool: $measurementViewModel.selectedTool,
+                    onAddPoint: { point in
+                        measurementViewModel.addPoint(at: point)
+                    },
+                    onCompleteMeasurement: {
+                        measurementViewModel.completeMeasurement()
+                    }
                 )
             } else {
                 EmptyViewportView(isSelected: isSelected) {
@@ -398,6 +405,9 @@ private struct ViewportContentView: View {
     let showMeasurements: Bool
     let showLabels: Bool
     let showValues: Bool
+    @Binding var selectedTool: MeasurementType?
+    let onAddPoint: (ImagePoint) -> Void
+    let onCompleteMeasurement: () -> Void
     
     var body: some View {
         GeometryReader { geometry in
@@ -425,6 +435,18 @@ private struct ViewportContentView: View {
                             viewSize: geometry.size,
                             zoom: viewModel.zoomLevel,
                             offset: viewModel.panOffset
+                        )
+                    }
+                    
+                    // Measurement interaction layer (if tool is selected)
+                    if showMeasurements && selectedTool != nil {
+                        MeasurementInteractionView(
+                            selectedTool: $selectedTool,
+                            imageSize: CGSize(width: image.size.width, height: image.size.height),
+                            zoom: viewModel.zoomLevel,
+                            offset: viewModel.panOffset,
+                            onAddPoint: onAddPoint,
+                            onComplete: onCompleteMeasurement
                         )
                     }
                 } else {
