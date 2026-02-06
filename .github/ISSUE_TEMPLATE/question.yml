@@ -1,0 +1,74 @@
+name: Question or Discussion
+description: Ask a question or start a discussion about DICOMKit
+title: "[Question]: "
+labels: ["question"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Have a question? We're here to help! 
+        
+        **Note**: For bug reports or feature requests, please use the appropriate issue template instead.
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Question Category
+      description: What is your question about?
+      options:
+        - Usage / How-to
+        - DICOM Standard Interpretation
+        - API Design
+        - Performance
+        - Platform Integration
+        - Best Practices
+        - Project Direction
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: Ask your question in detail
+      placeholder: What would you like to know?
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide any relevant context (what you're trying to accomplish, what you've already tried, etc.)
+      placeholder: |
+        I'm working on...
+        I've tried...
+
+  - type: textarea
+    id: code-sample
+    attributes:
+      label: Code Sample (Optional)
+      description: If relevant, provide a code sample
+      render: swift
+      placeholder: |
+        import DICOMKit
+        
+        // Your code here
+
+  - type: input
+    id: dicomkit-version
+    attributes:
+      label: DICOMKit Version (if applicable)
+      placeholder: "1.0.0"
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform (if applicable)
+      multiple: true
+      options:
+        - iOS
+        - macOS
+        - visionOS
+        - Not platform-specific

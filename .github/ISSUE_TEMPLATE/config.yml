@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 📚 Documentation
+    url: https://github.com/Raster-Lab/DICOMKit/tree/main/Documentation
+    about: Browse the official documentation
+  - name: 💬 Discussions
+    url: https://github.com/Raster-Lab/DICOMKit/discussions
+    about: Ask questions and discuss ideas with the community
+  - name: 🔐 Security Issue
+    url: https://github.com/Raster-Lab/DICOMKit/security/advisories/new
+    about: Report a security vulnerability (private disclosure)

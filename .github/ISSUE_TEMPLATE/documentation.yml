@@ -1,0 +1,80 @@
+name: Documentation Issue
+description: Report an issue with documentation (unclear, missing, or incorrect)
+title: "[Docs]: "
+labels: ["documentation", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve DICOMKit's documentation!
+
+  - type: dropdown
+    id: doc-type
+    attributes:
+      label: Documentation Type
+      description: What type of documentation needs improvement?
+      options:
+        - API Documentation (DocC comments)
+        - README.md
+        - CONTRIBUTING.md
+        - Code examples
+        - Platform guides
+        - MILESTONES.md
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: location
+    attributes:
+      label: Documentation Location
+      description: Where is the documentation issue? (file path, URL, or API name)
+      placeholder: "e.g., Sources/DICOMCore/Tag.swift or README.md section 'Getting Started'"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: issue-type
+    attributes:
+      label: Issue Type
+      description: What kind of documentation issue is this?
+      options:
+        - Missing documentation
+        - Incorrect/outdated information
+        - Unclear explanation
+        - Broken link
+        - Typo/grammar
+        - Missing code example
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Issue Description
+      description: Describe the documentation issue in detail
+      placeholder: What's wrong or missing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Documentation
+      description: What should the documentation say or include?
+      placeholder: Describe what would be helpful
+
+  - type: textarea
+    id: suggested-fix
+    attributes:
+      label: Suggested Fix (Optional)
+      description: If you have a suggestion for how to fix it, provide it here
+      placeholder: Proposed wording or content
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other context about the documentation issue
+      placeholder: Screenshots, related documentation, etc.
