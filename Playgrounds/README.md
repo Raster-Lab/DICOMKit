@@ -6,9 +6,10 @@ Comprehensive sample code and examples demonstrating DICOMKit usage across all f
 
 This collection contains 27+ interactive Swift playground files organized into 6 categories, covering everything from basic file reading to advanced medical imaging workflows. Each playground is a standalone Swift file with multiple examples, comprehensive comments, and quick reference guides.
 
-**Status**: In Progress (Categories 1-2 complete)  
-**Total Examples**: 75+ across completed categories  
-**Lines of Code**: 114KB+ of sample code  
+**Status**: In Progress (Categories 1-3 complete, 48%)  
+**Total Examples**: 115+ across completed categories  
+**Lines of Code**: 256KB+ of sample code  
+**Test Cases**: 143+ test cases in network operations  
 **Target Audience**: Developers integrating DICOMKit into medical imaging applications
 
 ## Quick Start
@@ -125,34 +126,45 @@ Advanced image display and manipulation techniques.
 - Best practices
 - 10 complete examples
 
-### 📋 3. Network Operations (5 playgrounds - PLANNED)
+### 3. Network Operations ✅ COMPLETE
+
 PACS integration and DICOMweb protocols.
 
-**3.1 PACS Query (C-FIND)** (PLANNED)
-- Patient/Study/Series/Instance level queries
+**3.1 PACS Query (C-FIND)** ✅ COMPLETE
+- Patient/Study/Series/Instance level queries  
 - Query filters and matching
-- Result parsing
+- Wildcard support
+- Date range queries
+- 9 examples, 30 test cases
 
-**3.2 PACS Retrieve (C-MOVE)** (PLANNED)
-- C-MOVE requests
+**3.2 PACS Retrieve (C-MOVE)** ✅ COMPLETE
+- C-MOVE and C-GET requests
 - Destination AE configuration
 - Progress tracking
+- Priority settings
+- 9 examples, 27 test cases
 
-**3.3 PACS Send (C-STORE)** (PLANNED)
+**3.3 PACS Send (C-STORE)** ✅ COMPLETE
 - Sending files to PACS
-- Verification
+- Verification and retry
 - Batch uploads
+- Compression support
+- 9 examples, 28 test cases
 
-**3.4 DICOMweb (QIDO/WADO/STOW)** (PLANNED)
+**3.4 DICOMweb (QIDO/WADO/STOW)** ✅ COMPLETE
 - QIDO-RS queries
-- WADO-RS retrieval
+- WADO-RS retrieval (objects, metadata, rendered images)
 - STOW-RS uploads
 - RESTful web services
+- Authentication patterns
+- 9 examples, 38 test cases
 
-**3.5 Modality Worklist** (PLANNED)
+**3.5 Modality Worklist** ✅ COMPLETE
 - Worklist queries (C-FIND MWL)
 - Scheduled procedures
 - Patient demographics
+- Workflow integration
+- 9 examples, 20 test cases
 
 ### 📝 4. Structured Reporting (4 playgrounds - PLANNED)
 Reading and creating DICOM Structured Reports.
@@ -337,11 +349,11 @@ Found an issue or want to add an example?
 |----------|-------------|----------|---------------|--------|
 | Getting Started | 4/4 | 33 | 48.3 KB | ✅ Complete |
 | Image Processing | 4/4 | 37 | 65.9 KB | ✅ Complete |
-| Network Operations | 0/5 | 0 | 0 KB | 📋 Planned |
+| Network Operations | 5/5 | 45 | 142.0 KB | ✅ Complete |
 | Structured Reporting | 0/4 | 0 | 0 KB | 📋 Planned |
 | SwiftUI Integration | 0/5 | 0 | 0 KB | 📋 Planned |
 | Advanced Topics | 0/5 | 0 | 0 KB | 📋 Planned |
-| **TOTAL** | **8/27** | **70** | **114.2 KB** | **30% Complete** |
+| **TOTAL** | **13/27** | **115** | **256.2 KB** | **48% Complete** |
 
 ## Changelog
 
@@ -353,10 +365,15 @@ Found an issue or want to add an example?
   - ✅ 2.2 Image Export (9 examples)
   - ✅ 2.3 Multi-frame Series (9 examples)
   - ✅ 2.4 Transfer Syntax (10 examples)
-- 📝 Created this README
+- ✅ Completed Category 3: Network Operations (5 playgrounds, 45 examples, 143 test cases)
+  - ✅ 3.1 PACS Query/C-FIND (9 examples, 30 tests)
+  - ✅ 3.2 PACS Retrieve/C-MOVE (9 examples, 27 tests)
+  - ✅ 3.3 PACS Send/C-STORE (9 examples, 28 tests)
+  - ✅ 3.4 DICOMweb (9 examples, 38 tests)
+  - ✅ 3.5 Modality Worklist (9 examples, 20 tests)
+- 📝 Updated this README
 
 ### Planned
-- Add Category 3: Network Operations (5 playgrounds)
 - Add Category 4: Structured Reporting (4 playgrounds)
 - Add Category 5: SwiftUI Integration (5 playgrounds)
 - Add Category 6: Advanced Topics (5 playgrounds)
