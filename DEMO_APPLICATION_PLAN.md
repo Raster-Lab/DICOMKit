@@ -19,7 +19,12 @@ This document provides a high-level overview. For detailed phase-by-phase implem
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 205+ unit tests, 45+ integration tests, 20+ device tests)
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Sample Code & Playgrounds (27 playgrounds, 1 week, 575+ test cases)
 
-**iOS Viewer Status**: Complete (February 2026) - All 4 phases implemented with 21 Swift files, 35+ tests. See [DICOMViewer-iOS/STATUS.md](DICOMViewer-iOS/STATUS.md).
+**iOS Viewer Status**: ✅ **Complete with Automation** (February 2026)
+- All 4 implementation phases complete (21 Swift files, 35+ tests)
+- **NEW:** Automated project setup (XcodeGen + shell script)
+- 8 comprehensive documentation files
+- Ready for immediate use
+- See [DICOMViewer-iOS/STATUS.md](DICOMViewer-iOS/STATUS.md) and [DICOMViewer-iOS/SETUP_AUTOMATION.md](DICOMViewer-iOS/SETUP_AUTOMATION.md)
 
 **Total Test Coverage**: 1,235+ unit tests, 240+ integration tests, 60+ UI tests, 575+ playground tests across all demo applications (iOS complete, others planned).
 
@@ -45,12 +50,23 @@ This document provides a high-level overview. For detailed phase-by-phase implem
 
 ## Application Portfolio
 
-### 1. DICOMViewer iOS App
+### 1. DICOMViewer iOS App ✅ COMPLETE
 
 **Platform**: iOS 17+  
 **Complexity**: High  
-**Development Time**: 3-4 weeks  
-**Primary Use Cases**: Mobile medical image viewing, point-of-care consultation, emergency imaging review
+**Development Time**: 3-4 weeks (COMPLETED)  
+**Primary Use Cases**: Mobile medical image viewing, point-of-care consultation, emergency imaging review  
+**Status**: ✅ All features implemented, tested, and documented with automated setup
+
+**Quick Start:**
+```bash
+cd DICOMViewer-iOS
+brew install xcodegen
+xcodegen generate
+open DICOMViewer.xcodeproj
+```
+
+See [DICOMViewer-iOS/](DICOMViewer-iOS/) for complete implementation.
 
 #### Core Features
 

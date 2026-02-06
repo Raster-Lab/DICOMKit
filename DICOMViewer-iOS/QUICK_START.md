@@ -8,6 +8,24 @@ This is a quick-start guide for creating an Xcode project for DICOMViewer iOS. F
 - macOS 14.0 (Sonoma) or later
 - Apple Developer account (for device testing)
 
+## 🚀 Fastest Setup - Automated (NEW!)
+
+**Want to skip manual steps? Use automation:**
+
+```bash
+# Install XcodeGen (one-time)
+brew install xcodegen
+
+# Generate project (1 command!)
+cd DICOMViewer-iOS
+xcodegen generate
+open DICOMViewer.xcodeproj
+```
+
+That's it! See [SETUP_AUTOMATION.md](SETUP_AUTOMATION.md) for details.
+
+**OR continue with manual setup below:**
+
 ## Step-by-Step Setup (5 minutes)
 
 ### 1. Create New Project
