@@ -110,16 +110,18 @@ DICOMViewer iOS is a production-quality medical imaging application that demonst
 
 - **Metadata Display and Export**
   - Complete metadata viewer UI
-  - Tag list with search functionality
-  - Group tags by category
-  - Display nested sequences
-  - Copy tag value function
+  - Patient, study, series, and storage information
+  - Export metadata as JSON or CSV
+  - Share exported metadata files
   - Quick info panel for key metadata
-  - PNG/JPEG export with quality settings
+
+- **Image Export** ✨ **NEW**
+  - PNG export (lossless)
+  - JPEG export with quality settings (10-100%)
+  - File size estimation
+  - Save to Photos library
   - Share sheet integration
-  - Save to Photos app
-  - Burn-in annotations option
-  - Export progress indicator
+  - Export current frame with applied W/L and transforms
 
 ### Phase 4 (Polish and Testing) ✅
 
@@ -183,7 +185,8 @@ DICOMViewer-iOS/
 │   │   ├── SeriesPickerView.swift
 │   │   ├── PresentationStateOverlayView.swift  # GSPS annotation/shutter rendering
 │   │   ├── PresentationStatePickerView.swift   # GSPS selection UI
-│   │   └── ComparisonView.swift                # NEW: Side-by-side comparison view
+│   │   ├── ComparisonView.swift                # NEW: Side-by-side comparison view
+│   │   └── ExportView.swift                    # NEW: Image export interface
 │   ├── Metadata/
 │   │   └── MetadataView.swift
 │   └── Settings/
@@ -192,7 +195,8 @@ DICOMViewer-iOS/
 │   ├── DICOMFileService.swift         # File I/O
 │   ├── ThumbnailService.swift         # Thumbnail cache
 │   ├── ImageRenderingService.swift    # Image rendering
-│   └── PresentationStateService.swift # GSPS loading and management
+│   ├── PresentationStateService.swift # GSPS loading and management
+│   └── ExportService.swift            # NEW: Image and metadata export
 ├── Tests/
 │   ├── MeasurementTests.swift         # Measurement model tests
 │   ├── PresentationStateTests.swift   # GSPS functionality tests
@@ -315,6 +319,35 @@ See [BUILD.md](BUILD.md) for detailed instructions, troubleshooting, and advance
 - Compare different sequences (T1 vs T2 MRI)
 - Compare same anatomy at different time points
 - Review left/right anatomical symmetry
+
+### Exporting Images and Metadata (NEW)
+
+**Exporting Images:**
+1. Open an image in the viewer
+2. Tap the "Export" button (up arrow icon) in the toolbar
+3. Choose export format:
+   - **PNG**: Lossless compression, larger file size
+   - **JPEG**: Lossy compression with adjustable quality (10-100%)
+4. For JPEG, adjust the quality slider to balance size vs quality
+5. Toggle "Save to Photos" to automatically add to your Photos library
+6. Tap "Export Image" to save the file
+7. After export, you can:
+   - Share via AirDrop, Messages, Mail, etc.
+   - Save to Files app
+   - Tap "Done" to close
+
+**Exporting Metadata:**
+1. Open the Info (ℹ️) view for a study
+2. Tap the Export button in the toolbar
+3. Choose format:
+   - **Export as JSON**: Structured data format
+   - **Export as CSV**: Spreadsheet-compatible format
+4. Share the exported file via share sheet
+
+**What's Exported:**
+- Current window/level settings applied to image
+- Current zoom, pan, and rotation state
+- Metadata includes patient info, study/series details, and storage info
 
 ## Architecture
 
