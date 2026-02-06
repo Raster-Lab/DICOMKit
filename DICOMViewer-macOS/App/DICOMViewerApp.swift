@@ -11,10 +11,23 @@ import SwiftData
 
 @main
 struct DICOMViewerApp: App {
+    @State private var showingPACSQuery = false
+    @State private var showingServerConfig = false
+    @State private var showingDownloadQueue = false
+    
     var body: some Scene {
         WindowGroup {
             StudyBrowserView()
                 .frame(minWidth: 1000, minHeight: 700)
+                .sheet(isPresented: $showingPACSQuery) {
+                    PACSQueryView()
+                }
+                .sheet(isPresented: $showingServerConfig) {
+                    ServerConfigurationView()
+                }
+                .sheet(isPresented: $showingDownloadQueue) {
+                    DownloadQueueView()
+                }
         }
         .commands {
             CommandGroup(replacing: .newItem) {
@@ -30,11 +43,22 @@ struct DICOMViewerApp: App {
             }
             
             CommandGroup(after: .sidebar) {
+                Divider()
+                
                 Button("Query PACS...") {
-                    // TODO: Implement PACS query (Phase 2)
+                    showingPACSQuery = true
                 }
                 .keyboardShortcut("k", modifiers: .command)
-                .disabled(true) // Disabled until Phase 2
+                
+                Button("Configure Servers...") {
+                    showingServerConfig = true
+                }
+                .keyboardShortcut(",", modifiers: [.command, .shift])
+                
+                Button("Download Queue...") {
+                    showingDownloadQueue = true
+                }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
             }
         }
         .modelContainer(DatabaseService.shared.modelContainer)
