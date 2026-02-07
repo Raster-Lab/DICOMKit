@@ -34,8 +34,8 @@ struct DICOMJson: ParsableCommand {
     @Flag(name: .shortAndLong, help: "Pretty-print JSON output")
     var pretty: Bool = false
     
-    @Flag(name: .long, help: "Sort JSON keys alphabetically")
-    var sortKeys: Bool = true
+    @Flag(name: .long, help: "Don't sort JSON keys alphabetically")
+    var noSortKeys: Bool = false
     
     @Option(name: .long, help: "JSON format: standard or dicomweb")
     var format: JsonFormat = .standard
@@ -156,7 +156,7 @@ struct DICOMJson: ParsableCommand {
             inlineBinaryThreshold: inlineThreshold > 0 ? inlineThreshold : nil,
             bulkDataBaseURL: bulkDataBaseURL,
             prettyPrinted: pretty,
-            sortedKeys: sortKeys
+            sortedKeys: !noSortKeys
         )
         
         let encoder = DICOMJSONEncoder(configuration: encoderConfig)

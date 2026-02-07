@@ -102,7 +102,7 @@ dicom-json file.dcm --output file.json --verbose
 | `-o, --output <path>` | Output file path (default: input with .json or .dcm extension) |
 | `-r, --reverse` | Convert from JSON to DICOM |
 | `-p, --pretty` | Pretty-print JSON output |
-| `--sort-keys` | Sort JSON keys alphabetically (default: true) |
+| `--no-sort-keys` | Don't sort JSON keys alphabetically (default: keys are sorted) |
 | `--format <format>` | JSON format: standard or dicomweb (default: standard) |
 | `--include-empty` | Include empty values in JSON |
 | `--inline-threshold <bytes>` | Inline binary data up to this size (default: 1024) |
