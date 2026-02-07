@@ -3764,7 +3764,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
-| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (62%) | Phase 2: ✅ Complete (4/4 tools), Phase 3: ✅ Complete, Phase 4: ✅ Complete (3/3 tools with tests) |
+| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (69%) | Phase 2: ✅ Complete (4/4 tools), Phase 3: ✅ Complete, Phase 4: ✅ Complete (3/3 tools with 103 tests) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
