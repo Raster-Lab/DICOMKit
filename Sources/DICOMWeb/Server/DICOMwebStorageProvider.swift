@@ -2,6 +2,21 @@ import Foundation
 import DICOMCore
 import DICOMKit
 
+/// Deletion mode for DICOM instances
+///
+/// Defines whether instances should be permanently deleted or soft-deleted
+/// (marked as deleted but retained in storage).
+///
+/// Reference: PS3.18 Section 6.7 - Delete Transaction
+public enum DeletionMode: String, Sendable, Codable {
+    /// Permanent deletion - instance is physically removed from storage
+    case permanent
+    
+    /// Soft deletion - instance is marked as deleted but retained in storage
+    /// Allows for recovery and audit purposes
+    case soft
+}
+
 /// Protocol for DICOMweb storage backend abstraction
 ///
 /// This protocol defines the interface for storage providers that back
@@ -58,27 +73,36 @@ public protocol DICOMwebStorageProvider: Sendable {
     ///   - studyUID: Study Instance UID
     ///   - seriesUID: Series Instance UID
     ///   - instanceUID: SOP Instance UID
+    ///   - mode: Deletion mode (permanent or soft delete), defaults to permanent
     /// - Returns: True if deleted, false if not found
     func deleteInstance(
         studyUID: String,
         seriesUID: String,
-        instanceUID: String
+        instanceUID: String,
+        mode: DeletionMode
     ) async throws -> Bool
     
     /// Deletes all instances in a series
     /// - Parameters:
     ///   - studyUID: Study Instance UID
     ///   - seriesUID: Series Instance UID
+    ///   - mode: Deletion mode (permanent or soft delete), defaults to permanent
     /// - Returns: Number of instances deleted
     func deleteSeries(
         studyUID: String,
-        seriesUID: String
+        seriesUID: String,
+        mode: DeletionMode
     ) async throws -> Int
     
     /// Deletes all instances in a study
-    /// - Parameter studyUID: Study Instance UID
+    /// - Parameters:
+    ///   - studyUID: Study Instance UID
+    ///   - mode: Deletion mode (permanent or soft delete), defaults to permanent
     /// - Returns: Number of instances deleted
-    func deleteStudy(studyUID: String) async throws -> Int
+    func deleteStudy(
+        studyUID: String,
+        mode: DeletionMode
+    ) async throws -> Int
     
     // MARK: - Query Operations
     

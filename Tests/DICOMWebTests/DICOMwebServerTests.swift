@@ -556,6 +556,186 @@ struct DICOMwebServerTests {
         
         #expect(response.statusCode == 404)
     }
+    
+    @Test("Soft delete instance")
+    func testSoftDeleteInstance() async throws {
+        // Create storage with a test instance
+        let testData = Data([1, 2, 3, 4])
+        let studyUID = "1.2.3.4"
+        let seriesUID = "1.2.3.4.5"
+        let instanceUID = "1.2.3.4.5.6"
+        
+        let storage = await InMemoryStorageProvider(instances: [
+            (studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, data: testData)
+        ])
+        
+        // Soft delete the instance
+        let deleted = try await storage.deleteInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID,
+            mode: .soft
+        )
+        
+        #expect(deleted == true, "Instance should be soft-deleted")
+        
+        // Instance should not be retrievable after soft delete
+        let retrieved = try await storage.getInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID
+        )
+        #expect(retrieved == nil, "Soft-deleted instance should not be retrievable")
+    }
+    
+    @Test("Permanent delete instance")
+    func testPermanentDeleteInstance() async throws {
+        // Create storage with a test instance
+        let testData = Data([1, 2, 3, 4])
+        let studyUID = "1.2.3.4"
+        let seriesUID = "1.2.3.4.5"
+        let instanceUID = "1.2.3.4.5.6"
+        
+        let storage = await InMemoryStorageProvider(instances: [
+            (studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, data: testData)
+        ])
+        
+        // Permanently delete the instance
+        let deleted = try await storage.deleteInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID,
+            mode: .permanent
+        )
+        
+        #expect(deleted == true, "Instance should be permanently deleted")
+        
+        // Instance should not be retrievable after permanent delete
+        let retrieved = try await storage.getInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID
+        )
+        #expect(retrieved == nil, "Permanently deleted instance should not be retrievable")
+    }
+    
+    @Test("Soft delete then permanent delete")
+    func testSoftThenPermanentDelete() async throws {
+        // Create storage with a test instance
+        let testData = Data([1, 2, 3, 4])
+        let studyUID = "1.2.3.4"
+        let seriesUID = "1.2.3.4.5"
+        let instanceUID = "1.2.3.4.5.6"
+        
+        let storage = await InMemoryStorageProvider(instances: [
+            (studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, data: testData)
+        ])
+        
+        // Soft delete first
+        _ = try await storage.deleteInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID,
+            mode: .soft
+        )
+        
+        // Then permanently delete
+        let deleted = try await storage.deleteInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID,
+            mode: .permanent
+        )
+        
+        #expect(deleted == true, "Instance should be permanently deleted after soft delete")
+        
+        // Instance should not exist anymore
+        let retrieved = try await storage.getInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID
+        )
+        #expect(retrieved == nil, "Instance should not exist after permanent delete")
+    }
+    
+    @Test("Soft delete series")
+    func testSoftDeleteSeries() async throws {
+        // Create storage with multiple instances in a series
+        let studyUID = "1.2.3.4"
+        let seriesUID = "1.2.3.4.5"
+        
+        let storage = await InMemoryStorageProvider(instances: [
+            (studyUID: studyUID, seriesUID: seriesUID, instanceUID: "1.2.3.4.5.1", data: Data([1])),
+            (studyUID: studyUID, seriesUID: seriesUID, instanceUID: "1.2.3.4.5.2", data: Data([2])),
+            (studyUID: studyUID, seriesUID: seriesUID, instanceUID: "1.2.3.4.5.3", data: Data([3]))
+        ])
+        
+        // Soft delete the series
+        let deleted = try await storage.deleteSeries(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            mode: .soft
+        )
+        
+        #expect(deleted == 3, "All 3 instances should be soft-deleted")
+        
+        // No instances should be retrievable
+        let instances = try await storage.getSeriesInstances(studyUID: studyUID, seriesUID: seriesUID)
+        #expect(instances.isEmpty, "Soft-deleted series should return no instances")
+    }
+    
+    @Test("Soft delete study")
+    func testSoftDeleteStudy() async throws {
+        // Create storage with multiple series in a study
+        let studyUID = "1.2.3.4"
+        
+        let storage = await InMemoryStorageProvider(instances: [
+            (studyUID: studyUID, seriesUID: "1.2.3.4.1", instanceUID: "1.2.3.4.1.1", data: Data([1])),
+            (studyUID: studyUID, seriesUID: "1.2.3.4.1", instanceUID: "1.2.3.4.1.2", data: Data([2])),
+            (studyUID: studyUID, seriesUID: "1.2.3.4.2", instanceUID: "1.2.3.4.2.1", data: Data([3])),
+            (studyUID: studyUID, seriesUID: "1.2.3.4.2", instanceUID: "1.2.3.4.2.2", data: Data([4]))
+        ])
+        
+        // Soft delete the study
+        let deleted = try await storage.deleteStudy(studyUID: studyUID, mode: .soft)
+        
+        #expect(deleted == 4, "All 4 instances should be soft-deleted")
+        
+        // No instances should be retrievable
+        let instances = try await storage.getStudyInstances(studyUID: studyUID)
+        #expect(instances.isEmpty, "Soft-deleted study should return no instances")
+    }
+    
+    @Test("Soft delete via HTTP DELETE with query parameter")
+    func testSoftDeleteViaHTTP() async throws {
+        // Create storage with a test instance
+        let testData = Data([1, 2, 3, 4])
+        let studyUID = "1.2.3.4"
+        let seriesUID = "1.2.3.4.5"
+        let instanceUID = "1.2.3.4.5.6"
+        
+        let storage = await InMemoryStorageProvider(instances: [
+            (studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, data: testData)
+        ])
+        let server = DICOMwebServer(storage: storage)
+        
+        // Delete with mode=soft query parameter
+        let request = DICOMwebRequest(
+            method: .delete,
+            path: "/dicom-web/studies/\(studyUID)/series/\(seriesUID)/instances/\(instanceUID)?mode=soft"
+        )
+        let response = await server.handleRequest(request)
+        
+        #expect(response.statusCode == 204, "Soft delete should succeed with 204 No Content")
+        
+        // Verify instance is soft-deleted (not retrievable)
+        let retrieved = try await storage.getInstance(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            instanceUID: instanceUID
+        )
+        #expect(retrieved == nil, "Soft-deleted instance should not be retrievable via API")
+    }
 }
 
 // MARK: - Storage Query Tests

@@ -377,7 +377,7 @@ extension DICOMDCMDIR {
             
             if verbose {
                 // Show attributes
-                for (tag, element) in record.attributes.sorted(by: { $0.key.rawValue < $1.key.rawValue }) {
+                for (tag, element) in record.attributes.sorted(by: { $0.key < $1.key }) {
                     if let stringValue = element.stringValue {
                         let attrPrefix = isLast ? "    " : "│   "
                         print("\(prefix)\(attrPrefix)    \(tag): \(stringValue)")

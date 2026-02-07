@@ -813,7 +813,10 @@ public actor DICOMwebServer {
             return .badRequest(message: "Missing studyUID")
         }
         
-        let deleted = try await storage.deleteStudy(studyUID: studyUID)
+        // Check for deletion mode in query parameters (defaults to permanent)
+        let mode: DeletionMode = parameters["mode"]?.lowercased() == "soft" ? .soft : .permanent
+        
+        let deleted = try await storage.deleteStudy(studyUID: studyUID, mode: mode)
         
         if deleted == 0 {
             return .notFound(message: "Study not found: \(studyUID)")
@@ -828,7 +831,10 @@ public actor DICOMwebServer {
             return .badRequest(message: "Missing studyUID or seriesUID")
         }
         
-        let deleted = try await storage.deleteSeries(studyUID: studyUID, seriesUID: seriesUID)
+        // Check for deletion mode in query parameters (defaults to permanent)
+        let mode: DeletionMode = parameters["mode"]?.lowercased() == "soft" ? .soft : .permanent
+        
+        let deleted = try await storage.deleteSeries(studyUID: studyUID, seriesUID: seriesUID, mode: mode)
         
         if deleted == 0 {
             return .notFound(message: "Series not found: \(seriesUID)")
@@ -844,7 +850,10 @@ public actor DICOMwebServer {
             return .badRequest(message: "Missing studyUID, seriesUID, or instanceUID")
         }
         
-        let deleted = try await storage.deleteInstance(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+        // Check for deletion mode in query parameters (defaults to permanent)
+        let mode: DeletionMode = parameters["mode"]?.lowercased() == "soft" ? .soft : .permanent
+        
+        let deleted = try await storage.deleteInstance(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, mode: mode)
         
         if !deleted {
             return .notFound(message: "Instance not found: \(instanceUID)")
