@@ -1585,10 +1585,20 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Server handler for capabilities endpoint
   - [x] Conformance statement generation (`ConformanceStatement`, `ConformanceStatementGenerator`)
 - [x] Extended Negotiation (partial):
-  - [ ] `accept-charset` parameter handling
+  - [x] `accept-charset` parameter handling
+    - [x] `acceptCharsets` property parses Accept-Charset header with quality values
+    - [x] `negotiateCharset()` method for content negotiation
+    - [x] 406 Not Acceptable response for unsupported charsets
+    - [x] 36 unit tests for parsing and negotiation
   - [x] Compression (gzip, deflate) for responses (`CompressionConfiguration`, `CompressionMiddleware`)
   - [x] ETag and conditional requests (`CacheControlDirective`)
-  - [ ] Range requests for partial content
+  - [x] Range requests for partial content
+    - [x] `rangeHeader` property returns raw Range header value
+    - [x] `byteRange` property parses and validates byte ranges
+    - [x] 206 Partial Content response with Content-Range header
+    - [x] 416 Range Not Satisfiable response for invalid ranges
+    - [x] Support for open-ended ranges (e.g., "bytes=1000-")
+    - [x] 23 unit tests for parsing and responses
 - [x] Caching:
   - [x] Cache-Control header support (`CacheControlDirective`)
   - [x] ETag generation and validation
@@ -1633,10 +1643,14 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 #### Technical Notes
 - Reference: PS3.18 Section 6 - Security Considerations
 - Reference: PS3.18 Section 10.8 - Capabilities
+- Reference: RFC 7231 Section 5.3.3 - Accept-Charset header
+- Reference: RFC 7233 - HTTP Range Requests
 - OAuth2/OIDC is the recommended authentication mechanism
 - SMART on FHIR enables EHR launch integration
 - HTTP/2 multiplexing reduces connection overhead
 - Caching critical for performance with repeated requests
+- Accept-Charset enables proper internationalization support
+- Range requests enable efficient partial content retrieval for large DICOM objects
 
 #### Acceptance Criteria
 - [ ] OAuth2 authentication works with major providers
@@ -1645,6 +1659,8 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [ ] Capability discovery provides accurate information
 - [ ] Caching improves performance for repeated requests
 - [x] Server-side caching with ETag-based conditional requests (22 tests)
+- [x] Accept-Charset parsing and negotiation works correctly (36 tests)
+- [x] Range request parsing and partial content responses work correctly (23 tests)
 - [ ] Delete services work correctly (when enabled)
 - [ ] Performance acceptable for production workloads
 - [ ] Security scan passes
