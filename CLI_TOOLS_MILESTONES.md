@@ -306,19 +306,19 @@ dicom-merge slices/*.dcm \
 
 ## Phase 3: Format Conversion Tools
 
-**Status**: 📋 Planned  
+**Status**: 🚧 In Progress (1 of 4 tools complete)  
 **Target Version**: v1.1.3-v1.1.6  
 **Priority**: Medium  
-**Timeline**: 2-3 weeks
+**Timeline**: 2-3 weeks (Started February 2026)
 
 ### Milestone 3.1: JSON Conversion
 
 **Tool**: `dicom-json`  
-**Status**: 📋 Planned  
+**Status**: ✅ Completed (February 2026)  
 **Priority**: Medium  
 **Complexity**: Medium  
-**Timeline**: 3 days  
-**Tests**: 20+ (planned)  
+**Timeline**: Completed in 1 day  
+**Tests**: 20 tests implemented  
 **Dependencies**: None
 
 #### Features
@@ -329,17 +329,17 @@ dicom-merge slices/*.dcm \
 - Pretty-print and compact modes
 - Streaming for large files
 - Metadata filtering
-- Schema validation
+- Schema validation (via DICOMJSONEncoder/Decoder)
 
 #### Deliverables
-- [ ] DICOM to JSON serializer
-- [ ] JSON to DICOM deserializer
-- [ ] DICOMweb JSON format support
-- [ ] Bulk data handler
-- [ ] Streaming processor
-- [ ] Schema validator
-- [ ] 20+ unit tests
-- [ ] Documentation and examples
+- [x] DICOM to JSON serializer
+- [x] JSON to DICOM deserializer
+- [x] DICOMweb JSON format support
+- [x] Bulk data handler
+- [x] Streaming processor (basic implementation)
+- [x] Schema validator (built-in with encoder/decoder)
+- [x] 20 unit tests
+- [x] Documentation and examples
 
 #### Usage Examples
 ```bash
@@ -356,7 +356,7 @@ dicom-json file.dcm --output file.json --format dicomweb
 dicom-json large.dcm --output large.json --stream
 ```
 
-**Lines of Code Estimate**: 400-500
+**Lines of Code**: 280 (main.swift)
 
 ---
 
