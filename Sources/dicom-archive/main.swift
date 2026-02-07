@@ -327,15 +327,9 @@ extension DICOMArchive {
 
                     // Deduplication check
                     if existingSOPs.contains(sopInstanceUID) {
-                        if skipDuplicates {
-                            if verbose { print("  ⏭️  Duplicate SOP Instance UID, skipping") }
-                            skipped += 1
-                            continue
-                        } else {
-                            if verbose { print("  ⏭️  Duplicate SOP Instance UID, skipping") }
-                            skipped += 1
-                            continue
-                        }
+                        if verbose { print("  ⏭️  Duplicate SOP Instance UID, skipping") }
+                        skipped += 1
+                        continue
                     }
 
                     let patientName = ds.string(for: .patientName) ?? "UNKNOWN"
@@ -1225,7 +1219,8 @@ extension DICOMArchive {
             let units = ["B", "KB", "MB", "GB", "TB"]
             var value = Double(bytes)
             var unitIndex = 0
-            while value >= 1024 && unitIndex < units.count - 1 {
+            let maxUnitIndex = units.count - 1
+            while value >= 1024 && unitIndex < maxUnitIndex {
                 value /= 1024
                 unitIndex += 1
             }
