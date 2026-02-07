@@ -723,11 +723,11 @@ dicom-export bulk study/ \
 ### Milestone 5.1: Integrated Query-Retrieve
 
 **Tool**: `dicom-qr`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete  
 **Priority**: High  
 **Complexity**: Medium  
 **Timeline**: 4 days  
-**Tests**: 25+ (planned)  
+**Tests**: 27 (implemented)  
 **Dependencies**: dicom-query, dicom-retrieve
 
 #### Features
@@ -741,14 +741,14 @@ dicom-export bulk study/ \
 - Post-retrieval validation
 
 #### Deliverables
-- [ ] Query-retrieve orchestrator
-- [ ] Interactive CLI interface
-- [ ] Study selector
-- [ ] Progress tracker
-- [ ] Resume capability
-- [ ] Validator
-- [ ] 25+ unit tests
-- [ ] Documentation and examples
+- [x] Query-retrieve orchestrator
+- [x] Interactive CLI interface (study selection with ranges and "all" option)
+- [x] Study selector (interactive mode with flexible input parsing)
+- [x] Progress tracker (real-time progress for multi-study retrievals)
+- [x] Resume capability (Resume subcommand with state file support)
+- [x] Validator (optional post-retrieval DICOM file validation)
+- [x] 27 unit tests (DICOMQRTests.swift)
+- [x] Documentation (comprehensive README.md with examples)
 
 #### Usage Examples
 ```bash
@@ -779,7 +779,7 @@ dicom-qr pacs://server:11112 \
   --save-state query.state
 ```
 
-**Lines of Code Estimate**: 450-550
+**Lines of Code**: 737 (main.swift) + 622 (tests)
 
 ---
 
