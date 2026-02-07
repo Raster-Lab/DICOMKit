@@ -109,25 +109,25 @@ extension DICOMMWLCommand {
             var queryKeys = WorklistQueryKeys.default()
             
             // Apply filters
-            if let dateValue = date {
-                let dateString = try parseDateFilter(dateValue)
+            if let date = date {
+                let dateString = try parseDateFilter(date)
                 queryKeys = queryKeys.scheduledDate(dateString)
             }
             
-            if let stationValue = station {
-                queryKeys = queryKeys.scheduledStationAET(stationValue)
+            if let station = station {
+                queryKeys = queryKeys.scheduledStationAET(station)
             }
             
-            if let patientValue = patient {
-                queryKeys = queryKeys.patientName(patientValue)
+            if let patient = patient {
+                queryKeys = queryKeys.patientName(patient)
             }
             
-            if let patientIdValue = patientId {
-                queryKeys = queryKeys.patientID(patientIdValue)
+            if let patientId = patientId {
+                queryKeys = queryKeys.patientID(patientId)
             }
             
-            if let modalityValue = modality {
-                queryKeys = queryKeys.modality(modalityValue)
+            if let modality = modality {
+                queryKeys = queryKeys.modality(modality)
             }
             
             if verbose && !json {
@@ -163,7 +163,9 @@ extension DICOMMWLCommand {
             case "tomorrow":
                 let formatter = DateFormatter()
                 formatter.dateFormat = "yyyyMMdd"
-                let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date())!
+                guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else {
+                    throw ValidationError("Failed to calculate tomorrow's date")
+                }
                 return formatter.string(from: tomorrow)
                 
             default:
@@ -231,7 +233,7 @@ extension DICOMMWLCommand {
                 jsonItems.append(jsonItem)
             }
             
-            let jsonData = try! JSONSerialization.data(withJSONObject: jsonItems, options: [.prettyPrinted])
+            let jsonData = (try? JSONSerialization.data(withJSONObject: jsonItems, options: [.prettyPrinted])) ?? Data()
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 print(jsonString)
             }

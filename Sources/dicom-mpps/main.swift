@@ -34,6 +34,44 @@ struct DICOMMPPSCommand: AsyncParsableCommand {
         version: "1.0.0",
         subcommands: [Create.self, Update.self]
     )
+    
+    // MARK: - Shared Helper Functions
+    
+    static func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String, port: UInt16) {
+        guard let url = URL(string: urlString) else {
+            throw ValidationError("Invalid URL: \(urlString)")
+        }
+        
+        guard let scheme = url.scheme, scheme == "pacs" else {
+            throw ValidationError("URL must use pacs:// scheme")
+        }
+        
+        guard let host = url.host else {
+            throw ValidationError("URL must include a hostname")
+        }
+        
+        let port: UInt16
+        if let urlPort = url.port {
+            port = UInt16(urlPort)
+        } else {
+            port = 104 // DICOM default port
+        }
+        
+        return (scheme, host, port)
+    }
+    
+    static func parseStatus(_ statusString: String) throws -> MPPSStatus {
+        switch statusString.uppercased().replacingOccurrences(of: " ", with: "") {
+        case "INPROGRESS", "IN_PROGRESS":
+            return .inProgress
+        case "COMPLETED":
+            return .completed
+        case "DISCONTINUED":
+            return .discontinued
+        default:
+            throw ValidationError("Invalid status. Use 'IN PROGRESS', 'COMPLETED', or 'DISCONTINUED'")
+        }
+    }
 }
 
 // MARK: - Create Subcommand
@@ -69,14 +107,14 @@ extension DICOMMPPSCommand {
         mutating func run() async throws {
             #if canImport(Network)
             // Parse URL
-            let serverInfo = try parseServerURL(url)
+            let serverInfo = try DICOMMPPSCommand.parseServerURL(url)
             
             guard serverInfo.scheme == "pacs" else {
                 throw ValidationError("Only pacs:// URLs are supported")
             }
             
             // Parse status
-            let mppsStatus = try parseStatus(status)
+            let mppsStatus = try DICOMMPPSCommand.parseStatus(status)
             
             if verbose {
                 fprintln("DICOM MPPS Tool v1.0.0")
@@ -112,42 +150,6 @@ extension DICOMMPPSCommand {
             #else
             throw ValidationError("Network functionality is not available on this platform")
             #endif
-        }
-        
-        func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String, port: UInt16) {
-            guard let url = URL(string: urlString) else {
-                throw ValidationError("Invalid URL: \(urlString)")
-            }
-            
-            guard let scheme = url.scheme, scheme == "pacs" else {
-                throw ValidationError("URL must use pacs:// scheme")
-            }
-            
-            guard let host = url.host else {
-                throw ValidationError("URL must include a hostname")
-            }
-            
-            let port: UInt16
-            if let urlPort = url.port {
-                port = UInt16(urlPort)
-            } else {
-                port = 104 // DICOM default port
-            }
-            
-            return (scheme, host, port)
-        }
-        
-        func parseStatus(_ statusString: String) throws -> MPPSStatus {
-            switch statusString.uppercased().replacingOccurrences(of: " ", with: "") {
-            case "INPROGRESS", "IN_PROGRESS":
-                return .inProgress
-            case "COMPLETED":
-                return .completed
-            case "DISCONTINUED":
-                return .discontinued
-            default:
-                throw ValidationError("Invalid status. Use 'IN PROGRESS', 'COMPLETED', or 'DISCONTINUED'")
-            }
         }
     }
 }
@@ -194,14 +196,14 @@ extension DICOMMPPSCommand {
         mutating func run() async throws {
             #if canImport(Network)
             // Parse URL
-            let serverInfo = try parseServerURL(url)
+            let serverInfo = try DICOMMPPSCommand.parseServerURL(url)
             
             guard serverInfo.scheme == "pacs" else {
                 throw ValidationError("Only pacs:// URLs are supported")
             }
             
             // Parse status
-            let mppsStatus = try parseStatus(status)
+            let mppsStatus = try DICOMMPPSCommand.parseStatus(status)
             
             // Validate status
             guard mppsStatus == .completed || mppsStatus == .discontinued else {
@@ -254,42 +256,6 @@ extension DICOMMPPSCommand {
             #else
             throw ValidationError("Network functionality is not available on this platform")
             #endif
-        }
-        
-        func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String, port: UInt16) {
-            guard let url = URL(string: urlString) else {
-                throw ValidationError("Invalid URL: \(urlString)")
-            }
-            
-            guard let scheme = url.scheme, scheme == "pacs" else {
-                throw ValidationError("URL must use pacs:// scheme")
-            }
-            
-            guard let host = url.host else {
-                throw ValidationError("URL must include a hostname")
-            }
-            
-            let port: UInt16
-            if let urlPort = url.port {
-                port = UInt16(urlPort)
-            } else {
-                port = 104 // DICOM default port
-            }
-            
-            return (scheme, host, port)
-        }
-        
-        func parseStatus(_ statusString: String) throws -> MPPSStatus {
-            switch statusString.uppercased().replacingOccurrences(of: " ", with: "") {
-            case "INPROGRESS", "IN_PROGRESS":
-                return .inProgress
-            case "COMPLETED":
-                return .completed
-            case "DISCONTINUED":
-                return .discontinued
-            default:
-                throw ValidationError("Invalid status. Use 'IN PROGRESS', 'COMPLETED', or 'DISCONTINUED'")
-            }
         }
     }
 }

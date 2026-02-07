@@ -394,9 +394,12 @@ public enum DICOMModalityWorklistService {
         return data
     }
     
-    /// Determines the VR for a given tag (simplified)
+    /// Determines the VR for a given tag
+    /// 
+    /// Note: This is a simplified implementation for common MWL tags.
+    /// TODO: Consider using DICOMDictionary module for comprehensive VR lookup
+    /// when the dictionary is available in DICOMNetwork dependencies.
     private static func determineVR(for tag: Tag) -> VR {
-        // This is a simplified version - in production, use the data dictionary
         switch tag {
         case .patientName: return .PN
         case .patientID: return .LO
@@ -425,9 +428,11 @@ public enum DICOMModalityWorklistService {
         // Prepare value data with padding
         var valueData = value.data(using: .ascii) ?? Data()
         
-        // Pad to even length per DICOM rules
+        // Pad to even length per DICOM rules (PS3.5 Section 6.2)
+        // DICOM requires all Value Fields to have even length
         if valueData.count % 2 != 0 {
-            // Use space padding for text VRs, null for others
+            // Use space (0x20) padding for text VRs, null (0x00) for binary VRs
+            // This is a DICOM-specific requirement to maintain alignment
             let paddingChar: UInt8 = vr.isStringVR ? 0x20 : 0x00
             valueData.append(paddingChar)
         }

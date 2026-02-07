@@ -419,8 +419,10 @@ public enum DICOMMPPSService {
         let responsePDU = try await association.receive()
         
         if let message = try assembler.addPDVs(from: responsePDU) {
-            // Check status in response (simplified - should parse N-CREATE-RSP)
-            // For now, just verify we got a response
+            // TODO: Parse N-CREATE-RSP and validate status code
+            // Status 0x0000 = success, other codes indicate failure
+            // For now, assume success if we received a response
+            // Future enhancement: throw DICOMNetworkError if status indicates failure
         }
     }
     
@@ -463,8 +465,10 @@ public enum DICOMMPPSService {
         let responsePDU = try await association.receive()
         
         if let message = try assembler.addPDVs(from: responsePDU) {
-            // Check status in response (simplified - should parse N-SET-RSP)
-            // For now, just verify we got a response
+            // TODO: Parse N-SET-RSP and validate status code
+            // Status 0x0000 = success, other codes indicate failure
+            // For now, assume success if we received a response
+            // Future enhancement: throw DICOMNetworkError if status indicates failure
         }
     }
     
@@ -544,9 +548,11 @@ public enum DICOMMPPSService {
         // Prepare value data with padding
         var valueData = value.data(using: .ascii) ?? Data()
         
-        // Pad to even length per DICOM rules
+        // Pad to even length per DICOM rules (PS3.5 Section 6.2)
+        // DICOM requires all Value Fields to have even length
         if valueData.count % 2 != 0 {
-            // Use space padding for text VRs, null for others
+            // Use space (0x20) padding for text VRs, null (0x00) for binary VRs
+            // This is a DICOM-specific requirement to maintain alignment
             let paddingChar: UInt8 = vr.isStringVR ? 0x20 : 0x00
             valueData.append(paddingChar)
         }
