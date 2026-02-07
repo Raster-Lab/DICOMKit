@@ -5,6 +5,30 @@ All notable changes to DICOMKit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.6] - 2026-02-07
+
+### Added - Phase 5 CLI Tools Complete
+- **dicom-mpps (v1.2.6)**: Modality Performed Procedure Step (MPPS) operations
+  - N-CREATE operation for creating MPPS instances (procedure start)
+  - N-SET operation for updating MPPS instances (procedure completion/discontinuation)
+  - Support for IN PROGRESS, COMPLETED, and DISCONTINUED states
+  - Referenced SOP instance tracking
+  - MPPSService in DICOMNetwork module
+  - Complete CLI tool with create and update subcommands
+  - Documentation and README
+
+## [1.2.5] - 2026-02-07
+
+### Added - Phase 5 CLI Tools
+- **dicom-mwl (v1.2.5)**: Modality Worklist Management
+  - C-FIND query support for Modality Worklist Information Model
+  - WorklistQueryKeys with flexible filtering (date, station AET, patient, modality)
+  - JSON output support for automation
+  - Verbose mode for detailed attribute display
+  - ModalityWorklistService in DICOMNetwork module
+  - Complete CLI tool with query subcommand
+  - Documentation and README
+
 ## [1.0.0] - TBD
 
 ### Major Release - Production Ready
