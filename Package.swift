@@ -113,6 +113,14 @@ let package = Package(
         .executable(
             name: "dicom-echo",
             targets: ["dicom-echo"]
+        ),
+        .executable(
+            name: "dicom-mwl",
+            targets: ["dicom-mwl"]
+        ),
+        .executable(
+            name: "dicom-mpps",
+            targets: ["dicom-mpps"]
         )
     ],
     dependencies: [
@@ -407,6 +415,26 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-echo",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-mwl",
+            dependencies: [
+                "DICOMCore",
+                "DICOMNetwork",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-mwl",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-mpps",
+            dependencies: [
+                "DICOMCore",
+                "DICOMNetwork",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-mpps",
             exclude: ["README.md"]
         )
     ]
