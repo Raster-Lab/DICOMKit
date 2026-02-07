@@ -3712,7 +3712,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - [x] **dicom-wado** (v1.2.4) - DICOMweb client (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) ✅ Complete (February 2026)
 - [ ] **dicom-mwl** (v1.2.5) - Modality Worklist Management
 - [ ] **dicom-mpps** (v1.2.6) - MPPS operations (N-CREATE, N-SET)
-- [ ] **dicom-echo** (v1.2.7) - Network testing and diagnostics
+- [x] **dicom-echo** (v1.2.7) - Network testing and diagnostics ✅ Complete (February 2026, 17 unit tests)
 
 #### Phase 6: Advanced and Specialized Tools (v1.3.0-v1.3.5)
 
@@ -3735,9 +3735,9 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Phase 2 | 4 | High | 105+ | 2,600+ | ✅ Complete |
 | Phase 3 | 4 | Medium | 80+ | 1,700 | ✅ Complete |
 | Phase 4 | 3 | Medium | 103+/95+ | 1,700-2,100 | ✅ Complete |
-| Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | 📋 Planned |
+| Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | 🚧 In Progress (3/5 complete) |
 | Phase 6 | 6 | Low-Medium | 130+ | 2,700-3,300 | 📋 Planned |
-| **Total** | **29** | - | **448+/695+** | **15,338** | **62%** |
+| **Total** | **29** | - | **448+/695+** | **15,338** | **66%** |
 
 #### Technical Notes
 - All tools support macOS and Linux platforms
@@ -3764,7 +3764,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
-| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (69%) | Phase 2: ✅ Complete (4/4 tools), Phase 3: ✅ Complete, Phase 4: ✅ Complete (3/3 tools with 103 tests) |
+| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (72%) | Phase 2: ✅ Complete (4/4 tools), Phase 3: ✅ Complete, Phase 4: ✅ Complete (3/3 tools with 103 tests), Phase 5: 🚧 In Progress (3/5 tools) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
@@ -3782,6 +3782,13 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - ✅ dicom-dcmdir: DICOMDIR management (tool exists, 18 tests added, update subcommand pending)
 - ✅ dicom-archive: Local DICOM archive with query/retrieve (45 tests, 7 subcommands)
 - ✅ dicom-export: Advanced export with metadata embedding (40+ tests, 4 subcommands)
+
+**Phase 5 Tools (🚧 60% complete)**:
+- ✅ dicom-qr: Integrated query-retrieve workflow
+- ✅ dicom-wado: DICOMweb client (WADO-RS, QIDO-RS, STOW-RS, UPS-RS)
+- ✅ dicom-echo: Network testing and diagnostics (17 tests)
+- ⏸ dicom-mwl: Modality Worklist Management (pending)
+- ⏸ dicom-mpps: MPPS operations (pending)
 
 ---
 
