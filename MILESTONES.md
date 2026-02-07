@@ -3784,9 +3784,9 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - ✅ dicom-export: Advanced export with metadata embedding (40+ tests, 4 subcommands)
 
 **Phase 5 Tools (✅ 100% complete, February 2026)**:
-- ✅ dicom-qr: Integrated query-retrieve workflow
+- ✅ dicom-qr: Integrated query-retrieve workflow (27 tests)
 - ✅ dicom-wado: DICOMweb client (WADO-RS, QIDO-RS, STOW-RS, UPS-RS)
-- ✅ dicom-echo: Network testing and diagnostics (17 tests)
+- ✅ dicom-echo: Network testing and diagnostics (25 tests)
 - ✅ dicom-mwl: Modality Worklist Management (C-FIND)
 - ✅ dicom-mpps: MPPS operations (N-CREATE, N-SET)
 
