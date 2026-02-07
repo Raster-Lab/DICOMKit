@@ -58,6 +58,132 @@ public struct DICOMwebRequest: Sendable {
         return DICOMMediaType.parse(ct)
     }
     
+    /// Gets the Accept-Charset header as an array of charset preferences
+    ///
+    /// Parses the Accept-Charset header and returns an array of charset names with optional quality values.
+    /// If no Accept-Charset header is present, defaults to ["utf-8"].
+    ///
+    /// Example: "iso-8859-5, unicode-1-1;q=0.8, utf-8;q=1.0" returns ["utf-8", "iso-8859-5", "unicode-1-1"]
+    ///
+    /// Reference: RFC 7231 Section 5.3.3 - Accept-Charset
+    public var acceptCharsets: [String] {
+        guard let acceptCharset = header("Accept-Charset") else {
+            // Default to utf-8 if no Accept-Charset header is present
+            return ["utf-8"]
+        }
+        
+        // Parse charset preferences with optional quality values
+        var charsets: [(charset: String, quality: Double)] = []
+        
+        for part in acceptCharset.split(separator: ",") {
+            let trimmed = part.trimmingCharacters(in: .whitespaces)
+            let components = trimmed.split(separator: ";")
+            
+            guard !components.isEmpty else { continue }
+            
+            let charset = String(components[0]).trimmingCharacters(in: .whitespaces).lowercased()
+            var quality = 1.0
+            
+            // Parse quality value if present (e.g., "q=0.8")
+            if components.count > 1 {
+                for component in components[1...] {
+                    let param = component.trimmingCharacters(in: .whitespaces)
+                    if param.hasPrefix("q="), let qValue = Double(param.dropFirst(2)) {
+                        quality = qValue
+                        break
+                    }
+                }
+            }
+            
+            charsets.append((charset: charset, quality: quality))
+        }
+        
+        // Sort by quality value (descending) and return charset names
+        return charsets
+            .sorted { $0.quality > $1.quality }
+            .map { $0.charset }
+    }
+    
+    /// Negotiates the best matching charset from available charsets
+    ///
+    /// - Parameter available: Array of available charset names (e.g., ["utf-8", "iso-8859-1"])
+    /// - Returns: The best matching charset, or nil if no match found
+    ///
+    /// Reference: RFC 7231 Section 5.3.3 - Accept-Charset
+    public func negotiateCharset(from available: [String]) -> String? {
+        let acceptedCharsets = acceptCharsets
+        let availableNormalized = available.map { $0.lowercased() }
+        
+        // Special case: "*" matches any charset
+        if acceptedCharsets.contains("*") {
+            return available.first
+        }
+        
+        // Find first accepted charset that's available
+        for acceptedCharset in acceptedCharsets {
+            if let index = availableNormalized.firstIndex(of: acceptedCharset) {
+                return available[index]
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Gets the Range header value
+    ///
+    /// The Range header is used to request partial content from the server.
+    ///
+    /// Example: "bytes=0-1023" requests bytes 0 through 1023 (inclusive)
+    ///
+    /// Reference: RFC 7233 Section 3.1 - Range Header
+    public var rangeHeader: String? {
+        return header("Range")
+    }
+    
+    /// Parses the Range header and returns the requested byte range
+    ///
+    /// Supports the standard HTTP Range header format: "bytes=start-end"
+    ///
+    /// - Returns: A tuple with start and end byte positions (inclusive), or nil if no valid range
+    ///
+    /// Reference: RFC 7233 Section 3.1 - Range Header
+    public var byteRange: (start: Int, end: Int)? {
+        guard let rangeValue = rangeHeader else { return nil }
+        
+        // Parse "bytes=start-end" format
+        let trimmed = rangeValue.trimmingCharacters(in: .whitespaces)
+        
+        // Must start with "bytes="
+        guard trimmed.hasPrefix("bytes=") else { return nil }
+        
+        let rangeSpec = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+        
+        // Parse start-end
+        let parts = rangeSpec.split(separator: "-", maxSplits: 1)
+        
+        guard parts.count == 2 else { return nil }
+        
+        let startStr = parts[0].trimmingCharacters(in: .whitespaces)
+        let endStr = parts[1].trimmingCharacters(in: .whitespaces)
+        
+        // Parse start position
+        guard !startStr.isEmpty, let start = Int(startStr), start >= 0 else {
+            return nil
+        }
+        
+        // Parse end position (may be empty for suffix range)
+        if endStr.isEmpty {
+            // bytes=100- means from byte 100 to end
+            return (start: start, end: Int.max)
+        }
+        
+        guard let end = Int(endStr), end >= start else {
+            return nil
+        }
+        
+        return (start: start, end: end)
+    }
+    
     /// HTTP methods
     public enum HTTPMethod: String, Sendable {
         case get = "GET"
@@ -152,10 +278,25 @@ public struct DICOMwebResponse: Sendable {
         )
     }
     
-    /// Creates a 406 Not Acceptable response
+    /// Creates a 406 Not Acceptable response for media types
     public static func notAcceptable(supportedTypes: [DICOMMediaType]) -> DICOMwebResponse {
         let types = supportedTypes.map { $0.description }.joined(separator: ", ")
         let body = "{\"error\": \"Not Acceptable\", \"supportedTypes\": \"\(types)\"}"
+        return DICOMwebResponse(
+            statusCode: 406,
+            headers: ["Content-Type": "application/json"],
+            body: body.data(using: .utf8)
+        )
+    }
+    
+    /// Creates a 406 Not Acceptable response for charsets
+    /// - Parameter supportedCharsets: Array of supported charset names
+    /// - Returns: A 406 response with supported charsets listed
+    ///
+    /// Reference: RFC 7231 Section 6.5.6 - 406 Not Acceptable
+    public static func notAcceptable(supportedCharsets: [String]) -> DICOMwebResponse {
+        let charsets = supportedCharsets.joined(separator: ", ")
+        let body = "{\"error\": \"Not Acceptable\", \"supportedCharsets\": \"\(charsets)\"}"
         return DICOMwebResponse(
             statusCode: 406,
             headers: ["Content-Type": "application/json"],
@@ -180,6 +321,50 @@ public struct DICOMwebResponse: Sendable {
             statusCode: 415,
             headers: ["Content-Type": "application/json"],
             body: body.data(using: .utf8)
+        )
+    }
+    
+    /// Creates a 416 Range Not Satisfiable response
+    /// - Parameter totalLength: Total length of the resource in bytes
+    /// - Returns: A 416 response with Content-Range header indicating total size
+    ///
+    /// Reference: RFC 7233 Section 4.4 - 416 Range Not Satisfiable
+    public static func rangeNotSatisfiable(totalLength: Int) -> DICOMwebResponse {
+        let body = "{\"error\": \"Range Not Satisfiable\"}"
+        var headers: [String: String] = ["Content-Type": "application/json"]
+        headers["Content-Range"] = "bytes */\(totalLength)"
+        return DICOMwebResponse(
+            statusCode: 416,
+            headers: headers,
+            body: body.data(using: .utf8)
+        )
+    }
+    
+    /// Creates a 206 Partial Content response
+    /// - Parameters:
+    ///   - body: Partial content data
+    ///   - range: The byte range being returned (start and end, inclusive)
+    ///   - totalLength: Total length of the complete resource
+    ///   - contentType: Media type of the content
+    /// - Returns: A 206 response with Content-Range header
+    ///
+    /// Reference: RFC 7233 Section 4.1 - 206 Partial Content
+    public static func partialContent(
+        body: Data,
+        range: (start: Int, end: Int),
+        totalLength: Int,
+        contentType: String = "application/octet-stream"
+    ) -> DICOMwebResponse {
+        var headers: [String: String] = [:]
+        headers["Content-Type"] = contentType
+        headers["Content-Length"] = "\(body.count)"
+        headers["Content-Range"] = "bytes \(range.start)-\(range.end)/\(totalLength)"
+        headers["Accept-Ranges"] = "bytes"
+        
+        return DICOMwebResponse(
+            statusCode: 206,
+            headers: headers,
+            body: body
         )
     }
     
