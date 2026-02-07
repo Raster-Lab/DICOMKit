@@ -45,13 +45,8 @@ public struct DICOMDIRWriter {
         // Build directory record sequence
         let directoryRecordSequence = try buildDirectoryRecordSequence(from: directory.rootRecords)
         
-        // Add directory record sequence to data set
-        let sequenceElement = DataElement(
-            tag: .directoryRecordSequence,
-            vr: .sequence,
-            data: .sequence(directoryRecordSequence)
-        )
-        dataSet.set(sequenceElement)
+        // Add directory record sequence to data set using setSequence
+        dataSet.setSequence(directoryRecordSequence, for: .directoryRecordSequence)
         
         // Create file meta information
         let fileMetaInformation = createFileMetaInformation()
@@ -85,14 +80,14 @@ public struct DICOMDIRWriter {
         var versionData = Data(count: 2)
         versionData[0] = 0x00
         versionData[1] = 0x01
-        fmi.set(DataElement(tag: .fileMetaInformationVersion, vr: .otherByteString, data: .bytes(versionData)))
+        fmi[.fileMetaInformationVersion] = DataElement.data(tag: .fileMetaInformationVersion, vr: .OB, data: versionData)
         
         // Media Storage SOP Class UID (DICOMDIR)
         fmi[.mediaStorageSOPClassUID] = DataElement.string(tag: .mediaStorageSOPClassUID, vr: .UI, value: mediaStorageDirectorySOPClassUID)
         
         // Media Storage SOP Instance UID (generate unique UID)
         let sopInstanceUID = UIDGenerator.generateUID()
-        fmi[.mediaStorageSOPInstanceUID] = DataElement.string(tag: .mediaStorageSOPInstanceUID, vr: .UI, value: sopInstanceUID)
+        fmi[.mediaStorageSOPInstanceUID] = DataElement.string(tag: .mediaStorageSOPInstanceUID, vr: .UI, value: sopInstanceUID.value)
         
         // Transfer Syntax UID (Explicit VR Little Endian)
         fmi[.transferSyntaxUID] = DataElement.string(tag: .transferSyntaxUID, vr: .UI, value: TransferSyntax.explicitVRLittleEndian.uid)
@@ -133,7 +128,7 @@ public struct DICOMDIRWriter {
         // For now, we'll create the structure without offset values
         for record in allRecords {
             let recordDataSet = try buildDirectoryRecordDataSet(from: record)
-            let item = SequenceItem(dataSet: recordDataSet)
+            let item = SequenceItem(elements: Array(recordDataSet))
             items.append(item)
         }
         
@@ -181,7 +176,7 @@ public struct DICOMDIRWriter {
         
         // Add all other attributes
         for (tag, element) in record.attributes {
-            dataSet.set(element)
+            dataSet[tag] = element
         }
         
         return dataSet
@@ -218,36 +213,36 @@ extension DICOMDirectory {
             let dataSet = file.dataSet
             
             // Extract patient information
-            guard let patientID = dataSet.string(forTag: .patientID) else {
-                throw DICOMError.invalidFormat(message: "Missing Patient ID")
+            guard let patientID = dataSet.string(for: .patientID) else {
+                throw DICOMError.parsingFailed( "Missing Patient ID")
             }
-            let patientName = dataSet.string(forTag: .patientName) ?? ""
+            let patientName = dataSet.string(for: .patientName) ?? ""
             
             // Extract study information
-            guard let studyInstanceUID = dataSet.string(forTag: .studyInstanceUID) else {
-                throw DICOMError.invalidFormat(message: "Missing Study Instance UID")
+            guard let studyInstanceUID = dataSet.string(for: .studyInstanceUID) else {
+                throw DICOMError.parsingFailed( "Missing Study Instance UID")
             }
-            let studyDate = dataSet.string(forTag: .studyDate)
-            let studyTime = dataSet.string(forTag: .studyTime)
-            let studyDescription = dataSet.string(forTag: .studyDescription)
+            let studyDate = dataSet.string(for: .studyDate)
+            let studyTime = dataSet.string(for: .studyTime)
+            let studyDescription = dataSet.string(for: .studyDescription)
             
             // Extract series information
-            guard let seriesInstanceUID = dataSet.string(forTag: .seriesInstanceUID) else {
-                throw DICOMError.invalidFormat(message: "Missing Series Instance UID")
+            guard let seriesInstanceUID = dataSet.string(for: .seriesInstanceUID) else {
+                throw DICOMError.parsingFailed( "Missing Series Instance UID")
             }
-            let modality = dataSet.string(forTag: .modality) ?? "OT"
-            let seriesNumber = dataSet.string(forTag: .seriesNumber)
-            let seriesDescription = dataSet.string(forTag: .seriesDescription)
+            let modality = dataSet.string(for: .modality) ?? "OT"
+            let seriesNumber = dataSet.string(for: .seriesNumber)
+            let seriesDescription = dataSet.string(for: .seriesDescription)
             
             // Extract instance information
-            guard let sopClassUID = file.fileMetaInformation.string(forTag: .mediaStorageSOPClassUID) else {
-                throw DICOMError.invalidFormat(message: "Missing SOP Class UID")
+            guard let sopClassUID = file.fileMetaInformation.string(for: .mediaStorageSOPClassUID) else {
+                throw DICOMError.parsingFailed( "Missing SOP Class UID")
             }
-            guard let sopInstanceUID = file.fileMetaInformation.string(forTag: .mediaStorageSOPInstanceUID) else {
-                throw DICOMError.invalidFormat(message: "Missing SOP Instance UID")
+            guard let sopInstanceUID = file.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID) else {
+                throw DICOMError.parsingFailed( "Missing SOP Instance UID")
             }
-            let transferSyntaxUID = file.fileMetaInformation.string(forTag: .transferSyntaxUID) ?? TransferSyntax.explicitVRLittleEndian.uid
-            let instanceNumber = dataSet.string(forTag: .instanceNumber)
+            let transferSyntaxUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? TransferSyntax.explicitVRLittleEndian.uid
+            let instanceNumber = dataSet.string(for: .instanceNumber)
             
             // Get or create patient record
             var patient: DirectoryRecord

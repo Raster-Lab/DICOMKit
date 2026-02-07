@@ -46,11 +46,11 @@ public struct DICOMDIRReader {
         let specificCharacterSet = dataSet.string(for: .specificCharacterSet)
         
         // Extract file-set descriptor information
-        let fileSetDescriptorFileID = dataSet.strings(forTag: .fileSetDescriptorFileID)
+        let fileSetDescriptorFileID = dataSet.strings(for: .fileSetDescriptorFileID)
         let specificCharacterSetOfFileSetDescriptorFile = dataSet.string(for: .specificCharacterSetOfFileSetDescriptorFile)
         
         // Extract consistency flag
-        let consistencyFlag = dataSet.uint16(forTag: .fileSetConsistencyFlag) ?? 0x0000
+        let consistencyFlag = dataSet.uint16(for: .fileSetConsistencyFlag) ?? 0x0000
         let isConsistent = (consistencyFlag == 0x0000)
         
         // Parse directory record sequence
@@ -76,8 +76,7 @@ public struct DICOMDIRReader {
     /// - Returns: Array of root directory records
     /// - Throws: DICOMError if parsing fails
     private static func parseDirectoryRecordSequence(dataSet: DataSet) throws -> [DirectoryRecord] {
-        guard let element = dataSet.element(forTag: .directoryRecordSequence),
-              case .sequence(let items) = element.data else {
+        guard let items = dataSet.sequence(for: .directoryRecordSequence) else {
             // No directory records
             return []
         }
@@ -88,11 +87,11 @@ public struct DICOMDIRReader {
         
         // First pass: Parse all records and build a map
         for (index, item) in items.enumerated() {
-            let record = try parseDirectoryRecord(from: item.dataSet)
+            let record = try parseDirectoryRecord(from: item)
             
             // Get offsets for navigation
-            let nextOffset = item.dataSet.uint32(for: .offsetOfTheNextDirectoryRecord)
-            let lowerOffset = item.dataSet.uint32(for: .offsetOfReferencedLowerLevelDirectoryEntity)
+            let nextOffset = item[.offsetOfTheNextDirectoryRecord]?.uint32Value
+            let lowerOffset = item[.offsetOfReferencedLowerLevelDirectoryEntity]?.uint32Value
             
             recordMap[index] = (record, nextOffset, lowerOffset)
         }
@@ -173,29 +172,29 @@ public struct DICOMDIRReader {
     
     /// Parse a single directory record from a SequenceItem
     ///
-    /// - Parameter dataSet: DataSet for the record
+    /// - Parameter item: SequenceItem for the record
     /// - Returns: Parsed directory record
     /// - Throws: DICOMError if parsing fails
-    private static func parseDirectoryRecord(from dataSet: DataSet) throws -> DirectoryRecord {
+    private static func parseDirectoryRecord(from item: SequenceItem) throws -> DirectoryRecord {
         // Get record type
-        guard let recordTypeString = dataSet.string(for: .directoryRecordType),
+        guard let recordTypeString = item.string(for: .directoryRecordType),
               let recordType = DirectoryRecordType(rawValue: recordTypeString) else {
-            throw DICOMError.invalidFormat(message: "Missing or invalid Directory Record Type")
+            throw DICOMError.parsingFailed("Missing or invalid Directory Record Type")
         }
         
         // Get in-use flag
-        let inUseFlag = dataSet.uint16(forTag: .recordInUseFlag) ?? 0xFFFF
+        let inUseFlag = item[.recordInUseFlag]?.uint16Value ?? 0xFFFF
         let isActive = (inUseFlag == 0xFFFF)
         
         // Get referenced file information
-        let referencedFileID = dataSet.strings(forTag: .referencedFileID)
-        let referencedSOPClassUID = dataSet.string(for: .referencedSOPClassUIDInFile)
-        let referencedSOPInstanceUID = dataSet.string(for: .referencedSOPInstanceUIDInFile)
-        let referencedTransferSyntaxUID = dataSet.string(for: .referencedTransferSyntaxUIDInFile)
+        let referencedFileID = item.strings(for: .referencedFileID)
+        let referencedSOPClassUID = item.string(for: .referencedSOPClassUIDInFile)
+        let referencedSOPInstanceUID = item.string(for: .referencedSOPInstanceUIDInFile)
+        let referencedTransferSyntaxUID = item.string(for: .referencedTransferSyntaxUIDInFile)
         
         // Extract all other attributes for this record
         var attributes: [Tag: DataElement] = [:]
-        for tag in dataSet.tags {
+        for tag in item.tags {
             // Skip navigation and reference tags (we handle those separately)
             if tag == .directoryRecordType || 
                tag == .recordInUseFlag ||
@@ -208,7 +207,7 @@ public struct DICOMDIRReader {
                 continue
             }
             
-            if let element = dataSet.element(forTag: tag) {
+            if let element = item[tag] {
                 attributes[tag] = element
             }
         }
