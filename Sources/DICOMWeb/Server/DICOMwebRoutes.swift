@@ -129,6 +129,61 @@ public struct DICOMwebRequest: Sendable {
         return nil
     }
     
+    /// Gets the Range header value
+    ///
+    /// The Range header is used to request partial content from the server.
+    ///
+    /// Example: "bytes=0-1023" requests bytes 0 through 1023 (inclusive)
+    ///
+    /// Reference: RFC 7233 Section 3.1 - Range Header
+    public var rangeHeader: String? {
+        return header("Range")
+    }
+    
+    /// Parses the Range header and returns the requested byte range
+    ///
+    /// Supports the standard HTTP Range header format: "bytes=start-end"
+    ///
+    /// - Returns: A tuple with start and end byte positions (inclusive), or nil if no valid range
+    ///
+    /// Reference: RFC 7233 Section 3.1 - Range Header
+    public var byteRange: (start: Int, end: Int)? {
+        guard let rangeValue = rangeHeader else { return nil }
+        
+        // Parse "bytes=start-end" format
+        let trimmed = rangeValue.trimmingCharacters(in: .whitespaces)
+        
+        // Must start with "bytes="
+        guard trimmed.hasPrefix("bytes=") else { return nil }
+        
+        let rangeSpec = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+        
+        // Parse start-end
+        let parts = rangeSpec.split(separator: "-", maxSplits: 1)
+        
+        guard parts.count == 2 else { return nil }
+        
+        let startStr = parts[0].trimmingCharacters(in: .whitespaces)
+        let endStr = parts[1].trimmingCharacters(in: .whitespaces)
+        
+        // Parse start position
+        guard !startStr.isEmpty, let start = Int(startStr), start >= 0 else {
+            return nil
+        }
+        
+        // Parse end position (may be empty for suffix range)
+        if endStr.isEmpty {
+            // bytes=100- means from byte 100 to end
+            return (start: start, end: Int.max)
+        }
+        
+        guard let end = Int(endStr), end >= start else {
+            return nil
+        }
+        
+        return (start: start, end: end)
+    }
+    
     /// HTTP methods
     public enum HTTPMethod: String, Sendable {
         case get = "GET"
@@ -266,6 +321,50 @@ public struct DICOMwebResponse: Sendable {
             statusCode: 415,
             headers: ["Content-Type": "application/json"],
             body: body.data(using: .utf8)
+        )
+    }
+    
+    /// Creates a 416 Range Not Satisfiable response
+    /// - Parameter totalLength: Total length of the resource in bytes
+    /// - Returns: A 416 response with Content-Range header indicating total size
+    ///
+    /// Reference: RFC 7233 Section 4.4 - 416 Range Not Satisfiable
+    public static func rangeNotSatisfiable(totalLength: Int) -> DICOMwebResponse {
+        let body = "{\"error\": \"Range Not Satisfiable\"}"
+        var headers: [String: String] = ["Content-Type": "application/json"]
+        headers["Content-Range"] = "bytes */\(totalLength)"
+        return DICOMwebResponse(
+            statusCode: 416,
+            headers: headers,
+            body: body.data(using: .utf8)
+        )
+    }
+    
+    /// Creates a 206 Partial Content response
+    /// - Parameters:
+    ///   - body: Partial content data
+    ///   - range: The byte range being returned (start and end, inclusive)
+    ///   - totalLength: Total length of the complete resource
+    ///   - contentType: Media type of the content
+    /// - Returns: A 206 response with Content-Range header
+    ///
+    /// Reference: RFC 7233 Section 4.1 - 206 Partial Content
+    public static func partialContent(
+        body: Data,
+        range: (start: Int, end: Int),
+        totalLength: Int,
+        contentType: String = "application/octet-stream"
+    ) -> DICOMwebResponse {
+        var headers: [String: String] = [:]
+        headers["Content-Type"] = contentType
+        headers["Content-Length"] = "\(body.count)"
+        headers["Content-Range"] = "bytes \(range.start)-\(range.end)/\(totalLength)"
+        headers["Accept-Ranges"] = "bytes"
+        
+        return DICOMwebResponse(
+            statusCode: 206,
+            headers: headers,
+            body: body
         )
     }
     
