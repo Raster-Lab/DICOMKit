@@ -8,11 +8,19 @@ import DICOMKit
 /// suitable for unit tests and development scenarios. Data is lost
 /// when the provider is deallocated.
 ///
+/// Supports both permanent and soft deletion modes:
+/// - Permanent deletion: Instances are removed from storage
+/// - Soft deletion: Instances are marked as deleted but retained
+///
 /// - Note: Not suitable for production use with large datasets.
 public actor InMemoryStorageProvider: DICOMwebStorageProvider {
     
     /// Internal storage of instances by hierarchy
     private var studies: [String: StudyData] = [:]
+    
+    /// Soft-deleted instance UIDs (marked for deletion but retained)
+    /// Format: "studyUID/seriesUID/instanceUID"
+    private var softDeletedInstances: Set<String> = []
     
     /// Creates an empty in-memory storage provider
     public init() {}
@@ -30,6 +38,16 @@ public actor InMemoryStorageProvider: DICOMwebStorageProvider {
         }
     }
     
+    /// Helper to generate soft delete key
+    private func softDeleteKey(studyUID: String, seriesUID: String, instanceUID: String) -> String {
+        return "\(studyUID)/\(seriesUID)/\(instanceUID)"
+    }
+    
+    /// Check if instance is soft-deleted
+    private func isSoftDeleted(studyUID: String, seriesUID: String, instanceUID: String) -> Bool {
+        return softDeletedInstances.contains(softDeleteKey(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID))
+    }
+    
     // MARK: - Instance Operations
     
     public func getInstance(
@@ -37,6 +55,10 @@ public actor InMemoryStorageProvider: DICOMwebStorageProvider {
         seriesUID: String,
         instanceUID: String
     ) async throws -> Data? {
+        // Don't return soft-deleted instances
+        guard !isSoftDeleted(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID) else {
+            return nil
+        }
         return studies[studyUID]?.series[seriesUID]?.instances[instanceUID]?.data
     }
     
@@ -48,15 +70,27 @@ public actor InMemoryStorageProvider: DICOMwebStorageProvider {
               let series = study.series[seriesUID] else {
             return []
         }
-        return series.instances.values.map { $0 }
+        // Filter out soft-deleted instances
+        return series.instances.compactMap { (instanceUID, info) in
+            guard !isSoftDeleted(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID) else {
+                return nil
+            }
+            return info
+        }
     }
     
     public func getStudyInstances(studyUID: String) async throws -> [InstanceInfo] {
         guard let study = studies[studyUID] else {
             return []
         }
-        return study.series.values.flatMap { series in
-            series.instances.values.map { $0 }
+        // Filter out soft-deleted instances
+        return study.series.flatMap { (seriesUID, series) in
+            series.instances.compactMap { (instanceUID, info) in
+                guard !isSoftDeleted(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID) else {
+                    return nil
+                }
+                return info
+            }
         }
     }
     
@@ -121,48 +155,119 @@ public actor InMemoryStorageProvider: DICOMwebStorageProvider {
     public func deleteInstance(
         studyUID: String,
         seriesUID: String,
-        instanceUID: String
+        instanceUID: String,
+        mode: DeletionMode = .permanent
     ) async throws -> Bool {
         guard studies[studyUID]?.series[seriesUID]?.instances[instanceUID] != nil else {
             return false
         }
-        studies[studyUID]?.series[seriesUID]?.instances.removeValue(forKey: instanceUID)
         
-        // Clean up empty series
-        if studies[studyUID]?.series[seriesUID]?.instances.isEmpty ?? false {
-            studies[studyUID]?.series.removeValue(forKey: seriesUID)
+        let key = softDeleteKey(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+        
+        switch mode {
+        case .soft:
+            // Mark as soft-deleted
+            softDeletedInstances.insert(key)
+            return true
+            
+        case .permanent:
+            // Remove soft-delete mark if it exists
+            softDeletedInstances.remove(key)
+            
+            // Permanently delete the instance
+            studies[studyUID]?.series[seriesUID]?.instances.removeValue(forKey: instanceUID)
+            
+            // Clean up empty series
+            if studies[studyUID]?.series[seriesUID]?.instances.isEmpty ?? false {
+                studies[studyUID]?.series.removeValue(forKey: seriesUID)
+            }
+            
+            // Clean up empty studies
+            if studies[studyUID]?.series.isEmpty ?? false {
+                studies.removeValue(forKey: studyUID)
+            }
+            
+            return true
         }
-        
-        // Clean up empty studies
-        if studies[studyUID]?.series.isEmpty ?? false {
-            studies.removeValue(forKey: studyUID)
-        }
-        
-        return true
     }
     
     public func deleteSeries(
         studyUID: String,
-        seriesUID: String
+        seriesUID: String,
+        mode: DeletionMode = .permanent
     ) async throws -> Int {
-        let count = studies[studyUID]?.series[seriesUID]?.instances.count ?? 0
-        studies[studyUID]?.series.removeValue(forKey: seriesUID)
-        
-        // Clean up empty studies
-        if studies[studyUID]?.series.isEmpty ?? false {
-            studies.removeValue(forKey: studyUID)
+        guard let series = studies[studyUID]?.series[seriesUID] else {
+            return 0
         }
         
-        return count
+        let instanceKeys = series.instances.keys
+        let count = instanceKeys.count
+        
+        switch mode {
+        case .soft:
+            // Mark all instances as soft-deleted
+            for instanceUID in instanceKeys {
+                let key = softDeleteKey(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+                softDeletedInstances.insert(key)
+            }
+            return count
+            
+        case .permanent:
+            // Remove soft-delete marks
+            for instanceUID in instanceKeys {
+                let key = softDeleteKey(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+                softDeletedInstances.remove(key)
+            }
+            
+            // Permanently delete the series
+            studies[studyUID]?.series.removeValue(forKey: seriesUID)
+            
+            // Clean up empty studies
+            if studies[studyUID]?.series.isEmpty ?? false {
+                studies.removeValue(forKey: studyUID)
+            }
+            
+            return count
+        }
     }
     
-    public func deleteStudy(studyUID: String) async throws -> Int {
+    public func deleteStudy(
+        studyUID: String,
+        mode: DeletionMode = .permanent
+    ) async throws -> Int {
         guard let study = studies[studyUID] else {
             return 0
         }
-        let count = study.series.values.reduce(0) { $0 + $1.instances.count }
-        studies.removeValue(forKey: studyUID)
-        return count
+        
+        var count = 0
+        for series in study.series.values {
+            count += series.instances.count
+        }
+        
+        switch mode {
+        case .soft:
+            // Mark all instances in the study as soft-deleted
+            for (seriesUID, series) in study.series {
+                for instanceUID in series.instances.keys {
+                    let key = softDeleteKey(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+                    softDeletedInstances.insert(key)
+                }
+            }
+            return count
+            
+        case .permanent:
+            // Remove all soft-delete marks for this study
+            for (seriesUID, series) in study.series {
+                for instanceUID in series.instances.keys {
+                    let key = softDeleteKey(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+                    softDeletedInstances.remove(key)
+                }
+            }
+            
+            // Permanently delete the study
+            studies.removeValue(forKey: studyUID)
+            return count
+        }
     }
     
     // MARK: - Query Operations
