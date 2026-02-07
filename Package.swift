@@ -69,6 +69,10 @@ let package = Package(
         .executable(
             name: "dicom-split",
             targets: ["dicom-split"]
+        ),
+        .executable(
+            name: "dicom-merge",
+            targets: ["dicom-merge"]
         )
     ],
     dependencies: [
@@ -243,6 +247,17 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-split",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-merge",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-merge",
             exclude: ["README.md"]
         )
     ]
