@@ -1,0 +1,329 @@
+# dicom-qr
+
+Integrated DICOM query-retrieve tool combining C-FIND and C-MOVE/C-GET operations into a seamless workflow.
+
+## Overview
+
+`dicom-qr` provides an integrated workflow for querying PACS servers and retrieving studies in a single operation. It combines the functionality of `dicom-query` and `dicom-retrieve` tools with additional features like interactive study selection, automatic retrieval, state persistence, and resume capability.
+
+## Features
+
+- **Integrated Workflow**: Query and retrieve in a single command
+- **Multiple Modes**: 
+  - Interactive mode with study selection
+  - Automatic mode for bulk retrieval
+  - Review mode for query-only operations
+- **Progress Tracking**: Real-time progress for multi-study retrievals
+- **State Persistence**: Save query/retrieval state for later resume
+- **Resume Capability**: Resume interrupted retrievals from saved state
+- **Validation**: Optional post-retrieval DICOM file validation
+- **Flexible Retrieval**: Support for both C-MOVE and C-GET methods
+
+## Usage
+
+### Interactive Mode
+
+Query PACS and interactively select studies to retrieve:
+
+```bash
+dicom-qr pacs://server:11112 \
+  --aet MY_AET \
+  --move-dest MY_SCP \
+  --patient-name "DOE*" \
+  --interactive
+```
+
+The tool will:
+1. Execute the C-FIND query
+2. Display all matching studies
+3. Prompt you to select which studies to retrieve
+4. Retrieve selected studies with progress tracking
+
+### Automatic Mode
+
+Query and automatically retrieve all matching studies:
+
+```bash
+dicom-qr pacs://server:11112 \
+  --aet MY_AET \
+  --move-dest MY_SCP \
+  --study-date "20240101-20240131" \
+  --modality CT \
+  --output studies/ \
+  --auto
+```
+
+### Review Mode
+
+Query only, optionally save state for later retrieval:
+
+```bash
+dicom-qr pacs://server:11112 \
+  --aet MY_AET \
+  --patient-id "12345" \
+  --review \
+  --save-state query.state
+```
+
+Later, resume the retrieval:
+
+```bash
+dicom-qr resume --state query.state
+```
+
+### Resume Interrupted Retrievals
+
+If a retrieval is interrupted, you can resume from saved state:
+
+```bash
+# During initial retrieval, save state
+dicom-qr pacs://server:11112 \
+  --aet MY_AET \
+  --move-dest MY_SCP \
+  --patient-name "SMITH*" \
+  --save-state retrieval.state \
+  --auto
+
+# If interrupted, resume later
+dicom-qr resume --state retrieval.state
+```
+
+## Options
+
+### Query Parameters
+
+- `--patient-name <name>`: Patient name (wildcards * and ? supported)
+- `--patient-id <id>`: Patient ID
+- `--study-date <date>`: Study date or range (YYYYMMDD or YYYYMMDD-YYYYMMDD)
+- `--study-uid <uid>`: Study Instance UID
+- `--accession-number <number>`: Accession Number
+- `--modality <modality>`: Modality (e.g., CT, MR, US)
+- `--study-description <desc>`: Study description (wildcards supported)
+
+### Retrieval Options
+
+- `--move-dest <aet>`: Move destination AE title (required for C-MOVE)
+- `--method <method>`: Retrieval method: c-move or c-get (default: c-move)
+- `--output, -o <path>`: Output directory for retrieved files (default: current directory)
+- `--hierarchical`: Organize files hierarchically (Patient/Study/Series)
+
+### Mode Selection (choose one)
+
+- `--interactive`: Interactive mode - select studies to retrieve
+- `--auto`: Automatic mode - retrieve all matching studies
+- `--review`: Review mode - query only, save state for later
+
+### Additional Options
+
+- `--save-state <path>`: Save query/retrieval state to file
+- `--validate`: Validate retrieved files after download
+- `--parallel <n>`: Maximum concurrent retrievals (default: 1)
+- `--timeout <seconds>`: Connection timeout in seconds (default: 60)
+- `--verbose`: Show verbose output including detailed progress
+- `--aet <title>`: Local Application Entity Title (calling AE)
+- `--called-aet <title>`: Remote Application Entity Title (default: ANY-SCP)
+
+## Examples
+
+### Interactive Study Selection
+
+```bash
+# Query for CT studies from January 2024
+dicom-qr pacs://pacs.hospital.org:11112 \
+  --aet WORKSTATION \
+  --move-dest MY_SCP \
+  --modality CT \
+  --study-date "20240101-20240131" \
+  --interactive
+
+# Output:
+# Found 15 studies
+# 
+# Studies:
+# ─────────────────────────────────────────────────
+# [1] SMITH^JOHN (ID: 123456)
+#     Study: CT CHEST W/CONTRAST
+#     Date: 20240105  Modality: CT
+#     UID: 1.2.840.113619.2.xxx
+# [2] DOE^JANE (ID: 234567)
+#     Study: CT HEAD W/O CONTRAST
+#     Date: 20240108  Modality: CT
+#     UID: 1.2.840.113619.2.yyy
+# ...
+# 
+# Enter study numbers to retrieve (comma-separated, or 'all'):
+# Examples: 1,3,5  or  all  or  1-5
+# 
+# > 1,2,5-7
+```
+
+### Automatic Bulk Retrieval
+
+```bash
+# Retrieve all MR studies for a specific patient
+dicom-qr pacs://pacs.hospital.org:11112 \
+  --aet WORKSTATION \
+  --move-dest MY_SCP \
+  --patient-id "987654" \
+  --modality MR \
+  --output /data/studies/ \
+  --hierarchical \
+  --auto \
+  --validate
+```
+
+### Query, Review, and Retrieve Later
+
+```bash
+# Step 1: Query and review results
+dicom-qr pacs://pacs.hospital.org:11112 \
+  --aet WORKSTATION \
+  --patient-name "JOHNSON*" \
+  --study-date "20240201-20240228" \
+  --review \
+  --save-state query_feb2024.state
+
+# Step 2: Later, retrieve the studies
+dicom-qr resume --state query_feb2024.state
+```
+
+### Using C-GET Instead of C-MOVE
+
+```bash
+# C-GET retrieves directly without needing a move destination
+dicom-qr pacs://pacs.hospital.org:11112 \
+  --aet WORKSTATION \
+  --method c-get \
+  --study-uid "1.2.840.113619.2.xxx" \
+  --output study_dir/ \
+  --auto
+```
+
+## Interactive Study Selection
+
+In interactive mode, you can select studies using:
+
+- **Individual numbers**: `1,3,5` - selects studies 1, 3, and 5
+- **Ranges**: `1-5` - selects studies 1 through 5
+- **All**: `all` - selects all studies
+- **Combinations**: `1-3,5,7-9` - selects studies 1-3, 5, and 7-9
+
+## State Files
+
+State files are JSON files that store query results and retrieval configuration. They can be used to:
+
+1. **Review queries**: Save query results to review before retrieving
+2. **Resume retrievals**: Resume interrupted retrievals from where they stopped
+3. **Batch processing**: Create state files for multiple queries and process them later
+
+State file structure:
+
+```json
+{
+  "studies": [
+    {
+      "patientName": "SMITH^JOHN",
+      "patientID": "123456",
+      "studyInstanceUID": "1.2.840.113619.2.xxx",
+      "studyDate": "20240105",
+      "modality": "CT",
+      "studyDescription": "CT CHEST W/CONTRAST"
+    }
+  ],
+  "host": "pacs.hospital.org",
+  "port": 11112,
+  "callingAE": "WORKSTATION",
+  "calledAE": "ANY-SCP",
+  "moveDestination": "MY_SCP",
+  "method": "c-move",
+  "outputPath": "/data/studies",
+  "hierarchical": true
+}
+```
+
+## Validation
+
+When `--validate` is specified, retrieved files are validated after download:
+
+```bash
+dicom-qr pacs://server:11112 \
+  --aet MY_AET \
+  --move-dest MY_SCP \
+  --patient-id "12345" \
+  --output studies/ \
+  --auto \
+  --validate
+```
+
+Validation checks:
+- File is a valid DICOM file
+- File can be read and parsed
+- Reports count of valid and invalid files
+
+## Error Handling
+
+The tool provides detailed error messages for common issues:
+
+- **Missing move destination**: C-MOVE requires `--move-dest` to be specified
+- **No studies found**: Query returned no results
+- **Connection timeout**: PACS server didn't respond within timeout period
+- **Invalid state file**: Saved state file is corrupted or incompatible
+
+## Performance
+
+For large retrievals, consider:
+
+- Using `--parallel` to increase concurrent retrievals (use cautiously)
+- Saving state files for checkpoint/resume capability
+- Using `--hierarchical` for better organization of retrieved files
+- Monitoring with `--verbose` to track progress
+
+## See Also
+
+- `dicom-query` - Standalone C-FIND query tool
+- `dicom-retrieve` - Standalone C-MOVE/C-GET retrieval tool
+- `dicom-send` - C-STORE operations to send files to PACS
+- `dicom-archive` - Local DICOM archive management
+
+## Technical Details
+
+### C-MOVE vs C-GET
+
+- **C-MOVE**: Server sends files to a third-party destination (specified by `--move-dest`)
+  - Requires a running SCP at the move destination
+  - More common in clinical environments
+  - Requires `--move-dest` parameter
+
+- **C-GET**: Server sends files directly to the requesting client
+  - Simpler setup, no third-party SCP needed
+  - Less common but easier for testing
+  - Use `--method c-get`
+
+### Query Levels
+
+The tool performs study-level queries (default). All matching studies are retrieved in full.
+
+### Wildcards
+
+Patient name and study description support DICOM wildcards:
+- `*` matches any sequence of characters
+- `?` matches any single character
+
+Examples:
+- `SMITH*` - matches SMITH, SMITHSON, etc.
+- `*JOHN*` - matches anything containing JOHN
+- `DOE?` - matches DOE plus one character
+
+## Requirements
+
+- macOS 10.15 or later (Network framework required)
+- Network connectivity to PACS server
+- Valid AE titles configured on PACS
+- For C-MOVE: Running SCP at move destination
+
+## Limitations
+
+- Study-level queries and retrievals only (not patient, series, or instance level)
+- Interactive mode requires terminal input
+- State files are not encrypted (do not store in insecure locations)
+- Parallel retrievals may overwhelm some PACS servers
