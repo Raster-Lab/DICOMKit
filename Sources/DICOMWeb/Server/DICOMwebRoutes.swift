@@ -58,6 +58,77 @@ public struct DICOMwebRequest: Sendable {
         return DICOMMediaType.parse(ct)
     }
     
+    /// Gets the Accept-Charset header as an array of charset preferences
+    ///
+    /// Parses the Accept-Charset header and returns an array of charset names with optional quality values.
+    /// If no Accept-Charset header is present, defaults to ["utf-8"].
+    ///
+    /// Example: "iso-8859-5, unicode-1-1;q=0.8, utf-8;q=1.0" returns ["utf-8", "iso-8859-5", "unicode-1-1"]
+    ///
+    /// Reference: RFC 7231 Section 5.3.3 - Accept-Charset
+    public var acceptCharsets: [String] {
+        guard let acceptCharset = header("Accept-Charset") else {
+            // Default to utf-8 if no Accept-Charset header is present
+            return ["utf-8"]
+        }
+        
+        // Parse charset preferences with optional quality values
+        var charsets: [(charset: String, quality: Double)] = []
+        
+        for part in acceptCharset.split(separator: ",") {
+            let trimmed = part.trimmingCharacters(in: .whitespaces)
+            let components = trimmed.split(separator: ";")
+            
+            guard !components.isEmpty else { continue }
+            
+            let charset = String(components[0]).trimmingCharacters(in: .whitespaces).lowercased()
+            var quality = 1.0
+            
+            // Parse quality value if present (e.g., "q=0.8")
+            if components.count > 1 {
+                for component in components[1...] {
+                    let param = component.trimmingCharacters(in: .whitespaces)
+                    if param.hasPrefix("q="), let qValue = Double(param.dropFirst(2)) {
+                        quality = qValue
+                        break
+                    }
+                }
+            }
+            
+            charsets.append((charset: charset, quality: quality))
+        }
+        
+        // Sort by quality value (descending) and return charset names
+        return charsets
+            .sorted { $0.quality > $1.quality }
+            .map { $0.charset }
+    }
+    
+    /// Negotiates the best matching charset from available charsets
+    ///
+    /// - Parameter available: Array of available charset names (e.g., ["utf-8", "iso-8859-1"])
+    /// - Returns: The best matching charset, or nil if no match found
+    ///
+    /// Reference: RFC 7231 Section 5.3.3 - Accept-Charset
+    public func negotiateCharset(from available: [String]) -> String? {
+        let acceptedCharsets = acceptCharsets
+        let availableNormalized = available.map { $0.lowercased() }
+        
+        // Special case: "*" matches any charset
+        if acceptedCharsets.contains("*") {
+            return available.first
+        }
+        
+        // Find first accepted charset that's available
+        for acceptedCharset in acceptedCharsets {
+            if let index = availableNormalized.firstIndex(of: acceptedCharset) {
+                return available[index]
+            }
+        }
+        
+        return nil
+    }
+    
     /// HTTP methods
     public enum HTTPMethod: String, Sendable {
         case get = "GET"
@@ -152,10 +223,25 @@ public struct DICOMwebResponse: Sendable {
         )
     }
     
-    /// Creates a 406 Not Acceptable response
+    /// Creates a 406 Not Acceptable response for media types
     public static func notAcceptable(supportedTypes: [DICOMMediaType]) -> DICOMwebResponse {
         let types = supportedTypes.map { $0.description }.joined(separator: ", ")
         let body = "{\"error\": \"Not Acceptable\", \"supportedTypes\": \"\(types)\"}"
+        return DICOMwebResponse(
+            statusCode: 406,
+            headers: ["Content-Type": "application/json"],
+            body: body.data(using: .utf8)
+        )
+    }
+    
+    /// Creates a 406 Not Acceptable response for charsets
+    /// - Parameter supportedCharsets: Array of supported charset names
+    /// - Returns: A 406 response with supported charsets listed
+    ///
+    /// Reference: RFC 7231 Section 6.5.6 - 406 Not Acceptable
+    public static func notAcceptable(supportedCharsets: [String]) -> DICOMwebResponse {
+        let charsets = supportedCharsets.joined(separator: ", ")
+        let body = "{\"error\": \"Not Acceptable\", \"supportedCharsets\": \"\(charsets)\"}"
         return DICOMwebResponse(
             statusCode: 406,
             headers: ["Content-Type": "application/json"],
