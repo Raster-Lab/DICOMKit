@@ -847,33 +847,37 @@ dicom-wado ups \
 ### Milestone 5.3: Modality Worklist Management
 
 **Tool**: `dicom-mwl`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete (February 2026)
 **Priority**: Medium  
 **Complexity**: High  
 **Timeline**: 5 days  
 **Tests**: 30+ (planned)  
-**Dependencies**: DICOMNetwork MWL support
+**Dependencies**: DICOMNetwork MWL support ✅
 
 #### Features
-- Query Modality Worklist (C-FIND)
-- Create worklist entries
-- Update worklist entries
-- Delete worklist entries
-- Worklist SCP server
-- HL7 ORM integration
-- Scheduled Procedure Step management
-- Request validation
+- ✅ Query Modality Worklist (C-FIND)
+- ⏸ Create worklist entries (deferred)
+- ⏸ Update worklist entries (deferred)
+- ⏸ Delete worklist entries (deferred)
+- ⏸ Worklist SCP server (deferred)
+- ⏸ HL7 ORM integration (deferred)
+- ⏸ Scheduled Procedure Step management (deferred)
+- ⏸ Request validation (deferred)
 
 #### Deliverables
-- [ ] MWL query client
-- [ ] Worklist entry creator
-- [ ] Worklist entry updater
-- [ ] Worklist SCP server
-- [ ] HL7 ORM parser
-- [ ] SPS manager
-- [ ] Validator
-- [ ] 30+ unit tests
-- [ ] Documentation and examples
+- [x] MWL query client (C-FIND)
+- [x] ModalityWorklistService in DICOMNetwork
+- [x] WorklistQueryKeys with filters
+- [x] JSON output support
+- [x] Verbose mode
+- [ ] Worklist entry creator (deferred)
+- [ ] Worklist entry updater (deferred)
+- [ ] Worklist SCP server (deferred)
+- [ ] HL7 ORM parser (deferred)
+- [ ] SPS manager (deferred)
+- [ ] Validator (deferred)
+- [ ] 30+ unit tests (pending)
+- [x] Documentation and examples
 
 #### Usage Examples
 ```bash
@@ -883,80 +887,83 @@ dicom-mwl query pacs://server:11112 \
   --date today \
   --station "CT1"
 
-# Start MWL SCP server
-dicom-mwl scp \
-  --aet WORKLIST_SCP \
-  --port 11112 \
-  --worklist-dir /data/worklist/
+# Query with filters
+dicom-mwl query pacs://server:11112 \
+  --aet MODALITY \
+  --date 20240315 \
+  --patient "DOE^JOHN*" \
+  --modality CT \
+  --verbose
 
-# Create worklist entry from HL7 ORM
-dicom-mwl create \
-  --hl7 order.hl7 \
-  --output worklist_entry.dcm
-
-# Update worklist entry
-dicom-mwl update worklist_entry.dcm \
-  --status "IN PROGRESS" \
-  --output updated.dcm
+# JSON output
+dicom-mwl query pacs://server:11112 \
+  --aet MODALITY \
+  --date today \
+  --json
 ```
 
-**Lines of Code Estimate**: 550-650
+**Lines of Code**: 650+ (including DICOMNetwork support)
 
 ---
 
 ### Milestone 5.4: MPPS Operations
 
 **Tool**: `dicom-mpps`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete (February 2026)
 **Priority**: Low  
 **Complexity**: High  
 **Timeline**: 5 days  
 **Tests**: 25+ (planned)  
-**Dependencies**: DICOMNetwork MPPS support
+**Dependencies**: DICOMNetwork MPPS support ✅
 
 #### Features
-- Create MPPS N-CREATE
-- Update MPPS N-SET
-- Query MPPS N-GET
-- MPPS SCP server
-- Procedure step tracking
-- Status management
-- Integration with worklist
-- Automatic notifications
+- ✅ Create MPPS (N-CREATE)
+- ✅ Update MPPS (N-SET)
+- ⏸ Query MPPS (N-GET) (deferred)
+- ⏸ MPPS SCP server (deferred)
+- ✅ Procedure step tracking (IN PROGRESS, COMPLETED, DISCONTINUED)
+- ✅ Status management
+- ⏸ Integration with worklist (deferred)
+- ⏸ Automatic notifications (deferred)
 
 #### Deliverables
-- [ ] MPPS creator (N-CREATE)
-- [ ] MPPS updater (N-SET)
-- [ ] MPPS query (N-GET)
-- [ ] MPPS SCP server
-- [ ] Status manager
-- [ ] Notification handler
-- [ ] 25+ unit tests
-- [ ] Documentation and examples
+- [x] MPPS creator (N-CREATE)
+- [x] MPPS updater (N-SET)
+- [x] MPPSService in DICOMNetwork
+- [x] Referenced SOP support
+- [ ] MPPS query (N-GET) (deferred)
+- [ ] MPPS SCP server (deferred)
+- [ ] Status manager (deferred)
+- [ ] Notification handler (deferred)
+- [ ] 25+ unit tests (pending)
+- [x] Documentation and examples
 
 #### Usage Examples
 ```bash
 # Create MPPS (procedure started)
 dicom-mpps create pacs://server:11112 \
   --aet MODALITY \
-  --worklist worklist_entry.dcm \
+  --study-uid 1.2.3.4.5.6.7.8.9 \
   --status "IN PROGRESS"
 
 # Update MPPS (procedure completed)
 dicom-mpps update pacs://server:11112 \
   --aet MODALITY \
   --mpps-uid 1.2.840.113619.2.xxx \
-  --status "COMPLETED" \
-  --images study/*.dcm
+  --status COMPLETED \
+  --study-uid 1.2.3.4.5 \
+  --series-uid 1.2.3.4.5.6 \
+  --image-uid 1.2.3.4.5.6.7
 
-# Start MPPS SCP server
-dicom-mpps scp \
-  --aet MPPS_SCP \
-  --port 11112 \
-  --notify-url http://ris.server.com/mpps
+# Discontinue procedure
+dicom-mpps update pacs://server:11112 \
+  --aet MODALITY \
+  --mpps-uid 1.2.840.113619.2.xxx \
+  --status DISCONTINUED
 ```
 
-**Lines of Code Estimate**: 500-600
+**Lines of Code**: 750+ (including DICOMNetwork support)
+
 
 ---
 
