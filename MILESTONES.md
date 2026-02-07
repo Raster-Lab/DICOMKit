@@ -3704,12 +3704,12 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 #### Phase 5: Network and Workflow Tools (v1.2.3-v1.2.7)
 
-**Status**: 📋 Planned  
+**Status**: 🚧 In Progress  
 **Timeline**: 3-4 weeks
 
 ##### Tools
-- [ ] **dicom-qr** (v1.2.3) - Integrated query-retrieve workflow
-- [ ] **dicom-wado** (v1.2.4) - DICOMweb client (WADO-RS, QIDO-RS, STOW-RS)
+- [x] **dicom-qr** (v1.2.3) - Integrated query-retrieve workflow ✅ Complete
+- [x] **dicom-wado** (v1.2.4) - DICOMweb client (WADO-RS, QIDO-RS, STOW-RS, UPS-RS) ✅ Complete (February 2026)
 - [ ] **dicom-mwl** (v1.2.5) - Modality Worklist Management
 - [ ] **dicom-mpps** (v1.2.6) - MPPS operations (N-CREATE, N-SET)
 - [ ] **dicom-echo** (v1.2.7) - Network testing and diagnostics
