@@ -1633,7 +1633,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] `DELETE /studies/{studyUID}` - Delete study
   - [x] `DELETE .../series/{seriesUID}` - Delete series
   - [x] `DELETE .../instances/{instanceUID}` - Delete instance
-  - [ ] Soft delete vs. permanent delete
+  - [x] Soft delete vs. permanent delete (mode query parameter, DeletionMode enum)
 - [x] `DICOMwebClient` unified API:
   - [x] Single client for all DICOMweb services (WADO-RS, QIDO-RS, STOW-RS, UPS-RS)
   - [x] Configuration with authentication, caching, retry
@@ -1661,7 +1661,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - [x] Server-side caching with ETag-based conditional requests (22 tests)
 - [x] Accept-Charset parsing and negotiation works correctly (36 tests)
 - [x] Range request parsing and partial content responses work correctly (23 tests)
-- [ ] Delete services work correctly (when enabled)
+- [x] Delete services work correctly (when enabled, 7 soft delete tests added)
 - [ ] Performance acceptable for production workloads
 - [ ] Security scan passes
 
