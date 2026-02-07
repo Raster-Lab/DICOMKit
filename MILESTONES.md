@@ -3672,14 +3672,14 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 #### Phase 2: Enhanced Workflow Tools (v1.1.1-v1.1.2) 🚧
 
-**Status**: 🚧 In Progress (3 of 4 tools complete)  
-**Timeline**: 3-4 weeks
+**Status**: ✅ Complete (4 of 4 tools complete)  
+**Timeline**: 3-4 weeks (Complete)
 
 ##### Tools
 - [x] **dicom-diff** (v1.1.1) - File comparison and diff reporting ✅ Complete
 - [x] **dicom-retrieve** (v1.1.2) - C-MOVE/C-GET PACS retrieval ✅ Complete (February 2026)
 - [x] **dicom-split** (v1.1.2) - Multi-frame extraction ✅ Complete (February 2026)
-- [ ] **dicom-merge** (v1.1.2) - Multi-frame creation
+- [x] **dicom-merge** (v1.1.2) - Multi-frame creation ✅ Complete (February 2026)
 
 #### Phase 3: Format Conversion Tools (v1.1.3-v1.1.6)
 
@@ -3732,12 +3732,12 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Phase | Tools | Priority | Tests | LOC Est. | Status |
 |-------|-------|----------|-------|----------|--------|
 | Phase 1 (Done) | 7 | Critical-High | 160+ | 4,338 | ✅ Complete |
-| Phase 2 | 4 | High | 105+ | 2,100-2,550 | 🚧 75% |
+| Phase 2 | 4 | High | 105+ | 2,600+ | ✅ Complete |
 | Phase 3 | 4 | Medium | 80+ | 1,550-2,050 | 📋 Planned |
 | Phase 4 | 3 | Medium | 95+ | 1,700-2,100 | 📋 Planned |
 | Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | 📋 Planned |
 | Phase 6 | 6 | Low-Medium | 130+ | 2,700-3,300 | 📋 Planned |
-| **Total** | **29** | - | **695+** | **14,688-17,138** | **48%** |
+| **Total** | **29** | - | **695+** | **15,188+** | **52%** |
 
 #### Technical Notes
 - All tools support macOS and Linux platforms
@@ -3764,13 +3764,13 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
-| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (48%) | Phase 2: 3/4 tools complete (dicom-diff, dicom-retrieve, dicom-split) ✅ |
+| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (52%) | Phase 2: ✅ Complete (4/4 tools), Phase 3-6: Planned |
 
-**Phase 2 Tools (75% complete)**:
+**Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
 - ✅ dicom-retrieve: C-MOVE/C-GET PACS retrieval with progress tracking
 - ✅ dicom-split: Multi-frame extraction with DICOM/PNG/JPEG/TIFF output
-- 📋 dicom-merge: Multi-frame creation (planned)
+- ✅ dicom-merge: Multi-frame creation with sorting and validation (February 2026)
 
 ---
 
