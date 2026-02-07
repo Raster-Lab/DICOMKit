@@ -3659,7 +3659,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 ### Milestone 11.2: CLI Tools Enhancement (v1.1.1-v1.3.5)
 
-**Status**: 📋 Planned (Phase 2: 🚧 In Progress)  
+**Status**: 📋 Planned (Phase 4: 🚧 In Progress)  
 **Goal**: Expand CLI toolkit with additional utilities for comprehensive DICOM workflows  
 **Complexity**: Varies by tool (Low to Very High)  
 **Dependencies**: DICOMKit v1.0, DICOMNetwork, Milestone 11.1 (for PDF tools)
@@ -3694,12 +3694,12 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 #### Phase 4: DICOMDIR and Archive Tools (v1.2.0-v1.2.2)
 
-**Status**: 🚧 In Progress (33% complete)  
+**Status**: 🚧 In Progress (67% complete)  
 **Timeline**: 2 weeks
 
 ##### Tools
 - [x] **dicom-dcmdir** (v1.2.0) - DICOMDIR management (create, validate, dump implemented; update pending) ✅ **Tests Complete** (18 unit tests covering Builder, Writer, Reader, Directory, DirectoryRecord, full workflow)
-- [ ] **dicom-archive** (v1.2.1) - Local DICOM archive with query/retrieve
+- [x] **dicom-archive** (v1.2.1) - Local DICOM archive with query/retrieve ✅ **Complete** (45 unit tests covering index serialization, metadata extraction, file organization, wildcard matching, archive workflows, edge cases)
 - [ ] **dicom-export** (v1.2.2) - Advanced export with metadata embedding
 
 #### Phase 5: Network and Workflow Tools (v1.2.3-v1.2.7)
@@ -3734,10 +3734,10 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Phase 1 (Done) | 7 | Critical-High | 160+ | 4,338 | ✅ Complete |
 | Phase 2 | 4 | High | 105+ | 2,600+ | ✅ Complete |
 | Phase 3 | 4 | Medium | 80+ | 1,700 | ✅ Complete |
-| Phase 4 | 3 | Medium | 18/95+ | 1,700-2,100 | 🚧 In Progress (33%) |
+| Phase 4 | 3 | Medium | 63/95+ | 1,700-2,100 | 🚧 In Progress (67%) |
 | Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | 📋 Planned |
 | Phase 6 | 6 | Low-Medium | 130+ | 2,700-3,300 | 📋 Planned |
-| **Total** | **29** | - | **363+/695+** | **15,338** | **52%** |
+| **Total** | **29** | - | **408+/695+** | **15,338** | **55%** |
 
 #### Technical Notes
 - All tools support macOS and Linux platforms
@@ -3764,7 +3764,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
-| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (55%) | Phase 2: ✅ Complete (4/4 tools), Phase 3: ✅ Complete, Phase 4: 🚧 In Progress (1/3 tools with tests) |
+| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (59%) | Phase 2: ✅ Complete (4/4 tools), Phase 3: ✅ Complete, Phase 4: 🚧 In Progress (2/3 tools with tests) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
@@ -3778,9 +3778,9 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - ✅ dicom-pdf: Encapsulated PDF/CDA extraction and creation
 - ✅ dicom-image: Image-to-DICOM conversion (Secondary Capture)
 
-**Phase 4 Tools (🚧 33% in progress)**:
-- 🚧 dicom-dcmdir: DICOMDIR management (tool exists, 18 tests added, update subcommand pending)
-- 📋 dicom-archive: Local DICOM archive with query/retrieve
+**Phase 4 Tools (🚧 67% in progress)**:
+- ✅ dicom-dcmdir: DICOMDIR management (tool exists, 18 tests added, update subcommand pending)
+- ✅ dicom-archive: Local DICOM archive with query/retrieve (45 tests, 7 subcommands)
 - 📋 dicom-export: Advanced export with metadata embedding
 
 ---
