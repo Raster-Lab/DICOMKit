@@ -19,7 +19,7 @@ public struct DICOMDIRReader {
         // Verify it's a DICOMDIR (SOP Class UID should be 1.2.840.10008.1.3.10)
         let sopClassUID = dicomFile.fileMetaInformation.string(for: .mediaStorageSOPClassUID)
         guard sopClassUID == "1.2.840.10008.1.3.10" else {
-            throw DICOMError.invalidFormat(message: "Not a valid DICOMDIR file (incorrect SOP Class UID)")
+            throw DICOMError.parsingFailed("Not a valid DICOMDIR file (incorrect SOP Class UID)")
         }
         
         return try parse(dataSet: dicomFile.dataSet)

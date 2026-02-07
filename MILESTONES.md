@@ -844,7 +844,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] `SOPClassRetryConfiguration` for per-SOP Class policies
   - [x] Integration with existing `ErrorCategory` and `CircuitBreaker`
   - [ ] Dead letter queue for undeliverable files (deferred to store-and-forward)
-- [ ] Store-and-Forward:
+- [x] Store-and-Forward:
   - [x] Queue files for later delivery
   - [x] Persistent queue (survives app restart)
   - [x] Automatic retry on connectivity restoration
