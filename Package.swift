@@ -109,6 +109,10 @@ let package = Package(
         .executable(
             name: "dicom-wado",
             targets: ["dicom-wado"]
+        ),
+        .executable(
+            name: "dicom-echo",
+            targets: ["dicom-echo"]
         )
     ],
     dependencies: [
@@ -393,6 +397,16 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-wado",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-echo",
+            dependencies: [
+                "DICOMCore",
+                "DICOMNetwork",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-echo",
             exclude: ["README.md"]
         )
     ]
