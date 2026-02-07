@@ -3,7 +3,7 @@ import ArgumentParser
 import DICOMCore
 import DICOMNetwork
 
-@available(macOS 10.15, *)
+@available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
 struct DICOMEcho: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-echo",
