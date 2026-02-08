@@ -204,7 +204,8 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
     private var workitems: [String: Workitem] = [:]
     
     /// Optional event dispatcher for event generation
-    private weak var eventDispatcher: EventDispatcher?
+    /// Strong reference is safe here as the dispatcher doesn't hold a reference back to the storage
+    private var eventDispatcher: EventDispatcher?
     
     /// Creates an empty in-memory storage provider
     public init() {}

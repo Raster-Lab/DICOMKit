@@ -418,10 +418,6 @@ public actor EventDispatcher {
     
     /// Gets subscriptions interested in an event
     private func getInterestedSubscriptions(for event: UPSEvent) async -> [Subscription] {
-        guard let manager = subscriptionManager as? InMemorySubscriptionManager else {
-            return []
-        }
-        
-        return await manager.getSubscriptionsForEvent(event)
+        return await subscriptionManager.getSubscriptionsForEvent(event)
     }
 }

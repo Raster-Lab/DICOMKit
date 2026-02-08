@@ -153,6 +153,11 @@ public protocol SubscriptionManager: Sendable {
     /// - Parameter workitemUID: The UID of the workitem
     /// - Returns: True if deletion is locked
     func hasDeleteLock(forWorkitem workitemUID: String) async throws -> Bool
+    
+    /// Gets all subscriptions interested in an event
+    /// - Parameter event: The event to check interest for
+    /// - Returns: Array of subscriptions interested in the event
+    func getSubscriptionsForEvent(_ event: UPSEvent) async -> [Subscription]
 }
 
 // MARK: - InMemorySubscriptionManager
