@@ -972,3 +972,468 @@ public struct NEventReportResponse: DIMSEResponse, Hashable {
         self.presentationContextID = presentationContextID
     }
 }
+
+// MARK: - N-CREATE (PS3.7 Section 10.1.5)
+
+/// N-CREATE Request message for creating SOP Instances
+///
+/// Used in Print Management (Film Session, Film Box creation),
+/// MPPS, and other DIMSE-N services.
+///
+/// Reference: PS3.7 Section 10.1.5
+public struct NCreateRequest: DIMSERequest, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageID: UInt16 {
+        commandSet.messageID ?? 0
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    /// The SOP Instance UID to create (optional - SCP may assign)
+    public var affectedSOPInstanceUID: String? {
+        commandSet.affectedSOPInstanceUID
+    }
+    
+    /// Creates an N-CREATE request
+    ///
+    /// - Parameters:
+    ///   - messageID: Message ID for this request
+    ///   - affectedSOPClassUID: SOP Class UID of the instance to create
+    ///   - affectedSOPInstanceUID: Optional SOP Instance UID (SCP may assign if nil)
+    ///   - hasDataSet: Whether this request includes a data set (default: true)
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageID: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String? = nil,
+        hasDataSet: Bool = true,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nCreateRequest)
+        cmd.setMessageID(messageID)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        if let affectedSOPInstanceUID = affectedSOPInstanceUID {
+            cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        }
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-CREATE request from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+/// N-CREATE Response message
+///
+/// Returns the status of an N-CREATE operation and the assigned SOP Instance UID.
+///
+/// Reference: PS3.7 Section 10.1.5
+public struct NCreateResponse: DIMSEResponse, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageIDBeingRespondedTo: UInt16 {
+        commandSet.messageIDBeingRespondedTo ?? 0
+    }
+    
+    public var status: DIMSEStatus {
+        commandSet.status ?? .unknown(0xFFFF)
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    public var affectedSOPInstanceUID: String {
+        commandSet.affectedSOPInstanceUID ?? ""
+    }
+    
+    /// Creates an N-CREATE response
+    ///
+    /// - Parameters:
+    ///   - messageIDBeingRespondedTo: Message ID of the request being responded to
+    ///   - affectedSOPClassUID: SOP Class UID of the created instance
+    ///   - affectedSOPInstanceUID: SOP Instance UID of the created instance
+    ///   - status: DIMSE status (default: success)
+    ///   - hasDataSet: Whether this response includes a data set (default: false)
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageIDBeingRespondedTo: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String,
+        status: DIMSEStatus = .success,
+        hasDataSet: Bool = false,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nCreateResponse)
+        cmd.setMessageIDBeingRespondedTo(messageIDBeingRespondedTo)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        cmd.setStatus(status)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-CREATE response from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+// MARK: - N-SET (PS3.7 Section 10.1.3)
+
+/// N-SET Request message for modifying SOP Instance attributes
+///
+/// Used in Print Management (Image Box content setting),
+/// MPPS updates, and other DIMSE-N services.
+///
+/// Reference: PS3.7 Section 10.1.3
+public struct NSetRequest: DIMSERequest, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageID: UInt16 {
+        commandSet.messageID ?? 0
+    }
+    
+    public var requestedSOPClassUID: String {
+        commandSet.requestedSOPClassUID ?? ""
+    }
+    
+    public var requestedSOPInstanceUID: String {
+        commandSet.requestedSOPInstanceUID ?? ""
+    }
+    
+    /// Creates an N-SET request
+    ///
+    /// - Parameters:
+    ///   - messageID: Message ID for this request
+    ///   - requestedSOPClassUID: SOP Class UID of the instance to modify
+    ///   - requestedSOPInstanceUID: SOP Instance UID of the instance to modify
+    ///   - hasDataSet: Whether this request includes a data set (default: true)
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageID: UInt16,
+        requestedSOPClassUID: String,
+        requestedSOPInstanceUID: String,
+        hasDataSet: Bool = true,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nSetRequest)
+        cmd.setMessageID(messageID)
+        cmd.setRequestedSOPClassUID(requestedSOPClassUID)
+        cmd.setRequestedSOPInstanceUID(requestedSOPInstanceUID)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-SET request from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+/// N-SET Response message
+///
+/// Returns the status of an N-SET operation.
+///
+/// Reference: PS3.7 Section 10.1.3
+public struct NSetResponse: DIMSEResponse, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageIDBeingRespondedTo: UInt16 {
+        commandSet.messageIDBeingRespondedTo ?? 0
+    }
+    
+    public var status: DIMSEStatus {
+        commandSet.status ?? .unknown(0xFFFF)
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    public var affectedSOPInstanceUID: String {
+        commandSet.affectedSOPInstanceUID ?? ""
+    }
+    
+    /// Creates an N-SET response
+    ///
+    /// - Parameters:
+    ///   - messageIDBeingRespondedTo: Message ID of the request being responded to
+    ///   - affectedSOPClassUID: SOP Class UID of the modified instance
+    ///   - affectedSOPInstanceUID: SOP Instance UID of the modified instance
+    ///   - status: DIMSE status (default: success)
+    ///   - hasDataSet: Whether this response includes a data set (default: false)
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageIDBeingRespondedTo: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String,
+        status: DIMSEStatus = .success,
+        hasDataSet: Bool = false,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nSetResponse)
+        cmd.setMessageIDBeingRespondedTo(messageIDBeingRespondedTo)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        cmd.setStatus(status)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-SET response from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+// MARK: - N-GET (PS3.7 Section 10.1.2)
+
+/// N-GET Request message for retrieving SOP Instance attributes
+///
+/// Used in Print Management (Printer status retrieval) and other DIMSE-N services.
+/// N-GET requests typically do not include a data set.
+///
+/// Reference: PS3.7 Section 10.1.2
+public struct NGetRequest: DIMSERequest, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageID: UInt16 {
+        commandSet.messageID ?? 0
+    }
+    
+    public var requestedSOPClassUID: String {
+        commandSet.requestedSOPClassUID ?? ""
+    }
+    
+    public var requestedSOPInstanceUID: String {
+        commandSet.requestedSOPInstanceUID ?? ""
+    }
+    
+    /// Creates an N-GET request
+    ///
+    /// - Parameters:
+    ///   - messageID: Message ID for this request
+    ///   - requestedSOPClassUID: SOP Class UID of the instance to query
+    ///   - requestedSOPInstanceUID: SOP Instance UID of the instance to query
+    ///   - hasDataSet: Whether this request includes a data set (default: false)
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageID: UInt16,
+        requestedSOPClassUID: String,
+        requestedSOPInstanceUID: String,
+        hasDataSet: Bool = false,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nGetRequest)
+        cmd.setMessageID(messageID)
+        cmd.setRequestedSOPClassUID(requestedSOPClassUID)
+        cmd.setRequestedSOPInstanceUID(requestedSOPInstanceUID)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-GET request from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+/// N-GET Response message
+///
+/// Returns requested attributes from a SOP Instance.
+/// N-GET responses typically include a data set with the requested attributes.
+///
+/// Reference: PS3.7 Section 10.1.2
+public struct NGetResponse: DIMSEResponse, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageIDBeingRespondedTo: UInt16 {
+        commandSet.messageIDBeingRespondedTo ?? 0
+    }
+    
+    public var status: DIMSEStatus {
+        commandSet.status ?? .unknown(0xFFFF)
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    public var affectedSOPInstanceUID: String {
+        commandSet.affectedSOPInstanceUID ?? ""
+    }
+    
+    /// Creates an N-GET response
+    ///
+    /// - Parameters:
+    ///   - messageIDBeingRespondedTo: Message ID of the request being responded to
+    ///   - affectedSOPClassUID: SOP Class UID of the queried instance
+    ///   - affectedSOPInstanceUID: SOP Instance UID of the queried instance
+    ///   - status: DIMSE status (default: success)
+    ///   - hasDataSet: Whether this response includes a data set (default: true)
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageIDBeingRespondedTo: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String,
+        status: DIMSEStatus = .success,
+        hasDataSet: Bool = true,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nGetResponse)
+        cmd.setMessageIDBeingRespondedTo(messageIDBeingRespondedTo)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        cmd.setStatus(status)
+        cmd.setHasDataSet(hasDataSet)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-GET response from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+// MARK: - N-DELETE (PS3.7 Section 10.1.6)
+
+/// N-DELETE Request message for deleting SOP Instances
+///
+/// Used in Print Management (Film Session/Box cleanup) and other DIMSE-N services.
+/// N-DELETE requests never include a data set.
+///
+/// Reference: PS3.7 Section 10.1.6
+public struct NDeleteRequest: DIMSERequest, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageID: UInt16 {
+        commandSet.messageID ?? 0
+    }
+    
+    public var requestedSOPClassUID: String {
+        commandSet.requestedSOPClassUID ?? ""
+    }
+    
+    public var requestedSOPInstanceUID: String {
+        commandSet.requestedSOPInstanceUID ?? ""
+    }
+    
+    /// Creates an N-DELETE request
+    ///
+    /// - Parameters:
+    ///   - messageID: Message ID for this request
+    ///   - requestedSOPClassUID: SOP Class UID of the instance to delete
+    ///   - requestedSOPInstanceUID: SOP Instance UID of the instance to delete
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageID: UInt16,
+        requestedSOPClassUID: String,
+        requestedSOPInstanceUID: String,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nDeleteRequest)
+        cmd.setMessageID(messageID)
+        cmd.setRequestedSOPClassUID(requestedSOPClassUID)
+        cmd.setRequestedSOPInstanceUID(requestedSOPInstanceUID)
+        cmd.setHasDataSet(false)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-DELETE request from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}
+
+/// N-DELETE Response message
+///
+/// Returns the status of an N-DELETE operation.
+/// N-DELETE responses never include a data set.
+///
+/// Reference: PS3.7 Section 10.1.6
+public struct NDeleteResponse: DIMSEResponse, Hashable {
+    public let commandSet: CommandSet
+    public let presentationContextID: UInt8
+    
+    public var messageIDBeingRespondedTo: UInt16 {
+        commandSet.messageIDBeingRespondedTo ?? 0
+    }
+    
+    public var status: DIMSEStatus {
+        commandSet.status ?? .unknown(0xFFFF)
+    }
+    
+    public var affectedSOPClassUID: String {
+        commandSet.affectedSOPClassUID ?? ""
+    }
+    
+    public var affectedSOPInstanceUID: String {
+        commandSet.affectedSOPInstanceUID ?? ""
+    }
+    
+    /// Creates an N-DELETE response
+    ///
+    /// - Parameters:
+    ///   - messageIDBeingRespondedTo: Message ID of the request being responded to
+    ///   - affectedSOPClassUID: SOP Class UID of the deleted instance
+    ///   - affectedSOPInstanceUID: SOP Instance UID of the deleted instance
+    ///   - status: DIMSE status (default: success)
+    ///   - presentationContextID: Presentation context ID
+    public init(
+        messageIDBeingRespondedTo: UInt16,
+        affectedSOPClassUID: String,
+        affectedSOPInstanceUID: String,
+        status: DIMSEStatus = .success,
+        presentationContextID: UInt8
+    ) {
+        var cmd = CommandSet()
+        cmd.setCommand(.nDeleteResponse)
+        cmd.setMessageIDBeingRespondedTo(messageIDBeingRespondedTo)
+        cmd.setAffectedSOPClassUID(affectedSOPClassUID)
+        cmd.setAffectedSOPInstanceUID(affectedSOPInstanceUID)
+        cmd.setStatus(status)
+        cmd.setHasDataSet(false)
+        self.commandSet = cmd
+        self.presentationContextID = presentationContextID
+    }
+    
+    /// Creates an N-DELETE response from an existing command set
+    public init(commandSet: CommandSet, presentationContextID: UInt8) {
+        self.commandSet = commandSet
+        self.presentationContextID = presentationContextID
+    }
+}

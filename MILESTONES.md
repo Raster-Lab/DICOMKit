@@ -3780,12 +3780,84 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ---
 
+### Milestone 11.3: DICOM Print Management (v1.4.0)
+
+**Status**: ✅ Completed  
+**Goal**: Implement DICOM Print Management Service Class (PS3.4 Annex H)  
+**Complexity**: Medium-High  
+**Dependencies**: Milestone 6 (DICOM Networking)
+
+#### Deliverables
+- [x] Missing DIMSE-N message types:
+  - [x] `NCreateRequest` / `NCreateResponse` (PS3.7 Section 10.1.5) - Create managed SOP Instances
+  - [x] `NSetRequest` / `NSetResponse` (PS3.7 Section 10.1.3) - Modify managed SOP Instance attributes
+  - [x] `NGetRequest` / `NGetResponse` (PS3.7 Section 10.1.2) - Retrieve managed SOP Instance attributes
+  - [x] `NDeleteRequest` / `NDeleteResponse` (PS3.7 Section 10.1.6) - Delete managed SOP Instances
+- [x] Print Management SOP Class UIDs:
+  - [x] Basic Film Session SOP Class (`1.2.840.10008.5.1.1.1`)
+  - [x] Basic Film Box SOP Class (`1.2.840.10008.5.1.1.2`)
+  - [x] Basic Grayscale Image Box SOP Class (`1.2.840.10008.5.1.1.4`)
+  - [x] Basic Color Image Box SOP Class (`1.2.840.10008.5.1.1.4.1`)
+  - [x] Grayscale Print Management Meta SOP Class (`1.2.840.10008.5.1.1.9`)
+  - [x] Color Print Management Meta SOP Class (`1.2.840.10008.5.1.1.18`)
+  - [x] Printer SOP Class (`1.2.840.10008.5.1.1.16`) and Well-Known Instance
+  - [x] Print Job SOP Class (`1.2.840.10008.5.1.1.14`)
+- [x] Print-specific DICOM tags (35 tags):
+  - [x] Film Session tags (group 0x2000): Number of Copies, Print Priority, Medium Type, Film Destination, etc.
+  - [x] Film Box tags (group 0x2010): Image Display Format, Film Orientation, Film Size, Magnification Type, etc.
+  - [x] Image Box tags (group 0x2020): Image Position, Polarity, Decimate/Crop Behavior, etc.
+  - [x] Printer tags (group 0x2110): Printer Status, Status Info, Printer Name
+  - [x] Print Job tags (group 0x2100): Execution Status, Creation Date/Time
+- [x] Print data model types:
+  - [x] `PrintConfiguration` - Connection and mode settings
+  - [x] `FilmSession` - Film session parameters (copies, priority, medium, destination)
+  - [x] `FilmBox` - Film box layout parameters (display format, orientation, size, magnification)
+  - [x] `ImageBoxContent` - Image box content (position, polarity, crop behavior)
+  - [x] `PrinterStatus` - Printer status information
+  - [x] `PrintResult` - Print operation result
+- [x] Supporting enums:
+  - [x] `PrintColorMode` (grayscale, color)
+  - [x] `PrintPriority` (high, medium, low)
+  - [x] `MediumType` (paper, clear film, blue film, mammo)
+  - [x] `FilmDestination` (magazine, processor, bin)
+  - [x] `FilmOrientation` (portrait, landscape)
+  - [x] `FilmSize` (12 standard sizes including A3, A4)
+  - [x] `MagnificationType` (replicate, bilinear, cubic, none)
+  - [x] `TrimOption` (yes, no)
+  - [x] `ImagePolarity` (normal, reverse)
+  - [x] `DecimateCropBehavior` (decimate, crop, fail)
+- [x] `DICOMPrintService` API:
+  - [x] `getPrinterStatus(configuration:) async throws -> PrinterStatus`
+  - [x] Print workflow documentation (N-GET → N-CREATE → N-SET → N-ACTION → N-DELETE)
+- [x] MPPS response parsing fix:
+  - [x] N-CREATE-RSP proper status validation in `MPPSService`
+  - [x] N-SET-RSP proper status validation in `MPPSService`
+
+#### Technical Notes
+- Reference: PS3.4 Annex H - Print Management Service Class
+- Reference: PS3.7 Section 10.1 - DIMSE-N Services
+- Reference: PS3.3 C.13 - Print Management Module
+- N-CREATE, N-SET, N-GET, N-DELETE complete the full DIMSE-N message set
+- Print workflow: Get printer status → Create film session → Create film box → Set image boxes → Print → Delete session
+- All types conform to `Sendable` for Swift 6 strict concurrency
+
+#### Acceptance Criteria
+- [x] All 8 DIMSE-N message types correctly implemented with CommandSet integration
+- [x] Print SOP Class UIDs match DICOM PS3.4 standard
+- [x] Print data model types support all common print parameters
+- [x] MPPS service properly validates N-CREATE/N-SET response status codes
+- [x] Unit tests for all message types and print data models (37 print tests + 14 new DIMSE tests)
+- [ ] Integration tests with DICOM print SCP (requires network access)
+
+---
+
 ### Milestone 11 Summary
 
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
 | 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | ✅ Complete (100%) | Phase 1-6: ✅ All 29 tools complete (dicom-info through dicom-script, 753+ tests) |
+| 11.3 Print Management | v1.4.0 | Medium-High | ✅ Completed | DIMSE-N messages, Print SOP Classes, data models (51+ tests) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
@@ -3836,7 +3908,7 @@ These features may be considered for future development based on community needs
 - Modality Performed Procedure Step (MPPS)
 - Instance Availability Notification
 - Relevant Patient Information Query
-- Print Management (DICOM Print)
+- ~~Print Management (DICOM Print)~~ ✅ Completed (v1.4.0) - Print Management Service with DIMSE-N messages, Film Session/Box/Image Box models
 
 ### Platform Extensions
 - watchOS support (limited feature set)

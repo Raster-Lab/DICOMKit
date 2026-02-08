@@ -470,6 +470,294 @@ final class DIMSEMessagesTests: XCTestCase {
         XCTAssertTrue(response.status.isSuccess)
     }
     
+    // MARK: - N-CREATE Tests
+    
+    func testNCreateRequestCreation() {
+        let request = NCreateRequest(
+            messageID: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.1.1",
+            affectedSOPInstanceUID: "1.2.3.4.5",
+            hasDataSet: true,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(request.messageID, 1)
+        XCTAssertEqual(request.affectedSOPClassUID, "1.2.840.10008.5.1.1.1")
+        XCTAssertEqual(request.affectedSOPInstanceUID, "1.2.3.4.5")
+        XCTAssertTrue(request.hasDataSet)
+        XCTAssertEqual(request.presentationContextID, 1)
+        XCTAssertEqual(request.commandSet.command, .nCreateRequest)
+    }
+    
+    func testNCreateRequestWithoutInstanceUID() {
+        let request = NCreateRequest(
+            messageID: 5,
+            affectedSOPClassUID: "1.2.840.10008.5.1.1.1",
+            presentationContextID: 3
+        )
+        
+        XCTAssertNil(request.affectedSOPInstanceUID)
+        XCTAssertTrue(request.hasDataSet)
+    }
+    
+    func testNCreateRequestFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nCreateRequest)
+        cmd.setMessageID(42)
+        cmd.setAffectedSOPClassUID("1.2.3.4")
+        cmd.setAffectedSOPInstanceUID("1.2.3.4.5")
+        cmd.setHasDataSet(true)
+        
+        let request = NCreateRequest(commandSet: cmd, presentationContextID: 1)
+        
+        XCTAssertEqual(request.messageID, 42)
+        XCTAssertEqual(request.affectedSOPClassUID, "1.2.3.4")
+        XCTAssertEqual(request.affectedSOPInstanceUID, "1.2.3.4.5")
+    }
+    
+    func testNCreateResponseCreation() {
+        let response = NCreateResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.1.1",
+            affectedSOPInstanceUID: "1.2.3.4.5",
+            status: .success,
+            hasDataSet: false,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 1)
+        XCTAssertEqual(response.affectedSOPClassUID, "1.2.840.10008.5.1.1.1")
+        XCTAssertEqual(response.affectedSOPInstanceUID, "1.2.3.4.5")
+        XCTAssertTrue(response.status.isSuccess)
+        XCTAssertFalse(response.hasDataSet)
+        XCTAssertEqual(response.commandSet.command, .nCreateResponse)
+    }
+    
+    func testNCreateResponseFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nCreateResponse)
+        cmd.setMessageIDBeingRespondedTo(10)
+        cmd.setAffectedSOPClassUID("1.2.3")
+        cmd.setAffectedSOPInstanceUID("1.2.3.4")
+        cmd.setStatus(.success)
+        cmd.setHasDataSet(false)
+        
+        let response = NCreateResponse(commandSet: cmd, presentationContextID: 3)
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 10)
+        XCTAssertTrue(response.status.isSuccess)
+    }
+    
+    // MARK: - N-SET Tests
+    
+    func testNSetRequestCreation() {
+        let request = NSetRequest(
+            messageID: 1,
+            requestedSOPClassUID: "1.2.840.10008.5.1.1.4",
+            requestedSOPInstanceUID: "1.2.3.4.5.6",
+            hasDataSet: true,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(request.messageID, 1)
+        XCTAssertEqual(request.requestedSOPClassUID, "1.2.840.10008.5.1.1.4")
+        XCTAssertEqual(request.requestedSOPInstanceUID, "1.2.3.4.5.6")
+        XCTAssertTrue(request.hasDataSet)
+        XCTAssertEqual(request.presentationContextID, 1)
+        XCTAssertEqual(request.commandSet.command, .nSetRequest)
+    }
+    
+    func testNSetRequestFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nSetRequest)
+        cmd.setMessageID(42)
+        cmd.setRequestedSOPClassUID("1.2.3.4")
+        cmd.setRequestedSOPInstanceUID("1.2.3.4.5")
+        cmd.setHasDataSet(true)
+        
+        let request = NSetRequest(commandSet: cmd, presentationContextID: 1)
+        
+        XCTAssertEqual(request.messageID, 42)
+        XCTAssertEqual(request.requestedSOPClassUID, "1.2.3.4")
+        XCTAssertEqual(request.requestedSOPInstanceUID, "1.2.3.4.5")
+    }
+    
+    func testNSetResponseCreation() {
+        let response = NSetResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.1.4",
+            affectedSOPInstanceUID: "1.2.3.4.5.6",
+            status: .success,
+            hasDataSet: false,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 1)
+        XCTAssertEqual(response.affectedSOPClassUID, "1.2.840.10008.5.1.1.4")
+        XCTAssertEqual(response.affectedSOPInstanceUID, "1.2.3.4.5.6")
+        XCTAssertTrue(response.status.isSuccess)
+        XCTAssertFalse(response.hasDataSet)
+        XCTAssertEqual(response.commandSet.command, .nSetResponse)
+    }
+    
+    func testNSetResponseFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nSetResponse)
+        cmd.setMessageIDBeingRespondedTo(10)
+        cmd.setAffectedSOPClassUID("1.2.3")
+        cmd.setAffectedSOPInstanceUID("1.2.3.4")
+        cmd.setStatus(.success)
+        cmd.setHasDataSet(false)
+        
+        let response = NSetResponse(commandSet: cmd, presentationContextID: 3)
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 10)
+        XCTAssertTrue(response.status.isSuccess)
+    }
+    
+    // MARK: - N-GET Tests
+    
+    func testNGetRequestCreation() {
+        let request = NGetRequest(
+            messageID: 1,
+            requestedSOPClassUID: "1.2.840.10008.5.1.1.16",
+            requestedSOPInstanceUID: "1.2.840.10008.5.1.1.17",
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(request.messageID, 1)
+        XCTAssertEqual(request.requestedSOPClassUID, "1.2.840.10008.5.1.1.16")
+        XCTAssertEqual(request.requestedSOPInstanceUID, "1.2.840.10008.5.1.1.17")
+        XCTAssertFalse(request.hasDataSet)
+        XCTAssertEqual(request.presentationContextID, 1)
+        XCTAssertEqual(request.commandSet.command, .nGetRequest)
+    }
+    
+    func testNGetRequestWithDataSet() {
+        let request = NGetRequest(
+            messageID: 5,
+            requestedSOPClassUID: "1.2.3.4.5",
+            requestedSOPInstanceUID: "1.2.3.4.5.6",
+            hasDataSet: true,
+            presentationContextID: 3
+        )
+        
+        XCTAssertTrue(request.hasDataSet)
+    }
+    
+    func testNGetRequestFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nGetRequest)
+        cmd.setMessageID(99)
+        cmd.setRequestedSOPClassUID("1.2.3.4.5")
+        cmd.setRequestedSOPInstanceUID("1.2.3.4.5.6")
+        cmd.setHasDataSet(false)
+        
+        let request = NGetRequest(commandSet: cmd, presentationContextID: 5)
+        
+        XCTAssertEqual(request.messageID, 99)
+        XCTAssertEqual(request.requestedSOPClassUID, "1.2.3.4.5")
+        XCTAssertEqual(request.requestedSOPInstanceUID, "1.2.3.4.5.6")
+    }
+    
+    func testNGetResponseCreation() {
+        let response = NGetResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.1.16",
+            affectedSOPInstanceUID: "1.2.840.10008.5.1.1.17",
+            status: .success,
+            hasDataSet: true,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 1)
+        XCTAssertEqual(response.affectedSOPClassUID, "1.2.840.10008.5.1.1.16")
+        XCTAssertEqual(response.affectedSOPInstanceUID, "1.2.840.10008.5.1.1.17")
+        XCTAssertTrue(response.status.isSuccess)
+        XCTAssertTrue(response.hasDataSet)
+        XCTAssertEqual(response.commandSet.command, .nGetResponse)
+    }
+    
+    func testNGetResponseFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nGetResponse)
+        cmd.setMessageIDBeingRespondedTo(50)
+        cmd.setAffectedSOPClassUID("1.2.3")
+        cmd.setAffectedSOPInstanceUID("1.2.3.4")
+        cmd.setStatus(.success)
+        cmd.setHasDataSet(true)
+        
+        let response = NGetResponse(commandSet: cmd, presentationContextID: 7)
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 50)
+        XCTAssertTrue(response.status.isSuccess)
+    }
+    
+    // MARK: - N-DELETE Tests
+    
+    func testNDeleteRequestCreation() {
+        let request = NDeleteRequest(
+            messageID: 1,
+            requestedSOPClassUID: "1.2.840.10008.5.1.1.1",
+            requestedSOPInstanceUID: "1.2.3.4.5",
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(request.messageID, 1)
+        XCTAssertEqual(request.requestedSOPClassUID, "1.2.840.10008.5.1.1.1")
+        XCTAssertEqual(request.requestedSOPInstanceUID, "1.2.3.4.5")
+        XCTAssertFalse(request.hasDataSet)
+        XCTAssertEqual(request.presentationContextID, 1)
+        XCTAssertEqual(request.commandSet.command, .nDeleteRequest)
+    }
+    
+    func testNDeleteRequestFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nDeleteRequest)
+        cmd.setMessageID(99)
+        cmd.setRequestedSOPClassUID("1.2.3.4.5")
+        cmd.setRequestedSOPInstanceUID("1.2.3.4.5.6")
+        cmd.setHasDataSet(false)
+        
+        let request = NDeleteRequest(commandSet: cmd, presentationContextID: 5)
+        
+        XCTAssertEqual(request.messageID, 99)
+        XCTAssertEqual(request.requestedSOPClassUID, "1.2.3.4.5")
+        XCTAssertEqual(request.requestedSOPInstanceUID, "1.2.3.4.5.6")
+    }
+    
+    func testNDeleteResponseCreation() {
+        let response = NDeleteResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.1.1",
+            affectedSOPInstanceUID: "1.2.3.4.5",
+            status: .success,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 1)
+        XCTAssertEqual(response.affectedSOPClassUID, "1.2.840.10008.5.1.1.1")
+        XCTAssertEqual(response.affectedSOPInstanceUID, "1.2.3.4.5")
+        XCTAssertTrue(response.status.isSuccess)
+        XCTAssertFalse(response.hasDataSet)
+        XCTAssertEqual(response.commandSet.command, .nDeleteResponse)
+    }
+    
+    func testNDeleteResponseFromCommandSet() {
+        var cmd = CommandSet()
+        cmd.setCommand(.nDeleteResponse)
+        cmd.setMessageIDBeingRespondedTo(50)
+        cmd.setAffectedSOPClassUID("1.2.3")
+        cmd.setAffectedSOPInstanceUID("1.2.3.4")
+        cmd.setStatus(.success)
+        cmd.setHasDataSet(false)
+        
+        let response = NDeleteResponse(commandSet: cmd, presentationContextID: 7)
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 50)
+        XCTAssertTrue(response.status.isSuccess)
+    }
+    
     // MARK: - Hashable
     
     func testCEchoRequestHashable() {

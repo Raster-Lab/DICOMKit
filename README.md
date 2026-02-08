@@ -1196,6 +1196,18 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ HL7 CDA instance identifier support
   - ✅ Round-trip build → serialize → parse support
   - ✅ 40+ unit tests
+- ✅ **DICOM Print Management (NEW in v1.4.0)** - Print Management Service Class (PS3.4 Annex H)
+  - ✅ Complete DIMSE-N message types: N-CREATE, N-SET, N-GET, N-DELETE (request/response)
+  - ✅ Print Management SOP Class UIDs (Film Session, Film Box, Image Box, Printer, Print Job)
+  - ✅ `DICOMPrintService` for print management operations
+  - ✅ `FilmSession` - Session parameters (copies, priority, medium, destination)
+  - ✅ `FilmBox` - Layout parameters (display format, orientation, size, magnification)
+  - ✅ `ImageBoxContent` - Image content (position, polarity, crop behavior)
+  - ✅ `PrinterStatus` - Printer status retrieval via N-GET
+  - ✅ 35 Print-specific DICOM tags (groups 0x2000, 0x2010, 0x2020, 0x2100, 0x2110)
+  - ✅ 12 film sizes, 4 magnification types, 5 medium types
+  - ✅ Improved MPPS response validation (N-CREATE/N-SET status checking)
+  - ✅ 51+ unit tests
 
 ## Limitations (v0.7.5)
 
@@ -3756,7 +3768,7 @@ Standard DICOM dictionaries:
 - `UIDDictionary` - Transfer Syntax and SOP Class UIDs
 - Dictionary entry types
 
-### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4, v0.7.5, v0.7.6, v0.7.7, v0.7.8)
+### DICOMNetwork (v0.6, v0.7, v0.7.2, v0.7.3, v0.7.4, v0.7.5, v0.7.6, v0.7.7, v0.7.8, v1.4.0)
 DICOM network protocol implementation:
 - `DICOMStorageClient` - Unified storage client with server pool and automatic failover (NEW in v0.7.8)
 - `DICOMStorageClientConfiguration` - Storage client configuration (NEW in v0.7.8)
@@ -3815,6 +3827,17 @@ DICOM network protocol implementation:
 - `Association` - DICOM Association management
 - `CommandSet`, `PresentationContext` - Low-level protocol types
 - `DIMSEMessages` - DIMSE-C message types (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
+- `NCreateRequest`, `NCreateResponse` - N-CREATE DIMSE message types (NEW in v1.4.0)
+- `NSetRequest`, `NSetResponse` - N-SET DIMSE message types (NEW in v1.4.0)
+- `NGetRequest`, `NGetResponse` - N-GET DIMSE message types (NEW in v1.4.0)
+- `NDeleteRequest`, `NDeleteResponse` - N-DELETE DIMSE message types (NEW in v1.4.0)
+- `DICOMPrintService` - Print Management Service Class (PS3.4 Annex H) (NEW in v1.4.0)
+- `PrintConfiguration` - Print connection and mode settings (NEW in v1.4.0)
+- `FilmSession` - Film session parameters (copies, priority, medium, destination) (NEW in v1.4.0)
+- `FilmBox` - Film box layout parameters (display format, orientation, size) (NEW in v1.4.0)
+- `ImageBoxContent` - Image box content (position, polarity, crop behavior) (NEW in v1.4.0)
+- `PrinterStatus` - Printer status information (NEW in v1.4.0)
+- `PrintResult` - Print operation result (NEW in v1.4.0)
 
 ### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8, v1.1.0)
 High-level API:
@@ -4240,4 +4263,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: DICOMKit v1.1.0 adds Encapsulated Document support (PDF, CDA, STL, OBJ, MTL) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (95% complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 1,960+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
+**Note**: DICOMKit v1.4.0 adds DICOM Print Management support with complete DIMSE-N message types (N-CREATE, N-SET, N-GET, N-DELETE), Print Service Class data models, and improved MPPS response validation. Previous versions added Encapsulated Document support (v1.1.0) and 29 CLI tools (v1.1.1-v1.3.5) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 2,010+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
