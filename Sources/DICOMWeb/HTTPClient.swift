@@ -119,6 +119,15 @@ public final class HTTPClient: @unchecked Sendable {
     /// Configuration for this client
     public let configuration: DICOMwebConfiguration
     
+    /// Connection pool for managing HTTP connections
+    private let connectionPool: HTTPConnectionPool
+    
+    /// Request pipeline for request batching
+    private let requestPipeline: HTTPRequestPipeline
+    
+    /// Prefetch manager for predictive caching
+    private let prefetchManager: HTTPPrefetchManager
+    
     /// Request interceptors
     private var requestInterceptors: [RequestInterceptor] = []
     
@@ -128,14 +137,26 @@ public final class HTTPClient: @unchecked Sendable {
     // MARK: - Initialization
     
     /// Creates an HTTP client with the specified configuration
-    /// - Parameter configuration: The DICOMweb configuration
-    public init(configuration: DICOMwebConfiguration) {
+    /// - Parameters:
+    ///   - configuration: The DICOMweb configuration
+    ///   - connectionPoolConfig: Optional connection pool configuration
+    ///   - pipelineConfig: Optional pipeline configuration
+    ///   - prefetchConfig: Optional prefetch configuration
+    public init(
+        configuration: DICOMwebConfiguration,
+        connectionPoolConfig: HTTPConnectionPoolConfiguration = .default,
+        pipelineConfig: HTTPPipelineConfiguration = .default,
+        prefetchConfig: HTTPPrefetchConfiguration = .default
+    ) {
         self.configuration = configuration
+        self.connectionPool = HTTPConnectionPool(configuration: connectionPoolConfig)
+        self.requestPipeline = HTTPRequestPipeline(configuration: pipelineConfig)
+        self.prefetchManager = HTTPPrefetchManager(configuration: prefetchConfig)
         
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = configuration.timeouts.readTimeout
         sessionConfig.timeoutIntervalForResource = configuration.timeouts.resourceTimeout
-        sessionConfig.httpMaximumConnectionsPerHost = configuration.maxConcurrentRequests
+        sessionConfig.httpMaximumConnectionsPerHost = connectionPoolConfig.maxConnectionsPerHost
         
         #if os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
         if #available(macOS 10.13, iOS 11.0, *) {
@@ -143,12 +164,33 @@ public final class HTTPClient: @unchecked Sendable {
         }
         #endif
         
-        // Enable HTTP/2
-        sessionConfig.httpAdditionalHeaders = [
-            "Accept-Encoding": "gzip, deflate"
-        ]
+        // Enable HTTP/2 if configured
+        if connectionPoolConfig.enableHTTP2 {
+            sessionConfig.httpAdditionalHeaders = [
+                "Accept-Encoding": "gzip, deflate"
+            ]
+        }
         
         self.session = URLSession(configuration: sessionConfig)
+        
+        // Start connection pool, pipeline, and prefetch manager
+        Task {
+            await connectionPool.start()
+            await requestPipeline.start()
+            await prefetchManager.start()
+        }
+    }
+    
+    /// Cleanup
+    deinit {
+        let pool = self.connectionPool
+        let pipeline = self.requestPipeline
+        let prefetch = self.prefetchManager
+        Task {
+            await pool.stop()
+            await pipeline.stop()
+            await prefetch.stop()
+        }
     }
     
     // MARK: - Interceptors
@@ -164,6 +206,47 @@ public final class HTTPClient: @unchecked Sendable {
     public func addResponseInterceptor(_ interceptor: @escaping ResponseInterceptor) {
         responseInterceptors.append(interceptor)
     }
+    
+    // MARK: - Connection Pool & Performance
+    
+    /// Returns connection pool statistics
+    /// - Returns: Current connection pool statistics
+    public func connectionPoolStatistics() async -> HTTPConnectionPoolStatistics {
+        return await connectionPool.statistics()
+    }
+    
+    /// Returns request pipeline statistics
+    /// - Returns: Current pipeline statistics
+    public func pipelineStatistics() async -> HTTPPipelineStatistics {
+        return await requestPipeline.statistics()
+    }
+    
+    /// Returns prefetch manager statistics
+    /// - Returns: Current prefetch statistics
+    public func prefetchStatistics() async -> HTTPPrefetchStatistics {
+        return await prefetchManager.statistics()
+    }
+    
+    /// Enqueues URLs for prefetching
+    /// - Parameters:
+    ///   - urls: URLs to prefetch
+    ///   - priority: Priority level for prefetch requests
+    public func enqueuePrefetch(urls: [URL], priority: HTTPPrefetchConfiguration.Priority = .low) async {
+        await prefetchManager.enqueuePrefetch(urls: urls, priority: priority)
+    }
+    
+    /// Checks if a URL has been prefetched and is cached
+    /// - Parameter url: The URL to check
+    /// - Returns: True if the URL is cached
+    public func isPrefetched(_ url: URL) async -> Bool {
+        return await prefetchManager.isCached(url)
+    }
+    
+    /// Clears the prefetch cache
+    public func clearPrefetchCache() async {
+        await prefetchManager.clearCache()
+    }
+
     
     // MARK: - Request Execution
     
@@ -188,6 +271,17 @@ public final class HTTPClient: @unchecked Sendable {
         let headers = configuration.headers(additionalHeaders: modifiedRequest.headers)
         for (name, value) in headers {
             urlRequest.setValue(value, forHTTPHeaderField: name)
+        }
+        
+        // Acquire connection from pool
+        let host = modifiedRequest.url.host ?? "unknown"
+        let connectionID = await connectionPool.acquireConnection(for: host)
+        
+        defer {
+            // Release connection back to pool
+            Task {
+                await connectionPool.releaseConnection(connectionID, for: host)
+            }
         }
         
         // Execute request
