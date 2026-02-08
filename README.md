@@ -2,6 +2,7 @@
 
 A pure Swift DICOM toolkit for Apple platforms (iOS, macOS, visionOS)
 
+[![CI](https://github.com/Raster-Lab/DICOMKit/actions/workflows/ci.yml/badge.svg)](https://github.com/Raster-Lab/DICOMKit/actions/workflows/ci.yml)
 [![Swift 6.2](https://img.shields.io/badge/Swift-6.2-orange.svg)](https://swift.org)
 [![Platforms](https://img.shields.io/badge/Platforms-iOS%2017%20|%20macOS%2014%20|%20visionOS%201-blue.svg)](https://developer.apple.com)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)

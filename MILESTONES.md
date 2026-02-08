@@ -3776,7 +3776,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - [x] Documentation complete with examples
 - [ ] Homebrew formula updated for all tools
 - [ ] Integration tests with real PACS systems
-- [ ] CI/CD pipeline for all tools
+- [x] CI/CD pipeline for all tools
 
 ---
 
