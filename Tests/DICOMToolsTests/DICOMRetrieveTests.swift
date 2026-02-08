@@ -3,8 +3,8 @@ import Foundation
 import DICOMCore
 import DICOMNetwork
 
-/// Tests for dicom-retrieve CLI tool functionality
-/// Tests URL parsing, UID list handling, retrieval methods, query levels, output organization, and parallelism
+/// Tests for dicom-retrieve CLI tool functionality including URL parsing, UID list handling,
+/// retrieval methods, query levels, output organization, and parallelism
 final class DICOMRetrieveTests: XCTestCase {
     
     // MARK: - URL Parsing Tests
