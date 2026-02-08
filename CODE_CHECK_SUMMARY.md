@@ -71,7 +71,7 @@ Build complete! (0.12s)
 ### Short-term
 1. ✅ **COMPLETED**: Fix test compilation errors
 2. ✅ **COMPLETED**: Address Package.swift warnings
-3. **TODO**: Add platform-specific conditional compilation to ColorTransformTests
+3. ✅ **COMPLETED**: Add platform-specific conditional compilation to ColorTransformTests
 
 ### Medium-term
 1. Consider making DataSet+TestHelpers available to other test targets if needed
@@ -88,6 +88,24 @@ Build complete! (0.12s)
 2. `Tests/DICOMKitTests/ParametricMap/ParametricMapPixelDataExtractorTests.swift`
 3. `Tests/DICOMKitTests/ParametricMap/ParametricMapAdditionalTests.swift`
 4. `Package.swift`
+5. `Tests/DICOMKitTests/PresentationStateTests/ColorTransformTests.swift` (February 8, 2026)
+
+## Recent Updates (February 8, 2026)
+
+### Platform-Specific Test Compilation Fix
+- **File**: `Tests/DICOMKitTests/PresentationStateTests/ColorTransformTests.swift`
+- **Issue**: Test methods called ColorTransform methods that are only available on Apple platforms (within `#if canImport(CoreGraphics)` block)
+- **Fix**: Wrapped all ColorTransform test methods (lines 70-320) in `#if canImport(CoreGraphics)` conditional compilation block
+- **Affected Tests**:
+  - RGB to XYZ conversion tests
+  - XYZ to RGB conversion tests  
+  - XYZ to LAB conversion tests
+  - LAB to XYZ conversion tests
+  - RGB to LAB conversion tests
+  - LAB to RGB conversion tests
+  - Core Graphics integration tests
+- **Result**: Tests now compile on Linux without CoreGraphics, only run on Apple platforms
+- **Build Status**: ✅ Build completes with no warnings or errors
 
 ## Metrics
 - **Build Warnings**: 3 → 0 (100% reduction)
@@ -96,9 +114,9 @@ Build complete! (0.12s)
 - **Security Vulnerabilities**: 0 (none found)
 
 ## Conclusion
-The code check successfully identified and resolved all compilation warnings and test errors accessible from the Linux build environment. The codebase is now in a clean state with no build warnings. The only remaining known issue is platform-specific test failures that require conditional compilation, which is a common and acceptable pattern in cross-platform Swift development.
+The code check successfully identified and resolved all compilation warnings and test errors accessible from the Linux build environment. The codebase is now in a clean state with no build warnings. All platform-specific test compilation issues have been resolved by wrapping CoreGraphics-dependent tests in conditional compilation blocks.
 
 ## Next Steps
-1. Create a separate issue/PR for ColorTransformTests platform-specific compilation
+1. ✅ **COMPLETED**: ColorTransformTests platform-specific compilation fixed (February 8, 2026)
 2. Consider adding CI matrix builds for multiple platforms
 3. Continue monitoring build health in future changes
