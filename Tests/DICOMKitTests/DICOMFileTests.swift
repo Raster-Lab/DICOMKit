@@ -201,7 +201,7 @@ struct DICOMFileTests {
     
     @Test("DICOM standard edition")
     func testDICOMStandardEdition() {
-        #expect(dicomStandardEdition == "2025e")
+        #expect(dicomStandardEdition == "2026a")
     }
     
     @Test("Supported Transfer Syntax UID")

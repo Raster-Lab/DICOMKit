@@ -6,7 +6,7 @@ import DICOMCore
 /// This is a minimal v0.1 dictionary with essential tags for File Meta Information
 /// and basic Patient/Study/Series level elements.
 ///
-/// Full dictionary from DICOM PS3.6 2025e will be expanded in future versions.
+/// Full dictionary from DICOM PS3.6 2026a will be expanded in future versions.
 public struct DataElementDictionary {
     
     private static let entries: [Tag: DataElementEntry] = {

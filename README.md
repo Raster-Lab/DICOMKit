@@ -1181,7 +1181,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ **Type-safe API** - Leverages Swift's type system for safety
 - ✅ **Value semantics** - Immutable data structures with `struct` and `enum`
 - ✅ **Strict concurrency** - Full Swift 6 concurrency support
-- ✅ **DICOM 2025e compliant** - Based on latest DICOM standard
+- ✅ **DICOM 2026a compliant** - Based on latest DICOM standard
 - ✅ **Universal architecture** - Supports both Apple Silicon (M-series) and Intel (x86_64) processors
 - ✅ **Encapsulated Document Support (NEW in v1.1.0)** - Store non-DICOM documents as DICOM objects
   - ✅ Encapsulated PDF Storage (1.2.840.10008.5.1.4.1.1.104.1)
@@ -4193,14 +4193,14 @@ DICOMweb (RESTful DICOM) client and server implementation:
 ## DICOM Standard Compliance
 
 DICOMKit implements:
-- **DICOM PS3.3 2025e** - Information Object Definitions (Structured Reporting, Presentation State modules)
-- **DICOM PS3.5 2025e** - Data Structures and Encoding
-- **DICOM PS3.6 2025e** - Data Dictionary (partial, essential tags only)
-- **DICOM PS3.7 2025e** - Message Exchange (DIMSE-C services)
-- **DICOM PS3.8 2025e** - Network Communication Support (Upper Layer Protocol)
-- **DICOM PS3.10 2025e** - Media Storage and File Format
-- **DICOM PS3.15 2025e** - Security and System Management Profiles (TLS support)
-- **DICOM PS3.18 2025e** - Web Services (DICOMweb WADO-RS, QIDO-RS, STOW-RS, DICOM JSON)
+- **DICOM PS3.3 2026a** - Information Object Definitions (Structured Reporting, Presentation State modules)
+- **DICOM PS3.5 2026a** - Data Structures and Encoding
+- **DICOM PS3.6 2026a** - Data Dictionary (partial, essential tags only)
+- **DICOM PS3.7 2026a** - Message Exchange (DIMSE-C services)
+- **DICOM PS3.8 2026a** - Network Communication Support (Upper Layer Protocol)
+- **DICOM PS3.10 2026a** - Media Storage and File Format
+- **DICOM PS3.15 2026a** - Security and System Management Profiles (TLS support)
+- **DICOM PS3.18 2026a** - Web Services (DICOMweb WADO-RS, QIDO-RS, STOW-RS, DICOM JSON)
 
 All parsing behavior is documented with PS3.5 section references. We do not translate implementations from other toolkits (DCMTK, pydicom, fo-dicom) - all behavior is derived directly from the DICOM standard.
 
