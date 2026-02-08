@@ -108,6 +108,51 @@ public struct PatientName: Sendable {
 swift test
 ```
 
+### Continuous Integration
+
+DICOMKit uses GitHub Actions for automated testing and validation:
+
+- **CI Workflow**: Runs on every push and pull request
+  - Builds the package on multiple Xcode versions
+  - Runs the comprehensive test suite (1,464+ tests)
+  - Validates code quality and compiler warnings
+  - Tests platform compatibility (iOS, macOS, visionOS)
+  
+- **Scheduled Tests**: Runs weekly on Mondays
+  - Comprehensive test suite with verbose output
+  - Memory leak detection with sanitizers
+  - Performance benchmarking
+  - Dependency update checks
+  
+- **Documentation Build**: Deploys to GitHub Pages on main branch updates
+  - Builds DocC documentation for all modules
+  - Creates searchable API reference
+  
+- **Release Workflow**: Triggered on version tags (v*.*.*)
+  - Builds and packages CLI tools
+  - Creates GitHub releases with artifacts
+  - Generates release notes
+
+All CI workflows are located in `.github/workflows/`:
+- `ci.yml` - Main continuous integration
+- `scheduled-tests.yml` - Weekly comprehensive testing
+- `docs.yml` - Documentation deployment
+- `release.yml` - Release automation
+
+Before submitting a PR, ensure your changes pass locally:
+```bash
+# Build the project
+swift build
+
+# Run all tests
+swift test
+
+# Build in release mode
+swift build -c release
+```
+
+The CI will automatically run these checks when you open a pull request.
+
 ### Test Example
 
 ```swift
