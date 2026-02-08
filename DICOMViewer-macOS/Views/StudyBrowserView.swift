@@ -24,6 +24,9 @@ struct StudyBrowserView: View {
                         Button(action: { showingImportPicker = true }) {
                             Label("Import", systemImage: "square.and.arrow.down")
                         }
+                        .help("Import DICOM files or folders")
+                        .accessibilityLabel("Import DICOM files")
+                        .accessibilityHint("Opens a file picker to select DICOM files to import")
                     }
                 }
                 .fileImporter(
@@ -74,6 +77,8 @@ struct StudyBrowserView: View {
                 } label: {
                     Label("Filter", systemImage: "line.3.horizontal.decrease.circle")
                 }
+                .help("Filter studies by modality (CT, MR, US, etc.)")
+                .accessibilityLabel("Filter by modality")
                 
                 Spacer()
                 
@@ -86,6 +91,8 @@ struct StudyBrowserView: View {
                 } label: {
                     Label("Sort", systemImage: "arrow.up.arrow.down")
                 }
+                .help("Sort studies by date, patient name, or modality")
+                .accessibilityLabel("Sort studies")
             }
             .padding(.horizontal)
             .padding(.vertical, 8)
@@ -110,6 +117,8 @@ struct StudyBrowserView: View {
                     }
                 }
                 .listStyle(.sidebar)
+                .accessibilityLabel("Study list")
+                .accessibilityHint("Select a study to view its series and images")
             }
             
             Divider()

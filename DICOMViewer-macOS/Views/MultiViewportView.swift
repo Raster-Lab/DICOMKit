@@ -157,6 +157,8 @@ struct MultiViewportView: View {
             } label: {
                 Label("Layout: \(viewModel.layoutService.currentLayout.name)", systemImage: "square.grid.2x2")
             }
+            .help("Select viewport layout (1×1, 2×2, 3×3, 4×4)")
+            .accessibilityLabel("Viewport layout selector")
             
             Divider()
             
@@ -176,6 +178,8 @@ struct MultiViewportView: View {
             } label: {
                 Label("Protocol", systemImage: "list.bullet.rectangle")
             }
+            .help("Select hanging protocol for automatic series arrangement")
+            .accessibilityLabel("Hanging protocol selector")
             
             Divider()
             
@@ -213,6 +217,8 @@ struct MultiViewportView: View {
             } label: {
                 Label("Linking", systemImage: "link")
             }
+            .help("Configure viewport linking (scroll, window/level, zoom, pan)")
+            .accessibilityLabel("Viewport linking options")
             
             Divider()
             
@@ -222,6 +228,8 @@ struct MultiViewportView: View {
             } label: {
                 Label("Cine", systemImage: "play.circle")
             }
+            .help("Toggle cine playback controls")
+            .accessibilityLabel("Cine playback controls")
             
             Divider()
             

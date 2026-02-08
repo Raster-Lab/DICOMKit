@@ -3199,7 +3199,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 **Progress**: 
 - DICOMViewer iOS is complete (February 2026) with 21 Swift files, 35+ tests, and comprehensive documentation. 
-- DICOMViewer macOS Phase 5 complete (February 2026) with 61 files, ~15,000 lines, 379+ tests (302 unit + 37 integration + 40+ UI). All Phase 5 features implemented: measurement export (CSV/JSON/text), PDF reports, watch folder auto-import, comprehensive testing. Documentation enhanced with feature details, format examples, troubleshooting guides, and testing documentation.
+- DICOMViewer macOS **100% complete** (February 8, 2026) with 61 files, ~15,000 lines, 379+ tests (302 unit + 37 integration + 40+ UI). All Phase 5 features implemented: measurement export (CSV/JSON/text), PDF reports, watch folder auto-import, comprehensive testing, **tooltips, accessibility enhancements, and complete documentation** (KEYBOARD_SHORTCUTS.md 341 lines, USER_GUIDE.md 1067 lines).
 - CLI Tools suite complete with 8 tools and 180+ tests (dicom-diff added in Phase 2).
 - Sample code/playgrounds complete with 27 playgrounds and 241 examples.
 - DICOMViewer visionOS complete (February 2026) with 43 files, ~2,200 lines, 270+ tests (205 unit + 45 integration + 20 device). All 4 phases implemented: foundation, advanced rendering, interaction & measurements, collaboration & polish. Features 3D volume rendering, spatial measurements, SharePlay collaboration, hand tracking, and eye tracking.

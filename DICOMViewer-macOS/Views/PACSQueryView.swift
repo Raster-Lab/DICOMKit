@@ -55,6 +55,8 @@ struct PACSQueryView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 400)
+                .help("Select a PACS server to query")
+                .accessibilityLabel("PACS server selection")
             }
 
             // Query fields
@@ -64,27 +66,37 @@ struct PACSQueryView: View {
                         .gridColumnAlignment(.trailing)
                     TextField("e.g. SMITH*", text: $viewModel.patientName)
                         .textFieldStyle(.roundedBorder)
+                        .help("Enter patient name (wildcards * and ? supported)")
+                        .accessibilityLabel("Patient name search field")
 
                     Text("Patient ID:")
                         .gridColumnAlignment(.trailing)
                     TextField("e.g. 12345", text: $viewModel.patientID)
                         .textFieldStyle(.roundedBorder)
+                        .help("Enter patient ID (exact match or wildcard)")
+                        .accessibilityLabel("Patient ID search field")
                 }
 
                 GridRow {
                     Text("Study Date:")
                     TextField("YYYYMMDD or range", text: $viewModel.studyDate)
                         .textFieldStyle(.roundedBorder)
+                        .help("Enter study date as YYYYMMDD or date range YYYYMMDD-YYYYMMDD")
+                        .accessibilityLabel("Study date search field")
 
                     Text("Modality:")
                     TextField("e.g. CT, MR", text: $viewModel.modality)
                         .textFieldStyle(.roundedBorder)
+                        .help("Enter modality (CT, MR, US, CR, DX, etc.)")
+                        .accessibilityLabel("Modality search field")
                 }
 
                 GridRow {
                     Text("Accession #:")
                     TextField("Accession number", text: $viewModel.accessionNumber)
                         .textFieldStyle(.roundedBorder)
+                        .help("Enter accession number for the study")
+                        .accessibilityLabel("Accession number search field")
 
                     // Search and clear buttons
                     HStack(spacing: 8) {
@@ -98,12 +110,17 @@ struct PACSQueryView: View {
                             viewModel.modality = ""
                             viewModel.accessionNumber = ""
                         }
+                        .help("Clear all search criteria and results")
+                        .accessibilityLabel("Clear search")
 
                         Button("Search") {
                             Task { await viewModel.executeQuery() }
                         }
                         .keyboardShortcut(.defaultAction)
                         .disabled(viewModel.selectedServer == nil || viewModel.isQuerying)
+                        .help("Execute PACS query with current search criteria")
+                        .accessibilityLabel("Search PACS")
+                        .accessibilityHint("Queries the selected PACS server for studies matching the criteria")
                     }
                     .gridCellColumns(2)
                 }
@@ -155,6 +172,8 @@ struct PACSQueryView: View {
                     }
                     .width(min: 40, ideal: 60)
                 }
+                .accessibilityLabel("Query results table")
+                .accessibilityHint("Select studies to retrieve from PACS")
             }
         }
     }
@@ -186,8 +205,13 @@ struct PACSQueryView: View {
                 }
             }
             .disabled(viewModel.selectedStudyUIDs.isEmpty || viewModel.selectedServer == nil)
+            .help("Retrieve selected studies from PACS server using C-MOVE")
+            .accessibilityLabel("Retrieve selected studies")
+            .accessibilityHint("Downloads the selected studies from the PACS server")
 
             Button("Close") { dismiss() }
+                .help("Close PACS query window")
+                .accessibilityLabel("Close")
         }
         .padding()
     }

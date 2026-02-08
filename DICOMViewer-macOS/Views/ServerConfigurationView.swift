@@ -21,6 +21,8 @@ struct ServerConfigurationView: View {
                     ServerRow(server: server, isDefault: server.isDefault)
                 }
                 .listStyle(.bordered)
+                .accessibilityLabel("PACS server list")
+                .accessibilityHint("Select a server to edit its configuration")
 
                 Divider()
 
@@ -29,12 +31,16 @@ struct ServerConfigurationView: View {
                         Image(systemName: "plus")
                     }
                     .help("Add Server")
+                    .accessibilityLabel("Add server")
+                    .accessibilityHint("Opens a form to add a new PACS server")
 
                     Button(action: deleteSelected) {
                         Image(systemName: "minus")
                     }
                     .disabled(viewModel.selectedServerID == nil)
                     .help("Delete Server")
+                    .accessibilityLabel("Delete server")
+                    .accessibilityHint("Deletes the selected PACS server")
 
                     Spacer()
                 }
@@ -58,6 +64,8 @@ struct ServerConfigurationView: View {
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }
+                    .help("Close server configuration")
+                    .accessibilityLabel("Close")
             }
         }
         .onAppear { viewModel.loadServers() }
