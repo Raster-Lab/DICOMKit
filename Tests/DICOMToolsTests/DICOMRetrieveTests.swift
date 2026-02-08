@@ -360,7 +360,7 @@ final class DICOMRetrieveTests: XCTestCase {
     /// Test output directory creation
     func testOutputDirectoryCreation() throws {
         let tempDir = FileManager.default.temporaryDirectory
-        let outputDir = tempDir.appendingPathComponent("new_output_\(UUID().uuidString)")
+        let outputDir = tempDir.appendingPathComponent("new_output_test")
         
         // Directory should not exist initially
         XCTAssertFalse(FileManager.default.fileExists(atPath: outputDir.path))
