@@ -44,8 +44,8 @@ extension DICOMCompress {
                   jpeg-lossless          JPEG Lossless (Process 14)
                   jpeg-lossless-sv1      JPEG Lossless SV1 (default lossless JPEG)
                   jpeg2000, j2k          JPEG 2000 (lossy)
-                  jpeg2000-lossless      JPEG 2000 Lossless
-                  j2k-lossless
+                  jpeg2000-lossless,     JPEG 2000 Lossless
+                    j2k-lossless
                   rle                    RLE Lossless
                   deflate                Deflated Explicit VR Little Endian
                   explicit-le            Explicit VR Little Endian
