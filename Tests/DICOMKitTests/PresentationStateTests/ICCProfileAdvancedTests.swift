@@ -287,14 +287,14 @@ final class ICCProfileAdvancedTests: XCTestCase {
 extension Data {
     fileprivate mutating func writeUInt32BE(_ value: UInt32, at offset: Int) {
         let bytes = value.bigEndian
-        withUnsafeBytes(of: bytes) { ptr in
+        Swift.withUnsafeBytes(of: bytes) { ptr in
             self.replaceSubrange(offset..<(offset + 4), with: ptr)
         }
     }
     
     fileprivate mutating func writeUInt16BE(_ value: UInt16, at offset: Int) {
         let bytes = value.bigEndian
-        withUnsafeBytes(of: bytes) { ptr in
+        Swift.withUnsafeBytes(of: bytes) { ptr in
             self.replaceSubrange(offset..<(offset + 2), with: ptr)
         }
     }

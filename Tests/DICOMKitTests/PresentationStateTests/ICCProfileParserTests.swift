@@ -358,7 +358,7 @@ final class ICCProfileParserTests: XCTestCase {
 extension Data {
     fileprivate mutating func writeUInt32BE(_ value: UInt32, at offset: Int) {
         let bytes = value.bigEndian
-        withUnsafeBytes(of: bytes) { ptr in
+        Swift.withUnsafeBytes(of: bytes) { ptr in
             self.replaceSubrange(offset..<(offset + 4), with: ptr)
         }
     }

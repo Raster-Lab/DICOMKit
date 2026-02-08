@@ -3811,13 +3811,13 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - ✅ dicom-mwl: Modality Worklist Management (C-FIND)
 - ✅ dicom-mpps: MPPS operations (N-CREATE, N-SET)
 
-**Phase 6 Tools (🚧 67% complete, February 2026)**:
+**Phase 6 Tools (✅ 100% complete, February 2026)**:
 - ✅ dicom-pixedit: Pixel data manipulation (mask, crop, window/level, invert) (33 tests)
 - ✅ dicom-tags: Tag manipulation and bulk operations (set, delete, copy, delete-private) (26 tests)
 - ✅ dicom-uid: UID generation, validation, lookup, and regeneration (32 tests)
 - ✅ dicom-compress: Compression/decompression utilities (compress, decompress, info, batch) (38 tests)
-- 📋 dicom-study: Study/Series organization (planned)
-- 📋 dicom-script: Workflow scripting and automation (planned)
+- ✅ dicom-study: Study/Series organization (26 tests)
+- ✅ dicom-script: Workflow scripting and automation (20 tests)
 
 ---
 
