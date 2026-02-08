@@ -3716,12 +3716,12 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 #### Phase 6: Advanced and Specialized Tools (v1.3.0-v1.3.5)
 
-**Status**: 📋 Planned  
+**Status**: 🚧 In Progress (2/6 complete)  
 **Timeline**: 3-4 weeks
 
 ##### Tools
-- [ ] **dicom-pixedit** (v1.3.0) - Pixel data manipulation
-- [ ] **dicom-tags** (v1.3.1) - Tag manipulation and bulk operations
+- [x] **dicom-pixedit** (v1.3.0) - Pixel data manipulation ✅ Complete (33 tests)
+- [x] **dicom-tags** (v1.3.1) - Tag manipulation and bulk operations ✅ Complete (26 tests)
 - [ ] **dicom-uid** (v1.3.2) - UID generation and management
 - [ ] **dicom-compress** (v1.3.3) - Compression/decompression utilities
 - [ ] **dicom-study** (v1.3.4) - Study/Series organization
@@ -3736,8 +3736,8 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Phase 3 | 4 | Medium | 80+ | 1,700 | ✅ Complete |
 | Phase 4 | 3 | Medium | 103+/95+ | 1,700-2,100 | ✅ Complete |
 | Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | ✅ Complete (February 2026) |
-| Phase 6 | 6 | Low-Medium | 130+ | 2,700-3,300 | 📋 Planned |
-| **Total** | **29** | - | **448+/695+** | **15,338** | **79%** |
+| Phase 6 | 6 | Low-Medium | 59/130+ | 2,700-3,300 | 🚧 33% Complete (2/6) |
+| **Total** | **29** | - | **507+/695+** | **15,338** | **83%** |
 
 #### Technical Notes
 - All tools support macOS and Linux platforms
@@ -3764,7 +3764,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
-| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (86%) | Phase 2: ✅ Complete (4/4 tools), Phase 3: ✅ Complete, Phase 4: ✅ Complete (3/3 tools with 103 tests), Phase 5: ✅ Complete (5/5 tools) |
+| 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | 🚧 In Progress (90%) | Phase 2-5: ✅ Complete, Phase 6: 🚧 2/6 tools (dicom-pixedit, dicom-tags) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
@@ -3789,6 +3789,14 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - ✅ dicom-echo: Network testing and diagnostics (25 tests)
 - ✅ dicom-mwl: Modality Worklist Management (C-FIND)
 - ✅ dicom-mpps: MPPS operations (N-CREATE, N-SET)
+
+**Phase 6 Tools (🚧 33% complete, February 2026)**:
+- ✅ dicom-pixedit: Pixel data manipulation (mask, crop, window/level, invert) (33 tests)
+- ✅ dicom-tags: Tag manipulation and bulk operations (set, delete, copy, delete-private) (26 tests)
+- 📋 dicom-uid: UID generation and management (planned)
+- 📋 dicom-compress: Compression/decompression utilities (planned)
+- 📋 dicom-study: Study/Series organization (planned)
+- 📋 dicom-script: Workflow scripting and automation (planned)
 
 ---
 
