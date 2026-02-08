@@ -283,6 +283,12 @@ public struct StorageCommitmentConfiguration: Sendable, Hashable {
     /// User identity for authentication (optional)
     public let userIdentity: UserIdentity?
     
+    /// Retry policy for commitment requests
+    ///
+    /// Configures how commitment requests should be retried on transient failures.
+    /// Default is `RetryPolicy.default` which provides exponential backoff with jitter.
+    public let retryPolicy: RetryPolicy
+    
     /// Default Implementation Class UID for DICOMKit
     public static let defaultImplementationClassUID = "1.2.826.0.1.3680043.9.7433.1.1"
     
@@ -299,6 +305,7 @@ public struct StorageCommitmentConfiguration: Sendable, Hashable {
     ///   - implementationClassUID: Implementation Class UID
     ///   - implementationVersionName: Implementation Version Name
     ///   - userIdentity: User identity for authentication (optional)
+    ///   - retryPolicy: Retry policy for commitment requests (default: .default)
     public init(
         callingAETitle: AETitle,
         calledAETitle: AETitle,
@@ -306,7 +313,8 @@ public struct StorageCommitmentConfiguration: Sendable, Hashable {
         maxPDUSize: UInt32 = defaultMaxPDUSize,
         implementationClassUID: String = defaultImplementationClassUID,
         implementationVersionName: String? = defaultImplementationVersionName,
-        userIdentity: UserIdentity? = nil
+        userIdentity: UserIdentity? = nil,
+        retryPolicy: RetryPolicy = .default
     ) {
         self.callingAETitle = callingAETitle
         self.calledAETitle = calledAETitle
@@ -315,6 +323,7 @@ public struct StorageCommitmentConfiguration: Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.userIdentity = userIdentity
+        self.retryPolicy = retryPolicy
     }
 }
 
@@ -463,13 +472,16 @@ public enum StorageCommitmentService {
     /// the specified instances. The SCP will later send an N-EVENT-REPORT
     /// (potentially on a new association) with the commitment result.
     ///
+    /// If configured with a retry policy, this method will automatically
+    /// retry transient failures according to the policy parameters.
+    ///
     /// - Parameters:
     ///   - references: The SOP references to commit
     ///   - host: The remote host address
     ///   - port: The remote port number (default: 104)
     ///   - configuration: The service configuration
     /// - Returns: A `CommitmentRequest` representing the pending commitment
-    /// - Throws: `DICOMNetworkError` if the request fails
+    /// - Throws: `DICOMNetworkError` if the request fails after all retry attempts
     ///
     /// Reference: PS3.4 Section J.3.1 - N-ACTION Service
     public static func requestCommitment(
@@ -482,6 +494,29 @@ public enum StorageCommitmentService {
             throw DICOMNetworkError.encodingFailed("At least one SOP reference is required")
         }
         
+        // Create retry executor with configured policy
+        let executor = RetryExecutor(policy: configuration.retryPolicy)
+        
+        // Execute with retry
+        return try await executor.execute {
+            try await performCommitmentRequest(
+                references: references,
+                host: host,
+                port: port,
+                configuration: configuration
+            )
+        }
+    }
+    
+    /// Internal method that performs the actual commitment request
+    ///
+    /// This is separated from `requestCommitment` to allow retry wrapping.
+    private static func performCommitmentRequest(
+        references: [SOPReference],
+        host: String,
+        port: UInt16,
+        configuration: StorageCommitmentConfiguration
+    ) async throws -> CommitmentRequest {
         // Generate a unique Transaction UID
         let transactionUID = UIDGenerator.generateUID().value
         
