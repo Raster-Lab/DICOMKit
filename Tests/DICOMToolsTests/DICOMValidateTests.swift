@@ -23,7 +23,7 @@ struct ValidationResult {
     let warnings: [ValidationIssue]
 }
 
-enum TestOutputFormat {
+private enum TestOutputFormat {
     case text
     case json
 }
@@ -48,7 +48,7 @@ struct ValidationReport {
         return 0
     }
     
-    func render(format: TestOutputFormat) throws -> String {
+    fileprivate func render(format: TestOutputFormat) throws -> String {
         // Simple implementation for testing
         switch format {
         case .text:
