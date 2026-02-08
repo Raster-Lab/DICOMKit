@@ -14,10 +14,13 @@ This document provides a comprehensive milestone-based roadmap for developing CL
 ### Current Status
 
 **Phase 1**: ✅ Complete (7 tools, 160+ tests)  
-**Phase 2**: 🚧 In Progress (1 of 4 priority tools complete)  
-**Phase 3-6**: 📋 Planned (20+ additional utilities)
+**Phase 2**: ✅ Complete (4 tools, 110+ tests)  
+**Phase 3**: ✅ Complete (4 tools, 75 tests)  
+**Phase 4**: ✅ Complete (3 tools, 103 tests)  
+**Phase 5**: ✅ Complete (5 tools, 125+ tests)  
+**Phase 6**: ✅ Complete (6 tools, 175+ tests)
 
-**Total Planned Tools**: 32 utilities across 6 phases
+**Total Tools**: 29 utilities across 6 phases - **ALL COMPLETE**
 
 ---
 
@@ -52,12 +55,12 @@ Each milestone represents a logical grouping of related CLI tools with:
 
 ---
 
-## Phase 2: Enhanced Workflow Tools (🚧 IN PROGRESS)
+## Phase 2: Enhanced Workflow Tools (✅ COMPLETE)
 
-**Status**: 🚧 In Progress  
+**Status**: ✅ Complete (February 2026)  
 **Target Version**: v1.0.15-v1.1.2  
 **Priority**: High  
-**Timeline**: 3-4 weeks
+**Timeline**: 3-4 weeks (Complete)
 
 ### Milestone 2.1: File Comparison (✅ COMPLETE)
 
@@ -93,11 +96,11 @@ dicom-diff file1.dcm file2.dcm --format json
 ### Milestone 2.2: PACS Retrieval
 
 **Tool**: `dicom-retrieve`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete (February 2026)  
 **Priority**: Critical  
 **Complexity**: High  
-**Timeline**: 1 week  
-**Tests**: 30+ (planned)  
+**Timeline**: 1 week (Complete)  
+**Tests**: 30+ (complete)  
 **Dependencies**: DICOMNetwork C-MOVE/C-GET support
 
 #### Features
@@ -111,17 +114,17 @@ dicom-diff file1.dcm file2.dcm --format json
 - Integration with dicom-query
 
 #### Deliverables
-- [ ] C-MOVE implementation
-- [ ] C-GET implementation
-- [ ] C-STORE SCP for receiving
-- [ ] Query integration
-- [ ] Bulk retrieval support
-- [ ] Progress reporter
-- [ ] Output organizer
-- [ ] Network error handling
-- [ ] 30+ unit tests
-- [ ] Integration tests with mock PACS
-- [ ] Documentation and examples
+- [x] C-MOVE implementation
+- [x] C-GET implementation
+- [x] C-STORE SCP for receiving
+- [x] Query integration
+- [x] Bulk retrieval support
+- [x] Progress reporter
+- [x] Output organizer
+- [x] Network error handling
+- [x] 30+ unit tests
+- [x] Integration tests with mock PACS
+- [x] Documentation and examples
 
 #### Test Cases
 - C-MOVE at Patient/Study/Series/Instance levels
@@ -165,11 +168,11 @@ dicom-retrieve pacs://server:11112 \
 ### Milestone 2.3: Multi-Frame Splitting
 
 **Tool**: `dicom-split`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete (February 2026)  
 **Priority**: High  
 **Complexity**: Medium  
-**Timeline**: 4 days  
-**Tests**: 25+ (planned)  
+**Timeline**: 4 days (Complete)  
+**Tests**: 25+ (complete)  
 **Dependencies**: DICOMKit multi-frame support
 
 #### Features
@@ -184,17 +187,17 @@ dicom-retrieve pacs://server:11112 \
 - Batch processing
 
 #### Deliverables
-- [ ] Multi-frame detection
-- [ ] Frame extraction logic
-- [ ] Shared functional groups handling
-- [ ] Per-frame functional groups handling
-- [ ] DICOM file creation per frame
-- [ ] Image export per frame
-- [ ] SOP Instance UID generation
-- [ ] Metadata inheritance
-- [ ] Batch processor
-- [ ] 25+ unit tests
-- [ ] Documentation and examples
+- [x] Multi-frame detection
+- [x] Frame extraction logic
+- [x] Shared functional groups handling
+- [x] Per-frame functional groups handling
+- [x] DICOM file creation per frame
+- [x] Image export per frame
+- [x] SOP Instance UID generation
+- [x] Metadata inheritance
+- [x] Batch processor
+- [x] 25+ unit tests
+- [x] Documentation and examples
 
 #### Test Cases
 - Enhanced multi-frame CT/MR/XA extraction
@@ -237,11 +240,11 @@ dicom-split studies/ \
 ### Milestone 2.4: Multi-Frame Merging
 
 **Tool**: `dicom-merge`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete (February 2026)  
 **Priority**: Medium  
 **Complexity**: High  
-**Timeline**: 5 days  
-**Tests**: 30+ (planned)  
+**Timeline**: 5 days (Complete)  
+**Tests**: 30+ (complete)  
 **Dependencies**: DICOMKit multi-frame writing support
 
 #### Features
@@ -256,16 +259,16 @@ dicom-split studies/ \
 - Validation and consistency checks
 
 #### Deliverables
-- [ ] Single-to-multi-frame converter
-- [ ] Enhanced multi-frame builder
-- [ ] Functional groups creator
-- [ ] Series combiner
-- [ ] Study organizer
-- [ ] Metadata validator
-- [ ] Frame sorter
-- [ ] UID generator
-- [ ] 30+ unit tests
-- [ ] Documentation and examples
+- [x] Single-to-multi-frame converter
+- [x] Enhanced multi-frame builder
+- [x] Functional groups creator
+- [x] Series combiner
+- [x] Study organizer
+- [x] Metadata validator
+- [x] Frame sorter
+- [x] UID generator
+- [x] 30+ unit tests
+- [x] Documentation and examples
 
 #### Test Cases
 - Single-frame to multi-frame conversion
