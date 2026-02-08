@@ -739,17 +739,19 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ### Milestone 7.4: Storage Commitment Service (v0.7.4)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Implement Storage Commitment for reliable storage confirmation  
 **Complexity**: High  
 **Dependencies**: Milestone 7.1 (C-STORE SCU), Milestone 7.3 (Storage SCP)
+
+**Note**: Integration tests requiring network access to external PACS systems cannot be executed in this environment but all functional code is implemented and unit tested.
 
 #### Deliverables
 - [x] Storage Commitment SCU implementation:
   - [x] N-ACTION-RQ for requesting storage commitment
   - [x] Build Transaction UID and Referenced SOP Sequence
   - [x] Handle N-ACTION-RSP
-  - [ ] Receive N-EVENT-REPORT with commitment results (requires SCP listener)
+  - [x] Receive N-EVENT-REPORT with commitment results (via CommitmentNotificationListener)
 - [x] Storage Commitment SCP implementation:
   - [x] Accept N-ACTION-RQ for commitment requests
   - [x] Process commitment requests against stored instances
@@ -769,7 +771,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - [x] Request commitment and continue processing
   - [x] Receive commitment notification (N-EVENT-REPORT) - via `CommitmentNotificationListener`
   - [x] Timeout handling for delayed commitments
-  - [ ] Retry logic for failed commitment requests
+  - [x] Retry logic for failed commitment requests
 - [x] `StorageCommitmentService` API:
   - [x] `func requestCommitment(for: [SOPReference], host:port:configuration:) async throws -> CommitmentRequest`
   - [x] `func parseCommitmentResult(eventTypeID:dataSet:remoteAETitle:) throws -> CommitmentResult`
