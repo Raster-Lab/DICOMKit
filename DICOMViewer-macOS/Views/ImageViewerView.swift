@@ -56,6 +56,8 @@ struct ImageViewerView: View {
             } label: {
                 Label("W/L Presets", systemImage: "slider.horizontal.3")
             }
+            .help("Select window/level preset (Lung, Bone, Soft Tissue, Brain, etc.)")
+            .accessibilityLabel("Window/Level presets")
             
             Divider()
             
@@ -65,22 +67,29 @@ struct ImageViewerView: View {
             } label: {
                 Image(systemName: "minus.magnifyingglass")
             }
+            .help("Zoom out (⌘-)")
+            .accessibilityLabel("Zoom out")
             
             Text("\(Int(viewModel.zoomLevel * 100))%")
                 .frame(width: 50)
                 .font(.caption)
+                .accessibilityLabel("Current zoom level: \(Int(viewModel.zoomLevel * 100)) percent")
             
             Button {
                 viewModel.zoomLevel += 0.1
             } label: {
                 Image(systemName: "plus.magnifyingglass")
             }
+            .help("Zoom in (⌘+)")
+            .accessibilityLabel("Zoom in")
             
             Button {
                 viewModel.zoomLevel = 1.0
             } label: {
                 Image(systemName: "1.magnifyingglass")
             }
+            .help("Reset to actual size (⌘0)")
+            .accessibilityLabel("Reset to actual size")
             
             Divider()
             
@@ -90,12 +99,16 @@ struct ImageViewerView: View {
             } label: {
                 Image(systemName: "rotate.left")
             }
+            .help("Rotate counter-clockwise 90°")
+            .accessibilityLabel("Rotate counter-clockwise")
             
             Button {
                 viewModel.rotate(by: 90)
             } label: {
                 Image(systemName: "rotate.right")
             }
+            .help("Rotate clockwise 90°")
+            .accessibilityLabel("Rotate clockwise")
             
             Divider()
             
@@ -104,6 +117,8 @@ struct ImageViewerView: View {
                 Image(systemName: "circle.lefthalf.filled")
             }
             .toggleStyle(.button)
+            .help("Invert grayscale (useful for MONOCHROME1)")
+            .accessibilityLabel("Invert grayscale")
             
             Divider()
             
