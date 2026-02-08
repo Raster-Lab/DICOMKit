@@ -1174,34 +1174,34 @@ dicom-tags source.dcm \
 ### Milestone 6.3: UID Operations
 
 **Tool**: `dicom-uid`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete  
 **Priority**: Low  
 **Complexity**: Low  
 **Timeline**: 2 days  
-**Tests**: 15+ (planned)  
+**Tests**: 32 (exceeds 15+ target)  
 **Dependencies**: None
 
 #### Features
-- Generate new UIDs
-- Regenerate UIDs in files
-- Maintain UID relationships
-- UID root management
-- UID validation
-- UID registry lookup
-- Batch UID regeneration
-- UID mapping export
+- [x] Generate new UIDs (single, batch, typed: study/series/instance)
+- [x] Regenerate UIDs in files
+- [x] Maintain UID relationships across batch operations
+- [x] UID root management (custom roots)
+- [x] UID validation (PS3.5 Section 9 compliance)
+- [x] UID registry lookup (Transfer Syntaxes, SOP Classes)
+- [x] Batch UID regeneration with directory output
+- [x] UID mapping export (JSON)
 
 #### Deliverables
-- [ ] UID generator
-- [ ] UID regenerator
-- [ ] Relationship maintainer
-- [ ] Root manager
-- [ ] UID validator
-- [ ] Registry lookup
-- [ ] Batch processor
-- [ ] Mapping exporter
-- [ ] 15+ unit tests
-- [ ] Documentation and examples
+- [x] UID generator (generate subcommand with --count, --type, --root, --json)
+- [x] UID regenerator (regenerate subcommand with file I/O)
+- [x] Relationship maintainer (--maintain-relationships flag)
+- [x] Root manager (--root option for custom UID roots)
+- [x] UID validator (validate subcommand with --file, --check-registry, --json)
+- [x] Registry lookup (lookup subcommand with --list-all, --type, --search, --json)
+- [x] Batch processor (multiple input files, directory output)
+- [x] Mapping exporter (--export-map for JSON mapping files)
+- [x] 32 unit tests (DICOMUIDTests.swift)
+- [x] Documentation and examples (README.md)
 
 #### Usage Examples
 ```bash
