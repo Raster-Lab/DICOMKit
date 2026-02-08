@@ -528,16 +528,16 @@ final class DICOMRetrieveTests: XCTestCase {
         seriesUID: String?,
         instanceUID: String?
     ) throws -> QueryLevelTest {
-        guard let _ = studyUID else {
+        guard studyUID != nil else {
             throw RetrieveTestError.missingStudyUID
         }
         
-        if let _ = instanceUID {
-            guard let _ = seriesUID else {
+        if instanceUID != nil {
+            guard seriesUID != nil else {
                 throw RetrieveTestError.missingSeriesUID
             }
             return .instance
-        } else if let _ = seriesUID {
+        } else if seriesUID != nil {
             return .series
         } else {
             return .study
