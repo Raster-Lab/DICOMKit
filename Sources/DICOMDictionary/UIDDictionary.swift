@@ -1,7 +1,7 @@
 /// Standard DICOM UID Dictionary
 ///
 /// Provides lookup for standard DICOM UIDs including Transfer Syntaxes and SOP Classes.
-/// Reference: DICOM PS3.6 2025e - Registry of DICOM unique identifiers (UIDs)
+/// Reference: DICOM PS3.6 2026a - Registry of DICOM unique identifiers (UIDs)
 public struct UIDDictionary {
     
     private static let entries: [String: UIDEntry] = {

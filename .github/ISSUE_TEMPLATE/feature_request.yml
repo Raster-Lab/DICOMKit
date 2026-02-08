@@ -59,7 +59,7 @@ body:
       label: DICOM Standard Compliance
       description: Is this feature specified in the DICOM standard?
       options:
-        - "Yes - Part of DICOM 2025e standard"
+        - "Yes - Part of DICOM 2026a standard"
         - "No - Enhancement/convenience feature"
         - "Not sure"
     validations:

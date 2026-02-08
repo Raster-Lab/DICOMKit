@@ -1,6 +1,6 @@
 /// Value Representation (VR) enumeration
 ///
-/// Defines all 31 Value Representations from DICOM PS3.5 2025e Table 6.2-1.
+/// Defines all 31 Value Representations from DICOM PS3.5 2026a Table 6.2-1.
 /// Each VR specifies the data type and format of a DICOM data element value.
 ///
 /// Reference: DICOM PS3.5 Section 6.2 - Value Representation (VR)

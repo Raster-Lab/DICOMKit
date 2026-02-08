@@ -25,7 +25,7 @@
 /// - Window Center/Width (VOI LUT) support
 /// - CGImage rendering for display
 /// - Value semantics with Swift 6 strict concurrency
-/// - Full DICOM PS3.5 2025e compliance for supported features
+/// - Full DICOM PS3.5 2026a compliance for supported features
 ///
 /// ## Limitations (v0.5)
 /// - No networking (DICOM C-* operations)
@@ -44,7 +44,7 @@
 public let version = "0.5.0"
 
 /// Supported DICOM Standard edition
-public let dicomStandardEdition = "2025e"
+public let dicomStandardEdition = "2026a"
 
 /// Supported Transfer Syntax UIDs
 public let supportedTransferSyntaxUIDs: [String] = [

@@ -5,6 +5,23 @@ All notable changes to DICOMKit will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed - DICOM Standard Edition Update
+- **Updated DICOM standard reference from 2025e to 2026a**
+  - The 2026a release is now the current edition available at https://www.dicomstandard.org/current/
+  - Updated `dicomStandardEdition` constant to "2026a"
+  - Updated all source code doc comments referencing DICOM PS3.x editions
+  - Updated conformance statement, FAQ, contributing guide, and README
+  - Key differences from 2025e to 2026a:
+    - New supplements including CT Image Storage for Processing (Sup252)
+    - Radiation Dose Structured Report (RDSR) informative annex (Sup245)
+    - Enhanced DICOMweb services (Sup248, Sup228)
+    - Data dictionary and controlled terminology updates
+    - Correction proposals addressing encoding clarifications and CID additions
+    - Improved sex and gender data representation
+    - Frame Deflate transfer syntax enhancements for segmentation encoding
+
 ## [1.2.6] - 2026-02-07
 
 ### Added - Phase 5 CLI Tools Complete

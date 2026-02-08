@@ -14,7 +14,7 @@ This Conformance Statement follows the template defined in DICOM PS3.2 (Conforma
 |-------|-------|
 | Product Name | DICOMKit |
 | Version | 1.0.13 |
-| DICOM Standard Version | 2025e |
+| DICOM Standard Version | 2026a |
 | Document Date | February 2026 |
 
 ## Implementation Model
@@ -273,7 +273,7 @@ DICOMKit includes dictionaries for common vendor private tags:
 
 ### D. References
 
-- DICOM Standard 2025e: https://www.dicomstandard.org/current
+- DICOM Standard 2026a: https://www.dicomstandard.org/current
 - PS3.2: Conformance
 - PS3.3: Information Object Definitions
 - PS3.4: Service Class Specifications

@@ -74,7 +74,7 @@ public struct PatientName: Sendable {
 
 ### Requirements
 
-1. **Use DICOM 2025e only** - Do not reference older editions
+1. **Use DICOM 2026a only** - Do not reference older editions
 2. **Cite sections** - All parsing behavior must cite specific PS3.x sections
 3. **No translation** - Do not port code from other libraries (DCMTK, pydicom, fo-dicom)
 4. **Authoritative sources**:
@@ -151,7 +151,7 @@ More detailed explanation if needed. Wrap at 72 characters.
 ## What to Contribute
 
 ### High Priority
-- Additional data element dictionary entries from PS3.6 2025e
+- Additional data element dictionary entries from PS3.6 2026a
 - Additional UID dictionary entries
 - Bug fixes
 - Documentation improvements
@@ -164,7 +164,7 @@ More detailed explanation if needed. Wrap at 72 characters.
 - Extended character set support (beyond UTF-8)
 
 ### Not Accepting
-- Features outside DICOM 2025e specification
+- Features outside DICOM 2026a specification
 - Changes that break Apple platform compatibility
 - Changes that remove strict concurrency support
 - Dependencies on third-party libraries (prefer pure Swift)
