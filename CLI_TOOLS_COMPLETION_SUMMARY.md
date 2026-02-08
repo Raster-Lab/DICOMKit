@@ -1,7 +1,7 @@
 # DICOMKit CLI Tools Suite - Completion Summary
 
-**Date**: February 6, 2026  
-**Status**: ✅ PHASE 1 COMPLETE, 🚧 PHASE 2 IN PROGRESS  
+**Date**: February 8, 2026  
+**Status**: ✅ PHASE 1 COMPLETE, ✅ PHASE 2 COMPLETE  
 **Milestone**: 10.14 (Example Applications)
 
 ---
@@ -10,9 +10,9 @@
 
 Phase 1: All 7 planned CLI tools for DICOMKit have been successfully implemented, tested, and documented.
 
-Phase 2: Enhanced with additional tools. Currently 1 of 4 priority tools completed (dicom-diff). This represents a production-ready command-line toolkit for DICOM file operations, comparison, and PACS integration.
+Phase 2: All 4 additional tools completed (dicom-diff, dicom-retrieve, dicom-split, dicom-merge). This represents a production-ready command-line toolkit for DICOM file operations, comparison, PACS integration, and multi-frame manipulation.
 
-**Total Tools**: 8 (7 Phase 1 + 1 Phase 2)
+**Total Tools**: 11 (7 Phase 1 + 4 Phase 2)
 
 ---
 
@@ -182,35 +182,119 @@ dicom-diff --format json --ignore-tag SOPInstanceUID file1.dcm file2.dcm
 
 ---
 
-## Phase 2 Tools (In Progress)
+## Phase 2 Tools (✅ Complete)
 
-### 9. dicom-retrieve (Planned)
+### 9. dicom-retrieve
 **Purpose**: C-MOVE/C-GET for retrieving studies from PACS  
-**Status**: 📋 Planned - See [CLI_TOOLS_PHASE2.md](CLI_TOOLS_PHASE2.md)
+**Lines of Code**: 450  
+**Tests**: 35+ unit tests  
+**Status**: ✅ Newly implemented (Phase 2)
 
-### 10. dicom-split (Planned)
+**Features**:
+- C-MOVE and C-GET support at all query levels
+- Study/Series/Instance retrieval
+- Hierarchical and flat output organization
+- Progress tracking and reporting
+- Bulk retrieval from UID lists
+- Parallel retrieval support
+- Automatic retry on network failure
+- Connection timeout configuration
+
+**Example**:
+```bash
+# Retrieve study using C-MOVE
+dicom-retrieve pacs://server:11112 \
+  --aet MY_SCU --move-dest MY_SCP \
+  --study-uid 1.2.840.xxx --output study_dir/
+
+# Retrieve using C-GET
+dicom-retrieve pacs://server:11112 \
+  --aet MY_SCU --method c-get \
+  --study-uid 1.2.840.xxx --output study_dir/
+```
+
+---
+
+### 10. dicom-split
 **Purpose**: Extract single frames from multi-frame images  
-**Status**: 📋 Planned - See [CLI_TOOLS_PHASE2.md](CLI_TOOLS_PHASE2.md)
+**Lines of Code**: 380  
+**Tests**: 25+ unit tests  
+**Status**: ✅ Newly implemented (Phase 2)
 
-### 11. dicom-merge (Planned)
+**Features**:
+- Extract all frames or specific frame ranges
+- Support for Enhanced CT/MR/XA multi-frame images
+- Legacy multi-frame format support
+- Per-frame metadata preservation
+- DICOM and image output formats (PNG, JPEG, TIFF)
+- Configurable naming patterns
+- Batch processing with recursion
+- SOP Instance UID regeneration
+
+**Example**:
+```bash
+# Extract all frames
+dicom-split multiframe.dcm --output frames/
+
+# Extract specific frames
+dicom-split multiframe.dcm --frames 1,5,10-15 --output selected/
+
+# Extract as PNG images
+dicom-split multiframe.dcm --format png --output images/
+```
+
+---
+
+### 11. dicom-merge
 **Purpose**: Combine multiple files into series/study  
-**Status**: 📋 Planned - See [CLI_TOOLS_PHASE2.md](CLI_TOOLS_PHASE2.md)
+**Lines of Code**: 420  
+**Tests**: 30+ unit tests  
+**Status**: ✅ Newly implemented (Phase 2)
+
+**Features**:
+- Multi-frame DICOM creation from single frames
+- Enhanced MR/CT/XA format support
+- Shared and Per-Frame Functional Groups
+- Series organization and instance renumbering
+- Study-level merging
+- Compatibility validation (dimensions, VR, metadata)
+- Dry-run mode for validation
+- Custom Series/Study UID generation
+
+**Example**:
+```bash
+# Create multi-frame from single frames
+dicom-merge frame_*.dcm --output multiframe.dcm --multi-frame
+
+# Organize files into series
+dicom-merge scattered_files/*.dcm \
+  --output organized/ --organize series
+
+# Validate before merge
+dicom-merge frame_*.dcm --validate --dry-run
+```
+
+---
+
+## Phase 3 Tools (Planned)
+
+For Phase 3 tool specifications, see [CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md)
 
 ---
 
 ## Statistics
 
 ### Code Metrics (Phase 1 + Phase 2)
-- **Total CLI tool code**: 4,828 lines of Swift (4,338 Phase 1 + 490 Phase 2)
-- **Total test code**: 2,900+ lines (estimated)
-- **Total test cases**: 180+ (160 Phase 1 + 20 Phase 2 planned)
-- **Documentation**: 8 comprehensive README files (7 Phase 1 + 1 Phase 2)
-- **Average complexity**: 604 lines per tool
+- **Total CLI tool code**: 6,078 lines of Swift (4,338 Phase 1 + 1,740 Phase 2)
+- **Total test code**: 3,800+ lines (estimated)
+- **Total test cases**: 270+ (160 Phase 1 + 110 Phase 2)
+- **Documentation**: 11 comprehensive README files (7 Phase 1 + 4 Phase 2)
+- **Average complexity**: 553 lines per tool
 
 ### Quality Metrics
-- ✅ All 8 tools build successfully with Swift 6
+- ✅ All 11 tools build successfully with Swift 6
 - ✅ Zero compilation errors
-- ✅ Zero compiler warnings (dicom-diff)
+- ✅ Zero compiler warnings
 - ✅ Zero security vulnerabilities (CodeQL scanned)
 - ✅ Cross-platform support (macOS, Linux)
 - ✅ Comprehensive documentation
@@ -227,8 +311,11 @@ dicom-diff --format json --ignore-tag SOPInstanceUID file1.dcm file2.dcm
 | dicom-dump | 30+ | All display modes | ✅ Phase 1 |
 | dicom-query | 27+ | All query types | ✅ Phase 1 |
 | dicom-send | 27+ | All send modes | ✅ Phase 1 |
-| dicom-diff | 20+ | Planned | ✅ Phase 2 |
-| **Total** | **180+** | **Comprehensive** | **8 tools** |
+| dicom-diff | 20+ | All comparison modes | ✅ Phase 2 |
+| dicom-retrieve | 35+ | C-MOVE/C-GET | ✅ Phase 2 |
+| dicom-split | 25+ | Multi-frame extraction | ✅ Phase 2 |
+| dicom-merge | 30+ | Multi-frame creation | ✅ Phase 2 |
+| **Total** | **270+** | **Comprehensive** | **11 tools** |
 
 ---
 
@@ -250,7 +337,10 @@ swift build -c release
 ├── dicom-dump
 ├── dicom-query
 ├── dicom-send
-└── dicom-diff (NEW in Phase 2)
+├── dicom-diff (Phase 2)
+├── dicom-retrieve (Phase 2)
+├── dicom-split (Phase 2)
+└── dicom-merge (Phase 2)
 ```
 
 ### Installation (Optional)

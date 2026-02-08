@@ -1,8 +1,9 @@
 # DICOMKit CLI Tools - Phase 2 Enhancement Plan
 
-**Status**: 🚧 In Progress  
+**Status**: ✅ Complete  
 **Target Version**: v1.0.15  
 **Created**: February 2026  
+**Completed**: February 2026  
 **Dependencies**: DICOMKit v1.0.14 (Phase 1 CLI Tools), DICOMNetwork
 
 ---
