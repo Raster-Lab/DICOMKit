@@ -618,4 +618,95 @@ final class StorageCommitmentServiceTests: XCTestCase {
         await listener.stop()
     }
     #endif
+    
+    // MARK: - Retry Configuration Tests
+    
+    func testStorageCommitmentConfigurationWithRetryPolicy() throws {
+        let callingAE = try AETitle("MY_SCU")
+        let calledAE = try AETitle("PACS")
+        let retryPolicy = RetryPolicy.aggressive
+        
+        let config = StorageCommitmentConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE,
+            retryPolicy: retryPolicy
+        )
+        
+        XCTAssertEqual(config.callingAETitle, callingAE)
+        XCTAssertEqual(config.calledAETitle, calledAE)
+        XCTAssertEqual(config.retryPolicy, retryPolicy)
+    }
+    
+    func testStorageCommitmentConfigurationDefaultRetryPolicy() throws {
+        let callingAE = try AETitle("MY_SCU")
+        let calledAE = try AETitle("PACS")
+        
+        let config = StorageCommitmentConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE
+        )
+        
+        // Should use default retry policy
+        XCTAssertEqual(config.retryPolicy, RetryPolicy.default)
+    }
+    
+    func testStorageCommitmentConfigurationNoRetryPolicy() throws {
+        let callingAE = try AETitle("MY_SCU")
+        let calledAE = try AETitle("PACS")
+        
+        let config = StorageCommitmentConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE,
+            retryPolicy: .noRetry
+        )
+        
+        XCTAssertEqual(config.retryPolicy, RetryPolicy.noRetry)
+        XCTAssertEqual(config.retryPolicy.maxAttempts, 0)
+    }
+    
+    func testStorageCommitmentConfigurationCustomRetryPolicy() throws {
+        let callingAE = try AETitle("MY_SCU")
+        let calledAE = try AETitle("PACS")
+        
+        let customPolicy = RetryPolicy(
+            maxAttempts: 10,
+            initialDelay: 0.5,
+            maxDelay: 120.0,
+            strategy: .exponential(factor: 3.0)
+        )
+        
+        let config = StorageCommitmentConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE,
+            retryPolicy: customPolicy
+        )
+        
+        XCTAssertEqual(config.retryPolicy.maxAttempts, 10)
+        XCTAssertEqual(config.retryPolicy.initialDelay, 0.5)
+        XCTAssertEqual(config.retryPolicy.maxDelay, 120.0)
+    }
+    
+    func testStorageCommitmentConfigurationHashableWithRetryPolicy() throws {
+        let callingAE = try AETitle("SCU")
+        let calledAE = try AETitle("SCP")
+        
+        let config1 = StorageCommitmentConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE,
+            retryPolicy: .default
+        )
+        let config2 = StorageCommitmentConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE,
+            retryPolicy: .default
+        )
+        let config3 = StorageCommitmentConfiguration(
+            callingAETitle: callingAE,
+            calledAETitle: calledAE,
+            retryPolicy: .aggressive // Different retry policy
+        )
+        
+        XCTAssertEqual(config1, config2)
+        XCTAssertNotEqual(config1, config3)
+    }
 }
