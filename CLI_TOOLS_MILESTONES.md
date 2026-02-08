@@ -1229,32 +1229,32 @@ dicom-uid validate file.dcm --check-registry
 ### Milestone 6.4: Compression Tools
 
 **Tool**: `dicom-compress`  
-**Status**: 📋 Planned  
+**Status**: ✅ Complete (February 2026)  
 **Priority**: Medium  
 **Complexity**: High  
 **Timeline**: 4 days  
-**Tests**: 25+ (planned)  
+**Tests**: 38 (implemented)  
 **Dependencies**: DICOMKit compression support
 
 #### Features
 - Compress uncompressed images
 - Decompress compressed images
 - Transfer syntax conversion
-- Multiple codec support (JPEG, JPEG-LS, JPEG 2000, RLE)
+- Multiple codec support (JPEG, JPEG 2000, RLE)
 - Quality settings
 - Lossless/lossy options
 - Batch compression
-- Size optimization
+- Compression info display
 
 #### Deliverables
-- [ ] Image compressor
-- [ ] Image decompressor
-- [ ] Codec selector
-- [ ] Quality controller
-- [ ] Batch processor
-- [ ] Size optimizer
-- [ ] 25+ unit tests
-- [ ] Documentation and examples
+- [x] Image compressor (compress subcommand)
+- [x] Image decompressor (decompress subcommand)
+- [x] Codec selector (--codec option with friendly names)
+- [x] Quality controller (--quality with presets and custom values)
+- [x] Batch processor (batch subcommand with --recursive)
+- [x] Compression info (info subcommand with --json)
+- [x] 38 unit tests
+- [x] Documentation and examples (README.md)
 
 #### Usage Examples
 ```bash
