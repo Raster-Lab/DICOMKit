@@ -1,0 +1,225 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release'
+        required: true
+        type: string
+
+env:
+  SWIFT_VERSION: '6.2'
+
+jobs:
+  validate-release:
+    name: Validate Release
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Get tag name
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Validate version tag
+      run: |
+        TAG=${{ steps.get_tag.outputs.tag }}
+        if [[ ! $TAG =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::Invalid version tag format: $TAG (expected: v1.2.3)"
+          exit 1
+        fi
+        echo "✅ Valid version tag: $TAG"
+        
+    - name: Build and test
+      run: |
+        swift build -c release
+        swift test
+        
+  build-cli-tools:
+    name: Build CLI Tools
+    runs-on: macos-14
+    needs: validate-release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Get tag name
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Build CLI tools for release
+      run: |
+        swift build -c release --product dicom-info
+        swift build -c release --product dicom-convert
+        swift build -c release --product dicom-validate
+        swift build -c release --product dicom-anon
+        swift build -c release --product dicom-dump
+        swift build -c release --product dicom-query
+        swift build -c release --product dicom-send
+        swift build -c release --product dicom-diff
+        swift build -c release --product dicom-retrieve
+        swift build -c release --product dicom-split
+        swift build -c release --product dicom-merge
+        swift build -c release --product dicom-json
+        swift build -c release --product dicom-xml
+        swift build -c release --product dicom-pdf
+        swift build -c release --product dicom-image
+        swift build -c release --product dicom-dcmdir
+        swift build -c release --product dicom-archive
+        swift build -c release --product dicom-export
+        swift build -c release --product dicom-qr
+        swift build -c release --product dicom-wado
+        swift build -c release --product dicom-echo
+        swift build -c release --product dicom-mwl
+        swift build -c release --product dicom-mpps
+        swift build -c release --product dicom-pixedit
+        swift build -c release --product dicom-tags
+        swift build -c release --product dicom-uid
+        swift build -c release --product dicom-compress
+        swift build -c release --product dicom-study
+        swift build -c release --product dicom-script
+        
+    - name: Package CLI tools
+      run: |
+        mkdir -p release/bin
+        cp .build/release/dicom-* release/bin/ || true
+        cd release
+        tar -czf dicomkit-cli-tools-${{ steps.get_tag.outputs.tag }}-macos-arm64.tar.gz bin/
+        
+    - name: Upload CLI tools artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: cli-tools-macos-arm64
+        path: release/*.tar.gz
+        
+  build-documentation:
+    name: Build and Deploy Documentation
+    runs-on: macos-14
+    needs: validate-release
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Build DocC documentation
+      run: |
+        mkdir -p docs
+        swift package --allow-writing-to-directory ./docs \
+          generate-documentation --target DICOMKit \
+          --disable-indexing \
+          --transform-for-static-hosting \
+          --hosting-base-path DICOMKit \
+          --output-path ./docs
+          
+    - name: Create documentation archive
+      run: |
+        cd docs
+        tar -czf ../dicomkit-docs.tar.gz *
+        
+    - name: Upload documentation artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: documentation
+        path: dicomkit-docs.tar.gz
+        
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-cli-tools, build-documentation]
+    permissions:
+      contents: write
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Get tag name
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+        
+    - name: Generate release notes
+      id: release_notes
+      run: |
+        # Extract version from tag (remove 'v' prefix)
+        VERSION=${TAG#v}
+        
+        # Try to find release notes in CHANGELOG.md or RELEASE_NOTES
+        if [ -f "RELEASE_NOTES_$TAG.md" ]; then
+          cat "RELEASE_NOTES_$TAG.md" > release_notes.md
+        elif [ -f "CHANGELOG.md" ]; then
+          # Extract section for this version from CHANGELOG
+          sed -n "/## \[$VERSION\]/,/## \[/p" CHANGELOG.md | sed '$d' > release_notes.md
+        else
+          echo "Release $TAG" > release_notes.md
+          echo "" >> release_notes.md
+          echo "## Changes" >> release_notes.md
+          git log --pretty=format:"- %s" $(git describe --tags --abbrev=0 HEAD^)..HEAD >> release_notes.md
+        fi
+      env:
+        TAG: ${{ steps.get_tag.outputs.tag }}
+        
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_tag.outputs.tag }}
+        name: DICOMKit ${{ steps.get_tag.outputs.tag }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ contains(steps.get_tag.outputs.tag, '-') }}
+        files: |
+          artifacts/cli-tools-macos-arm64/*.tar.gz
+          artifacts/documentation/*.tar.gz
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+  notify-success:
+    name: Notify Release Success
+    runs-on: ubuntu-latest
+    needs: create-release
+    if: success()
+    
+    steps:
+    - name: Success notification
+      run: |
+        echo "✅ Release created successfully!"
+        echo "Tag: ${{ needs.create-release.outputs.tag || github.ref_name }}"

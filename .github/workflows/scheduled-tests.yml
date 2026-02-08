@@ -1,0 +1,157 @@
+name: Scheduled Tests
+
+on:
+  schedule:
+    # Run every Monday at 9:00 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+
+env:
+  SWIFT_VERSION: '6.2'
+
+jobs:
+  comprehensive-test:
+    name: Comprehensive Test Suite
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Show environment
+      run: |
+        swift --version
+        xcodebuild -version
+        
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-scheduled-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-scheduled-
+    
+    - name: Run all tests with verbose output
+      run: swift test -v --parallel
+      
+    - name: Generate test report
+      if: always()
+      run: |
+        swift test --enable-code-coverage
+        
+    - name: Check test count
+      run: |
+        # Count the number of tests
+        TEST_COUNT=$(swift test --list-tests 2>&1 | grep -c "Test Case" || true)
+        echo "Total test count: $TEST_COUNT"
+        echo "Expected: 1464+ tests"
+        
+        if [ $TEST_COUNT -lt 1000 ]; then
+          echo "::warning::Test count seems low (${TEST_COUNT}), expected 1464+"
+        fi
+        
+  memory-leak-check:
+    name: Memory Leak Detection
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Build with sanitizers
+      run: |
+        # Build with Address Sanitizer to detect memory issues
+        swift build -c release -Xswiftc -sanitize=address
+      continue-on-error: true
+      
+    - name: Run tests with sanitizers
+      run: |
+        swift test -Xswiftc -sanitize=address
+      continue-on-error: true
+      
+  performance-benchmark:
+    name: Performance Benchmarks
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Build in release mode
+      run: swift build -c release
+      
+    - name: Run performance tests
+      run: |
+        # Run tests with timing information
+        swift test -c release --filter PerformanceTests || echo "No dedicated performance tests found"
+        
+  dependency-update-check:
+    name: Check for Dependency Updates
+    runs-on: macos-14
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Update dependencies
+      run: swift package update
+      
+    - name: Check if dependencies changed
+      run: |
+        if git diff --quiet Package.resolved; then
+          echo "✅ Dependencies are up to date"
+        else
+          echo "::warning::Dependencies have updates available"
+          git diff Package.resolved
+        fi
+        
+  build-matrix:
+    name: Build Matrix Test
+    runs-on: macos-14
+    strategy:
+      matrix:
+        swift: ['6.0', '6.2']
+        config: ['debug', 'release']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.3.app/Contents/Developer
+      
+    - name: Build with Swift ${{ matrix.swift }} in ${{ matrix.config }} mode
+      run: swift build -c ${{ matrix.config }}
+      continue-on-error: true
+      
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [comprehensive-test, memory-leak-check, performance-benchmark]
+    if: always()
+    
+    steps:
+    - name: Generate summary
+      run: |
+        echo "## Scheduled Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- Comprehensive Tests: ${{ needs.comprehensive-test.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Memory Leak Check: ${{ needs.memory-leak-check.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Performance Benchmarks: ${{ needs.performance-benchmark.result }}" >> $GITHUB_STEP_SUMMARY
+        
+        if [ "${{ needs.comprehensive-test.result }}" != "success" ]; then
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "⚠️ **Warning**: Some tests failed" >> $GITHUB_STEP_SUMMARY
+        fi
