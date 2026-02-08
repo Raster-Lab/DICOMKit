@@ -122,6 +122,9 @@ public final class HTTPClient: @unchecked Sendable {
     /// Connection pool for managing HTTP connections
     private let connectionPool: HTTPConnectionPool
     
+    /// Request pipeline for request batching
+    private let requestPipeline: HTTPRequestPipeline
+    
     /// Request interceptors
     private var requestInterceptors: [RequestInterceptor] = []
     
@@ -134,12 +137,15 @@ public final class HTTPClient: @unchecked Sendable {
     /// - Parameters:
     ///   - configuration: The DICOMweb configuration
     ///   - connectionPoolConfig: Optional connection pool configuration
+    ///   - pipelineConfig: Optional pipeline configuration
     public init(
         configuration: DICOMwebConfiguration,
-        connectionPoolConfig: HTTPConnectionPoolConfiguration = .default
+        connectionPoolConfig: HTTPConnectionPoolConfiguration = .default,
+        pipelineConfig: HTTPPipelineConfiguration = .default
     ) {
         self.configuration = configuration
         self.connectionPool = HTTPConnectionPool(configuration: connectionPoolConfig)
+        self.requestPipeline = HTTPRequestPipeline(configuration: pipelineConfig)
         
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = configuration.timeouts.readTimeout
@@ -161,17 +167,20 @@ public final class HTTPClient: @unchecked Sendable {
         
         self.session = URLSession(configuration: sessionConfig)
         
-        // Start connection pool
+        // Start connection pool and pipeline
         Task {
             await connectionPool.start()
+            await requestPipeline.start()
         }
     }
     
     /// Cleanup
     deinit {
         let pool = self.connectionPool
+        let pipeline = self.requestPipeline
         Task {
             await pool.stop()
+            await pipeline.stop()
         }
     }
     
@@ -195,6 +204,12 @@ public final class HTTPClient: @unchecked Sendable {
     /// - Returns: Current connection pool statistics
     public func connectionPoolStatistics() async -> HTTPConnectionPoolStatistics {
         return await connectionPool.statistics()
+    }
+    
+    /// Returns request pipeline statistics
+    /// - Returns: Current pipeline statistics
+    public func pipelineStatistics() async -> HTTPPipelineStatistics {
+        return await requestPipeline.statistics()
     }
     
     // MARK: - Request Execution
