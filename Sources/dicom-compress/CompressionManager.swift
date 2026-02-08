@@ -221,7 +221,7 @@ struct CompressionManager {
             return true
         }
         // Try to detect DICOM files without extension by checking for DICM magic
-        if ext.isEmpty || ext == "" {
+        if ext.isEmpty {
             guard let handle = FileHandle(forReadingAtPath: path) else { return false }
             defer { handle.closeFile() }
             let header = handle.readData(ofLength: 132)
@@ -376,19 +376,6 @@ struct TransferSyntaxHelper {
 
         output.append(valueData)
         return output
-    }
-}
-
-// MARK: - VR Extension (matches dicom-convert pattern)
-
-extension VR {
-    var uses32BitLengthForCompress: Bool {
-        switch self {
-        case .OB, .OD, .OF, .OL, .OW, .SQ, .UC, .UN, .UR, .UT:
-            return true
-        default:
-            return false
-        }
     }
 }
 
