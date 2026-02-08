@@ -519,7 +519,7 @@ final class DICOMSplitTests: XCTestCase {
     
     // MARK: - Batch Processing Tests
     
-    func testBatchProcessing_multipleFiles_processesCorrecting() throws {
+    func testBatchProcessing_multipleFiles_processesCorrectly() throws {
         // Create test data for multiple files
         let file1 = try createMultiFrameDICOMFile(numberOfFrames: 3)
         let file2 = try createMultiFrameDICOMFile(numberOfFrames: 5)
