@@ -119,6 +119,9 @@ public final class HTTPClient: @unchecked Sendable {
     /// Configuration for this client
     public let configuration: DICOMwebConfiguration
     
+    /// Connection pool for managing HTTP connections
+    private let connectionPool: HTTPConnectionPool
+    
     /// Request interceptors
     private var requestInterceptors: [RequestInterceptor] = []
     
@@ -128,14 +131,20 @@ public final class HTTPClient: @unchecked Sendable {
     // MARK: - Initialization
     
     /// Creates an HTTP client with the specified configuration
-    /// - Parameter configuration: The DICOMweb configuration
-    public init(configuration: DICOMwebConfiguration) {
+    /// - Parameters:
+    ///   - configuration: The DICOMweb configuration
+    ///   - connectionPoolConfig: Optional connection pool configuration
+    public init(
+        configuration: DICOMwebConfiguration,
+        connectionPoolConfig: HTTPConnectionPoolConfiguration = .default
+    ) {
         self.configuration = configuration
+        self.connectionPool = HTTPConnectionPool(configuration: connectionPoolConfig)
         
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = configuration.timeouts.readTimeout
         sessionConfig.timeoutIntervalForResource = configuration.timeouts.resourceTimeout
-        sessionConfig.httpMaximumConnectionsPerHost = configuration.maxConcurrentRequests
+        sessionConfig.httpMaximumConnectionsPerHost = connectionPoolConfig.maxConnectionsPerHost
         
         #if os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
         if #available(macOS 10.13, iOS 11.0, *) {
@@ -143,12 +152,27 @@ public final class HTTPClient: @unchecked Sendable {
         }
         #endif
         
-        // Enable HTTP/2
-        sessionConfig.httpAdditionalHeaders = [
-            "Accept-Encoding": "gzip, deflate"
-        ]
+        // Enable HTTP/2 if configured
+        if connectionPoolConfig.enableHTTP2 {
+            sessionConfig.httpAdditionalHeaders = [
+                "Accept-Encoding": "gzip, deflate"
+            ]
+        }
         
         self.session = URLSession(configuration: sessionConfig)
+        
+        // Start connection pool
+        Task {
+            await connectionPool.start()
+        }
+    }
+    
+    /// Cleanup
+    deinit {
+        let pool = self.connectionPool
+        Task {
+            await pool.stop()
+        }
     }
     
     // MARK: - Interceptors
@@ -163,6 +187,14 @@ public final class HTTPClient: @unchecked Sendable {
     /// - Parameter interceptor: The interceptor to add
     public func addResponseInterceptor(_ interceptor: @escaping ResponseInterceptor) {
         responseInterceptors.append(interceptor)
+    }
+    
+    // MARK: - Connection Pool
+    
+    /// Returns connection pool statistics
+    /// - Returns: Current connection pool statistics
+    public func connectionPoolStatistics() async -> HTTPConnectionPoolStatistics {
+        return await connectionPool.statistics()
     }
     
     // MARK: - Request Execution
@@ -188,6 +220,17 @@ public final class HTTPClient: @unchecked Sendable {
         let headers = configuration.headers(additionalHeaders: modifiedRequest.headers)
         for (name, value) in headers {
             urlRequest.setValue(value, forHTTPHeaderField: name)
+        }
+        
+        // Acquire connection from pool
+        let host = modifiedRequest.url.host ?? "unknown"
+        let connectionID = await connectionPool.acquireConnection(for: host)
+        
+        defer {
+            // Release connection back to pool
+            Task {
+                await connectionPool.releaseConnection(connectionID, for: host)
+            }
         }
         
         // Execute request
