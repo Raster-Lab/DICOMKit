@@ -419,10 +419,12 @@ public enum DICOMMPPSService {
         let responsePDU = try await association.receive()
         
         if let message = try assembler.addPDVs(from: responsePDU) {
-            // TODO: Parse N-CREATE-RSP and validate status code
-            // Status 0x0000 = success, other codes indicate failure
-            // For now, assume success if we received a response
-            // Future enhancement: throw DICOMNetworkError if status indicates failure
+            let responseCommandSet = try CommandSet.decode(from: message.commandData)
+            let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: presentationContextID)
+            
+            guard response.status.isSuccess else {
+                throw DICOMNetworkError.storeFailed(response.status)
+            }
         }
     }
     
@@ -465,10 +467,12 @@ public enum DICOMMPPSService {
         let responsePDU = try await association.receive()
         
         if let message = try assembler.addPDVs(from: responsePDU) {
-            // TODO: Parse N-SET-RSP and validate status code
-            // Status 0x0000 = success, other codes indicate failure
-            // For now, assume success if we received a response
-            // Future enhancement: throw DICOMNetworkError if status indicates failure
+            let responseCommandSet = try CommandSet.decode(from: message.commandData)
+            let response = NSetResponse(commandSet: responseCommandSet, presentationContextID: presentationContextID)
+            
+            guard response.status.isSuccess else {
+                throw DICOMNetworkError.storeFailed(response.status)
+            }
         }
     }
     
