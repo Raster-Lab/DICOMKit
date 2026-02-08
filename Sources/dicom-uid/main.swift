@@ -260,7 +260,7 @@ extension DICOMUID {
                         print("Type: \(UIDManager.uidTypeDescription(entry.type))")
                     }
                 } else {
-                    fprintln("UID not found in registry: \(uidValue)")
+                    fprintln("UID not found in DICOM registry (not a standard Transfer Syntax or SOP Class UID): \(uidValue)")
                     throw ExitCode.failure
                 }
             } else if listAll || search != nil {
@@ -275,7 +275,7 @@ extension DICOMUID {
                     case "sop-class", "sopclass":
                         entries = dictionary.sopClasses
                     default:
-                        fprintln("Unknown type filter '\(typeFilter)'. Valid: transfer-syntax, sop-class")
+                        fprintln("Unknown type filter '\(typeFilter)'. Valid types: transfer-syntax, sop-class")
                         throw ExitCode.failure
                     }
                 }

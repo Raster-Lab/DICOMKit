@@ -229,6 +229,8 @@ struct UIDManager {
 
         // Write the modified file
         let outPath = outputPath ?? inputPath
+        // Use Secondary Capture Image Storage as fallback SOP Class when the original is missing,
+        // since it is the most generic storage SOP Class for DICOM files
         let newFile = DICOMFile.create(
             dataSet: dataSet,
             sopClassUID: dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.7"
