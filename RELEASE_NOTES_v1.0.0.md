@@ -202,14 +202,14 @@ Benchmark results (typical):
 ## DICOM Standard Compliance
 
 DICOMKit v1.0.0 implements:
-- DICOM PS3.3 2025e (Information Object Definitions)
-- DICOM PS3.5 2025e (Data Structures and Encoding)
-- DICOM PS3.6 2025e (Data Dictionary - essential tags)
-- DICOM PS3.7 2025e (Message Exchange - DIMSE)
-- DICOM PS3.8 2025e (Network Communication Support)
-- DICOM PS3.10 2025e (Media Storage and File Format)
-- DICOM PS3.15 2025e (Security and System Management)
-- DICOM PS3.18 2025e (Web Services)
+- DICOM PS3.3 2026a (Information Object Definitions)
+- DICOM PS3.5 2026a (Data Structures and Encoding)
+- DICOM PS3.6 2026a (Data Dictionary - essential tags)
+- DICOM PS3.7 2026a (Message Exchange - DIMSE)
+- DICOM PS3.8 2026a (Network Communication Support)
+- DICOM PS3.10 2026a (Media Storage and File Format)
+- DICOM PS3.15 2026a (Security and System Management)
+- DICOM PS3.18 2026a (Web Services)
 
 ## Support
 

@@ -335,7 +335,7 @@ Your application is responsible for overall HIPAA compliance.
 
 ### Which DICOM standard version does DICOMKit follow?
 
-DICOMKit follows DICOM 2025e and aims for full compliance with relevant parts of the standard.
+DICOMKit follows DICOM 2026a and aims for full compliance with relevant parts of the standard.
 
 ### Where can I find the Conformance Statement?
 
