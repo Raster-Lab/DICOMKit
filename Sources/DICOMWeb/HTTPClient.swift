@@ -125,6 +125,9 @@ public final class HTTPClient: @unchecked Sendable {
     /// Request pipeline for request batching
     private let requestPipeline: HTTPRequestPipeline
     
+    /// Prefetch manager for predictive caching
+    private let prefetchManager: HTTPPrefetchManager
+    
     /// Request interceptors
     private var requestInterceptors: [RequestInterceptor] = []
     
@@ -138,14 +141,17 @@ public final class HTTPClient: @unchecked Sendable {
     ///   - configuration: The DICOMweb configuration
     ///   - connectionPoolConfig: Optional connection pool configuration
     ///   - pipelineConfig: Optional pipeline configuration
+    ///   - prefetchConfig: Optional prefetch configuration
     public init(
         configuration: DICOMwebConfiguration,
         connectionPoolConfig: HTTPConnectionPoolConfiguration = .default,
-        pipelineConfig: HTTPPipelineConfiguration = .default
+        pipelineConfig: HTTPPipelineConfiguration = .default,
+        prefetchConfig: HTTPPrefetchConfiguration = .default
     ) {
         self.configuration = configuration
         self.connectionPool = HTTPConnectionPool(configuration: connectionPoolConfig)
         self.requestPipeline = HTTPRequestPipeline(configuration: pipelineConfig)
+        self.prefetchManager = HTTPPrefetchManager(configuration: prefetchConfig)
         
         let sessionConfig = URLSessionConfiguration.default
         sessionConfig.timeoutIntervalForRequest = configuration.timeouts.readTimeout
@@ -167,10 +173,11 @@ public final class HTTPClient: @unchecked Sendable {
         
         self.session = URLSession(configuration: sessionConfig)
         
-        // Start connection pool and pipeline
+        // Start connection pool, pipeline, and prefetch manager
         Task {
             await connectionPool.start()
             await requestPipeline.start()
+            await prefetchManager.start()
         }
     }
     
@@ -178,9 +185,11 @@ public final class HTTPClient: @unchecked Sendable {
     deinit {
         let pool = self.connectionPool
         let pipeline = self.requestPipeline
+        let prefetch = self.prefetchManager
         Task {
             await pool.stop()
             await pipeline.stop()
+            await prefetch.stop()
         }
     }
     
@@ -198,7 +207,7 @@ public final class HTTPClient: @unchecked Sendable {
         responseInterceptors.append(interceptor)
     }
     
-    // MARK: - Connection Pool
+    // MARK: - Connection Pool & Performance
     
     /// Returns connection pool statistics
     /// - Returns: Current connection pool statistics
@@ -211,6 +220,33 @@ public final class HTTPClient: @unchecked Sendable {
     public func pipelineStatistics() async -> HTTPPipelineStatistics {
         return await requestPipeline.statistics()
     }
+    
+    /// Returns prefetch manager statistics
+    /// - Returns: Current prefetch statistics
+    public func prefetchStatistics() async -> HTTPPrefetchStatistics {
+        return await prefetchManager.statistics()
+    }
+    
+    /// Enqueues URLs for prefetching
+    /// - Parameters:
+    ///   - urls: URLs to prefetch
+    ///   - priority: Priority level for prefetch requests
+    public func enqueuePrefetch(urls: [URL], priority: HTTPPrefetchConfiguration.Priority = .low) async {
+        await prefetchManager.enqueuePrefetch(urls: urls, priority: priority)
+    }
+    
+    /// Checks if a URL has been prefetched and is cached
+    /// - Parameter url: The URL to check
+    /// - Returns: True if the URL is cached
+    public func isPrefetched(_ url: URL) async -> Bool {
+        return await prefetchManager.isCached(url)
+    }
+    
+    /// Clears the prefetch cache
+    public func clearPrefetchCache() async {
+        await prefetchManager.clearCache()
+    }
+
     
     // MARK: - Request Execution
     
