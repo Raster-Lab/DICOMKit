@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-DICOMKit has reached a major milestone with **Phase 2 of CLI Tools** now complete. All demo applications, CLI tools (Phases 1 & 2), and sample code are fully implemented and production-ready.
+DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now complete. All demo applications, CLI tools (Phases 1-6), and sample code are fully implemented and production-ready. The project now includes 29 complete CLI utilities with 753+ tests.
 
 ---
 
@@ -22,7 +22,7 @@ DICOMKit has reached a major milestone with **Phase 2 of CLI Tools** now complet
 - ✅ **DICOMViewer macOS** (Complete - 5 phases, 61 files, 379+ tests)
 - ✅ **DICOMViewer visionOS** (Complete - 4 phases, 42 files, 205+ tests)
 
-### 3. CLI Tools Suite
+### 3. CLI Tools Suite (ALL 6 PHASES COMPLETE)
 - ✅ **Phase 1** (7 tools - 160+ tests)
   1. dicom-info - Metadata display
   2. dicom-convert - Transfer syntax & image export
@@ -32,13 +32,39 @@ DICOMKit has reached a major milestone with **Phase 2 of CLI Tools** now complet
   6. dicom-query - PACS queries
   7. dicom-send - PACS file transfer
 
-- ✅ **Phase 2** (4 tools - 110+ tests) - **JUST COMPLETED**
+- ✅ **Phase 2** (4 tools - 110+ tests)
   8. dicom-diff - File comparison
   9. dicom-retrieve - C-MOVE/C-GET retrieval
   10. dicom-split - Multi-frame extraction
   11. dicom-merge - Multi-frame creation
 
-**Total**: 11 CLI tools, 6,078 lines of code, 270+ tests
+- ✅ **Phase 3** (4 tools - 75 tests)
+  12. dicom-json - JSON conversion (DICOM JSON Model)
+  13. dicom-xml - XML conversion (Part 19)
+  14. dicom-pdf - Encapsulated PDF/CDA
+  15. dicom-image - Image-to-DICOM (Secondary Capture)
+
+- ✅ **Phase 4** (3 tools - 103 tests)
+  16. dicom-dcmdir - DICOMDIR management
+  17. dicom-archive - Local archive with metadata index
+  18. dicom-export - DICOM export with filtering
+
+- ✅ **Phase 5** (5 tools - 125+ tests)
+  19. dicom-qr - Query-Retrieve integration
+  20. dicom-echo - DICOM C-ECHO verification
+  21. dicom-wado - WADO-URI/RS retrieval
+  22. dicom-mpps - MPPS (Modality Performed Procedure Step)
+  23. dicom-mwl - Modality Worklist queries
+
+- ✅ **Phase 6** (6 tools - 175+ tests)
+  24. dicom-pixedit - Pixel data manipulation
+  25. dicom-tags - Tag manipulation
+  26. dicom-uid - UID operations
+  27. dicom-compress - Compression tools
+  28. dicom-study - Study/Series tools
+  29. dicom-script - Scripting support
+
+**Total**: 29 CLI tools, 18,000+ lines of code, 753+ tests
 
 ### 4. Sample Code & Playgrounds
 - ✅ 27 Swift playground files across 6 categories
@@ -56,16 +82,16 @@ DICOMKit has reached a major milestone with **Phase 2 of CLI Tools** now complet
 ### Code Volume
 - **Framework**: ~50,000+ lines
 - **Demo Apps**: ~22,000+ lines (iOS + macOS + visionOS)
-- **CLI Tools**: 6,078 lines (11 tools)
+- **CLI Tools**: 18,000+ lines (29 tools across 6 phases)
 - **Tests**: ~15,000+ lines
 - **Documentation**: 100+ markdown files
 
 ### Test Coverage
 - **Framework Tests**: Comprehensive coverage
 - **Demo App Tests**: 619+ tests (iOS 35+, macOS 379+, visionOS 205+)
-- **CLI Tool Tests**: 270+ tests
+- **CLI Tool Tests**: 753+ tests (Phases 1-6)
 - **Playground Tests**: 575+ test cases
-- **Total**: 1,464+ tests across all components
+- **Total**: 1,947+ tests across all components
 
 ### Platform Support
 - ✅ iOS 17+
@@ -76,20 +102,23 @@ DICOMKit has reached a major milestone with **Phase 2 of CLI Tools** now complet
 
 ---
 
-## What's Next (Planned)
+## What's Next (Future Enhancements)
 
-### CLI Tools Phase 3 (Planned)
-- dicom-json - JSON conversion (DICOM JSON Model)
-- dicom-xml - XML conversion (Part 19)
-- dicom-pdf - Encapsulated PDF/CDA
-- dicom-image - Image-to-DICOM (Secondary Capture)
+### Post v1.0 Framework Enhancements
+- Advanced DICOM IOD support (see [MILESTONES.md](MILESTONES.md) Milestone 11)
+- Additional compression codecs
+- Enhanced performance optimizations
+- Additional DICOMweb features
 
-### CLI Tools Phase 4-6 (Planned)
-- Additional 15 specialized tools
-- See [CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md) for details
+### Potential CLI Tools Phase 7+ (Optional)
+- Additional specialized utilities as needed
+- See [CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md) for comprehensive roadmap
 
-### Future Enhancements (Post v1.0)
-- See [MILESTONES.md](MILESTONES.md) Milestone 11 for v1.1+ plans
+### Community and Ecosystem
+- Package distribution via Swift Package Manager
+- Homebrew formula for CLI tools
+- Docker images for server deployments
+- Integration examples and templates
 
 ---
 
@@ -108,15 +137,15 @@ DICOMKit has reached a major milestone with **Phase 2 of CLI Tools** now complet
 ## Project Health: EXCELLENT ✅
 
 - Core framework: Production-ready
-- Demo applications: All complete and functional
-- CLI tools: Phases 1 & 2 complete (11 tools)
+- Demo applications: All complete and functional (iOS, macOS, visionOS)
+- CLI tools: All 6 phases complete (29 tools)
 - Documentation: Comprehensive
-- Tests: Extensive coverage (1,464+ tests)
+- Tests: Extensive coverage (1,947+ tests)
 - Code quality: High (Swift 6, zero warnings)
 
 ---
 
 **Date**: February 8, 2026  
-**Status**: Phase 2 CLI Tools Complete  
-**Next Milestone**: CLI Tools Phase 3 (optional enhancement)
+**Status**: All 6 Phases CLI Tools Complete (29 tools)  
+**Next Steps**: Future enhancements and community distribution
 
