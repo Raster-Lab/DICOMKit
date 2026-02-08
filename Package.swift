@@ -121,6 +121,14 @@ let package = Package(
         .executable(
             name: "dicom-mpps",
             targets: ["dicom-mpps"]
+        ),
+        .executable(
+            name: "dicom-pixedit",
+            targets: ["dicom-pixedit"]
+        ),
+        .executable(
+            name: "dicom-tags",
+            targets: ["dicom-tags"]
         )
     ],
     dependencies: [
@@ -435,6 +443,28 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-mpps",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-pixedit",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-pixedit",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-tags",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-tags",
             exclude: ["README.md"]
         )
     ]
