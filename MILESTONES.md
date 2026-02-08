@@ -1612,11 +1612,30 @@ This milestone is divided into modular sub-milestones based on complexity, allow
     - [x] Cache invalidation on mutations (STOW-RS, DELETE)
     - [x] Cache statistics tracking
     - [x] Configurable via `DICOMwebServerConfiguration.cacheConfiguration`
-- [ ] Performance Optimizations:
-  - [ ] Connection pooling (HTTP/2 multiplexing)
-  - [ ] Request pipelining
-  - [ ] Prefetching for likely requests
-  - [ ] Response streaming
+- [x] Performance Optimizations:
+  - [x] Connection pooling (HTTP/2 multiplexing)
+    - [x] `HTTPConnectionPoolConfiguration` with presets (default, highThroughput, lowResource)
+    - [x] `HTTPConnectionPool` actor with lifecycle management
+    - [x] Per-host connection pooling with stream multiplexing
+    - [x] Automatic connection recycling based on age and idle time
+    - [x] `HTTPConnectionPoolStatistics` for monitoring
+    - [x] 24 unit tests for connection pool functionality
+  - [x] Request pipelining
+    - [x] `HTTPPipelineConfiguration` with depth and timeout controls
+    - [x] `HTTPRequestPipeline` actor for request batching
+    - [x] Configurable pipeline depth (1-50 requests)
+    - [x] Strict in-order response delivery option
+    - [x] `HTTPPipelineStatistics` for monitoring
+    - [x] 10 unit tests for pipeline functionality
+  - [x] Prefetching for likely requests
+    - [x] `HTTPPrefetchConfiguration` with strategies (sequential, predictive, aggressive)
+    - [x] `HTTPPrefetchManager` actor with LRU caching
+    - [x] Configurable cache size limits (100MB-2GB)
+    - [x] Priority-based prefetch queue (low, medium, high)
+    - [x] Cache hit/miss tracking with hit rate calculation
+    - [x] `HTTPPrefetchStatistics` for monitoring
+    - [x] 19 unit tests for prefetch functionality
+  - [ ] Response streaming (deferred - requires framework integration)
 - [x] Monitoring and Logging:
   - [x] Request/response logging (`DICOMwebRequestLogger` protocol)
   - [x] Performance metrics (latency, throughput) (`DICOMwebMetrics`)

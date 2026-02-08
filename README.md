@@ -60,8 +60,23 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
       - ✅ Normalization to 8-bit range
       - ✅ Min/max value detection
       - ✅ Contrast/brightness adjustment
-  - ✅ **Network Performance** - Optimized DICOM networking
+  - ✅ **Network Performance** - Optimized DICOM networking (NEW in v1.0.14)
     - ✅ Connection pooling for DICOM associations
+    - ✅ HTTP connection pooling with HTTP/2 multiplexing for DICOMweb
+      - ✅ `HTTPConnectionPool` actor with per-host connection management
+      - ✅ Automatic connection recycling based on age and idle time
+      - ✅ HTTP/2 stream multiplexing (up to 100 concurrent streams)
+      - ✅ Connection reuse tracking and statistics
+    - ✅ HTTP request pipelining for batched operations
+      - ✅ `HTTPRequestPipeline` actor for request batching
+      - ✅ Configurable pipeline depth (1-50 requests)
+      - ✅ Strict in-order response delivery option
+    - ✅ Predictive prefetching for improved cache hit rates
+      - ✅ `HTTPPrefetchManager` actor with LRU caching
+      - ✅ Configurable strategies: sequential, predictive, aggressive
+      - ✅ Priority-based prefetch queue (low, medium, high)
+      - ✅ Cache size limits: 100MB-2GB
+      - ✅ Cache hit/miss tracking with hit rate calculation
     - ✅ HTTP caching for DICOMweb with LRU eviction
   - ✅ **Benchmarking Infrastructure** - Performance measurement tools
     - ✅ `DICOMBenchmark` for sync and async operations
@@ -71,12 +86,15 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ PERFORMANCE_GUIDE.md with optimization strategies
     - ✅ Platform-specific recommendations (iOS, macOS, visionOS)
     - ✅ Troubleshooting and best practices
-  - ✅ **49 Performance Tests** - Comprehensive validation
+  - ✅ **102 Performance Tests** - Comprehensive validation (v1.0.14: +53 tests)
     - ✅ 5 tests for ParsingOptions
     - ✅ 9 tests for optimized parsing
     - ✅ 6 tests for benchmarking
     - ✅ 15 tests for ImageCache
     - ✅ 14 tests for SIMD processing
+    - ✅ 24 tests for HTTP connection pooling (NEW in v1.0.14)
+    - ✅ 10 tests for HTTP request pipelining (NEW in v1.0.14)
+    - ✅ 19 tests for HTTP prefetch manager (NEW in v1.0.14)
 
 - ✅ **ICC Profile Color Management (v1.0.11)**
   - ✅ **ICC Profile Parsing** - Complete ICC.1:2004-10 profile parsing
