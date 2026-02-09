@@ -261,9 +261,9 @@ public struct SegmentationRenderer: Sendable {
         // Scale to 0-255 and clamp
         let r = UInt8(max(0, min(255, R * 255.0)))
         let g = UInt8(max(0, min(255, G * 255.0)))
-        let b = UInt8(max(0, min(255, B * 255.0)))
+        let bOut = UInt8(max(0, min(255, B * 255.0)))
         
-        return (r, g, b)
+        return (r, g, bOut)
     }
     
     // MARK: - Private Helpers
