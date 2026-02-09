@@ -3860,6 +3860,78 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ---
 
+### Milestone 11.4: Waveform Data Support (v1.5.0)
+
+**Status**: ✅ Completed  
+**Goal**: Implement DICOM Waveform IOD support for ECG, hemodynamic, audio, and other physiological signal data  
+**Complexity**: Medium  
+**Dependencies**: Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [x] Waveform data model:
+  - [x] `Waveform` struct conforming to PS3.3 A.34
+  - [x] `WaveformType` enum for all 9 waveform SOP Classes (12-Lead ECG, General ECG, Ambulatory ECG, Hemodynamic, Cardiac Electrophysiology, Basic Voice Audio, General Audio, Arterial Pulse, Respiratory)
+  - [x] SOP Class UID constants for all waveform types
+  - [x] Waveform type inference from SOP Class UID
+  - [x] Total channel count and sample count computation
+- [x] Multiplex group support:
+  - [x] `WaveformMultiplexGroup` struct with sampling frequency, channels, and raw waveform data
+  - [x] Interleaved multi-channel sample extraction (`channelSamples(at:)`)
+  - [x] Support for 8-bit and 16-bit samples (signed and unsigned)
+  - [x] Duration calculation from sampling frequency and sample count
+  - [x] Waveform originality tracking (ORIGINAL, DERIVED)
+- [x] Channel definitions:
+  - [x] `WaveformChannel` struct with label, source, sensitivity, filters
+  - [x] Channel calibration formula: `(rawValue + baseline) * sensitivity * correctionFactor + offset`
+  - [x] Filter parameters (low/high frequency, notch filter)
+  - [x] Channel source coded concepts (SCPECG, LOINC, etc.)
+- [x] Waveform annotations:
+  - [x] `WaveformAnnotation` struct for text and measurement annotations
+  - [x] Temporal range type support (reusing DICOMCore `TemporalRangeType`)
+  - [x] Referenced sample positions and time offsets
+  - [x] Coded concept support for annotation semantics
+- [x] Waveform parsing:
+  - [x] `WaveformParser` for extracting waveforms from DICOM DataSets
+  - [x] Waveform Sequence parsing (multiplex groups)
+  - [x] Channel Definition Sequence parsing
+  - [x] Waveform Annotation Sequence parsing
+  - [x] Required attribute validation
+- [x] Waveform creation:
+  - [x] `WaveformBuilder` fluent API
+  - [x] Patient and series metadata setting
+  - [x] Multiplex group construction with automatic sample counting
+  - [x] Text and measurement annotation support
+  - [x] Auto-generated SOP Instance UID
+  - [x] Default modality inference from waveform type
+- [x] DataSet conversion:
+  - [x] `Waveform.toDataSet()` for serialization
+  - [x] `WaveformBuilder.buildDataSet()` for direct DataSet creation
+  - [x] Integration with `DICOMFile.create()` for DICOM Part 10 file creation
+- [x] Supporting types:
+  - [x] `WaveformCodedConcept` for coded channel sources and annotations
+  - [x] `WaveformSampleInterpretation` enum (SB, SS, UB, US, MB, AB)
+  - [x] `WaveformOriginality` enum (ORIGINAL, DERIVED)
+
+#### Technical Notes
+- Reference: PS3.3 A.34 - Waveform IODs
+- Reference: PS3.3 C.10.9 - Waveform Module
+- Reference: PS3.3 C.10.10 - Waveform Annotation Module
+- Reference: PS3.3 C.10.9.1.4.3 - Waveform Sample Value Transformation
+- Waveform data uses interleaved channel samples (channel-major ordering)
+- Sample values stored as OW (Other Word) for 16-bit, OB for 8-bit
+- Reuses existing `Tag+Waveforms.swift` tag definitions from DICOMCore
+- All types conform to `Sendable` for Swift 6 strict concurrency
+
+#### Acceptance Criteria
+- [x] Parse waveform metadata from DICOM files
+- [x] Extract and calibrate channel sample data
+- [x] Create DICOM-wrapped waveform files with proper metadata
+- [x] Round-trip: build → serialize → verify produces correct attributes
+- [x] DICOM Part 10 file creation works with waveform data
+- [x] Unit tests for all waveform types and operations (40+ tests)
+
+---
+
 ### Milestone 11 Summary
 
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
@@ -3867,6 +3939,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
 | 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | ✅ Complete (100%) | Phase 1-6: ✅ All 29 tools complete (dicom-info through dicom-script, 753+ tests) |
 | 11.3 Print Management | v1.4.0 | Medium-High | ✅ Completed | DIMSE-N messages, Print SOP Classes, data models (51+ tests) |
+| 11.4 Waveform Data Support | v1.5.0 | Medium | ✅ Completed | 9 waveform SOP Classes, multiplex groups, channel extraction, annotations (40+ tests) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting

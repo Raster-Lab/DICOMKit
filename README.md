@@ -1216,6 +1216,19 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ Improved MPPS response validation (N-CREATE/N-SET status checking)
   - ✅ 51+ unit tests
 
+- ✅ **Waveform Data Support (NEW in v1.5.0)** - DICOM Waveform IOD support (PS3.3 A.34)
+  - ✅ 9 Waveform SOP Classes (12-Lead ECG, General ECG, Ambulatory ECG, Hemodynamic, Cardiac Electrophysiology, Basic Voice Audio, General Audio, Arterial Pulse, Respiratory)
+  - ✅ `Waveform` data model with multiplex groups and channel definitions
+  - ✅ `WaveformMultiplexGroup` - Multi-channel interleaved sample extraction
+  - ✅ `WaveformChannel` - Channel calibration (sensitivity, baseline, correction factor, offset)
+  - ✅ `WaveformAnnotation` - Text and measurement annotations with temporal ranges
+  - ✅ `WaveformParser` - Parse waveform data from DICOM DataSets
+  - ✅ `WaveformBuilder` - Fluent API for creating waveform DICOM objects
+  - ✅ 8-bit and 16-bit sample support (signed and unsigned)
+  - ✅ Channel source coded concepts (SCPECG, LOINC)
+  - ✅ DICOM Part 10 file creation integration
+  - ✅ 40+ unit tests
+
 ## Limitations (v0.7.5)
 
 - ❌ **No character set conversion** - UTF-8 only
@@ -3873,7 +3886,7 @@ DICOM network protocol implementation:
 - `PrinterStatus` - Printer status information (NEW in v1.4.0)
 - `PrintResult` - Print operation result (NEW in v1.4.0)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8, v1.1.0)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8, v1.1.0, v1.5.0)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -4033,6 +4046,18 @@ High-level API:
 - `ConceptNameCode` - Coded concept for document content description
 - `SourceInstanceReference` - Reference to source DICOM instances
 - SOP Class UID constants for all 5 encapsulated document types
+
+**Waveform Data Support (NEW in v1.5.0):**
+- `Waveform` - DICOM Waveform IOD (PS3.3 A.34) with 9 SOP Classes
+- `WaveformType` - Waveform type enum (12-Lead ECG, General ECG, Ambulatory ECG, Hemodynamic, Cardiac Electrophysiology, Basic Voice Audio, General Audio, Arterial Pulse, Respiratory)
+- `WaveformMultiplexGroup` - Multiplex group with channels, sampling frequency, and interleaved data
+- `WaveformChannel` - Channel definition with label, source, sensitivity, filters, and calibration
+- `WaveformAnnotation` - Text and measurement annotations with temporal ranges
+- `WaveformParser` - Parse waveform data from DICOM data sets
+- `WaveformBuilder` - Fluent builder API for creating waveform DICOM objects
+- `WaveformCodedConcept` - Coded concept for channel sources and annotations
+- `WaveformSampleInterpretation` - Sample interpretation enum (SB, SS, UB, US, MB, AB)
+- `WaveformOriginality` - Waveform originality enum (ORIGINAL, DERIVED)
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -4309,4 +4334,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: DICOMKit v1.4.0 adds DICOM Print Management support with complete DIMSE-N message types (N-CREATE, N-SET, N-GET, N-DELETE), Print Service Class data models, and improved MPPS response validation. Previous versions added Encapsulated Document support (v1.1.0) and 29 CLI tools (v1.1.1-v1.3.5) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 2,010+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
+**Note**: DICOMKit v1.5.0 adds Waveform Data Support with 9 waveform SOP Classes (ECG, hemodynamic, audio, respiratory), multiplex group parsing, channel sample extraction with calibration, and waveform annotation support. Previous versions added DICOM Print Management (v1.4.0), Encapsulated Document support (v1.1.0), and 29 CLI tools (v1.1.1-v1.3.5) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 2,050+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
