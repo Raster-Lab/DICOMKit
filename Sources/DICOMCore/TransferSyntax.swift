@@ -191,6 +191,86 @@ extension TransferSyntax {
         isEncapsulated: true
     )
     
+    // MARK: - Video Transfer Syntaxes
+    
+    /// MPEG2 Main Profile @ Main Level (1.2.840.10008.1.2.4.100)
+    ///
+    /// MPEG2 video compression at Main Profile, Main Level.
+    /// Supports up to 720x576 at 30fps or 720x480 at 30fps.
+    ///
+    /// Reference: PS3.5 Section A.4.5
+    public static let mpeg2MainProfile = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.100",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// MPEG2 Main Profile @ High Level (1.2.840.10008.1.2.4.101)
+    ///
+    /// MPEG2 video compression at Main Profile, High Level.
+    /// Supports up to 1920x1080 at 30fps (HD video).
+    ///
+    /// Reference: PS3.5 Section A.4.5
+    public static let mpeg2MainProfileHighLevel = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.101",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// MPEG-4 AVC/H.264 High Profile / Level 4.1 (1.2.840.10008.1.2.4.102)
+    ///
+    /// H.264/AVC video compression at High Profile, Level 4.1.
+    /// Supports up to 1920x1080 at 30fps or 1280x720 at 60fps.
+    ///
+    /// Reference: PS3.5 Section A.4.6
+    public static let mpeg4AVCHP41 = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.102",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1 (1.2.840.10008.1.2.4.103)
+    ///
+    /// H.264/AVC video compression compatible with Blu-ray Disc format.
+    /// Supports up to 1920x1080 at 30fps.
+    ///
+    /// Reference: PS3.5 Section A.4.6
+    public static let mpeg4AVCHP41BD = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.103",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// HEVC/H.265 Main Profile / Level 5.1 (1.2.840.10008.1.2.4.107)
+    ///
+    /// H.265/HEVC video compression at Main Profile, Level 5.1.
+    /// Supports up to 3840x2160 at 30fps (4K UHD video).
+    ///
+    /// Reference: PS3.5 Section A.4.7
+    public static let hevcH265MainProfile = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.107",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// HEVC/H.265 Main 10 Profile / Level 5.1 (1.2.840.10008.1.2.4.108)
+    ///
+    /// H.265/HEVC video compression at Main 10 Profile, Level 5.1.
+    /// Supports 10-bit depth for HDR video, up to 3840x2160 at 30fps.
+    ///
+    /// Reference: PS3.5 Section A.4.7
+    public static let hevcH265Main10Profile = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.108",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
     /// Creates a TransferSyntax from a UID string
     ///
     /// Returns nil if the UID is not a recognized transfer syntax.
@@ -224,6 +304,19 @@ extension TransferSyntax {
         // RLE
         case rleLossless.uid:
             return .rleLossless
+        // Video
+        case mpeg2MainProfile.uid:
+            return .mpeg2MainProfile
+        case mpeg2MainProfileHighLevel.uid:
+            return .mpeg2MainProfileHighLevel
+        case mpeg4AVCHP41.uid:
+            return .mpeg4AVCHP41
+        case mpeg4AVCHP41BD.uid:
+            return .mpeg4AVCHP41BD
+        case hevcH265MainProfile.uid:
+            return .hevcH265MainProfile
+        case hevcH265Main10Profile.uid:
+            return .hevcH265Main10Profile
         default:
             return nil
         }
@@ -256,6 +349,54 @@ extension TransferSyntax {
     /// Whether this transfer syntax uses RLE compression
     public var isRLE: Bool {
         uid == TransferSyntax.rleLossless.uid
+    }
+    
+    /// Whether this transfer syntax uses video compression (MPEG2, H.264, or H.265)
+    public var isVideo: Bool {
+        switch uid {
+        case TransferSyntax.mpeg2MainProfile.uid,
+             TransferSyntax.mpeg2MainProfileHighLevel.uid,
+             TransferSyntax.mpeg4AVCHP41.uid,
+             TransferSyntax.mpeg4AVCHP41BD.uid,
+             TransferSyntax.hevcH265MainProfile.uid,
+             TransferSyntax.hevcH265Main10Profile.uid:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this transfer syntax uses MPEG2 compression
+    public var isMPEG2: Bool {
+        switch uid {
+        case TransferSyntax.mpeg2MainProfile.uid,
+             TransferSyntax.mpeg2MainProfileHighLevel.uid:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this transfer syntax uses H.264/AVC compression
+    public var isH264: Bool {
+        switch uid {
+        case TransferSyntax.mpeg4AVCHP41.uid,
+             TransferSyntax.mpeg4AVCHP41BD.uid:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this transfer syntax uses H.265/HEVC compression
+    public var isH265: Bool {
+        switch uid {
+        case TransferSyntax.hevcH265MainProfile.uid,
+             TransferSyntax.hevcH265Main10Profile.uid:
+            return true
+        default:
+            return false
+        }
     }
     
     /// Whether this is a lossless transfer syntax
