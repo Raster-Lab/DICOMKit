@@ -26,10 +26,11 @@ DICOMKit is organized into five modules with clear responsibilities:
 
 ```
 DICOMWeb ─────┬────► DICOMKit ────► DICOMDictionary ────► DICOMCore
-              │                                              ▲
-              └──────────────────────────────────────────────┘
-                                                             
-DICOMNetwork ─────────────────────────────────────────────► DICOMCore
+              │                            ▲                 ▲
+              └────────────────────────────┘                 │
+                                                             │
+DICOMNetwork ────────────────────────────────────────────────┤
+              └─────────────────► DICOMDictionary           │
 ```
 
 ## DICOMCore
@@ -101,6 +102,8 @@ let entry = DataElementDictionary.shared.lookup(keyword: "PatientName")
 
 **Purpose**: DICOM network protocol implementation.
 
+**Dependencies**: `DICOMCore`, `DICOMDictionary`
+
 ### Key Types
 
 | Type | Description |
@@ -110,6 +113,7 @@ let entry = DataElementDictionary.shared.lookup(keyword: "PatientName")
 | `QueryService` | C-FIND query operations |
 | `RetrieveService` | C-GET/C-MOVE operations |
 | `StorageService` | C-STORE operations |
+| `ModalityWorklistService` | Modality Worklist queries with dictionary-based VR lookup |
 
 ### Protocol Layers
 
