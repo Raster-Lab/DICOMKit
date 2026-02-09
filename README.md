@@ -956,7 +956,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ UPS-RS workitem operations (search, retrieve, create, update, change state, cancel, subscribe)
     - ✅ Request interceptors for customization (via HTTPClient)
     - ✅ Automatic token refresh (via OAuth2TokenProvider)
-- ✅ **UPS-RS Worklist Services (v0.8.7)**
+- ✅ **UPS-RS Worklist Services (v0.8.7, v0.8.9)**
   - ✅ `Workitem` struct for UPS workitem representation
   - ✅ `UPSState` enum with state machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
   - ✅ `UPSPriority` enum (STAT, HIGH, MEDIUM, LOW)
@@ -978,8 +978,14 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ Subscription endpoints (subscribe/unsubscribe/suspend)
   - ✅ Capabilities endpoint includes UPS-RS support status
   - ✅ `UPSClient` for client-side workitem operations
-  - ✅ 83 unit tests for UPS types and server handlers
-  - 🚧 Event delivery (WebSocket/polling) coming in v0.8.8
+  - ✅ **Event System (NEW in v0.8.9):**
+    - ✅ 6 event types: StateReport, ProgressReport, CancelRequested, Assigned, Completed, Canceled
+    - ✅ Subscription management with workitem-specific and global subscriptions
+    - ✅ Event delivery infrastructure with queue management and retry logic
+    - ✅ Event generation on state changes and progress updates
+    - ✅ Deletion lock support for subscriptions
+    - ✅ Event type filtering for targeted subscriptions
+  - ✅ 173+ unit tests (83 UPS types + 90+ event system tests)
 - ✅ **DICOMweb Server STOW-RS Enhancements (v0.8.6)**
   - ✅ STOWConfiguration for configurable store behavior
   - ✅ DuplicatePolicy: reject (409 Conflict), replace, or accept (idempotent)
@@ -4148,7 +4154,7 @@ DICOMweb (RESTful DICOM) client and server implementation:
 - `AuthenticationError` - Authentication error types
 - `AuthorizationError` - Authorization error types
 
-**UPS-RS (Unified Procedure Step) Components (NEW in v0.8.7):**
+**UPS-RS (Unified Procedure Step) Components (NEW in v0.8.7, UPDATED in v0.8.9):**
 - `Workitem` - UPS workitem representation with scheduling and state
 - `UPSState` - State machine (SCHEDULED, IN PROGRESS, COMPLETED, CANCELED)
 - `UPSPriority` - Priority levels (STAT, HIGH, MEDIUM, LOW)
@@ -4168,6 +4174,18 @@ DICOMweb (RESTful DICOM) client and server implementation:
 - `UPSCancellationRequest` - Cancellation request
 - `UPSCreateResponse`, `UPSStateChangeResponse`, `UPSCancellationResponse` - Response types
 - `UPSTag` - DICOM tag constants for UPS attributes
+- ✅ **Event System (NEW in v0.8.9):**
+  - `UPSEventType` - Event types (StateReport, ProgressReport, CancelRequested, Assigned, Completed, Canceled)
+  - `UPSEvent` - Base protocol for all UPS events
+  - `UPSStateReportEvent`, `UPSProgressReportEvent`, `UPSCancelRequestedEvent`, `UPSAssignedEvent`, `UPSCompletedEvent`, `UPSCanceledEvent` - Concrete event types
+  - `AnyUPSEvent` - Type-erased event wrapper
+  - `Subscription` - Subscription data model with deletion lock and event filtering
+  - `SubscriptionManager` - Protocol for managing subscriptions
+  - `InMemorySubscriptionManager` - In-memory subscription management
+  - `EventDeliveryService` - Protocol for pluggable event delivery mechanisms
+  - `EventQueue` - Reliable event queuing with retry logic
+  - `EventDispatcher` - Coordinates event generation, queuing, and delivery
+  - `LoggingEventDeliveryService` - Event logging for testing/development
 
 **Server Components:**
 - `DICOMwebServer` - WADO-RS, QIDO-RS, and STOW-RS server actor (v0.8.5)

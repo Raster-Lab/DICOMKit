@@ -203,6 +203,10 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
     /// Stored workitems keyed by UID
     private var workitems: [String: Workitem] = [:]
     
+    /// Optional event dispatcher for event generation
+    /// Strong reference is safe here as the dispatcher doesn't hold a reference back to the storage
+    private var eventDispatcher: EventDispatcher?
+    
     /// Creates an empty in-memory storage provider
     public init() {}
     
@@ -211,6 +215,12 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
         for workitem in workitems {
             self.workitems[workitem.workitemUID] = workitem
         }
+    }
+    
+    /// Sets the event dispatcher for event generation
+    /// - Parameter dispatcher: The event dispatcher to use
+    public func setEventDispatcher(_ dispatcher: EventDispatcher?) {
+        self.eventDispatcher = dispatcher
     }
     
     // MARK: - UPSStorageProvider Implementation
@@ -362,6 +372,33 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
         }
         
         workitems[workitemUID] = workitem
+        
+        // Generate state change event
+        if let dispatcher = eventDispatcher {
+            let event = UPSStateReportEvent(
+                workitemUID: workitemUID,
+                transactionUID: workitem.transactionUID,
+                previousState: currentState,
+                newState: newState
+            )
+            await dispatcher.dispatch(event)
+            
+            // Generate additional events for final states
+            if newState == .completed {
+                let completedEvent = UPSCompletedEvent(
+                    workitemUID: workitemUID,
+                    transactionUID: workitem.transactionUID
+                )
+                await dispatcher.dispatch(completedEvent)
+            } else if newState == .canceled {
+                let canceledEvent = UPSCanceledEvent(
+                    workitemUID: workitemUID,
+                    transactionUID: workitem.transactionUID,
+                    reason: workitem.cancellationReason
+                )
+                await dispatcher.dispatch(canceledEvent)
+            }
+        }
     }
     
     public func updateProgress(
@@ -375,6 +412,16 @@ public actor InMemoryUPSStorageProvider: UPSStorageProvider {
         workitem.progressInformation = progress
         workitem.modificationDateTime = Date()
         workitems[workitemUID] = workitem
+        
+        // Generate progress event
+        if let dispatcher = eventDispatcher {
+            let event = UPSProgressReportEvent(
+                workitemUID: workitemUID,
+                transactionUID: workitem.transactionUID,
+                progressInformation: progress
+            )
+            await dispatcher.dispatch(event)
+        }
     }
     
     // MARK: - Helper Methods
