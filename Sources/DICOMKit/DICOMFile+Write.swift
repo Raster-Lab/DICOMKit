@@ -99,6 +99,37 @@ extension DataSet {
         )
     }
     
+    /// Sets an integer value for the given tag with the specified VR
+    ///
+    /// Supports the following VR types:
+    /// - `.IS` (Integer String): Stores the integer as a string representation
+    /// - `.US` (Unsigned Short): Stores as a binary UInt16 value
+    /// - `.UL` (Unsigned Long): Stores as a binary UInt32 value
+    /// - `.SS` (Signed Short): Stores as a binary Int16 value
+    /// - `.SL` (Signed Long): Stores as a binary Int32 value
+    ///
+    /// - Parameters:
+    ///   - value: The integer value to set
+    ///   - tag: The tag to set
+    ///   - vr: The Value Representation to use
+    public mutating func setInt(_ value: Int, for tag: Tag, vr: VR) {
+        switch vr {
+        case .IS:
+            self[tag] = DataElement.string(tag: tag, vr: .IS, value: String(value))
+        case .US:
+            self[tag] = DataElement.uint16(tag: tag, value: UInt16(value))
+        case .UL:
+            self[tag] = DataElement.uint32(tag: tag, value: UInt32(value))
+        case .SS:
+            self[tag] = DataElement.int16(tag: tag, value: Int16(value))
+        case .SL:
+            self[tag] = DataElement.int32(tag: tag, value: Int32(value))
+        default:
+            // Fall back to string representation for other VRs
+            self[tag] = DataElement.string(tag: tag, vr: vr, value: String(value))
+        }
+    }
+    
     /// Removes the element at the given tag
     ///
     /// - Parameter tag: The tag to remove
