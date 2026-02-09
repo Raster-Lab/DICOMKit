@@ -373,13 +373,13 @@ final class SegmentationParserTests: XCTestCase {
         let fgItem = SequenceItem(elements: fgElements)
         
         let perFrameElement = DataElement(
-            tag: Tag.perFrameFunctionalGroupsSequence,
+            tag: Tag(group: 0x5200, element: 0x9230),
             vr: .SQ,
             length: 0,
             valueData: Data(),
             sequenceItems: [fgItem]
         )
-        dataSet[Tag.perFrameFunctionalGroupsSequence] = perFrameElement
+        dataSet[Tag(group: 0x5200, element: 0x9230)] = perFrameElement
         
         let segmentation = try SegmentationParser.parse(from: dataSet)
         
@@ -413,13 +413,13 @@ final class SegmentationParserTests: XCTestCase {
         let fgItem = SequenceItem(elements: fgElements)
         
         let sharedElement = DataElement(
-            tag: Tag.sharedFunctionalGroupsSequence,
+            tag: Tag(group: 0x5200, element: 0x9229),
             vr: .SQ,
             length: 0,
             valueData: Data(),
             sequenceItems: [fgItem]
         )
-        dataSet[Tag.sharedFunctionalGroupsSequence] = sharedElement
+        dataSet[Tag(group: 0x5200, element: 0x9229)] = sharedElement
         
         let segmentation = try SegmentationParser.parse(from: dataSet)
         
@@ -469,13 +469,13 @@ final class SegmentationParserTests: XCTestCase {
         )
         let fgItem = SequenceItem(elements: fgElements)
         let perFrameElement = DataElement(
-            tag: Tag.perFrameFunctionalGroupsSequence,
+            tag: Tag(group: 0x5200, element: 0x9230),
             vr: .SQ,
             length: 0,
             valueData: Data(),
             sequenceItems: [fgItem]
         )
-        dataSet[Tag.perFrameFunctionalGroupsSequence] = perFrameElement
+        dataSet[Tag(group: 0x5200, element: 0x9230)] = perFrameElement
         
         let segmentation = try SegmentationParser.parse(from: dataSet)
         
