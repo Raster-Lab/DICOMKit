@@ -372,12 +372,14 @@ final class SegmentationParserTests: XCTestCase {
         
         let fgItem = SequenceItem(elements: fgElements)
         
-        dataSet[.perFrameFunctionalGroupsSequence] = DataElement(
-            tag: .perFrameFunctionalGroupsSequence,
+        let perFrameElement = DataElement(
+            tag: Tag.perFrameFunctionalGroupsSequence,
             vr: .SQ,
-            length: 0, valueData: Data(),
+            length: 0,
+            valueData: Data(),
             sequenceItems: [fgItem]
         )
+        dataSet[Tag.perFrameFunctionalGroupsSequence] = perFrameElement
         
         let segmentation = try SegmentationParser.parse(from: dataSet)
         
@@ -410,12 +412,14 @@ final class SegmentationParserTests: XCTestCase {
         
         let fgItem = SequenceItem(elements: fgElements)
         
-        dataSet[.sharedFunctionalGroupsSequence] = DataElement(
-            tag: .sharedFunctionalGroupsSequence,
+        let sharedElement = DataElement(
+            tag: Tag.sharedFunctionalGroupsSequence,
             vr: .SQ,
-            length: 0, valueData: Data(),
+            length: 0,
+            valueData: Data(),
             sequenceItems: [fgItem]
         )
+        dataSet[Tag.sharedFunctionalGroupsSequence] = sharedElement
         
         let segmentation = try SegmentationParser.parse(from: dataSet)
         
@@ -464,12 +468,14 @@ final class SegmentationParserTests: XCTestCase {
             sequenceItems: [segIDItem]
         )
         let fgItem = SequenceItem(elements: fgElements)
-        dataSet[.perFrameFunctionalGroupsSequence] = DataElement(
-            tag: .perFrameFunctionalGroupsSequence,
+        let perFrameElement = DataElement(
+            tag: Tag.perFrameFunctionalGroupsSequence,
             vr: .SQ,
-            length: 0, valueData: Data(),
+            length: 0,
+            valueData: Data(),
             sequenceItems: [fgItem]
         )
+        dataSet[Tag.perFrameFunctionalGroupsSequence] = perFrameElement
         
         let segmentation = try SegmentationParser.parse(from: dataSet)
         
