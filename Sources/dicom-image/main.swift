@@ -482,7 +482,7 @@ struct DICOMImage: ParsableCommand {
         
         // Extract and convert pixel data
         let pixelData = try extractPixelData(from: image, samplesPerPixel: samplesPerPixel)
-        dataSet[.pixelData] = DataElement(
+        dataSet[.pixelData] = DataElement.data(
             tag: .pixelData,
             vr: .OB,
             data: pixelData
@@ -569,7 +569,7 @@ struct DICOMImage: ParsableCommand {
             if let userComment = exifDict[kCGImagePropertyExifUserComment as String] as? String {
                 return userComment
             }
-            if let imageDescription = exifDict[kCGImagePropertyExifImageDescription as String] as? String {
+            if let imageDescription = exifDict["ImageDescription"] as? String {
                 return imageDescription
             }
         }
