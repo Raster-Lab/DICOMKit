@@ -4018,6 +4018,86 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ---
 
+### Milestone 11.6: Secondary Capture Image IOD Support (v1.7.0)
+
+**Status**: ✅ Completed  
+**Goal**: Implement formal DICOM Secondary Capture Image IOD support with model, parser, and builder  
+**Complexity**: Medium  
+**Dependencies**: Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [x] Secondary Capture data model:
+  - [x] `SecondaryCaptureImage` struct conforming to PS3.3 A.8
+  - [x] `SecondaryCaptureType` enum for all 5 SC SOP Classes (Single Frame, Multi-frame Single Bit, Multi-frame Grayscale Byte, Multi-frame Grayscale Word, Multi-frame True Color)
+  - [x] SOP Class UID constants for all Secondary Capture types
+  - [x] SC type inference from SOP Class UID
+  - [x] Default pixel characteristics per type
+  - [x] Resolution, monochrome/color, single/multi-frame computed properties
+- [x] SC Equipment Module:
+  - [x] `ConversionType` enum with all DICOM defined terms (DV, DI, DF, WSD, SD, SI, SYN)
+  - [x] Conversion type display names and DICOM value parsing
+- [x] SC-specific DICOM tags (Tag+SecondaryCapture.swift):
+  - [x] Conversion Type (0008,0064)
+  - [x] Date of Secondary Capture (0018,1012)
+  - [x] Time of Secondary Capture (0018,1014)
+  - [x] Page Number Vector (0018,2001)
+  - [x] Frame Primary Angle Vector (0018,2003)
+  - [x] Frame Secondary Angle Vector (0018,2004)
+- [x] Secondary Capture parsing:
+  - [x] `SecondaryCaptureParser` for extracting SC metadata from DICOM DataSets
+  - [x] Required attribute validation (SOP Instance UID, Study/Series UIDs, Rows, Columns)
+  - [x] Image Pixel Module attribute parsing
+  - [x] SC Equipment Module parsing (Conversion Type)
+  - [x] SC Image Module parsing (Date/Time of Secondary Capture)
+  - [x] General Image Module parsing (Image Type, Burned In Annotation, Derivation Description)
+  - [x] Patient and series metadata extraction
+- [x] Secondary Capture creation:
+  - [x] `SecondaryCaptureBuilder` fluent API
+  - [x] Patient metadata setting (name, ID)
+  - [x] SC Equipment Module configuration (conversion type)
+  - [x] Image Type and annotation support
+  - [x] Automatic pixel characteristic defaults per SC type
+  - [x] Auto-generated SOP Instance UID
+  - [x] Default modality inference ("OT")
+  - [x] Validation of required parameters (rows, columns, type)
+- [x] DataSet conversion:
+  - [x] `SecondaryCaptureImage.toDataSet()` for serialization
+  - [x] `SecondaryCaptureBuilder.buildDataSet()` for direct DataSet creation
+  - [x] Integration with existing DICOM file creation workflow
+- [x] Comprehensive testing (42 unit tests):
+  - [x] 7 tests for SecondaryCaptureType (all SOP Class UIDs, display names, default characteristics)
+  - [x] 3 tests for ConversionType (all types, DICOM values, display names, whitespace handling)
+  - [x] 1 test for SOP Class UID constants
+  - [x] 3 tests for SecondaryCaptureImage properties (single-frame, multi-frame, metadata)
+  - [x] 9 tests for SecondaryCaptureBuilder (all SC types, metadata, pixel data, validation)
+  - [x] 3 tests for Builder validation (invalid rows, columns, unknown type)
+  - [x] 4 tests for DataSet conversion (single-frame, multi-frame, image type, SC fields)
+  - [x] 5 tests for SecondaryCaptureParser (basic, patient info, image type, multi-frame)
+  - [x] 5 tests for Parser error handling (missing required attributes)
+  - [x] 2 tests for round-trip (build → serialize → parse for single and multi-frame)
+
+#### Technical Notes
+- Reference: PS3.3 A.8 - Secondary Capture Image IOD
+- Reference: PS3.3 A.8.1 - Multi-frame Single Bit SC Image IOD
+- Reference: PS3.3 A.8.2 - Multi-frame Grayscale Byte SC Image IOD
+- Reference: PS3.3 A.8.3 - Multi-frame Grayscale Word SC Image IOD
+- Reference: PS3.3 A.8.4 - Multi-frame True Color SC Image IOD
+- Reference: PS3.3 C.8.6.1 - SC Equipment Module
+- Reference: PS3.3 C.8.6.2 - SC Image Module
+- Secondary Capture is one of the most commonly used DICOM SOP Classes
+- Supports digitized film, workstation screen capture, scanned documents, and synthesized images
+- All types conform to `Sendable` for Swift 6 strict concurrency
+
+#### Acceptance Criteria
+- [x] Parse Secondary Capture metadata from DICOM DataSets
+- [x] Support all 5 SC SOP Classes with proper pixel defaults
+- [x] Create DICOM Secondary Capture images with proper metadata
+- [x] Round-trip: build → serialize → parse produces equivalent metadata
+- [x] All 7 Conversion Type values supported
+- [x] Unit tests for all SC types and operations (42 tests)
+
+---
+
 ### Milestone 11 Summary
 
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
@@ -4027,6 +4107,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | 11.3 Print Management | v1.4.0 | Medium-High | ✅ Completed | DIMSE-N messages, Print SOP Classes, data models (51+ tests) |
 | 11.4 Waveform Data Support | v1.5.0 | Medium | ✅ Completed | 9 waveform SOP Classes, multiplex groups, channel extraction, annotations (40+ tests) |
 | 11.5 Video Support | v1.6.0 | Medium | ✅ Completed | 3 Video SOP Classes, 6 video transfer syntaxes (MPEG2/H.264/H.265), VideoCodec enum (44 tests) |
+| 11.6 Secondary Capture IOD | v1.7.0 | Medium | ✅ Completed | 5 SC SOP Classes, ConversionType, SC Equipment/Image modules, parser/builder (42 tests) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
