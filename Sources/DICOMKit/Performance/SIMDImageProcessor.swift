@@ -81,7 +81,8 @@ public struct SIMDImageProcessor {
         
         // Invert: output = 255 - input
         var maxValue: Float = 255
-        vDSP_vsbsbm(floatPixels, 1, &maxValue, &floatPixels, 1, vDSP_Length(pixelData.count))
+        vDSP_vneg(floatPixels, 1, &floatPixels, 1, vDSP_Length(pixelData.count))
+        vDSP_vsadd(floatPixels, 1, &maxValue, &floatPixels, 1, vDSP_Length(pixelData.count))
         
         // Convert back to UInt8
         vDSP_vfixu8(floatPixels, 1, &output, 1, vDSP_Length(pixelData.count))
