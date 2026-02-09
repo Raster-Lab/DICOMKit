@@ -167,7 +167,7 @@ let package = Package(
         ),
         .target(
             name: "DICOMNetwork",
-            dependencies: ["DICOMCore"],
+            dependencies: ["DICOMCore", "DICOMDictionary"],
             swiftSettings: [
                 .enableUpcomingFeature("StrictConcurrency")
             ]
