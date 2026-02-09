@@ -1247,6 +1247,22 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ DICOM Part 10 file creation integration
   - ✅ 44 unit tests
 
+- ✅ **Secondary Capture Image IOD (NEW in v1.7.0)** - DICOM Secondary Capture IOD support (PS3.3 A.8)
+  - ✅ 5 SC SOP Classes:
+    - ✅ Secondary Capture Image Storage (1.2.840.10008.5.1.4.1.1.7)
+    - ✅ Multi-frame Single Bit SC Image Storage (1.2.840.10008.5.1.4.1.1.7.1)
+    - ✅ Multi-frame Grayscale Byte SC Image Storage (1.2.840.10008.5.1.4.1.1.7.2)
+    - ✅ Multi-frame Grayscale Word SC Image Storage (1.2.840.10008.5.1.4.1.1.7.3)
+    - ✅ Multi-frame True Color SC Image Storage (1.2.840.10008.5.1.4.1.1.7.4)
+  - ✅ `SecondaryCaptureImage` data model with pixel characteristics, metadata, and computed properties
+  - ✅ `SecondaryCaptureType` enum with default pixel characteristics per type
+  - ✅ `ConversionType` enum (DV, DI, DF, WSD, SD, SI, SYN) for SC Equipment Module
+  - ✅ `SecondaryCaptureParser` - Parse SC metadata from DICOM DataSets
+  - ✅ `SecondaryCaptureBuilder` - Fluent API for creating SC DICOM objects
+  - ✅ SC-specific DICOM tags (Conversion Type, Date/Time of SC, Page Number Vector)
+  - ✅ DICOM Part 10 file creation integration
+  - ✅ 42 unit tests
+
 ## Limitations (v0.7.5)
 
 - ❌ **No character set conversion** - UTF-8 only
@@ -3904,7 +3920,7 @@ DICOM network protocol implementation:
 - `PrinterStatus` - Printer status information (NEW in v1.4.0)
 - `PrintResult` - Print operation result (NEW in v1.4.0)
 
-### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8, v1.1.0, v1.5.0, v1.6.0)
+### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8, v1.1.0, v1.5.0, v1.6.0, v1.7.0)
 High-level API:
 - `DICOMFile` - DICOM Part 10 file abstraction (reading and writing)
 - `DataSet` - Collections of data elements (with setter methods)
@@ -4085,6 +4101,14 @@ High-level API:
 - `VideoBuilder` - Fluent builder API for creating video DICOM objects
 - SOP Class UID constants for Video Endoscopic, Video Microscopic, Video Photographic
 - 6 video transfer syntaxes (MPEG2, H.264, H.265) with `isVideo`, `isMPEG2`, `isH264`, `isH265`
+
+**Secondary Capture Image IOD (NEW in v1.7.0):**
+- `SecondaryCaptureImage` - DICOM Secondary Capture IOD (PS3.3 A.8) with 5 SOP Classes
+- `SecondaryCaptureType` - SC type enum (singleFrame, multiframeSingleBit, multiframeGrayscaleByte, multiframeGrayscaleWord, multiframeTrueColor)
+- `ConversionType` - SC Equipment Module conversion type enum (DV, DI, DF, WSD, SD, SI, SYN)
+- `SecondaryCaptureParser` - Parse SC metadata from DICOM data sets
+- `SecondaryCaptureBuilder` - Fluent builder API for creating SC DICOM objects
+- SC-specific DICOM tags: Conversion Type, Date/Time of Secondary Capture, Page Number Vector
 
 **Content Item Navigation and Tree Traversal (NEW in v0.9.3):**
 - `ContentTreeIterator` - Depth-first iterator for SR content trees
@@ -4361,4 +4385,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: DICOMKit v1.6.0 adds DICOM Video Support with 3 video SOP Classes (endoscopic, microscopic, photographic), 6 video transfer syntaxes (MPEG2, H.264/AVC, H.265/HEVC), video data model with frame rate and duration computation, VideoParser and VideoBuilder APIs. Previous versions added Waveform Data Support (v1.5.0), DICOM Print Management (v1.4.0), Encapsulated Document support (v1.1.0), and 29 CLI tools (v1.1.1-v1.3.5) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 2,050+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
+**Note**: DICOMKit v1.7.0 adds Secondary Capture Image IOD support with 5 SC SOP Classes (single-frame, multi-frame single bit, grayscale byte, grayscale word, true color), ConversionType enum for SC Equipment Module, SecondaryCaptureParser and SecondaryCaptureBuilder APIs. Previous versions added DICOM Video Support (v1.6.0), Waveform Data Support (v1.5.0), DICOM Print Management (v1.4.0), Encapsulated Document support (v1.1.0), and 29 CLI tools (v1.1.1-v1.3.5) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 2,090+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
