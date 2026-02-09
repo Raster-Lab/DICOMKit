@@ -404,10 +404,17 @@ extension Waveform {
             value: String(group.numberOfSamples)
         ))
 
-        // Waveform Bits Stored
+        // Waveform Bits Allocated (5400,1004)
         elements.append(DataElement.uint16(
-            tag: .waveformBitsStored,
-            value: group.waveformBitsStored
+            tag: .waveformBitsAllocated,
+            value: group.waveformBitsAllocated
+        ))
+
+        // Waveform Sample Interpretation (5400,1006)
+        elements.append(DataElement.string(
+            tag: .waveformSampleInterpretation,
+            vr: .CS,
+            value: group.waveformSampleInterpretation.rawValue
         ))
 
         // Waveform Originality

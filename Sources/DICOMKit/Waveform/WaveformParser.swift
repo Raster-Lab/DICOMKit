@@ -143,39 +143,26 @@ public struct WaveformParser {
         numberOfChannels: UInt16,
         numberOfSamples: Int
     ) throws -> WaveformMultiplexGroup {
-        // Waveform Sample Interpretation (required)
+        // Waveform Sample Interpretation (5400,1006) - VR: CS
+        // Values: SB, SS, UB, US, MB, AB
         let sampleInterpretation: WaveformSampleInterpretation
-        if let interpStr = item.elements[Tag(group: 0x5400, element: 0x1006)]?.stringValue {
-            // Check if it's actually stored in waveformBitsStored tag (common)
-            sampleInterpretation = .signedInteger
-            _ = interpStr // consumed
+        if let interpStr = item.elements[.waveformSampleInterpretation]?.stringValue,
+           let interp = WaveformSampleInterpretation(dicomValue: interpStr) {
+            sampleInterpretation = interp
         } else {
-            sampleInterpretation = .signedInteger
+            sampleInterpretation = .signedInteger // Default to signed 16-bit
         }
 
-        // Try to read actual sample interpretation from a dedicated element
-        let actualInterpretation: WaveformSampleInterpretation
-        // DICOM tag for Waveform Sample Interpretation is (5400,1006) but stored as CS
-        // This is actually Waveform Bits Stored per the standard
-        // The actual sample interpretation is encoded differently
-        if let interpValue = item.elements[.waveformBitsStored]?.stringValue,
-           let interp = WaveformSampleInterpretation(dicomValue: interpValue) {
-            actualInterpretation = interp
-        } else {
-            actualInterpretation = sampleInterpretation
-        }
-
-        // Waveform Bits Allocated (required) - typically 8 or 16
+        // Waveform Bits Allocated (5400,1004) - VR: US
         let waveformBitsAllocated: UInt16
-        // Try to read from the Waveform Bits Allocated attribute
-        // In many implementations this is stored alongside channel data
-        if let bitsAlloc = item.elements[.waveformBitsStored]?.uint16Value {
+        if let bitsAlloc = item.elements[.waveformBitsAllocated]?.uint16Value {
             waveformBitsAllocated = bitsAlloc
         } else {
             waveformBitsAllocated = 16 // Default to 16-bit
         }
 
-        let waveformBitsStored = item.elements[.waveformBitsStored]?.uint16Value ?? waveformBitsAllocated
+        // Waveform Bits Stored - use bitsAllocated as fallback
+        let waveformBitsStored = waveformBitsAllocated
 
         // Waveform Data (required)
         let waveformData = item.elements[.waveformData]?.valueData ?? Data()
@@ -215,7 +202,7 @@ public struct WaveformParser {
             numberOfSamples: numberOfSamples,
             waveformBitsAllocated: waveformBitsAllocated,
             waveformBitsStored: waveformBitsStored,
-            waveformSampleInterpretation: actualInterpretation,
+            waveformSampleInterpretation: sampleInterpretation,
             channels: channels,
             waveformData: waveformData,
             originality: originality,

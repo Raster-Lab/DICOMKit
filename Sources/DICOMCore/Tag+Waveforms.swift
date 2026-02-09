@@ -122,7 +122,20 @@ extension Tag {
     
     /// Waveform Bits Stored (5400,1006)
     /// VR: US, VM: 1
+    /// Note: Per DICOM PS3.3, (5400,1006) is actually Waveform Sample Interpretation (VR: CS)
+    /// This alias is maintained for backward compatibility
     public static let waveformBitsStored = Tag(group: 0x5400, element: 0x1006)
+    
+    /// Waveform Sample Interpretation (5400,1006)
+    /// VR: CS, VM: 1
+    /// Values: SB (signed 8-bit), UB (unsigned 8-bit), SS (signed 16-bit),
+    ///         US (unsigned 16-bit), MB (8-bit mu-law), AB (8-bit A-law)
+    public static let waveformSampleInterpretation = Tag(group: 0x5400, element: 0x1006)
+    
+    /// Waveform Bits Allocated (5400,1004)
+    /// VR: US, VM: 1
+    /// Number of bits allocated for each waveform sample (8, 16, 32, or 64)
+    public static let waveformBitsAllocated = Tag(group: 0x5400, element: 0x1004)
     
     /// Filter Low Frequency (5400,1018)
     /// VR: DS, VM: 1
