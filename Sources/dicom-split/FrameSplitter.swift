@@ -7,6 +7,10 @@ import DICOMDictionary
 import CoreGraphics
 #endif
 
+#if canImport(ImageIO)
+import ImageIO
+#endif
+
 #if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
 #endif
@@ -225,7 +229,7 @@ struct FrameSplitter {
         #endif
     }
     
-    #if canImport(CoreGraphics) && canImport(UniformTypeIdentifiers)
+    #if canImport(CoreGraphics) && canImport(ImageIO) && canImport(UniformTypeIdentifiers)
     /// Writes a CGImage to disk in the specified format
     private func writeImage(_ image: CGImage, to path: String, format: OutputFormat) throws {
         let url = URL(fileURLWithPath: path)
