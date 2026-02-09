@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMDictionary
 
 /// SOP Class UID for Modality Worklist Information Model - FIND
 /// Reference: PS3.4 Annex K - Modality Worklist Information Model
@@ -396,10 +397,15 @@ public enum DICOMModalityWorklistService {
     
     /// Determines the VR for a given tag
     /// 
-    /// Note: This is a simplified implementation for common MWL tags.
-    /// TODO: Consider using DICOMDictionary module for comprehensive VR lookup
-    /// when the dictionary is available in DICOMNetwork dependencies.
+    /// Uses DICOMDictionary for comprehensive VR lookup with fallback for unknown tags.
     private static func determineVR(for tag: Tag) -> VR {
+        // First, try to look up the tag in the DICOM Dictionary
+        if let entry = DataElementDictionary.lookup(tag: tag) {
+            // Use the first VR if multiple VRs are defined for the tag
+            return entry.vr.first ?? .UN
+        }
+        
+        // Fallback for common MWL tags not yet in dictionary
         switch tag {
         case .patientName: return .PN
         case .patientID: return .LO
