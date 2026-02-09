@@ -84,7 +84,7 @@ import CoreGraphics
 let dicomFile = try DICOMFile.read(from: data)
 
 // Extract pixel data
-let pixelData = try dicomFile.extractPixelData()
+let pixelData = try dicomFile.tryPixelData()
 
 // Create a renderer
 let renderer = PixelDataRenderer(
