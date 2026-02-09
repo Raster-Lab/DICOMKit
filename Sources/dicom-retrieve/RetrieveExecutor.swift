@@ -126,7 +126,7 @@ struct RetrieveExecutor {
         
         if let sopUID = sopUID, let seriesUID = seriesUID {
             // Instance level
-            result = try await RetrieveService.moveInstance(
+            result = try await DICOMRetrieveService.moveInstance(
                 host: host,
                 port: port,
                 callingAE: callingAE,
@@ -140,7 +140,7 @@ struct RetrieveExecutor {
             )
         } else if let seriesUID = seriesUID {
             // Series level
-            result = try await RetrieveService.moveSeries(
+            result = try await DICOMRetrieveService.moveSeries(
                 host: host,
                 port: port,
                 callingAE: callingAE,
@@ -153,7 +153,7 @@ struct RetrieveExecutor {
             )
         } else {
             // Study level
-            result = try await RetrieveService.moveStudy(
+            result = try await DICOMRetrieveService.moveStudy(
                 host: host,
                 port: port,
                 callingAE: callingAE,
@@ -181,11 +181,11 @@ struct RetrieveExecutor {
     // MARK: - C-GET Implementation
     
     private func performCGet(studyUID: String, seriesUID: String?, sopUID: String?) async throws {
-        let stream: AsyncStream<GetEvent>
+        let stream: AsyncStream<DICOMRetrieveService.GetEvent>
         
         if let sopUID = sopUID, let seriesUID = seriesUID {
             // Instance level
-            stream = try await RetrieveService.getInstance(
+            stream = try await DICOMRetrieveService.getInstance(
                 host: host,
                 port: port,
                 callingAE: callingAE,
@@ -197,7 +197,7 @@ struct RetrieveExecutor {
             )
         } else if let seriesUID = seriesUID {
             // Series level
-            stream = try await RetrieveService.getSeries(
+            stream = try await DICOMRetrieveService.getSeries(
                 host: host,
                 port: port,
                 callingAE: callingAE,
@@ -208,7 +208,7 @@ struct RetrieveExecutor {
             )
         } else {
             // Study level
-            stream = try await RetrieveService.getStudy(
+            stream = try await DICOMRetrieveService.getStudy(
                 host: host,
                 port: port,
                 callingAE: callingAE,
