@@ -193,9 +193,7 @@ struct DICOMConvert: AsyncParsableCommand {
     private func exportImage(dicomFile: DICOMFile, output: URL) throws {
         #if canImport(CoreGraphics)
         // Extract pixel data
-        guard let pixelData = try? dicomFile.extractPixelData() else {
-            throw ConversionError.noPixelData
-        }
+        let pixelData = try dicomFile.tryPixelData()
         
         let frameIndex = frame ?? 0
         guard frameIndex < pixelData.descriptor.numberOfFrames else {

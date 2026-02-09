@@ -82,7 +82,7 @@ struct DICOMImageViewer: View {
     
     private func loadImage() async {
         do {
-            let pixelData = try dicomFile.extractPixelData()
+            let pixelData = try dicomFile.tryPixelData()
             
             // Use window settings from file if available
             if let wc = dicomFile.dataSet.windowCenter {
@@ -101,7 +101,7 @@ struct DICOMImageViewer: View {
     }
     
     private func renderImage() async {
-        guard let pixelData = try? dicomFile.extractPixelData() else { return }
+        guard let pixelData = try? dicomFile.tryPixelData() else { return }
         
         let renderer = PixelDataRenderer(pixelData: pixelData)
         renderedImage = renderer.renderFrame(0, 
@@ -164,7 +164,7 @@ struct MultiFrameViewer: View {
     }
     
     private func loadFrames() async {
-        guard let pixelData = try? dicomFile.extractPixelData() else { return }
+        guard let pixelData = try? dicomFile.tryPixelData() else { return }
         let renderer = PixelDataRenderer(pixelData: pixelData)
         
         var loadedImages: [CGImage] = []
@@ -250,7 +250,7 @@ class DICOMViewController: UIViewController {
         dicomFile = file
         
         do {
-            pixelData = try file.extractPixelData()
+            pixelData = try file.tryPixelData()
             
             if let wc = file.dataSet.windowCenter {
                 windowCenter = wc
@@ -380,7 +380,7 @@ class StudyLoader {
         }
         
         // Load and render
-        guard let pixelData = try? file.extractPixelData() else { return nil }
+        guard let pixelData = try? file.tryPixelData() else { return nil }
         let renderer = PixelDataRenderer(pixelData: pixelData)
         
         if let image = renderer.renderFrame(frame) {

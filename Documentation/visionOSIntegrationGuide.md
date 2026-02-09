@@ -53,7 +53,7 @@ struct DICOMSpatialViewer: View {
                 }
                 
                 // Frame navigation
-                if let pixelData = try? dicomFile.extractPixelData(),
+                if let pixelData = try? dicomFile.tryPixelData(),
                    pixelData.numberOfFrames > 1 {
                     FrameNavigator(
                         currentFrame: $selectedFrame,
@@ -89,7 +89,7 @@ struct DICOMSpatialViewer: View {
     }
     
     private func renderFrame(_ frame: Int) async {
-        guard let pixelData = try? dicomFile.extractPixelData() else { return }
+        guard let pixelData = try? dicomFile.tryPixelData() else { return }
         
         let renderer = PixelDataRenderer(pixelData: pixelData)
         if let cgImage = renderer.renderFrame(frame,
@@ -178,7 +178,7 @@ struct ImmersiveDICOMView: View {
     }
     
     private func createImagePanel() async -> ModelEntity {
-        guard let pixelData = try? dicomFile.extractPixelData(),
+        guard let pixelData = try? dicomFile.tryPixelData(),
               let cgImage = PixelDataRenderer(pixelData: pixelData).renderFrame(0) else {
             return ModelEntity()
         }
@@ -309,7 +309,7 @@ struct HandGestureDICOMViewer: View {
     }
     
     private func renderImage() async {
-        guard let pixelData = try? dicomFile.extractPixelData() else { return }
+        guard let pixelData = try? dicomFile.tryPixelData() else { return }
         
         let renderer = PixelDataRenderer(pixelData: pixelData)
         if let cgImage = renderer.renderFrame(0,
@@ -375,7 +375,7 @@ struct DICOMImageCard: View {
     }
     
     private func loadImage() async {
-        guard let pixelData = try? dicomFile.extractPixelData(),
+        guard let pixelData = try? dicomFile.tryPixelData(),
               let cgImage = PixelDataRenderer(pixelData: pixelData).renderFrame(0) else {
             return
         }
@@ -483,7 +483,7 @@ struct DICOMImageView: View {
     }
     
     private func renderImage() async {
-        guard let pixelData = try? dicomFile.extractPixelData(),
+        guard let pixelData = try? dicomFile.tryPixelData(),
               let cgImage = PixelDataRenderer(pixelData: pixelData).renderFrame(0,
                   windowCenter: windowCenter,
                   windowWidth: windowWidth) else {
@@ -520,7 +520,7 @@ class VisionOSImageCache {
             return cached
         }
         
-        guard let pixelData = try? dicomFile.extractPixelData() else { return nil }
+        guard let pixelData = try? dicomFile.tryPixelData() else { return nil }
         let renderer = PixelDataRenderer(pixelData: pixelData)
         
         if let image = renderer.renderFrame(frame,

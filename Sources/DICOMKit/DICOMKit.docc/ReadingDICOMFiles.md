@@ -96,7 +96,7 @@ let rows = dicomFile.dataSet.rows
 let columns = dicomFile.dataSet.columns
 
 // Pixel data is loaded on first access
-let pixelData = try dicomFile.extractPixelData()
+let pixelData = try dicomFile.tryPixelData()
 ```
 
 ## File Meta Information

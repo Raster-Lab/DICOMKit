@@ -88,7 +88,7 @@ let file = try DICOMFile.read(from: data, force: true)
 ```swift
 import DICOMKit
 
-let pixelData = try dicomFile.extractPixelData()
+let pixelData = try dicomFile.tryPixelData()
 let renderer = PixelDataRenderer(pixelData: pixelData)
 
 if let cgImage = renderer.renderFrame(0) {

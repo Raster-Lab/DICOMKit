@@ -14,7 +14,7 @@ Extract pixel data from a DICOM file:
 import DICOMKit
 
 let dicomFile = try DICOMFile.read(from: data)
-let pixelData = try dicomFile.extractPixelData()
+let pixelData = try dicomFile.tryPixelData()
 
 // Access image properties
 print("Rows: \(pixelData.rows)")
@@ -201,7 +201,7 @@ struct DICOMImageView: View {
     
     var body: some View {
         VStack {
-            if let pixelData = try? dicomFile.extractPixelData(),
+            if let pixelData = try? dicomFile.tryPixelData(),
                let renderer = PixelDataRenderer(pixelData: pixelData),
                let cgImage = renderer.renderFrame(0, 
                    windowCenter: windowCenter, 
@@ -231,7 +231,7 @@ DICOMKit automatically decompresses supported formats:
 
 ```swift
 // Compressed data is automatically decompressed
-let pixelData = try dicomFile.extractPixelData()
+let pixelData = try dicomFile.tryPixelData()
 
 // Check if original was compressed
 let transferSyntax = dicomFile.fileMetaInformation[.transferSyntaxUID]?.stringValue

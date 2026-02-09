@@ -248,7 +248,7 @@ class DICOMViewController: NSViewController {
         dicomFile = file
         
         do {
-            pixelData = try file.extractPixelData()
+            pixelData = try file.tryPixelData()
             
             if let wc = file.dataSet.windowCenter {
                 windowCenter = wc
@@ -450,7 +450,7 @@ import AppKit
 
 class DICOMPrintController {
     func printDICOMImage(_ dicomFile: DICOMFile) {
-        guard let pixelData = try? dicomFile.extractPixelData(),
+        guard let pixelData = try? dicomFile.tryPixelData(),
               let cgImage = PixelDataRenderer(pixelData: pixelData).renderFrame(0) else {
             return
         }
