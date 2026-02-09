@@ -1231,20 +1231,38 @@ These features may be added in future versions. See [MILESTONES.md](MILESTONES.m
 
 ## Installation
 
-### Swift Package Manager
+### Swift Package Manager (Framework)
 
 Add DICOMKit to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/raster-image/DICOMKit.git", from: "0.5.0")
+    .package(url: "https://github.com/Raster-Lab/DICOMKit.git", from: "1.0.0")
 ]
 ```
 
 Or add it through Xcode:
 1. File → Add Package Dependencies
-2. Enter: `https://github.com/raster-image/DICOMKit`
-3. Select version 0.5.0 or later
+2. Enter: `https://github.com/Raster-Lab/DICOMKit`
+3. Select version 1.0.0 or later
+
+### Homebrew (CLI Tools)
+
+Install all 29 CLI tools via Homebrew:
+
+```bash
+brew tap Raster-Lab/dicomkit
+brew install dicomkit
+```
+
+### Other Installation Methods
+
+- **Local Build Script**: `./Scripts/install-cli-tools.sh`
+- **Manual Build**: `swift build -c release`
+- **Docker**: See [DISTRIBUTION.md](DISTRIBUTION.md) for container deployment
+
+📖 **Complete installation guide**: [INSTALLATION.md](INSTALLATION.md)  
+📦 **Distribution guide**: [DISTRIBUTION.md](DISTRIBUTION.md)
 
 ## Quick Start
 
@@ -3531,7 +3549,16 @@ The `Playgrounds/` directory contains 27+ interactive Swift playground files org
 
 Each playground includes multiple examples, comprehensive comments, and quick reference guides. See [Playgrounds/README.md](Playgrounds/README.md) for details.
 
-### 2. Structured Reporting Examples
+### 2. Integration Templates (NEW)
+
+The `Examples/IntegrationTemplates/` directory contains starter templates for common integration scenarios:
+
+- **SwiftUI Viewer Template** - Complete SwiftUI DICOM viewer with file import, metadata display, and image rendering
+- More templates coming soon (UIKit, networking, CLI tools, etc.)
+
+See [Examples/IntegrationTemplates/README.md](Examples/IntegrationTemplates/README.md) for details.
+
+### 3. Structured Reporting Examples
 
 DICOMKit includes comprehensive examples demonstrating common Structured Reporting workflows. These examples cover creating, parsing, and working with DICOM SR documents for clinical and research use cases.
 
