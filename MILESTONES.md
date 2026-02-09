@@ -4098,6 +4098,65 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ---
 
+### Milestone 11.7: UPS Task Handling Enhancements (v1.8.0)
+
+**Status**: ✅ Completed  
+**Goal**: Enhance UPS (Unified Procedure Step) workitem/task handling with builder, serialization, parsing, and validation  
+**Complexity**: Medium  
+**Dependencies**: Milestone 8.7 (UPS-RS Worklist Services)
+
+#### Deliverables
+- [x] WorkitemBuilder fluent API:
+  - [x] `WorkitemBuilder` class with chainable setter methods
+  - [x] Factory methods: `scheduledProcedure()`, `simpleTask()`
+  - [x] `validate()` method with UPSError integration
+  - [x] `build()` method returning fully configured Workitem
+  - [x] Support for all Workitem properties (patient, scheduling, study, performers, I/O, etc.)
+- [x] Workitem DICOM JSON serialization:
+  - [x] `Workitem.toDICOMJSON()` public method
+  - [x] Full attribute serialization (patient, scheduling, study, performers, progress, cancellation)
+  - [x] Proper DICOM JSON format with VR and Value arrays
+  - [x] Person Name (PN) VR handling with Alphabetic component
+  - [x] DateTime (DT) formatting with ISO 8601
+  - [x] Sequence (SQ) VR for coded entries, performers, and referenced instances
+- [x] Workitem DICOM JSON parsing:
+  - [x] `Workitem.parse(json:)` static method
+  - [x] Extraction of all supported attributes from DICOM JSON
+  - [x] Person Name and DateTime parsing
+  - [x] Sequence item parsing for coded entries and performers
+  - [x] Graceful handling of missing optional attributes
+- [x] Workitem validation:
+  - [x] `WorkitemValidationError` enum with descriptive error cases
+  - [x] `Workitem.validate()` method returning validation errors
+  - [x] Checks: empty UID, IN PROGRESS without transaction UID, final state validation
+- [x] UPSClient integration:
+  - [x] `UPSClient.workitemToJSON()` delegates to `Workitem.toDICOMJSON()`
+  - [x] Eliminated code duplication
+- [x] Comprehensive testing (40+ unit tests):
+  - [x] WorkitemBuilder basic and full property tests
+  - [x] Builder validation tests (empty UID, IN PROGRESS without txUID)
+  - [x] Factory method tests (scheduledProcedure, simpleTask)
+  - [x] toDICOMJSON serialization tests (basic, patient, scheduling, study, performers, progress, I/O)
+  - [x] parse(json:) tests (basic, patient, full attributes, missing UID)
+  - [x] Round-trip tests (build → toDICOMJSON → parse)
+  - [x] Workitem.validate() tests
+
+#### Technical Notes
+- Reference: PS3.4 Annex CC - Unified Procedure Step Service
+- Reference: PS3.18 Section 11 - UPS-RS
+- WorkitemBuilder follows fluent API pattern used by SecondaryCaptureBuilder, EncapsulatedDocumentBuilder
+- All types conform to Sendable for Swift 6 strict concurrency
+
+#### Acceptance Criteria
+- [x] Build and serialize UPS workitems with fluent API
+- [x] Parse workitems from DICOM JSON
+- [x] Round-trip: build → serialize → parse produces equivalent workitems
+- [x] Validate workitem data integrity before submission
+- [x] No code duplication between UPSClient and Workitem serialization
+- [x] Unit tests for all new functionality (40+ tests)
+
+---
+
 ### Milestone 11 Summary
 
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
@@ -4108,6 +4167,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | 11.4 Waveform Data Support | v1.5.0 | Medium | ✅ Completed | 9 waveform SOP Classes, multiplex groups, channel extraction, annotations (40+ tests) |
 | 11.5 Video Support | v1.6.0 | Medium | ✅ Completed | 3 Video SOP Classes, 6 video transfer syntaxes (MPEG2/H.264/H.265), VideoCodec enum (44 tests) |
 | 11.6 Secondary Capture IOD | v1.7.0 | Medium | ✅ Completed | 5 SC SOP Classes, ConversionType, SC Equipment/Image modules, parser/builder (42 tests) |
+| 11.7 UPS Task Handling | v1.8.0 | Medium | ✅ Completed | WorkitemBuilder, toDICOMJSON, parse, validate (40+ tests) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
