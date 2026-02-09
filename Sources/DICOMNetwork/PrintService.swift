@@ -432,7 +432,7 @@ public enum DICOMPrintService {
             
             let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
             let pdus = fragmenter.fragmentMessage(
-                commandSet: request.commandSet.encode(),
+                commandSet: request.commandSet,
                 dataSet: nil,
                 presentationContextID: request.presentationContextID
             )
@@ -448,7 +448,7 @@ public enum DICOMPrintService {
             let responsePDU = try await association.receive()
             
             if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = try CommandSet.decode(from: message.commandData)
+                let responseCommandSet = message.commandSet
                 let response = NGetResponse(commandSet: responseCommandSet, presentationContextID: 1)
                 
                 guard response.status.isSuccess else {
@@ -457,7 +457,7 @@ public enum DICOMPrintService {
                 }
                 
                 // Parse printer attributes from response data set
-                if let dataSetData = message.dataSetData {
+                if let dataSetData = message.dataSet {
                     let printerStatus = parsePrinterStatus(from: dataSetData)
                     try await association.release()
                     return printerStatus
