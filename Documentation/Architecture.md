@@ -113,7 +113,7 @@ let entry = DataElementDictionary.shared.lookup(keyword: "PatientName")
 | `QueryService` | C-FIND query operations |
 | `RetrieveService` | C-GET/C-MOVE operations |
 | `StorageService` | C-STORE operations |
-| `ModalityWorklistService` | Modality Worklist queries with dictionary-based VR lookup |
+| `ModalityWorklistService` | Modality Worklist (MWL) query operations |
 
 ### Protocol Layers
 
