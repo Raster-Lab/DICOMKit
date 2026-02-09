@@ -653,6 +653,17 @@ enum RetrievalMethod: String, Codable, ExpressibleByArgument {
     case cGet = "c-get"
 }
 
+enum DICOMQRError: Error, CustomStringConvertible {
+    case missingMoveDestination
+    
+    var description: String {
+        switch self {
+        case .missingMoveDestination:
+            return "Move destination AE title is required for C-MOVE retrieval"
+        }
+    }
+}
+
 #if canImport(Network)
 // Import executor types from dicom-query and dicom-retrieve
 // These would normally be in separate files but for CLI tools they're duplicated
@@ -699,37 +710,31 @@ struct RetrieveExecutor {
             print("  Executing \(method.rawValue.uppercased()) for study: \(studyUID)")
         }
         
-        let configuration = try buildConfiguration(moveDestination: moveDestination)
-        
         switch method {
         case .cMove:
-            try await DICOMRetrieveService.moveStudy(
-                studyUID: studyUID,
+            guard let moveDestination = moveDestination else {
+                throw DICOMQRError.missingMoveDestination
+            }
+            _ = try await DICOMRetrieveService.moveStudy(
                 host: host,
                 port: port,
-                configuration: configuration,
-                outputPath: outputPath,
-                hierarchical: hierarchical
+                callingAE: callingAE,
+                calledAE: calledAE,
+                studyInstanceUID: studyUID,
+                moveDestination: moveDestination,
+                timeout: timeout
             )
         case .cGet:
-            try await DICOMRetrieveService.getStudy(
-                studyUID: studyUID,
+            let stream = try await DICOMRetrieveService.getStudy(
                 host: host,
                 port: port,
-                configuration: configuration,
-                outputPath: outputPath,
-                hierarchical: hierarchical
+                callingAE: callingAE,
+                calledAE: calledAE,
+                studyInstanceUID: studyUID,
+                timeout: timeout
             )
+            for await _ in stream {}
         }
-    }
-    
-    private func buildConfiguration(moveDestination: String?) throws -> RetrieveConfiguration {
-        return RetrieveConfiguration(
-            callingAETitle: try AETitle(callingAE),
-            calledAETitle: try AETitle(calledAE),
-            moveDestinationAETitle: moveDestination.map { try? AETitle($0) },
-            timeout: timeout
-        )
     }
 }
 #endif
