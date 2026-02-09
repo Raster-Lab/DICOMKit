@@ -116,7 +116,7 @@ struct RetrieveExecutor {
     // MARK: - C-MOVE Implementation
     
     private func performCMove(studyUID: String, seriesUID: String?, sopUID: String?, destination: String) async throws {
-        let onProgress: (RetrieveProgress) -> Void = { progress in
+        let onProgress: @Sendable (RetrieveProgress) -> Void = { progress in
             if self.verbose {
                 fprintln("  Progress: \(progress.completed)/\(progress.total) completed, \(progress.failed) failed, \(progress.remaining) remaining")
             }
