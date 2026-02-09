@@ -660,87 +660,10 @@ public final class UPSClient: @unchecked Sendable {
     }
     
     /// Converts a Workitem struct to DICOM JSON
+    ///
+    /// Delegates to `Workitem.toDICOMJSON()` for consistent serialization.
     private func workitemToJSON(_ workitem: Workitem) -> [String: Any] {
-        var json: [String: Any] = [:]
-        
-        // SOP Instance UID (0008,0018)
-        json[UPSTag.sopInstanceUID] = [
-            "vr": "UI",
-            "Value": [workitem.workitemUID]
-        ]
-        
-        // Procedure Step State (0074,1000)
-        json[UPSTag.procedureStepState] = [
-            "vr": "CS",
-            "Value": [workitem.state.rawValue]
-        ]
-        
-        // Scheduled Procedure Step Priority (0074,1200)
-        json[UPSTag.scheduledProcedureStepPriority] = [
-            "vr": "CS",
-            "Value": [workitem.priority.rawValue]
-        ]
-        
-        // Optional attributes
-        if let patientName = workitem.patientName {
-            json[UPSTag.patientName] = [
-                "vr": "PN",
-                "Value": [["Alphabetic": patientName]]
-            ]
-        }
-        
-        if let patientID = workitem.patientID {
-            json[UPSTag.patientID] = [
-                "vr": "LO",
-                "Value": [patientID]
-            ]
-        }
-        
-        if let scheduledStartDateTime = workitem.scheduledStartDateTime {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
-            json[UPSTag.scheduledProcedureStepStartDateTime] = [
-                "vr": "DT",
-                "Value": [formatter.string(from: scheduledStartDateTime)]
-            ]
-        }
-        
-        if let label = workitem.procedureStepLabel {
-            json[UPSTag.procedureStepLabel] = [
-                "vr": "LO",
-                "Value": [label]
-            ]
-        }
-        
-        if let worklistLabel = workitem.worklistLabel {
-            json[UPSTag.worklistLabel] = [
-                "vr": "LO",
-                "Value": [worklistLabel]
-            ]
-        }
-        
-        if let studyUID = workitem.studyInstanceUID {
-            json[UPSTag.studyInstanceUID] = [
-                "vr": "UI",
-                "Value": [studyUID]
-            ]
-        }
-        
-        if let accession = workitem.accessionNumber {
-            json[UPSTag.accessionNumber] = [
-                "vr": "SH",
-                "Value": [accession]
-            ]
-        }
-        
-        if let comments = workitem.comments {
-            json[UPSTag.commentsOnScheduledProcedureStep] = [
-                "vr": "LT",
-                "Value": [comments]
-            ]
-        }
-        
-        return json
+        return workitem.toDICOMJSON()
     }
 }
 #endif

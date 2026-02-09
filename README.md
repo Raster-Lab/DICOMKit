@@ -986,6 +986,13 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
     - ✅ Deletion lock support for subscriptions
     - ✅ Event type filtering for targeted subscriptions
   - ✅ 173+ unit tests (83 UPS types + 90+ event system tests)
+  - ✅ **Task Handling Enhancements (NEW in v1.8.0):**
+    - ✅ `WorkitemBuilder` fluent API with factory methods (`scheduledProcedure`, `simpleTask`)
+    - ✅ `Workitem.toDICOMJSON()` public serialization method
+    - ✅ `Workitem.parse(json:)` static method for parsing from DICOM JSON
+    - ✅ `Workitem.validate()` method with `WorkitemValidationError`
+    - ✅ Round-trip serialization support (build → serialize → parse)
+    - ✅ 40+ additional unit tests
 - ✅ **DICOMweb Server STOW-RS Enhancements (v0.8.6)**
   - ✅ STOWConfiguration for configurable store behavior
   - ✅ DuplicatePolicy: reject (409 Conflict), replace, or accept (idempotent)
@@ -4204,7 +4211,7 @@ High-level API:
 - `ROI` - Region of Interest combining coordinates with measurements
 - `MeasurementExtractor` - API for extracting measurements and coordinates from SR documents
 
-### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6, v0.8.7, v0.8.8)
+### DICOMWeb (v0.8.1, v0.8.2, v0.8.3, v0.8.4, v0.8.5, v0.8.6, v0.8.7, v0.8.8, v1.8.0)
 DICOMweb (RESTful DICOM) client and server implementation:
 
 **Advanced Features (NEW in v0.8.8):**
@@ -4289,6 +4296,9 @@ DICOMweb (RESTful DICOM) client and server implementation:
   - `EventQueue` - Reliable event queuing with retry logic
   - `EventDispatcher` - Coordinates event generation, queuing, and delivery
   - `LoggingEventDeliveryService` - Event logging for testing/development
+- ✅ **Task Handling Enhancements (NEW in v1.8.0):**
+  - `WorkitemBuilder` - Fluent builder for constructing Workitem instances
+  - `WorkitemValidationError` - Validation error types for workitem data
 
 **Server Components:**
 - `DICOMwebServer` - WADO-RS, QIDO-RS, and STOW-RS server actor (v0.8.5)
@@ -4385,4 +4395,4 @@ This library implements the DICOM standard as published by the National Electric
 
 ---
 
-**Note**: DICOMKit v1.7.0 adds Secondary Capture Image IOD support with 5 SC SOP Classes (single-frame, multi-frame single bit, grayscale byte, grayscale word, true color), ConversionType enum for SC Equipment Module, SecondaryCaptureParser and SecondaryCaptureBuilder APIs. Previous versions added DICOM Video Support (v1.6.0), Waveform Data Support (v1.5.0), DICOM Print Management (v1.4.0), Encapsulated Document support (v1.1.0), and 29 CLI tools (v1.1.1-v1.3.5) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 2,090+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
+**Note**: DICOMKit v1.8.0 adds UPS Task Handling Enhancements with WorkitemBuilder fluent API, Workitem.toDICOMJSON() serialization, Workitem.parse(json:) parsing, and Workitem.validate() validation methods. Previous versions added Secondary Capture Image IOD support (v1.7.0), DICOM Video Support (v1.6.0), Waveform Data Support (v1.5.0), DICOM Print Management (v1.4.0), Encapsulated Document support (v1.1.0), and 29 CLI tools (v1.1.1-v1.3.5) on top of the comprehensive v1.0.0 production release. v1.0.0 included DICOM file I/O (v0.1-v0.5), networking with DIMSE (v0.6-v0.7), DICOMweb services (v0.8), structured reporting (v0.9), and advanced features including presentation states, hanging protocols, radiation therapy support, segmentation, parametric maps, extended character sets, private tags, ICC color management, performance optimizations, and comprehensive documentation (v1.0.1-v1.0.13). The release also includes production-ready example applications: DICOMViewer iOS (complete), macOS (complete), visionOS (complete), 29 CLI tools across 6 phases (complete), and 27 Xcode Playgrounds (v1.0.14). The entire codebase features 2,130+ comprehensive tests, Swift 6 strict concurrency compliance, and production-ready security validation. See [CHANGELOG.md](CHANGELOG.md) for detailed release notes and [MILESTONES.md](MILESTONES.md) for the complete development history.
