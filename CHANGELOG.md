@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Test Infrastructure**: Fixed platform-specific test compilation errors
+  - Added `#if canImport(CoreGraphics)` guards to ColorTransformTests for Apple platform-only APIs
+  - Fixed DataElement initializer calls in ICCProfileAdvancedTests with missing length parameters
+  - Fixed ambiguous type references in SegmentationParserTests
+  - Tests now compile cleanly on Linux CI runners and Apple platforms
+
 ### Changed - DICOM Standard Edition Update
 - **Updated DICOM standard reference from 2025e to 2026a**
   - The 2026a release is now the current edition available at https://www.dicomstandard.org/current/

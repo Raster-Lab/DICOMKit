@@ -14,6 +14,8 @@ import CoreGraphics
 
 final class ColorTransformTests: XCTestCase {
     
+    #if canImport(CoreGraphics)
+    
     // MARK: - sRGB Gamma Tests
     
     func test_sRGBToLinear_lowValues() {
@@ -64,8 +66,6 @@ final class ColorTransformTests: XCTestCase {
             XCTAssertEqual(backToSRGB, original, accuracy: 1e-6)
         }
     }
-    
-    #if canImport(CoreGraphics)
     
     // MARK: - RGB to XYZ Tests
     

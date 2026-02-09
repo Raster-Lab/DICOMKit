@@ -65,7 +65,8 @@ final class ICCProfileAdvancedTests: XCTestCase {
     func test_extractColorSpace_sRGB() {
         var dataSet: [Tag: DataElement] = [:]
         let tag = Tag(group: 0x0028, element: 0x2002)
-        let element = DataElement(tag: tag, vr: .CS, valueData: "SRGB".data(using: .utf8)!)
+        let data = "SRGB".data(using: .utf8)!
+        let element = DataElement(tag: tag, vr: .CS, length: UInt32(data.count), valueData: data)
         dataSet[tag] = element
         
         let colorSpace = ICCProfile.extractColorSpace(from: dataSet)
@@ -75,7 +76,8 @@ final class ICCProfileAdvancedTests: XCTestCase {
     func test_extractColorSpace_adobeRGB() {
         var dataSet: [Tag: DataElement] = [:]
         let tag = Tag(group: 0x0028, element: 0x2002)
-        let element = DataElement(tag: tag, vr: .CS, valueData: "ADOBERGB".data(using: .utf8)!)
+        let data = "ADOBERGB".data(using: .utf8)!
+        let element = DataElement(tag: tag, vr: .CS, length: UInt32(data.count), valueData: data)
         dataSet[tag] = element
         
         let colorSpace = ICCProfile.extractColorSpace(from: dataSet)
@@ -85,7 +87,8 @@ final class ICCProfileAdvancedTests: XCTestCase {
     func test_extractColorSpace_rec2020() {
         var dataSet: [Tag: DataElement] = [:]
         let tag = Tag(group: 0x0028, element: 0x2002)
-        let element = DataElement(tag: tag, vr: .CS, valueData: "REC2020".data(using: .utf8)!)
+        let data = "REC2020".data(using: .utf8)!
+        let element = DataElement(tag: tag, vr: .CS, length: UInt32(data.count), valueData: data)
         dataSet[tag] = element
         
         let colorSpace = ICCProfile.extractColorSpace(from: dataSet)
@@ -95,7 +98,8 @@ final class ICCProfileAdvancedTests: XCTestCase {
     func test_extractColorSpace_ybrFull() {
         var dataSet: [Tag: DataElement] = [:]
         let tag = Tag(group: 0x0028, element: 0x2002)
-        let element = DataElement(tag: tag, vr: .CS, valueData: "YBR_FULL".data(using: .utf8)!)
+        let data = "YBR_FULL".data(using: .utf8)!
+        let element = DataElement(tag: tag, vr: .CS, length: UInt32(data.count), valueData: data)
         dataSet[tag] = element
         
         let colorSpace = ICCProfile.extractColorSpace(from: dataSet)
@@ -111,7 +115,8 @@ final class ICCProfileAdvancedTests: XCTestCase {
     func test_extractColorSpace_custom() {
         var dataSet: [Tag: DataElement] = [:]
         let tag = Tag(group: 0x0028, element: 0x2002)
-        let element = DataElement(tag: tag, vr: .CS, valueData: "CUSTOM".data(using: .utf8)!)
+        let data = "CUSTOM".data(using: .utf8)!
+        let element = DataElement(tag: tag, vr: .CS, length: UInt32(data.count), valueData: data)
         dataSet[tag] = element
         
         let colorSpace = ICCProfile.extractColorSpace(from: dataSet)
