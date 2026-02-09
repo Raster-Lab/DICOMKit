@@ -274,6 +274,7 @@ struct ScriptExecutor {
         }
         
         // Execute the command
+        #if os(macOS) || os(Linux)
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
         process.arguments = [command.tool] + expandedArgs
@@ -293,6 +294,9 @@ struct ScriptExecutor {
         if process.terminationStatus != 0 {
             throw ScriptError.executionError("Command failed with status \(process.terminationStatus): \(fullCommand)")
         }
+        #else
+        throw ScriptError.executionError("Command execution is not supported on this platform: \(fullCommand)")
+        #endif
     }
     
     private func executeConditional(_ command: ConditionalCommand, context: inout ScriptContext) throws {
