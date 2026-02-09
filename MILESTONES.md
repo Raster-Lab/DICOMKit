@@ -957,7 +957,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 
 ## Milestone 8: DICOM Web Services (v0.8)
 
-**Status**: In Progress  
+**Status**: Completed  
 **Goal**: Implement RESTful DICOM web services (DICOMweb)
 
 This milestone implements the DICOMweb standard (PS3.18), providing modern RESTful HTTP/HTTPS-based access to DICOM objects. DICOMweb enables browser-based viewers, mobile applications, and cloud-native integrations without requiring traditional DICOM networking infrastructure.
@@ -3932,6 +3932,92 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ---
 
+### Milestone 11.5: DICOM Video Support (v1.6.0)
+
+**Status**: ✅ Completed  
+**Goal**: Implement DICOM Video IOD support for endoscopic, microscopic, and photographic video storage  
+**Complexity**: Medium  
+**Dependencies**: Milestone 4 (Compressed Pixel Data), Milestone 5 (DICOM Writing)
+
+#### Deliverables
+- [x] Video transfer syntax definitions:
+  - [x] MPEG2 Main Profile / Main Level (1.2.840.10008.1.2.4.100)
+  - [x] MPEG2 Main Profile / High Level (1.2.840.10008.1.2.4.101)
+  - [x] MPEG-4 AVC/H.264 High Profile / Level 4.1 (1.2.840.10008.1.2.4.102)
+  - [x] MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1 (1.2.840.10008.1.2.4.103)
+  - [x] HEVC/H.265 Main Profile / Level 5.1 (1.2.840.10008.1.2.4.107)
+  - [x] HEVC/H.265 Main 10 Profile / Level 5.1 (1.2.840.10008.1.2.4.108)
+- [x] Transfer syntax computed properties:
+  - [x] `isVideo` - Whether transfer syntax uses video compression
+  - [x] `isMPEG2` - MPEG2 codec detection
+  - [x] `isH264` - H.264/AVC codec detection
+  - [x] `isH265` - H.265/HEVC codec detection
+- [x] Video SOP Class UIDs:
+  - [x] Video Endoscopic Image Storage (1.2.840.10008.5.1.4.1.1.77.1.1.1)
+  - [x] Video Microscopic Image Storage (1.2.840.10008.5.1.4.1.1.77.1.2.1)
+  - [x] Video Photographic Image Storage (1.2.840.10008.5.1.4.1.1.77.1.4.1)
+- [x] UID Dictionary entries for all video transfer syntaxes and SOP Classes
+- [x] Video-specific DICOM tags (Tag+Video.swift):
+  - [x] Recommended Display Frame Rate (0008,2144)
+  - [x] Start Trim (0008,2142) / Stop Trim (0008,2143)
+  - [x] Acquisition Duration (0018,9073)
+  - [x] Nominal Scanned Pixel Spacing (0018,2010)
+- [x] Video data model:
+  - [x] `Video` struct with identification, patient, series, image, and cine metadata
+  - [x] `VideoType` enum (endoscopic, microscopic, photographic)
+  - [x] `VideoCodec` enum (mpeg2, h264, h265) with compression method identifiers
+  - [x] Effective frame rate computation (recommended rate → cine rate → frame time → default 30fps)
+  - [x] Duration calculation from frame count and frame rate
+  - [x] Resolution string formatting
+- [x] Video parsing:
+  - [x] `VideoParser` for extracting video metadata from DICOM DataSets
+  - [x] Image Pixel Module attribute parsing (rows, columns, bits, photometric interpretation)
+  - [x] Cine Module attribute parsing (frame time, cine rate, trim points)
+  - [x] Compression information parsing
+  - [x] Required attribute validation
+- [x] Video creation:
+  - [x] `VideoBuilder` fluent API
+  - [x] Patient and series metadata setting
+  - [x] Frame rate convenience method
+  - [x] Lossy compression information (manual and codec-based)
+  - [x] Auto-generated SOP Instance UID
+  - [x] Default modality inference from video type
+  - [x] Validation of required parameters (rows, columns, frames, video type)
+- [x] DataSet conversion:
+  - [x] `Video.toDataSet()` for serialization
+  - [x] `VideoBuilder.buildDataSet()` for direct DataSet creation
+  - [x] Integration with `DICOMFile.create()` for DICOM Part 10 file creation
+- [x] Comprehensive testing (44 unit tests):
+  - [x] 4 tests for VideoType (SOP Class UID mapping, modality, display names)
+  - [x] 7 tests for VideoCodec (transfer syntax mapping, compression methods)
+  - [x] 1 test for SOP Class UID constants
+  - [x] 7 tests for Video properties (type detection, resolution, frame rate, duration)
+  - [x] 11 tests for VideoBuilder (all video types, metadata, pixel data, validation)
+  - [x] 4 tests for VideoBuilder DataSet conversion
+  - [x] 1 test for round-trip (build → toDataSet → parse)
+  - [x] 3 tests for VideoParser error handling (missing required attributes)
+  - [x] 6 tests for TransferSyntax video properties
+
+#### Technical Notes
+- Reference: PS3.3 A.32.5 - Video Endoscopic Image IOD
+- Reference: PS3.3 A.32.6 - Video Microscopic Image IOD
+- Reference: PS3.3 A.32.7 - Video Photographic Image IOD
+- Reference: PS3.5 Section A.4.5 - MPEG2 Transfer Syntax
+- Reference: PS3.5 Section A.4.6 - MPEG-4 AVC/H.264 Transfer Syntax
+- Reference: PS3.5 Section A.4.7 - HEVC/H.265 Transfer Syntax
+- Video data stored as encapsulated OB pixel data
+- All types conform to `Sendable` for Swift 6 strict concurrency
+- Reuses existing Cine Module tags from Tag+ImageInformation.swift
+
+#### Acceptance Criteria
+- [x] All 6 video transfer syntaxes properly defined and resolvable via `from(uid:)`
+- [x] Video SOP Class UIDs match DICOM PS3.4 standard
+- [x] Video data model supports all 3 video IOD types
+- [x] Round-trip: build → serialize → parse produces equivalent metadata
+- [x] Unit tests for all video types, codecs, and operations (44 tests)
+
+---
+
 ### Milestone 11 Summary
 
 | Sub-Milestone | Version | Complexity | Status | Key Deliverables |
@@ -3940,6 +4026,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | ✅ Complete (100%) | Phase 1-6: ✅ All 29 tools complete (dicom-info through dicom-script, 753+ tests) |
 | 11.3 Print Management | v1.4.0 | Medium-High | ✅ Completed | DIMSE-N messages, Print SOP Classes, data models (51+ tests) |
 | 11.4 Waveform Data Support | v1.5.0 | Medium | ✅ Completed | 9 waveform SOP Classes, multiplex groups, channel extraction, annotations (40+ tests) |
+| 11.5 Video Support | v1.6.0 | Medium | ✅ Completed | 3 Video SOP Classes, 6 video transfer syntaxes (MPEG2/H.264/H.265), VideoCodec enum (44 tests) |
 
 **Phase 2 Tools (✅ 100% complete)**:
 - ✅ dicom-diff: File comparison and diff reporting
@@ -3981,7 +4068,7 @@ These features may be considered for future development based on community needs
 
 ### Enhanced Imaging Support
 - ~~DICOM Encapsulated PDF~~ ✅ Completed (v1.1.0) - Encapsulated Document support for PDF, CDA, STL, OBJ, MTL
-- Video playback (MPEG2, MPEG4, HEVC)
+- ~~Video playback (MPEG2, MPEG4, HEVC)~~ ✅ Completed (v1.6.0) - Video IOD support with 6 video transfer syntaxes, 3 SOP Classes, VideoParser/Builder
 - 3D rendering and MPR reconstruction
 - Volume rendering integration
 
