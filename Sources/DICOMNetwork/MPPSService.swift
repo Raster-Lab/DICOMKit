@@ -179,7 +179,7 @@ public enum DICOMMPPSService {
         )
         
         // Generate a new SOP Instance UID for the MPPS
-        let mppsInstanceUID = UIDGenerator.generate()
+        let mppsInstanceUID = UIDGenerator.generateUID().value
         
         let procedureStep = MPPSProcedureStep(
             sopInstanceUID: mppsInstanceUID,
@@ -402,7 +402,7 @@ public enum DICOMMPPSService {
         // Fragment and send the command and data set
         let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
         let pdus = fragmenter.fragmentMessage(
-            commandSet: commandData,
+            commandSet: try CommandSet.decode(from: commandData),
             dataSet: attributeData,
             presentationContextID: presentationContextID
         )
@@ -419,7 +419,7 @@ public enum DICOMMPPSService {
         let responsePDU = try await association.receive()
         
         if let message = try assembler.addPDVs(from: responsePDU) {
-            let responseCommandSet = try CommandSet.decode(from: message.commandData)
+            let responseCommandSet = message.commandSet
             let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: presentationContextID)
             
             guard response.status.isSuccess else {
@@ -450,7 +450,7 @@ public enum DICOMMPPSService {
         // Fragment and send the command and data set
         let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
         let pdus = fragmenter.fragmentMessage(
-            commandSet: commandData,
+            commandSet: try CommandSet.decode(from: commandData),
             dataSet: modificationData,
             presentationContextID: presentationContextID
         )
@@ -467,7 +467,7 @@ public enum DICOMMPPSService {
         let responsePDU = try await association.receive()
         
         if let message = try assembler.addPDVs(from: responsePDU) {
-            let responseCommandSet = try CommandSet.decode(from: message.commandData)
+            let responseCommandSet = message.commandSet
             let response = NSetResponse(commandSet: responseCommandSet, presentationContextID: presentationContextID)
             
             guard response.status.isSuccess else {
