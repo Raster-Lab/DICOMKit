@@ -88,6 +88,49 @@ public struct UIDDictionary {
             type: .transferSyntax
         )
         
+        // Transfer Syntax UIDs - Video
+        dict["1.2.840.10008.1.2.4.100"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.100",
+            name: "MPEG2 Main Profile / Main Level",
+            keyword: "MPEG2MPML",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.101"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.101",
+            name: "MPEG2 Main Profile / High Level",
+            keyword: "MPEG2MPHL",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.102"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.102",
+            name: "MPEG-4 AVC/H.264 High Profile / Level 4.1",
+            keyword: "MPEG4HP41",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.103"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.103",
+            name: "MPEG-4 AVC/H.264 BD-compatible High Profile / Level 4.1",
+            keyword: "MPEG4HP41BD",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.107"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.107",
+            name: "HEVC/H.265 Main Profile / Level 5.1",
+            keyword: "HEVCMP51",
+            type: .transferSyntax
+        )
+        
+        dict["1.2.840.10008.1.2.4.108"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.108",
+            name: "HEVC/H.265 Main 10 Profile / Level 5.1",
+            keyword: "HEVCM10P51",
+            type: .transferSyntax
+        )
+        
         // Common SOP Class UIDs
         dict["1.2.840.10008.5.1.4.1.1.2"] = UIDEntry(
             uid: "1.2.840.10008.5.1.4.1.1.2",
@@ -128,6 +171,28 @@ public struct UIDDictionary {
             uid: "1.2.840.10008.5.1.4.1.1.128",
             name: "Positron Emission Tomography Image Storage",
             keyword: "PositronEmissionTomographyImageStorage",
+            type: .sopClass
+        )
+        
+        // Video SOP Class UIDs
+        dict["1.2.840.10008.5.1.4.1.1.77.1.1.1"] = UIDEntry(
+            uid: "1.2.840.10008.5.1.4.1.1.77.1.1.1",
+            name: "Video Endoscopic Image Storage",
+            keyword: "VideoEndoscopicImageStorage",
+            type: .sopClass
+        )
+        
+        dict["1.2.840.10008.5.1.4.1.1.77.1.2.1"] = UIDEntry(
+            uid: "1.2.840.10008.5.1.4.1.1.77.1.2.1",
+            name: "Video Microscopic Image Storage",
+            keyword: "VideoMicroscopicImageStorage",
+            type: .sopClass
+        )
+        
+        dict["1.2.840.10008.5.1.4.1.1.77.1.4.1"] = UIDEntry(
+            uid: "1.2.840.10008.5.1.4.1.1.77.1.4.1",
+            name: "Video Photographic Image Storage",
+            keyword: "VideoPhotographicImageStorage",
             type: .sopClass
         )
         
