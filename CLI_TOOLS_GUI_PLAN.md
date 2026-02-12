@@ -186,13 +186,13 @@ Each CLI parameter type maps to a specific SwiftUI control:
 
 #### Deliverables
 
-- [ ] **1.1 - Project Setup**
+- [x] **1.1 - Project Setup**
   - Create macOS app target in Xcode (macOS 14+)
   - Configure Swift Package Manager dependencies (DICOMKit, ArgumentParser)
   - Set up app entitlements (file access, network)
   - Configure app icon and metadata
 
-- [ ] **1.2 - Main Window Layout**
+- [x] **1.2 - Main Window Layout**
   - `ContentView` with `VStack` layout:
     1. Network Configuration Bar (`NetworkConfigView`)
     2. Tool Tab Interface (`ToolTabView`)
@@ -201,7 +201,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - Window sizing and minimum dimensions (1200x800)
   - Full-screen and split-view support
 
-- [ ] **1.3 - Network Configuration Bar**
+- [x] **1.3 - Network Configuration Bar**
   - `NetworkConfigView` component (always visible above tabs)
   - Fields:
     - **AE Title** (`TextField`, 16-char max, ASCII validation)
@@ -214,7 +214,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - Quick-connect presets dropdown (save/load server profiles)
   - Connection test button (runs `dicom-echo` internally)
 
-- [ ] **1.4 - Console Window**
+- [x] **1.4 - Console Window**
   - `ConsoleView` component (always visible below tabs)
   - Monospaced font: `.font(.system(.body, design: .monospaced))` using SF Mono
   - Real-time command syntax preview (updated as parameters change)
@@ -229,7 +229,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - **Execute button**: enabled only when all required parameters are provided
   - Loading indicator during execution (`.task {}` with `Process()`)
 
-- [ ] **1.5 - Command Builder Engine**
+- [x] **1.5 - Command Builder Engine**
   - `CommandBuilder` class (ObservableObject)
   - Builds CLI command string from parameter model
   - Validates required parameters
@@ -238,14 +238,14 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - Streams output in real-time to console
 
 #### Test Cases (Phase 1)
-- [ ] Network config persistence across app launches (5 tests)
-- [ ] AE Title validation (16-char max, ASCII only) (4 tests)
-- [ ] Port number validation (1-65535 range) (3 tests)
-- [ ] Command builder string generation (10 tests)
-- [ ] Execute button enable/disable logic (5 tests)
-- [ ] Console output rendering (3 tests)
+- [x] Network config persistence across app launches (5 tests)
+- [x] AE Title validation (16-char max, ASCII only) (4 tests)
+- [x] Port number validation (1-65535 range) (3 tests)
+- [x] Command builder string generation (10 tests)
+- [x] Execute button enable/disable logic (5 tests)
+- [x] Console output rendering (3 tests)
 
-**Phase 1 Total: ~30 tests**
+**Phase 1 Total: ~30 tests** ✅ (60+ tests implemented)
 
 ---
 

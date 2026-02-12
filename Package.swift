@@ -30,6 +30,10 @@ let package = Package(
             name: "DICOMWeb",
             targets: ["DICOMWeb"]
         ),
+        .library(
+            name: "DICOMToolbox",
+            targets: ["DICOMToolbox"]
+        ),
         .executable(
             name: "dicom-info",
             targets: ["dicom-info"]
@@ -187,6 +191,12 @@ let package = Package(
                 .enableUpcomingFeature("StrictConcurrency")
             ]
         ),
+        .target(
+            name: "DICOMToolbox",
+            swiftSettings: [
+                .enableUpcomingFeature("StrictConcurrency")
+            ]
+        ),
         .testTarget(
             name: "DICOMCoreTests",
             dependencies: ["DICOMCore"]
@@ -206,6 +216,10 @@ let package = Package(
         .testTarget(
             name: "DICOMWebTests",
             dependencies: ["DICOMWeb", "DICOMKit"]
+        ),
+        .testTarget(
+            name: "DICOMToolboxTests",
+            dependencies: ["DICOMToolbox"]
         ),
         .testTarget(
             name: "DICOMToolsTests",
