@@ -77,6 +77,14 @@ public struct ToolTabView: View {
             DicomTagsView(parameterValues: $parameterValues)
         case "dicom-diff":
             DicomDiffView(parameterValues: $parameterValues)
+        case "dicom-convert":
+            DicomConvertView(parameterValues: $parameterValues)
+        case "dicom-validate":
+            DicomValidateView(parameterValues: $parameterValues)
+        case "dicom-anon":
+            DicomAnonView(parameterValues: $parameterValues)
+        case "dicom-compress":
+            DicomCompressView(parameterValues: $parameterValues, subcommand: $subcommand)
         default:
             ParameterFormView(
                 tool: tool,
