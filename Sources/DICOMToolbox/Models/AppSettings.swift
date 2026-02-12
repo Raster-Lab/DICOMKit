@@ -65,7 +65,8 @@ public final class AppSettings: Sendable {
     public static func consoleFontSize() -> Double {
         #if canImport(AppKit) && os(macOS)
         let size = UserDefaults.standard.double(forKey: Keys.consoleFontSize)
-        if size < minConsoleFontSize || size > maxConsoleFontSize {
+        // UserDefaults returns 0.0 for unset keys; treat as unset
+        if size == 0.0 || size < minConsoleFontSize || size > maxConsoleFontSize {
             return defaultConsoleFontSize
         }
         return size
