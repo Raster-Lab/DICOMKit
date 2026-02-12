@@ -69,6 +69,7 @@ public struct ToolTabView: View {
     @ViewBuilder
     private func toolDetailView(for tool: ToolDefinition) -> some View {
         switch tool.id {
+        // File Inspection
         case "dicom-info":
             DicomInfoView(parameterValues: $parameterValues)
         case "dicom-dump":
@@ -77,6 +78,7 @@ public struct ToolTabView: View {
             DicomTagsView(parameterValues: $parameterValues)
         case "dicom-diff":
             DicomDiffView(parameterValues: $parameterValues)
+        // File Processing
         case "dicom-convert":
             DicomConvertView(parameterValues: $parameterValues)
         case "dicom-validate":
@@ -85,6 +87,7 @@ public struct ToolTabView: View {
             DicomAnonView(parameterValues: $parameterValues)
         case "dicom-compress":
             DicomCompressView(parameterValues: $parameterValues, subcommand: $subcommand)
+        // File Organization
         case "dicom-split":
             DicomSplitView(parameterValues: $parameterValues)
         case "dicom-merge":
@@ -93,6 +96,7 @@ public struct ToolTabView: View {
             DicomDcmdirView(parameterValues: $parameterValues, subcommand: $subcommand)
         case "dicom-archive":
             DicomArchiveView(parameterValues: $parameterValues)
+        // Data Export
         case "dicom-json":
             DicomJsonView(parameterValues: $parameterValues)
         case "dicom-xml":
@@ -105,6 +109,23 @@ public struct ToolTabView: View {
             DicomExportView(parameterValues: $parameterValues, subcommand: $subcommand)
         case "dicom-pixedit":
             DicomPixeditView(parameterValues: $parameterValues)
+        // Network Operations
+        case "dicom-echo":
+            DicomEchoView(parameterValues: $parameterValues, networkConfig: networkConfig)
+        case "dicom-query":
+            DicomQueryView(parameterValues: $parameterValues, networkConfig: networkConfig)
+        case "dicom-send":
+            DicomSendView(parameterValues: $parameterValues, networkConfig: networkConfig)
+        case "dicom-retrieve":
+            DicomRetrieveView(parameterValues: $parameterValues, networkConfig: networkConfig)
+        case "dicom-qr":
+            DicomQRView(parameterValues: $parameterValues, networkConfig: networkConfig)
+        case "dicom-wado":
+            DicomWadoView(parameterValues: $parameterValues, subcommand: $subcommand, networkConfig: networkConfig)
+        case "dicom-mwl":
+            DicomMWLView(parameterValues: $parameterValues, networkConfig: networkConfig)
+        case "dicom-mpps":
+            DicomMPPSView(parameterValues: $parameterValues, subcommand: $subcommand, networkConfig: networkConfig)
         default:
             ParameterFormView(
                 tool: tool,

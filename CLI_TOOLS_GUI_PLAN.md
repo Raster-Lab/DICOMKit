@@ -449,13 +449,13 @@ Each CLI parameter type maps to a specific SwiftUI control:
 
 #### Deliverables
 
-- [ ] **5.1 - Network Config Integration**
+- [x] **5.1 - Network Config Integration**
   - Auto-populate `--aet`, `--called-aet`, `--timeout` from Network Config Bar
   - Visual indicator showing inherited vs. overridden values
   - Override mechanism: local tool value takes precedence if set
   - URL auto-construction from Host + Port fields
 
-- [ ] **5.2 - dicom-echo Tool View**
+- [x] **5.2 - dicom-echo Tool View**
   - `DicomEchoView` parameter form:
     - **Server URL** (auto-built from Network Config, editable)
     - **AE Title** (inherited from Network Config, overridable)
@@ -467,7 +467,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Verbose** (`Toggle`)
   - Quick-test button in Network Config Bar that runs echo
 
-- [ ] **5.3 - dicom-query Tool View**
+- [x] **5.3 - dicom-query Tool View**
   - `DicomQueryView` parameter form:
     - **Server URL** (inherited)
     - **AE Title / Called AET** (inherited)
@@ -485,7 +485,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Output Format** (`Picker`: table | json | csv | compact)
     - **Verbose** (`Toggle`)
 
-- [ ] **5.4 - dicom-send Tool View**
+- [x] **5.4 - dicom-send Tool View**
   - `DicomSendView` parameter form:
     - **Server URL** (inherited)
     - **AE Title / Called AET** (inherited)
@@ -497,7 +497,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Dry Run** (`Toggle`, highlighted)
     - **Verbose** (`Toggle`)
 
-- [ ] **5.5 - dicom-retrieve Tool View**
+- [x] **5.5 - dicom-retrieve Tool View**
   - `DicomRetrieveView` parameter form:
     - **Server URL** (inherited)
     - **AE Title / Called AET** (inherited)
@@ -513,7 +513,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Hierarchical Output** (`Toggle`)
     - **Verbose** (`Toggle`)
 
-- [ ] **5.6 - dicom-qr Tool View**
+- [x] **5.6 - dicom-qr Tool View**
   - `DicomQRView` parameter form:
     - Combined query-retrieve interface
     - **Server URL** (inherited)
@@ -523,7 +523,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Workflow Mode** (`Picker`: interactive | auto | review)
     - **Validate Retrieved** (`Toggle`)
 
-- [ ] **5.7 - dicom-wado Tool View**
+- [x] **5.7 - dicom-wado Tool View**
   - `DicomWadoView` parameter form:
     - **Subcommand** (`Picker`: retrieve | query | store | ups)
     - **Base URL** (`TextField`, https:// format)
@@ -535,25 +535,25 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Retrieve Mode** toggles: metadata-only, rendered, thumbnail
     - **Verbose** (`Toggle`)
 
-- [ ] **5.8 - dicom-mwl & dicom-mpps Tool Views**
+- [x] **5.8 - dicom-mwl & dicom-mpps Tool Views**
   - `DicomMWLView`: Modality Worklist query with date, station, patient, modality filters
   - `DicomMPPSView`: Subcommand picker (create | update), study UID, status picker
 
 #### Test Cases (Phase 5)
-- [ ] Network config inheritance to tool views (6 tests)
-- [ ] Network config override mechanism (4 tests)
-- [ ] URL auto-construction from host+port (3 tests)
-- [ ] dicom-echo command generation (4 tests)
-- [ ] dicom-query command with search criteria (8 tests)
-- [ ] dicom-send multi-file command (5 tests)
-- [ ] dicom-retrieve method-dependent fields (4 tests)
-- [ ] dicom-qr combined workflow (4 tests)
-- [ ] dicom-wado subcommand forms (6 tests)
-- [ ] dicom-mwl command generation (3 tests)
-- [ ] dicom-mpps command generation (3 tests)
-- [ ] OAuth token secure handling (2 tests)
+- [x] Network config inheritance to tool views (6 tests)
+- [x] Network config override mechanism (4 tests)
+- [x] URL auto-construction from host+port (3 tests)
+- [x] dicom-echo command generation (4 tests)
+- [x] dicom-query command with search criteria (8 tests)
+- [x] dicom-send multi-file command (5 tests)
+- [x] dicom-retrieve method-dependent fields (4 tests)
+- [x] dicom-qr combined workflow (4 tests)
+- [x] dicom-wado subcommand forms (6 tests)
+- [x] dicom-mwl command generation (3 tests)
+- [x] dicom-mpps command generation (3 tests)
+- [x] OAuth token secure handling (2 tests)
 
-**Phase 5 Total: ~52 tests**
+**Phase 5 Total: ~52 tests** ✅ (52 tests implemented)
 
 ---
 
