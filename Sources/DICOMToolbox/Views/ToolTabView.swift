@@ -8,19 +8,22 @@ public struct ToolTabView: View {
     @Binding var parameterValues: [String: String]
     @Binding var subcommand: String?
     let networkConfig: NetworkConfigModel
+    let isBeginnerMode: Bool
 
     public init(
         selectedCategory: Binding<ToolCategory>,
         selectedToolID: Binding<String?>,
         parameterValues: Binding<[String: String]>,
         subcommand: Binding<String?>,
-        networkConfig: NetworkConfigModel
+        networkConfig: NetworkConfigModel,
+        isBeginnerMode: Bool = false
     ) {
         self._selectedCategory = selectedCategory
         self._selectedToolID = selectedToolID
         self._parameterValues = parameterValues
         self._subcommand = subcommand
         self.networkConfig = networkConfig
+        self.isBeginnerMode = isBeginnerMode
     }
 
     public var body: some View {
@@ -49,8 +52,11 @@ public struct ToolTabView: View {
             List(tools, selection: $selectedToolID) { tool in
                 Label(tool.name, systemImage: tool.icon)
                     .tag(tool.id)
+                    .accessibilityLabel(tool.name)
+                    .accessibilityHint(tool.description)
             }
             .navigationTitle(category.rawValue)
+            .accessibilityLabel("\(category.rawValue) tools")
         } detail: {
             if let toolID = selectedToolID,
                let tool = ToolRegistry.tool(withID: toolID) {
@@ -68,6 +74,23 @@ public struct ToolTabView: View {
     /// Routes a tool to its dedicated view when available, falling back to the generic form
     @ViewBuilder
     private func toolDetailView(for tool: ToolDefinition) -> some View {
+        VStack(spacing: 0) {
+            // Tool header with "What does this do?" and example presets
+            ToolHeaderView(
+                tool: tool,
+                parameterValues: $parameterValues,
+                subcommand: $subcommand
+            )
+
+            Divider()
+
+            // Tool-specific parameter form
+            toolParameterView(for: tool)
+        }
+    }
+
+    @ViewBuilder
+    private func toolParameterView(for tool: ToolDefinition) -> some View {
         switch tool.id {
         // File Inspection
         case "dicom-info":
@@ -143,6 +166,64 @@ public struct ToolTabView: View {
     }
 }
 
+/// Header section for tool detail view with "What does this do?" and example presets
+struct ToolHeaderView: View {
+    let tool: ToolDefinition
+    @Binding var parameterValues: [String: String]
+    @Binding var subcommand: String?
+    @State private var isDiscussionExpanded = false
+    @State private var showExamples = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Label(tool.name, systemImage: tool.icon)
+                    .font(.title3)
+                    .fontWeight(.semibold)
+                    .accessibilityAddTraits(.isHeader)
+
+                Spacer()
+
+                // Example presets button
+                Button(action: { showExamples.toggle() }) {
+                    Label("Examples", systemImage: "lightbulb")
+                }
+                .help("Load an example command configuration")
+                .accessibilityLabel("Show example commands for \(tool.name)")
+                .popover(isPresented: $showExamples) {
+                    ExamplePresetsView(
+                        toolID: tool.id,
+                        parameterValues: $parameterValues,
+                        subcommand: $subcommand,
+                        onDismiss: { showExamples = false }
+                    )
+                }
+            }
+
+            Text(tool.description)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(tool.description)
+
+            // "What does this do?" expandable
+            if !tool.discussion.isEmpty {
+                DisclosureGroup("What does this do?", isExpanded: $isDiscussionExpanded) {
+                    Text(tool.discussion)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.top, 4)
+                }
+                .font(.caption)
+                .foregroundStyle(.blue)
+                .accessibilityLabel("What does this tool do? Tap to expand.")
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+    }
+}
+
 /// Dynamic parameter form for a selected tool
 struct ParameterFormView: View {
     let tool: ToolDefinition
@@ -151,16 +232,6 @@ struct ParameterFormView: View {
 
     var body: some View {
         Form {
-            // Tool header
-            Section {
-                VStack(alignment: .leading, spacing: 4) {
-                    Label(tool.name, systemImage: tool.icon)
-                        .font(.title2)
-                    Text(tool.description)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
             // Subcommand picker (if applicable)
             if let subcommands = tool.subcommands {
                 Section("Subcommand") {
@@ -176,6 +247,7 @@ struct ParameterFormView: View {
                         }
                     }
                     .pickerStyle(.segmented)
+                    .accessibilityLabel("Select operation")
 
                     if let selectedSub = subcommands.first(where: { $0.id == (subcommand ?? subcommands.first?.id) }) {
                         Text(selectedSub.description)
@@ -228,6 +300,7 @@ struct ParameterFormView: View {
                         }
                     }
                 }
+                .accessibilityLabel(param.label)
 
             case .enumeration:
                 if let enumValues = param.enumValues {
@@ -246,6 +319,7 @@ struct ParameterFormView: View {
                             }
                         }
                     }
+                    .accessibilityLabel(param.label)
                 }
 
             case .integer:
@@ -261,6 +335,7 @@ struct ParameterFormView: View {
                     ))
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 100)
+                    .accessibilityLabel(param.label)
                 }
 
             case .file:
@@ -277,6 +352,7 @@ struct ParameterFormView: View {
                     Button("Browse...") {
                         // File picker would open here
                     }
+                    .accessibilityLabel("Browse for \(param.label)")
                 }
 
             default:
@@ -292,6 +368,7 @@ struct ParameterFormView: View {
                     ))
                     .textFieldStyle(.roundedBorder)
                     .frame(maxWidth: 300)
+                    .accessibilityLabel(param.label)
                 }
             }
 
@@ -302,12 +379,14 @@ struct ParameterFormView: View {
                 }
                 .buttonStyle(.plain)
                 .help(discussion)
+                .accessibilityLabel("Help for \(param.label)")
             } else {
                 Button(action: {}) {
                     Image(systemName: "info.circle")
                 }
                 .buttonStyle(.plain)
                 .help(param.help)
+                .accessibilityLabel("Help for \(param.label)")
             }
         }
     }

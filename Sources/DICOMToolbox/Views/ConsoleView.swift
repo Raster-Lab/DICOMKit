@@ -10,6 +10,8 @@ public struct ConsoleView: View {
     @Binding var output: String
     @Binding var status: ExecutionStatus
     @Binding var historyEntries: [CommandHistoryEntry]
+    let consoleFontSize: Double
+    let onCommandCompleted: ((Bool, String) -> Void)?
 
     @State private var executor = CommandExecutor()
     @State private var showHistory = false
@@ -21,7 +23,9 @@ public struct ConsoleView: View {
         networkConfig: NetworkConfigModel,
         output: Binding<String>,
         status: Binding<ExecutionStatus>,
-        historyEntries: Binding<[CommandHistoryEntry]>
+        historyEntries: Binding<[CommandHistoryEntry]>,
+        consoleFontSize: Double = AppSettings.defaultConsoleFontSize,
+        onCommandCompleted: ((Bool, String) -> Void)? = nil
     ) {
         self.toolID = toolID
         self.parameterValues = parameterValues
@@ -30,6 +34,8 @@ public struct ConsoleView: View {
         self._output = output
         self._status = status
         self._historyEntries = historyEntries
+        self.consoleFontSize = consoleFontSize
+        self.onCommandCompleted = onCommandCompleted
     }
 
     private var commandBuilder: CommandBuilder? {
@@ -59,13 +65,15 @@ public struct ConsoleView: View {
                 // Command preview line
                 HStack {
                     Text("$")
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(size: consoleFontSize, design: .monospaced))
                         .foregroundStyle(.green)
+                        .accessibilityHidden(true)
 
                     Text(commandString)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(size: consoleFontSize, design: .monospaced))
                         .lineLimit(2)
                         .truncationMode(.tail)
+                        .accessibilityLabel("Command: \(commandString)")
 
                     Spacer()
 
@@ -74,6 +82,7 @@ public struct ConsoleView: View {
                         Image(systemName: "clock.arrow.circlepath")
                     }
                     .help("Command History")
+                    .accessibilityLabel("Command History")
                     .popover(isPresented: $showHistory) {
                         historyPopover
                     }
@@ -86,6 +95,7 @@ public struct ConsoleView: View {
                         Image(systemName: "doc.on.doc")
                     }
                     .help("Copy command to clipboard")
+                    .accessibilityLabel("Copy command to clipboard")
 
                     // Cancel button (shown during execution)
                     if isRunning {
@@ -94,12 +104,14 @@ public struct ConsoleView: View {
                                 await executor.cancel()
                                 status = .completed(exitCode: -1)
                                 output += "\n[Cancelled]"
+                                onCommandCompleted?(false, "Command cancelled")
                             }
                         }) {
                             Label("Cancel", systemImage: "stop.fill")
                                 .foregroundStyle(.red)
                         }
                         .help("Cancel running command")
+                        .accessibilityLabel("Cancel running command")
                     }
 
                     // Execute button
@@ -108,6 +120,7 @@ public struct ConsoleView: View {
                     }
                     .disabled(!isCommandValid || isRunning)
                     .keyboardShortcut(.return, modifiers: .command)
+                    .accessibilityLabel("Run command")
 
                     // Re-run button (shown when there's history)
                     if !historyEntries.isEmpty && !isRunning {
@@ -119,6 +132,7 @@ public struct ConsoleView: View {
                             Image(systemName: "arrow.counterclockwise")
                         }
                         .help("Re-run last command")
+                        .accessibilityLabel("Re-run last command")
                     }
 
                     // Status indicator
@@ -131,14 +145,16 @@ public struct ConsoleView: View {
                 ScrollView {
                     if output.isEmpty {
                         Text("Command output will appear here after execution")
-                            .font(.system(.body, design: .monospaced))
+                            .font(.system(size: consoleFontSize, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityLabel("No command output yet")
                     } else {
                         Text(output)
-                            .font(.system(.body, design: .monospaced))
+                            .font(.system(size: consoleFontSize, design: .monospaced))
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .textSelection(.enabled)
+                            .accessibilityLabel("Command output")
                     }
                 }
                 .frame(minHeight: 100, maxHeight: 200)
@@ -149,6 +165,7 @@ public struct ConsoleView: View {
                         Text("Exit code: \(exitCode)")
                             .font(.caption)
                             .foregroundStyle(exitCode == 0 ? .green : .red)
+                            .accessibilityLabel("Exit code \(exitCode), \(exitCode == 0 ? "success" : "failure")")
                     }
                     Spacer()
                     Button("Clear") {
@@ -156,6 +173,7 @@ public struct ConsoleView: View {
                         status = .idle
                     }
                     .disabled(output.isEmpty)
+                    .accessibilityLabel("Clear console output")
                 }
             }
             .padding(8)
@@ -208,6 +226,7 @@ public struct ConsoleView: View {
                     let completed = entry.withExitCode(exitCode)
                     CommandHistory.addEntry(completed, to: &historyEntries)
                     CommandHistory.save(historyEntries)
+                    onCommandCompleted?(exitCode == 0, exitCode == 0 ? "Command completed successfully" : "Command failed (exit code \(exitCode))")
                 }
             } catch {
                 await MainActor.run {
@@ -216,6 +235,7 @@ public struct ConsoleView: View {
                     let failed = entry.withExitCode(-1)
                     CommandHistory.addEntry(failed, to: &historyEntries)
                     CommandHistory.save(historyEntries)
+                    onCommandCompleted?(false, "Command error: \(error.localizedDescription)")
                 }
             }
         }
