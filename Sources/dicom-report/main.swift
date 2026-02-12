@@ -4,7 +4,7 @@ import DICOMKit
 import DICOMCore
 import DICOMDictionary
 
-struct DICOMReport: AsyncParsableCommand {
+struct DICOMReport: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-report",
         abstract: "Generate clinical reports from DICOM Structured Report objects",
@@ -48,10 +48,10 @@ struct DICOMReport: AsyncParsableCommand {
     @Option(name: .long, help: "Custom footer text for report")
     var footer: String?
     
-    @Flag(name: .long, help: "Include measurement tables in output")
+    @Flag(name: .long, inversion: .prefixedNo, help: "Include measurement tables in output")
     var includeMeasurements: Bool = true
     
-    @Flag(name: .long, help: "Include finding summaries")
+    @Flag(name: .long, inversion: .prefixedNo, help: "Include finding summaries")
     var includeSummary: Bool = true
     
     @Flag(name: .long, help: "Force parsing of files without DICM prefix")
@@ -60,7 +60,7 @@ struct DICOMReport: AsyncParsableCommand {
     @Flag(name: .long, help: "Verbose output for debugging")
     var verbose: Bool = false
     
-    mutating func run() async throws {
+    mutating func run() throws {
         let fileURL = URL(fileURLWithPath: filePath)
         
         guard FileManager.default.fileExists(atPath: filePath) else {
@@ -107,7 +107,7 @@ struct DICOMReport: AsyncParsableCommand {
             print("Generating \(format.rawValue) report...")
         }
         
-        let reportData = try await generator.generate()
+        let reportData = try generator.generate()
         
         // Write output
         let outputURL = URL(fileURLWithPath: output)

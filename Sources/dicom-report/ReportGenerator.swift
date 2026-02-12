@@ -24,7 +24,7 @@ struct ReportGenerator {
     let document: SRDocument
     let options: ReportOptions
     
-    func generate() async throws -> Data {
+    func generate() throws -> Data {
         switch options.format {
         case .text:
             return try generateTextReport()
