@@ -54,11 +54,7 @@ public struct ToolTabView: View {
         } detail: {
             if let toolID = selectedToolID,
                let tool = ToolRegistry.tool(withID: toolID) {
-                ParameterFormView(
-                    tool: tool,
-                    parameterValues: $parameterValues,
-                    subcommand: $subcommand
-                )
+                toolDetailView(for: tool)
             } else {
                 ContentUnavailableView(
                     "Select a Tool",
@@ -66,6 +62,27 @@ public struct ToolTabView: View {
                     description: Text("Choose a tool from the sidebar to configure its parameters.")
                 )
             }
+        }
+    }
+
+    /// Routes a tool to its dedicated view when available, falling back to the generic form
+    @ViewBuilder
+    private func toolDetailView(for tool: ToolDefinition) -> some View {
+        switch tool.id {
+        case "dicom-info":
+            DicomInfoView(parameterValues: $parameterValues)
+        case "dicom-dump":
+            DicomDumpView(parameterValues: $parameterValues)
+        case "dicom-tags":
+            DicomTagsView(parameterValues: $parameterValues)
+        case "dicom-diff":
+            DicomDiffView(parameterValues: $parameterValues)
+        default:
+            ParameterFormView(
+                tool: tool,
+                parameterValues: $parameterValues,
+                subcommand: $subcommand
+            )
         }
     }
 }
