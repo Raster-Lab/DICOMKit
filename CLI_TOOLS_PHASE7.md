@@ -1,0 +1,1470 @@
+# DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
+
+**Status**: 📋 Planned  
+**Target Version**: v1.4.0-v1.4.7  
+**Created**: February 2026  
+**Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb  
+**Priority**: Low-Medium  
+**Estimated Duration**: 6-8 weeks
+
+---
+
+## Overview
+
+Phase 7 represents the advanced evolution of DICOMKit's CLI tools suite, focusing on specialized medical imaging workflows, AI/ML integration, cloud connectivity, and advanced visualization capabilities. Building upon the solid foundation of 29 production-ready tools from Phases 1-6, Phase 7 introduces cutting-edge features that position DICOMKit at the forefront of modern medical imaging technology.
+
+### Phase 1-6 Recap (✅ ALL COMPLETE)
+
+**Phase 1** (7 tools): Core operations - info, convert, validate, anon, dump, query, send  
+**Phase 2** (4 tools): Enhanced workflow - diff, retrieve, split, merge  
+**Phase 3** (4 tools): Format conversion - json, xml, pdf, image  
+**Phase 4** (3 tools): Archive management - dcmdir, archive, export  
+**Phase 5** (5 tools): Network & workflow - qr, wado, mwl, mpps, echo  
+**Phase 6** (6 tools): Advanced manipulation - pixedit, tags, uid, compress, study, script  
+
+**Cumulative**: 29 tools, 18,000+ LOC, 753+ tests
+
+---
+
+## Phase 7 Goals
+
+### Primary Objectives
+
+1. **AI/ML Integration**: Enable AI-powered DICOM analysis and enhancement
+2. **Cloud Connectivity**: Provide seamless cloud storage and retrieval
+3. **Advanced Visualization**: Support 3D reconstruction and MPR capabilities
+4. **Clinical Reporting**: Generate comprehensive clinical reports from DICOM SR
+5. **Protocol Bridging**: Enable interoperability with HL7, FHIR, and other standards
+6. **Measurement Tools**: Provide precise medical imaging measurements
+7. **Server Capabilities**: Offer lightweight PACS server functionality
+8. **Terminal Viewing**: Enable quick DICOM image inspection in terminal
+
+---
+
+## Phase 7 Tools (8 Tools Planned)
+
+### Tool Priority Matrix
+
+| Tool | Priority | Complexity | Timeline | Use Case |
+|------|----------|-----------|----------|----------|
+| dicom-report | High | Very High | 2 weeks | Clinical report generation |
+| dicom-measure | High | High | 1.5 weeks | Medical measurements |
+| dicom-viewer | Medium | Medium | 1 week | Terminal-based viewing |
+| dicom-3d | Medium | Very High | 2 weeks | 3D reconstruction & MPR |
+| dicom-ai | Medium | Very High | 2 weeks | AI/ML integration |
+| dicom-cloud | Medium | High | 1 week | Cloud storage integration |
+| dicom-gateway | Low | Very High | 2 weeks | Protocol gateway (HL7, FHIR) |
+| dicom-server | Low | Very High | 2.5 weeks | Lightweight PACS server |
+
+**Total Estimated Effort**: 14 weeks (with parallel development: 6-8 weeks)
+
+---
+
+## Milestone 7.1: Clinical Report Generation
+
+**Tool**: `dicom-report`  
+**Priority**: High  
+**Complexity**: Very High  
+**Timeline**: 2 weeks  
+**Tests**: 45+  
+**Dependencies**: DICOMKit SR support, template engine
+
+### Purpose
+
+Generate comprehensive clinical reports from DICOM Structured Report (SR) objects, supporting multiple output formats and customizable templates for various clinical specialties.
+
+### Features
+
+#### Core Functionality
+- **SR Parsing**: Parse all common SR IODs (Basic Text SR, Enhanced SR, Comprehensive SR)
+- **Content Tree Navigation**: Navigate hierarchical SR content tree
+- **Value Extraction**: Extract coded concepts, measurements, dates, references
+- **Template Matching**: Match SR against TID templates (TID 1500, 1400, etc.)
+- **Relationship Handling**: Process CONTAINS, HAS CONCEPT MOD, HAS OBS CONTEXT
+
+#### Output Formats
+- **PDF**: Professional clinical report with headers, footers, and branding
+- **HTML**: Web-ready report with CSS styling and responsive design
+- **Markdown**: Plain text report for documentation systems
+- **JSON**: Structured data export for integration
+- **Plain Text**: Simple text report for legacy systems
+
+#### Report Customization
+- **Templates**: Customizable report templates per modality/specialty
+- **Branding**: Hospital logo, letterhead, footer customization
+- **Sections**: Configurable section ordering and visibility
+- **Filters**: Include/exclude specific content items
+- **Annotations**: Add custom annotations and comments
+
+#### Advanced Features
+- **Measurement Tables**: Format measurements in professional tables
+- **Image Integration**: Embed key images from referenced instances
+- **Finding Summaries**: Auto-generate summary of findings
+- **Comparison Reports**: Compare with prior studies
+- **Multi-language**: Support for internationalized reports
+
+### Implementation Phases
+
+#### Phase A: Foundation (Days 1-3)
+- [x] SR content tree parser
+- [x] Basic text extraction
+- [x] Coded concept resolver
+- [x] Simple text output format
+
+#### Phase B: Format Support (Days 4-6)
+- [ ] HTML report generator with templates
+- [ ] PDF generation using Swift PDF libraries
+- [ ] Markdown formatter
+- [ ] JSON structured output
+
+#### Phase C: Advanced Features (Days 7-10)
+- [ ] Template engine for custom reports
+- [ ] Image embedding from referenced instances
+- [ ] Measurement table formatter
+- [ ] Branding and customization support
+- [ ] Multi-language support
+
+### Usage Examples
+
+```bash
+# Generate PDF report from SR
+dicom-report sr.dcm --output report.pdf --format pdf --template cardiology
+
+# Generate HTML report with embedded images
+dicom-report sr.dcm --output report.html --format html --embed-images --image-dir images/
+
+# Generate comparison report
+dicom-report current.dcm --compare prior.dcm --output comparison.pdf --format pdf
+
+# Generate JSON for integration
+dicom-report sr.dcm --output data.json --format json --include-measurements
+
+# Custom branded report
+dicom-report sr.dcm --output report.pdf \
+  --format pdf \
+  --template hospital \
+  --logo hospital-logo.png \
+  --footer "Confidential Medical Report"
+
+# Generate report from multiple SRs (study level)
+dicom-report sr1.dcm sr2.dcm sr3.dcm \
+  --output study-report.pdf \
+  --format pdf \
+  --merge \
+  --title "Complete Study Report"
+```
+
+### Deliverables
+
+- [ ] SR content tree parser
+- [ ] Coded concept resolver with SNOMED/LOINC support
+- [ ] Text/HTML/PDF/Markdown/JSON formatters
+- [ ] Template engine with customization
+- [ ] Image embedding functionality
+- [ ] Measurement table formatter
+- [ ] Branding and styling system
+- [ ] Multi-language support
+- [ ] 45+ unit tests
+- [ ] Integration tests with sample SRs
+- [ ] Comprehensive documentation
+- [ ] Report template examples (cardiology, radiology, oncology)
+
+### Test Cases
+
+1. Parse Basic Text SR correctly
+2. Parse Enhanced SR with measurements
+3. Navigate content tree hierarchy
+4. Extract coded concepts (SNOMED CT, LOINC)
+5. Generate PDF with correct formatting
+6. Generate HTML with embedded CSS
+7. Generate Markdown report
+8. Export JSON with structured data
+9. Apply custom template
+10. Embed key images in report
+11. Format measurement tables
+12. Handle missing/optional content
+13. Process comparison reports
+14. Apply branding (logo, letterhead)
+15. Generate multi-language reports
+
+**Lines of Code Estimate**: 1,200-1,500
+
+---
+
+## Milestone 7.2: Medical Measurement Tools
+
+**Tool**: `dicom-measure`  
+**Priority**: High  
+**Complexity**: High  
+**Timeline**: 1.5 weeks  
+**Tests**: 35+  
+**Dependencies**: DICOMKit pixel data support, GSPS
+
+### Purpose
+
+Perform precise medical imaging measurements (distance, area, volume, SUV, HU) directly from DICOM images with support for calibration and GSPS (Grayscale Softcopy Presentation State) integration.
+
+### Features
+
+#### Measurement Types
+- **Linear Distance**: Point-to-point distance measurements
+- **Area**: Polygon/ellipse area calculations
+- **Volume**: 3D region volume from multi-slice series
+- **Angle**: Angle measurements between lines
+- **SUV**: Standardized Uptake Value for PET images
+- **Hounsfield Units**: CT number measurements
+- **Pixel Value**: Raw pixel value extraction
+
+#### Calibration Support
+- **Pixel Spacing**: Use Image Pixel Spacing tag
+- **Calibration**: Custom calibration factors
+- **Unit Conversion**: mm, cm, inches, pixels
+- **Rescale Slope/Intercept**: Apply rescale for CT HU
+
+#### Output Options
+- **Text**: Simple text output with measurements
+- **JSON**: Structured measurement data
+- **CSV**: Tabular data for spreadsheets
+- **GSPS**: Save measurements as DICOM GSPS object
+- **Overlay**: Render measurements on output image
+
+#### Advanced Features
+- **ROI Analysis**: Statistics within region of interest (mean, std, min, max)
+- **Histogram**: Pixel value histogram within ROI
+- **Multi-frame**: Measurements across frame sequences
+- **Comparison**: Compare measurements across time points
+- **Batch Processing**: Measure multiple files/regions
+
+### Implementation Phases
+
+#### Phase A: Core Measurements (Days 1-4)
+- [ ] Pixel coordinate to physical coordinate conversion
+- [ ] Linear distance measurement
+- [ ] Area calculation (polygon, ellipse)
+- [ ] Angle measurement
+- [ ] ROI statistics
+
+#### Phase B: Advanced Measurements (Days 5-7)
+- [ ] Volume calculation from multi-slice
+- [ ] SUV calculation for PET
+- [ ] Hounsfield Unit extraction
+- [ ] Histogram generation
+
+#### Phase C: Integration & Output (Days 8-10)
+- [ ] GSPS output support
+- [ ] Measurement overlay rendering
+- [ ] Batch processing
+- [ ] Comparison functionality
+
+### Usage Examples
+
+```bash
+# Measure distance between two points
+dicom-measure distance ct.dcm --p1 100,200 --p2 300,400 --output measurements.txt
+
+# Measure area of region
+dicom-measure area ct.dcm \
+  --polygon 100,100 150,200 200,200 180,120 \
+  --output area.json \
+  --format json
+
+# Calculate volume from multi-slice series
+dicom-measure volume series/*.dcm \
+  --roi roi-mask.dcm \
+  --output volume.txt
+
+# SUV measurement for PET
+dicom-measure suv pet.dcm \
+  --roi 150,150,50,50 \
+  --output suv.json \
+  --format json
+
+# Hounsfield Unit measurement
+dicom-measure hu ct.dcm \
+  --roi 200,200,100,100 \
+  --statistics \
+  --output hu-stats.txt
+
+# ROI statistics with histogram
+dicom-measure roi ct.dcm \
+  --polygon 100,100 150,200 200,200 180,120 \
+  --statistics \
+  --histogram \
+  --output roi-analysis.json
+
+# Save measurements as GSPS
+dicom-measure distance ct.dcm \
+  --p1 100,200 \
+  --p2 300,400 \
+  --output gsps.dcm \
+  --format gsps \
+  --annotation "Tumor diameter"
+
+# Batch measurements
+dicom-measure distance series/*.dcm \
+  --p1 100,200 \
+  --p2 300,400 \
+  --output measurements.csv \
+  --format csv
+```
+
+### Deliverables
+
+- [ ] Coordinate transformation (pixel to physical)
+- [ ] Distance measurement calculator
+- [ ] Area measurement (polygon, ellipse)
+- [ ] Angle measurement
+- [ ] Volume calculator (multi-slice)
+- [ ] SUV calculator (PET-specific)
+- [ ] HU extractor (CT-specific)
+- [ ] ROI statistics (mean, std, min, max, histogram)
+- [ ] GSPS output support
+- [ ] Measurement overlay renderer
+- [ ] Batch processor
+- [ ] 35+ unit tests
+- [ ] Documentation with examples
+- [ ] Clinical validation examples
+
+### Test Cases
+
+1. Convert pixel to physical coordinates correctly
+2. Measure distance with calibration
+3. Calculate polygon area accurately
+4. Calculate ellipse area
+5. Measure angles correctly
+6. Calculate volume from multi-slice
+7. Compute SUV for PET images
+8. Extract Hounsfield Units
+9. Calculate ROI statistics (mean, std, min, max)
+10. Generate histogram
+11. Export measurements as JSON/CSV
+12. Create GSPS with measurements
+13. Render measurement overlays
+14. Batch process multiple files
+15. Handle missing calibration data
+
+**Lines of Code Estimate**: 900-1,100
+
+---
+
+## Milestone 7.3: Terminal Image Viewer
+
+**Tool**: `dicom-viewer`  
+**Priority**: Medium  
+**Complexity**: Medium  
+**Timeline**: 1 week  
+**Tests**: 25+  
+**Dependencies**: Terminal graphics library (viu, timg, iTerm2 protocols)
+
+### Purpose
+
+Quick DICOM image inspection directly in the terminal using ASCII art, ANSI colors, or terminal graphics protocols (Kitty, iTerm2) for rapid triage and verification.
+
+### Features
+
+#### Display Modes
+- **ASCII Art**: Convert image to ASCII characters (high/low quality)
+- **ANSI Colors**: Use ANSI 256-color or 24-bit true color
+- **iTerm2 Inline**: Use iTerm2 inline image protocol
+- **Kitty Graphics**: Use Kitty graphics protocol
+- **Sixel**: Use Sixel graphics protocol
+
+#### Image Adjustments
+- **Window/Level**: Apply window/level for display
+- **Zoom**: Zoom in/out on image
+- **Pan**: Pan around large images
+- **Invert**: Invert pixel values
+- **Frame Navigation**: Navigate multi-frame images
+
+#### Information Overlay
+- **Patient Info**: Display patient name, ID, age, sex
+- **Study Info**: Study description, date, modality
+- **Image Info**: Rows, columns, bits, window/level
+- **Annotations**: Display overlays and annotations
+- **Measurements**: Show embedded measurements
+
+#### Navigation
+- **Arrow Keys**: Pan and navigate
+- **+/-**: Zoom in/out
+- **[/]**: Navigate frames
+- **W/L**: Adjust window/level
+- **Q**: Quit viewer
+
+### Implementation Phases
+
+#### Phase A: Core Rendering (Days 1-3)
+- [ ] Terminal size detection
+- [ ] Image scaling and fitting
+- [ ] ASCII art renderer
+- [ ] ANSI color renderer
+
+#### Phase B: Advanced Protocols (Days 4-5)
+- [ ] iTerm2 inline image support
+- [ ] Kitty graphics protocol support
+- [ ] Sixel graphics support
+
+#### Phase C: Interaction & Navigation (Days 6-7)
+- [ ] Keyboard input handling
+- [ ] Interactive navigation (pan, zoom, frames)
+- [ ] Window/level adjustment
+- [ ] Information overlay
+
+### Usage Examples
+
+```bash
+# View DICOM image in terminal
+dicom-viewer scan.dcm
+
+# View with ASCII art (no graphics protocol)
+dicom-viewer scan.dcm --mode ascii --quality high
+
+# View with ANSI true color
+dicom-viewer scan.dcm --mode ansi --color 24bit
+
+# View with iTerm2 inline images
+dicom-viewer scan.dcm --mode iterm2
+
+# View with custom window/level
+dicom-viewer ct.dcm --window-center -600 --window-width 1500
+
+# View multi-frame with frame navigation
+dicom-viewer multiframe.dcm --interactive
+
+# View with patient info overlay
+dicom-viewer scan.dcm --show-info --show-overlay
+
+# Quick thumbnail view of directory
+dicom-viewer series/*.dcm --thumbnail --size 80x40
+
+# Compare two images side-by-side
+dicom-viewer --compare scan1.dcm scan2.dcm
+```
+
+### Deliverables
+
+- [ ] Terminal size detection and image fitting
+- [ ] ASCII art renderer (multiple quality levels)
+- [ ] ANSI color renderer (256-color, 24-bit)
+- [ ] iTerm2 inline image protocol
+- [ ] Kitty graphics protocol
+- [ ] Sixel graphics protocol
+- [ ] Interactive keyboard navigation
+- [ ] Window/level adjustment
+- [ ] Multi-frame navigation
+- [ ] Information overlay
+- [ ] Thumbnail grid view
+- [ ] Side-by-side comparison
+- [ ] 25+ unit tests
+- [ ] Documentation with terminal examples
+
+### Test Cases
+
+1. Detect terminal size correctly
+2. Scale image to fit terminal
+3. Generate ASCII art (low/high quality)
+4. Render with ANSI 256 colors
+5. Render with ANSI 24-bit true color
+6. Use iTerm2 protocol correctly
+7. Use Kitty protocol correctly
+8. Use Sixel protocol correctly
+9. Handle keyboard input
+10. Navigate frames in multi-frame
+11. Pan around large image
+12. Zoom in/out
+13. Adjust window/level interactively
+14. Display information overlay
+15. Render thumbnail grid
+
+**Lines of Code Estimate**: 750-900
+
+---
+
+## Milestone 7.4: 3D Reconstruction and MPR
+
+**Tool**: `dicom-3d`  
+**Priority**: Medium  
+**Complexity**: Very High  
+**Timeline**: 2 weeks  
+**Tests**: 40+  
+**Dependencies**: Image processing library, 3D rendering library
+
+### Purpose
+
+Perform 3D volume reconstruction, Multi-Planar Reformation (MPR), and Maximum Intensity Projection (MIP) from multi-slice DICOM series for advanced visualization.
+
+### Features
+
+#### Reconstruction Methods
+- **Volume Rendering**: Direct volume rendering with transfer functions
+- **Surface Rendering**: Isosurface extraction (Marching Cubes)
+- **MPR**: Axial, Sagittal, Coronal reformations
+- **Curved MPR**: Curved planar reformation along path
+- **Oblique MPR**: Arbitrary plane reformation
+
+#### Projection Techniques
+- **MIP**: Maximum Intensity Projection
+- **MinIP**: Minimum Intensity Projection
+- **Average Intensity**: Average projection
+- **Ray Casting**: Ray casting volume rendering
+
+#### Output Options
+- **Image Sequences**: Output MPR/MIP as DICOM or PNG sequences
+- **3D Model**: Export surface mesh (STL, OBJ)
+- **Volume Data**: Export raw volume data (NIfTI, MetaImage)
+- **Animation**: Generate rotation/fly-through animations
+
+#### Advanced Features
+- **Slab Thickness**: Adjustable slab thickness for MIP/MinIP
+- **Transfer Functions**: Customizable opacity/color transfer functions
+- **Windowing**: Apply window/level to 3D volume
+- **Segmentation Integration**: Use segmentation masks for rendering
+
+### Implementation Phases
+
+#### Phase A: Volume Loading (Days 1-3)
+- [ ] Multi-slice series loader
+- [ ] Volume data structure
+- [ ] Slice spacing interpolation
+- [ ] Orientation matrix handling
+
+#### Phase B: MPR Implementation (Days 4-7)
+- [ ] Axial/Sagittal/Coronal MPR
+- [ ] Oblique MPR (arbitrary planes)
+- [ ] Curved MPR
+- [ ] Interpolation (nearest, linear, cubic)
+
+#### Phase C: 3D Rendering (Days 8-10)
+- [ ] MIP/MinIP/Average projections
+- [ ] Volume rendering (ray casting)
+- [ ] Surface extraction (Marching Cubes)
+- [ ] Export to 3D formats (STL, OBJ)
+
+#### Phase D: Polish & Output (Days 11-14)
+- [ ] Transfer function editor
+- [ ] Animation generation
+- [ ] Multi-format output
+- [ ] Performance optimization
+
+### Usage Examples
+
+```bash
+# Generate axial, sagittal, coronal MPR
+dicom-3d mpr series/*.dcm --output mpr/ --planes axial,sagittal,coronal
+
+# Maximum Intensity Projection
+dicom-3d mip series/*.dcm --output mip.png --thickness 20mm
+
+# Curved MPR along centerline
+dicom-3d curved-mpr series/*.dcm \
+  --centerline centerline.txt \
+  --output curved-mpr.png
+
+# 3D surface rendering
+dicom-3d surface series/*.dcm \
+  --threshold 200 \
+  --output surface.stl
+
+# Volume rendering with custom transfer function
+dicom-3d volume series/*.dcm \
+  --output volume.png \
+  --transfer-function tf.json \
+  --camera-angle 45,30
+
+# Generate rotation animation
+dicom-3d animate series/*.dcm \
+  --output animation/ \
+  --method volume \
+  --rotation 360 \
+  --frames 60
+
+# Oblique MPR at custom angle
+dicom-3d mpr series/*.dcm \
+  --output oblique.png \
+  --plane-normal 1,0.5,0.3 \
+  --plane-point 256,256,50
+
+# Multi-format export
+dicom-3d export series/*.dcm \
+  --output volume \
+  --formats nifti,stl,metaimage
+```
+
+### Deliverables
+
+- [ ] Multi-slice volume loader
+- [ ] Volume data structure with interpolation
+- [ ] Axial/Sagittal/Coronal MPR generator
+- [ ] Oblique MPR with arbitrary planes
+- [ ] Curved MPR along path
+- [ ] MIP/MinIP/Average projection
+- [ ] Ray casting volume renderer
+- [ ] Marching Cubes surface extractor
+- [ ] Transfer function system
+- [ ] 3D export (STL, OBJ)
+- [ ] NIfTI and MetaImage export
+- [ ] Animation generator
+- [ ] 40+ unit tests
+- [ ] Documentation with clinical examples
+- [ ] Sample transfer functions
+
+### Test Cases
+
+1. Load multi-slice series correctly
+2. Build volume data structure
+3. Handle non-uniform slice spacing
+4. Generate axial MPR
+5. Generate sagittal MPR
+6. Generate coronal MPR
+7. Generate oblique MPR
+8. Generate curved MPR
+9. Compute MIP projection
+10. Compute MinIP projection
+11. Ray cast volume rendering
+12. Extract isosurface (Marching Cubes)
+13. Export STL mesh
+14. Export OBJ mesh
+15. Export NIfTI volume
+16. Apply transfer function
+17. Generate rotation animation
+18. Handle missing slices gracefully
+19. Apply window/level to volume
+20. Use segmentation masks
+
+**Lines of Code Estimate**: 1,500-1,800
+
+---
+
+## Milestone 7.5: AI/ML Integration
+
+**Tool**: `dicom-ai`  
+**Priority**: Medium  
+**Complexity**: Very High  
+**Timeline**: 2 weeks  
+**Tests**: 35+  
+**Dependencies**: CoreML, Create ML, Python bridge for TensorFlow/PyTorch
+
+### Purpose
+
+Integrate AI/ML models for DICOM image analysis, enhancement, and automated reporting. Support for CoreML models on Apple platforms and integration with TensorFlow/PyTorch models via Python bridge.
+
+### Features
+
+#### Model Support
+- **CoreML Models**: Native Swift CoreML model inference
+- **ONNX Models**: Convert and run ONNX models
+- **TensorFlow**: Python bridge to TensorFlow models
+- **PyTorch**: Python bridge to PyTorch models
+- **Custom Models**: Load custom trained models
+
+#### Analysis Tasks
+- **Classification**: Image classification (modality, anatomy, pathology)
+- **Segmentation**: Organ/lesion segmentation
+- **Detection**: Object/lesion detection with bounding boxes
+- **Enhancement**: Image denoising, super-resolution
+- **Report Generation**: Automated finding description
+
+#### Output Options
+- **JSON**: Structured prediction results
+- **DICOM SR**: Create SR with AI findings
+- **Segmentation**: DICOM Segmentation object
+- **GSPS**: Grayscale Presentation State with annotations
+- **Overlay**: Render predictions on image
+- **Report**: Generate clinical report from predictions
+
+#### Advanced Features
+- **Batch Inference**: Process multiple files efficiently
+- **Ensemble Models**: Combine multiple models
+- **Confidence Thresholds**: Filter low-confidence predictions
+- **Model Registry**: Manage and version models
+- **Performance Metrics**: Measure inference time and accuracy
+
+### Implementation Phases
+
+#### Phase A: Model Loading (Days 1-4)
+- [ ] CoreML model loader
+- [ ] ONNX model support
+- [ ] Python bridge for TensorFlow/PyTorch
+- [ ] Model metadata handling
+
+#### Phase B: Inference Engine (Days 5-9)
+- [ ] Image preprocessing pipeline
+- [ ] Batch inference
+- [ ] Post-processing (NMS, thresholding)
+- [ ] Multi-model ensemble
+
+#### Phase C: Output Generation (Days 10-12)
+- [ ] DICOM SR creation from predictions
+- [ ] Segmentation object creation
+- [ ] GSPS with AI annotations
+- [ ] Report generation
+
+#### Phase D: Optimization & Registry (Days 13-14)
+- [ ] Performance optimization
+- [ ] Model registry and versioning
+- [ ] Confidence filtering
+- [ ] Documentation and examples
+
+### Usage Examples
+
+```bash
+# Run classification model
+dicom-ai classify chest-xray.dcm \
+  --model pneumonia-detection.mlmodel \
+  --output results.json
+
+# Segment organs from CT
+dicom-ai segment abdomen-ct.dcm \
+  --model organ-segmentation.mlmodel \
+  --output segmentation.dcm \
+  --format dicom-seg
+
+# Detect lesions
+dicom-ai detect brain-mri.dcm \
+  --model lesion-detection.mlmodel \
+  --output detections.json \
+  --confidence 0.7 \
+  --render-overlay detections.png
+
+# Enhance low-quality image
+dicom-ai enhance noisy-image.dcm \
+  --model super-resolution.mlmodel \
+  --output enhanced.dcm
+
+# Generate automated report
+dicom-ai report chest-xray.dcm \
+  --model report-generation.mlmodel \
+  --output report.json \
+  --create-sr report-sr.dcm
+
+# Batch inference on series
+dicom-ai classify series/*.dcm \
+  --model classifier.mlmodel \
+  --output results.csv \
+  --format csv \
+  --batch-size 16
+
+# Use PyTorch model via Python bridge
+dicom-ai segment scan.dcm \
+  --model segmentation.pth \
+  --runtime pytorch \
+  --output seg.dcm
+
+# Ensemble multiple models
+dicom-ai classify image.dcm \
+  --models model1.mlmodel,model2.mlmodel,model3.mlmodel \
+  --ensemble average \
+  --output results.json
+```
+
+### Deliverables
+
+- [ ] CoreML model loader and inference
+- [ ] ONNX model support
+- [ ] Python bridge for TensorFlow
+- [ ] Python bridge for PyTorch
+- [ ] Image preprocessing pipeline
+- [ ] Batch inference engine
+- [ ] Post-processing (NMS, thresholding, filtering)
+- [ ] Ensemble inference
+- [ ] DICOM SR creation from predictions
+- [ ] DICOM Segmentation object creation
+- [ ] GSPS with AI annotations
+- [ ] Report generation from predictions
+- [ ] Model registry and versioning
+- [ ] Performance profiling
+- [ ] 35+ unit tests
+- [ ] Sample models (demo purposes)
+- [ ] Documentation with examples
+- [ ] Best practices guide
+
+### Test Cases
+
+1. Load CoreML model
+2. Load ONNX model
+3. Run inference on single image
+4. Run batch inference
+5. Apply preprocessing correctly
+6. Apply post-processing (NMS, threshold)
+7. Create DICOM SR from predictions
+8. Create DICOM Segmentation
+9. Create GSPS with annotations
+10. Ensemble multiple models
+11. Filter low-confidence predictions
+12. Handle model versioning
+13. Measure inference performance
+14. Use Python bridge for TensorFlow
+15. Use Python bridge for PyTorch
+
+**Lines of Code Estimate**: 1,300-1,600
+
+---
+
+## Milestone 7.6: Cloud Storage Integration
+
+**Tool**: `dicom-cloud`  
+**Priority**: Medium  
+**Complexity**: High  
+**Timeline**: 1 week  
+**Tests**: 30+  
+**Dependencies**: AWS SDK, Google Cloud SDK, Azure SDK
+
+### Purpose
+
+Seamlessly integrate with cloud storage providers (AWS S3, Google Cloud Storage, Azure Blob Storage) for DICOM file upload, download, and management.
+
+### Features
+
+#### Cloud Providers
+- **AWS S3**: Amazon S3 integration
+- **Google Cloud Storage**: GCS integration
+- **Azure Blob Storage**: Azure integration
+- **Custom S3-compatible**: MinIO, DigitalOcean Spaces, etc.
+
+#### Operations
+- **Upload**: Upload files/directories to cloud storage
+- **Download**: Download from cloud storage
+- **List**: List objects in bucket/container
+- **Delete**: Remove objects from cloud
+- **Sync**: Bidirectional sync with local directory
+- **Copy**: Copy between cloud providers
+
+#### Advanced Features
+- **Metadata Tagging**: Add custom metadata tags
+- **Encryption**: Server-side and client-side encryption
+- **Access Control**: Manage permissions and ACLs
+- **Multipart Upload**: Efficient large file uploads
+- **Resume Support**: Resume interrupted transfers
+- **Parallel Transfers**: Concurrent uploads/downloads
+
+### Implementation Phases
+
+#### Phase A: AWS S3 Support (Days 1-2)
+- [ ] AWS SDK integration
+- [ ] S3 upload/download
+- [ ] S3 list and delete
+- [ ] S3 metadata tagging
+
+#### Phase B: Multi-Provider Support (Days 3-5)
+- [ ] Google Cloud Storage integration
+- [ ] Azure Blob Storage integration
+- [ ] Custom S3-compatible providers
+
+#### Phase C: Advanced Features (Days 6-7)
+- [ ] Bidirectional sync
+- [ ] Multipart upload
+- [ ] Parallel transfers
+- [ ] Resume capability
+- [ ] Encryption support
+
+### Usage Examples
+
+```bash
+# Upload to AWS S3
+dicom-cloud upload study/ s3://my-bucket/studies/study1/ --recursive
+
+# Download from S3
+dicom-cloud download s3://my-bucket/studies/study1/ local-study/ --recursive
+
+# List objects in bucket
+dicom-cloud list s3://my-bucket/studies/ --recursive
+
+# Sync local with cloud
+dicom-cloud sync local-archive/ s3://my-bucket/archive/ --bidirectional
+
+# Upload to Google Cloud Storage
+dicom-cloud upload study/ gs://my-bucket/studies/study1/ --recursive
+
+# Upload to Azure
+dicom-cloud upload study/ azure://mycontainer/studies/study1/ --recursive
+
+# Upload with metadata tags
+dicom-cloud upload scan.dcm s3://my-bucket/scans/scan.dcm \
+  --tags PatientID=12345,StudyDate=20240101
+
+# Upload with encryption
+dicom-cloud upload study/ s3://my-bucket/studies/ \
+  --recursive \
+  --encrypt server-side
+
+# Parallel multipart upload
+dicom-cloud upload large-study/ s3://my-bucket/large/ \
+  --recursive \
+  --parallel 8 \
+  --multipart \
+  --resume
+
+# Copy between providers
+dicom-cloud copy s3://bucket1/study/ gs://bucket2/study/ --recursive
+```
+
+### Deliverables
+
+- [ ] AWS S3 SDK integration
+- [ ] Upload/download to S3
+- [ ] List and delete S3 objects
+- [ ] Google Cloud Storage support
+- [ ] Azure Blob Storage support
+- [ ] Custom S3-compatible support
+- [ ] Metadata tagging
+- [ ] Encryption (server-side, client-side)
+- [ ] Multipart upload
+- [ ] Parallel transfers
+- [ ] Resume capability
+- [ ] Bidirectional sync
+- [ ] Cross-provider copy
+- [ ] 30+ unit tests
+- [ ] Documentation with examples
+- [ ] Security best practices guide
+
+### Test Cases
+
+1. Upload file to S3
+2. Download file from S3
+3. List objects in bucket
+4. Delete object from cloud
+5. Upload directory recursively
+6. Download directory recursively
+7. Sync local to cloud
+8. Sync cloud to local
+9. Bidirectional sync
+10. Add metadata tags
+11. Use server-side encryption
+12. Use client-side encryption
+13. Multipart upload large file
+14. Resume interrupted upload
+15. Parallel transfers
+16. Upload to Google Cloud Storage
+17. Upload to Azure Blob Storage
+18. Copy between providers
+19. Handle network errors gracefully
+20. Validate credentials
+
+**Lines of Code Estimate**: 850-1,000
+
+---
+
+## Milestone 7.7: Protocol Gateway
+
+**Tool**: `dicom-gateway`  
+**Priority**: Low  
+**Complexity**: Very High  
+**Timeline**: 2 weeks  
+**Tests**: 40+  
+**Dependencies**: HL7 parser, FHIR SDK
+
+### Purpose
+
+Bridge DICOM with other healthcare standards (HL7 v2, HL7 FHIR, IHE profiles) for interoperability and integration with broader healthcare IT systems.
+
+### Features
+
+#### Protocol Support
+- **HL7 v2**: Parse and generate HL7 v2 messages (ADT, ORM, ORU)
+- **HL7 FHIR**: Convert DICOM to FHIR resources (ImagingStudy, Patient, etc.)
+- **IHE Profiles**: Support common IHE integration profiles
+- **Custom Mappings**: User-defined protocol mappings
+
+#### Conversion Modes
+- **DICOM to HL7**: Extract demographics, study info for HL7 messages
+- **HL7 to DICOM**: Populate DICOM tags from HL7 messages
+- **DICOM to FHIR**: Create FHIR ImagingStudy, DiagnosticReport
+- **FHIR to DICOM**: Populate DICOM from FHIR resources
+
+#### Gateway Operations
+- **Listener Mode**: Listen for HL7 messages and trigger DICOM operations
+- **Forwarder Mode**: Forward DICOM events as HL7/FHIR messages
+- **Bidirectional Mode**: Two-way conversion and synchronization
+- **Batch Mode**: Process historical data for migration
+
+### Implementation Phases
+
+#### Phase A: HL7 v2 Support (Days 1-4)
+- [ ] HL7 v2 message parser
+- [ ] DICOM to HL7 converter
+- [ ] HL7 to DICOM converter
+- [ ] ADT/ORM/ORU message types
+
+#### Phase B: FHIR Support (Days 5-9)
+- [ ] FHIR SDK integration
+- [ ] DICOM to FHIR ImagingStudy
+- [ ] DICOM to FHIR Patient/Practitioner
+- [ ] FHIR to DICOM converter
+
+#### Phase C: Gateway Modes (Days 10-12)
+- [ ] Listener mode for HL7 messages
+- [ ] Forwarder mode for DICOM events
+- [ ] Bidirectional synchronization
+
+#### Phase D: IHE & Polish (Days 13-14)
+- [ ] IHE profile support
+- [ ] Custom mapping engine
+- [ ] Documentation and examples
+
+### Usage Examples
+
+```bash
+# Convert DICOM to HL7 message
+dicom-gateway dicom-to-hl7 study.dcm --output study.hl7 --message-type ORM
+
+# Convert HL7 to DICOM
+dicom-gateway hl7-to-dicom message.hl7 --template template.dcm --output study.dcm
+
+# Convert DICOM to FHIR ImagingStudy
+dicom-gateway dicom-to-fhir study.dcm --output study.json --resource ImagingStudy
+
+# Convert FHIR to DICOM
+dicom-gateway fhir-to-dicom imaging-study.json --output study.dcm
+
+# Run as HL7 listener (forward DICOM events)
+dicom-gateway listen --protocol hl7 --port 2575 \
+  --forward pacs://server:11112 \
+  --message-types ADT,ORM
+
+# Run as DICOM forwarder (send HL7 when DICOM received)
+dicom-gateway forward --listen-port 11112 \
+  --forward-hl7 hl7-server:2575 \
+  --message-type ORU
+
+# Batch conversion
+dicom-gateway batch dicom-to-fhir studies/*.dcm \
+  --output fhir-resources/ \
+  --format json
+
+# Custom mapping
+dicom-gateway dicom-to-hl7 study.dcm \
+  --output study.hl7 \
+  --mapping custom-mapping.json
+```
+
+### Deliverables
+
+- [ ] HL7 v2 parser and generator
+- [ ] DICOM to HL7 converter (ADT, ORM, ORU)
+- [ ] HL7 to DICOM converter
+- [ ] FHIR SDK integration
+- [ ] DICOM to FHIR converters (ImagingStudy, Patient, etc.)
+- [ ] FHIR to DICOM converter
+- [ ] HL7 listener mode
+- [ ] DICOM forwarder mode
+- [ ] Bidirectional synchronization
+- [ ] IHE profile support
+- [ ] Custom mapping engine
+- [ ] Batch conversion mode
+- [ ] 40+ unit tests
+- [ ] Integration tests
+- [ ] Documentation with HL7/FHIR examples
+- [ ] IHE profile documentation
+
+### Test Cases
+
+1. Parse HL7 v2 message (ADT)
+2. Parse HL7 v2 message (ORM)
+3. Generate HL7 v2 message from DICOM
+4. Populate DICOM from HL7 message
+5. Convert DICOM to FHIR ImagingStudy
+6. Convert DICOM to FHIR Patient
+7. Convert FHIR to DICOM
+8. Listen for HL7 messages
+9. Forward DICOM events as HL7
+10. Bidirectional sync
+11. Apply custom mapping
+12. Batch convert directory
+13. Support IHE profiles
+14. Handle missing fields gracefully
+15. Validate generated messages
+
+**Lines of Code Estimate**: 1,400-1,700
+
+---
+
+## Milestone 7.8: Lightweight PACS Server
+
+**Tool**: `dicom-server`  
+**Priority**: Low  
+**Complexity**: Very High  
+**Timeline**: 2.5 weeks  
+**Tests**: 50+  
+**Dependencies**: DICOMNetwork, SQLite/PostgreSQL
+
+### Purpose
+
+Run a lightweight PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and C-GET for development, testing, and small-scale deployments.
+
+### Features
+
+#### DICOM Services
+- **C-ECHO**: Verification service
+- **C-FIND**: Query service (Patient/Study/Series/Instance levels)
+- **C-STORE**: Storage service with automatic indexing
+- **C-MOVE**: Retrieval service
+- **C-GET**: Direct retrieval service
+- **Storage Commitment**: Optional N-EVENT-REPORT
+
+#### Storage Backend
+- **Filesystem**: Simple file-based storage
+- **SQLite**: Lightweight database for metadata
+- **PostgreSQL**: Full database for large deployments
+- **DICOMDIR**: Optional DICOMDIR maintenance
+
+#### Server Configuration
+- **AE Title**: Configurable Application Entity Title
+- **Port**: Configurable listening port
+- **Access Control**: AE Title whitelist/blacklist
+- **Compression**: Support compressed transfer syntaxes
+- **TLS/SSL**: Optional secure connections
+
+#### Management Features
+- **Web Interface**: Simple web UI for monitoring
+- **REST API**: RESTful API for management
+- **Logging**: Comprehensive logging
+- **Statistics**: Connection and transfer statistics
+- **Backup**: Automated backup functionality
+
+### Implementation Phases
+
+#### Phase A: Core Services (Days 1-6)
+- [ ] C-ECHO service
+- [ ] C-STORE SCP with file storage
+- [ ] Metadata indexer (SQLite)
+- [ ] C-FIND SCP
+
+#### Phase B: Retrieval Services (Days 7-11)
+- [ ] C-MOVE SCP
+- [ ] C-GET SCP
+- [ ] Multi-threaded connection handling
+- [ ] Query result caching
+
+#### Phase C: Management (Days 12-15)
+- [ ] Configuration file support
+- [ ] Access control (AE Title filtering)
+- [ ] Web interface (basic monitoring)
+- [ ] REST API for management
+
+#### Phase D: Polish & Deployment (Days 16-17)
+- [ ] PostgreSQL backend support
+- [ ] TLS/SSL support
+- [ ] Logging and statistics
+- [ ] Documentation and deployment guide
+
+### Usage Examples
+
+```bash
+# Start server with default settings
+dicom-server start --aet MY_PACS --port 11112
+
+# Start with SQLite backend
+dicom-server start \
+  --aet MY_PACS \
+  --port 11112 \
+  --storage filesystem \
+  --database sqlite:///pacs.db \
+  --data-dir /var/lib/dicom-server
+
+# Start with PostgreSQL
+dicom-server start \
+  --aet MY_PACS \
+  --port 11112 \
+  --database postgres://user:pass@localhost/pacsdb \
+  --data-dir /var/lib/dicom-server
+
+# Start with configuration file
+dicom-server start --config /etc/dicom-server.conf
+
+# Start with access control
+dicom-server start \
+  --aet MY_PACS \
+  --port 11112 \
+  --allow-aet WORKSTATION1,WORKSTATION2 \
+  --deny-aet UNKNOWN
+
+# Start with TLS
+dicom-server start \
+  --aet MY_PACS \
+  --port 11112 \
+  --tls \
+  --cert server.crt \
+  --key server.key
+
+# Start with web interface
+dicom-server start \
+  --aet MY_PACS \
+  --port 11112 \
+  --web-ui \
+  --web-port 8080
+
+# Check server status
+dicom-server status
+
+# Stop server
+dicom-server stop
+
+# Backup database
+dicom-server backup --output backup.sql
+```
+
+### Configuration File Example
+
+```yaml
+# /etc/dicom-server.conf
+server:
+  aet: "MY_PACS"
+  port: 11112
+  max_connections: 20
+  timeout: 300
+
+storage:
+  backend: "filesystem"
+  data_dir: "/var/lib/dicom-server/data"
+  database: "sqlite:///var/lib/dicom-server/pacs.db"
+
+security:
+  tls_enabled: false
+  allowed_aets: ["WORKSTATION1", "WORKSTATION2"]
+  
+web:
+  enabled: true
+  port: 8080
+
+logging:
+  level: "info"
+  file: "/var/log/dicom-server.log"
+```
+
+### Deliverables
+
+- [ ] C-ECHO SCP
+- [ ] C-STORE SCP with file storage
+- [ ] Metadata indexer (SQLite)
+- [ ] C-FIND SCP (all query levels)
+- [ ] C-MOVE SCP
+- [ ] C-GET SCP
+- [ ] PostgreSQL backend support
+- [ ] Configuration file parser
+- [ ] Access control (AE Title filtering)
+- [ ] Multi-threaded connection handler
+- [ ] TLS/SSL support
+- [ ] Web UI (monitoring, statistics)
+- [ ] REST API (management)
+- [ ] Logging system
+- [ ] Statistics collector
+- [ ] Backup functionality
+- [ ] 50+ unit tests
+- [ ] Integration tests (live server)
+- [ ] Deployment documentation
+- [ ] Security best practices
+
+### Test Cases
+
+1. Start server successfully
+2. Handle C-ECHO request
+3. Store DICOM file (C-STORE)
+4. Index metadata in database
+5. Query patients (C-FIND)
+6. Query studies (C-FIND)
+7. Query series (C-FIND)
+8. Query instances (C-FIND)
+9. Retrieve study (C-MOVE)
+10. Retrieve series (C-GET)
+11. Handle multiple concurrent connections
+12. Apply AE Title whitelist
+13. Apply AE Title blacklist
+14. Parse configuration file
+15. Switch to PostgreSQL backend
+16. Establish TLS connection
+17. Generate statistics
+18. Backup database
+19. Serve web UI
+20. Use REST API for management
+
+**Lines of Code Estimate**: 2,000-2,500
+
+---
+
+## Phase 7 Summary
+
+### Statistics
+
+| Metric | Value |
+|--------|-------|
+| **Total Tools** | 8 |
+| **Total Tests** | 295+ |
+| **Total LOC** | 10,250-12,700 |
+| **Timeline** | 6-8 weeks (parallel dev) |
+| **Priority Distribution** | High: 2, Medium: 4, Low: 2 |
+
+### Development Order Recommendation
+
+1. **dicom-report** (High priority, enables clinical workflows)
+2. **dicom-measure** (High priority, essential for diagnostics)
+3. **dicom-viewer** (Medium priority, useful for testing/triage)
+4. **dicom-cloud** (Medium priority, modern deployment needs)
+5. **dicom-3d** (Medium priority, advanced visualization)
+6. **dicom-ai** (Medium priority, future-looking)
+7. **dicom-gateway** (Low priority, enterprise integration)
+8. **dicom-server** (Low priority, development/testing tool)
+
+### Parallel Development Strategy
+
+**Sprint 1 (Weeks 1-2)**: dicom-report, dicom-measure  
+**Sprint 2 (Weeks 3-4)**: dicom-viewer, dicom-cloud, start dicom-3d  
+**Sprint 3 (Weeks 5-6)**: Complete dicom-3d, dicom-ai  
+**Sprint 4 (Weeks 7-8)**: dicom-gateway, dicom-server
+
+---
+
+## Testing Strategy
+
+### Unit Tests (295+)
+- Mock data for all test cases
+- Isolated component testing
+- Edge case coverage
+- Error handling validation
+
+### Integration Tests
+- End-to-end workflows
+- Multi-tool pipelines
+- Cloud provider integration (requires credentials)
+- AI model inference (requires sample models)
+- Server operations (requires test PACS)
+
+### Performance Tests
+- Large file processing (3D, AI)
+- Cloud upload/download speeds
+- Server concurrent connections
+- Memory usage profiling
+
+---
+
+## Documentation Requirements
+
+### Per-Tool Documentation
+- Comprehensive README.md with examples
+- Clinical use case tutorials
+- Best practices guide
+- Troubleshooting section
+
+### Cross-Tool Documentation
+- Workflow integration guides
+- AI model deployment guide
+- Cloud deployment guide
+- Server deployment guide
+
+### API Documentation
+- DocC documentation for public APIs
+- Example code snippets
+- Integration templates
+
+---
+
+## Quality Standards
+
+- ✅ Swift 6 strict concurrency compliance
+- ✅ Zero compiler warnings
+- ✅ SwiftLint passing
+- ✅ Code coverage >80%
+- ✅ Cross-platform compatibility (macOS, Linux where applicable)
+- ✅ Security best practices (CodeQL scanned)
+
+---
+
+## Dependencies
+
+### New Dependencies (to be added)
+- **CoreML**: For AI model inference (Apple platforms)
+- **AWS SDK for Swift**: For S3 integration
+- **Google Cloud SDK**: For GCS integration
+- **Azure SDK**: For Azure Blob Storage
+- **HL7 Parser**: Third-party or custom HL7 v2 parser
+- **FHIR SDK**: FHIR resource handling
+- **Image Processing**: vImage, Accelerate framework
+- **3D Rendering**: Custom or third-party 3D library
+
+### Existing Dependencies
+- DICOMCore
+- DICOMKit
+- DICOMNetwork
+- DICOMWeb
+- DICOMDictionary
+- ArgumentParser
+
+---
+
+## Versioning Strategy
+
+- **Phase 7 Base**: v1.4.0 (foundation, dicom-report, dicom-measure)
+- **Visualization**: v1.4.1-v1.4.2 (dicom-viewer, dicom-3d)
+- **AI & Cloud**: v1.4.3-v1.4.4 (dicom-ai, dicom-cloud)
+- **Integration**: v1.4.5-v1.4.6 (dicom-gateway)
+- **Server**: v1.4.7 (dicom-server)
+
+---
+
+## Success Criteria
+
+### Phase 7 Complete When:
+- ✅ All 8 tools implemented and tested
+- ✅ 295+ tests passing
+- ✅ Comprehensive documentation complete
+- ✅ All tools build with zero warnings
+- ✅ Cross-platform support verified
+- ✅ Security scan passed (CodeQL)
+- ✅ Clinical validation examples provided
+- ✅ Integration guides published
+
+---
+
+## Future Phases (Beyond Phase 7)
+
+### Potential Phase 8+
+- **dicom-blockchain**: Blockchain-based audit trail
+- **dicom-federated**: Federated learning for AI
+- **dicom-ar**: AR/VR visualization
+- **dicom-mobile**: Mobile-optimized tools
+- **dicom-edge**: Edge computing deployment
+- **dicom-privacy**: Advanced privacy-preserving techniques
+
+---
+
+## Contributing
+
+We welcome contributions to Phase 7 CLI tool development!
+
+**Priority Areas**:
+1. Clinical validation and testing
+2. AI model development and training
+3. Cloud provider support
+4. Performance optimizations
+5. Documentation improvements
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+---
+
+## References
+
+### DICOM Standards
+- **PS3.3**: Information Object Definitions (SR, Segmentation, GSPS)
+- **PS3.4**: Service Class Specifications (C-FIND, C-MOVE, C-GET, C-STORE)
+- **PS3.17**: Explanatory Information
+- **PS3.18**: Web Services (DICOMweb)
+- **PS3.19**: Application Hosting
+
+### HL7 Standards
+- **HL7 v2.x**: Message structure and segments
+- **FHIR R4**: ImagingStudy, DiagnosticReport, Patient resources
+
+### IHE Profiles
+- **IHE Radiology**: XDS-I, PIX, PDQ
+- **IHE Cardiology**: Various cardiac imaging profiles
+
+### AI/ML Resources
+- **CoreML**: Apple's machine learning framework
+- **ONNX**: Open Neural Network Exchange format
+- **MONAI**: Medical Open Network for AI
+
+---
+
+**Status**: 📋 Planned - Ready for Implementation  
+**Next Steps**: Begin with dicom-report and dicom-measure in Sprint 1  
+**Document Version**: 1.0  
+**Last Updated**: February 2026
