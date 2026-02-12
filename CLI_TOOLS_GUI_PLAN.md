@@ -413,13 +413,13 @@ Each CLI parameter type maps to a specific SwiftUI control:
 
 #### Deliverables
 
-- [ ] **4.1 - File Organization Tab (4 tools)**
+- [x] **4.1 - File Organization Tab (4 tools)**
   - `DicomSplitView`: Input file, output dir, frame range, format picker, window settings
   - `DicomMergeView`: Multiple input files (list with add/remove), output, format, sort options
   - `DicomDcmdirView`: Subcommand picker (create | validate | dump | update), dynamic form
   - `DicomArchiveView`: Input, output, format, recursive toggle
 
-- [ ] **4.2 - Data Export Tab (6 tools)**
+- [x] **4.2 - Data Export Tab (6 tools)**
   - `DicomJsonView`: Input file, output, format (standard | dicomweb), reverse toggle, pretty print
   - `DicomXmlView`: Input file, output, reverse toggle, pretty print, no-keywords
   - `DicomPdfView`: Input file, output, patient metadata fields, extract toggle
@@ -428,16 +428,16 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - `DicomPixeditView`: Input file, output, mask region, crop, fill value, invert toggle
 
 #### Test Cases (Phase 4)
-- [ ] dicom-split frame range parsing (4 tests)
-- [ ] dicom-merge multi-file list management (5 tests)
-- [ ] dicom-dcmdir subcommand forms (4 tests)
-- [ ] dicom-json reverse mode (3 tests)
-- [ ] dicom-xml command generation (4 tests)
-- [ ] dicom-pdf extract vs encapsulate modes (4 tests)
-- [ ] dicom-image EXIF handling (3 tests)
-- [ ] dicom-export subcommand dynamic forms (8 tests)
-- [ ] dicom-pixedit region format validation (3 tests)
-- [ ] Multi-file drop zone (4 tests)
+- [x] dicom-split frame range parsing (4 tests)
+- [x] dicom-merge multi-file list management (5 tests)
+- [x] dicom-dcmdir subcommand forms (4 tests)
+- [x] dicom-json reverse mode (3 tests)
+- [x] dicom-xml command generation (4 tests)
+- [x] dicom-pdf extract vs encapsulate modes (4 tests)
+- [x] dicom-image EXIF handling (3 tests)
+- [x] dicom-export subcommand dynamic forms (8 tests)
+- [x] dicom-pixedit region format validation (3 tests)
+- [x] Multi-file drop zone (4 tests)
 
 **Phase 4 Total: ~42 tests**
 
