@@ -11,6 +11,7 @@ public struct ContentView: View {
     @State private var subcommand: String?
     @State private var consoleOutput: String = ""
     @State private var executionStatus: ExecutionStatus = .idle
+    @State private var historyEntries: [CommandHistoryEntry] = CommandHistory.load()
 
     public init() {}
 
@@ -41,7 +42,8 @@ public struct ContentView: View {
                 subcommand: subcommand,
                 networkConfig: networkConfig,
                 output: $consoleOutput,
-                status: $executionStatus
+                status: $executionStatus,
+                historyEntries: $historyEntries
             )
             .padding(.horizontal)
             .padding(.bottom, 8)
