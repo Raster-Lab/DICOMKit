@@ -399,7 +399,7 @@ final class DICOMMeasureTests: XCTestCase {
 
     // MARK: - Unit Conversion Tests
 
-    func testMillimetersTocentimeters() {
+    func testMillimetersToCentimeters() {
         let mm = 25.4
         let cm = mm / 10.0
         XCTAssertEqual(cm, 2.54, accuracy: 0.001)
