@@ -647,13 +647,40 @@ public enum ToolRegistry {
         category: .automation,
         description: "Study management operations",
         subcommands: [
-            SubcommandDefinition(id: "organize", name: "Organize", description: "Organize study files", parameters: [
+            SubcommandDefinition(id: "organize", name: "Organize", description: "Organize study files into a structured directory layout", parameters: [
                 ParameterDefinition(id: "input", cliFlag: "@argument", label: "Input Directory", help: "Directory to organize", type: .file, isRequired: true),
                 ParameterDefinition(id: "output", cliFlag: "--output", label: "Output Directory", help: "Output directory", type: .file),
-                ParameterDefinition(id: "pattern", cliFlag: "--pattern", label: "Pattern", help: "Organization pattern", type: .string),
+                ParameterDefinition(id: "pattern", cliFlag: "--pattern", label: "Pattern", help: "Organization pattern (e.g., {PatientName}/{StudyDate}/{Modality})", type: .string),
+                ParameterDefinition(id: "format", cliFlag: "--format", label: "Format", help: "Output format", type: .enumeration, enumValues: [
+                    EnumValue(label: "Text", value: "text"),
+                    EnumValue(label: "JSON", value: "json"),
+                ]),
             ]),
-            SubcommandDefinition(id: "summary", name: "Summary", description: "Show study summary", parameters: [
+            SubcommandDefinition(id: "summary", name: "Summary", description: "Show study summary with series and instance counts", parameters: [
                 ParameterDefinition(id: "input", cliFlag: "@argument", label: "Input", help: "Study directory", type: .file, isRequired: true),
+                ParameterDefinition(id: "format", cliFlag: "--format", label: "Format", help: "Output format", type: .enumeration, enumValues: [
+                    EnumValue(label: "Text", value: "text"),
+                    EnumValue(label: "JSON", value: "json"),
+                ]),
+            ]),
+            SubcommandDefinition(id: "check", name: "Check", description: "Check study completeness and integrity", parameters: [
+                ParameterDefinition(id: "input", cliFlag: "@argument", label: "Input", help: "Study directory to check", type: .file, isRequired: true),
+                ParameterDefinition(id: "expected-series", cliFlag: "--expected-series", label: "Expected Series", help: "Expected number of series", type: .integer),
+                ParameterDefinition(id: "format", cliFlag: "--format", label: "Format", help: "Output format", type: .enumeration, enumValues: [
+                    EnumValue(label: "Text", value: "text"),
+                    EnumValue(label: "JSON", value: "json"),
+                ]),
+            ]),
+            SubcommandDefinition(id: "stats", name: "Stats", description: "Display detailed study statistics", parameters: [
+                ParameterDefinition(id: "input", cliFlag: "@argument", label: "Input", help: "Study directory", type: .file, isRequired: true),
+                ParameterDefinition(id: "format", cliFlag: "--format", label: "Format", help: "Output format", type: .enumeration, enumValues: [
+                    EnumValue(label: "Text", value: "text"),
+                    EnumValue(label: "JSON", value: "json"),
+                ]),
+            ]),
+            SubcommandDefinition(id: "compare", name: "Compare", description: "Compare two studies for differences", parameters: [
+                ParameterDefinition(id: "input", cliFlag: "@argument", label: "First Study", help: "First study directory", type: .file, isRequired: true),
+                ParameterDefinition(id: "input2", cliFlag: "@argument", label: "Second Study", help: "Second study directory", type: .file, isRequired: true),
                 ParameterDefinition(id: "format", cliFlag: "--format", label: "Format", help: "Output format", type: .enumeration, enumValues: [
                     EnumValue(label: "Text", value: "text"),
                     EnumValue(label: "JSON", value: "json"),
@@ -669,17 +696,23 @@ public enum ToolRegistry {
         category: .automation,
         description: "UID generation and management",
         subcommands: [
-            SubcommandDefinition(id: "generate", name: "Generate", description: "Generate UIDs", parameters: [
+            SubcommandDefinition(id: "generate", name: "Generate", description: "Generate new DICOM UIDs", parameters: [
                 ParameterDefinition(id: "count", cliFlag: "--count", label: "Count", help: "Number of UIDs to generate", type: .integer, defaultValue: "1"),
                 ParameterDefinition(id: "type", cliFlag: "--type", label: "Type", help: "UID type", type: .string),
                 ParameterDefinition(id: "root", cliFlag: "--root", label: "Root OID", help: "Root OID for UIDs", type: .string),
                 ParameterDefinition(id: "json", cliFlag: "--json", label: "JSON Output", help: "Output as JSON", type: .boolean),
             ]),
-            SubcommandDefinition(id: "validate", name: "Validate", description: "Validate UIDs", parameters: [
+            SubcommandDefinition(id: "validate", name: "Validate", description: "Validate UID format and structure", parameters: [
                 ParameterDefinition(id: "uid", cliFlag: "@argument", label: "UID", help: "UID to validate", type: .string, isRequired: true),
             ]),
-            SubcommandDefinition(id: "lookup", name: "Lookup", description: "Look up well-known UIDs", parameters: [
+            SubcommandDefinition(id: "lookup", name: "Lookup", description: "Look up well-known UIDs in the DICOM registry", parameters: [
                 ParameterDefinition(id: "uid", cliFlag: "@argument", label: "UID", help: "UID to look up", type: .string, isRequired: true),
+            ]),
+            SubcommandDefinition(id: "regenerate", name: "Regenerate", description: "Regenerate UIDs in DICOM files", parameters: [
+                ParameterDefinition(id: "input", cliFlag: "@argument", label: "Input File", help: "DICOM file to regenerate UIDs in", type: .file, isRequired: true),
+                ParameterDefinition(id: "output", cliFlag: "--output", label: "Output File", help: "Output file path", type: .file),
+                ParameterDefinition(id: "root", cliFlag: "--root", label: "Root OID", help: "Root OID for new UIDs", type: .string),
+                ParameterDefinition(id: "json", cliFlag: "--json", label: "JSON Output", help: "Output mapping as JSON", type: .boolean),
             ]),
         ]
     )
