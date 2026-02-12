@@ -335,7 +335,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
 
 #### Deliverables
 
-- [ ] **3.1 - dicom-convert Tool View**
+- [x] **3.1 - dicom-convert Tool View**
   - `DicomConvertView` parameter form:
     - **Input File/Directory** (`FileDropZoneView` - required)
     - **Output Path** (`OutputPathView` - required)
@@ -352,7 +352,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Recursive** (`Toggle`)
     - **Force Parse** (`Toggle`)
 
-- [ ] **3.2 - dicom-validate Tool View**
+- [x] **3.2 - dicom-validate Tool View**
   - `DicomValidateView` parameter form:
     - **Input File/Directory** (`FileDropZoneView` - required)
     - **Validation Level** (`Picker` with segmented style: 1 | 2 | 3 | 4)
@@ -365,7 +365,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Strict Mode** (`Toggle` with warning about treating warnings as errors)
     - **Force Parse** (`Toggle`)
 
-- [ ] **3.3 - dicom-anon Tool View**
+- [x] **3.3 - dicom-anon Tool View**
   - `DicomAnonView` parameter form:
     - **Input File/Directory** (`FileDropZoneView` - required)
     - **Output Path** (`OutputPathView`)
@@ -383,7 +383,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Force Parse** (`Toggle`)
     - **Verbose** (`Toggle`)
 
-- [ ] **3.4 - dicom-compress Tool View**
+- [x] **3.4 - dicom-compress Tool View**
   - `DicomCompressView` parameter form:
     - **Subcommand** (`Picker`: compress | decompress | info | batch)
     - Dynamic form based on selected subcommand:
@@ -394,16 +394,16 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Verbose** (`Toggle`)
 
 #### Test Cases (Phase 3)
-- [ ] dicom-convert command generation with format-dependent options (10 tests)
-- [ ] Transfer syntax picker values (4 tests)
-- [ ] dicom-validate level descriptions (4 tests)
-- [ ] dicom-anon profile handling (6 tests)
-- [ ] dicom-anon custom tag actions (6 tests)
-- [ ] dicom-compress subcommand switching (8 tests)
-- [ ] Conditional UI visibility (quality slider appears for JPEG) (4 tests)
-- [ ] Output path required validation (3 tests)
+- [x] dicom-convert command generation with format-dependent options (10 tests)
+- [x] Transfer syntax picker values (4 tests)
+- [x] dicom-validate level descriptions (4 tests)
+- [x] dicom-anon profile handling (6 tests)
+- [x] dicom-anon custom tag actions (6 tests)
+- [x] dicom-compress subcommand switching (8 tests)
+- [x] Conditional UI visibility (quality slider appears for JPEG) (4 tests)
+- [x] Output path required validation (3 tests)
 
-**Phase 3 Total: ~45 tests**
+**Phase 3 Total: ~45 tests** ✅ (65+ tests implemented)
 
 ---
 

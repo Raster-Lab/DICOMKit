@@ -144,25 +144,31 @@ public enum ToolRegistry {
         icon: "arrow.triangle.2.circlepath",
         category: .fileProcessing,
         description: "Convert DICOM transfer syntax or export to image formats",
+        discussion: "Converts DICOM files between transfer syntaxes (e.g., Implicit VR to Explicit VR Little Endian) or exports pixel data to standard image formats like PNG, JPEG, and TIFF. Supports windowing parameters for proper visualization of medical images.",
         parameters: [
             ParameterDefinition(id: "inputPath", cliFlag: "@argument", label: "Input File", help: "Path to the DICOM file", type: .file, isRequired: true),
             ParameterDefinition(id: "output", cliFlag: "--output", label: "Output Path", help: "Output file or directory", type: .file, isRequired: true),
-            ParameterDefinition(id: "transfer-syntax", cliFlag: "--transfer-syntax", label: "Transfer Syntax", help: "Target transfer syntax", type: .enumeration, enumValues: [
-                EnumValue(label: "Explicit VR LE", value: "explicit-vr-le"),
-                EnumValue(label: "Implicit VR LE", value: "implicit-vr-le"),
-                EnumValue(label: "Explicit VR BE", value: "explicit-vr-be"),
-                EnumValue(label: "DEFLATE", value: "deflate"),
+            ParameterDefinition(id: "transfer-syntax", cliFlag: "--transfer-syntax", label: "Transfer Syntax", help: "Target transfer syntax", discussion: "Transfer syntax defines how DICOM data is encoded: byte ordering (Little vs Big Endian), Value Representation encoding (Explicit vs Implicit), and compression.", type: .enumeration, enumValues: [
+                EnumValue(label: "Explicit VR LE", value: "explicit-vr-le", description: "Most common modern encoding with explicit type information"),
+                EnumValue(label: "Implicit VR LE", value: "implicit-vr-le", description: "Legacy encoding requiring a data dictionary for type lookup"),
+                EnumValue(label: "Explicit VR BE", value: "explicit-vr-be", description: "Big endian byte ordering (rarely used)"),
+                EnumValue(label: "DEFLATE", value: "deflate", description: "Lossless compression using DEFLATE algorithm"),
             ]),
             ParameterDefinition(id: "format", cliFlag: "--format", label: "Output Format", help: "Image output format", type: .enumeration, enumValues: [
-                EnumValue(label: "DICOM", value: "dicom"),
-                EnumValue(label: "PNG", value: "png"),
-                EnumValue(label: "JPEG", value: "jpeg"),
-                EnumValue(label: "TIFF", value: "tiff"),
+                EnumValue(label: "DICOM", value: "dicom", description: "DICOM format with converted transfer syntax"),
+                EnumValue(label: "PNG", value: "png", description: "Lossless image format"),
+                EnumValue(label: "JPEG", value: "jpeg", description: "Lossy compressed image format"),
+                EnumValue(label: "TIFF", value: "tiff", description: "High-quality image format"),
             ]),
             ParameterDefinition(id: "quality", cliFlag: "--quality", label: "JPEG Quality", help: "JPEG quality (1-100)", type: .integer, defaultValue: "85", validation: ValidationRule(minValue: 1, maxValue: 100)),
-            ParameterDefinition(id: "recursive", cliFlag: "--recursive", label: "Recursive", help: "Process directories recursively", type: .boolean),
+            ParameterDefinition(id: "window-center", cliFlag: "--window-center", label: "Window Center", help: "Center of the display window", type: .string),
+            ParameterDefinition(id: "window-width", cliFlag: "--window-width", label: "Window Width", help: "Width of the display window", type: .string),
+            ParameterDefinition(id: "frame", cliFlag: "--frame", label: "Frame Number", help: "Frame to extract (0-indexed)", type: .integer),
+            ParameterDefinition(id: "apply-window", cliFlag: "--apply-window", label: "Apply Window", help: "Apply window center/width values", type: .boolean),
             ParameterDefinition(id: "strip-private", cliFlag: "--strip-private", label: "Strip Private", help: "Remove private tags", type: .boolean),
             ParameterDefinition(id: "validate", cliFlag: "--validate", label: "Validate Output", help: "Validate output files", type: .boolean),
+            ParameterDefinition(id: "recursive", cliFlag: "--recursive", label: "Recursive", help: "Process directories recursively", type: .boolean),
+            ParameterDefinition(id: "force", cliFlag: "--force", label: "Force Parse", help: "Parse files without DICM preamble", type: .boolean),
         ]
     )
 
@@ -172,22 +178,24 @@ public enum ToolRegistry {
         icon: "checkmark.shield",
         category: .fileProcessing,
         description: "Validate DICOM conformance",
+        discussion: "Validates DICOM files against the DICOM standard at multiple strictness levels, from basic structure checks to full IOD conformance validation. Generates detailed reports identifying non-conforming elements.",
         parameters: [
             ParameterDefinition(id: "inputPath", cliFlag: "@argument", label: "Input File", help: "Path to the DICOM file", type: .file, isRequired: true),
-            ParameterDefinition(id: "level", cliFlag: "--level", label: "Validation Level", help: "Validation strictness level", type: .enumeration, defaultValue: "1", enumValues: [
-                EnumValue(label: "Level 1", value: "1", description: "Basic structure"),
-                EnumValue(label: "Level 2", value: "2", description: "Standard compliance"),
-                EnumValue(label: "Level 3", value: "3", description: "IOD validation"),
-                EnumValue(label: "Level 4", value: "4", description: "Full conformance"),
+            ParameterDefinition(id: "level", cliFlag: "--level", label: "Validation Level", help: "Validation strictness level", discussion: "Level 1: Basic structure. Level 2: Standard compliance. Level 3: IOD validation. Level 4: Full conformance.", type: .enumeration, defaultValue: "1", enumValues: [
+                EnumValue(label: "Level 1", value: "1", description: "Basic structure validation"),
+                EnumValue(label: "Level 2", value: "2", description: "Standard compliance checks"),
+                EnumValue(label: "Level 3", value: "3", description: "IOD-specific validation"),
+                EnumValue(label: "Level 4", value: "4", description: "Full conformance testing"),
             ]),
             ParameterDefinition(id: "format", cliFlag: "--format", label: "Output Format", help: "Report format", type: .enumeration, defaultValue: "text", enumValues: [
-                EnumValue(label: "Text", value: "text"),
-                EnumValue(label: "JSON", value: "json"),
+                EnumValue(label: "Text", value: "text", description: "Human-readable text report"),
+                EnumValue(label: "JSON", value: "json", description: "Machine-readable JSON report"),
             ]),
             ParameterDefinition(id: "output", cliFlag: "--output", label: "Output File", help: "Output report file", type: .file),
             ParameterDefinition(id: "detailed", cliFlag: "--detailed", label: "Detailed Report", help: "Include detailed findings", type: .boolean),
             ParameterDefinition(id: "recursive", cliFlag: "--recursive", label: "Recursive", help: "Process directories recursively", type: .boolean),
             ParameterDefinition(id: "strict", cliFlag: "--strict", label: "Strict Mode", help: "Treat warnings as errors", type: .boolean),
+            ParameterDefinition(id: "force", cliFlag: "--force", label: "Force Parse", help: "Parse files without DICM preamble", type: .boolean),
         ]
     )
 
@@ -197,6 +205,7 @@ public enum ToolRegistry {
         icon: "person.fill.questionmark",
         category: .fileProcessing,
         description: "Anonymize patient data in DICOM files",
+        discussion: "Removes or replaces patient-identifying information from DICOM files according to DICOM PS3.15 Attribute Confidentiality Profiles. Supports date shifting, UID regeneration, and custom tag actions for clinical trials and research.",
         parameters: [
             ParameterDefinition(id: "inputPath", cliFlag: "@argument", label: "Input File", help: "Path to the DICOM file", type: .file, isRequired: true),
             ParameterDefinition(id: "output", cliFlag: "--output", label: "Output Path", help: "Output file or directory", type: .file),
@@ -223,6 +232,7 @@ public enum ToolRegistry {
         icon: "archivebox",
         category: .fileProcessing,
         description: "Manage DICOM file compression",
+        discussion: "Compresses or decompresses DICOM files using industry-standard codecs including JPEG, JPEG 2000, JPEG-LS, and RLE. Supports single file and batch operations with configurable quality settings.",
         subcommands: [
             SubcommandDefinition(id: "compress", name: "Compress", description: "Compress DICOM files", parameters: [
                 ParameterDefinition(id: "input", cliFlag: "@argument", label: "Input File", help: "File to compress", type: .file, isRequired: true),
