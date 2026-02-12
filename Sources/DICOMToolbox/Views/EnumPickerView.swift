@@ -65,6 +65,7 @@ public struct EnumPickerView: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
+        .accessibilityLabel(parameter.label)
     }
 
     /// Menu picker used when there are more than 4 options
@@ -84,6 +85,7 @@ public struct EnumPickerView: View {
         }
         .pickerStyle(.menu)
         .labelsHidden()
+        .accessibilityLabel(parameter.label)
     }
 }
 #endif

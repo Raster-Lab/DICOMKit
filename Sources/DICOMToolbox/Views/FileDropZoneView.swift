@@ -61,12 +61,7 @@ public struct FileDropZoneView: View {
         ) { result in
             switch result {
             case .success(let urls):
-                if allowsMultipleFiles {
-                    let paths = urls.map { $0.path(percentEncoded: false) }
-                    parameterValues[parameterID] = paths.joined(separator: ",")
-                } else if let url = urls.first {
-                    parameterValues[parameterID] = url.path(percentEncoded: false)
-                }
+                storeFilePaths(urls)
             case .failure:
                 break
             }
@@ -146,11 +141,25 @@ public struct FileDropZoneView: View {
     private var displayFileSize: String {
         guard let path = selectedPath else { return "" }
         let url = URL(fileURLWithPath: path)
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path),
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: url.path(percentEncoded: false)),
               let size = attrs[.size] as? UInt64 else {
             return "Unknown size"
         }
         return ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file)
+    }
+
+    /// Stores file paths from the given URLs into parameter values
+    private func storeFilePaths(_ urls: [URL]) {
+        if allowsMultipleFiles {
+            let newPaths = urls.map { $0.path(percentEncoded: false) }
+            if let existing = parameterValues[parameterID], !existing.isEmpty {
+                parameterValues[parameterID] = existing + "," + newPaths.joined(separator: ",")
+            } else {
+                parameterValues[parameterID] = newPaths.joined(separator: ",")
+            }
+        } else if let url = urls.first {
+            parameterValues[parameterID] = url.path(percentEncoded: false)
+        }
     }
 
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
@@ -161,11 +170,7 @@ public struct FileDropZoneView: View {
                 guard let data = item as? Data,
                       let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
                 DispatchQueue.main.async {
-                    if allowsMultipleFiles, let existing = parameterValues[parameterID], !existing.isEmpty {
-                        parameterValues[parameterID] = existing + "," + url.path(percentEncoded: false)
-                    } else {
-                        parameterValues[parameterID] = url.path(percentEncoded: false)
-                    }
+                    storeFilePaths([url])
                 }
             }
         }

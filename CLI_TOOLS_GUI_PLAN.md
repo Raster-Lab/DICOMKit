@@ -255,7 +255,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
 
 #### Deliverables
 
-- [ ] **2.1 - Reusable Components**
+- [x] **2.1 - Reusable Components**
   - `FileDropZoneView`: Drag-and-drop target with visual feedback
     - Dashed border, icon, and label
     - `.onDrop(of:)` delegate for file URLs
@@ -267,7 +267,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - `RepeatableOptionView`: Dynamic list for repeatable `--tag` style options
   - `OutputPathView`: Save panel integration for `--output` parameters
 
-- [ ] **2.2 - dicom-info Tool View**
+- [x] **2.2 - dicom-info Tool View**
   - `DicomInfoView` parameter form:
     - **Input File** (`FileDropZoneView` - required)
     - **Format** (`Picker`: text | json | csv, with description of each)
@@ -278,7 +278,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - Help popovers for each parameter explaining DICOM concepts
   - Command preview updates in real-time
 
-- [ ] **2.3 - dicom-dump Tool View**
+- [x] **2.3 - dicom-dump Tool View**
   - `DicomDumpView` parameter form:
     - **Input File** (`FileDropZoneView` - required)
     - **Filter Tag** (`TextField` for `--tag`)
@@ -290,7 +290,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Highlight Tag** (`TextField` for `--highlight`)
     - **Force Parse** (`Toggle`)
 
-- [ ] **2.4 - dicom-tags Tool View**
+- [x] **2.4 - dicom-tags Tool View**
   - `DicomTagsView` parameter form:
     - **Input File** (`FileDropZoneView` - required)
     - **Output File** (`OutputPathView`)
@@ -302,7 +302,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Dry Run** (`Toggle`)
     - **Verbose** (`Toggle`)
 
-- [ ] **2.5 - dicom-diff Tool View**
+- [x] **2.5 - dicom-diff Tool View**
   - `DicomDiffView` parameter form:
     - **File 1** (`FileDropZoneView` - required)
     - **File 2** (`FileDropZoneView` - required)
@@ -315,17 +315,17 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - **Show Identical** (`Toggle`)
 
 #### Test Cases (Phase 2)
-- [ ] File drop zone accepts valid DICOM files (3 tests)
-- [ ] File drop zone rejects invalid files (2 tests)
-- [ ] File picker integration (2 tests)
-- [ ] dicom-info command generation with all parameter combinations (8 tests)
-- [ ] dicom-dump command generation (6 tests)
-- [ ] dicom-tags command generation (6 tests)
-- [ ] dicom-diff command generation (6 tests)
-- [ ] Required parameter validation (4 tests)
-- [ ] Help popover content accuracy (4 tests)
+- [x] File drop zone accepts valid DICOM files (3 tests)
+- [x] File drop zone rejects invalid files (2 tests)
+- [x] File picker integration (2 tests)
+- [x] dicom-info command generation with all parameter combinations (8 tests)
+- [x] dicom-dump command generation (6 tests)
+- [x] dicom-tags command generation (6 tests)
+- [x] dicom-diff command generation (6 tests)
+- [x] Required parameter validation (4 tests)
+- [x] Help popover content accuracy (4 tests)
 
-**Phase 2 Total: ~41 tests**
+**Phase 2 Total: ~41 tests** ✅ (45 tests implemented)
 
 ---
 
