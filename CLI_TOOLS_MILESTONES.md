@@ -19,9 +19,9 @@ This document provides a comprehensive milestone-based roadmap for developing CL
 **Phase 4**: ✅ Complete (3 tools, 103 tests)  
 **Phase 5**: ✅ Complete (5 tools, 125+ tests)  
 **Phase 6**: ✅ Complete (6 tools, 175+ tests)  
-**Phase 7**: 📋 Planned (8 tools, 295+ tests)
+**Phase 7**: 🚧 In Progress (1/8 tools started, dicom-report Phase A complete)
 
-**Total Tools**: 29 utilities complete, 8 planned (37 total across 7 phases)
+**Total Tools**: 29 utilities complete, 8 in progress (37 total across 7 phases)
 
 ---
 
@@ -62,8 +62,6 @@ Each milestone represents a logical grouping of related CLI tools with:
 **Target Version**: v1.0.15-v1.1.2  
 **Priority**: High  
 **Timeline**: 3-4 weeks (Complete)
-
-### Milestone 2.1: File Comparison (✅ COMPLETE)
 
 **Tool**: `dicom-diff`  
 **Status**: ✅ Complete  
@@ -1502,7 +1500,98 @@ These CLI tool milestones complement the main DICOMKit milestones:
 
 ---
 
-## Phase 7: Advanced Tools (📋 PLANNED)
+## Phase 7: Advanced Tools (🚧 IN PROGRESS)
+
+**Status**: 🚧 In Progress (1/8 tools started)  
+**Target Version**: v1.4.0-v1.4.7  
+**Priority**: Low-Medium  
+**Timeline**: 6-8 weeks  
+**Last Updated**: February 12, 2026
+
+### Overview
+
+Phase 7 represents the advanced evolution of DICOMKit's CLI tools suite, focusing on specialized medical imaging workflows, AI/ML integration, cloud connectivity, and advanced visualization capabilities.
+
+For detailed specifications of Phase 7 tools, see [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md).
+
+### Tools Status
+
+| # | Tool | Status | Priority | Completion | Notes |
+|---|------|--------|----------|------------|-------|
+| 30 | dicom-report | 🚧 In Progress | High | 60% | Phase A complete, Phase B partially done |
+| 31 | dicom-measure | 📋 Planned | High | 0% | - |
+| 32 | dicom-viewer | 📋 Planned | Medium | 0% | - |
+| 33 | dicom-3d | 📋 Planned | Medium | 0% | - |
+| 34 | dicom-ai | 📋 Planned | Medium | 0% | - |
+| 35 | dicom-cloud | 📋 Planned | Medium | 0% | - |
+| 36 | dicom-gateway | 📋 Planned | Low | 0% | - |
+| 37 | dicom-server | 📋 Planned | Low | 0% | - |
+
+### Milestone 7.1: Clinical Report Generation (🚧 IN PROGRESS)
+
+**Tool**: `dicom-report`  
+**Status**: 🚧 In Progress (Phase A complete, Phase B partially complete)  
+**Priority**: High  
+**Complexity**: Very High  
+**Timeline**: 2 weeks  
+**Tests**: 0/45+  
+**Completion**: ~60%
+
+#### What's Complete
+
+**Phase A: Foundation (✅ Complete)**
+- ✅ SR content tree parser integration
+- ✅ Basic text extraction
+- ✅ Coded concept resolver
+- ✅ Text output format
+- ✅ HTML output format with professional styling
+- ✅ JSON structured output
+- ✅ Markdown output format
+- ✅ Command-line interface with ArgumentParser
+- ✅ Comprehensive README documentation
+- ✅ Measurement extraction (basic)
+- ✅ Build successfully with zero warnings
+- ✅ Help command and error handling
+
+**Phase B: Format Support (⚠️ Partially Complete)**
+- ✅ HTML report generator with embedded CSS
+- ⏸️ PDF generation (deferred - requires external library)
+- ✅ Markdown formatter
+- ✅ JSON structured output
+- ⏳ Test suite development (pending)
+- ⏳ Testing with real SR files (pending)
+
+#### What's Pending
+
+**Phase B: Testing**
+- ⏳ Comprehensive test suite (0/45+ tests)
+- ⏳ Integration tests with sample SR files
+- ⏳ Validation with real clinical data
+
+**Phase C: Advanced Features**
+- ⏳ Template engine for custom reports
+- ⏳ Image embedding from referenced instances
+- ⏳ Advanced measurement table formatting
+- ⏳ Full branding and customization support
+- ⏳ Multi-language support
+
+#### Implementation Notes
+
+- **Architecture**: Uses ParsableCommand (synchronous operations)
+- **SR Support**: Leverages DICOMKit's existing SR infrastructure (SRDocumentParser, SRDocument)
+- **Type Safety**: Proper AnyContentItem casting with as* methods
+- **Code Size**: ~750 lines (50% of estimated 1200-1500)
+- **Files**: main.swift (150 lines), ReportGenerator.swift (600 lines), README.md (comprehensive)
+
+#### Next Steps
+
+1. Create test suite for dicom-report
+2. Test with real SR files from test infrastructure
+3. Add integration tests
+4. Consider PDF generation (may require external library like PDFKit)
+5. Implement advanced features (templates, image embedding) in Phase C
+
+---
 
 **Status**: 📋 Planned  
 **Target Version**: v1.4.0-v1.4.7  
