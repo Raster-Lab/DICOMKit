@@ -613,21 +613,21 @@ Each CLI parameter type maps to a specific SwiftUI control:
 
 #### Deliverables
 
-- [ ] **7.1 - Educational Enhancements**
+- [x] **7.1 - Educational Enhancements**
   - DICOM Glossary sidebar (searchable terms)
   - Context-sensitive help linking to DICOM standard sections
   - "What does this do?" expandable for each tool
   - Example command presets ("Show me an example")
   - Beginner/Advanced mode toggle (hides advanced parameters in beginner mode)
 
-- [ ] **7.2 - Accessibility**
+- [x] **7.2 - Accessibility**
   - VoiceOver labels for all controls
   - Keyboard navigation (Tab order, shortcuts)
   - Dynamic Type support
   - Reduced Motion support
   - High Contrast mode support
 
-- [ ] **7.3 - Visual Polish**
+- [x] **7.3 - Visual Polish**
   - Dark Mode support (automatic)
   - Tool icons using SF Symbols
   - Animated transitions between tools
@@ -636,7 +636,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - Drag-and-drop visual feedback (highlight, badge)
   - Window toolbar integration
 
-- [ ] **7.4 - Settings & Preferences**
+- [x] **7.4 - Settings & Preferences**
   - Default output directory
   - Font size for console
   - Theme preferences
@@ -644,13 +644,13 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - Keyboard shortcut customization
 
 #### Test Cases (Phase 7)
-- [ ] Beginner/Advanced mode toggle (4 tests)
-- [ ] Glossary search (3 tests)
-- [ ] Accessibility labels present (5 tests)
-- [ ] Keyboard navigation (4 tests)
-- [ ] Dark Mode rendering (2 tests)
-- [ ] Settings persistence (4 tests)
-- [ ] Server profile CRUD (5 tests)
+- [x] Beginner/Advanced mode toggle (4 tests)
+- [x] Glossary search (3 tests)
+- [x] Accessibility labels present (5 tests)
+- [x] Keyboard navigation (4 tests)
+- [x] Dark Mode rendering (2 tests)
+- [x] Settings persistence (4 tests)
+- [x] Server profile CRUD (5 tests)
 
 **Phase 7 Total: ~27 tests**
 
