@@ -17,7 +17,7 @@ public struct CommandHistoryEntry: Identifiable, Codable, Sendable {
     public let exitCode: Int?
     /// Whether the command completed successfully
     public var isSuccess: Bool {
-        exitCode == 0
+        exitCode.map { $0 == 0 } ?? false
     }
 
     public init(
