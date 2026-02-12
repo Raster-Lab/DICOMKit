@@ -592,7 +592,12 @@ struct ReportGenerator {
         func collectMeasurements(from item: AnyContentItem) {
             if let numItem = item.asNumeric {
                 let name = item.conceptName?.codeMeaning ?? "Measurement"
-                let value = numItem.numericValues.first.map { String($0) } ?? "0"
+                let value: String
+                if let firstValue = numItem.numericValues.first {
+                    value = String(firstValue)
+                } else {
+                    value = "N/A"
+                }
                 let units = numItem.measurementUnits?.codeMeaning ?? ""
                 measurements.append(Measurement(name: name, value: value, units: units))
             }

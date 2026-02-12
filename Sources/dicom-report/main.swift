@@ -13,10 +13,11 @@ struct DICOMReport: ParsableCommand {
             Supports Basic Text SR, Enhanced SR, Comprehensive SR, and specialized report types.
             
             Examples:
-              dicom-report sr.dcm --output report.pdf --format pdf
-              dicom-report sr.dcm --output report.html --format html --embed-images
               dicom-report sr.dcm --output report.txt --format text
+              dicom-report sr.dcm --output report.html --format html
               dicom-report sr.dcm --output data.json --format json
+            
+            Note: PDF format and image embedding are planned for future releases.
             """,
         version: "1.4.0"
     )
