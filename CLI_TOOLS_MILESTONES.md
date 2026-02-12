@@ -18,9 +18,10 @@ This document provides a comprehensive milestone-based roadmap for developing CL
 **Phase 3**: ✅ Complete (4 tools, 75 tests)  
 **Phase 4**: ✅ Complete (3 tools, 103 tests)  
 **Phase 5**: ✅ Complete (5 tools, 125+ tests)  
-**Phase 6**: ✅ Complete (6 tools, 175+ tests)
+**Phase 6**: ✅ Complete (6 tools, 175+ tests)  
+**Phase 7**: 📋 Planned (8 tools, 295+ tests)
 
-**Total Tools**: 29 utilities across 6 phases - **ALL COMPLETE**
+**Total Tools**: 29 utilities complete, 8 planned (37 total across 7 phases)
 
 ---
 
@@ -1404,17 +1405,18 @@ dicom-script run pipeline.dcmscript --var PATIENT_ID=12345
 | Phase 4 | 3 | Medium | ✅ Complete | 2 weeks |
 | Phase 5 | 5 | Medium | ✅ Complete | 3-4 weeks |
 | Phase 6 | 6 | Low | ✅ Complete (February 2026) | 3-4 weeks |
-| **Total** | **29** | - | **✅ 100% Complete** | **16-21 weeks** |
+| Phase 7 | 8 | Low-Medium | 📋 Planned | 6-8 weeks |
+| **Total** | **37** | - | **29 Complete, 8 Planned** | **22-29 weeks total** |
 
 ### Tools by Priority
 
 | Priority | Count | Status |
 |----------|-------|--------|
-| Critical | 1 | 📋 Planned |
-| High | 7 | ✅ 7/7 Complete |
-| Medium | 14 | ✅ 14/14 Complete (100%) |
-| Low | 7 | ✅ 7/7 Complete (100%) |
-| **Total** | **29** | **✅ 100% Complete (29/29)** |
+| Critical | 1 | ✅ Complete |
+| High | 9 | ✅ 7/7 Complete, 📋 2 Planned (Phase 7) |
+| Medium | 18 | ✅ 14/14 Complete, 📋 4 Planned (Phase 7) |
+| Low | 9 | ✅ 7/7 Complete, 📋 2 Planned (Phase 7) |
+| **Total** | **37** | **✅ 29 Complete, 📋 8 Planned** |
 
 ### Test Coverage Target
 
@@ -1426,7 +1428,8 @@ dicom-script run pipeline.dcmscript --var PATIENT_ID=12345
 | Phase 4 | 3 | 95+ | 103 (108%) ✅ |
 | Phase 5 | 5 | 125+ | 125+ ✅ |
 | Phase 6 | 6 | 130+ | 175+ (135%) ✅ |
-| **Total** | **29** | **695+** | **753+ (108%)** ✅ |
+| Phase 7 | 8 | 295+ | 📋 Planned |
+| **Total** | **37** | **990+** | **753+ complete, 295+ planned** |
 
 ### Lines of Code Estimate
 
@@ -1438,7 +1441,8 @@ dicom-script run pipeline.dcmscript --var PATIENT_ID=12345
 | Phase 4 | 1,700-2,100 | 1,468+ | ✅ Complete |
 | Phase 5 | 2,300-2,800 | 4,347 | ✅ Complete (150%) |
 | Phase 6 | 2,700-3,300 | 3,200+ | ✅ Complete |
-| **Total** | **14,688-17,138** | **18,000+** | **✅ 100% Complete** |
+| Phase 7 | 10,250-12,700 | 📋 Planned | 📋 Planned |
+| **Total** | **24,938-29,838** | **18,000+** | **6 Phases Complete, Phase 7 Planned** |
 
 ---
 
@@ -1494,26 +1498,75 @@ These CLI tool milestones complement the main DICOMKit milestones:
 - **Phase 4**: v1.2.0-v1.2.2
 - **Phase 5**: v1.2.3-v1.2.7
 - **Phase 6**: v1.3.0-v1.3.5
+- **Phase 7**: v1.4.0-v1.4.7
+
+---
+
+## Phase 7: Advanced Tools (📋 PLANNED)
+
+**Status**: 📋 Planned  
+**Target Version**: v1.4.0-v1.4.7  
+**Priority**: Low-Medium  
+**Timeline**: 6-8 weeks
+
+Phase 7 represents advanced medical imaging capabilities including AI/ML integration, cloud connectivity, 3D visualization, and enterprise integration features.
+
+### Tools Planned
+
+1. **dicom-report** - Clinical report generation from DICOM SR (High Priority)
+2. **dicom-measure** - Medical measurement tools (distance, area, volume, SUV, HU) (High Priority)
+3. **dicom-viewer** - Terminal-based DICOM image viewer (Medium Priority)
+4. **dicom-3d** - 3D reconstruction and MPR capabilities (Medium Priority)
+5. **dicom-ai** - AI/ML model integration for analysis and enhancement (Medium Priority)
+6. **dicom-cloud** - Cloud storage integration (AWS S3, GCS, Azure) (Medium Priority)
+7. **dicom-gateway** - Protocol gateway (HL7 v2, FHIR, IHE) (Low Priority)
+8. **dicom-server** - Lightweight PACS server (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET) (Low Priority)
+
+**Detailed Phase 7 Plan**: See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for comprehensive specifications, implementation phases, usage examples, and deliverables for each tool.
+
+**Statistics**:
+- **Tools**: 8 advanced utilities
+- **Tests**: 295+ planned
+- **LOC**: 10,250-12,700 estimated
+- **Timeline**: 6-8 weeks with parallel development
+- **Priority**: 2 High, 4 Medium, 2 Low
 
 ---
 
 ## Future Considerations
 
-### Potential Additional Tools
-- **dicom-report**: Generate reports from DICOM SR
-- **dicom-measure**: Measurement tools (distance, area, volume)
-- **dicom-3d**: 3D reconstruction and MPR
-- **dicom-viewer**: Terminal-based image viewer
-- **dicom-server**: Full-featured PACS server
-- **dicom-gateway**: Protocol gateway (HL7, FHIR)
-- **dicom-ai**: AI/ML integration tools
-- **dicom-cloud**: Cloud storage integration
+### Phase 7 Tools (📋 NOW PLANNED)
+
+**Phase 7 is now fully planned and documented!** See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for comprehensive specifications.
+
+Phase 7 includes 8 advanced tools:
+- **dicom-report**: Generate reports from DICOM SR ✨
+- **dicom-measure**: Measurement tools (distance, area, volume) ✨
+- **dicom-3d**: 3D reconstruction and MPR ✨
+- **dicom-viewer**: Terminal-based image viewer ✨
+- **dicom-server**: Full-featured PACS server ✨
+- **dicom-gateway**: Protocol gateway (HL7, FHIR) ✨
+- **dicom-ai**: AI/ML integration tools ✨
+- **dicom-cloud**: Cloud storage integration ✨
+
+### Potential Phase 8+ Tools
+
+Beyond Phase 7, additional specialized tools could include:
+- **dicom-blockchain**: Blockchain-based audit trail
+- **dicom-federated**: Federated learning for AI
+- **dicom-ar**: AR/VR visualization
+- **dicom-mobile**: Mobile-optimized tools
+- **dicom-edge**: Edge computing deployment
+- **dicom-privacy**: Advanced privacy-preserving techniques
 
 ### GUI Wrappers
-Consider creating GUI applications that wrap CLI tools:
-- macOS GUI using SwiftUI
+
+✅ **DICOMToolbox GUI application is complete!** See [CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md) for details.
+
+Future GUI enhancements:
 - Cross-platform GUI using Electron
 - Web interface for remote CLI access
+- iOS/iPadOS companion app
 
 ### Package Managers
 - Homebrew formula (already planned)
@@ -1527,11 +1580,13 @@ Consider creating GUI applications that wrap CLI tools:
 ## Contributing
 
 We welcome contributions to CLI tool development! Priority areas:
-1. Phase 2 tools (in progress)
+1. Phase 7 tools implementation (see CLI_TOOLS_PHASE7.md)
 2. Test coverage improvements
 3. Documentation enhancements
 4. Bug fixes and optimizations
 5. Cross-platform compatibility
+6. AI model development for dicom-ai
+7. Cloud provider integrations
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
