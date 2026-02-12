@@ -85,6 +85,26 @@ public struct ToolTabView: View {
             DicomAnonView(parameterValues: $parameterValues)
         case "dicom-compress":
             DicomCompressView(parameterValues: $parameterValues, subcommand: $subcommand)
+        case "dicom-split":
+            DicomSplitView(parameterValues: $parameterValues)
+        case "dicom-merge":
+            DicomMergeView(parameterValues: $parameterValues)
+        case "dicom-dcmdir":
+            DicomDcmdirView(parameterValues: $parameterValues, subcommand: $subcommand)
+        case "dicom-archive":
+            DicomArchiveView(parameterValues: $parameterValues)
+        case "dicom-json":
+            DicomJsonView(parameterValues: $parameterValues)
+        case "dicom-xml":
+            DicomXmlView(parameterValues: $parameterValues)
+        case "dicom-pdf":
+            DicomPdfView(parameterValues: $parameterValues)
+        case "dicom-image":
+            DicomImageView(parameterValues: $parameterValues)
+        case "dicom-export":
+            DicomExportView(parameterValues: $parameterValues, subcommand: $subcommand)
+        case "dicom-pixedit":
+            DicomPixeditView(parameterValues: $parameterValues)
         default:
             ParameterFormView(
                 tool: tool,
