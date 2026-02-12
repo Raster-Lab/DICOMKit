@@ -11,14 +11,15 @@ DICOMKit aims to provide a comprehensive, Swift-native implementation for workin
 For Milestone 10.14 (Example Applications), detailed phase-by-phase implementation plans with comprehensive test cases have been created:
 
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 495+ tests)
-- **[CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md)** - Complete CLI Milestone Roadmap (29 tools across 6 phases, 695+ tests) 🆕
+- **[CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md)** - Complete CLI Milestone Roadmap (29 tools across 6 phases, 695+ tests)
+- **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI Application (29 tools, 4-5 weeks, 318+ tests) 🆕
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 220+ tests)
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 360+ tests)
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 270+ tests)
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - 27 Playgrounds (1 week, 575+ tests)
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview and strategy
 
-**Total**: 5 detailed plans, 13-17 weeks development, 1,920+ total tests
+**Total**: 6 detailed plans, 17-22 weeks development, 2,238+ total tests
 
 ---
 

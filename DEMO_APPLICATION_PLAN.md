@@ -14,6 +14,7 @@ This document provides a comprehensive plan for creating production-quality demo
 This document provides a high-level overview. For detailed phase-by-phase implementation plans with comprehensive test cases, see:
 
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 370+ unit tests, 125+ integration tests)
+- **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI (29 tools, 4-5 weeks, 318+ tests) 🆕 SwiftUI macOS app for all CLI tools
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS ✅ **IMPLEMENTED** (35+ unit tests, comprehensive documentation)
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 250+ unit tests, 70+ integration tests, 40+ UI tests)
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 205+ unit tests, 45+ integration tests, 20+ device tests)
