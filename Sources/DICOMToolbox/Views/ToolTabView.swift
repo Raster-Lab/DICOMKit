@@ -126,6 +126,13 @@ public struct ToolTabView: View {
             DicomMWLView(parameterValues: $parameterValues, networkConfig: networkConfig)
         case "dicom-mpps":
             DicomMPPSView(parameterValues: $parameterValues, subcommand: $subcommand, networkConfig: networkConfig)
+        // Automation
+        case "dicom-study":
+            DicomStudyView(parameterValues: $parameterValues, subcommand: $subcommand)
+        case "dicom-uid":
+            DicomUIDView(parameterValues: $parameterValues, subcommand: $subcommand)
+        case "dicom-script":
+            DicomScriptView(parameterValues: $parameterValues, subcommand: $subcommand)
         default:
             ParameterFormView(
                 tool: tool,

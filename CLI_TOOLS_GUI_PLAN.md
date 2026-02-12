@@ -563,7 +563,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
 
 #### Deliverables
 
-- [ ] **6.1 - Automation Tab (3 tools)**
+- [x] **6.1 - Automation Tab (3 tools)**
   - `DicomStudyView`: Subcommand picker (organize | summary | check | stats | compare)
     - Dynamic forms per subcommand
     - Pattern builder with common placeholders
@@ -577,7 +577,7 @@ Each CLI parameter type maps to a specific SwiftUI control:
     - Parallel execution toggle
     - Dry run toggle
 
-- [ ] **6.2 - Command Execution Engine**
+- [x] **6.2 - Command Execution Engine**
   - `CommandExecutor` actor (Swift concurrency)
   - Execute via `Process` with stdout/stderr pipes
   - Real-time output streaming to console
@@ -586,24 +586,24 @@ Each CLI parameter type maps to a specific SwiftUI control:
   - Execution history (last 50 commands)
   - Re-run previous command button
 
-- [ ] **6.3 - Command History**
+- [x] **6.3 - Command History**
   - Sidebar or dropdown showing recent commands
   - Click to reload parameters into the tool view
   - Copy command to clipboard
   - Export history as shell script
 
 #### Test Cases (Phase 6)
-- [ ] dicom-study subcommand forms (5 tests)
-- [ ] dicom-uid generate command (4 tests)
-- [ ] dicom-script variable parsing (4 tests)
-- [ ] Command execution success path (3 tests)
-- [ ] Command execution failure handling (3 tests)
-- [ ] Output streaming (2 tests)
-- [ ] Command cancellation (2 tests)
-- [ ] History persistence (3 tests)
-- [ ] History reload into tool view (3 tests)
+- [x] dicom-study subcommand forms (5 tests)
+- [x] dicom-uid generate command (4 tests)
+- [x] dicom-script variable parsing (4 tests)
+- [x] Command execution success path (3 tests)
+- [x] Command execution failure handling (3 tests)
+- [x] Output streaming (2 tests)
+- [x] Command cancellation (2 tests)
+- [x] History persistence (3 tests)
+- [x] History reload into tool view (3 tests)
 
-**Phase 6 Total: ~29 tests**
+**Phase 6 Total: ~29 tests** ✅ (29+ tests implemented)
 
 ---
 
