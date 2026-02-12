@@ -12,7 +12,7 @@ For Milestone 10.14 (Example Applications), detailed phase-by-phase implementati
 
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 495+ tests)
 - **[CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md)** - Complete CLI Milestone Roadmap (29 tools across 6 phases, 695+ tests)
-- **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI Application (29 tools, 4-5 weeks, 318+ tests) - Phase 1-7 complete
+- **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI Application (29 tools, 4-5 weeks, 370+ tests) - ✅ All phases complete
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 220+ tests)
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 360+ tests)
 - **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 270+ tests)
