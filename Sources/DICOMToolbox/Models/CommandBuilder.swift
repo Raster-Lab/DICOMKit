@@ -4,8 +4,13 @@ import Foundation
 public enum ExecutionStatus: Sendable {
     case idle
     case running
-    case success(exitCode: Int)
-    case failure(exitCode: Int)
+    case completed(exitCode: Int)
+
+    /// Whether the execution completed successfully (exit code 0)
+    public var isSuccess: Bool {
+        if case .completed(let code) = self { return code == 0 }
+        return false
+    }
 }
 
 /// Builds CLI command strings from tool definitions and parameter values,

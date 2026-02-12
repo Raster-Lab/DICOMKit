@@ -122,12 +122,14 @@ public struct ConsoleView: View {
         case .running:
             ProgressView()
                 .controlSize(.small)
-        case .success:
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-        case .failure:
-            Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(.red)
+        case .completed(let exitCode):
+            if exitCode == 0 {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.red)
+            }
         }
     }
 }

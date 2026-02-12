@@ -177,11 +177,11 @@ struct ValidationRuleTests {
         #expect(rule.validate(""))
     }
 
-    @Test("Non-numeric value passes min/max validation")
+    @Test("Non-numeric value fails min/max validation")
     func testNonNumericMinMax() {
         let rule = ValidationRule(minValue: 1, maxValue: 100)
-        // Non-numeric strings don't get parsed as Int, so min/max checks are skipped
-        #expect(rule.validate("abc"))
+        // Non-numeric strings should fail when min/max rules are present
+        #expect(!rule.validate("abc"))
     }
 }
 

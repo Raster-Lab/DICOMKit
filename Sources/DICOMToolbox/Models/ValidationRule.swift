@@ -45,12 +45,14 @@ public struct ValidationRule: Sendable {
             return regex.firstMatch(in: value, range: range) != nil
         }
 
-        if let minValue, let intVal = Int(value), intVal < minValue {
-            return false
+        if let minValue {
+            guard let intVal = Int(value) else { return false }
+            if intVal < minValue { return false }
         }
 
-        if let maxValue, let intVal = Int(value), intVal > maxValue {
-            return false
+        if let maxValue {
+            guard let intVal = Int(value) else { return false }
+            if intVal > maxValue { return false }
         }
 
         return true
