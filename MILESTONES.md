@@ -3766,6 +3766,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 ##### Tools
 - [x] **dicom-report** (v1.4.0) - Clinical report generation from DICOM SR 🚧 (~60% complete)
 - [x] **dicom-measure** (v1.4.0) - Medical measurements (distance, area, angle, ROI, HU) ✅ Complete (February 2026, 35 tests)
+- [x] **dicom-viewer** (v1.4.0) - Terminal-based DICOM image viewer (ASCII, ANSI, iTerm2, Kitty, Sixel) ✅ Complete (February 2026, 35 tests)
 
 #### Summary Statistics
 
@@ -3777,8 +3778,8 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Phase 4 | 3 | Medium | 103+/95+ | 1,700-2,100 | ✅ Complete |
 | Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | ✅ Complete (February 2026) |
 | Phase 6 | 6 | Low-Medium | 175+ | 2,700-3,300 | ✅ Complete (February 2026) |
-| Phase 7 | 2/8 | High | 35+ | 900+ | 🚧 In Progress |
-| **Total** | **31** | - | **788+** | **16,238+** | **🚧 In Progress** |
+| Phase 7 | 3/8 | High | 70+ | 1,750+ | 🚧 In Progress |
+| **Total** | **32** | - | **823+** | **17,088+** | **🚧 In Progress** |
 
 #### Technical Notes
 - All tools support macOS and Linux platforms
