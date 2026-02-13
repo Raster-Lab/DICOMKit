@@ -3,6 +3,7 @@ import ArgumentParser
 import DICOMKit
 import DICOMCore
 
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 struct DICOMCloud: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-cloud",
@@ -37,6 +38,7 @@ struct DICOMCloud: AsyncParsableCommand {
 }
 
 // MARK: - Upload Command
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 struct Upload: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Upload files or directories to cloud storage",
@@ -156,6 +158,7 @@ struct Upload: AsyncParsableCommand {
 }
 
 // MARK: - Download Command
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 struct Download: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Download files from cloud storage",
@@ -221,6 +224,7 @@ struct Download: AsyncParsableCommand {
 }
 
 // MARK: - List Command
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 struct List: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "List objects in cloud storage",
@@ -261,6 +265,7 @@ struct List: AsyncParsableCommand {
 }
 
 // MARK: - Delete Command
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 struct Delete: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Delete objects from cloud storage",
@@ -315,6 +320,7 @@ struct Delete: AsyncParsableCommand {
 }
 
 // MARK: - Sync Command
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 struct Sync: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Synchronize local and cloud storage",
@@ -371,6 +377,7 @@ struct Sync: AsyncParsableCommand {
 }
 
 // MARK: - Copy Command
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
 struct Copy: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         abstract: "Copy objects between cloud providers",
