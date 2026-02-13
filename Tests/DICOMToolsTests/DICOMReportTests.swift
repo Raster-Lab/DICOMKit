@@ -122,7 +122,7 @@ private struct ImageEmbedder {
 
     func loadImageAsBase64(sopInstanceUID: String) -> String? {
         guard let dir = imageDirectory else { return nil }
-        let possibleExtensions = ["dcm", "png", "jpg", "jpeg", "tiff"]
+        let possibleExtensions = ["dcm", "png", "jpg", "jpeg", "tiff", "gif", "svg"]
         let fileManager = FileManager.default
         for ext in possibleExtensions {
             let filePath = (dir as NSString).appendingPathComponent("\(sopInstanceUID).\(ext)")
@@ -259,7 +259,7 @@ private enum ReportLanguage: String {
             "Patient": "Paciente", "Patient ID": "ID del Paciente",
             "Study Date": "Fecha del Estudio", "Accession Number": "Número de Acceso",
             "Measurement": "Medición", "Value": "Valor", "Units": "Unidades",
-            "Generated": "Generado",
+            "Generated": "Generado", "Referenced Images": "Imágenes Referenciadas",
         ]
         return labels[key] ?? key
     }
@@ -269,7 +269,7 @@ private enum ReportLanguage: String {
             "Patient": "Patient", "Patient ID": "ID Patient",
             "Study Date": "Date de l'Étude", "Accession Number": "Numéro d'Accession",
             "Measurement": "Mesure", "Value": "Valeur", "Units": "Unités",
-            "Generated": "Généré",
+            "Generated": "Généré", "Referenced Images": "Images Référencées",
         ]
         return labels[key] ?? key
     }
@@ -279,7 +279,7 @@ private enum ReportLanguage: String {
             "Patient": "Patient", "Patient ID": "Patienten-ID",
             "Study Date": "Studiendatum", "Accession Number": "Auftragsnummer",
             "Measurement": "Messung", "Value": "Wert", "Units": "Einheiten",
-            "Generated": "Erstellt",
+            "Generated": "Erstellt", "Referenced Images": "Referenzierte Bilder",
         ]
         return labels[key] ?? key
     }

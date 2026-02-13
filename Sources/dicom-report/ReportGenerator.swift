@@ -131,7 +131,7 @@ struct ImageEmbedder {
         guard let dir = imageDirectory else { return nil }
 
         // Look for image files matching the SOP Instance UID
-        let possibleExtensions = ["dcm", "png", "jpg", "jpeg", "tiff"]
+        let possibleExtensions = ["dcm", "png", "jpg", "jpeg", "tiff", "gif", "svg"]
         let fileManager = FileManager.default
 
         for ext in possibleExtensions {
@@ -293,6 +293,7 @@ enum ReportLanguage: String {
             "Value": "Valor",
             "Units": "Unidades",
             "Generated": "Generado",
+            "Referenced Images": "Imágenes Referenciadas",
         ]
         return labels[key] ?? key
     }
@@ -307,6 +308,7 @@ enum ReportLanguage: String {
             "Value": "Valeur",
             "Units": "Unités",
             "Generated": "Généré",
+            "Referenced Images": "Images Référencées",
         ]
         return labels[key] ?? key
     }
@@ -321,6 +323,7 @@ enum ReportLanguage: String {
             "Value": "Wert",
             "Units": "Einheiten",
             "Generated": "Erstellt",
+            "Referenced Images": "Referenzierte Bilder",
         ]
         return labels[key] ?? key
     }
@@ -1120,6 +1123,7 @@ struct ReportGenerator {
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
             .replacingOccurrences(of: "\"", with: "&quot;")
+            .replacingOccurrences(of: "'", with: "&#39;")
     }
 
     private func extractMeasurements() -> [ReportMeasurement] {
