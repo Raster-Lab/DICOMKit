@@ -26,6 +26,7 @@ public enum ToolRegistry {
         dicomImage,
         dicomExport,
         dicomPixedit,
+        dicomReport,
         // Tab 5: Network Operations
         dicomEcho,
         dicomQuery,
@@ -452,6 +453,48 @@ public enum ToolRegistry {
             ParameterDefinition(id: "crop", cliFlag: "--crop", label: "Crop", help: "Crop region (x,y,w,h)", type: .string),
             ParameterDefinition(id: "invert", cliFlag: "--invert", label: "Invert", help: "Invert pixel values", type: .boolean),
         ]
+    )
+
+    public static let dicomReport = ToolDefinition(
+        id: "dicom-report",
+        name: "DICOM Report",
+        icon: "doc.richtext",
+        category: .dataExport,
+        description: "Generate clinical reports from DICOM Structured Report objects",
+        discussion: "Parse DICOM SR documents and generate professional clinical reports in various formats. Supports specialty-specific templates (cardiology, radiology, oncology), multi-language output (English, Spanish, French, German), image embedding, and custom branding with institution logos.",
+        parameters: [
+            ParameterDefinition(id: "filePath", cliFlag: "@argument", label: "DICOM SR File", help: "Path to the DICOM SR file", type: .file, isRequired: true),
+            ParameterDefinition(id: "output", cliFlag: "--output", shortFlag: "-o", label: "Output File", help: "Output report file path", type: .file, isRequired: true),
+            ParameterDefinition(id: "format", cliFlag: "--format", shortFlag: "-f", label: "Output Format", help: "Report output format", type: .enumeration, defaultValue: "text", enumValues: [
+                EnumValue(label: "Text", value: "text", description: "Plain text report"),
+                EnumValue(label: "HTML", value: "html", description: "Styled HTML report with CSS"),
+                EnumValue(label: "JSON", value: "json", description: "Structured JSON data"),
+                EnumValue(label: "Markdown", value: "markdown", description: "Markdown format"),
+                EnumValue(label: "PDF", value: "pdf", description: "PDF format (requires additional library)"),
+            ]),
+            ParameterDefinition(id: "template", cliFlag: "--template", label: "Report Template", help: "Specialty-specific report template", type: .enumeration, defaultValue: "default", enumValues: [
+                EnumValue(label: "Default", value: "default", description: "Standard clinical report"),
+                EnumValue(label: "Cardiology", value: "cardiology", description: "Cardiac findings, hemodynamics, recommendations"),
+                EnumValue(label: "Radiology", value: "radiology", description: "Indication, technique, findings, impressions"),
+                EnumValue(label: "Oncology", value: "oncology", description: "Tumor assessment, staging, recommendations"),
+            ]),
+            ParameterDefinition(id: "language", cliFlag: "--language", label: "Language", help: "Report language for section headers and labels", type: .enumeration, defaultValue: "en", enumValues: [
+                EnumValue(label: "English", value: "en", description: "English"),
+                EnumValue(label: "Spanish", value: "es", description: "Español"),
+                EnumValue(label: "French", value: "fr", description: "Français"),
+                EnumValue(label: "German", value: "de", description: "Deutsch"),
+            ]),
+            ParameterDefinition(id: "title", cliFlag: "--title", label: "Custom Title", help: "Custom report title (overrides SR title)", type: .string),
+            ParameterDefinition(id: "logo", cliFlag: "--logo", label: "Logo Image", help: "Path to hospital logo image for branding", type: .file),
+            ParameterDefinition(id: "footer", cliFlag: "--footer", label: "Footer Text", help: "Custom footer text for report", type: .string),
+            ParameterDefinition(id: "embed-images", cliFlag: "--embed-images", label: "Embed Images", help: "Embed referenced images in HTML/PDF output", type: .boolean),
+            ParameterDefinition(id: "image-dir", cliFlag: "--image-dir", label: "Image Directory", help: "Directory containing referenced image files", type: .file),
+            ParameterDefinition(id: "include-measurements", cliFlag: "--include-measurements", label: "Include Measurements", help: "Include measurement tables", type: .boolean, defaultValue: "true"),
+            ParameterDefinition(id: "include-summary", cliFlag: "--include-summary", label: "Include Summary", help: "Include finding summaries", type: .boolean, defaultValue: "true"),
+            ParameterDefinition(id: "force", cliFlag: "--force", label: "Force Parse", help: "Parse files without DICM prefix", type: .boolean),
+            ParameterDefinition(id: "verbose", cliFlag: "--verbose", label: "Verbose", help: "Verbose output for debugging", type: .boolean),
+        ],
+        requiresOutput: true
     )
 
     // MARK: - Network Operations Tools

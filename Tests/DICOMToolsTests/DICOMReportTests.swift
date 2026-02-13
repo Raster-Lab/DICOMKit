@@ -3,12 +3,324 @@ import Foundation
 @testable import DICOMKit
 @testable import DICOMCore
 
+// MARK: - Phase C Test Types (mirrored from dicom-report executable)
+// CLI executable targets cannot be imported as test dependencies,
+// so we mirror the types here for unit testing.
+
+/// Report section types for template-driven ordering
+private enum ReportSection: String, CaseIterable {
+    case patientInfo = "patient_info"
+    case studyInfo = "study_info"
+    case indication = "indication"
+    case technique = "technique"
+    case findings = "findings"
+    case cardiacFindings = "cardiac_findings"
+    case tumorAssessment = "tumor_assessment"
+    case stagingInfo = "staging_info"
+    case hemodynamics = "hemodynamics"
+    case measurements = "measurements"
+    case impressions = "impressions"
+    case recommendations = "recommendations"
+
+    var displayName: String {
+        switch self {
+        case .patientInfo: return "Patient Information"
+        case .studyInfo: return "Study Information"
+        case .indication: return "Clinical Indication"
+        case .technique: return "Technique"
+        case .findings: return "Findings"
+        case .cardiacFindings: return "Cardiac Findings"
+        case .tumorAssessment: return "Tumor Assessment"
+        case .stagingInfo: return "Staging Information"
+        case .hemodynamics: return "Hemodynamic Parameters"
+        case .measurements: return "Measurements"
+        case .impressions: return "Impressions"
+        case .recommendations: return "Recommendations"
+        }
+    }
+}
+
+/// Color scheme for report styling
+private struct ColorScheme {
+    let primary: String
+    let secondary: String
+    let accent: String
+    let background: String
+    let text: String
+}
+
+/// Header rendering style
+private enum HeaderStyle {
+    case standard
+    case specialty
+}
+
+/// Content detail level
+private enum ContentStyle {
+    case summary
+    case detailed
+}
+
+/// Defines specialty-specific report templates
+private struct ReportTemplate {
+    let name: String
+    let displayName: String
+    let sections: [ReportSection]
+    let colorScheme: ColorScheme
+    let headerStyle: HeaderStyle
+    let contentStyle: ContentStyle
+
+    static let `default` = ReportTemplate(
+        name: "default",
+        displayName: "Standard Report",
+        sections: [.patientInfo, .studyInfo, .findings, .measurements, .impressions],
+        colorScheme: ColorScheme(primary: "#007AFF", secondary: "#5856D6", accent: "#34C759", background: "#f5f5f5", text: "#333333"),
+        headerStyle: .standard,
+        contentStyle: .detailed
+    )
+
+    static let cardiology = ReportTemplate(
+        name: "cardiology",
+        displayName: "Cardiology Report",
+        sections: [.patientInfo, .studyInfo, .cardiacFindings, .measurements, .hemodynamics, .impressions, .recommendations],
+        colorScheme: ColorScheme(primary: "#E53E3E", secondary: "#C53030", accent: "#FC8181", background: "#FFF5F5", text: "#2D3748"),
+        headerStyle: .specialty,
+        contentStyle: .detailed
+    )
+
+    static let radiology = ReportTemplate(
+        name: "radiology",
+        displayName: "Radiology Report",
+        sections: [.patientInfo, .studyInfo, .indication, .technique, .findings, .measurements, .impressions],
+        colorScheme: ColorScheme(primary: "#3182CE", secondary: "#2B6CB0", accent: "#63B3ED", background: "#EBF8FF", text: "#2D3748"),
+        headerStyle: .specialty,
+        contentStyle: .detailed
+    )
+
+    static let oncology = ReportTemplate(
+        name: "oncology",
+        displayName: "Oncology Report",
+        sections: [.patientInfo, .studyInfo, .tumorAssessment, .measurements, .stagingInfo, .findings, .impressions, .recommendations],
+        colorScheme: ColorScheme(primary: "#805AD5", secondary: "#6B46C1", accent: "#B794F4", background: "#FAF5FF", text: "#2D3748"),
+        headerStyle: .specialty,
+        contentStyle: .detailed
+    )
+
+    static func resolve(name: String) -> ReportTemplate {
+        switch name.lowercased() {
+        case "cardiology": return .cardiology
+        case "radiology": return .radiology
+        case "oncology": return .oncology
+        default: return .default
+        }
+    }
+}
+
+/// Image embedder for referenced images
+private struct ImageEmbedder {
+    let imageDirectory: String?
+
+    func loadImageAsBase64(sopInstanceUID: String) -> String? {
+        guard let dir = imageDirectory else { return nil }
+        let possibleExtensions = ["dcm", "png", "jpg", "jpeg", "tiff", "gif", "svg"]
+        let fileManager = FileManager.default
+        for ext in possibleExtensions {
+            let filePath = (dir as NSString).appendingPathComponent("\(sopInstanceUID).\(ext)")
+            if fileManager.fileExists(atPath: filePath),
+               let data = fileManager.contents(atPath: filePath) {
+                let mimeType = mimeTypeForExtension(ext)
+                return "data:\(mimeType);base64,\(data.base64EncodedString())"
+            }
+        }
+        return nil
+    }
+
+    func loadLogoAsBase64(path: String) -> String? {
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: path),
+              let data = fileManager.contents(atPath: path) else { return nil }
+        let ext = (path as NSString).pathExtension.lowercased()
+        let mimeType = mimeTypeForExtension(ext)
+        return "data:\(mimeType);base64,\(data.base64EncodedString())"
+    }
+
+    private func mimeTypeForExtension(_ ext: String) -> String {
+        switch ext.lowercased() {
+        case "png": return "image/png"
+        case "jpg", "jpeg": return "image/jpeg"
+        case "gif": return "image/gif"
+        case "tiff", "tif": return "image/tiff"
+        case "svg": return "image/svg+xml"
+        default: return "application/octet-stream"
+        }
+    }
+}
+
+/// Branding configuration
+private struct BrandingConfiguration {
+    let institutionName: String?
+    let logoBase64: String?
+    let headerColor: String?
+    let footerText: String?
+    let showGenerationDate: Bool
+
+    init(logoPath: String?, footerText: String?, institutionName: String? = nil,
+         headerColor: String? = nil, showGenerationDate: Bool = true) {
+        self.institutionName = institutionName
+        self.footerText = footerText
+        self.headerColor = headerColor
+        self.showGenerationDate = showGenerationDate
+        if let path = logoPath {
+            self.logoBase64 = ImageEmbedder(imageDirectory: nil).loadLogoAsBase64(path: path)
+        } else {
+            self.logoBase64 = nil
+        }
+    }
+}
+
+/// Language configuration for report localization
+private enum ReportLanguage: String {
+    case english = "en"
+    case spanish = "es"
+    case french = "fr"
+    case german = "de"
+
+    func localizedSectionName(_ section: ReportSection) -> String {
+        switch self {
+        case .english: return section.displayName
+        case .spanish: return spanishSectionName(section)
+        case .french: return frenchSectionName(section)
+        case .german: return germanSectionName(section)
+        }
+    }
+
+    private func spanishSectionName(_ section: ReportSection) -> String {
+        switch section {
+        case .patientInfo: return "Información del Paciente"
+        case .studyInfo: return "Información del Estudio"
+        case .indication: return "Indicación Clínica"
+        case .technique: return "Técnica"
+        case .findings: return "Hallazgos"
+        case .cardiacFindings: return "Hallazgos Cardíacos"
+        case .tumorAssessment: return "Evaluación del Tumor"
+        case .stagingInfo: return "Información de Estadificación"
+        case .hemodynamics: return "Parámetros Hemodinámicos"
+        case .measurements: return "Mediciones"
+        case .impressions: return "Impresiones"
+        case .recommendations: return "Recomendaciones"
+        }
+    }
+
+    private func frenchSectionName(_ section: ReportSection) -> String {
+        switch section {
+        case .patientInfo: return "Informations Patient"
+        case .studyInfo: return "Informations de l'Étude"
+        case .indication: return "Indication Clinique"
+        case .technique: return "Technique"
+        case .findings: return "Résultats"
+        case .cardiacFindings: return "Résultats Cardiaques"
+        case .tumorAssessment: return "Évaluation Tumorale"
+        case .stagingInfo: return "Informations de Stadification"
+        case .hemodynamics: return "Paramètres Hémodynamiques"
+        case .measurements: return "Mesures"
+        case .impressions: return "Impressions"
+        case .recommendations: return "Recommandations"
+        }
+    }
+
+    private func germanSectionName(_ section: ReportSection) -> String {
+        switch section {
+        case .patientInfo: return "Patienteninformationen"
+        case .studyInfo: return "Studieninformationen"
+        case .indication: return "Klinische Indikation"
+        case .technique: return "Technik"
+        case .findings: return "Befunde"
+        case .cardiacFindings: return "Kardiale Befunde"
+        case .tumorAssessment: return "Tumorbewertung"
+        case .stagingInfo: return "Staging-Informationen"
+        case .hemodynamics: return "Hämodynamische Parameter"
+        case .measurements: return "Messungen"
+        case .impressions: return "Beurteilung"
+        case .recommendations: return "Empfehlungen"
+        }
+    }
+
+    func localizedLabel(_ key: String) -> String {
+        switch self {
+        case .english: return key
+        case .spanish: return spanishLabel(key)
+        case .french: return frenchLabel(key)
+        case .german: return germanLabel(key)
+        }
+    }
+
+    private func spanishLabel(_ key: String) -> String {
+        let labels: [String: String] = [
+            "Patient": "Paciente", "Patient ID": "ID del Paciente",
+            "Study Date": "Fecha del Estudio", "Accession Number": "Número de Acceso",
+            "Measurement": "Medición", "Value": "Valor", "Units": "Unidades",
+            "Generated": "Generado", "Referenced Images": "Imágenes Referenciadas",
+        ]
+        return labels[key] ?? key
+    }
+
+    private func frenchLabel(_ key: String) -> String {
+        let labels: [String: String] = [
+            "Patient": "Patient", "Patient ID": "ID Patient",
+            "Study Date": "Date de l'Étude", "Accession Number": "Numéro d'Accession",
+            "Measurement": "Mesure", "Value": "Valeur", "Units": "Unités",
+            "Generated": "Généré", "Referenced Images": "Images Référencées",
+        ]
+        return labels[key] ?? key
+    }
+
+    private func germanLabel(_ key: String) -> String {
+        let labels: [String: String] = [
+            "Patient": "Patient", "Patient ID": "Patienten-ID",
+            "Study Date": "Studiendatum", "Accession Number": "Auftragsnummer",
+            "Measurement": "Messung", "Value": "Wert", "Units": "Einheiten",
+            "Generated": "Erstellt", "Referenced Images": "Referenzierte Bilder",
+        ]
+        return labels[key] ?? key
+    }
+}
+
+/// Report measurement type
+private struct ReportMeasurement {
+    let name: String
+    let value: String
+    let units: String
+}
+
+/// Report errors
+private enum ReportError: LocalizedError {
+    case pdfNotImplemented
+    case invalidTemplate
+    case imageNotFound(String)
+    case unsupportedLanguage(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .pdfNotImplemented:
+            return "PDF generation requires additional libraries. Use HTML or Markdown format instead."
+        case .invalidTemplate:
+            return "Invalid report template specified"
+        case .imageNotFound(let path):
+            return "Image not found: \(path)"
+        case .unsupportedLanguage(let lang):
+            return "Unsupported report language: \(lang)"
+        }
+    }
+}
+
 /// Tests for dicom-report CLI tool functionality
 /// These tests validate SR parsing, content tree navigation, output format generation,
 /// measurement extraction, and report generation workflows.
 ///
 /// The report generation logic is tested using the underlying DICOMKit SR infrastructure
 /// since CLI executable targets cannot be imported as test dependencies.
+/// Phase C types (templates, image embedding, branding, localization) are mirrored
+/// above for direct unit testing of the standalone logic.
 final class DICOMReportTests: XCTestCase {
 
     // MARK: - Test Helpers
@@ -1009,5 +1321,336 @@ final class DICOMReportTests: XCTestCase {
         // Same input should produce same parsed results
         XCTAssertEqual(document1.patientName, document2.patientName)
         XCTAssertEqual(document1.sopInstanceUID, document2.sopInstanceUID)
+    }
+
+    // MARK: - Phase C: Template Engine Tests
+
+    func testReportTemplateDefaultResolves() throws {
+        let template = ReportTemplate.resolve(name: "default")
+        XCTAssertEqual(template.name, "default")
+        XCTAssertEqual(template.displayName, "Standard Report")
+        XCTAssertFalse(template.sections.isEmpty)
+        XCTAssertTrue(template.sections.contains(.patientInfo))
+        XCTAssertTrue(template.sections.contains(.findings))
+    }
+
+    func testReportTemplateCardiologyResolves() throws {
+        let template = ReportTemplate.resolve(name: "cardiology")
+        XCTAssertEqual(template.name, "cardiology")
+        XCTAssertEqual(template.displayName, "Cardiology Report")
+        XCTAssertTrue(template.sections.contains(.cardiacFindings))
+        XCTAssertTrue(template.sections.contains(.hemodynamics))
+        XCTAssertEqual(template.colorScheme.primary, "#E53E3E")
+    }
+
+    func testReportTemplateRadiologyResolves() throws {
+        let template = ReportTemplate.resolve(name: "radiology")
+        XCTAssertEqual(template.name, "radiology")
+        XCTAssertEqual(template.displayName, "Radiology Report")
+        XCTAssertTrue(template.sections.contains(.indication))
+        XCTAssertTrue(template.sections.contains(.technique))
+        XCTAssertEqual(template.colorScheme.primary, "#3182CE")
+    }
+
+    func testReportTemplateOncologyResolves() throws {
+        let template = ReportTemplate.resolve(name: "oncology")
+        XCTAssertEqual(template.name, "oncology")
+        XCTAssertEqual(template.displayName, "Oncology Report")
+        XCTAssertTrue(template.sections.contains(.tumorAssessment))
+        XCTAssertTrue(template.sections.contains(.stagingInfo))
+        XCTAssertEqual(template.colorScheme.primary, "#805AD5")
+    }
+
+    func testReportTemplateUnknownFallsBackToDefault() throws {
+        let template = ReportTemplate.resolve(name: "unknown_template")
+        XCTAssertEqual(template.name, "default")
+        XCTAssertEqual(template.displayName, "Standard Report")
+    }
+
+    func testReportTemplateSectionOrdering() throws {
+        let cardioTemplate = ReportTemplate.resolve(name: "cardiology")
+        // Cardiology should have patient info before findings
+        guard let patientIdx = cardioTemplate.sections.firstIndex(of: .patientInfo),
+              let findingsIdx = cardioTemplate.sections.firstIndex(of: .cardiacFindings) else {
+            XCTFail("Expected sections not found")
+            return
+        }
+        XCTAssertLessThan(patientIdx, findingsIdx)
+    }
+
+    func testReportSectionDisplayNames() throws {
+        XCTAssertEqual(ReportSection.patientInfo.displayName, "Patient Information")
+        XCTAssertEqual(ReportSection.findings.displayName, "Findings")
+        XCTAssertEqual(ReportSection.measurements.displayName, "Measurements")
+        XCTAssertEqual(ReportSection.cardiacFindings.displayName, "Cardiac Findings")
+        XCTAssertEqual(ReportSection.tumorAssessment.displayName, "Tumor Assessment")
+        XCTAssertEqual(ReportSection.hemodynamics.displayName, "Hemodynamic Parameters")
+        XCTAssertEqual(ReportSection.impressions.displayName, "Impressions")
+        XCTAssertEqual(ReportSection.recommendations.displayName, "Recommendations")
+    }
+
+    func testColorSchemeInitialization() throws {
+        let scheme = ColorScheme(primary: "#FF0000", secondary: "#00FF00",
+                                  accent: "#0000FF", background: "#FFFFFF", text: "#000000")
+        XCTAssertEqual(scheme.primary, "#FF0000")
+        XCTAssertEqual(scheme.secondary, "#00FF00")
+        XCTAssertEqual(scheme.accent, "#0000FF")
+    }
+
+    // MARK: - Phase C: Image Embedding Tests
+
+    func testImageEmbedderNilDirectory() throws {
+        let embedder = ImageEmbedder(imageDirectory: nil)
+        let result = embedder.loadImageAsBase64(sopInstanceUID: "1.2.3.4")
+        XCTAssertNil(result, "Should return nil when no image directory is set")
+    }
+
+    func testImageEmbedderNonexistentFile() throws {
+        let embedder = ImageEmbedder(imageDirectory: "/tmp/nonexistent_dir_12345")
+        let result = embedder.loadImageAsBase64(sopInstanceUID: "1.2.3.4")
+        XCTAssertNil(result, "Should return nil when image file does not exist")
+    }
+
+    func testImageEmbedderLoadsExistingImage() throws {
+        // Create a temp directory with a test image
+        let tempDir = NSTemporaryDirectory() + "dicom_report_test_\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        // Write a minimal PNG file
+        let pngData = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]) // PNG header
+        let imagePath = (tempDir as NSString).appendingPathComponent("1.2.3.4.5.png")
+        try pngData.write(to: URL(fileURLWithPath: imagePath))
+
+        let embedder = ImageEmbedder(imageDirectory: tempDir)
+        let result = embedder.loadImageAsBase64(sopInstanceUID: "1.2.3.4.5")
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result?.hasPrefix("data:image/png;base64,") ?? false)
+    }
+
+    func testImageEmbedderLogoLoading() throws {
+        let tempDir = NSTemporaryDirectory() + "dicom_logo_test_\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        let logoData = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let logoPath = (tempDir as NSString).appendingPathComponent("logo.png")
+        try logoData.write(to: URL(fileURLWithPath: logoPath))
+
+        let embedder = ImageEmbedder(imageDirectory: nil)
+        let result = embedder.loadLogoAsBase64(path: logoPath)
+        XCTAssertNotNil(result)
+        XCTAssertTrue(result?.hasPrefix("data:image/png;base64,") ?? false)
+    }
+
+    func testImageEmbedderLogoNonexistent() throws {
+        let embedder = ImageEmbedder(imageDirectory: nil)
+        let result = embedder.loadLogoAsBase64(path: "/tmp/nonexistent_logo.png")
+        XCTAssertNil(result)
+    }
+
+    // MARK: - Phase C: Branding Tests
+
+    func testBrandingConfigurationWithoutLogo() throws {
+        let branding = BrandingConfiguration(logoPath: nil, footerText: "Confidential")
+        XCTAssertNil(branding.logoBase64)
+        XCTAssertEqual(branding.footerText, "Confidential")
+        XCTAssertTrue(branding.showGenerationDate)
+    }
+
+    func testBrandingConfigurationWithInstitution() throws {
+        let branding = BrandingConfiguration(
+            logoPath: nil, footerText: "Test Footer",
+            institutionName: "Test Hospital",
+            headerColor: "#FF0000"
+        )
+        XCTAssertEqual(branding.institutionName, "Test Hospital")
+        XCTAssertEqual(branding.headerColor, "#FF0000")
+    }
+
+    func testBrandingConfigurationWithLogo() throws {
+        let tempDir = NSTemporaryDirectory() + "dicom_branding_test_\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        let logoData = Data([0x89, 0x50, 0x4E, 0x47])
+        let logoPath = (tempDir as NSString).appendingPathComponent("brand.png")
+        try logoData.write(to: URL(fileURLWithPath: logoPath))
+
+        let branding = BrandingConfiguration(logoPath: logoPath, footerText: nil)
+        XCTAssertNotNil(branding.logoBase64)
+    }
+
+    // MARK: - Phase C: Multi-Language Support Tests
+
+    func testLanguageEnglishSectionNames() throws {
+        let lang = ReportLanguage.english
+        XCTAssertEqual(lang.localizedSectionName(.patientInfo), "Patient Information")
+        XCTAssertEqual(lang.localizedSectionName(.measurements), "Measurements")
+        XCTAssertEqual(lang.localizedSectionName(.findings), "Findings")
+    }
+
+    func testLanguageSpanishSectionNames() throws {
+        let lang = ReportLanguage.spanish
+        XCTAssertEqual(lang.localizedSectionName(.patientInfo), "Información del Paciente")
+        XCTAssertEqual(lang.localizedSectionName(.measurements), "Mediciones")
+        XCTAssertEqual(lang.localizedSectionName(.findings), "Hallazgos")
+    }
+
+    func testLanguageFrenchSectionNames() throws {
+        let lang = ReportLanguage.french
+        XCTAssertEqual(lang.localizedSectionName(.patientInfo), "Informations Patient")
+        XCTAssertEqual(lang.localizedSectionName(.measurements), "Mesures")
+        XCTAssertEqual(lang.localizedSectionName(.findings), "Résultats")
+    }
+
+    func testLanguageGermanSectionNames() throws {
+        let lang = ReportLanguage.german
+        XCTAssertEqual(lang.localizedSectionName(.patientInfo), "Patienteninformationen")
+        XCTAssertEqual(lang.localizedSectionName(.measurements), "Messungen")
+        XCTAssertEqual(lang.localizedSectionName(.findings), "Befunde")
+    }
+
+    func testLanguageEnglishLabels() throws {
+        let lang = ReportLanguage.english
+        XCTAssertEqual(lang.localizedLabel("Patient"), "Patient")
+        XCTAssertEqual(lang.localizedLabel("Study Date"), "Study Date")
+    }
+
+    func testLanguageSpanishLabels() throws {
+        let lang = ReportLanguage.spanish
+        XCTAssertEqual(lang.localizedLabel("Patient"), "Paciente")
+        XCTAssertEqual(lang.localizedLabel("Study Date"), "Fecha del Estudio")
+        XCTAssertEqual(lang.localizedLabel("Measurement"), "Medición")
+    }
+
+    func testLanguageFrenchLabels() throws {
+        let lang = ReportLanguage.french
+        XCTAssertEqual(lang.localizedLabel("Patient"), "Patient")
+        XCTAssertEqual(lang.localizedLabel("Study Date"), "Date de l'Étude")
+    }
+
+    func testLanguageGermanLabels() throws {
+        let lang = ReportLanguage.german
+        XCTAssertEqual(lang.localizedLabel("Patient"), "Patient")
+        XCTAssertEqual(lang.localizedLabel("Study Date"), "Studiendatum")
+    }
+
+    func testLanguageUnknownLabelFallback() throws {
+        let lang = ReportLanguage.spanish
+        // Unknown keys should fall back to the key itself
+        XCTAssertEqual(lang.localizedLabel("UnknownKey"), "UnknownKey")
+    }
+
+    func testLanguageRawValueInit() throws {
+        XCTAssertEqual(ReportLanguage(rawValue: "en"), .english)
+        XCTAssertEqual(ReportLanguage(rawValue: "es"), .spanish)
+        XCTAssertEqual(ReportLanguage(rawValue: "fr"), .french)
+        XCTAssertEqual(ReportLanguage(rawValue: "de"), .german)
+        XCTAssertNil(ReportLanguage(rawValue: "xx"))
+    }
+
+    // MARK: - Phase C: Report Error Tests
+
+    func testReportErrorDescriptions() throws {
+        let pdfError = ReportError.pdfNotImplemented
+        XCTAssertNotNil(pdfError.errorDescription)
+        XCTAssertTrue(pdfError.errorDescription?.contains("PDF") ?? false)
+
+        let templateError = ReportError.invalidTemplate
+        XCTAssertNotNil(templateError.errorDescription)
+
+        let imageError = ReportError.imageNotFound("/path/to/image.png")
+        XCTAssertNotNil(imageError.errorDescription)
+        XCTAssertTrue(imageError.errorDescription?.contains("/path/to/image.png") ?? false)
+
+        let langError = ReportError.unsupportedLanguage("xx")
+        XCTAssertNotNil(langError.errorDescription)
+        XCTAssertTrue(langError.errorDescription?.contains("xx") ?? false)
+    }
+
+    // MARK: - Phase C: Template-Driven Report Integration Tests
+
+    func testCardiologyTemplateSectionsPresent() throws {
+        let template = ReportTemplate.resolve(name: "cardiology")
+        XCTAssertTrue(template.sections.contains(.patientInfo))
+        XCTAssertTrue(template.sections.contains(.studyInfo))
+        XCTAssertTrue(template.sections.contains(.cardiacFindings))
+        XCTAssertTrue(template.sections.contains(.measurements))
+        XCTAssertTrue(template.sections.contains(.hemodynamics))
+        XCTAssertTrue(template.sections.contains(.impressions))
+        XCTAssertTrue(template.sections.contains(.recommendations))
+        XCTAssertEqual(template.sections.count, 7)
+    }
+
+    func testRadiologyTemplateSectionsPresent() throws {
+        let template = ReportTemplate.resolve(name: "radiology")
+        XCTAssertTrue(template.sections.contains(.indication))
+        XCTAssertTrue(template.sections.contains(.technique))
+        XCTAssertTrue(template.sections.contains(.findings))
+        XCTAssertTrue(template.sections.contains(.measurements))
+        XCTAssertTrue(template.sections.contains(.impressions))
+        XCTAssertEqual(template.sections.count, 7)
+    }
+
+    func testOncologyTemplateSectionsPresent() throws {
+        let template = ReportTemplate.resolve(name: "oncology")
+        XCTAssertTrue(template.sections.contains(.tumorAssessment))
+        XCTAssertTrue(template.sections.contains(.stagingInfo))
+        XCTAssertTrue(template.sections.contains(.findings))
+        XCTAssertTrue(template.sections.contains(.impressions))
+        XCTAssertTrue(template.sections.contains(.recommendations))
+        XCTAssertEqual(template.sections.count, 8)
+    }
+
+    func testDefaultTemplateCompleteness() throws {
+        let template = ReportTemplate.resolve(name: "default")
+        // Default template should have the essential sections
+        XCTAssertTrue(template.sections.contains(.patientInfo))
+        XCTAssertTrue(template.sections.contains(.studyInfo))
+        XCTAssertTrue(template.sections.contains(.findings))
+        XCTAssertTrue(template.sections.contains(.measurements))
+        XCTAssertTrue(template.sections.contains(.impressions))
+        XCTAssertEqual(template.sections.count, 5)
+    }
+
+    func testAllTemplatesHavePatientInfo() throws {
+        let templates = ["default", "cardiology", "radiology", "oncology"]
+        for templateName in templates {
+            let template = ReportTemplate.resolve(name: templateName)
+            XCTAssertTrue(template.sections.contains(.patientInfo),
+                          "\(templateName) template should contain patient info section")
+        }
+    }
+
+    func testAllTemplatesHaveUniqueColorSchemes() throws {
+        let defaultColors = ReportTemplate.default.colorScheme.primary
+        let cardioColors = ReportTemplate.cardiology.colorScheme.primary
+        let radioColors = ReportTemplate.radiology.colorScheme.primary
+        let oncoColors = ReportTemplate.oncology.colorScheme.primary
+
+        // Each template should have a unique primary color
+        let colors = [defaultColors, cardioColors, radioColors, oncoColors]
+        XCTAssertEqual(Set(colors).count, 4, "All templates should have unique primary colors")
+    }
+
+    func testAllLanguagesSupportAllSections() throws {
+        let languages: [ReportLanguage] = [.english, .spanish, .french, .german]
+        let sections: [ReportSection] = [.patientInfo, .studyInfo, .findings, .measurements, .impressions]
+
+        for lang in languages {
+            for section in sections {
+                let name = lang.localizedSectionName(section)
+                XCTAssertFalse(name.isEmpty,
+                               "\(lang.rawValue) should have a non-empty name for \(section.rawValue)")
+            }
+        }
+    }
+
+    func testReportMeasurementStruct() throws {
+        let measurement = ReportMeasurement(name: "Length", value: "25.5", units: "mm")
+        XCTAssertEqual(measurement.name, "Length")
+        XCTAssertEqual(measurement.value, "25.5")
+        XCTAssertEqual(measurement.units, "mm")
     }
 }

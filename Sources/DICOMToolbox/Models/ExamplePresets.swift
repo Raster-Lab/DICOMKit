@@ -149,6 +149,34 @@ public enum ExamplePresets {
                     parameterValues: ["level": "study", "modality": "CT", "study-date": "today"]
                 ),
             ]
+        case "dicom-report":
+            return [
+                ExamplePreset(
+                    name: "Plain text report",
+                    description: "Generate a plain text report from an SR file",
+                    parameterValues: ["filePath": "sr.dcm", "output": "report.txt", "format": "text"]
+                ),
+                ExamplePreset(
+                    name: "HTML cardiology report",
+                    description: "Generate a styled HTML report using the cardiology template",
+                    parameterValues: ["filePath": "sr.dcm", "output": "report.html", "format": "html", "template": "cardiology"]
+                ),
+                ExamplePreset(
+                    name: "Branded radiology report",
+                    description: "HTML radiology report with custom title, logo, and footer",
+                    parameterValues: ["filePath": "sr.dcm", "output": "report.html", "format": "html", "template": "radiology", "title": "Imaging Report", "logo": "logo.png", "footer": "Confidential Medical Report"]
+                ),
+                ExamplePreset(
+                    name: "JSON data export",
+                    description: "Export SR content as structured JSON for integration",
+                    parameterValues: ["filePath": "sr.dcm", "output": "data.json", "format": "json"]
+                ),
+                ExamplePreset(
+                    name: "Spanish oncology report",
+                    description: "Generate a Markdown oncology report in Spanish",
+                    parameterValues: ["filePath": "sr.dcm", "output": "informe.md", "format": "markdown", "template": "oncology", "language": "es"]
+                ),
+            ]
         default:
             return []
         }

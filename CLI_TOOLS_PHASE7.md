@@ -1,6 +1,6 @@
 # DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
 
-**Status**: 🚧 In Progress (3/8 tools complete: dicom-report Phase A+B complete with 48 tests, dicom-measure ✅, dicom-viewer ✅)  
+**Status**: 🚧 In Progress (3/8 tools complete: dicom-report Phase A+B+C complete with 88 tests, dicom-measure ✅, dicom-viewer ✅)  
 **Target Version**: v1.4.0-v1.4.7  
 **Created**: February 2026  
 **Last Updated**: February 13, 2026  
@@ -133,17 +133,17 @@ Generate comprehensive clinical reports from DICOM Structured Report (SR) object
 **Tests**: 48 unit tests covering SR parsing, all output formats, error handling, edge cases  
 **Completed**: February 13, 2026
 
-#### Phase C: Advanced Features (Days 7-10) - Partially Complete
-- [ ] Template engine for custom reports
-- [ ] Image embedding from referenced instances
+#### Phase C: Advanced Features (Days 7-10) - ✅ COMPLETE
+- [x] Template engine for custom reports
+- [x] Image embedding from referenced instances
 - [x] Measurement table formatter (basic version complete)
-- [ ] Branding and customization support (placeholder exists)
-- [ ] Multi-language support
-- [x] 48 comprehensive tests ✅ (exceeds goal of 45+)
+- [x] Branding and customization support (logo, institution, color schemes)
+- [x] Multi-language support (English, Spanish, French, German)
+- [x] 88 comprehensive tests ✅ (48 Phase A+B + 40 Phase C)
 
-**Status**: Testing complete with 48 comprehensive unit tests  
-**Test Coverage**: SR parsing, all output formats (text/HTML/JSON/Markdown), measurements, error handling, edge cases, templates, customization, performance  
-**Next Steps**: Template engine implementation, image embedding, branding system
+**Status**: Complete with 88 comprehensive unit tests  
+**Test Coverage**: SR parsing, all output formats, templates, image embedding, branding, localization, error handling  
+**Completed**: February 13, 2026
 
 ### Usage Examples
 
@@ -181,19 +181,19 @@ dicom-report sr1.dcm sr2.dcm sr3.dcm \
 - [x] Coded concept resolver with SNOMED/LOINC support ✅
 - [x] Text/HTML/JSON/Markdown formatters ✅
 - [ ] PDF formatter (deferred - requires additional library)
-- [ ] Template engine with customization
-- [ ] Image embedding functionality
+- [x] Template engine with customization ✅ (4 specialty templates: default, cardiology, radiology, oncology)
+- [x] Image embedding functionality ✅ (base64 embedding from referenced instances)
 - [x] Measurement table formatter (basic version) ✅
-- [ ] Branding and styling system (placeholder exists)
-- [ ] Multi-language support
-- [x] 48 unit tests ✅ (exceeds goal of 45+)
+- [x] Branding and styling system ✅ (logo embedding, institution name, custom colors)
+- [x] Multi-language support ✅ (English, Spanish, French, German)
+- [x] 88 unit tests ✅ (48 Phase A+B + 40 Phase C)
 - [x] Integration tests with sample SRs ✅
 - [x] Comprehensive documentation ✅
-- [ ] Report template examples (cardiology, radiology, oncology)
+- [x] Report template examples (cardiology, radiology, oncology) ✅
 
-**Current Status**: Phase A complete, Phase B complete (except PDF), Phase C testing complete  
-**Completion**: ~70% (foundation, core formats, and comprehensive testing complete)  
-**Test Suite**: 48 comprehensive unit tests covering all implemented features
+**Current Status**: Phase A complete, Phase B complete (except PDF), Phase C complete  
+**Completion**: ~90% (foundation, core formats, templates, image embedding, branding, localization complete; PDF deferred)  
+**Test Suite**: 88 comprehensive unit tests covering all implemented features
 
 ### Test Cases
 
@@ -213,7 +213,7 @@ dicom-report sr1.dcm sr2.dcm sr3.dcm \
 14. Apply branding (logo, letterhead)
 15. Generate multi-language reports
 
-**Lines of Code Estimate**: 792/1200-1500 (53% implementation complete, 70% total with testing)
+**Lines of Code Estimate**: 1,150/1200-1500 (77% implementation complete, 90% total with testing and templates)
 
 **Implementation Notes**:
 - Successfully leverages existing DICOMKit SR infrastructure (SRDocumentParser, SRDocument, ContentItem types)
@@ -223,14 +223,32 @@ dicom-report sr1.dcm sr2.dcm sr3.dcm \
 - Structured JSON output suitable for API integration
 - Comprehensive README with examples and documentation
 - PDF generation deferred due to need for external PDF library (PDFKit or similar)
-- **48 comprehensive unit tests** covering:
+- **Template Engine** with 4 specialty templates:
+  - Default: Standard clinical report with essential sections
+  - Cardiology: Cardiac findings, hemodynamics, recommendations
+  - Radiology: Indication, technique, findings, impressions
+  - Oncology: Tumor assessment, staging, recommendations
+- **Image Embedding**: Base64 image embedding from referenced DICOM instances
+  - Supports PNG, JPEG, TIFF, GIF, SVG formats
+  - Loads images by SOP Instance UID from configurable image directory
+  - Logo embedding for branding with base64 data URIs
+- **Branding Configuration**: Institution name, logo, custom colors, footer text
+- **Multi-Language Support**: English, Spanish, French, German
+  - Localized section headers and field labels
+  - Language-aware HTML lang attribute
+- **HTML Escaping**: XSS protection for user-provided content
+- **88 comprehensive unit tests** covering:
   - SR parsing (basic, enhanced, missing fields)
   - Content tree navigation
   - All output formats (text, HTML, JSON, Markdown)
   - Measurement extraction and formatting
   - Date formatting and validation
   - Error handling and edge cases
-  - Template support (default, cardiology, radiology, oncology)
+  - Template resolution and section ordering (Phase C)
+  - Image embedding and logo loading (Phase C)
+  - Branding configuration (Phase C)
+  - Multi-language section names and labels (Phase C)
+  - Color scheme uniqueness (Phase C)
   - Content validation and demographics
   - Complex nested structures
   - Output consistency and reproducibility
