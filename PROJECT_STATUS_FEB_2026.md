@@ -66,17 +66,17 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 
 **Total**: 29 CLI tools, 18,000+ lines of code, 753+ tests
 
-- 🚧 **Phase 7** (8 tools - 3 complete/in-progress, 5 planned)
+- 🚧 **Phase 7** (8 tools - 4 in-progress, 4 planned)
   30. dicom-report - Clinical report generation from DICOM SR (Phase A+B+C complete, 88 tests ✅)
   31. dicom-measure - Medical measurements (distance, area, volume, SUV, HU) ✅
   32. dicom-viewer - Terminal-based DICOM image viewer ✅
-  33. dicom-3d - 3D reconstruction and MPR
-  34. dicom-ai - AI/ML integration (CoreML, TensorFlow, PyTorch)
-  35. dicom-cloud - Cloud storage integration (AWS S3, GCS, Azure)
+  33. dicom-cloud - Cloud storage integration (Phase A complete: CLI framework, 35 tests ✅)
+  34. dicom-3d - 3D reconstruction and MPR
+  35. dicom-ai - AI/ML integration (CoreML, TensorFlow, PyTorch)
   36. dicom-gateway - Protocol gateway (HL7 v2, FHIR, IHE)
   37. dicom-server - Lightweight PACS server
 
-**Phase 7 Status**: 🚧 In Progress - dicom-report ~90% complete with 88 tests (Phase C complete: templates, image embedding, branding, multi-language), dicom-measure ✅, dicom-viewer ✅. See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for detailed specifications  
+**Phase 7 Status**: 🚧 In Progress - dicom-report ✅ (88 tests), dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A complete (35 tests, framework ready for AWS SDK). See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for detailed specifications  
 **Phase 7 Estimate**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks development
 
 ### 4. GUI Application
