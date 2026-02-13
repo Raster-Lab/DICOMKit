@@ -55,6 +55,9 @@ struct DICOMReport: ParsableCommand {
     @Flag(name: .long, inversion: .prefixedNo, help: "Include finding summaries")
     var includeSummary: Bool = true
     
+    @Option(name: .long, help: "Report language: en, es, fr, de")
+    var language: String = "en"
+    
     @Flag(name: .long, help: "Force parsing of files without DICM prefix")
     var force: Bool = false
     
@@ -88,6 +91,9 @@ struct DICOMReport: ParsableCommand {
             print("Content items: \(document.contentItemCount)")
         }
         
+        // Resolve language
+        let reportLanguage = ReportLanguage(rawValue: language) ?? .english
+        
         // Generate report
         let generator = ReportGenerator(
             document: document,
@@ -100,7 +106,8 @@ struct DICOMReport: ParsableCommand {
                 logoPath: logo,
                 footerText: footer,
                 includeMeasurements: includeMeasurements,
-                includeSummary: includeSummary
+                includeSummary: includeSummary,
+                language: reportLanguage
             )
         )
         
