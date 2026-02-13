@@ -3758,6 +3758,15 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - [x] **dicom-study** (v1.3.4) - Study/Series organization ✅ Complete (February 2026, 26 tests)
 - [x] **dicom-script** (v1.3.5) - Workflow scripting and automation ✅ Complete (February 2026, 20 tests)
 
+#### Phase 7: Advanced Tools (v1.4.0+)
+
+**Status**: 🚧 In Progress (February 2026)
+**Timeline**: 6-8 weeks
+
+##### Tools
+- [x] **dicom-report** (v1.4.0) - Clinical report generation from DICOM SR 🚧 (~60% complete)
+- [x] **dicom-measure** (v1.4.0) - Medical measurements (distance, area, angle, ROI, HU) ✅ Complete (February 2026, 35 tests)
+
 #### Summary Statistics
 
 | Phase | Tools | Priority | Tests | LOC Est. | Status |
@@ -3768,7 +3777,8 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Phase 4 | 3 | Medium | 103+/95+ | 1,700-2,100 | ✅ Complete |
 | Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | ✅ Complete (February 2026) |
 | Phase 6 | 6 | Low-Medium | 175+ | 2,700-3,300 | ✅ Complete (February 2026) |
-| **Total** | **29** | - | **753+** | **15,338+** | **✅ 100%** |
+| Phase 7 | 2/8 | High | 35+ | 900+ | 🚧 In Progress |
+| **Total** | **31** | - | **788+** | **16,238+** | **🚧 In Progress** |
 
 #### Technical Notes
 - All tools support macOS and Linux platforms

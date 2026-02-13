@@ -19,9 +19,9 @@ This document provides a comprehensive milestone-based roadmap for developing CL
 **Phase 4**: ✅ Complete (3 tools, 103 tests)  
 **Phase 5**: ✅ Complete (5 tools, 125+ tests)  
 **Phase 6**: ✅ Complete (6 tools, 175+ tests)  
-**Phase 7**: 🚧 In Progress (1/8 tools started, dicom-report Phase A complete)
+**Phase 7**: 🚧 In Progress (2/8 tools started, dicom-report Phase A complete, dicom-measure complete)
 
-**Total Tools**: 29 utilities complete, 8 in progress (37 total across 7 phases)
+**Total Tools**: 30 utilities complete, 7 in progress (37 total across 7 phases)
 
 ---
 
@@ -1502,7 +1502,7 @@ These CLI tool milestones complement the main DICOMKit milestones:
 
 ## Phase 7: Advanced Tools (🚧 IN PROGRESS)
 
-**Status**: 🚧 In Progress (1/8 tools started)  
+**Status**: 🚧 In Progress (2/8 tools started)  
 **Target Version**: v1.4.0-v1.4.7  
 **Priority**: Low-Medium  
 **Timeline**: 6-8 weeks  
@@ -1519,7 +1519,7 @@ For detailed specifications of Phase 7 tools, see [CLI_TOOLS_PHASE7.md](CLI_TOOL
 | # | Tool | Status | Priority | Completion | Notes |
 |---|------|--------|----------|------------|-------|
 | 30 | dicom-report | 🚧 In Progress | High | 60% | Phase A complete, Phase B partially done |
-| 31 | dicom-measure | 📋 Planned | High | 0% | - |
+| 31 | dicom-measure | ✅ Complete | High | 100% | Distance, area, angle, ROI, HU, pixel (35 tests) |
 | 32 | dicom-viewer | 📋 Planned | Medium | 0% | - |
 | 33 | dicom-3d | 📋 Planned | Medium | 0% | - |
 | 34 | dicom-ai | 📋 Planned | Medium | 0% | - |
@@ -1590,6 +1590,57 @@ For detailed specifications of Phase 7 tools, see [CLI_TOOLS_PHASE7.md](CLI_TOOL
 3. Add integration tests
 4. Consider PDF generation (may require external library like PDFKit)
 5. Implement advanced features (templates, image embedding) in Phase C
+
+---
+
+### Milestone 7.2: Medical Measurements (✅ COMPLETE)
+
+**Tool**: `dicom-measure`  
+**Status**: ✅ Complete (February 2026)  
+**Priority**: High  
+**Complexity**: High  
+**Timeline**: 1.5 weeks  
+**Tests**: 35  
+**Completion**: 100%
+
+#### What's Complete
+
+**Phase A: Core Measurements (✅ Complete)**
+- ✅ Pixel coordinate to physical coordinate conversion
+- ✅ Linear distance measurement with calibration
+- ✅ Polygon area calculation (Shoelace formula)
+- ✅ Ellipse area calculation
+- ✅ Angle measurement between two lines
+- ✅ ROI statistics (mean, std dev, min, max)
+- ✅ Pixel Spacing auto-detection from DICOM tags
+- ✅ Unit conversion (mm, cm, inches, pixels)
+
+**Phase B: Advanced Measurements (✅ Complete)**
+- ✅ Hounsfield Unit extraction for CT images
+- ✅ Rescale Slope/Intercept application
+- ✅ Raw pixel value extraction with frame support
+- ✅ Histogram generation within ROIs
+- ✅ Circular ROI support
+- ✅ Rectangular ROI support
+- ✅ Polygon ROI support (ray casting algorithm)
+
+**Phase C: Integration & Output (✅ Complete)**
+- ✅ Text output format
+- ✅ JSON structured output
+- ✅ CSV output format
+- ✅ File output support
+- ✅ Verbose debugging mode
+- ✅ Command-line interface with 6 subcommands
+- ✅ Comprehensive README documentation
+- ✅ 35 unit tests
+- ✅ Build successfully with zero warnings
+
+#### Architecture
+
+- **Subcommands**: distance, area, angle, roi, hu, pixel
+- **Code Size**: ~900 lines (main.swift ~350 lines, MeasurementEngine.swift ~450 lines)
+- **Pattern**: ArgumentParser ParsableCommand with subcommands
+- **Calibration**: Automatic Pixel Spacing and Rescale Slope/Intercept detection
 
 ---
 
