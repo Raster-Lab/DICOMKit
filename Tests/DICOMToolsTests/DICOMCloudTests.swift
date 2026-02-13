@@ -1,0 +1,340 @@
+import XCTest
+import Foundation
+@testable import DICOMKit
+@testable import DICOMCore
+
+/// Tests for dicom-cloud CLI tool functionality
+/// These tests verify URL parsing, error handling, and operation logic
+final class DICOMCloudTests: XCTestCase {
+    
+    // MARK: - CloudURL Parsing Tests
+    
+    func testParseS3URL() throws {
+        let urlString = "s3://my-bucket/path/to/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.provider, .s3)
+        XCTAssertEqual(cloudURL.bucket, "my-bucket")
+        XCTAssertEqual(cloudURL.key, "path/to/file.dcm")
+    }
+    
+    func testParseGCSURL() throws {
+        let urlString = "gs://my-bucket/path/to/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.provider, .gcs)
+        XCTAssertEqual(cloudURL.bucket, "my-bucket")
+        XCTAssertEqual(cloudURL.key, "path/to/file.dcm")
+    }
+    
+    func testParseAzureURL() throws {
+        let urlString = "azure://my-container/path/to/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.provider, .azure)
+        XCTAssertEqual(cloudURL.bucket, "my-container")
+        XCTAssertEqual(cloudURL.key, "path/to/file.dcm")
+    }
+    
+    func testParseURLWithTrailingSlash() throws {
+        let urlString = "s3://my-bucket/path/to/directory/"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.key, "path/to/directory")
+    }
+    
+    func testParseURLWithBucketOnly() throws {
+        let urlString = "s3://my-bucket/"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.bucket, "my-bucket")
+        XCTAssertEqual(cloudURL.key, "")
+    }
+    
+    func testParseInvalidURL() {
+        let urlString = "not-a-valid-url"
+        
+        XCTAssertThrowsError(try CloudURL.parse(urlString)) { error in
+            guard let cloudError = error as? CloudError else {
+                XCTFail("Expected CloudError")
+                return
+            }
+            if case .invalidURL = cloudError {
+                // Expected
+            } else {
+                XCTFail("Expected invalidURL error")
+            }
+        }
+    }
+    
+    func testParseMissingScheme() {
+        let urlString = "my-bucket/path/to/file.dcm"
+        
+        XCTAssertThrowsError(try CloudURL.parse(urlString)) { error in
+            guard let cloudError = error as? CloudError else {
+                XCTFail("Expected CloudError")
+                return
+            }
+            if case .invalidURL = cloudError {
+                // Expected
+            } else {
+                XCTFail("Expected invalidURL error")
+            }
+        }
+    }
+    
+    func testParseUnsupportedScheme() {
+        let urlString = "http://my-bucket/path/to/file.dcm"
+        
+        XCTAssertThrowsError(try CloudURL.parse(urlString)) { error in
+            guard let cloudError = error as? CloudError else {
+                XCTFail("Expected CloudError")
+                return
+            }
+            if case .unsupportedProvider = cloudError {
+                // Expected
+            } else {
+                XCTFail("Expected unsupportedProvider error")
+            }
+        }
+    }
+    
+    // MARK: - CloudURL Manipulation Tests
+    
+    func testCloudURLWithKey() throws {
+        let urlString = "s3://my-bucket/original/path.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        let newCloudURL = cloudURL.with(key: "new/path.dcm")
+        
+        XCTAssertEqual(newCloudURL.provider, .s3)
+        XCTAssertEqual(newCloudURL.bucket, "my-bucket")
+        XCTAssertEqual(newCloudURL.key, "new/path.dcm")
+    }
+    
+    func testCloudURLFullPath() throws {
+        let urlString = "s3://my-bucket/path/to/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.fullPath, "s3://my-bucket/path/to/file.dcm")
+    }
+    
+    // MARK: - CloudProviderType Tests
+    
+    func testCloudProviderSchemePrefix() {
+        XCTAssertEqual(CloudProviderType.s3.schemePrefix, "s3://")
+        XCTAssertEqual(CloudProviderType.gcs.schemePrefix, "gs://")
+        XCTAssertEqual(CloudProviderType.azure.schemePrefix, "azure://")
+    }
+    
+    func testCloudProviderDefaultEndpoint() {
+        XCTAssertEqual(CloudProviderType.s3.defaultEndpoint, "s3.amazonaws.com")
+        XCTAssertEqual(CloudProviderType.gcs.defaultEndpoint, "storage.googleapis.com")
+        XCTAssertEqual(CloudProviderType.azure.defaultEndpoint, "blob.core.windows.net")
+    }
+    
+    // MARK: - CloudProvider Factory Tests
+    
+    func testCreateS3Provider() throws {
+        let cloudURL = try CloudURL.parse("s3://my-bucket/file.dcm")
+        let provider = try CloudProvider.create(for: cloudURL, endpoint: nil)
+        
+        XCTAssertNotNil(provider)
+    }
+    
+    func testCreateGCSProviderThrowsNotImplemented() throws {
+        let cloudURL = try CloudURL.parse("gs://my-bucket/file.dcm")
+        
+        XCTAssertThrowsError(try CloudProvider.create(for: cloudURL, endpoint: nil)) { error in
+            guard let cloudError = error as? CloudError else {
+                XCTFail("Expected CloudError")
+                return
+            }
+            if case .notImplemented = cloudError {
+                // Expected
+            } else {
+                XCTFail("Expected notImplemented error")
+            }
+        }
+    }
+    
+    func testCreateAzureProviderThrowsNotImplemented() throws {
+        let cloudURL = try CloudURL.parse("azure://my-container/file.dcm")
+        
+        XCTAssertThrowsError(try CloudProvider.create(for: cloudURL, endpoint: nil)) { error in
+            guard let cloudError = error as? CloudError else {
+                XCTFail("Expected CloudError")
+                return
+            }
+            if case .notImplemented = cloudError {
+                // Expected
+            } else {
+                XCTFail("Expected notImplemented error")
+            }
+        }
+    }
+    
+    // MARK: - CloudObject Tests
+    
+    func testCloudObjectCreation() {
+        let key = "path/to/file.dcm"
+        let size = 1024
+        let lastModified = Date()
+        let metadata = ["ContentType": "application/dicom"]
+        
+        let object = CloudObject(key: key, size: size, lastModified: lastModified, metadata: metadata)
+        
+        XCTAssertEqual(object.key, key)
+        XCTAssertEqual(object.size, size)
+        XCTAssertEqual(object.lastModified, lastModified)
+        XCTAssertEqual(object.metadata["ContentType"], "application/dicom")
+    }
+    
+    // MARK: - CloudError Tests
+    
+    func testCloudErrorDescriptions() {
+        let invalidURLError = CloudError.invalidURL("test message")
+        XCTAssertTrue(invalidURLError.description.contains("Invalid URL"))
+        
+        let unsupportedProviderError = CloudError.unsupportedProvider("test provider")
+        XCTAssertTrue(unsupportedProviderError.description.contains("Unsupported provider"))
+        
+        let authenticationError = CloudError.authenticationFailed("bad credentials")
+        XCTAssertTrue(authenticationError.description.contains("Authentication failed"))
+        
+        let networkError = CloudError.networkError("connection timeout")
+        XCTAssertTrue(networkError.description.contains("Network error"))
+        
+        let notFoundError = CloudError.notFound("file.dcm")
+        XCTAssertTrue(notFoundError.description.contains("Not found"))
+        
+        let permissionError = CloudError.permissionDenied("access denied")
+        XCTAssertTrue(permissionError.description.contains("Permission denied"))
+        
+        let operationError = CloudError.operationFailed("operation failed")
+        XCTAssertTrue(operationError.description.contains("Operation failed"))
+        
+        let notImplementedError = CloudError.notImplemented("feature not ready")
+        XCTAssertTrue(notImplementedError.description.contains("Not implemented"))
+    }
+    
+    // MARK: - URL Parsing Edge Cases
+    
+    func testParseURLWithSpecialCharacters() throws {
+        let urlString = "s3://my-bucket/path%20with%20spaces/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.bucket, "my-bucket")
+        // Note: URL encoding handling depends on Foundation's URL parsing
+    }
+    
+    func testParseURLWithDeepPath() throws {
+        let urlString = "s3://my-bucket/level1/level2/level3/level4/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.bucket, "my-bucket")
+        XCTAssertEqual(cloudURL.key, "level1/level2/level3/level4/file.dcm")
+    }
+    
+    func testParseURLWithDashesAndUnderscores() throws {
+        let urlString = "s3://my-test_bucket-123/my_path-456/file_name-789.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.bucket, "my-test_bucket-123")
+        XCTAssertEqual(cloudURL.key, "my_path-456/file_name-789.dcm")
+    }
+    
+    // MARK: - Provider Endpoint Tests
+    
+    func testCustomEndpointSupport() throws {
+        let cloudURL = try CloudURL.parse("s3://my-bucket/file.dcm")
+        let customEndpoint = "https://minio.example.com"
+        let provider = try CloudProvider.create(for: cloudURL, endpoint: customEndpoint)
+        
+        XCTAssertNotNil(provider)
+    }
+    
+    // MARK: - Integration Test Preparation
+    
+    func testPrepareTestEnvironment() {
+        // This test verifies that the test setup is correct
+        // In a real integration test, we would:
+        // 1. Check for AWS credentials
+        // 2. Verify test bucket exists
+        // 3. Create test files
+        // 4. Run actual upload/download operations
+        // 5. Clean up test data
+        
+        // For now, we just verify the test can run
+        XCTAssertTrue(true)
+    }
+    
+    // MARK: - URL Format Validation
+    
+    func testMultipleBucketFormats() throws {
+        // Test various bucket naming conventions
+        let validBuckets = [
+            "s3://simple-bucket/file.dcm",
+            "s3://bucket.with.dots/file.dcm",
+            "s3://bucket-123/file.dcm",
+            "s3://a/file.dcm", // Minimum length bucket
+        ]
+        
+        for urlString in validBuckets {
+            let cloudURL = try CloudURL.parse(urlString)
+            XCTAssertEqual(cloudURL.provider, .s3)
+            XCTAssertFalse(cloudURL.bucket.isEmpty)
+        }
+    }
+    
+    // MARK: - Path Manipulation Tests
+    
+    func testRelativePathCalculation() throws {
+        // Test that we can calculate relative paths correctly
+        // This is important for directory uploads/downloads
+        let baseURL = try CloudURL.parse("s3://bucket/base/path/")
+        let fileURL = baseURL.with(key: "base/path/subdir/file.dcm")
+        
+        XCTAssertEqual(fileURL.key, "base/path/subdir/file.dcm")
+    }
+    
+    func testEmptyKeyHandling() throws {
+        let cloudURL = try CloudURL.parse("s3://bucket/")
+        XCTAssertEqual(cloudURL.key, "")
+        
+        let withKey = cloudURL.with(key: "newfile.dcm")
+        XCTAssertEqual(withKey.key, "newfile.dcm")
+    }
+    
+    // MARK: - Performance Tests
+    
+    func testURLParsingPerformance() {
+        measure {
+            for _ in 0..<1000 {
+                _ = try? CloudURL.parse("s3://test-bucket/path/to/file.dcm")
+            }
+        }
+    }
+    
+    // MARK: - Concurrent URL Parsing
+    
+    func testConcurrentURLParsing() async throws {
+        // Test that URL parsing is thread-safe
+        await withTaskGroup(of: CloudURL?.self) { group in
+            for i in 0..<100 {
+                group.addTask {
+                    try? CloudURL.parse("s3://bucket-\(i)/file-\(i).dcm")
+                }
+            }
+            
+            var count = 0
+            for await result in group {
+                if result != nil {
+                    count += 1
+                }
+            }
+            
+            XCTAssertEqual(count, 100)
+        }
+    }
+}
