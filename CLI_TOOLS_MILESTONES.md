@@ -19,9 +19,9 @@ This document provides a comprehensive milestone-based roadmap for developing CL
 **Phase 4**: ✅ Complete (3 tools, 103 tests)  
 **Phase 5**: ✅ Complete (5 tools, 125+ tests)  
 **Phase 6**: ✅ Complete (6 tools, 175+ tests)  
-**Phase 7**: 🚧 In Progress (2/8 tools started, dicom-report Phase A complete, dicom-measure complete)
+**Phase 7**: 🚧 In Progress (3/8 tools: dicom-report Phase A complete, dicom-measure complete, dicom-viewer complete)
 
-**Total Tools**: 30 utilities complete, 7 in progress (37 total across 7 phases)
+**Total Tools**: 31 utilities complete, 6 in progress (37 total across 7 phases)
 
 ---
 
@@ -1520,7 +1520,7 @@ For detailed specifications of Phase 7 tools, see [CLI_TOOLS_PHASE7.md](CLI_TOOL
 |---|------|--------|----------|------------|-------|
 | 30 | dicom-report | 🚧 In Progress | High | 60% | Phase A complete, Phase B partially done |
 | 31 | dicom-measure | ✅ Complete | High | 100% | Distance, area, angle, ROI, HU, pixel (35 tests) |
-| 32 | dicom-viewer | 📋 Planned | Medium | 0% | - |
+| 32 | dicom-viewer | ✅ Complete | Medium | 85% | ASCII, ANSI, iTerm2, Kitty, Sixel (35 tests) |
 | 33 | dicom-3d | 📋 Planned | Medium | 0% | - |
 | 34 | dicom-ai | 📋 Planned | Medium | 0% | - |
 | 35 | dicom-cloud | 📋 Planned | Medium | 0% | - |
