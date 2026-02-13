@@ -132,6 +132,8 @@ public struct ToolTabView: View {
             DicomExportView(parameterValues: $parameterValues, subcommand: $subcommand)
         case "dicom-pixedit":
             DicomPixeditView(parameterValues: $parameterValues)
+        case "dicom-report":
+            DicomReportView(parameterValues: $parameterValues)
         // Network Operations
         case "dicom-echo":
             DicomEchoView(parameterValues: $parameterValues, networkConfig: networkConfig)
