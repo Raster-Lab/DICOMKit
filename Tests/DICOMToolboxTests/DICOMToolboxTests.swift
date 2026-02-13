@@ -187,9 +187,9 @@ struct ValidationRuleTests {
 
 @Suite("ToolRegistry Tests")
 struct ToolRegistryTests {
-    @Test("All 29 tools are registered")
+    @Test("All 30 tools are registered")
     func testAllToolsCount() {
-        #expect(ToolRegistry.allTools.count == 29)
+        #expect(ToolRegistry.allTools.count == 30)
     }
 
     @Test("All tool IDs are unique")
@@ -216,10 +216,10 @@ struct ToolRegistryTests {
         #expect(tools.count == 4)
     }
 
-    @Test("Data Export category has 6 tools")
+    @Test("Data Export category has 7 tools")
     func testDataExportCount() {
         let tools = ToolRegistry.tools(for: .dataExport)
-        #expect(tools.count == 6)
+        #expect(tools.count == 7)
     }
 
     @Test("Network Operations category has 8 tools")
@@ -620,5 +620,157 @@ struct ToolDefinitionTests {
         #expect(paramIDs.contains("input"))
         #expect(paramIDs.contains("codec"))
         #expect(paramIDs.contains("quality"))
+    }
+}
+
+@Suite("DicomReport ToolRegistry Tests")
+struct DicomReportToolRegistryTests {
+    @Test("dicom-report tool is registered")
+    func testReportToolRegistered() {
+        let tool = ToolRegistry.tool(withID: "dicom-report")
+        #expect(tool != nil)
+        #expect(tool?.name == "DICOM Report")
+    }
+
+    @Test("dicom-report is in Data Export category")
+    func testReportCategory() {
+        let tool = ToolRegistry.dicomReport
+        #expect(tool.category == .dataExport)
+    }
+
+    @Test("dicom-report has correct parameters")
+    func testReportParameters() {
+        let tool = ToolRegistry.dicomReport
+        #expect(tool.parameters.count == 14)
+        let required = tool.parameters.filter(\.isRequired)
+        #expect(required.count == 2)
+        let requiredIDs = required.map(\.id)
+        #expect(requiredIDs.contains("filePath"))
+        #expect(requiredIDs.contains("output"))
+    }
+
+    @Test("dicom-report format parameter has 5 options")
+    func testReportFormatOptions() {
+        let tool = ToolRegistry.dicomReport
+        let formatParam = tool.parameters.first { $0.id == "format" }
+        #expect(formatParam != nil)
+        #expect(formatParam?.enumValues?.count == 5)
+        let values = formatParam?.enumValues?.map(\.value) ?? []
+        #expect(values.contains("text"))
+        #expect(values.contains("html"))
+        #expect(values.contains("json"))
+        #expect(values.contains("markdown"))
+        #expect(values.contains("pdf"))
+    }
+
+    @Test("dicom-report template parameter has 4 options")
+    func testReportTemplateOptions() {
+        let tool = ToolRegistry.dicomReport
+        let templateParam = tool.parameters.first { $0.id == "template" }
+        #expect(templateParam != nil)
+        #expect(templateParam?.enumValues?.count == 4)
+        let values = templateParam?.enumValues?.map(\.value) ?? []
+        #expect(values.contains("default"))
+        #expect(values.contains("cardiology"))
+        #expect(values.contains("radiology"))
+        #expect(values.contains("oncology"))
+    }
+
+    @Test("dicom-report language parameter has 4 options")
+    func testReportLanguageOptions() {
+        let tool = ToolRegistry.dicomReport
+        let langParam = tool.parameters.first { $0.id == "language" }
+        #expect(langParam != nil)
+        #expect(langParam?.enumValues?.count == 4)
+        let values = langParam?.enumValues?.map(\.value) ?? []
+        #expect(values.contains("en"))
+        #expect(values.contains("es"))
+        #expect(values.contains("fr"))
+        #expect(values.contains("de"))
+    }
+
+    @Test("dicom-report has branding parameters")
+    func testReportBrandingParams() {
+        let tool = ToolRegistry.dicomReport
+        let paramIDs = tool.parameters.map(\.id)
+        #expect(paramIDs.contains("title"))
+        #expect(paramIDs.contains("logo"))
+        #expect(paramIDs.contains("footer"))
+    }
+
+    @Test("dicom-report has image embedding parameters")
+    func testReportImageParams() {
+        let tool = ToolRegistry.dicomReport
+        let paramIDs = tool.parameters.map(\.id)
+        #expect(paramIDs.contains("embed-images"))
+        #expect(paramIDs.contains("image-dir"))
+    }
+
+    @Test("dicom-report requires output")
+    func testReportRequiresOutput() {
+        let tool = ToolRegistry.dicomReport
+        #expect(tool.requiresOutput)
+    }
+
+    @Test("dicom-report does not require network")
+    func testReportNoNetwork() {
+        let tool = ToolRegistry.dicomReport
+        #expect(!tool.requiresNetwork)
+    }
+
+    @Test("dicom-report has no subcommands")
+    func testReportNoSubcommands() {
+        let tool = ToolRegistry.dicomReport
+        #expect(tool.subcommands == nil)
+    }
+
+    @Test("dicom-report command builder works")
+    func testReportCommandBuilder() {
+        let builder = CommandBuilder(tool: ToolRegistry.dicomReport)
+        let command = builder.buildCommand(values: [
+            "filePath": "sr.dcm",
+            "output": "report.html",
+            "format": "html",
+            "template": "cardiology",
+            "language": "es",
+        ])
+        #expect(command.contains("dicom-report"))
+        #expect(command.contains("sr.dcm"))
+        #expect(command.contains("--output report.html"))
+        #expect(command.contains("--format html"))
+        #expect(command.contains("--template cardiology"))
+        #expect(command.contains("--language es"))
+    }
+
+    @Test("dicom-report command with branding options")
+    func testReportCommandBranding() {
+        let builder = CommandBuilder(tool: ToolRegistry.dicomReport)
+        let command = builder.buildCommand(values: [
+            "filePath": "sr.dcm",
+            "output": "report.html",
+            "title": "Custom Title",
+            "logo": "logo.png",
+            "footer": "Confidential",
+            "embed-images": "true",
+        ])
+        #expect(command.contains("--title \"Custom Title\"") || command.contains("--title Custom Title"))
+        #expect(command.contains("--logo logo.png"))
+        #expect(command.contains("--footer Confidential"))
+        #expect(command.contains("--embed-images"))
+    }
+
+    @Test("dicom-report validation requires input and output")
+    func testReportValidation() {
+        let builder = CommandBuilder(tool: ToolRegistry.dicomReport)
+        #expect(!builder.isValid(values: [:]))
+        #expect(!builder.isValid(values: ["filePath": "sr.dcm"]))
+        #expect(!builder.isValid(values: ["output": "report.txt"]))
+        #expect(builder.isValid(values: ["filePath": "sr.dcm", "output": "report.txt"]))
+    }
+
+    @Test("dicom-report example presets exist")
+    func testReportExamplePresets() {
+        let presets = ExamplePresets.presets(for: "dicom-report")
+        #expect(presets.count == 5)
     }
 }
