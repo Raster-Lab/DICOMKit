@@ -225,7 +225,7 @@ When developing any graphical user interface (GUI) applications using DICOMKit (
   - UIKit: Test with `semanticContentAttribute = .forceRightToLeft`
 
 - **Text alignment**: Use natural text alignment
-  - SwiftUI: Use `.multilineTextAlignment(.leading)` not `.leading` literal
+  - SwiftUI: Use `.multilineTextAlignment(.leading)` instead of `.multilineTextAlignment(.left)` for proper RTL support
   - UIKit: Use `NSTextAlignment.natural` not `.left`
 
 - **Icon and image handling**: Consider RTL context for directional icons
@@ -333,7 +333,9 @@ For medical imaging applications, prioritize:
 
 #### Color Contrast and Visual Design
 
-- **WCAG compliance**: Maintain WCAG AA contrast ratios (minimum 4.5:1 for text)
+- **WCAG compliance**: Maintain WCAG AA contrast ratios
+  - Minimum 4.5:1 for normal text (under 18pt or under 14pt bold)
+  - Minimum 3:1 for large text (18pt and larger, or 14pt bold and larger)
 - **Color blindness**: Don't use color alone to convey critical information
   - Add icons or labels to color-coded elements (e.g., measurement tools)
   - Test with Color Blindness simulator in Accessibility Inspector
