@@ -187,6 +187,222 @@ This helps maintain accurate and up-to-date documentation for users of DICOMKit.
 
 Failure to update these files can lead to inconsistent documentation and make it difficult for users and contributors to understand the current state of the project.
 
+## GUI Development Standards
+
+When developing any graphical user interface (GUI) applications using DICOMKit (including demo apps, sample code, or example projects), adhere to the following standards for internationalization, localization, and accessibility.
+
+### Internationalization and Localization
+
+#### General Requirements
+
+- **Externalize all user-facing strings**: Never hard-code user-facing text in source code
+  - Use `NSLocalizedString()` or SwiftUI's `LocalizedStringKey` for all UI text
+  - Create `.strings` or `.stringsdict` files for each supported language
+  - Use descriptive keys that indicate context (e.g., `"study.count.format"` not just `"count"`)
+
+- **Support pluralization**: Use `.stringsdict` files for proper plural handling
+  - Handle zero, one, and multiple cases correctly
+  - Different languages have different pluralization rules
+
+- **Locale-aware formatting**: Use system formatters for all locale-specific content
+  - Dates and times: Use `DateFormatter` with appropriate styles
+  - Numbers: Use `NumberFormatter` for integers, decimals, percentages
+  - Measurements: Use `MeasurementFormatter` for medical measurements (mm, cm, etc.)
+  - File sizes: Use `ByteCountFormatter` for storage information
+
+- **Context-aware translations**: Provide comments in localization files
+  ```swift
+  // Example:
+  /* Medical imaging context: number of DICOM series in a study */
+  "series.count" = "%d series";
+  ```
+
+#### Right-to-Left (RTL) Language Support
+
+- **Layout mirroring**: Ensure all layouts automatically mirror for RTL languages
+  - Use semantic layout constraints (`.leading`/`.trailing` not `.left`/`.right`)
+  - SwiftUI: Use `.layoutDirection(.rightToLeft)` for testing
+  - UIKit: Test with `semanticContentAttribute = .forceRightToLeft`
+
+- **Text alignment**: Use natural text alignment
+  - SwiftUI: Use `.multilineTextAlignment(.leading)` instead of `.multilineTextAlignment(.left)` for proper RTL support
+  - UIKit: Use `NSTextAlignment.natural` not `.left`
+
+- **Icon and image handling**: Consider RTL context for directional icons
+  - Use SF Symbols with automatic mirroring where appropriate
+  - Back/forward arrows should flip in RTL
+  - Medical imaging controls (zoom, pan) may need custom handling
+
+- **Testing RTL layouts**: Always test with Hebrew or Arabic language settings
+  - Enable "RTL Pseudolanguage" in Xcode scheme for testing
+  - Verify all UI elements mirror correctly
+  - Check for text truncation or overflow issues
+
+#### Supported Languages Priority
+
+For medical imaging applications, prioritize:
+1. **Primary**: English (US)
+2. **High priority**: Spanish, French, German, Chinese (Simplified), Japanese
+3. **Medical markets**: Korean, Portuguese (Brazil), Arabic, Hebrew
+4. **Additional**: Italian, Dutch, Russian, Turkish
+
+### Accessibility and Assistive Technologies
+
+#### VoiceOver Support (Required for All GUI Elements)
+
+- **Accessibility labels**: Provide clear, concise labels for all interactive elements
+  ```swift
+  // SwiftUI
+  Button("Submit") { }
+      .accessibilityLabel("Submit patient study")
+  
+  // UIKit
+  button.accessibilityLabel = "Submit patient study"
+  ```
+
+- **Accessibility hints**: Provide context for complex actions
+  ```swift
+  .accessibilityHint("Uploads the selected DICOM files to the PACS server")
+  ```
+
+- **Accessibility values**: Expose current state for dynamic content
+  ```swift
+  slider.accessibilityValue = "\(Int(windowWidth)) Hounsfield units"
+  ```
+
+- **Accessibility traits**: Mark elements with appropriate traits
+  ```swift
+  .accessibilityAddTraits(.isButton)
+  .accessibilityAddTraits(.isHeader)
+  .accessibilityRemoveTraits(.isImage) // If image is purely decorative
+  ```
+
+- **Grouping related elements**: Use accessibility containers for complex layouts
+  ```swift
+  VStack {
+      // Patient info elements
+  }
+  .accessibilityElement(children: .combine)
+  .accessibilityLabel("Patient: John Doe, DOB: 1980-01-15")
+  ```
+
+#### VoiceOver Testing Requirements
+
+- **Test all workflows**: Navigate through every screen using only VoiceOver
+- **Verify reading order**: Ensure logical, top-to-bottom, left-to-right (or RTL) order
+- **Check focus management**: Verify focus moves correctly after actions
+- **Test custom controls**: Any custom UI components must have full VoiceOver support
+- **Validate medical terminology**: Ensure proper pronunciation of medical terms
+
+#### Additional Assistive Technologies
+
+- **Dynamic Type support**: Respect user's text size preferences
+  ```swift
+  Text("Patient Name")
+      .font(.body) // Uses Dynamic Type automatically
+  ```
+  - Test with largest accessibility text sizes
+  - Ensure layouts don't break with large text
+  - Provide horizontal scrolling if needed for large text
+
+- **Reduce Motion**: Respect motion reduction preferences
+  ```swift
+  // SwiftUI
+  @Environment(\.accessibilityReduceMotion) var reduceMotion
+  
+  if !reduceMotion {
+      // Perform animation
+  }
+  ```
+
+- **Increase Contrast**: Support high contrast mode
+  ```swift
+  @Environment(\.accessibilityDifferentiateWithoutColor) var differentiateWithoutColor
+  ```
+  - Don't rely solely on color to convey information
+  - Add patterns, icons, or text labels as alternatives
+
+- **Switch Control**: Ensure full keyboard/switch control navigation
+  - All actions must be reachable via keyboard shortcuts
+  - Provide custom actions for complex gestures
+  ```swift
+  .accessibilityAction(named: "Adjust window width") {
+      // Custom action
+  }
+  ```
+
+#### Color Contrast and Visual Design
+
+- **WCAG compliance**: Maintain WCAG AA contrast ratios
+  - Minimum 4.5:1 for normal text (under 18pt or under 14pt bold)
+  - Minimum 3:1 for large text (18pt and larger, or 14pt bold and larger)
+- **Color blindness**: Don't use color alone to convey critical information
+  - Add icons or labels to color-coded elements (e.g., measurement tools)
+  - Test with Color Blindness simulator in Accessibility Inspector
+
+- **Focus indicators**: Provide clear focus indicators for keyboard navigation
+  ```swift
+  .focusable(true)
+  .focusEffectDisabled(false)
+  ```
+
+#### Medical Imaging Specific Accessibility
+
+- **Image annotations**: Provide text alternatives for visual findings
+  ```swift
+  imageView.accessibilityLabel = "CT scan of chest, frame 45 of 120"
+  imageView.accessibilityHint = "Shows lung tissue with contrast"
+  ```
+
+- **Measurement values**: Always expose measurement values to VoiceOver
+  ```swift
+  .accessibilityLabel("Distance measurement")
+  .accessibilityValue("\(measurement.value) millimeters")
+  ```
+
+- **Window/Level controls**: Provide clear audio feedback for adjustments
+  ```swift
+  .accessibilityAdjustableAction { direction in
+      // Adjust window/level based on direction
+      // Announce new values
+  }
+  ```
+
+#### Testing and Validation
+
+- **Accessibility Audit Checklist**:
+  - [ ] All interactive elements have accessibility labels
+  - [ ] VoiceOver can navigate to all functionality
+  - [ ] Dynamic Type works at all text sizes
+  - [ ] High contrast mode is supported
+  - [ ] Keyboard navigation works throughout the app
+  - [ ] Color is not the only means of conveying information
+  - [ ] All animations respect Reduce Motion setting
+  - [ ] Focus indicators are visible and clear
+
+- **Use Xcode Accessibility Inspector**: Run automated audits regularly
+- **Test on physical devices**: Accessibility works differently on real hardware
+- **User testing**: If possible, test with users who rely on assistive technologies
+
+#### Documentation Requirements
+
+For all GUI applications, document:
+- Supported languages and localization status
+- Accessibility features implemented
+- Known accessibility limitations
+- Keyboard shortcuts (for keyboard navigation)
+- Testing procedures for accessibility compliance
+
+### Resources
+
+- [Apple Accessibility Programming Guide](https://developer.apple.com/documentation/accessibility)
+- [Apple Internationalization and Localization Guide](https://developer.apple.com/documentation/xcode/localization)
+- [WCAG 2.1 Guidelines](https://www.w3.org/WAI/WCAG21/quickref/)
+- [Apple Human Interface Guidelines - Accessibility](https://developer.apple.com/design/human-interface-guidelines/accessibility)
+- [Testing Your App for Accessibility](https://developer.apple.com/documentation/accessibility/testing-your-app-for-accessibility)
+
+---
+
 ## Demo Application Development (Post-Milestone 10)
 
 **IMPORTANT**: After completing all Milestone 10 sub-milestones (10.1-10.15), the next priority is to develop comprehensive demo applications that showcase DICOMKit's capabilities.
@@ -242,7 +458,16 @@ When starting demo application work:
 5. **Testing and Validation**:
    - Test on physical devices (iOS, macOS, visionOS)
    - Validate against real PACS systems
-   - Perform accessibility audit
+   - **Perform comprehensive accessibility audit** (see "GUI Development Standards" section):
+     - VoiceOver navigation testing
+     - Dynamic Type at all sizes
+     - Keyboard/Switch Control navigation
+     - High contrast and color blindness testing
+     - Reduce Motion compliance
+   - **Validate internationalization**:
+     - Test with multiple languages
+     - Verify RTL layout mirroring (Hebrew/Arabic)
+     - Check locale-specific formatting
    - Memory and performance profiling
    - App Store submission preparation
 
@@ -257,6 +482,11 @@ When starting demo application work:
 **UI/UX Standards**:
 - SwiftUI-first approach for modern, declarative UI
 - Support Dark Mode and accessibility features
+- **Follow all guidelines in "GUI Development Standards" section above**:
+  - Full internationalization and localization support
+  - RTL language compatibility
+  - Comprehensive VoiceOver and assistive technology support
+  - WCAG accessibility compliance
 - Implement proper error handling and user feedback
 - Use haptic feedback and animations appropriately
 - Ensure responsive layouts for all device sizes
