@@ -82,13 +82,11 @@ struct DICOMViewer: ParsableCommand {
             }
         }
 
-        if let windowCenter = windowCenter, windowWidth == nil {
-            _ = windowCenter  // suppress unused warning
+        if windowCenter != nil && windowWidth == nil {
             throw ValidationError("--window-width must be provided when --window-center is set")
         }
 
-        if let windowWidth = windowWidth, windowCenter == nil {
-            _ = windowWidth  // suppress unused warning
+        if windowWidth != nil && windowCenter == nil {
             throw ValidationError("--window-center must be provided when --window-width is set")
         }
 
