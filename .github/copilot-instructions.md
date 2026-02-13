@@ -187,6 +187,91 @@ This helps maintain accurate and up-to-date documentation for users of DICOMKit.
 
 Failure to update these files can lead to inconsistent documentation and make it difficult for users and contributors to understand the current state of the project.
 
+### CLI Tools for Completed Functionality
+
+**IMPORTANT**: Whenever a new feature or functionality is completed in any DICOMKit library module (DICOMCore, DICOMDictionary, DICOMNetwork, DICOMWeb, DICOMToolbox, or DICOMKit), Copilot **must** also create a corresponding CLI tool that exposes that functionality via the command line.
+
+#### When to Add a CLI Tool
+
+A new CLI tool should be added when:
+- A new public API or capability is added to any library module (e.g., new parsing, conversion, validation, networking, or processing feature)
+- An existing feature is significantly enhanced with new operations that users would benefit from accessing via the command line
+- A new DICOM service or workflow is implemented (e.g., a new SOP Class, network operation, or file manipulation)
+
+#### CLI Tool Requirements
+
+1. **Naming Convention**: Use the `dicom-<name>` format (e.g., `dicom-info`, `dicom-validate`, `dicom-compress`)
+   - The name should clearly describe the tool's primary function
+   - Use lowercase with hyphens to separate words
+
+2. **Source Structure**: Create a new directory under `Sources/dicom-<name>/` containing:
+   - `main.swift` — Entry point using `ArgumentParser`'s `ParsableCommand`
+   - Additional Swift files as needed to keep the code organized
+
+3. **Package.swift Updates**: Add the new CLI tool to `Package.swift`:
+   - Add an `.executable(name: "dicom-<name>", targets: ["dicom-<name>"])` entry in the `products` array
+   - Add a corresponding `.executableTarget(name: "dicom-<name>", dependencies: [...])` entry in the `targets` array
+   - Include the appropriate library dependencies (e.g., `DICOMKit`, `DICOMCore`, `DICOMNetwork`) and `ArgumentParser`
+
+4. **Implementation Standards**:
+   - Use `ArgumentParser` for command-line argument parsing
+   - Provide a clear `abstract` and `discussion` in the `CommandConfiguration`
+   - Include usage examples in the `discussion` text
+   - Set `version` to match the current DICOMKit version
+   - Support common output formats where applicable (text, JSON, CSV)
+   - Implement proper error handling with informative messages
+   - Support `--verbose` and `--quiet` flags where appropriate
+   - Support batch processing and directory recursion where applicable
+
+5. **Testing**: Add unit tests for the new CLI tool in the `Tests/` directory
+   - Test argument parsing and validation
+   - Test core functionality with sample inputs
+   - Test error conditions and edge cases
+   - Follow the existing test naming pattern: `test_methodName_condition_expectedResult`
+
+6. **Documentation**: Add a `README.md` inside the `Sources/dicom-<name>/` directory describing:
+   - Purpose and capabilities of the tool
+   - Usage examples with sample commands
+   - Available options and flags
+   - Example output
+
+7. **Update CLI_TOOLS_COMPLETION_SUMMARY.md**: Add the new tool to the completion summary with:
+   - Tool name and purpose
+   - Lines of code and test count
+   - Feature list and example usage
+
+#### Existing CLI Tools Reference
+
+The following CLI tools already exist and should serve as reference implementations for style and structure:
+
+| Tool | Purpose |
+|------|---------|
+| `dicom-info` | Display DICOM file metadata |
+| `dicom-convert` | Transfer syntax conversion and image export |
+| `dicom-validate` | DICOM conformance validation |
+| `dicom-anon` | DICOM file anonymization |
+| `dicom-dump` | Hexadecimal dump with DICOM structure |
+| `dicom-query` | Query DICOM servers (C-FIND) |
+| `dicom-send` | Send DICOM files to servers (C-STORE) |
+| `dicom-diff` | Compare DICOM files |
+| `dicom-retrieve` | Retrieve from PACS (C-MOVE/C-GET) |
+| `dicom-split` | Split multi-frame DICOM files |
+| `dicom-merge` | Merge DICOM files into multi-frame |
+| `dicom-json` | DICOM to/from JSON conversion |
+| `dicom-xml` | DICOM to/from XML conversion |
+| `dicom-pdf` | Encapsulated PDF operations |
+| `dicom-image` | Image extraction and manipulation |
+| `dicom-echo` | DICOM echo (C-ECHO) verification |
+| `dicom-tags` | Tag dictionary lookup |
+| `dicom-uid` | UID generation and lookup |
+| `dicom-compress` | DICOM compression operations |
+| `dicom-study` | Study-level operations |
+| `dicom-report` | Structured report operations |
+| `dicom-measure` | Measurement extraction |
+| `dicom-viewer` | Terminal-based DICOM viewing |
+
+Review the `main.swift` in any of these tools for the expected code structure and patterns.
+
 ## GUI Development Standards
 
 When developing any graphical user interface (GUI) applications using DICOMKit (including demo apps, sample code, or example projects), adhere to the following standards for internationalization, localization, and accessibility.
