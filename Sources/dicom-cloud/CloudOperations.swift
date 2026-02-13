@@ -119,7 +119,14 @@ struct CloudDownloader {
                 while activeDownloads < parallelTransfers && objectIndex < objects.count {
                     let object = objects[objectIndex]
                     let fileCloudURL = cloudURL.with(key: object.key)
-                    let relativePath = String(object.key.dropFirst(cloudURL.key.count + 1))
+                    
+                    // Calculate relative path correctly, handling empty cloudURL.key
+                    let relativePath: String
+                    if cloudURL.key.isEmpty {
+                        relativePath = object.key
+                    } else {
+                        relativePath = String(object.key.dropFirst(cloudURL.key.count + 1))
+                    }
                     let filePath = (localPath as NSString).appendingPathComponent(relativePath)
                     
                     group.addTask {
@@ -213,7 +220,14 @@ struct CloudSyncer {
         
         // Get cloud files
         let cloudObjects = try await provider.list(cloudURL: cloudURL, recursive: true)
-        let cloudFiles: Set<String> = Set(cloudObjects.map { String($0.key.dropFirst(cloudURL.key.count + 1)) })
+        let cloudFiles: Set<String> = Set(cloudObjects.map { object in
+            // Calculate relative path correctly, handling empty cloudURL.key
+            if cloudURL.key.isEmpty {
+                return object.key
+            } else {
+                return String(object.key.dropFirst(cloudURL.key.count + 1))
+            }
+        })
         
         if verbose {
             print("Local files: \(localFiles.count), Cloud files: \(cloudFiles.count)")
@@ -323,7 +337,14 @@ struct CloudCopier {
                 while activeCopies < parallelTransfers && objectIndex < objects.count {
                     let object = objects[objectIndex]
                     let sourceFileURL = sourceURL.with(key: object.key)
-                    let relativePath = String(object.key.dropFirst(sourceURL.key.count + 1))
+                    
+                    // Calculate relative path correctly, handling empty sourceURL.key
+                    let relativePath: String
+                    if sourceURL.key.isEmpty {
+                        relativePath = object.key
+                    } else {
+                        relativePath = String(object.key.dropFirst(sourceURL.key.count + 1))
+                    }
                     let destKey = destURL.key.isEmpty ? relativePath : "\(destURL.key)/\(relativePath)"
                     let destFileURL = destURL.with(key: destKey)
                     
