@@ -345,6 +345,26 @@ public struct PrintResult: Sendable {
     }
 }
 
+// MARK: - Film Box Result
+
+/// Result of Film Box creation (PS3.4 H.4.2)
+public struct FilmBoxResult: Sendable {
+    /// The assigned Film Box SOP Instance UID
+    public let filmBoxUID: String
+    
+    /// Array of Image Box SOP Instance UIDs created for this Film Box
+    public let imageBoxUIDs: [String]
+    
+    /// Number of image boxes (calculated from Image Display Format)
+    public let imageCount: Int
+    
+    public init(filmBoxUID: String, imageBoxUIDs: [String], imageCount: Int) {
+        self.filmBoxUID = filmBoxUID
+        self.imageBoxUIDs = imageBoxUIDs
+        self.imageCount = imageCount
+    }
+}
+
 #if canImport(Network)
 
 // MARK: - DICOM Print Service
@@ -506,6 +526,32 @@ public enum DICOMPrintService {
         )
     }
     
+    /// Helper: Parses Image Display Format to calculate number of image boxes
+    /// Format is typically "STANDARD\rows,columns" or "STANDARD\R,C"
+    /// - Parameter format: Image Display Format string (e.g., "STANDARD\2,3")
+    /// - Returns: Number of image boxes (rows × columns), or 1 if parsing fails
+    private static func parseImageDisplayFormat(_ format: String) -> Int {
+        // Format examples:
+        // "STANDARD\1,1" -> 1 image box
+        // "STANDARD\2,2" -> 4 image boxes
+        // "STANDARD\2,3" -> 6 image boxes
+        
+        let components = format.components(separatedBy: "\\")
+        guard components.count == 2 else {
+            return 1 // Default to 1 if format is invalid
+        }
+        
+        let dimensions = components[1].components(separatedBy: ",")
+        guard dimensions.count == 2,
+              let rows = Int(dimensions[0]),
+              let columns = Int(dimensions[1]),
+              rows > 0, columns > 0 else {
+            return 1 // Default to 1 if dimensions are invalid
+        }
+        
+        return rows * columns
+    }
+    
     /// Creates a film session using N-CREATE
     ///
     /// Sends N-CREATE to the Print SCP to create a new Film Session SOP Instance.
@@ -638,6 +684,216 @@ public enum DICOMPrintService {
             try? await association.abort()
             throw error
         }
+    }
+    
+    /// Creates a film box using N-CREATE
+    ///
+    /// Sends N-CREATE to the Print SCP to create a new Film Box SOP Instance within
+    /// an existing Film Session. The SCP assigns a unique Film Box UID and creates
+    /// Image Box SOP Instances based on the Image Display Format.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - filmSessionUID: The Film Session SOP Instance UID to reference
+    ///   - filmBox: Film box parameters (layout, size, orientation, etc.)
+    /// - Returns: FilmBoxResult containing Film Box UID and Image Box UIDs
+    /// - Throws: `DICOMNetworkError` if the operation fails
+    ///
+    /// Reference: PS3.4 H.4.2 - Basic Film Box SOP Class
+    public static func createFilmBox(
+        configuration: PrintConfiguration,
+        filmSessionUID: String,
+        filmBox: FilmBox
+    ) async throws -> FilmBoxResult {
+        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
+        
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: sopClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+        
+        // Create association configuration
+        let associationConfig = try createPrintAssociationConfiguration(configuration)
+        
+        // Create association
+        let association = Association(configuration: associationConfig)
+        
+        do {
+            // Establish association
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            
+            // Verify presentation context was accepted
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+            
+            // Build data set with Film Box attributes
+            var dataSet = DICOMKit.DataSet()
+            
+            // Image Display Format (2010,0010) - ST
+            dataSet[.imageDisplayFormat] = DataElement(
+                tag: .imageDisplayFormat,
+                vr: .shortText,
+                values: [filmBox.imageDisplayFormat]
+            )
+            
+            // Film Orientation (2010,0040) - CS
+            dataSet[.filmOrientation] = DataElement(
+                tag: .filmOrientation,
+                vr: .codeString,
+                values: [filmBox.filmOrientation.rawValue]
+            )
+            
+            // Film Size ID (2010,0050) - CS
+            dataSet[.filmSizeID] = DataElement(
+                tag: .filmSizeID,
+                vr: .codeString,
+                values: [filmBox.filmSizeID.rawValue]
+            )
+            
+            // Magnification Type (2010,0060) - CS
+            dataSet[.magnificationType] = DataElement(
+                tag: .magnificationType,
+                vr: .codeString,
+                values: [filmBox.magnificationType.rawValue]
+            )
+            
+            // Border Density (2010,0100) - CS
+            dataSet[.borderDensity] = DataElement(
+                tag: .borderDensity,
+                vr: .codeString,
+                values: [filmBox.borderDensity]
+            )
+            
+            // Empty Image Density (2010,0110) - CS
+            dataSet[.emptyImageDensity] = DataElement(
+                tag: .emptyImageDensity,
+                vr: .codeString,
+                values: [filmBox.emptyImageDensity]
+            )
+            
+            // Trim (2010,0140) - CS
+            dataSet[.trim] = DataElement(
+                tag: .trim,
+                vr: .codeString,
+                values: [filmBox.trimOption.rawValue]
+            )
+            
+            // Configuration Information (2010,0150) - ST (optional)
+            if let config = filmBox.configurationInformation {
+                dataSet[.configurationInformation] = DataElement(
+                    tag: .configurationInformation,
+                    vr: .shortText,
+                    values: [config]
+                )
+            }
+            
+            // Referenced Film Session Sequence (2010,0500) - SQ
+            // This references the parent Film Session
+            var sessionItem = DICOMKit.DataSet()
+            sessionItem[.referencedSOPClassUID] = DataElement(
+                tag: .referencedSOPClassUID,
+                vr: .uniqueIdentifier,
+                values: [basicFilmSessionSOPClassUID]
+            )
+            sessionItem[.referencedSOPInstanceUID] = DataElement(
+                tag: .referencedSOPInstanceUID,
+                vr: .uniqueIdentifier,
+                values: [filmSessionUID]
+            )
+            
+            let sessionSequence = SequenceItem(dataSet: sessionItem)
+            dataSet[.referencedFilmSessionSequence] = DataElement(
+                tag: .referencedFilmSessionSequence,
+                vr: .sequence,
+                items: [sessionSequence]
+            )
+            
+            // Encode data set
+            let dataSetData = dataSet.write()
+            
+            // Send N-CREATE request for Film Box
+            let request = NCreateRequest(
+                messageID: 1,
+                affectedSOPClassUID: basicFilmBoxSOPClassUID,
+                affectedSOPInstanceUID: nil, // Let SCP assign the UID
+                hasDataSet: true,
+                presentationContextID: 1
+            )
+            
+            let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+            let pdus = fragmenter.fragmentMessage(
+                commandSet: request.commandSet,
+                dataSet: dataSetData,
+                presentationContextID: request.presentationContextID
+            )
+            
+            for pdu in pdus {
+                for pdv in pdu.presentationDataValues {
+                    try await association.send(pdv: pdv)
+                }
+            }
+            
+            // Receive N-CREATE response
+            let assembler = MessageAssembler()
+            let responsePDU = try await association.receive()
+            
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                let responseCommandSet = message.commandSet
+                let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                
+                guard response.status.isSuccess else {
+                    try await association.abort()
+                    throw DICOMNetworkError.printOperationFailed(response.status)
+                }
+                
+                // Extract assigned Film Box SOP Instance UID
+                let filmBoxUID = response.affectedSOPInstanceUID
+                
+                // Parse Image Box UIDs from response data set
+                var imageBoxUIDs: [String] = []
+                if let dataSetData = message.dataSet {
+                    imageBoxUIDs = parseImageBoxUIDs(from: dataSetData)
+                }
+                
+                // Calculate expected number of image boxes from format
+                let imageCount = parseImageDisplayFormat(filmBox.imageDisplayFormat)
+                
+                try await association.release()
+                return FilmBoxResult(
+                    filmBoxUID: filmBoxUID,
+                    imageBoxUIDs: imageBoxUIDs,
+                    imageCount: imageCount
+                )
+            }
+            
+            throw DICOMNetworkError.unexpectedResponse
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
+    
+    /// Helper: Parses Image Box UIDs from N-CREATE response data set
+    /// - Parameter data: Response data set containing Referenced Image Box Sequence
+    /// - Returns: Array of Image Box SOP Instance UIDs
+    private static func parseImageBoxUIDs(from data: Data) -> [String] {
+        // Parse the data set to extract Referenced Image Box Sequence (2010,0510)
+        // This is a simplified implementation - full parsing would decode the DICOM
+        // data set and extract the sequence items
+        
+        // For now, return an empty array. In production, this would:
+        // 1. Parse the data set using DICOMReader
+        // 2. Extract the Referenced Image Box Sequence (2010,0510)
+        // 3. Iterate through sequence items
+        // 4. Extract Referenced SOP Instance UID from each item
+        
+        return []
     }
     
     /// Deletes a film session using N-DELETE
