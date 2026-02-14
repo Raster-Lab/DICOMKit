@@ -3803,10 +3803,12 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ### Milestone 11.3: DICOM Print Management (v1.4.0)
 
-**Status**: ✅ Completed  
+**Status**: ✅ Completed (Basic Implementation)  
 **Goal**: Implement DICOM Print Management Service Class (PS3.4 Annex H)  
 **Complexity**: Medium-High  
 **Dependencies**: Milestone 6 (DICOM Networking)
+
+**📄 Detailed Implementation Plan**: See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for comprehensive 5-phase enhancement roadmap (v1.4.1-v1.4.5)
 
 #### Deliverables
 - [x] Missing DIMSE-N message types:
@@ -3869,6 +3871,47 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - [x] MPPS service properly validates N-CREATE/N-SET response status codes
 - [x] Unit tests for all message types and print data models (37 print tests + 14 new DIMSE tests)
 - [ ] Integration tests with DICOM print SCP (requires network access)
+
+#### Future Enhancements (v1.4.1-v1.4.5)
+
+See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement roadmap:
+
+**Phase 1 (v1.4.1)**: Complete Print Workflow API
+- [ ] Film Session Management (N-CREATE, N-DELETE)
+- [ ] Film Box and Image Box Creation (N-CREATE with layout parsing)
+- [ ] Image Box Content Management (N-SET with pixel data)
+- [ ] Print Execution and Monitoring (N-ACTION, N-GET Print Job)
+- [ ] 40+ unit tests, integration with DCM4CHEE/Orthanc
+
+**Phase 2 (v1.4.2)**: High-Level Print API
+- [ ] Simple print API (`printImage`, `printImages`)
+- [ ] Print templates for common layouts (1×1, 2×2, 3×4, etc.)
+- [ ] Print progress reporting and cancellation
+- [ ] Print retry logic with exponential backoff
+- [ ] 20+ unit tests
+
+**Phase 3 (v1.4.3)**: Image Preparation Pipeline
+- [ ] Image preprocessing (window/level, MONOCHROME polarity, color space)
+- [ ] Image sizing and layout (resize, aspect ratio, rotation)
+- [ ] Annotation overlay (patient info, orientation markers)
+- [ ] SIMD acceleration with Accelerate framework
+- [ ] 30+ unit tests
+
+**Phase 4 (v1.4.4)**: Advanced Features
+- [ ] Print queue management with persistence
+- [ ] Multiple printer support with load balancing
+- [ ] Enhanced error recovery and resilience
+- [ ] Print cost estimation and history tracking
+- [ ] 30+ unit tests
+
+**Phase 5 (v1.4.5)**: Documentation and Examples
+- [ ] DocC API documentation
+- [ ] User guides and tutorials
+- [ ] CLI tool: `dicom-print` (query, send, monitor, configure)
+- [ ] Integration examples (iOS, macOS)
+- [ ] DCM4CHEE/Orthanc setup guides
+
+**Total Enhancement Scope**: 8-10 weeks, 120+ unit tests, 20+ integration tests
 
 ---
 

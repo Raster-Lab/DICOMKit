@@ -1222,6 +1222,13 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ 12 film sizes, 4 magnification types, 5 medium types
   - ✅ Improved MPPS response validation (N-CREATE/N-SET status checking)
   - ✅ 51+ unit tests
+  - 📄 **[DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md)** - Comprehensive 5-phase enhancement roadmap (v1.4.1-v1.4.5)
+    - Phase 1: Complete print workflow (film session, film box, image box, print execution)
+    - Phase 2: High-level print API (templates, progress, cancellation, retry)
+    - Phase 3: Image preparation pipeline (preprocessing, sizing, annotation overlay)
+    - Phase 4: Advanced features (print queue, multiple printers, error recovery)
+    - Phase 5: Documentation and CLI tool (`dicom-print`)
+    - Timeline: 8-10 weeks, 120+ unit tests, 20+ integration tests
 
 - ✅ **Waveform Data Support (NEW in v1.5.0)** - DICOM Waveform IOD support (PS3.3 A.34)
   - ✅ 9 Waveform SOP Classes (12-Lead ECG, General ECG, Ambulatory ECG, Hemodynamic, Cardiac Electrophysiology, Basic Voice Audio, General Audio, Arterial Pulse, Respiratory)
