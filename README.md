@@ -1214,14 +1214,20 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
   - ✅ Complete DIMSE-N message types: N-CREATE, N-SET, N-GET, N-DELETE (request/response)
   - ✅ Print Management SOP Class UIDs (Film Session, Film Box, Image Box, Printer, Print Job)
   - ✅ `DICOMPrintService` for print management operations
+    - ✅ `getPrinterStatus()` - Query printer status via N-GET (v1.4.0)
+    - ✅ `createFilmSession()` - Create film session via N-CREATE (v1.4.0)
+    - ✅ `deleteFilmSession()` - Delete film session via N-DELETE (v1.4.0)
+    - ✅ `createFilmBox()` - Create film box with image boxes via N-CREATE (NEW in v1.4.1)
   - ✅ `FilmSession` - Session parameters (copies, priority, medium, destination)
   - ✅ `FilmBox` - Layout parameters (display format, orientation, size, magnification)
+  - ✅ `FilmBoxResult` - Film box creation result with image box UIDs (NEW in v1.4.1)
   - ✅ `ImageBoxContent` - Image content (position, polarity, crop behavior)
   - ✅ `PrinterStatus` - Printer status retrieval via N-GET
   - ✅ 35 Print-specific DICOM tags (groups 0x2000, 0x2010, 0x2020, 0x2100, 0x2110)
   - ✅ 12 film sizes, 4 magnification types, 5 medium types
+  - ✅ Image Display Format parsing (STANDARD\rows,columns)
   - ✅ Improved MPPS response validation (N-CREATE/N-SET status checking)
-  - ✅ 51+ unit tests
+  - ✅ 59+ unit tests (NEW in v1.4.1)
   - 📄 **[DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md)** - Comprehensive 5-phase enhancement roadmap (v1.4.1-v1.4.5)
     - Phase 1: Complete print workflow (film session, film box, image box, print execution)
     - Phase 2: High-level print API (templates, progress, cancellation, retry)
@@ -3931,6 +3937,7 @@ DICOM network protocol implementation:
 - `PrintConfiguration` - Print connection and mode settings (NEW in v1.4.0)
 - `FilmSession` - Film session parameters (copies, priority, medium, destination) (NEW in v1.4.0)
 - `FilmBox` - Film box layout parameters (display format, orientation, size) (NEW in v1.4.0)
+- `FilmBoxResult` - Film box creation result (film box UID, image box UIDs, image count) (NEW in v1.4.1)
 - `ImageBoxContent` - Image box content (position, polarity, crop behavior) (NEW in v1.4.0)
 - `PrinterStatus` - Printer status information (NEW in v1.4.0)
 - `PrintResult` - Print operation result (NEW in v1.4.0)
