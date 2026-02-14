@@ -157,22 +157,22 @@ final class DICOMAITests: XCTestCase {
     
     func test_preprocessImage_extractsDimensions() throws {
         let dicomData = try createTestDICOMFile(rows: 256, columns: 256)
-        let reader = DICOMFileReader(data: dicomData)
-        let dataSet = try reader.readDataSet()
+        let dicomFile = try DICOMFile.read(from: dicomData)
+        let dataSet = dicomFile.dataSet
         
         #if canImport(CoreML)
         // Note: We can't actually create an AIEngine without a real model,
         // so this test validates the DICOM parsing part
         XCTAssertEqual(dataSet.uint16(for: .rows), 256)
         XCTAssertEqual(dataSet.uint16(for: .columns), 256)
-        XCTAssertNotNil(dataSet.element(for: .pixelData))
+        XCTAssertNotNil(dataSet[.pixelData])
         #endif
     }
     
     func test_preprocessImage_handlesMonochrome() throws {
         let dicomData = try createTestDICOMFile(samplesPerPixel: 1)
-        let reader = DICOMFileReader(data: dicomData)
-        let dataSet = try reader.readDataSet()
+        let dicomFile = try DICOMFile.read(from: dicomData)
+        let dataSet = dicomFile.dataSet
         
         XCTAssertEqual(dataSet.string(for: .photometricInterpretation), "MONOCHROME2")
         XCTAssertEqual(dataSet.uint16(for: .samplesPerPixel), 1)
@@ -180,11 +180,11 @@ final class DICOMAITests: XCTestCase {
     
     func test_preprocessImage_extracts16BitPixelData() throws {
         let dicomData = try createTestDICOMFile(bitsAllocated: 16)
-        let reader = DICOMFileReader(data: dicomData)
-        let dataSet = try reader.readDataSet()
+        let dicomFile = try DICOMFile.read(from: dicomData)
+        let dataSet = dicomFile.dataSet
         
         XCTAssertEqual(dataSet.uint16(for: .bitsAllocated), 16)
-        XCTAssertNotNil(dataSet.element(for: .pixelData))
+        XCTAssertNotNil(dataSet[.pixelData])
     }
     
     // MARK: - Error Handling Tests
@@ -200,11 +200,11 @@ final class DICOMAITests: XCTestCase {
         data.append(contentsOf: [0x04, 0x00])
         data.append(contentsOf: [0x00, 0x00, 0x00, 0x00])
         
-        let reader = DICOMFileReader(data: data)
-        let dataSet = try reader.readDataSet()
+        let dicomFile = try DICOMFile.read(from: data)
+        let dataSet = dicomFile.dataSet
         
         // Verify pixel data is missing
-        XCTAssertNil(dataSet.element(for: .pixelData))
+        XCTAssertNil(dataSet[.pixelData])
     }
     
     // MARK: - Output Format Tests
@@ -710,5 +710,242 @@ final class DICOMAITests: XCTestCase {
         } else {
             XCTFail("Expected .imageNet strategy")
         }
+    }
+    
+    // MARK: - Phase C Tests: DICOM SR from Predictions
+    
+    func test_createSRFromClassification_generatesValidSR() throws {
+        var sourceDataSet = DataSet()
+        sourceDataSet.setString("12345", for: .patientID, vr: .LO)
+        sourceDataSet.setString("Doe^John", for: .patientName, vr: .PN)
+        sourceDataSet.setString(UIDGenerator.generateStudyInstanceUID().value, for: .studyInstanceUID, vr: .UI)
+        sourceDataSet.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
+        sourceDataSet.setString(UIDGenerator.generateSOPInstanceUID().value, for: .sopInstanceUID, vr: .UI)
+        
+        let predictions = [
+            Prediction(label: "pneumonia", confidence: 0.87),
+            Prediction(label: "normal", confidence: 0.13)
+        ]
+        
+        let srDataSet = try AIDICOMOutputGenerator.createSRFromClassification(
+            predictions: predictions,
+            sourceDataSet: sourceDataSet,
+            modelName: "test-model.mlmodel"
+        )
+        
+        // Verify SR DataSet contains expected elements
+        let serializedData = srDataSet.write()
+        XCTAssertTrue(serializedData.count > 0, "SR DataSet should serialize to non-empty data")
+    }
+    
+    func test_createSRFromDetections_generatesValidSR() throws {
+        var sourceDataSet = DataSet()
+        sourceDataSet.setString("67890", for: .patientID, vr: .LO)
+        sourceDataSet.setString("Smith^Jane", for: .patientName, vr: .PN)
+        sourceDataSet.setString(UIDGenerator.generateStudyInstanceUID().value, for: .studyInstanceUID, vr: .UI)
+        
+        let detections = [
+            Detection(
+                label: "nodule",
+                confidence: 0.92,
+                bbox: BoundingBox(x: 100, y: 150, width: 50, height: 45)
+            ),
+            Detection(
+                label: "lesion",
+                confidence: 0.75,
+                bbox: BoundingBox(x: 200, y: 250, width: 30, height: 28)
+            )
+        ]
+        
+        let srDataSet = try AIDICOMOutputGenerator.createSRFromDetections(
+            detections: detections,
+            sourceDataSet: sourceDataSet,
+            modelName: "detection-model"
+        )
+        
+        let serializedData = srDataSet.write()
+        XCTAssertTrue(serializedData.count > 0, "SR DataSet should serialize to non-empty data")
+    }
+    
+    // MARK: - Phase C Tests: GSPS with Annotations
+    
+    func test_createGSPSWithAnnotations_generatesValidDataSet() throws {
+        var sourceDataSet = DataSet()
+        sourceDataSet.setString("12345", for: .patientID, vr: .LO)
+        sourceDataSet.setString("Doe^John", for: .patientName, vr: .PN)
+        sourceDataSet.setString(UIDGenerator.generateStudyInstanceUID().value, for: .studyInstanceUID, vr: .UI)
+        sourceDataSet.setString(UIDGenerator.generateSeriesInstanceUID().value, for: .seriesInstanceUID, vr: .UI)
+        sourceDataSet.setString(UIDGenerator.generateSOPInstanceUID().value, for: .sopInstanceUID, vr: .UI)
+        sourceDataSet.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
+        
+        let detections = [
+            Detection(
+                label: "mass",
+                confidence: 0.88,
+                bbox: BoundingBox(x: 120, y: 180, width: 60, height: 55)
+            )
+        ]
+        
+        let gspsDataSet = try AIDICOMOutputGenerator.createGSPSWithAnnotations(
+            detections: detections,
+            sourceDataSet: sourceDataSet,
+            modelName: "detection-model"
+        )
+        
+        // Verify GSPS SOP Class UID
+        XCTAssertEqual(gspsDataSet.string(for: .sopClassUID), "1.2.840.10008.5.1.4.1.1.11.1")
+        // Verify modality is PR (Presentation State)
+        XCTAssertEqual(gspsDataSet.string(for: .modality), "PR")
+        // Verify presentation label
+        XCTAssertEqual(gspsDataSet.string(for: .presentationLabel), "AI_ANNOTATIONS")
+    }
+    
+    func test_createGSPSWithAnnotations_emptyDetections() throws {
+        var sourceDataSet = DataSet()
+        sourceDataSet.setString("12345", for: .patientID, vr: .LO)
+        sourceDataSet.setString(UIDGenerator.generateStudyInstanceUID().value, for: .studyInstanceUID, vr: .UI)
+        
+        let gspsDataSet = try AIDICOMOutputGenerator.createGSPSWithAnnotations(
+            detections: [],
+            sourceDataSet: sourceDataSet,
+            modelName: "test-model"
+        )
+        
+        // GSPS should still be valid even with no annotations
+        XCTAssertEqual(gspsDataSet.string(for: .sopClassUID), "1.2.840.10008.5.1.4.1.1.11.1")
+        XCTAssertEqual(gspsDataSet.string(for: .modality), "PR")
+    }
+    
+    // MARK: - Phase C Tests: Enhanced DICOM File
+    
+    func test_createEnhancedDICOMFile_generatesValidData() throws {
+        var sourceDataSet = DataSet()
+        sourceDataSet.setString(UIDGenerator.generateStudyInstanceUID().value, for: .studyInstanceUID, vr: .UI)
+        sourceDataSet.setString(UIDGenerator.generateSOPInstanceUID().value, for: .sopInstanceUID, vr: .UI)
+        sourceDataSet.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
+        sourceDataSet.setString("CT", for: .modality, vr: .CS)
+        sourceDataSet.setString("Doe^John", for: .patientName, vr: .PN)
+        sourceDataSet.setString("12345", for: .patientID, vr: .LO)
+        sourceDataSet.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+        
+        let enhancedImage = ProcessedImage(
+            width: 256,
+            height: 256,
+            bitsPerPixel: 16,
+            samplesPerPixel: 1,
+            photometricInterpretation: "MONOCHROME2",
+            pixelData: Data(count: 256 * 256 * 2)
+        )
+        
+        let result = try AIDICOMOutputGenerator.createEnhancedDICOMFile(
+            sourceDataSet: sourceDataSet,
+            enhancedImage: enhancedImage,
+            frameIndex: 0
+        )
+        
+        XCTAssertTrue(result.count > 0, "Enhanced DICOM data should be non-empty")
+    }
+    
+    // MARK: - Phase C Tests: Report Generation
+    
+    func test_generateClassificationReport_text() {
+        let predictions = [
+            Prediction(label: "pneumonia", confidence: 0.87),
+            Prediction(label: "normal", confidence: 0.13)
+        ]
+        
+        let report = AIDICOMOutputGenerator.generateClassificationReport(
+            predictions: predictions,
+            filePath: "test.dcm",
+            modelName: "test-model"
+        )
+        
+        XCTAssertTrue(report.contains("AI Classification Report"))
+        XCTAssertTrue(report.contains("test-model"))
+        XCTAssertTrue(report.contains("pneumonia"))
+        XCTAssertTrue(report.contains("87.00%"))
+    }
+    
+    func test_generateDetectionReport_text() {
+        let detections = [
+            Detection(
+                label: "nodule",
+                confidence: 0.92,
+                bbox: BoundingBox(x: 100, y: 150, width: 50, height: 45)
+            )
+        ]
+        
+        let report = AIDICOMOutputGenerator.generateDetectionReport(
+            detections: detections,
+            filePath: "scan.dcm",
+            modelName: "detector"
+        )
+        
+        XCTAssertTrue(report.contains("AI Detection Report"))
+        XCTAssertTrue(report.contains("nodule"))
+        XCTAssertTrue(report.contains("92.00%"))
+        XCTAssertTrue(report.contains("Detections: 1"))
+    }
+    
+    func test_generateMarkdownReport() {
+        let predictions = [
+            Prediction(label: "abnormal", confidence: 0.75)
+        ]
+        let detections = [
+            Detection(
+                label: "lesion",
+                confidence: 0.85,
+                bbox: BoundingBox(x: 200, y: 250, width: 30, height: 28)
+            )
+        ]
+        
+        let report = AIDICOMOutputGenerator.generateMarkdownReport(
+            predictions: predictions,
+            detections: detections,
+            filePath: "mri.dcm",
+            modelName: "ai-model"
+        )
+        
+        XCTAssertTrue(report.contains("# AI Analysis Report"))
+        XCTAssertTrue(report.contains("## Classifications"))
+        XCTAssertTrue(report.contains("## Detections"))
+        XCTAssertTrue(report.contains("abnormal"))
+        XCTAssertTrue(report.contains("lesion"))
+        XCTAssertTrue(report.contains("ai-model"))
+    }
+    
+    func test_generateClassificationReport_emptyPredictions() {
+        let report = AIDICOMOutputGenerator.generateClassificationReport(
+            predictions: [],
+            filePath: "test.dcm",
+            modelName: "model"
+        )
+        
+        XCTAssertTrue(report.contains("No predictions above confidence threshold"))
+    }
+    
+    func test_createEnhancedDICOM_replacesPlaceholder() throws {
+        // Verify that createEnhancedDICOM no longer throws notImplemented
+        var sourceDataSet = DataSet()
+        sourceDataSet.setString(UIDGenerator.generateStudyInstanceUID().value, for: .studyInstanceUID, vr: .UI)
+        sourceDataSet.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+        
+        let enhancedImage = ProcessedImage(
+            width: 64,
+            height: 64,
+            bitsPerPixel: 8,
+            samplesPerPixel: 1,
+            photometricInterpretation: "MONOCHROME2",
+            pixelData: Data(count: 64 * 64)
+        )
+        
+        // Should not throw notImplemented anymore
+        let result = try createEnhancedDICOM(
+            sourceDataSet: sourceDataSet,
+            enhancedImage: enhancedImage,
+            frameIndex: 0
+        )
+        
+        XCTAssertTrue(result.count > 0)
     }
 }

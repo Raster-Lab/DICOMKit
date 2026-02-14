@@ -115,7 +115,7 @@ class AIEngine {
     
     func preprocessImage(from dataSet: DataSet, frameIndex: Int = 0) throws -> ProcessedImage {
         // Extract pixel data from DICOM
-        guard let pixelData = dataSet.element(for: .pixelData)?.valueData else {
+        guard let pixelData = dataSet[.pixelData]?.valueData else {
             throw AIError.noPixelData("No pixel data found in DICOM file")
         }
         
@@ -771,8 +771,8 @@ class BatchProcessor {
             
             do {
                 let fileData = try Data(contentsOf: fileURL)
-                let reader = DICOMFileReader(data: fileData)
-                let dataSet = try reader.readDataSet(forceParsingEvenWithoutDICMPrefix: true)
+                let dicomFile = try DICOMFile.read(from: fileData, force: true)
+                let dataSet = dicomFile.dataSet
                 
                 let processedImage = try engine.preprocessImage(from: dataSet)
                 
