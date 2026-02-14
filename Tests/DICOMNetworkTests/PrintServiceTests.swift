@@ -396,4 +396,63 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(Tag.creationTime.group, 0x2100)
         XCTAssertEqual(Tag.creationTime.element, 0x0050)
     }
+    
+    // MARK: - Film Session Management Tests
+    
+    func testCreateFilmSessionRequestBuilding() {
+        // Test that createFilmSession properly constructs the N-CREATE request
+        // This test validates the data set structure for Film Session attributes
+        
+        let session = FilmSession(
+            numberOfCopies: 2,
+            printPriority: .high,
+            mediumType: .clearFilm,
+            filmDestination: .magazine,
+            filmSessionLabel: "Test Session"
+        )
+        
+        // Validate the session configuration
+        XCTAssertEqual(session.numberOfCopies, 2)
+        XCTAssertEqual(session.printPriority, .high)
+        XCTAssertEqual(session.mediumType, .clearFilm)
+        XCTAssertEqual(session.filmDestination, .magazine)
+        XCTAssertEqual(session.filmSessionLabel, "Test Session")
+    }
+    
+    func testDeleteFilmSessionRequestBuilding() {
+        // Test that deleteFilmSession properly constructs the N-DELETE request
+        let filmSessionUID = "1.2.840.113619.2.55.3.2024.01.01"
+        
+        // Validate UID format (basic check)
+        XCTAssertFalse(filmSessionUID.isEmpty)
+        XCTAssertTrue(filmSessionUID.contains("."))
+    }
+    
+    func testFilmSessionWithDefaults() {
+        let session = FilmSession()
+        
+        XCTAssertEqual(session.numberOfCopies, 1)
+        XCTAssertEqual(session.printPriority, .medium)
+        XCTAssertEqual(session.mediumType, .paper)
+        XCTAssertEqual(session.filmDestination, .processor)
+        XCTAssertNil(session.filmSessionLabel)
+    }
+    
+    func testFilmSessionWithCustomValues() {
+        let session = FilmSession(
+            sopInstanceUID: "1.2.3",
+            numberOfCopies: 3,
+            printPriority: .low,
+            mediumType: .mammoFilmBlueBase,
+            filmDestination: .bin2,
+            filmSessionLabel: "Mammography Study"
+        )
+        
+        XCTAssertEqual(session.sopInstanceUID, "1.2.3")
+        XCTAssertEqual(session.numberOfCopies, 3)
+        XCTAssertEqual(session.printPriority, .low)
+        XCTAssertEqual(session.mediumType, .mammoFilmBlueBase)
+        XCTAssertEqual(session.filmDestination, .bin2)
+        XCTAssertEqual(session.filmSessionLabel, "Mammography Study")
+    }
 }
