@@ -337,6 +337,15 @@ public struct CodecRegistry: Sendable {
             decoderRegistry[uid] = rleCodec
         }
         
+        // JPEG-LS codec (pure Swift implementation - encode and decode)
+        let jpegLSCodec = JPEGLSCodec()
+        for uid in JPEGLSCodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = jpegLSCodec
+        }
+        for uid in JPEGLSCodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = jpegLSCodec
+        }
+        
         self.codecs = decoderRegistry
         self.encoders = encoderRegistry
     }
