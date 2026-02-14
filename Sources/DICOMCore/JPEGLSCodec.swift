@@ -151,52 +151,32 @@ struct JPEGLSContext {
 
 // MARK: - Bit Reader for Decoding
 
-/// Reads individual bits from a byte buffer
+/// Reads individual bits from a byte buffer per JPEG-LS bitstream conventions
+/// Handles byte unstuffing: after reading 0xFF, the next byte has only 7 data bits
+/// Reference: ITU-T T.87 Section B - Byte stuffing
 final class JPEGLSBitReader {
     private let data: Data
     private var bytePos: Int
-    private var bitPos: Int  // bits remaining in current byte (8..1)
-    private var currentByte: UInt8
+    private var bitBuffer: Int
+    private var bitsInBuffer: Int
+    private var previousByteFF: Bool
 
     init(data: Data, offset: Int) {
         self.data = data
         self.bytePos = offset
-        self.bitPos = 0
-        self.currentByte = 0
+        self.bitBuffer = 0
+        self.bitsInBuffer = 0
+        self.previousByteFF = false
     }
 
     var position: Int { bytePos }
 
     func readBit() throws -> Int {
-        if bitPos == 0 {
-            guard bytePos < data.count else {
-                throw DICOMError.parsingFailed("JPEG-LS: unexpected end of bitstream")
-            }
-            currentByte = data[bytePos]
-            bytePos += 1
-            bitPos = 8
-            // Bit stuffing: after a 0xFF byte, the next byte's MSB is a stuffed zero
-            if currentByte == 0xFF {
-                guard bytePos < data.count else {
-                    throw DICOMError.parsingFailed("JPEG-LS: unexpected end after 0xFF in bitstream")
-                }
-                let nextByte = data[bytePos]
-                if nextByte & 0x80 == 0 {
-                    // Stuffed byte: skip the MSB (the stuffed zero bit)
-                    bytePos += 1
-                    // We have 8 bits from 0xFF and 7 usable bits from next byte
-                    // Read the 8 bits from 0xFF first
-                    // After that, we'll process the next byte with only 7 bits
-                    // Actually, per T.87: after emitting 0xFF, the encoder stuffs a 0 bit.
-                    // The decoder should treat: read 8 bits of 0xFF, then read 7 bits of next byte
-                    // We simplify: read 0xFF normally, then for the next read, process only 7 bits
-                    bitPos = 8
-                    // We keep reading 0xFF normally, bit stuffing handled below
-                }
-            }
+        if bitsInBuffer == 0 {
+            try fillBuffer()
         }
-        bitPos -= 1
-        let bit = Int((currentByte >> bitPos) & 1)
+        bitsInBuffer -= 1
+        let bit = (bitBuffer >> bitsInBuffer) & 1
         return bit
     }
 
@@ -207,31 +187,52 @@ final class JPEGLSBitReader {
         }
         return value
     }
+
+    private func fillBuffer() throws {
+        guard bytePos < data.count else {
+            throw DICOMError.parsingFailed("JPEG-LS: unexpected end of bitstream")
+        }
+        let byte = data[bytePos]
+        bytePos += 1
+
+        if previousByteFF {
+            // After 0xFF, this byte has a stuffed 0 bit as MSB - only 7 data bits
+            bitBuffer = Int(byte & 0x7F)
+            bitsInBuffer = 7
+        } else {
+            bitBuffer = Int(byte)
+            bitsInBuffer = 8
+        }
+        previousByteFF = (byte == 0xFF)
+    }
 }
 
 // MARK: - Bit Writer for Encoding
 
-/// Writes individual bits to a byte buffer
+/// Writes individual bits to a byte buffer per JPEG-LS conventions
+/// Handles byte stuffing: after emitting 0xFF, a zero bit is stuffed
+/// Reference: ITU-T T.87 Section B - Byte stuffing
 final class JPEGLSBitWriter {
     var buffer: [UInt8]
-    private var currentByte: UInt8
+    private var currentByte: Int
     private var bitsUsed: Int
-    private var lastByteWasFF: Bool
+    private var previousByteFF: Bool
 
     init() {
         buffer = []
         currentByte = 0
         bitsUsed = 0
-        lastByteWasFF = false
+        previousByteFF = false
     }
 
     func writeBit(_ bit: Int) {
-        let maxBits = lastByteWasFF ? 7 : 8
-        currentByte = (currentByte << 1) | UInt8(bit & 1)
+        let maxBits = previousByteFF ? 7 : 8
+        currentByte = (currentByte << 1) | (bit & 1)
         bitsUsed += 1
         if bitsUsed == maxBits {
-            buffer.append(currentByte)
-            lastByteWasFF = (currentByte == 0xFF)
+            let byte = UInt8(currentByte & 0xFF)
+            buffer.append(byte)
+            previousByteFF = (byte == 0xFF)
             currentByte = 0
             bitsUsed = 0
         }
@@ -245,10 +246,11 @@ final class JPEGLSBitWriter {
 
     func flush() {
         if bitsUsed > 0 {
-            let maxBits = lastByteWasFF ? 7 : 8
+            let maxBits = previousByteFF ? 7 : 8
             currentByte <<= (maxBits - bitsUsed)
-            buffer.append(currentByte)
-            lastByteWasFF = false
+            let byte = UInt8(currentByte & 0xFF)
+            buffer.append(byte)
+            previousByteFF = false
             currentByte = 0
             bitsUsed = 0
         }
@@ -279,6 +281,7 @@ final class JPEGLSDecoder {
     private var qbpp: Int = 0
     private var bpp: Int = 0
     private var limit: Int = 0
+    private var scanDataOffset: Int = 0
 
     private var preset: JPEGLSPresetParameters?
 
@@ -336,6 +339,7 @@ final class JPEGLSDecoder {
                 try parseSOF55()
             case JPEGLSMarker.sos:
                 try parseSOS()
+                scanDataOffset = offset  // Record where scan data begins
                 foundSOS = true
             case JPEGLSMarker.lst:
                 try parseLST()
@@ -359,11 +363,7 @@ final class JPEGLSDecoder {
 
     private func parseSOF55() throws {
         let length = Int(readUInt16BE())
-        let startOffset = offset
-
-        guard length >= 6 else {
-            throw DICOMError.parsingFailed("JPEG-LS: SOF segment too short")
-        }
+        let endOffset = offset + length - 2  // length includes the 2 bytes of the length field
 
         bitsPerSample = Int(readByte())
         height = Int(readUInt16BE())
@@ -383,15 +383,14 @@ final class JPEGLSDecoder {
         }
 
         // Skip remaining bytes in segment
-        let consumed = offset - startOffset
-        if consumed < length {
-            offset += (length - consumed)
+        if offset < endOffset {
+            offset = endOffset
         }
     }
 
     private func parseSOS() throws {
         let length = Int(readUInt16BE())
-        let startOffset = offset
+        let endOffset = offset + length - 2  // length includes the 2 bytes of the length field
 
         let numComponents = Int(readByte())
         guard numComponents >= 1 else {
@@ -407,15 +406,14 @@ final class JPEGLSDecoder {
         interleaveMode = Int(readByte())
         _ = readByte() // point transform (not used here)
 
-        let consumed = offset - startOffset
-        if consumed < length {
-            offset += (length - consumed)
+        if offset < endOffset {
+            offset = endOffset
         }
     }
 
     private func parseLST() throws {
         let length = Int(readUInt16BE())
-        let startOffset = offset
+        let endOffset = offset + length - 2
         
         let id = Int(readByte())
         if id == 1 && length >= 11 {
@@ -427,9 +425,8 @@ final class JPEGLSDecoder {
             preset = JPEGLSPresetParameters(maxVal: mv, t1: t1, t2: t2, t3: t3, reset: rst)
         }
 
-        let consumed = offset - startOffset
-        if consumed < length {
-            offset += (length - consumed)
+        if offset < endOffset {
+            offset = endOffset
         }
     }
 
@@ -449,40 +446,13 @@ final class JPEGLSDecoder {
     }
 
     private func decodeSinglePass(bytesPerSample: Int) throws -> Data {
-        // Reset offset to scan data start and do a proper decode
         let totalPixels = width * height * components
         var output = Data(count: totalPixels * bytesPerSample)
 
-        // For non-interleaved, decode each component separately
-        var scanOffset = offset
-        // We need to re-find the scan data offset. Since parseMarkers already
-        // advanced offset past the SOS, the current offset should be at scan data.
-        // But decodeScanNonInterleaved also moved it. Let's re-parse to find it.
-        
-        // Actually, let me redo this more cleanly.
-        // Re-parse to find SOS data offset
-        var searchOffset = 0
-        let soiMark = UInt16(data[searchOffset]) << 8 | UInt16(data[searchOffset + 1])
-        guard soiMark == JPEGLSMarker.soi else {
-            throw DICOMError.parsingFailed("JPEG-LS: SOI not found")
-        }
-        searchOffset = 2
-        while searchOffset < data.count - 1 {
-            let m = UInt16(data[searchOffset]) << 8 | UInt16(data[searchOffset + 1])
-            searchOffset += 2
-            if m == JPEGLSMarker.sos {
-                let len = Int(UInt16(data[searchOffset]) << 8 | UInt16(data[searchOffset + 1]))
-                searchOffset += len
-                break
-            } else if m & 0xFF00 == 0xFF00 && m != JPEGLSMarker.soi && m != JPEGLSMarker.eoi {
-                let len = Int(UInt16(data[searchOffset]) << 8 | UInt16(data[searchOffset + 1]))
-                searchOffset += len
-            }
-        }
-        scanOffset = searchOffset
+        var currentScanOffset = scanDataOffset
 
         for comp in 0..<max(1, (interleaveMode == 0 ? components : 1)) {
-            let reader = JPEGLSBitReader(data: data, offset: scanOffset)
+            let reader = JPEGLSBitReader(data: data, offset: currentScanOffset)
             var contexts = initializeContexts()
             var runIndex = 0
 
@@ -538,7 +508,7 @@ final class JPEGLSDecoder {
                 currentRow = [Int](repeating: 0, count: compWidth + 1)
             }
 
-            scanOffset = reader.position
+            currentScanOffset = reader.position
         }
 
         return output
@@ -1128,7 +1098,8 @@ final class JPEGLSEncoder {
 
     private func writeSOF55(_ output: inout Data) {
         output.append(contentsOf: [0xFF, 0xF7])
-        let length = 6 + 3 * components
+        // Length includes the 2 length bytes + precision(1) + height(2) + width(2) + nComp(1) + 3*nComp
+        let length = 2 + 1 + 2 + 2 + 1 + 3 * components
         output.append(UInt8((length >> 8) & 0xFF))
         output.append(UInt8(length & 0xFF))
         output.append(UInt8(bitsPerSample))
@@ -1146,7 +1117,8 @@ final class JPEGLSEncoder {
 
     private func writeSOS(_ output: inout Data) {
         output.append(contentsOf: [0xFF, 0xDA])
-        let length = 6 + 2 * components
+        // Length includes the 2 length bytes + nComp(1) + 2*nComp + near(1) + ILV(1) + Pt(1)
+        let length = 2 + 1 + 2 * components + 3
         output.append(UInt8((length >> 8) & 0xFF))
         output.append(UInt8(length & 0xFF))
         output.append(UInt8(components))
