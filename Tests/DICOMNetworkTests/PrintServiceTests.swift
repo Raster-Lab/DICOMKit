@@ -523,4 +523,111 @@ final class PrintServiceTests: XCTestCase {
         let box = FilmBox(imageDisplayFormat: "STANDARD\\2,3")
         XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\2,3")
     }
+    
+    // MARK: - ImageBoxContent Tests
+    
+    func testImageBoxContentDefaults() {
+        let imageBox = ImageBoxContent()
+        
+        XCTAssertEqual(imageBox.sopInstanceUID, "")
+        XCTAssertEqual(imageBox.imagePosition, 1)
+        XCTAssertEqual(imageBox.polarity, .normal)
+        XCTAssertNil(imageBox.requestedImageSize)
+        XCTAssertEqual(imageBox.requestedDecimateCropBehavior, .decimate)
+    }
+    
+    func testImageBoxContentCustomValues() {
+        let imageBox = ImageBoxContent(
+            sopInstanceUID: "1.2.3.4.5",
+            imagePosition: 5,
+            polarity: .reverse,
+            requestedImageSize: "100\\100",
+            requestedDecimateCropBehavior: .crop
+        )
+        
+        XCTAssertEqual(imageBox.sopInstanceUID, "1.2.3.4.5")
+        XCTAssertEqual(imageBox.imagePosition, 5)
+        XCTAssertEqual(imageBox.polarity, .reverse)
+        XCTAssertEqual(imageBox.requestedImageSize, "100\\100")
+        XCTAssertEqual(imageBox.requestedDecimateCropBehavior, .crop)
+    }
+    
+    func testImagePolarityRawValues() {
+        XCTAssertEqual(ImagePolarity.normal.rawValue, "NORMAL")
+        XCTAssertEqual(ImagePolarity.reverse.rawValue, "REVERSE")
+    }
+    
+    func testDecimateCropBehaviorRawValues() {
+        XCTAssertEqual(DecimateCropBehavior.decimate.rawValue, "DECIMATE")
+        XCTAssertEqual(DecimateCropBehavior.crop.rawValue, "CROP")
+        XCTAssertEqual(DecimateCropBehavior.failOver.rawValue, "FAIL")
+    }
+    
+    // MARK: - Print Tags Tests
+    
+    func testImageBoxPositionTag() {
+        XCTAssertEqual(Tag.imageBoxPosition.group, 0x2020)
+        XCTAssertEqual(Tag.imageBoxPosition.element, 0x0010)
+    }
+    
+    func testPolarityTag() {
+        XCTAssertEqual(Tag.polarity.group, 0x2020)
+        XCTAssertEqual(Tag.polarity.element, 0x0020)
+    }
+    
+    func testRequestedImageSizeTag() {
+        XCTAssertEqual(Tag.requestedImageSize.group, 0x2020)
+        XCTAssertEqual(Tag.requestedImageSize.element, 0x0030)
+    }
+    
+    func testRequestedDecimateCropBehaviorTag() {
+        XCTAssertEqual(Tag.requestedDecimateCropBehavior.group, 0x2020)
+        XCTAssertEqual(Tag.requestedDecimateCropBehavior.element, 0x0040)
+    }
+    
+    func testPreformattedGrayscaleImageSequenceTag() {
+        XCTAssertEqual(Tag.preformattedGrayscaleImageSequence.group, 0x2020)
+        XCTAssertEqual(Tag.preformattedGrayscaleImageSequence.element, 0x0110)
+    }
+    
+    func testPreformattedColorImageSequenceTag() {
+        XCTAssertEqual(Tag.preformattedColorImageSequence.group, 0x2020)
+        XCTAssertEqual(Tag.preformattedColorImageSequence.element, 0x0111)
+    }
+    
+    // MARK: - Integration Test Placeholders
+    
+    // NOTE: The following tests require a DICOM Print SCP server to be running
+    // and are therefore documented here but not implemented as unit tests.
+    // These should be run as integration tests with a test Print SCP.
+    
+    // Integration test scenarios for setImageBox():
+    // - Test with valid grayscale preformatted image data
+    // - Test with valid color preformatted image data
+    // - Test with invalid pixel data (should fail gracefully)
+    // - Test with all image box attributes set
+    // - Test with minimum required attributes only
+    
+    // Integration test scenarios for printFilmBox():
+    // - Test successful print operation returning Print Job UID
+    // - Test with invalid Film Box UID (should fail)
+    // - Test when Print Job UID is empty (should throw unexpectedResponse)
+    // - Test print status monitoring after successful print
+    
+    // Integration test scenarios for parseImageBoxUIDs():
+    // - Test parsing valid Film Box N-CREATE response with multiple image boxes
+    // - Test parsing response with single image box
+    // - Test parsing empty or malformed response data
+    // - Test parsing response with missing Referenced Image Box Sequence
+    
+    // Integration test scenario for complete print workflow:
+    // - Test full workflow: getPrinterStatus → createFilmSession → createFilmBox →
+    //   setImageBox (for each position) → printFilmBox → deleteFilmSession
+    // - Test with various film layouts (1x1, 2x2, 3x4, 4x5)
+    // - Test with both grayscale and color modes
+    // - Test error recovery at each stage
+    // - Test concurrent print jobs
+    
+    // TODO: Implement integration tests in a separate test suite
+    // See DICOM_PRINTER_PLAN.md Phase 1.5 for integration test requirements
 }
