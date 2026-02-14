@@ -594,4 +594,40 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(Tag.preformattedColorImageSequence.group, 0x2020)
         XCTAssertEqual(Tag.preformattedColorImageSequence.element, 0x0111)
     }
+    
+    // MARK: - Integration Test Placeholders
+    
+    // NOTE: The following tests require a DICOM Print SCP server to be running
+    // and are therefore documented here but not implemented as unit tests.
+    // These should be run as integration tests with a test Print SCP.
+    
+    // Integration test scenarios for setImageBox():
+    // - Test with valid grayscale preformatted image data
+    // - Test with valid color preformatted image data
+    // - Test with invalid pixel data (should fail gracefully)
+    // - Test with all image box attributes set
+    // - Test with minimum required attributes only
+    
+    // Integration test scenarios for printFilmBox():
+    // - Test successful print operation returning Print Job UID
+    // - Test with invalid Film Box UID (should fail)
+    // - Test when Print Job UID is empty (should throw unexpectedResponse)
+    // - Test print status monitoring after successful print
+    
+    // Integration test scenarios for parseImageBoxUIDs():
+    // - Test parsing valid Film Box N-CREATE response with multiple image boxes
+    // - Test parsing response with single image box
+    // - Test parsing empty or malformed response data
+    // - Test parsing response with missing Referenced Image Box Sequence
+    
+    // Integration test scenario for complete print workflow:
+    // - Test full workflow: getPrinterStatus → createFilmSession → createFilmBox →
+    //   setImageBox (for each position) → printFilmBox → deleteFilmSession
+    // - Test with various film layouts (1x1, 2x2, 3x4, 4x5)
+    // - Test with both grayscale and color modes
+    // - Test error recovery at each stage
+    // - Test concurrent print jobs
+    
+    // TODO: Implement integration tests in a separate test suite
+    // See DICOM_PRINTER_PLAN.md Phase 1.5 for integration test requirements
 }
