@@ -101,12 +101,12 @@ struct FlowLayout: Layout {
         self.spacing = spacing
     }
 
-    func sizeThatFits(proposal: ProposableSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let result = arrange(subviews: subviews, in: proposal.width ?? .infinity)
         return result.size
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposableSize, subviews: Subviews, cache: inout ()) {
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let result = arrange(subviews: subviews, in: bounds.width)
         for (index, position) in result.positions.enumerated() {
             subviews[index].place(at: CGPoint(x: bounds.minX + position.x, y: bounds.minY + position.y), proposal: .unspecified)
