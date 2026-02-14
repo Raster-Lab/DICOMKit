@@ -1,10 +1,10 @@
 # DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
 
-**Status**: 🚧 In Progress (4/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A ✅ 35 tests)  
+**Status**: 🚧 In Progress (4/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B ✅ 38 tests, AWS S3 integration complete)  
 **Target Version**: v1.4.0-v1.4.7  
 **Created**: February 2026  
-**Last Updated**: February 13, 2026 (dicom-cloud Phase A complete)  
-**Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb  
+**Last Updated**: February 14, 2026 (dicom-cloud Phase B complete - AWS S3 integration)  
+**Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb, AWS SDK for Swift  
 **Priority**: Low-Medium  
 **Estimated Duration**: 6-8 weeks
 
@@ -927,13 +927,25 @@ Seamlessly integrate with cloud storage providers (AWS S3, Google Cloud Storage,
 **LOC**: ~970 lines (main: 446, CloudTypes: 111, CloudProvider: 70, CloudOperations: 349)  
 **Tests**: 35 comprehensive unit tests covering URL parsing, provider factory, error handling, edge cases
 
-#### Phase B: AWS S3 Integration (Days 3-4) - 📋 PLANNED
-- [ ] AWS SDK integration
-- [ ] S3 upload/download implementation
-- [ ] S3 list and delete implementation
-- [ ] S3 metadata tagging
-- [ ] Multipart upload support
-- [ ] Integration tests with real S3
+#### Phase B: AWS S3 Integration (Days 3-4) - ✅ COMPLETE
+- [x] AWS SDK integration (aws-sdk-swift 1.6.0+)
+- [x] S3 upload/download implementation using ByteStream
+- [x] S3 list and delete implementation with pagination
+- [x] S3 metadata tagging support
+- [x] S3 exists/head operation
+- [x] Server-side encryption (AES256)
+- [x] Region configuration support
+- [x] Custom endpoint support (LocalStack, MinIO)
+- [x] AWS credentials via environment or config files
+- [x] Comprehensive README with configuration instructions
+- [x] 38+ unit tests with complete test stubs
+- [ ] Multipart upload support (deferred to Phase D)
+- [ ] Integration tests with real S3 (requires manual testing)
+
+**Status**: Core implementation completed February 14, 2026  
+**LOC**: ~1,195 lines (+225 from Phase A)  
+**Tests**: 38 unit tests (Phase A tests updated for async)  
+**Dependencies**: AWS SDK for Swift, Smithy, ClientRuntime
 
 #### Phase C: Multi-Provider Support (Days 5-6) - 📋 PLANNED
 - [ ] Google Cloud Storage integration
@@ -944,7 +956,8 @@ Seamlessly integrate with cloud storage providers (AWS S3, Google Cloud Storage,
 - [ ] Bidirectional sync refinement
 - [ ] Parallel transfers optimization
 - [ ] Resume capability
-- [ ] Encryption support (server-side, client-side)
+- [ ] Multipart upload for large files (>100MB)
+- [ ] Client-side encryption support
 
 ### Usage Examples
 
