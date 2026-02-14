@@ -1,0 +1,394 @@
+# dicom-ai - AI/ML Integration for DICOM Images
+
+AI/ML integration tool for DICOM image analysis, enhancement, and automated reporting. Supports CoreML models on Apple platforms with support for classification, segmentation, detection, and image enhancement tasks.
+
+## Features
+
+### Model Support
+- **CoreML Models**: Native Swift CoreML model inference on Apple platforms
+- **ONNX Models**: Support via CoreML conversion (requires coremltools)
+- **Custom Models**: Load user-trained models
+- **GPU Acceleration**: Automatic use of Metal Performance Shaders and Neural Engine
+
+### Analysis Tasks
+- **Classification**: Image classification (modality, anatomy, pathology detection)
+- **Segmentation**: Organ/lesion segmentation with mask generation
+- **Detection**: Object/lesion detection with bounding boxes
+- **Enhancement**: Image denoising, super-resolution, quality improvement
+- **Batch Processing**: Efficient batch inference on multiple files
+
+### Output Options
+- **JSON**: Structured prediction results
+- **Text**: Human-readable formatted output
+- **CSV**: Spreadsheet-compatible format
+- **DICOM SR**: Create Structured Reports with AI findings (planned)
+- **DICOM SEG**: Create Segmentation objects (planned)
+
+## Installation
+
+```bash
+swift build -c release
+cp .build/release/dicom-ai /usr/local/bin/
+```
+
+## Usage
+
+### Classification
+
+Classify DICOM images using trained CoreML models.
+
+```bash
+# Basic classification
+dicom-ai classify chest-xray.dcm --model pneumonia-detector.mlmodel
+
+# With confidence threshold and output file
+dicom-ai classify chest-xray.dcm \
+  --model pneumonia-detector.mlmodel \
+  --confidence 0.7 \
+  --output results.json
+
+# Get top 10 predictions
+dicom-ai classify brain-mri.dcm \
+  --model brain-pathology.mlmodel \
+  --top-k 10 \
+  --format text
+
+# Verbose output for debugging
+dicom-ai classify scan.dcm \
+  --model classifier.mlmodel \
+  --verbose
+```
+
+### Segmentation
+
+Segment anatomical structures or lesions using trained models.
+
+```bash
+# Basic segmentation
+dicom-ai segment abdomen-ct.dcm --model organ-segmentation.mlmodel
+
+# Output as DICOM Segmentation object (planned)
+dicom-ai segment abdomen-ct.dcm \
+  --model organ-segmentation.mlmodel \
+  --output segmentation.dcm \
+  --format dicom-seg \
+  --labels organ-labels.json
+
+# JSON output
+dicom-ai segment ct.dcm \
+  --model liver-seg.mlmodel \
+  --output seg-results.json \
+  --format json
+```
+
+### Detection
+
+Detect objects or lesions with bounding boxes.
+
+```bash
+# Basic detection
+dicom-ai detect brain-mri.dcm --model lesion-detector.mlmodel
+
+# With confidence and IoU thresholds
+dicom-ai detect brain-mri.dcm \
+  --model lesion-detector.mlmodel \
+  --confidence 0.7 \
+  --iou-threshold 0.5 \
+  --max-detections 10
+
+# CSV output
+dicom-ai detect chest-xray.dcm \
+  --model nodule-detector.mlmodel \
+  --output detections.csv \
+  --format csv
+```
+
+### Enhancement
+
+Enhance image quality using AI models.
+
+```bash
+# Denoise image
+dicom-ai enhance noisy-image.dcm \
+  --model denoising-model.mlmodel \
+  --output denoised.dcm
+
+# Super-resolution
+dicom-ai enhance low-res.dcm \
+  --model super-resolution.mlmodel \
+  --output high-res.dcm
+
+# With verbose output
+dicom-ai enhance scan.dcm \
+  --model enhancer.mlmodel \
+  --output enhanced.dcm \
+  --verbose
+```
+
+### Batch Processing
+
+Process multiple DICOM files efficiently.
+
+```bash
+# Batch classification
+dicom-ai batch series/*.dcm \
+  --model classifier.mlmodel \
+  --output results.csv \
+  --format csv
+
+# JSON output
+dicom-ai batch study/*.dcm \
+  --model pathology-detector.mlmodel \
+  --output batch-results.json \
+  --format json \
+  --confidence 0.6
+
+# With batch size
+dicom-ai batch large-series/*.dcm \
+  --model classifier.mlmodel \
+  --output results.csv \
+  --batch-size 16 \
+  --verbose
+```
+
+## Model Preparation
+
+### CoreML Models
+
+dicom-ai works with CoreML models (.mlmodel or .mlmodelc files). 
+
+#### Converting ONNX to CoreML
+
+If you have an ONNX model, convert it to CoreML using Apple's coremltools:
+
+```python
+import coremltools as ct
+
+# Load ONNX model
+model = ct.converters.onnx.convert(
+    model='model.onnx',
+    minimum_ios_deployment_target='17.0'
+)
+
+# Save as CoreML model
+model.save('model.mlmodel')
+```
+
+#### Model Input Requirements
+
+Models should accept image inputs in one of these formats:
+- **Image**: Standard image input (height × width × channels)
+- **MultiArray**: Numerical array input (for preprocessed data)
+- **PixelBuffer**: CVPixelBuffer input
+
+Models should output:
+- **Classification**: Dictionary of {label: probability} or MultiArray of probabilities
+- **Segmentation**: MultiArray with shape (height, width, num_classes)
+- **Detection**: MultiArray or structured output with bounding boxes and confidence
+- **Enhancement**: MultiArray or Image with enhanced pixel data
+
+### Labels File
+
+For segmentation with class labels, provide a JSON file:
+
+```json
+{
+  "labels": [
+    "background",
+    "liver",
+    "kidney",
+    "spleen",
+    "pancreas"
+  ]
+}
+```
+
+Or simply:
+
+```json
+["background", "liver", "kidney", "spleen", "pancreas"]
+```
+
+## Common Options
+
+- `--model, -m`: Path to CoreML model file (.mlmodel or .mlmodelc)
+- `--output, -o`: Output file path (default: print to stdout)
+- `--format, -f`: Output format (json, text, csv, dicom-sr, dicom-seg)
+- `--confidence`: Minimum confidence threshold (0.0-1.0, default: 0.5)
+- `--frame`: Frame index for multi-frame images (default: 0)
+- `--force`: Force parsing of files without DICM prefix
+- `--verbose`: Verbose output for debugging
+
+## Output Formats
+
+### JSON Output (Classification)
+
+```json
+{
+  "file": "chest-xray.dcm",
+  "predictions": [
+    {
+      "label": "pneumonia",
+      "confidence": 0.87
+    },
+    {
+      "label": "normal",
+      "confidence": 0.13
+    }
+  ]
+}
+```
+
+### CSV Output (Classification)
+
+```csv
+file,label,confidence
+chest-xray.dcm,pneumonia,0.87
+chest-xray.dcm,normal,0.13
+```
+
+### JSON Output (Detection)
+
+```json
+{
+  "file": "brain-mri.dcm",
+  "detections": [
+    {
+      "label": "lesion",
+      "confidence": 0.92,
+      "bbox": [120, 150, 45, 38]
+    }
+  ]
+}
+```
+
+### CSV Output (Detection)
+
+```csv
+file,label,confidence,x,y,width,height
+brain-mri.dcm,lesion,0.92,120,150,45,38
+```
+
+## Platform Support
+
+- **macOS 14.0+**: Full support with CoreML, Metal, and Neural Engine
+- **iOS 17.0+**: Full support (when compiled for iOS)
+- **visionOS 1.0+**: Full support (when compiled for visionOS)
+- **Linux**: Not supported (CoreML not available)
+
+## Performance Tips
+
+1. **Use Compiled Models**: Pre-compile .mlmodel files to .mlmodelc for faster loading
+2. **GPU Acceleration**: Ensure models are configured to use GPU/Neural Engine
+3. **Batch Processing**: Use the batch command for processing multiple files
+4. **Model Optimization**: Use Core ML model optimization tools for better performance
+
+## Examples
+
+### Medical Imaging Workflows
+
+#### Pneumonia Detection Pipeline
+
+```bash
+# 1. Classify chest X-rays
+dicom-ai classify chest-xray.dcm \
+  --model pneumonia-detector.mlmodel \
+  --output classification.json \
+  --confidence 0.8
+
+# 2. If positive, segment affected areas
+dicom-ai segment chest-xray.dcm \
+  --model lung-segmentation.mlmodel \
+  --output segmentation.json
+```
+
+#### Brain Lesion Analysis
+
+```bash
+# 1. Detect lesions
+dicom-ai detect brain-mri.dcm \
+  --model lesion-detector.mlmodel \
+  --output detections.json \
+  --confidence 0.75
+
+# 2. Segment detected lesions
+dicom-ai segment brain-mri.dcm \
+  --model lesion-segmentation.mlmodel \
+  --output lesion-mask.json
+```
+
+#### Image Quality Enhancement
+
+```bash
+# Enhance low-quality scans
+dicom-ai enhance noisy-scan.dcm \
+  --model denoising-model.mlmodel \
+  --output enhanced-scan.dcm
+```
+
+## Limitations
+
+### Current Limitations
+
+1. **DICOM Output**: DICOM SR and DICOM SEG creation are planned but not yet implemented
+2. **Python Bridge**: Direct TensorFlow/PyTorch inference not yet supported (use ONNX→CoreML conversion)
+3. **Model Formats**: Only CoreML models supported on Apple platforms
+4. **Preprocessing**: Limited automatic preprocessing; models should expect standard image inputs
+
+### Planned Features
+
+- DICOM Structured Report (SR) generation from predictions
+- DICOM Segmentation (SEG) object creation
+- GSPS (Grayscale Presentation State) with AI annotations
+- Model registry and versioning
+- Ensemble inference (multiple models)
+- Advanced preprocessing pipelines
+- Custom confidence calibration
+- Model performance metrics
+
+## Troubleshooting
+
+### Model Loading Issues
+
+```
+Error: Failed to load CoreML model
+```
+
+**Solutions:**
+- Ensure model file exists and has correct extension (.mlmodel or .mlmodelc)
+- Verify model is compatible with target platform (macOS 14+, iOS 17+)
+- Check model was saved with correct minimum deployment target
+
+### Memory Issues with Large Images
+
+```
+Error: Out of memory during inference
+```
+
+**Solutions:**
+- Process images one at a time instead of batch mode
+- Reduce image resolution if model supports it
+- Use models optimized for memory efficiency
+
+### Incorrect Predictions
+
+**Debugging steps:**
+1. Use `--verbose` flag to see preprocessing steps
+2. Verify DICOM image is correctly parsed (check dimensions, pixel spacing)
+3. Ensure model was trained on similar data
+4. Check confidence threshold isn't filtering out results
+
+## See Also
+
+- `dicom-info` - Display DICOM metadata
+- `dicom-convert` - Convert between formats
+- `dicom-report` - Generate clinical reports from DICOM SR
+- `dicom-measure` - Medical image measurements
+
+## Version
+
+dicom-ai v1.4.0 - Part of DICOMKit Phase 7 CLI Tools
+
+## License
+
+See LICENSE file in the DICOMKit repository.
