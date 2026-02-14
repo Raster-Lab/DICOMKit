@@ -177,6 +177,33 @@ extension TransferSyntax {
         isEncapsulated: true
     )
     
+    // MARK: - JPEG-LS Transfer Syntaxes
+    
+    /// JPEG-LS Lossless Image Compression (1.2.840.10008.1.2.4.80)
+    ///
+    /// JPEG-LS lossless image compression using the HP LOCO-I/JPEG-LS algorithm.
+    ///
+    /// Reference: PS3.5 Section A.4.5, ITU-T T.87 / ISO/IEC 14495-1
+    public static let jpegLSLossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.80",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// JPEG-LS Lossy (Near-Lossless) Image Compression (1.2.840.10008.1.2.4.81)
+    ///
+    /// JPEG-LS near-lossless image compression using the HP LOCO-I/JPEG-LS algorithm
+    /// with a configurable maximum error tolerance (NEAR parameter).
+    ///
+    /// Reference: PS3.5 Section A.4.5, ITU-T T.87 / ISO/IEC 14495-1
+    public static let jpegLSNearLossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.81",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
     // MARK: - RLE Transfer Syntax
     
     /// RLE Lossless (1.2.840.10008.1.2.5)
@@ -301,6 +328,11 @@ extension TransferSyntax {
             return .jpeg2000Lossless
         case jpeg2000.uid:
             return .jpeg2000
+        // JPEG-LS
+        case jpegLSLossless.uid:
+            return .jpegLSLossless
+        case jpegLSNearLossless.uid:
+            return .jpegLSNearLossless
         // RLE
         case rleLossless.uid:
             return .rleLossless
@@ -340,6 +372,17 @@ extension TransferSyntax {
         switch uid {
         case TransferSyntax.jpeg2000Lossless.uid,
              TransferSyntax.jpeg2000.uid:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this transfer syntax uses JPEG-LS compression
+    public var isJPEGLS: Bool {
+        switch uid {
+        case TransferSyntax.jpegLSLossless.uid,
+             TransferSyntax.jpegLSNearLossless.uid:
             return true
         default:
             return false
@@ -409,6 +452,7 @@ extension TransferSyntax {
              TransferSyntax.jpegLossless.uid,
              TransferSyntax.jpegLosslessSV1.uid,
              TransferSyntax.jpeg2000Lossless.uid,
+             TransferSyntax.jpegLSLossless.uid,
              TransferSyntax.rleLossless.uid:
             return true
         default:
