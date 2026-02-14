@@ -114,9 +114,44 @@ struct CloudObject {
 }
 
 // Stub CloudProvider for testing
-protocol CloudProviderProtocol: Actor { }
+protocol CloudProviderProtocol: Actor {
+    func upload(data: Data, to cloudURL: CloudURL, metadata: [String: String], encryption: EncryptionType) async throws
+    func download(from cloudURL: CloudURL) async throws -> Data
+    func list(cloudURL: CloudURL, recursive: Bool) async throws -> [CloudObject]
+    func delete(cloudURL: CloudURL) async throws
+    func exists(cloudURL: CloudURL) async throws -> Bool
+}
 
-actor StubCloudProvider: CloudProviderProtocol { }
+enum EncryptionType: String, CaseIterable {
+    case none = "none"
+    case serverSide = "server-side"
+    case clientSide = "client-side"
+}
+
+actor StubCloudProvider: CloudProviderProtocol {
+    func upload(data: Data, to cloudURL: CloudURL, metadata: [String: String], encryption: EncryptionType) async throws {
+        // Stub implementation
+    }
+    
+    func download(from cloudURL: CloudURL) async throws -> Data {
+        // Stub implementation
+        return Data()
+    }
+    
+    func list(cloudURL: CloudURL, recursive: Bool) async throws -> [CloudObject] {
+        // Stub implementation
+        return []
+    }
+    
+    func delete(cloudURL: CloudURL) async throws {
+        // Stub implementation
+    }
+    
+    func exists(cloudURL: CloudURL) async throws -> Bool {
+        // Stub implementation
+        return false
+    }
+}
 
 struct CloudProvider {
     static func create(for cloudURL: CloudURL, endpoint: String?, region: String?) async throws -> any CloudProviderProtocol {

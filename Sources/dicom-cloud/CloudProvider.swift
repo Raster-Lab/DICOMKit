@@ -97,8 +97,10 @@ actor S3Provider: CloudProviderProtocol {
             }
             
             // Convert ByteStream to Data
-            let data = try await body.readData()
-            return data ?? Data()
+            guard let data = try await body.readData() else {
+                throw CloudError.operationFailed("Failed to read object data: \(cloudURL.key)")
+            }
+            return data
         } catch let error as CloudError {
             throw error
         } catch {
