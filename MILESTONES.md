@@ -3808,7 +3808,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ### Milestone 11.3: DICOM Print Management (v1.4.0)
 
-**Status**: ✅ Completed (Basic Implementation)  
+**Status**: ✅ Completed (Core Workflow Implemented)  
 **Goal**: Implement DICOM Print Management Service Class (PS3.4 Annex H)  
 **Complexity**: Medium-High  
 **Dependencies**: Milestone 6 (DICOM Networking)
@@ -3821,6 +3821,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
   - [x] `NSetRequest` / `NSetResponse` (PS3.7 Section 10.1.3) - Modify managed SOP Instance attributes
   - [x] `NGetRequest` / `NGetResponse` (PS3.7 Section 10.1.2) - Retrieve managed SOP Instance attributes
   - [x] `NDeleteRequest` / `NDeleteResponse` (PS3.7 Section 10.1.6) - Delete managed SOP Instances
+  - [x] `NActionRequest` / `NActionResponse` (PS3.7 Section 10.1.4) - Perform actions on managed SOP Instances
 - [x] Print Management SOP Class UIDs:
   - [x] Basic Film Session SOP Class (`1.2.840.10008.5.1.1.1`)
   - [x] Basic Film Box SOP Class (`1.2.840.10008.5.1.1.2`)
@@ -3843,6 +3844,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
   - [x] `ImageBoxContent` - Image box content (position, polarity, crop behavior)
   - [x] `PrinterStatus` - Printer status information
   - [x] `PrintResult` - Print operation result
+  - [x] `FilmBoxResult` - Film Box creation result with Image Box UIDs
 - [x] Supporting enums:
   - [x] `PrintColorMode` (grayscale, color)
   - [x] `PrintPriority` (high, medium, low)
@@ -3854,9 +3856,14 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
   - [x] `TrimOption` (yes, no)
   - [x] `ImagePolarity` (normal, reverse)
   - [x] `DecimateCropBehavior` (decimate, crop, fail)
-- [x] `DICOMPrintService` API:
-  - [x] `getPrinterStatus(configuration:) async throws -> PrinterStatus`
-  - [x] Print workflow documentation (N-GET → N-CREATE → N-SET → N-ACTION → N-DELETE)
+- [x] `DICOMPrintService` API - **Complete Print Workflow**:
+  - [x] `getPrinterStatus(configuration:) async throws -> PrinterStatus` - N-GET on Printer SOP
+  - [x] `createFilmSession(configuration:session:) async throws -> String` - N-CREATE Film Session
+  - [x] `createFilmBox(configuration:filmSessionUID:filmBox:) async throws -> FilmBoxResult` - N-CREATE Film Box
+  - [x] `setImageBox(configuration:imageBoxUID:imageBox:pixelData:) async throws` - N-SET Image Box content **[NEW]**
+  - [x] `printFilmBox(configuration:filmBoxUID:) async throws -> String` - N-ACTION Print **[NEW]**
+  - [x] `deleteFilmSession(configuration:filmSessionUID:) async throws` - N-DELETE cleanup
+  - [x] Helper: `parseImageBoxUIDs(from:)` - Extract Image Box UIDs from Film Box response **[ENHANCED]**
 - [x] MPPS response parsing fix:
   - [x] N-CREATE-RSP proper status validation in `MPPSService`
   - [x] N-SET-RSP proper status validation in `MPPSService`
@@ -3865,17 +3872,20 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - Reference: PS3.4 Annex H - Print Management Service Class
 - Reference: PS3.7 Section 10.1 - DIMSE-N Services
 - Reference: PS3.3 C.13 - Print Management Module
-- N-CREATE, N-SET, N-GET, N-DELETE complete the full DIMSE-N message set
-- Print workflow: Get printer status → Create film session → Create film box → Set image boxes → Print → Delete session
+- N-CREATE, N-SET, N-GET, N-ACTION, N-DELETE complete the full DIMSE-N message set
+- **Complete print workflow now supported**: Get printer status → Create film session → Create film box → Set image boxes → Print → Delete session
 - All types conform to `Sendable` for Swift 6 strict concurrency
+- Phase 1 implementation uses preformatted pixel data (assumes image attributes embedded)
+- Future enhancements will add PixelDataDescriptor parameter for explicit image attributes
 
 #### Acceptance Criteria
-- [x] All 8 DIMSE-N message types correctly implemented with CommandSet integration
+- [x] All 10 DIMSE-N message types correctly implemented with CommandSet integration
 - [x] Print SOP Class UIDs match DICOM PS3.4 standard
 - [x] Print data model types support all common print parameters
 - [x] MPPS service properly validates N-CREATE/N-SET response status codes
-- [x] Unit tests for all message types and print data models (37 print tests + 14 new DIMSE tests)
-- [ ] Integration tests with DICOM print SCP (requires network access)
+- [x] Unit tests for all message types and print data models (58 print tests)
+- [x] Complete print workflow API with all 6 operations implemented
+- [ ] Integration tests with DICOM print SCP (requires network access - documented in test file)
 
 #### Future Enhancements (v1.4.1-v1.4.5)
 
@@ -4223,7 +4233,7 @@ See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement 
 |--------------|---------|------------|--------|------------------|
 | 11.1 Encapsulated Documents | v1.1.0 | Medium | ✅ Completed | PDF, CDA, STL, OBJ, MTL support (40+ tests) |
 | 11.2 CLI Tools Enhancement | v1.1.1-v1.3.5 | Varies | ✅ Complete (100%) | Phase 1-6: ✅ All 29 tools complete (dicom-info through dicom-script, 753+ tests) |
-| 11.3 Print Management | v1.4.0 | Medium-High | ✅ Completed | DIMSE-N messages, Print SOP Classes, data models (51+ tests) |
+| 11.3 Print Management | v1.4.0 | Medium-High | ✅ Completed | Complete print workflow API: 6 operations, DIMSE-N messages, Print SOP Classes, data models (58+ tests) |
 | 11.4 Waveform Data Support | v1.5.0 | Medium | ✅ Completed | 9 waveform SOP Classes, multiplex groups, channel extraction, annotations (40+ tests) |
 | 11.5 Video Support | v1.6.0 | Medium | ✅ Completed | 3 Video SOP Classes, 6 video transfer syntaxes (MPEG2/H.264/H.265), VideoCodec enum (44 tests) |
 | 11.6 Secondary Capture IOD | v1.7.0 | Medium | ✅ Completed | 5 SC SOP Classes, ConversionType, SC Equipment/Image modules, parser/builder (42 tests) |
