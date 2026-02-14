@@ -6,8 +6,8 @@ Cloud storage integration tool for DICOM medical imaging files. Seamlessly uploa
 
 ### Cloud Providers
 - ✅ **AWS S3** (implemented - full support via AWS SDK for Swift)
-- 🚧 Google Cloud Storage (planned - requires GCS SDK integration)
-- 🚧 Azure Blob Storage (planned - requires Azure SDK integration)
+- ✅ **Google Cloud Storage** (implemented - REST API with OAuth2 token authentication)
+- ✅ **Azure Blob Storage** (implemented - REST API with SAS token authentication)
 - ✅ **Custom S3-compatible providers** (MinIO, DigitalOcean Spaces, LocalStack, etc.)
 
 ### Operations
@@ -104,6 +104,85 @@ Specify the AWS region in one of three ways:
 
 3. **AWS config file** (~/.aws/config)
 
+### Google Cloud Storage Credentials
+
+GCS support uses REST API with OAuth2 authentication. You need a service account JSON key file and an access token.
+
+#### Method 1: Using gcloud CLI (Recommended for Development)
+
+1. **Install gcloud CLI**: Follow the [Google Cloud SDK installation guide](https://cloud.google.com/sdk/docs/install)
+
+2. **Authenticate and generate access token**:
+   ```bash
+   # Authenticate with your Google account
+   gcloud auth login
+   
+   # Generate and export access token
+   export GCS_ACCESS_TOKEN=$(gcloud auth print-access-token)
+   
+   # Set your service account credentials path (optional, for validation)
+   export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+   ```
+
+3. **Upload to GCS**:
+   ```bash
+   dicom-cloud upload study/ gs://my-bucket/studies/study1/ --recursive
+   ```
+
+**Note**: Access tokens expire after 1 hour. Re-run `export GCS_ACCESS_TOKEN=$(gcloud auth print-access-token)` to refresh.
+
+#### Method 2: Service Account with JWT (Production - Requires Additional Setup)
+
+For production use, implement JWT signing to exchange service account credentials for access tokens. This requires adding a JWT library to the project (e.g., SwiftJWT).
+
+```bash
+# Set service account credentials
+export GOOGLE_APPLICATION_CREDENTIALS=/path/to/service-account.json
+
+# The tool will use these credentials to generate access tokens automatically
+# (requires JWT implementation - see Phase C.2 in CLI_TOOLS_PHASE7.md)
+```
+
+### Azure Blob Storage Credentials
+
+Azure Blob Storage support uses REST API with Shared Access Signature (SAS) token authentication.
+
+1. **Set storage account name**:
+   ```bash
+   export AZURE_STORAGE_ACCOUNT=mystorageaccount
+   ```
+
+2. **Generate and export SAS token**:
+   
+   - **Via Azure Portal**:
+     1. Navigate to your Storage Account → Shared access signature
+     2. Configure permissions (Read, Write, Delete, List)
+     3. Set expiry date
+     4. Click "Generate SAS and connection string"
+     5. Copy the SAS token (starts with `?sv=...`)
+   
+   - **Via Azure CLI**:
+     ```bash
+     # Generate SAS token with 1-day expiry
+     az storage account generate-sas \
+       --account-name mystorageaccount \
+       --services b \
+       --resource-types sco \
+       --permissions rwdlac \
+       --expiry $(date -u -d "1 day" '+%Y-%m-%dT%H:%MZ') \
+       --https-only
+     
+     # Export the token (include the leading '?')
+     export AZURE_STORAGE_SAS_TOKEN="?sv=2021-06-08&ss=b&srt=sco&sp=rwdlac&se=..."
+     ```
+
+3. **Upload to Azure**:
+   ```bash
+   dicom-cloud upload study/ azure://my-container/studies/study1/ --recursive
+   ```
+
+**Security Note**: SAS tokens provide time-limited access. Rotate tokens regularly and never commit them to version control.
+
 ### Testing with LocalStack
 
 For local development and testing, you can use [LocalStack](https://localstack.cloud/):
@@ -154,6 +233,12 @@ dicom-cloud upload study/ s3://test-bucket/study/ \
 # Upload single file to AWS S3
 dicom-cloud upload scan.dcm s3://my-bucket/scans/scan.dcm
 
+# Upload to Google Cloud Storage
+dicom-cloud upload scan.dcm gs://my-bucket/scans/scan.dcm
+
+# Upload to Azure Blob Storage
+dicom-cloud upload scan.dcm azure://my-container/scans/scan.dcm
+
 # Upload directory recursively
 dicom-cloud upload study/ s3://my-bucket/studies/study1/ --recursive
 
@@ -180,8 +265,14 @@ dicom-cloud upload large-study/ s3://my-bucket/large/ \
 ### Download Files
 
 ```bash
-# Download single file
+# Download single file from S3
 dicom-cloud download s3://my-bucket/scans/scan.dcm local-scan.dcm
+
+# Download from Google Cloud Storage
+dicom-cloud download gs://my-bucket/scans/scan.dcm local-scan.dcm
+
+# Download from Azure Blob Storage
+dicom-cloud download azure://my-container/scans/scan.dcm local-scan.dcm
 
 # Download directory recursively
 dicom-cloud download s3://my-bucket/studies/study1/ local-study/ --recursive

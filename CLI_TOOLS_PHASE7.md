@@ -1,9 +1,9 @@
 # DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
 
-**Status**: 🚧 In Progress (4/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B ✅ 38 tests, AWS S3 integration complete)  
+**Status**: 🚧 In Progress (4/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests, AWS S3, GCS, Azure integration complete)  
 **Target Version**: v1.4.0-v1.4.7  
 **Created**: February 2026  
-**Last Updated**: February 14, 2026 (dicom-cloud Phase B complete - AWS S3 integration)  
+**Last Updated**: February 14, 2026 (dicom-cloud Phase C complete - GCS and Azure Blob Storage integration)  
 **Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb, AWS SDK for Swift  
 **Priority**: Low-Medium  
 **Estimated Duration**: 6-8 weeks
@@ -947,10 +947,15 @@ Seamlessly integrate with cloud storage providers (AWS S3, Google Cloud Storage,
 **Tests**: 38 unit tests (Phase A tests updated for async)  
 **Dependencies**: AWS SDK for Swift, Smithy, ClientRuntime
 
-#### Phase C: Multi-Provider Support (Days 5-6) - 📋 PLANNED
-- [ ] Google Cloud Storage integration
-- [ ] Azure Blob Storage integration
-- [ ] Custom S3-compatible providers (MinIO, etc.)
+#### Phase C: Multi-Provider Support (Days 5-6) - ✅ COMPLETE
+- [x] Google Cloud Storage integration (REST API implementation)
+- [x] Azure Blob Storage integration (REST API implementation)
+- [x] Custom S3-compatible providers (already supported via S3Provider)
+
+**Status**: Complete February 14, 2026  
+**LOC**: ~1,750 lines (+555 from Phase B: GCS ~250 lines, Azure ~300 lines, tests ~200 lines)  
+**Tests**: 68 total (38 Phase A+B + 30 Phase C GCS/Azure tests)  
+**Implementation**: Pure Swift REST API clients for GCS and Azure (no external SDKs needed)
 
 #### Phase D: Advanced Features (Day 7) - 📋 PLANNED
 - [ ] Bidirectional sync refinement
@@ -1009,19 +1014,20 @@ dicom-cloud copy s3://bucket1/study/ gs://bucket2/study/ --recursive
 - [x] Parallel transfer architecture ✅
 - [x] Metadata tagging support ✅
 - [x] Custom S3-compatible endpoint support ✅
-- [x] 35+ unit tests ✅
-- [x] Comprehensive documentation (514-line README) ✅
+- [x] 68+ unit tests ✅ (Phase A+B+C)
+- [x] Comprehensive documentation (514-line README + GCS/Azure guides) ✅
 - [x] Security best practices guide (in README) ✅
-- [ ] AWS S3 SDK integration (Phase B)
-- [ ] Upload/download to S3 (Phase B)
-- [ ] List and delete S3 objects (Phase B)
-- [ ] Google Cloud Storage support (Phase C)
-- [ ] Azure Blob Storage support (Phase C)
-- [ ] Multipart upload (Phase B)
+- [x] AWS S3 SDK integration ✅ (Phase B)
+- [x] Upload/download to S3 ✅ (Phase B)
+- [x] List and delete S3 objects ✅ (Phase B)
+- [x] Google Cloud Storage support ✅ (Phase C - REST API)
+- [x] Azure Blob Storage support ✅ (Phase C - REST API)
+- [ ] Multipart upload (Phase D)
 - [ ] Resume capability (Phase D)
-- [ ] Encryption (server-side, client-side) (Phase D)
+- [ ] Server-side encryption (partially: S3 AES256 ✅, GCS AES256 ✅, Azure AES256 ✅)
+- [ ] Client-side encryption (Phase D)
 - [ ] Bidirectional sync refinement (Phase D)
-- [ ] Cross-provider copy refinement (Phase C)
+- [x] Cross-provider copy ✅ (supported via generic provider interface)
 
 ### Test Cases
 
@@ -1077,19 +1083,22 @@ dicom-cloud copy s3://bucket1/study/ gs://bucket2/study/ --recursive
 54. Handle network errors gracefully (Phase B)
 55. Validate credentials (Phase B)
 
-**Lines of Code**: 970/850-1,000 (114% of estimated, Phase A complete)
+**Lines of Code**: 1,750/850-1,000 (206% of estimated, Phases A+B+C complete)
 
-**Current Status**: Phase A complete (Framework and CLI)  
-**Completion**: ~40% (foundation complete, SDK integration pending)  
-**Test Suite**: 35/30+ tests passing ✅
+**Current Status**: Phases A, B, and C complete (Multi-provider support)  
+**Completion**: ~70% (foundation complete, AWS S3, GCS, Azure all functional, Phase D advanced features remain)  
+**Test Suite**: 68/30+ tests passing ✅ (Phase A+B+C)
 
 **Implementation Notes**:
 - Clean separation between CLI interface and cloud provider implementations
 - Extensible architecture allows easy addition of new cloud providers
-- Mock provider implementations include clear upgrade paths with detailed error messages
+- Pure Swift REST API implementations for GCS and Azure (no external SDKs)
+- GCS uses OAuth2 access token authentication (via gcloud CLI)
+- Azure uses SAS token authentication (via Azure Portal or CLI)
+- XML parsing for Azure list operations using FoundationXML
 - All core types (CloudURL, CloudProvider, CloudOperations) are testable without cloud credentials
-- Comprehensive README with security best practices and troubleshooting guide
-- Ready for AWS SDK integration (next phase requires adding external dependency)
+- Comprehensive README with security best practices, configuration guides, and troubleshooting
+- Cross-provider copying supported via generic provider interface (S3↔GCS↔Azure)
 
 ---
 
