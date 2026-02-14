@@ -484,6 +484,28 @@ public enum DICOMPrintService {
         return PrinterStatus(status: "NORMAL", statusInfo: nil, printerName: nil)
     }
     
+    /// Helper: Selects the appropriate Print Management Meta SOP Class UID based on color mode
+    private static func selectPrintSOPClassUID(for colorMode: PrintColorMode) -> String {
+        return colorMode == .color
+            ? basicColorPrintManagementMetaSOPClassUID
+            : basicGrayscalePrintManagementMetaSOPClassUID
+    }
+    
+    /// Helper: Creates an association configuration for print operations
+    private static func createPrintAssociationConfiguration(
+        _ configuration: PrintConfiguration
+    ) throws -> AssociationConfiguration {
+        return AssociationConfiguration(
+            callingAETitle: try AETitle(configuration.callingAETitle),
+            calledAETitle: try AETitle(configuration.calledAETitle),
+            host: configuration.host,
+            port: configuration.port,
+            implementationClassUID: defaultImplementationClassUID,
+            implementationVersionName: defaultImplementationVersionName,
+            timeout: configuration.timeout
+        )
+    }
+    
     /// Creates a film session using N-CREATE
     ///
     /// Sends N-CREATE to the Print SCP to create a new Film Session SOP Instance.
@@ -500,9 +522,6 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         session: FilmSession
     ) async throws -> String {
-        let sopClassUID = configuration.colorMode == .color
-            ? basicColorPrintManagementMetaSOPClassUID
-            : basicGrayscalePrintManagementMetaSOPClassUID
         
         let presentationContext = try PresentationContext(
             id: 1,
@@ -514,15 +533,7 @@ public enum DICOMPrintService {
         )
         
         // Create association configuration
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: try AETitle(configuration.callingAETitle),
-            calledAETitle: try AETitle(configuration.calledAETitle),
-            host: configuration.host,
-            port: configuration.port,
-            implementationClassUID: defaultImplementationClassUID,
-            implementationVersionName: defaultImplementationVersionName,
-            timeout: configuration.timeout
-        )
+        let associationConfig = try createPrintAssociationConfiguration(configuration)
         
         // Create association
         let association = Association(configuration: associationConfig)
@@ -622,7 +633,6 @@ public enum DICOMPrintService {
                 return filmSessionUID
             }
             
-            try await association.release()
             throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
@@ -645,9 +655,7 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         filmSessionUID: String
     ) async throws {
-        let sopClassUID = configuration.colorMode == .color
-            ? basicColorPrintManagementMetaSOPClassUID
-            : basicGrayscalePrintManagementMetaSOPClassUID
+        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
         
         let presentationContext = try PresentationContext(
             id: 1,
@@ -659,15 +667,7 @@ public enum DICOMPrintService {
         )
         
         // Create association configuration
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: try AETitle(configuration.callingAETitle),
-            calledAETitle: try AETitle(configuration.calledAETitle),
-            host: configuration.host,
-            port: configuration.port,
-            implementationClassUID: defaultImplementationClassUID,
-            implementationVersionName: defaultImplementationVersionName,
-            timeout: configuration.timeout
-        )
+        let associationConfig = try createPrintAssociationConfiguration(configuration)
         
         // Create association
         let association = Association(configuration: associationConfig)
@@ -720,7 +720,6 @@ public enum DICOMPrintService {
                 return
             }
             
-            try await association.release()
             throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
