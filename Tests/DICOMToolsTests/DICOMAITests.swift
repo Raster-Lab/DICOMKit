@@ -736,6 +736,13 @@ final class DICOMAITests: XCTestCase {
         // Verify SR DataSet contains expected elements
         let serializedData = srDataSet.write()
         XCTAssertTrue(serializedData.count > 0, "SR DataSet should serialize to non-empty data")
+        
+        // Verify SR SOP Class UID (Comprehensive SR)
+        XCTAssertEqual(srDataSet.string(for: .sopClassUID), "1.2.840.10008.5.1.4.1.1.88.33")
+        // Verify patient ID is preserved
+        XCTAssertEqual(srDataSet.string(for: .patientID), "12345")
+        // Verify modality is SR
+        XCTAssertEqual(srDataSet.string(for: .modality), "SR")
     }
     
     func test_createSRFromDetections_generatesValidSR() throws {
@@ -765,6 +772,13 @@ final class DICOMAITests: XCTestCase {
         
         let serializedData = srDataSet.write()
         XCTAssertTrue(serializedData.count > 0, "SR DataSet should serialize to non-empty data")
+        
+        // Verify SR SOP Class UID (Comprehensive SR)
+        XCTAssertEqual(srDataSet.string(for: .sopClassUID), "1.2.840.10008.5.1.4.1.1.88.33")
+        // Verify patient ID is preserved from source
+        XCTAssertEqual(srDataSet.string(for: .patientID), "67890")
+        // Verify modality is SR
+        XCTAssertEqual(srDataSet.string(for: .modality), "SR")
     }
     
     // MARK: - Phase C Tests: GSPS with Annotations

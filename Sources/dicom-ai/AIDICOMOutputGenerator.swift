@@ -173,6 +173,15 @@ struct AIDICOMOutputGenerator {
         let sopClassUID = sourceDataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.2"
         let sopInstanceUID = sourceDataSet.string(for: .sopInstanceUID) ?? ""
 
+        // Validate mask dimensions match expected pixel count
+        let expectedPixelCount = segmentationMask.width * segmentationMask.height
+        guard segmentationMask.data.count >= expectedPixelCount else {
+            throw AIError.invalidModelOutput(
+                "Segmentation mask data size (\(segmentationMask.data.count)) " +
+                "is smaller than expected (\(expectedPixelCount) = \(segmentationMask.width)×\(segmentationMask.height))"
+            )
+        }
+
         let builder = SegmentationBuilder(
             rows: segmentationMask.height,
             columns: segmentationMask.width,
@@ -341,11 +350,13 @@ struct AIDICOMOutputGenerator {
             graphicItem.setUInt16(5, for: Tag(group: 0x0070, element: 0x0021))  // Number of Graphic Points
 
             // Bounding box as 5-point polyline (closed rectangle)
+            // DICOM Graphic Data uses column\row pairs for PIXEL units
             let x = detection.bbox.x
             let y = detection.bbox.y
             let w = detection.bbox.width
             let h = detection.bbox.height
-            let pointsString = "\(y)\\\(x)\\\(y)\\\(x + w)\\\(y + h)\\\(x + w)\\\(y + h)\\\(x)\\\(y)\\\(x)"
+            // 5 points: top-left, top-right, bottom-right, bottom-left, top-left (closed)
+            let pointsString = "\(x)\\\(y)\\\(x + w)\\\(y)\\\(x + w)\\\(y + h)\\\(x)\\\(y + h)\\\(x)\\\(y)"
             graphicItem.setString(pointsString, for: Tag(group: 0x0070, element: 0x0022), vr: .FL)  // Graphic Data
 
             graphicItem.setString("PIXEL", for: Tag(group: 0x0070, element: 0x0005), vr: .CS)  // Annotation Units
@@ -362,8 +373,9 @@ struct AIDICOMOutputGenerator {
                 vr: .ST
             )
 
-            // Position text above the bounding box
-            let topLeftString = "\(x)\\\(y - 10)"
+            // Position text above the bounding box (with bounds checking)
+            let textTop = max(0, y - 10)
+            let topLeftString = "\(x)\\\(textTop)"
             let bottomRightString = "\(x + w)\\\(y)"
             textItem.setString(topLeftString, for: .boundingBoxTopLeftHandCorner, vr: .FL)
             textItem.setString(bottomRightString, for: .boundingBoxBottomRightHandCorner, vr: .FL)
