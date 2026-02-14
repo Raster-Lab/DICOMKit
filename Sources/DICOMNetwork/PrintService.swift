@@ -483,6 +483,250 @@ public enum DICOMPrintService {
         // Printer Status Info (2110,0020), and Printer Name (2110,0030)
         return PrinterStatus(status: "NORMAL", statusInfo: nil, printerName: nil)
     }
+    
+    /// Creates a film session using N-CREATE
+    ///
+    /// Sends N-CREATE to the Print SCP to create a new Film Session SOP Instance.
+    /// The SCP assigns a unique SOP Instance UID which is returned.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - session: Film session parameters
+    /// - Returns: The assigned Film Session SOP Instance UID
+    /// - Throws: `DICOMNetworkError` if the operation fails
+    ///
+    /// Reference: PS3.4 H.4.1 - Basic Film Session SOP Class
+    public static func createFilmSession(
+        configuration: PrintConfiguration,
+        session: FilmSession
+    ) async throws -> String {
+        let sopClassUID = configuration.colorMode == .color
+            ? basicColorPrintManagementMetaSOPClassUID
+            : basicGrayscalePrintManagementMetaSOPClassUID
+        
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: sopClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+        
+        // Create association configuration
+        let associationConfig = AssociationConfiguration(
+            callingAETitle: try AETitle(configuration.callingAETitle),
+            calledAETitle: try AETitle(configuration.calledAETitle),
+            host: configuration.host,
+            port: configuration.port,
+            implementationClassUID: defaultImplementationClassUID,
+            implementationVersionName: defaultImplementationVersionName,
+            timeout: configuration.timeout
+        )
+        
+        // Create association
+        let association = Association(configuration: associationConfig)
+        
+        do {
+            // Establish association
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            
+            // Verify presentation context was accepted
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+            
+            // Build data set with Film Session attributes
+            var dataSet = DICOMKit.DataSet()
+            
+            // Number of Copies (2000,0010) - IS
+            dataSet[.numberOfCopies] = DataElement(
+                tag: .numberOfCopies,
+                vr: .integerString,
+                values: [String(session.numberOfCopies)]
+            )
+            
+            // Print Priority (2000,0020) - CS
+            dataSet[.printPriority] = DataElement(
+                tag: .printPriority,
+                vr: .codeString,
+                values: [session.printPriority.rawValue]
+            )
+            
+            // Medium Type (2000,0030) - CS
+            dataSet[.mediumType] = DataElement(
+                tag: .mediumType,
+                vr: .codeString,
+                values: [session.mediumType.rawValue]
+            )
+            
+            // Film Destination (2000,0040) - CS
+            dataSet[.filmDestination] = DataElement(
+                tag: .filmDestination,
+                vr: .codeString,
+                values: [session.filmDestination.rawValue]
+            )
+            
+            // Film Session Label (2000,0050) - LO (optional)
+            if let label = session.filmSessionLabel {
+                dataSet[.filmSessionLabel] = DataElement(
+                    tag: .filmSessionLabel,
+                    vr: .longString,
+                    values: [label]
+                )
+            }
+            
+            // Encode data set
+            let dataSetData = dataSet.write()
+            
+            // Send N-CREATE request for Film Session
+            let request = NCreateRequest(
+                messageID: 1,
+                affectedSOPClassUID: basicFilmSessionSOPClassUID,
+                affectedSOPInstanceUID: nil, // Let SCP assign the UID
+                hasDataSet: true,
+                presentationContextID: 1
+            )
+            
+            let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+            let pdus = fragmenter.fragmentMessage(
+                commandSet: request.commandSet,
+                dataSet: dataSetData,
+                presentationContextID: request.presentationContextID
+            )
+            
+            for pdu in pdus {
+                for pdv in pdu.presentationDataValues {
+                    try await association.send(pdv: pdv)
+                }
+            }
+            
+            // Receive N-CREATE response
+            let assembler = MessageAssembler()
+            let responsePDU = try await association.receive()
+            
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                let responseCommandSet = message.commandSet
+                let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                
+                guard response.status.isSuccess else {
+                    try await association.abort()
+                    throw DICOMNetworkError.printOperationFailed(response.status)
+                }
+                
+                // Extract assigned SOP Instance UID
+                let filmSessionUID = response.affectedSOPInstanceUID
+                
+                try await association.release()
+                return filmSessionUID
+            }
+            
+            try await association.release()
+            throw DICOMNetworkError.unexpectedResponse
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
+    
+    /// Deletes a film session using N-DELETE
+    ///
+    /// Sends N-DELETE to the Print SCP to delete a Film Session SOP Instance.
+    /// This should be called after printing is complete to cleanup resources.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - filmSessionUID: The Film Session SOP Instance UID to delete
+    /// - Throws: `DICOMNetworkError` if the operation fails
+    ///
+    /// Reference: PS3.4 H.4.1 - Basic Film Session SOP Class
+    public static func deleteFilmSession(
+        configuration: PrintConfiguration,
+        filmSessionUID: String
+    ) async throws {
+        let sopClassUID = configuration.colorMode == .color
+            ? basicColorPrintManagementMetaSOPClassUID
+            : basicGrayscalePrintManagementMetaSOPClassUID
+        
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: sopClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+        
+        // Create association configuration
+        let associationConfig = AssociationConfiguration(
+            callingAETitle: try AETitle(configuration.callingAETitle),
+            calledAETitle: try AETitle(configuration.calledAETitle),
+            host: configuration.host,
+            port: configuration.port,
+            implementationClassUID: defaultImplementationClassUID,
+            implementationVersionName: defaultImplementationVersionName,
+            timeout: configuration.timeout
+        )
+        
+        // Create association
+        let association = Association(configuration: associationConfig)
+        
+        do {
+            // Establish association
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            
+            // Verify presentation context was accepted
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+            
+            // Send N-DELETE request for Film Session
+            let request = NDeleteRequest(
+                messageID: 1,
+                requestedSOPClassUID: basicFilmSessionSOPClassUID,
+                requestedSOPInstanceUID: filmSessionUID,
+                presentationContextID: 1
+            )
+            
+            let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+            let pdus = fragmenter.fragmentMessage(
+                commandSet: request.commandSet,
+                dataSet: nil,
+                presentationContextID: request.presentationContextID
+            )
+            
+            for pdu in pdus {
+                for pdv in pdu.presentationDataValues {
+                    try await association.send(pdv: pdv)
+                }
+            }
+            
+            // Receive N-DELETE response
+            let assembler = MessageAssembler()
+            let responsePDU = try await association.receive()
+            
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                let responseCommandSet = message.commandSet
+                let response = NDeleteResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                
+                guard response.status.isSuccess else {
+                    try await association.abort()
+                    throw DICOMNetworkError.printOperationFailed(response.status)
+                }
+                
+                try await association.release()
+                return
+            }
+            
+            try await association.release()
+            throw DICOMNetworkError.unexpectedResponse
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
 }
 
 #endif
