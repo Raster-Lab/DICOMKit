@@ -101,8 +101,8 @@ struct Classify: ParsableCommand {
         }
         
         let fileData = try Data(contentsOf: URL(fileURLWithPath: options.input))
-        let reader = DICOMFileReader(data: fileData)
-        let dataSet = try reader.readDataSet(forceParsingEvenWithoutDICMPrefix: options.force)
+        let dicomFile = try DICOMFile.read(from: fileData, force: options.force)
+        let dataSet = dicomFile.dataSet
         
         if options.verbose {
             print("Loading CoreML model: \(options.model)")
@@ -123,11 +123,29 @@ struct Classify: ParsableCommand {
         
         let predictions = try engine.classify(image: inputImage, topK: topK, threshold: options.confidence)
         
-        let output = formatClassificationResults(
-            predictions: predictions,
-            format: options.format,
-            filePath: options.input
-        )
+        let output: String
+        if options.format == .dicomSR {
+            if options.verbose {
+                print("Creating DICOM SR from predictions...")
+            }
+            let srDataSet = try AIDICOMOutputGenerator.createSRFromClassification(
+                predictions: predictions,
+                sourceDataSet: dataSet,
+                modelName: URL(fileURLWithPath: options.model).lastPathComponent
+            )
+            guard let outputPath = options.output else {
+                throw AIError.missingOutput("Output file required for DICOM-SR format")
+            }
+            let srData = srDataSet.write()
+            try srData.write(to: URL(fileURLWithPath: outputPath))
+            output = "DICOM SR saved to \(outputPath)"
+        } else {
+            output = formatClassificationResults(
+                predictions: predictions,
+                format: options.format,
+                filePath: options.input
+            )
+        }
         
         try writeOutput(output, to: options.output)
         #else
@@ -162,8 +180,8 @@ struct Segment: ParsableCommand {
         }
         
         let fileData = try Data(contentsOf: URL(fileURLWithPath: options.input))
-        let reader = DICOMFileReader(data: fileData)
-        let dataSet = try reader.readDataSet(forceParsingEvenWithoutDICMPrefix: options.force)
+        let dicomFile = try DICOMFile.read(from: fileData, force: options.force)
+        let dataSet = dicomFile.dataSet
         
         if options.verbose {
             print("Loading CoreML model: \(options.model)")
@@ -242,8 +260,8 @@ struct Detect: ParsableCommand {
         }
         
         let fileData = try Data(contentsOf: URL(fileURLWithPath: options.input))
-        let reader = DICOMFileReader(data: fileData)
-        let dataSet = try reader.readDataSet(forceParsingEvenWithoutDICMPrefix: options.force)
+        let dicomFile = try DICOMFile.read(from: fileData, force: options.force)
+        let dataSet = dicomFile.dataSet
         
         if options.verbose {
             print("Loading CoreML model: \(options.model)")
@@ -269,11 +287,29 @@ struct Detect: ParsableCommand {
             maxDetections: maxDetections
         )
         
-        let output = formatDetectionResults(
-            detections: detections,
-            format: options.format,
-            filePath: options.input
-        )
+        let output: String
+        if options.format == .dicomSR {
+            if options.verbose {
+                print("Creating DICOM SR from detections...")
+            }
+            let srDataSet = try AIDICOMOutputGenerator.createSRFromDetections(
+                detections: detections,
+                sourceDataSet: dataSet,
+                modelName: URL(fileURLWithPath: options.model).lastPathComponent
+            )
+            guard let outputPath = options.output else {
+                throw AIError.missingOutput("Output file required for DICOM-SR format")
+            }
+            let srData = srDataSet.write()
+            try srData.write(to: URL(fileURLWithPath: outputPath))
+            output = "DICOM SR saved to \(outputPath)"
+        } else {
+            output = formatDetectionResults(
+                detections: detections,
+                format: options.format,
+                filePath: options.input
+            )
+        }
         
         try writeOutput(output, to: options.output)
         #else
@@ -311,8 +347,8 @@ struct Enhance: ParsableCommand {
         }
         
         let fileData = try Data(contentsOf: URL(fileURLWithPath: options.input))
-        let reader = DICOMFileReader(data: fileData)
-        let dataSet = try reader.readDataSet(forceParsingEvenWithoutDICMPrefix: options.force)
+        let dicomFile = try DICOMFile.read(from: fileData, force: options.force)
+        let dataSet = dicomFile.dataSet
         
         if options.verbose {
             print("Loading CoreML model: \(options.model)")
@@ -422,8 +458,8 @@ struct Batch: ParsableCommand {
             
             do {
                 let fileData = try Data(contentsOf: URL(fileURLWithPath: filePath))
-                let reader = DICOMFileReader(data: fileData)
-                let dataSet = try reader.readDataSet(forceParsingEvenWithoutDICMPrefix: force)
+                let dicomFile = try DICOMFile.read(from: fileData, force: force)
+                let dataSet = dicomFile.dataSet
                 
                 let inputImage = try engine.preprocessImage(from: dataSet, frameIndex: 0)
                 let predictions = try engine.classify(image: inputImage, topK: 5, threshold: confidence)
@@ -596,11 +632,18 @@ func formatBatchResultsAsCSV(_ results: [[String: Any]]) -> String {
 }
 
 func createDICOMSegmentation(sourceDataSet: DataSet, segmentationMask: SegmentationMask, labels: [String]) throws -> Data {
-    // This is a placeholder - full implementation would create a proper DICOM Segmentation object
-    throw AIError.notImplemented("DICOM Segmentation creation not yet implemented")
+    return try AIDICOMOutputGenerator.createSegmentationObject(
+        sourceDataSet: sourceDataSet,
+        segmentationMask: segmentationMask,
+        labels: labels,
+        modelName: "AI Model"
+    )
 }
 
 func createEnhancedDICOM(sourceDataSet: DataSet, enhancedImage: ProcessedImage, frameIndex: Int) throws -> Data {
-    // This is a placeholder - full implementation would replace pixel data in source DICOM
-    throw AIError.notImplemented("Enhanced DICOM creation not yet implemented")
+    return try AIDICOMOutputGenerator.createEnhancedDICOMFile(
+        sourceDataSet: sourceDataSet,
+        enhancedImage: enhancedImage,
+        frameIndex: frameIndex
+    )
 }

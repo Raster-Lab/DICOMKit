@@ -3767,6 +3767,11 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 - [x] **dicom-report** (v1.4.0) - Clinical report generation from DICOM SR 🚧 (~90% complete, Phase C done: templates, image embedding, branding, multi-language, 88 tests)
 - [x] **dicom-measure** (v1.4.0) - Medical measurements (distance, area, angle, ROI, HU) ✅ Complete (February 2026, 35 tests)
 - [x] **dicom-viewer** (v1.4.0) - Terminal-based DICOM image viewer (ASCII, ANSI, iTerm2, Kitty, Sixel) ✅ Complete (February 2026, 35 tests)
+- [x] **dicom-3d** (v1.4.0) - 3D reconstruction and MPR ✅ Complete (40 tests)
+- [x] **dicom-cloud** (v1.4.0) - Cloud storage integration (AWS S3, GCS, Azure) ✅ Phase A+B+C complete (68 tests)
+- [ ] **dicom-ai** (v1.4.0) - AI/ML integration (CoreML) 🚧 Phases A+B+C complete, Phase D remaining (59 tests)
+- [ ] **dicom-gateway** (v1.4.0) - Protocol gateway (HL7 v2, FHIR, IHE) 📋 Planned
+- [ ] **dicom-server** (v1.4.0) - Lightweight PACS server 📋 Planned
 
 #### Summary Statistics
 
@@ -3778,8 +3783,8 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 | Phase 4 | 3 | Medium | 103+/95+ | 1,700-2,100 | ✅ Complete |
 | Phase 5 | 5 | Medium-High | 125+ | 2,300-2,800 | ✅ Complete (February 2026) |
 | Phase 6 | 6 | Low-Medium | 175+ | 2,700-3,300 | ✅ Complete (February 2026) |
-| Phase 7 | 3/8 | High | 110+ | 1,750+ | 🚧 In Progress |
-| **Total** | **32** | - | **863+** | **17,088+** | **🚧 In Progress** |
+| Phase 7 | 6/8 | High | 290+ | 5,500+ | 🚧 In Progress |
+| **Total** | **35** | - | **1,043+** | **21,038+** | **🚧 In Progress** |
 
 #### Technical Notes
 - All tools support macOS and Linux platforms

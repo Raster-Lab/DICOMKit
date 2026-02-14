@@ -72,11 +72,11 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
   32. dicom-viewer - Terminal-based DICOM image viewer ✅
   33. dicom-cloud - Cloud storage integration (Phase A+B+C complete: AWS S3, GCS, Azure, 68 tests ✅)
   34. dicom-3d - 3D reconstruction and MPR (complete, 40 tests ✅)
-  35. dicom-ai - AI/ML integration (CoreML, Phases A+B complete, 49 tests ✅)
+  35. dicom-ai - AI/ML integration (CoreML, Phases A+B+C complete, 59 tests ✅)
   36. dicom-gateway - Protocol gateway (HL7 v2, FHIR, IHE) 📋 Planned
   37. dicom-server - Lightweight PACS server 📋 Planned
 
-**Phase 7 Status**: 🚧 In Progress - dicom-report ✅ (88 tests), dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phases A+B+C complete (AWS S3, GCS, Azure, 68 tests), dicom-3d ✅ (40 tests), dicom-ai Phases A+B complete (49 tests). See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for detailed specifications  
+**Phase 7 Status**: 🚧 In Progress - dicom-report ✅ (88 tests), dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phases A+B+C complete (AWS S3, GCS, Azure, 68 tests), dicom-3d ✅ (40 tests), dicom-ai Phases A+B+C complete (59 tests). See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for detailed specifications  
 **Phase 7 Estimate**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks development
 
 ### 4. GUI Application
@@ -141,10 +141,10 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 **Development Plan**:
 - **Sprint 1 (Weeks 1-2)**: dicom-report ✅, dicom-measure ✅
 - **Sprint 2 (Weeks 3-4)**: dicom-viewer ✅, dicom-cloud ✅, dicom-3d ✅
-- **Sprint 3 (Weeks 5-6)**: 🚧 dicom-ai (Phases A+B complete 85%, Phases C-D remaining)
+- **Sprint 3 (Weeks 5-6)**: 🚧 dicom-ai (Phases A+B+C complete 90%, Phase D remaining)
 - **Sprint 4 (Weeks 7-8)**: dicom-gateway 📋, dicom-server 📋
 
-**Progress**: 6/8 tools complete or in advanced progress (75%), dicom-ai 50% complete (Phases A+B done, C-D remaining), 2 planned  
+**Progress**: 6/8 tools complete or in advanced progress (75%), dicom-ai 75% complete (Phases A+B+C done, D remaining), 2 planned  
 **Estimated Effort**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks
 
 ### Post v1.0 Framework Enhancements
@@ -186,6 +186,6 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 ---
 
 **Date**: February 14, 2026  
-**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (5/8 tools complete, 1 in-progress: dicom-ai Phase A)  
-**Next Steps**: Complete dicom-ai Phases B-D, then implement dicom-gateway and dicom-server
+**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (5/8 tools complete, 1 in-progress: dicom-ai Phase C complete)  
+**Next Steps**: Complete dicom-ai Phase D, then implement dicom-gateway and dicom-server
 
