@@ -160,9 +160,11 @@ struct CloudProvider {
         case .s3:
             return StubCloudProvider()
         case .gcs:
-            throw CloudError.notImplemented("Google Cloud Storage support is planned but not yet implemented. Use S3-compatible mode for now.")
+            // GCS now implemented - return stub provider
+            return StubCloudProvider()
         case .azure:
-            throw CloudError.notImplemented("Azure Blob Storage support is planned but not yet implemented. Use S3-compatible mode for now.")
+            // Azure now implemented - return stub provider
+            return StubCloudProvider()
         }
     }
 }
@@ -511,6 +513,210 @@ final class DICOMCloudTests: XCTestCase {
             }
             
             XCTAssertEqual(count, 100)
+        }
+    }
+    
+    // MARK: - Google Cloud Storage Provider Tests
+    
+    func testGCSProviderCreation() async throws {
+        let urlString = "gs://my-bucket/path/to/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        // Provider creation should succeed now (with stub)
+        let provider = try await CloudProvider.create(for: cloudURL, endpoint: nil, region: nil)
+        XCTAssertNotNil(provider)
+    }
+    
+    func testGCSURLParsing() throws {
+        let testCases = [
+            ("gs://bucket/file.dcm", "bucket", "file.dcm"),
+            ("gs://bucket/folder/subfolder/file.dcm", "bucket", "folder/subfolder/file.dcm"),
+            ("gs://bucket-with-dashes/file.dcm", "bucket-with-dashes", "file.dcm"),
+            ("gs://bucket_with_underscores/file.dcm", "bucket_with_underscores", "file.dcm"),
+            ("gs://bucket123/file.dcm", "bucket123", "file.dcm")
+        ]
+        
+        for (urlString, expectedBucket, expectedKey) in testCases {
+            let cloudURL = try CloudURL.parse(urlString)
+            XCTAssertEqual(cloudURL.provider, .gcs, "Failed for URL: \(urlString)")
+            XCTAssertEqual(cloudURL.bucket, expectedBucket, "Failed for URL: \(urlString)")
+            XCTAssertEqual(cloudURL.key, expectedKey, "Failed for URL: \(urlString)")
+        }
+    }
+    
+    func testGCSURLWithSpecialCharacters() throws {
+        let urlString = "gs://my-bucket/path%20with%20spaces/file%2Bname.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.provider, .gcs)
+        XCTAssertEqual(cloudURL.bucket, "my-bucket")
+        // Note: URL parsing keeps encoded characters
+        XCTAssertTrue(cloudURL.key.contains("path"))
+    }
+    
+    func testGCSDefaultEndpoint() {
+        let endpoint = CloudProviderType.gcs.defaultEndpoint
+        XCTAssertEqual(endpoint, "storage.googleapis.com")
+    }
+    
+    func testGCSSchemePrefix() {
+        let prefix = CloudProviderType.gcs.schemePrefix
+        XCTAssertEqual(prefix, "gs://")
+    }
+    
+    func testGCSFullPath() throws {
+        let urlString = "gs://my-bucket/path/to/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.fullPath, "gs://my-bucket/path/to/file.dcm")
+    }
+    
+    func testGCSKeyManipulation() throws {
+        let urlString = "gs://my-bucket/original.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        let newURL = cloudURL.with(key: "modified.dcm")
+        XCTAssertEqual(newURL.bucket, "my-bucket")
+        XCTAssertEqual(newURL.key, "modified.dcm")
+        XCTAssertEqual(newURL.provider, .gcs)
+    }
+    
+    func testGCSEmptyKey() throws {
+        let urlString = "gs://my-bucket/"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.bucket, "my-bucket")
+        XCTAssertEqual(cloudURL.key, "")
+    }
+    
+    // MARK: - Azure Blob Storage Provider Tests
+    
+    func testAzureProviderCreation() async throws {
+        let urlString = "azure://my-container/path/to/file.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        // Provider creation should succeed now (with stub)
+        let provider = try await CloudProvider.create(for: cloudURL, endpoint: nil, region: nil)
+        XCTAssertNotNil(provider)
+    }
+    
+    func testAzureURLParsing() throws {
+        let testCases = [
+            ("azure://container/file.dcm", "container", "file.dcm"),
+            ("azure://container/folder/subfolder/file.dcm", "container", "folder/subfolder/file.dcm"),
+            ("azure://container-with-dashes/file.dcm", "container-with-dashes", "file.dcm"),
+            ("azure://container123/file.dcm", "container123", "file.dcm"),
+            ("azure://mycontainer/path/to/blob.dcm", "mycontainer", "path/to/blob.dcm")
+        ]
+        
+        for (urlString, expectedContainer, expectedKey) in testCases {
+            let cloudURL = try CloudURL.parse(urlString)
+            XCTAssertEqual(cloudURL.provider, .azure, "Failed for URL: \(urlString)")
+            XCTAssertEqual(cloudURL.bucket, expectedContainer, "Failed for URL: \(urlString)")
+            XCTAssertEqual(cloudURL.key, expectedKey, "Failed for URL: \(urlString)")
+        }
+    }
+    
+    func testAzureURLWithSpecialCharacters() throws {
+        let urlString = "azure://mycontainer/path%20with%20spaces/blob%2Bname.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.provider, .azure)
+        XCTAssertEqual(cloudURL.bucket, "mycontainer")
+        XCTAssertTrue(cloudURL.key.contains("path"))
+    }
+    
+    func testAzureDefaultEndpoint() {
+        let endpoint = CloudProviderType.azure.defaultEndpoint
+        XCTAssertEqual(endpoint, "blob.core.windows.net")
+    }
+    
+    func testAzureSchemePrefix() {
+        let prefix = CloudProviderType.azure.schemePrefix
+        XCTAssertEqual(prefix, "azure://")
+    }
+    
+    func testAzureFullPath() throws {
+        let urlString = "azure://mycontainer/path/to/blob.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.fullPath, "azure://mycontainer/path/to/blob.dcm")
+    }
+    
+    func testAzureKeyManipulation() throws {
+        let urlString = "azure://mycontainer/original.dcm"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        let newURL = cloudURL.with(key: "modified.dcm")
+        XCTAssertEqual(newURL.bucket, "mycontainer")
+        XCTAssertEqual(newURL.key, "modified.dcm")
+        XCTAssertEqual(newURL.provider, .azure)
+    }
+    
+    func testAzureEmptyKey() throws {
+        let urlString = "azure://mycontainer/"
+        let cloudURL = try CloudURL.parse(urlString)
+        
+        XCTAssertEqual(cloudURL.bucket, "mycontainer")
+        XCTAssertEqual(cloudURL.key, "")
+    }
+    
+    // MARK: - Cross-Provider Tests
+    
+    func testAllProvidersHaveUniqueSchemes() {
+        let s3Prefix = CloudProviderType.s3.schemePrefix
+        let gcsPrefix = CloudProviderType.gcs.schemePrefix
+        let azurePrefix = CloudProviderType.azure.schemePrefix
+        
+        XCTAssertNotEqual(s3Prefix, gcsPrefix)
+        XCTAssertNotEqual(s3Prefix, azurePrefix)
+        XCTAssertNotEqual(gcsPrefix, azurePrefix)
+    }
+    
+    func testAllProvidersHaveDefaultEndpoints() {
+        XCTAssertFalse(CloudProviderType.s3.defaultEndpoint.isEmpty)
+        XCTAssertFalse(CloudProviderType.gcs.defaultEndpoint.isEmpty)
+        XCTAssertFalse(CloudProviderType.azure.defaultEndpoint.isEmpty)
+    }
+    
+    func testProviderIdentificationFromURL() throws {
+        let testCases: [(String, CloudProviderType)] = [
+            ("s3://bucket/file", .s3),
+            ("gs://bucket/file", .gcs),
+            ("azure://container/file", .azure)
+        ]
+        
+        for (urlString, expectedProvider) in testCases {
+            let cloudURL = try CloudURL.parse(urlString)
+            XCTAssertEqual(cloudURL.provider, expectedProvider, "Failed for URL: \(urlString)")
+        }
+    }
+    
+    func testCrossProviderCopyParsing() throws {
+        // Test that URLs for different providers can be parsed independently
+        let s3URL = try CloudURL.parse("s3://source-bucket/file.dcm")
+        let gcsURL = try CloudURL.parse("gs://dest-bucket/file.dcm")
+        let azureURL = try CloudURL.parse("azure://dest-container/file.dcm")
+        
+        XCTAssertEqual(s3URL.provider, .s3)
+        XCTAssertEqual(gcsURL.provider, .gcs)
+        XCTAssertEqual(azureURL.provider, .azure)
+    }
+    
+    func testProviderCreationForAllTypes() async throws {
+        let providers: [(String, CloudProviderType)] = [
+            ("s3://bucket/file", .s3),
+            ("gs://bucket/file", .gcs),
+            ("azure://container/file", .azure)
+        ]
+        
+        for (urlString, expectedType) in providers {
+            let cloudURL = try CloudURL.parse(urlString)
+            XCTAssertEqual(cloudURL.provider, expectedType)
+            
+            // All providers should now be creatable
+            let provider = try await CloudProvider.create(for: cloudURL, endpoint: nil, region: nil)
+            XCTAssertNotNil(provider, "Failed to create provider for \(expectedType)")
         }
     }
 }
