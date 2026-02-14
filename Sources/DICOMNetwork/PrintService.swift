@@ -940,7 +940,7 @@ public enum DICOMPrintService {
         
         let presentationContext = try PresentationContext(
             id: 1,
-            abstractSyntax: selectPrintSOPClassUID(for: configuration.colorMode),
+            abstractSyntax: sopClassUID,
             transferSyntaxes: [
                 explicitVRLittleEndianTransferSyntaxUID,
                 implicitVRLittleEndianTransferSyntaxUID
