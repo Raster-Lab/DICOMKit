@@ -523,4 +523,75 @@ final class PrintServiceTests: XCTestCase {
         let box = FilmBox(imageDisplayFormat: "STANDARD\\2,3")
         XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\2,3")
     }
+    
+    // MARK: - ImageBoxContent Tests
+    
+    func testImageBoxContentDefaults() {
+        let imageBox = ImageBoxContent()
+        
+        XCTAssertEqual(imageBox.sopInstanceUID, "")
+        XCTAssertEqual(imageBox.imagePosition, 1)
+        XCTAssertEqual(imageBox.polarity, .normal)
+        XCTAssertNil(imageBox.requestedImageSize)
+        XCTAssertEqual(imageBox.requestedDecimateCropBehavior, .decimate)
+    }
+    
+    func testImageBoxContentCustomValues() {
+        let imageBox = ImageBoxContent(
+            sopInstanceUID: "1.2.3.4.5",
+            imagePosition: 5,
+            polarity: .reverse,
+            requestedImageSize: "100\\100",
+            requestedDecimateCropBehavior: .crop
+        )
+        
+        XCTAssertEqual(imageBox.sopInstanceUID, "1.2.3.4.5")
+        XCTAssertEqual(imageBox.imagePosition, 5)
+        XCTAssertEqual(imageBox.polarity, .reverse)
+        XCTAssertEqual(imageBox.requestedImageSize, "100\\100")
+        XCTAssertEqual(imageBox.requestedDecimateCropBehavior, .crop)
+    }
+    
+    func testImagePolarityRawValues() {
+        XCTAssertEqual(ImagePolarity.normal.rawValue, "NORMAL")
+        XCTAssertEqual(ImagePolarity.reverse.rawValue, "REVERSE")
+    }
+    
+    func testDecimateCropBehaviorRawValues() {
+        XCTAssertEqual(DecimateCropBehavior.decimate.rawValue, "DECIMATE")
+        XCTAssertEqual(DecimateCropBehavior.crop.rawValue, "CROP")
+        XCTAssertEqual(DecimateCropBehavior.failOver.rawValue, "FAIL")
+    }
+    
+    // MARK: - Print Tags Tests
+    
+    func testImageBoxPositionTag() {
+        XCTAssertEqual(Tag.imageBoxPosition.group, 0x2020)
+        XCTAssertEqual(Tag.imageBoxPosition.element, 0x0010)
+    }
+    
+    func testPolarityTag() {
+        XCTAssertEqual(Tag.polarity.group, 0x2020)
+        XCTAssertEqual(Tag.polarity.element, 0x0020)
+    }
+    
+    func testRequestedImageSizeTag() {
+        XCTAssertEqual(Tag.requestedImageSize.group, 0x2020)
+        XCTAssertEqual(Tag.requestedImageSize.element, 0x0030)
+    }
+    
+    func testRequestedDecimateCropBehaviorTag() {
+        XCTAssertEqual(Tag.requestedDecimateCropBehavior.group, 0x2020)
+        XCTAssertEqual(Tag.requestedDecimateCropBehavior.element, 0x0040)
+    }
+    
+    func testPreformattedGrayscaleImageSequenceTag() {
+        XCTAssertEqual(Tag.preformattedGrayscaleImageSequence.group, 0x2020)
+        XCTAssertEqual(Tag.preformattedGrayscaleImageSequence.element, 0x0110)
+    }
+    
+    func testPreformattedColorImageSequenceTag() {
+        XCTAssertEqual(Tag.preformattedColorImageSequence.group, 0x2020)
+        XCTAssertEqual(Tag.preformattedColorImageSequence.element, 0x0111)
+    }
 }

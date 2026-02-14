@@ -884,16 +884,300 @@ public enum DICOMPrintService {
     /// - Returns: Array of Image Box SOP Instance UIDs
     private static func parseImageBoxUIDs(from data: Data) -> [String] {
         // Parse the data set to extract Referenced Image Box Sequence (2010,0510)
-        // This is a simplified implementation - full parsing would decode the DICOM
-        // data set and extract the sequence items
+        guard !data.isEmpty else {
+            return []
+        }
         
-        // For now, return an empty array. In production, this would:
-        // 1. Parse the data set using DICOMReader
-        // 2. Extract the Referenced Image Box Sequence (2010,0510)
-        // 3. Iterate through sequence items
-        // 4. Extract Referenced SOP Instance UID from each item
+        do {
+            // Parse the DICOM data set (response data sets are typically raw data sets
+            // without File Meta Information, so we'll try force reading)
+            let file = try DICOMFile.read(from: data, force: true)
+            let dataSet = file.dataSet
+            
+            // Extract Referenced Image Box Sequence (2010,0510)
+            guard let sequence = dataSet[.referencedImageBoxSequence],
+                  case .sequence(let items) = sequence.value else {
+                return []
+            }
+            
+            // Extract Referenced SOP Instance UID from each item
+            var imageBoxUIDs: [String] = []
+            for item in items {
+                if let uid = item.dataSet[.referencedSOPInstanceUID]?.stringValue {
+                    imageBoxUIDs.append(uid)
+                }
+            }
+            
+            return imageBoxUIDs
+        } catch {
+            // If parsing fails, return empty array
+            return []
+        }
+    }
+    
+    /// Sets the content of an image box using N-SET
+    ///
+    /// Sends N-SET to the Print SCP to set the pixel data and attributes of an Image Box
+    /// SOP Instance. This is called after creating a Film Box to populate each image position.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - imageBoxUID: The Image Box SOP Instance UID to set
+    ///   - imageBox: Image box content (position, polarity, pixel data)
+    ///   - pixelData: The pixel data to send (uncompressed)
+    /// - Throws: `DICOMNetworkError` if the operation fails
+    ///
+    /// Reference: PS3.4 H.4.3 - Basic Grayscale/Color Image Box SOP Class
+    public static func setImageBox(
+        configuration: PrintConfiguration,
+        imageBoxUID: String,
+        imageBox: ImageBoxContent,
+        pixelData: Data
+    ) async throws {
+        let sopClassUID = configuration.colorMode == .color
+            ? basicColorImageBoxSOPClassUID
+            : basicGrayscaleImageBoxSOPClassUID
         
-        return []
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: selectPrintSOPClassUID(for: configuration.colorMode),
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+        
+        // Create association configuration
+        let associationConfig = try createPrintAssociationConfiguration(configuration)
+        
+        // Create association
+        let association = Association(configuration: associationConfig)
+        
+        do {
+            // Establish association
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            
+            // Verify presentation context was accepted
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+            
+            // Build data set with Image Box attributes
+            var dataSet = DICOMKit.DataSet()
+            
+            // Image Position (2020,0010) - US
+            dataSet[.imageBoxPosition] = DataElement(
+                tag: .imageBoxPosition,
+                vr: .unsignedShort,
+                values: [imageBox.imagePosition]
+            )
+            
+            // Polarity (2020,0020) - CS
+            dataSet[.polarity] = DataElement(
+                tag: .polarity,
+                vr: .codeString,
+                values: [imageBox.polarity.rawValue]
+            )
+            
+            // Requested Image Size (2020,0030) - DS (optional)
+            if let requestedSize = imageBox.requestedImageSize {
+                dataSet[.requestedImageSize] = DataElement(
+                    tag: .requestedImageSize,
+                    vr: .decimalString,
+                    values: [requestedSize]
+                )
+            }
+            
+            // Requested Decimate/Crop Behavior (2020,0040) - CS
+            dataSet[.requestedDecimateCropBehavior] = DataElement(
+                tag: .requestedDecimateCropBehavior,
+                vr: .codeString,
+                values: [imageBox.requestedDecimateCropBehavior.rawValue]
+            )
+            
+            // Add pixel data based on color mode
+            if configuration.colorMode == .grayscale {
+                // Preformatted Grayscale Image Sequence (2020,0110) - SQ
+                var imageItem = DICOMKit.DataSet()
+                
+                // Add pixel data and related attributes to the sequence item
+                // Note: This is a simplified version. Production code would need to:
+                // 1. Add proper photometric interpretation
+                // 2. Set rows, columns, bits allocated, bits stored
+                // 3. Add samples per pixel, pixel representation
+                imageItem[.pixelData] = DataElement(
+                    tag: .pixelData,
+                    vr: .otherByteString,
+                    data: pixelData
+                )
+                
+                let sequenceItem = SequenceItem(dataSet: imageItem)
+                dataSet[.preformattedGrayscaleImageSequence] = DataElement(
+                    tag: .preformattedGrayscaleImageSequence,
+                    vr: .sequence,
+                    items: [sequenceItem]
+                )
+            } else {
+                // Preformatted Color Image Sequence (2020,0111) - SQ
+                var imageItem = DICOMKit.DataSet()
+                
+                imageItem[.pixelData] = DataElement(
+                    tag: .pixelData,
+                    vr: .otherByteString,
+                    data: pixelData
+                )
+                
+                let sequenceItem = SequenceItem(dataSet: imageItem)
+                dataSet[.preformattedColorImageSequence] = DataElement(
+                    tag: .preformattedColorImageSequence,
+                    vr: .sequence,
+                    items: [sequenceItem]
+                )
+            }
+            
+            // Encode data set
+            let dataSetData = dataSet.write()
+            
+            // Send N-SET request for Image Box
+            let request = NSetRequest(
+                messageID: 1,
+                requestedSOPClassUID: sopClassUID,
+                requestedSOPInstanceUID: imageBoxUID,
+                hasDataSet: true,
+                presentationContextID: 1
+            )
+            
+            let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+            let pdus = fragmenter.fragmentMessage(
+                commandSet: request.commandSet,
+                dataSet: dataSetData,
+                presentationContextID: request.presentationContextID
+            )
+            
+            for pdu in pdus {
+                for pdv in pdu.presentationDataValues {
+                    try await association.send(pdv: pdv)
+                }
+            }
+            
+            // Receive N-SET response
+            let assembler = MessageAssembler()
+            let responsePDU = try await association.receive()
+            
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                let responseCommandSet = message.commandSet
+                let response = NSetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                
+                guard response.status.isSuccess else {
+                    try await association.abort()
+                    throw DICOMNetworkError.printOperationFailed(response.status)
+                }
+                
+                try await association.release()
+                return
+            }
+            
+            throw DICOMNetworkError.unexpectedResponse
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
+    
+    /// Prints a film box using N-ACTION
+    ///
+    /// Sends N-ACTION (Action Type ID = 1) to the Print SCP to execute printing of a
+    /// Film Box SOP Instance. The SCP creates a Print Job SOP Instance and returns its UID.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - filmBoxUID: The Film Box SOP Instance UID to print
+    /// - Returns: Print Job SOP Instance UID
+    /// - Throws: `DICOMNetworkError` if the operation fails
+    ///
+    /// Reference: PS3.4 H.4.2.2.4 - Film Box Print Action
+    public static func printFilmBox(
+        configuration: PrintConfiguration,
+        filmBoxUID: String
+    ) async throws -> String {
+        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
+        
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: sopClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+        
+        // Create association configuration
+        let associationConfig = try createPrintAssociationConfiguration(configuration)
+        
+        // Create association
+        let association = Association(configuration: associationConfig)
+        
+        do {
+            // Establish association
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            
+            // Verify presentation context was accepted
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+            
+            // Send N-ACTION request for Film Box with Action Type ID = 1 (Print)
+            // Note: N-ACTION Print typically does not include a data set
+            let request = NActionRequest(
+                messageID: 1,
+                requestedSOPClassUID: basicFilmBoxSOPClassUID,
+                requestedSOPInstanceUID: filmBoxUID,
+                actionTypeID: 1, // Action Type ID = 1 means "Print"
+                hasDataSet: false,
+                presentationContextID: 1
+            )
+            
+            let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+            let pdus = fragmenter.fragmentMessage(
+                commandSet: request.commandSet,
+                dataSet: nil,
+                presentationContextID: request.presentationContextID
+            )
+            
+            for pdu in pdus {
+                for pdv in pdu.presentationDataValues {
+                    try await association.send(pdv: pdv)
+                }
+            }
+            
+            // Receive N-ACTION response
+            let assembler = MessageAssembler()
+            let responsePDU = try await association.receive()
+            
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                let responseCommandSet = message.commandSet
+                let response = NActionResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                
+                guard response.status.isSuccess else {
+                    try await association.abort()
+                    throw DICOMNetworkError.printOperationFailed(response.status)
+                }
+                
+                // Extract Print Job SOP Instance UID from the response
+                // The response may contain the Print Job UID in the Affected SOP Instance UID
+                let printJobUID = response.affectedSOPInstanceUID
+                
+                try await association.release()
+                return printJobUID
+            }
+            
+            throw DICOMNetworkError.unexpectedResponse
+        } catch {
+            try? await association.abort()
+            throw error
+        }
     }
     
     /// Deletes a film session using N-DELETE
