@@ -455,4 +455,45 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(session.filmDestination, .bin2)
         XCTAssertEqual(session.filmSessionLabel, "Mammography Study")
     }
+    
+    // MARK: - FilmBoxResult Tests
+    
+    func testFilmBoxResultInitialization() {
+        let result = FilmBoxResult(
+            filmBoxUID: "1.2.840.10008.1.2.3.4",
+            imageBoxUIDs: ["1.2.3.4.1", "1.2.3.4.2", "1.2.3.4.3", "1.2.3.4.4"],
+            imageCount: 4
+        )
+        
+        XCTAssertEqual(result.filmBoxUID, "1.2.840.10008.1.2.3.4")
+        XCTAssertEqual(result.imageBoxUIDs.count, 4)
+        XCTAssertEqual(result.imageBoxUIDs[0], "1.2.3.4.1")
+        XCTAssertEqual(result.imageBoxUIDs[3], "1.2.3.4.4")
+        XCTAssertEqual(result.imageCount, 4)
+    }
+    
+    func testFilmBoxResultWithNoImageBoxes() {
+        let result = FilmBoxResult(
+            filmBoxUID: "1.2.3",
+            imageBoxUIDs: [],
+            imageCount: 1
+        )
+        
+        XCTAssertEqual(result.filmBoxUID, "1.2.3")
+        XCTAssertTrue(result.imageBoxUIDs.isEmpty)
+        XCTAssertEqual(result.imageCount, 1)
+    }
+    
+    func testFilmBoxResultWithMultipleImageBoxes() {
+        let imageBoxes = (1...6).map { "1.2.3.4.\($0)" }
+        let result = FilmBoxResult(
+            filmBoxUID: "1.2.3",
+            imageBoxUIDs: imageBoxes,
+            imageCount: 6
+        )
+        
+        XCTAssertEqual(result.filmBoxUID, "1.2.3")
+        XCTAssertEqual(result.imageBoxUIDs.count, 6)
+        XCTAssertEqual(result.imageCount, 6)
+    }
 }
