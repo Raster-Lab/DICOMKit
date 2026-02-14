@@ -165,6 +165,10 @@ let package = Package(
         .executable(
             name: "dicom-cloud",
             targets: ["dicom-cloud"]
+        ),
+        .executable(
+            name: "dicom-3d",
+            targets: ["dicom-3d"]
         )
     ],
     dependencies: [
@@ -598,6 +602,16 @@ let package = Package(
             ],
             path: "Sources/dicom-cloud",
             exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-3d",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-3d"
         )
     ]
 )
