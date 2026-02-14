@@ -496,4 +496,31 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(result.imageBoxUIDs.count, 6)
         XCTAssertEqual(result.imageCount, 6)
     }
+    
+    // MARK: - Image Display Format Tests
+    
+    func testFilmBoxWithSingleImageFormat() {
+        let box = FilmBox(imageDisplayFormat: "STANDARD\\1,1")
+        XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\1,1")
+    }
+    
+    func testFilmBoxWith2x2Format() {
+        let box = FilmBox(imageDisplayFormat: "STANDARD\\2,2")
+        XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\2,2")
+    }
+    
+    func testFilmBoxWith3x4Format() {
+        let box = FilmBox(imageDisplayFormat: "STANDARD\\3,4")
+        XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\3,4")
+    }
+    
+    func testFilmBoxWith4x4Format() {
+        let box = FilmBox(imageDisplayFormat: "STANDARD\\4,4")
+        XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\4,4")
+    }
+    
+    func testFilmBoxWith2x3Format() {
+        let box = FilmBox(imageDisplayFormat: "STANDARD\\2,3")
+        XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\2,3")
+    }
 }
