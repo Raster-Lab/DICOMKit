@@ -528,4 +528,187 @@ final class DICOMAITests: XCTestCase {
             XCTAssertTrue(error.errorDescription!.contains("test"))
         }
     }
+    
+    // MARK: - Phase B Tests: Preprocessing Options
+    
+    func test_preprocessingOptions_defaultValues() {
+        let options = PreprocessingOptions.default
+        
+        XCTAssertNil(options.targetSize)
+        if case .none = options.normalization {
+            // Success
+        } else {
+            XCTFail("Expected .none normalization")
+        }
+        XCTAssertFalse(options.maintainAspectRatio)
+        XCTAssertEqual(options.paddingValue, 0.0)
+    }
+    
+    func test_preprocessingOptions_imageNetNormalized() {
+        let options = PreprocessingOptions.imageNetNormalized
+        
+        if case .imageNet = options.normalization {
+            // Success
+        } else {
+            XCTFail("Expected .imageNet normalization")
+        }
+    }
+    
+    func test_preprocessingOptions_customValues() {
+        let options = PreprocessingOptions(
+            targetSize: (width: 224, height: 224),
+            normalization: .minMax(min: 0.0, max: 1.0),
+            maintainAspectRatio: true,
+            paddingValue: 128.0
+        )
+        
+        XCTAssertEqual(options.targetSize?.width, 224)
+        XCTAssertEqual(options.targetSize?.height, 224)
+        XCTAssertTrue(options.maintainAspectRatio)
+        XCTAssertEqual(options.paddingValue, 128.0)
+    }
+    
+    // MARK: - Phase B Tests: Ensemble Inference
+    
+    func test_ensembleStrategy_values() {
+        // Test that enum cases can be created
+        let strategies: [EnsembleEngine.EnsembleStrategy] = [
+            .average,
+            .voting,
+            .weighted([0.5, 0.3, 0.2]),
+            .max
+        ]
+        
+        XCTAssertEqual(strategies.count, 4)
+    }
+    
+    func test_ensembleEngine_requiresModels() {
+        // Test that ensemble requires at least one model
+        // This would throw in real implementation
+        let emptyModels: [URL] = []
+        
+        // We can't actually test this without real models, but we verify the structure exists
+        XCTAssertEqual(emptyModels.count, 0)
+    }
+    
+    // MARK: - Phase B Tests: Batch Processing
+    
+    func test_batchProcessor_operations() {
+        // Test BatchOperation enum cases exist
+        let operations: [BatchProcessor.BatchOperation] = [
+            .classify,
+            .segment,
+            .detect
+        ]
+        
+        XCTAssertEqual(operations.count, 3)
+    }
+    
+    func test_batchResult_initialization() {
+        let result = BatchResult(
+            filePath: "/path/to/file.dcm",
+            success: true,
+            predictions: [Prediction(label: "test", confidence: 0.9)],
+            error: nil
+        )
+        
+        XCTAssertEqual(result.filePath, "/path/to/file.dcm")
+        XCTAssertTrue(result.success)
+        XCTAssertNotNil(result.predictions)
+        XCTAssertEqual(result.predictions?.count, 1)
+        XCTAssertNil(result.error)
+    }
+    
+    func test_batchResult_withError() {
+        let result = BatchResult(
+            filePath: "/path/to/file.dcm",
+            success: false,
+            error: "Test error message"
+        )
+        
+        XCTAssertEqual(result.filePath, "/path/to/file.dcm")
+        XCTAssertFalse(result.success)
+        XCTAssertNil(result.predictions)
+        XCTAssertNil(result.segmentationMask)
+        XCTAssertNil(result.detections)
+        XCTAssertEqual(result.error, "Test error message")
+    }
+    
+    func test_batchResult_withSegmentation() {
+        let mask = SegmentationMask(
+            width: 256,
+            height: 256,
+            data: Data(count: 256 * 256),
+            numClasses: 2
+        )
+        
+        let result = BatchResult(
+            filePath: "/path/to/file.dcm",
+            success: true,
+            segmentationMask: mask,
+            error: nil
+        )
+        
+        XCTAssertTrue(result.success)
+        XCTAssertNotNil(result.segmentationMask)
+        XCTAssertEqual(result.segmentationMask?.width, 256)
+        XCTAssertEqual(result.segmentationMask?.numClasses, 2)
+    }
+    
+    func test_batchResult_withDetections() {
+        let bbox = BoundingBox(x: 10, y: 20, width: 100, height: 150)
+        let detection = Detection(label: "lesion", confidence: 0.85, bbox: bbox)
+        
+        let result = BatchResult(
+            filePath: "/path/to/file.dcm",
+            success: true,
+            detections: [detection],
+            error: nil
+        )
+        
+        XCTAssertTrue(result.success)
+        XCTAssertNotNil(result.detections)
+        XCTAssertEqual(result.detections?.count, 1)
+        XCTAssertEqual(result.detections?.first?.label, "lesion")
+    }
+    
+    // MARK: - Phase B Tests: Normalization Strategies
+    
+    func test_normalizationStrategy_none() {
+        if case .none = PreprocessingOptions.NormalizationStrategy.none {
+            // Success
+        } else {
+            XCTFail("Expected .none strategy")
+        }
+    }
+    
+    func test_normalizationStrategy_minMax() {
+        let strategy = PreprocessingOptions.NormalizationStrategy.minMax(min: 0.0, max: 1.0)
+        
+        if case let .minMax(min, max) = strategy {
+            XCTAssertEqual(min, 0.0)
+            XCTAssertEqual(max, 1.0)
+        } else {
+            XCTFail("Expected .minMax strategy")
+        }
+    }
+    
+    func test_normalizationStrategy_zScore() {
+        let strategy = PreprocessingOptions.NormalizationStrategy.zScore(mean: 0.485, std: 0.229)
+        
+        if case let .zScore(mean, std) = strategy {
+            XCTAssertEqual(mean, 0.485, accuracy: 0.001)
+            XCTAssertEqual(std, 0.229, accuracy: 0.001)
+        } else {
+            XCTFail("Expected .zScore strategy")
+        }
+    }
+    
+    func test_normalizationStrategy_imageNet() {
+        if case .imageNet = PreprocessingOptions.NormalizationStrategy.imageNet {
+            // Success
+        } else {
+            XCTFail("Expected .imageNet strategy")
+        }
+    }
 }

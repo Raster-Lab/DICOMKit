@@ -276,12 +276,105 @@ brain-mri.dcm,lesion,0.92,120,150,45,38
 - **visionOS 1.0+**: Full support (when compiled for visionOS)
 - **Linux**: Not supported (CoreML not available)
 
+## Advanced Features (Phase B)
+
+### Enhanced Preprocessing
+
+Control image preprocessing with various normalization strategies:
+
+```bash
+# Use ImageNet normalization (mean/std)
+dicom-ai classify image.dcm \
+  --model resnet50.mlmodel \
+  --preprocessing imagenet
+
+# Min-max normalization
+dicom-ai classify image.dcm \
+  --model custom-model.mlmodel \
+  --preprocessing minmax \
+  --min 0.0 --max 1.0
+
+# Z-score normalization
+dicom-ai classify image.dcm \
+  --model custom-model.mlmodel \
+  --preprocessing zscore \
+  --mean 0.485 --std 0.229
+```
+
+### Ensemble Inference
+
+Combine predictions from multiple models for improved accuracy:
+
+```bash
+# Average ensemble (default)
+dicom-ai classify image.dcm \
+  --models model1.mlmodel,model2.mlmodel,model3.mlmodel \
+  --ensemble average \
+  --output results.json
+
+# Voting ensemble
+dicom-ai classify image.dcm \
+  --models model1.mlmodel,model2.mlmodel,model3.mlmodel \
+  --ensemble voting
+
+# Weighted ensemble
+dicom-ai classify image.dcm \
+  --models model1.mlmodel,model2.mlmodel,model3.mlmodel \
+  --ensemble weighted \
+  --weights 0.5,0.3,0.2
+
+# Max confidence ensemble
+dicom-ai classify image.dcm \
+  --models model1.mlmodel,model2.mlmodel \
+  --ensemble max
+```
+
+### Batch Processing
+
+Efficiently process multiple files with batch inference:
+
+```bash
+# Batch classify with CSV output
+dicom-ai batch series/*.dcm \
+  --model classifier.mlmodel \
+  --output results.csv \
+  --format csv \
+  --batch-size 8
+
+# Batch with custom confidence
+dicom-ai batch studies/**/*.dcm \
+  --model detector.mlmodel \
+  --confidence 0.8 \
+  --output batch-results.json
+```
+
+### Post-Processing
+
+Apply post-processing to refine results:
+
+```bash
+# Detection with NMS (Non-Maximum Suppression)
+dicom-ai detect image.dcm \
+  --model detector.mlmodel \
+  --confidence 0.7 \
+  --iou-threshold 0.5 \
+  --max-detections 10
+
+# Confidence filtering
+dicom-ai classify image.dcm \
+  --model classifier.mlmodel \
+  --confidence 0.9 \
+  --top-k 3
+```
+
 ## Performance Tips
 
 1. **Use Compiled Models**: Pre-compile .mlmodel files to .mlmodelc for faster loading
 2. **GPU Acceleration**: Ensure models are configured to use GPU/Neural Engine
 3. **Batch Processing**: Use the batch command for processing multiple files
 4. **Model Optimization**: Use Core ML model optimization tools for better performance
+5. **Ensemble Size**: Balance accuracy vs. performance (3-5 models recommended)
+6. **Preprocessing**: Use appropriate normalization for your model's training data
 
 ## Examples
 
@@ -330,21 +423,27 @@ dicom-ai enhance noisy-scan.dcm \
 
 ### Current Limitations
 
-1. **DICOM Output**: DICOM SR and DICOM SEG creation are planned but not yet implemented
+1. **DICOM Output**: DICOM SR and DICOM SEG creation are planned for Phase C
 2. **Python Bridge**: Direct TensorFlow/PyTorch inference not yet supported (use ONNX→CoreML conversion)
 3. **Model Formats**: Only CoreML models supported on Apple platforms
-4. **Preprocessing**: Limited automatic preprocessing; models should expect standard image inputs
+4. **Preprocessing**: Advanced image transformations (rotation, augmentation) not yet implemented
 
-### Planned Features
+### Phase B Features (✅ Completed)
+
+- ✅ Enhanced preprocessing pipelines with normalization strategies
+- ✅ Ensemble inference (multiple models with averaging, voting, weighted)
+- ✅ Batch processing with parallel inference
+- ✅ Post-processing (NMS, confidence filtering, thresholding)
+
+### Planned Features (Phase C & D)
 
 - DICOM Structured Report (SR) generation from predictions
 - DICOM Segmentation (SEG) object creation
 - GSPS (Grayscale Presentation State) with AI annotations
 - Model registry and versioning
-- Ensemble inference (multiple models)
-- Advanced preprocessing pipelines
 - Custom confidence calibration
 - Model performance metrics
+- Full ONNX runtime integration (without CoreML conversion)
 
 ## Troubleshooting
 
