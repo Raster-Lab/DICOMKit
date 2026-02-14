@@ -1001,11 +1001,16 @@ public enum DICOMPrintService {
                 // Preformatted Grayscale Image Sequence (2020,0110) - SQ
                 var imageItem = DICOMKit.DataSet()
                 
-                // Add pixel data and related attributes to the sequence item
-                // Note: This is a simplified version. Production code would need to:
-                // 1. Add proper photometric interpretation
-                // 2. Set rows, columns, bits allocated, bits stored
-                // 3. Add samples per pixel, pixel representation
+                // Add pixel data to the sequence item
+                // NOTE: This is a Phase 1 simplified implementation that assumes the pixelData
+                // parameter contains a complete preformatted image with embedded attributes.
+                // Future enhancement: Accept a PixelDataDescriptor parameter containing:
+                // - Photometric Interpretation (0028,0004)
+                // - Rows (0028,0010), Columns (0028,0011)
+                // - Bits Allocated (0028,0100), Bits Stored (0028,0101), High Bit (0028,0102)
+                // - Samples Per Pixel (0028,0002)
+                // - Pixel Representation (0028,0103)
+                // - Pixel Aspect Ratio (0028,0034) if applicable
                 imageItem[.pixelData] = DataElement(
                     tag: .pixelData,
                     vr: .otherByteString,
@@ -1022,6 +1027,7 @@ public enum DICOMPrintService {
                 // Preformatted Color Image Sequence (2020,0111) - SQ
                 var imageItem = DICOMKit.DataSet()
                 
+                // NOTE: Same as grayscale - assumes preformatted image data
                 imageItem[.pixelData] = DataElement(
                     tag: .pixelData,
                     vr: .otherByteString,
@@ -1166,8 +1172,15 @@ public enum DICOMPrintService {
                 }
                 
                 // Extract Print Job SOP Instance UID from the response
-                // The response may contain the Print Job UID in the Affected SOP Instance UID
+                // Per PS3.4 H.4.2.2.4, the N-ACTION response includes the Affected SOP Instance UID
+                // of the created Print Job SOP Instance
                 let printJobUID = response.affectedSOPInstanceUID
+                
+                // Validate that a Print Job UID was returned
+                guard !printJobUID.isEmpty else {
+                    try await association.abort()
+                    throw DICOMNetworkError.unexpectedResponse
+                }
                 
                 try await association.release()
                 return printJobUID
