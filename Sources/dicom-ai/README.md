@@ -21,8 +21,11 @@ AI/ML integration tool for DICOM image analysis, enhancement, and automated repo
 - **JSON**: Structured prediction results
 - **Text**: Human-readable formatted output
 - **CSV**: Spreadsheet-compatible format
-- **DICOM SR**: Create Structured Reports with AI findings (planned)
-- **DICOM SEG**: Create Segmentation objects (planned)
+- **DICOM SR**: Create Structured Reports with AI findings
+- **DICOM SEG**: Create Segmentation objects from AI masks
+- **GSPS**: Grayscale Presentation State with AI annotations
+- **Enhanced DICOM**: AI-processed pixel data saved as DICOM
+- **Markdown**: Markdown-formatted analysis reports
 
 ## Installation
 
@@ -67,7 +70,7 @@ Segment anatomical structures or lesions using trained models.
 # Basic segmentation
 dicom-ai segment abdomen-ct.dcm --model organ-segmentation.mlmodel
 
-# Output as DICOM Segmentation object (planned)
+# Output as DICOM Segmentation object
 dicom-ai segment abdomen-ct.dcm \
   --model organ-segmentation.mlmodel \
   --output segmentation.dcm \
@@ -423,10 +426,9 @@ dicom-ai enhance noisy-scan.dcm \
 
 ### Current Limitations
 
-1. **DICOM Output**: DICOM SR and DICOM SEG creation are planned for Phase C
-2. **Python Bridge**: Direct TensorFlow/PyTorch inference not yet supported (use ONNX→CoreML conversion)
-3. **Model Formats**: Only CoreML models supported on Apple platforms
-4. **Preprocessing**: Advanced image transformations (rotation, augmentation) not yet implemented
+1. **Python Bridge**: Direct TensorFlow/PyTorch inference not yet supported (use ONNX→CoreML conversion)
+2. **Model Formats**: Only CoreML models supported on Apple platforms
+3. **Preprocessing**: Advanced image transformations (rotation, augmentation) not yet implemented
 
 ### Phase B Features (✅ Completed)
 
@@ -435,15 +437,21 @@ dicom-ai enhance noisy-scan.dcm \
 - ✅ Batch processing with parallel inference
 - ✅ Post-processing (NMS, confidence filtering, thresholding)
 
-### Planned Features (Phase C & D)
+### Phase C Features (✅ Completed)
 
-- DICOM Structured Report (SR) generation from predictions
-- DICOM Segmentation (SEG) object creation
-- GSPS (Grayscale Presentation State) with AI annotations
+- ✅ DICOM Structured Report (SR) generation from classification and detection predictions
+- ✅ DICOM Segmentation (SEG) object creation from AI segmentation masks
+- ✅ GSPS (Grayscale Presentation State) with AI annotations (bounding boxes, labels)
+- ✅ Enhanced DICOM file creation with AI-processed pixel data
+- ✅ Text, detection, and markdown report generation
+
+### Planned Features (Phase D)
+
 - Model registry and versioning
 - Custom confidence calibration
-- Model performance metrics
+- Model performance metrics and profiling
 - Full ONNX runtime integration (without CoreML conversion)
+- Sample models for demo/testing purposes
 
 ## Troubleshooting
 

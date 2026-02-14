@@ -1,9 +1,9 @@
 # DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
 
-**Status**: 🚧 In Progress (6/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests, AWS S3, GCS, Azure complete, dicom-3d ✅ 40 tests, MPR/MIP/export complete, dicom-ai Phases A+B ✅ 49 tests)  
+**Status**: 🚧 In Progress (6/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests, AWS S3, GCS, Azure complete, dicom-3d ✅ 40 tests, MPR/MIP/export complete, dicom-ai Phases A+B+C ✅ 59 tests)  
 **Target Version**: v1.4.0-v1.4.7  
 **Created**: February 2026  
-**Last Updated**: February 14, 2026 (dicom-ai Phase B complete - enhanced preprocessing, ensemble inference, batch processing, 49 tests)  
+**Last Updated**: February 14, 2026 (dicom-ai Phase C complete - DICOM SR, Segmentation, GSPS, Enhanced DICOM output generation, 59 tests)  
 **Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb, AWS SDK for Swift, CoreML  
 **Priority**: Low-Medium  
 **Estimated Duration**: 6-8 weeks
@@ -815,13 +815,21 @@ Integrate AI/ML models for DICOM image analysis, enhancement, and automated repo
 **Tests**: 49 unit tests (+14 from Phase A)  
 **Completion**: ~85% (ONNX integration deferred to external tooling)
 
-#### Phase C: Output Generation (Days 10-12) - 📋 PLANNED
-- [ ] DICOM SR creation from predictions
-- [ ] Segmentation object creation
-- [ ] GSPS with AI annotations
-- [ ] Enhanced DICOM file creation
-- [ ] Report generation
-- [ ] 8+ additional tests
+#### Phase C: Output Generation (Days 10-12) - ✅ COMPLETE
+- [x] DICOM SR creation from classification predictions ✅
+- [x] DICOM SR creation from detection results ✅
+- [x] DICOM Segmentation object creation from AI masks ✅
+- [x] GSPS with AI annotations (bounding boxes, labels) ✅
+- [x] Enhanced DICOM file creation (AI-processed pixel data) ✅
+- [x] Report generation (text, detection, markdown formats) ✅
+- [x] Replaced placeholder functions with real implementations ✅
+- [x] Fixed DICOMFileReader → DICOMFile.read() API migration ✅
+- [x] 10 additional tests ✅ (10 new tests added, 59 total)
+
+**Status**: Completed February 14, 2026  
+**LOC**: ~2,844 lines (+500 from Phase B)  
+**Tests**: 59 unit tests (+10 from Phase B)  
+**Completion**: 100% of planned Phase C deliverables
 
 #### Phase D: Optimization & Registry (Days 13-14) - 📋 PLANNED
 - [ ] Performance optimization
@@ -893,25 +901,25 @@ dicom-ai classify image.dcm \
 - [x] Error handling and AIError types ✅ (Phase A)
 - [x] 35 comprehensive unit tests ✅ (Phase A)
 - [x] Complete README documentation ✅ (Phase A)
-- [ ] ONNX model conversion (Phase B)
-- [ ] Advanced preprocessing pipeline (Phase B)
-- [ ] Post-processing (NMS, thresholding, filtering) (Phase B)
-- [ ] Ensemble inference (Phase B)
-- [ ] DICOM SR creation from predictions (Phase C)
-- [ ] DICOM Segmentation object creation (Phase C)
-- [ ] GSPS with AI annotations (Phase C)
-- [ ] Enhanced DICOM file creation (Phase C)
+- [ ] ONNX model conversion (Phase B - deferred)
+- [x] Advanced preprocessing pipeline ✅ (Phase B)
+- [x] Post-processing (NMS, thresholding, filtering) ✅ (Phase B)
+- [x] Ensemble inference ✅ (Phase B)
+- [x] DICOM SR creation from predictions ✅ (Phase C)
+- [x] DICOM Segmentation object creation ✅ (Phase C)
+- [x] GSPS with AI annotations ✅ (Phase C)
+- [x] Enhanced DICOM file creation ✅ (Phase C)
 - [ ] Model registry and versioning (Phase D)
 - [ ] Performance profiling (Phase D)
 - [ ] Sample models (demo purposes) (Phase D)
 
-**Current Status**: Phase A complete (Foundation)  
-**Test Coverage**: 35/60 planned tests (58% complete)  
-**LOC**: 1,800/1,600 target (112% - exceeded estimate with comprehensive docs)
+**Current Status**: Phase C complete (Output Generation)  
+**Test Coverage**: 59/65 planned tests (91% complete)  
+**LOC**: ~2,844 (exceeded estimates with comprehensive output generation)
 
 ### Test Cases
 
-**Implemented (35 tests):**
+**Implemented (59 tests):**
 1. ✅ Model loading error handling (invalid path)
 2. ✅ Model loading error handling (invalid extension)
 3. ✅ Image preprocessing (extract dimensions)
@@ -934,24 +942,26 @@ dicom-ai classify image.dcm \
 20. ✅ Load labels (invalid format error)
 21-34. ✅ Data structure initialization and properties
 35. ✅ AIError descriptions
+36-49. ✅ Phase B tests (preprocessing options, ensemble, batch processing, normalization)
+50. ✅ Create DICOM SR from classification predictions (Phase C)
+51. ✅ Create DICOM SR from detection results (Phase C)
+52. ✅ Create GSPS with annotations (Phase C)
+53. ✅ Create GSPS with empty detections (Phase C)
+54. ✅ Create enhanced DICOM file (Phase C)
+55. ✅ Generate classification report text (Phase C)
+56. ✅ Generate detection report text (Phase C)
+57. ✅ Generate markdown report (Phase C)
+58. ✅ Generate classification report empty predictions (Phase C)
+59. ✅ Create enhanced DICOM replaces placeholder (Phase C)
 
-**Planned (25 tests):**
-36. Load CoreML model with real model file (Phase B)
-37. Run inference on single image (Phase B)
-38. Run batch inference (Phase B)
-39. Apply preprocessing with normalization (Phase B)
-40. Apply post-processing NMS (Phase B)
-41. Apply confidence thresholding (Phase B)
-42. Create DICOM SR from predictions (Phase C)
-43. Create DICOM Segmentation (Phase C)
-44. Create GSPS with annotations (Phase C)
-45. Ensemble multiple models (Phase D)
-46. Filter low-confidence predictions (Phase D)
-47. Handle model versioning (Phase D)
-48. Measure inference performance (Phase D)
-49-60. Additional integration tests (Phases B-D)
+**Planned (6 tests):**
+60. Model registry and versioning (Phase D)
+61. Performance profiling (Phase D)
+62. Confidence filtering end-to-end (Phase D)
+63. Sample model integration (Phase D)
+64-65. Additional integration tests (Phase D)
 
-**Lines of Code Actual**: ~1,800 (main: 530, engine: 519, tests: 576, README: 367)
+**Lines of Code Actual**: ~2,844 (main: 620, engine: 844, output: 500, tests: 880, README: 367)
 
 ---
 
