@@ -75,6 +75,9 @@ struct Upload: AsyncParsableCommand {
     @Option(name: .long, help: "Custom S3-compatible endpoint URL")
     var endpoint: String?
     
+    @Option(name: .long, help: "AWS region (e.g., us-east-1, us-west-2)")
+    var region: String?
+    
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false
     
@@ -84,7 +87,7 @@ struct Upload: AsyncParsableCommand {
         }
         
         let cloudURL = try CloudURL.parse(destination)
-        let provider = try CloudProvider.create(for: cloudURL, endpoint: endpoint)
+        let provider = try await CloudProvider.create(for: cloudURL, endpoint: endpoint, region: region)
         
         let metadata = try parseMetadata(tags)
         
@@ -185,12 +188,15 @@ struct Download: AsyncParsableCommand {
     @Option(name: .long, help: "Custom S3-compatible endpoint URL")
     var endpoint: String?
     
+    @Option(name: .long, help: "AWS region (e.g., us-east-1, us-west-2)")
+    var region: String?
+    
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false
     
     mutating func run() async throws {
         let cloudURL = try CloudURL.parse(source)
-        let provider = try CloudProvider.create(for: cloudURL, endpoint: endpoint)
+        let provider = try await CloudProvider.create(for: cloudURL, endpoint: endpoint, region: region)
         
         if verbose {
             print("Downloading '\(source)' to '\(destination)'...")
@@ -245,9 +251,12 @@ struct List: AsyncParsableCommand {
     @Option(name: .long, help: "Custom S3-compatible endpoint URL")
     var endpoint: String?
     
+    @Option(name: .long, help: "AWS region (e.g., us-east-1, us-west-2)")
+    var region: String?
+    
     mutating func run() async throws {
         let url = try CloudURL.parse(cloudURL)
-        let provider = try CloudProvider.create(for: url, endpoint: endpoint)
+        let provider = try await CloudProvider.create(for: url, endpoint: endpoint, region: region)
         
         let lister = CloudLister(provider: provider, showDetails: details)
         let objects = try await lister.list(cloudURL: url, recursive: recursive)
@@ -286,12 +295,15 @@ struct Delete: AsyncParsableCommand {
     @Option(name: .long, help: "Custom S3-compatible endpoint URL")
     var endpoint: String?
     
+    @Option(name: .long, help: "AWS region (e.g., us-east-1, us-west-2)")
+    var region: String?
+    
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false
     
     mutating func run() async throws {
         let url = try CloudURL.parse(cloudURL)
-        let provider = try CloudProvider.create(for: url, endpoint: endpoint)
+        let provider = try await CloudProvider.create(for: url, endpoint: endpoint, region: region)
         
         if !force {
             print("Are you sure you want to delete '\(cloudURL)'? (yes/no): ", terminator: "")
@@ -345,6 +357,9 @@ struct Sync: AsyncParsableCommand {
     @Option(name: .long, help: "Custom S3-compatible endpoint URL")
     var endpoint: String?
     
+    @Option(name: .long, help: "AWS region (e.g., us-east-1, us-west-2)")
+    var region: String?
+    
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false
     
@@ -354,7 +369,7 @@ struct Sync: AsyncParsableCommand {
         }
         
         let url = try CloudURL.parse(cloudURL)
-        let provider = try CloudProvider.create(for: url, endpoint: endpoint)
+        let provider = try await CloudProvider.create(for: url, endpoint: endpoint, region: region)
         
         if verbose {
             print("Syncing '\(localPath)' with '\(cloudURL)'...")
@@ -399,6 +414,12 @@ struct Copy: AsyncParsableCommand {
     @Option(name: .long, help: "Number of parallel transfers")
     var parallel: Int = 4
     
+    @Option(name: .long, help: "AWS region for source (e.g., us-east-1)")
+    var sourceRegion: String?
+    
+    @Option(name: .long, help: "AWS region for destination (e.g., us-east-1)")
+    var destRegion: String?
+    
     @Flag(name: .shortAndLong, help: "Verbose output")
     var verbose: Bool = false
     
@@ -406,8 +427,8 @@ struct Copy: AsyncParsableCommand {
         let sourceURL = try CloudURL.parse(source)
         let destURL = try CloudURL.parse(destination)
         
-        let sourceProvider = try CloudProvider.create(for: sourceURL, endpoint: nil)
-        let destProvider = try CloudProvider.create(for: destURL, endpoint: nil)
+        let sourceProvider = try await CloudProvider.create(for: sourceURL, endpoint: nil, region: sourceRegion)
+        let destProvider = try await CloudProvider.create(for: destURL, endpoint: nil, region: destRegion)
         
         if verbose {
             print("Copying from '\(source)' to '\(destination)'...")

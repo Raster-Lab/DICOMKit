@@ -168,7 +168,8 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+        .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.6.0")
     ],
     targets: [
         .target(
@@ -592,7 +593,8 @@ let package = Package(
             dependencies: [
                 "DICOMKit",
                 "DICOMCore",
-                .product(name: "ArgumentParser", package: "swift-argument-parser")
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "AWSS3", package: "aws-sdk-swift")
             ],
             path: "Sources/dicom-cloud",
             exclude: ["README.md"]

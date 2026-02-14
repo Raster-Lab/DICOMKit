@@ -5,10 +5,10 @@ Cloud storage integration tool for DICOM medical imaging files. Seamlessly uploa
 ## Features
 
 ### Cloud Providers
-- ✅ AWS S3 (planned - requires AWS SDK integration)
-- ✅ Google Cloud Storage (planned - requires GCS SDK integration)
-- ✅ Azure Blob Storage (planned - requires Azure SDK integration)
-- ✅ Custom S3-compatible providers (MinIO, DigitalOcean Spaces, etc.)
+- ✅ **AWS S3** (implemented - full support via AWS SDK for Swift)
+- 🚧 Google Cloud Storage (planned - requires GCS SDK integration)
+- 🚧 Azure Blob Storage (planned - requires Azure SDK integration)
+- ✅ **Custom S3-compatible providers** (MinIO, DigitalOcean Spaces, LocalStack, etc.)
 
 ### Operations
 - **Upload**: Upload individual files or entire directory structures
@@ -19,12 +19,15 @@ Cloud storage integration tool for DICOM medical imaging files. Seamlessly uploa
 - **Copy**: Cross-provider copying (e.g., S3 to GCS)
 
 ### Advanced Features
-- **Parallel Transfers**: Configure concurrent uploads/downloads for improved performance
-- **Multipart Upload**: Efficient large file transfers (planned)
-- **Resume Capability**: Resume interrupted transfers (planned)
-- **Metadata Tagging**: Add custom metadata to uploaded objects
-- **Encryption**: Server-side and client-side encryption support (planned)
-- **Custom Endpoints**: Support for S3-compatible services
+- ✅ **Parallel Transfers**: Configure concurrent uploads/downloads for improved performance
+- 🚧 Multipart Upload: Efficient large file transfers (planned for Phase B completion)
+- 🚧 Resume Capability: Resume interrupted transfers (planned for Phase D)
+- ✅ **Metadata Tagging**: Add custom metadata to uploaded objects
+- ✅ **Server-side Encryption**: AES256 encryption support
+- 🚧 Client-side Encryption: Planned for Phase D
+- ✅ **Custom Endpoints**: Full support for S3-compatible services (MinIO, LocalStack, etc.)
+- ✅ **Region Configuration**: Flexible AWS region specification
+- ✅ **Automatic Credentials**: Support for environment variables, AWS config files, IAM roles
 
 ## Installation
 
@@ -40,6 +43,109 @@ cp .build/release/dicom-cloud /usr/local/bin/
 brew install dicomkit
 ```
 
+## Configuration
+
+### AWS Credentials
+
+The tool uses the AWS SDK for Swift, which automatically handles credentials through multiple sources in this order:
+
+1. **Environment Variables** (highest priority):
+   ```bash
+   export AWS_ACCESS_KEY_ID=your_access_key
+   export AWS_SECRET_ACCESS_KEY=your_secret_key
+   export AWS_SESSION_TOKEN=your_session_token  # Optional, for temporary credentials
+   export AWS_REGION=us-east-1                  # Optional, can also use --region flag
+   ```
+
+2. **AWS Credentials File** (~/.aws/credentials):
+   ```ini
+   [default]
+   aws_access_key_id = your_access_key
+   aws_secret_access_key = your_secret_key
+   
+   [profile-name]
+   aws_access_key_id = another_access_key
+   aws_secret_access_key = another_secret_key
+   ```
+   
+   Use a specific profile:
+   ```bash
+   export AWS_PROFILE=profile-name
+   dicom-cloud upload study/ s3://my-bucket/study/ --recursive
+   ```
+
+3. **AWS Config File** (~/.aws/config):
+   ```ini
+   [default]
+   region = us-east-1
+   output = json
+   
+   [profile profile-name]
+   region = us-west-2
+   ```
+
+4. **IAM Role** (when running on EC2, ECS, or Lambda)
+
+5. **Web Identity Token** (for Kubernetes, EKS)
+
+### Region Configuration
+
+Specify the AWS region in one of three ways:
+
+1. **Command-line flag** (highest priority):
+   ```bash
+   dicom-cloud upload study/ s3://my-bucket/study/ --region us-west-2 --recursive
+   ```
+
+2. **Environment variable**:
+   ```bash
+   export AWS_REGION=us-west-2
+   ```
+
+3. **AWS config file** (~/.aws/config)
+
+### Testing with LocalStack
+
+For local development and testing, you can use [LocalStack](https://localstack.cloud/):
+
+```bash
+# Start LocalStack with S3 service
+docker run -d -p 4566:4566 localstack/localstack
+
+# Configure to use LocalStack
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_REGION=us-east-1
+
+# Upload to LocalStack
+dicom-cloud upload study/ s3://test-bucket/study/ \
+  --endpoint http://localhost:4566 \
+  --region us-east-1 \
+  --recursive
+```
+
+### Testing with MinIO
+
+[MinIO](https://min.io/) is a high-performance S3-compatible object storage:
+
+```bash
+# Start MinIO
+docker run -d -p 9000:9000 -p 9001:9001 \
+  -e MINIO_ROOT_USER=minioadmin \
+  -e MINIO_ROOT_PASSWORD=minioadmin \
+  minio/minio server /data --console-address ":9001"
+
+# Configure credentials
+export AWS_ACCESS_KEY_ID=minioadmin
+export AWS_SECRET_ACCESS_KEY=minioadmin
+
+# Upload to MinIO
+dicom-cloud upload study/ s3://test-bucket/study/ \
+  --endpoint http://localhost:9000 \
+  --region us-east-1 \
+  --recursive
+```
+
 ## Usage
 
 ### Upload Files
@@ -51,21 +157,24 @@ dicom-cloud upload scan.dcm s3://my-bucket/scans/scan.dcm
 # Upload directory recursively
 dicom-cloud upload study/ s3://my-bucket/studies/study1/ --recursive
 
+# Specify AWS region
+dicom-cloud upload study/ s3://my-bucket/studies/study1/ \
+  --region us-west-2 \
+  --recursive
+
 # Upload with metadata tags
 dicom-cloud upload scan.dcm s3://my-bucket/scans/ \
   --tags "PatientID=12345,StudyDate=20240101,Modality=CT"
 
-# Upload with encryption (planned)
+# Upload with server-side encryption
 dicom-cloud upload study/ s3://my-bucket/studies/ \
   --recursive \
   --encrypt server-side
 
-# Parallel multipart upload (planned)
+# Parallel multipart upload (multipart planned for Phase B completion)
 dicom-cloud upload large-study/ s3://my-bucket/large/ \
   --recursive \
-  --parallel 8 \
-  --multipart \
-  --resume
+  --parallel 8
 ```
 
 ### Download Files
