@@ -44,6 +44,14 @@ struct HL7Message {
     let segments: [HL7Segment]
     let raw: String
     
+    var messageControlId: String {
+        // Extract from MSH-10 field
+        if let msh = segment("MSH"), msh.fields.count > 9 {
+            return msh.fields[9]
+        }
+        return ""
+    }
+    
     init(messageType: HL7MessageType, segments: [HL7Segment], raw: String) {
         self.messageType = messageType
         self.segments = segments
