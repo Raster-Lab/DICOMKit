@@ -8,6 +8,21 @@
 import Foundation
 import DICOMCore
 
+#if canImport(CoreGraphics)
+import CoreGraphics
+#else
+// Define CGSize for platforms without CoreGraphics
+public struct CGSize: Sendable {
+    public let width: Double
+    public let height: Double
+    
+    public init(width: Double, height: Double) {
+        self.width = width
+        self.height = height
+    }
+}
+#endif
+
 // MARK: - Print Management SOP Class UIDs
 
 /// Basic Film Session SOP Class UID (PS3.4 H.4.1)
