@@ -289,7 +289,151 @@ dicom-gateway/
 - **DICOM**: Compliant with DICOM PS3 standard
 - **HL7 v2.5**: Supports HL7 v2.5 message structure
 - **FHIR R4**: Generates FHIR R4 resources
-- **IHE**: Foundation for IHE profile support (future)
+- **IHE**: Foundation IHE profile support (PDI, XDS-I, PIX, PDQ)
+
+## IHE Profile Support (Phase D)
+
+### Supported Profiles
+
+- **PDI (Portable Data for Imaging)**: DICOMDIR validation and media export
+- **XDS-I (Cross-Enterprise Document Sharing for Imaging)**: Metadata extraction for registry
+- **PIX (Patient Identifier Cross-Referencing)**: Cross-domain patient ID mapping
+- **PDQ (Patient Demographics Query)**: Demographics query generation
+
+### IHE Profile Validation
+
+```bash
+# Validate DICOM file against PDI profile
+dicom-gateway validate-profile study.dcm --profile PDI
+
+# Extract XDS-I metadata
+dicom-gateway extract-xds study.dcm --output metadata.json
+
+# Create PIX query
+dicom-gateway create-pix-query --patient-id 12345 --source-domain HOSPITAL
+```
+
+## Custom Mapping Engine (Phase D)
+
+### Mapping Configuration
+
+Create custom field mappings with transformations:
+
+```json
+{
+  "name": "Custom DICOM to HL7 Mapping",
+  "sourceFormat": "dicom",
+  "targetFormat": "hl7",
+  "rules": [
+    {
+      "source": "PatientID",
+      "target": "PID-2",
+      "required": true
+    },
+    {
+      "source": "PatientName",
+      "target": "PID-5",
+      "transform": "uppercase",
+      "required": true
+    },
+    {
+      "source": "PatientBirthDate",
+      "target": "PID-7",
+      "transform": "date_format"
+    }
+  ],
+  "includeUnmapped": true
+}
+```
+
+### Using Custom Mappings
+
+```bash
+# Apply custom mapping
+dicom-gateway dicom-to-hl7 study.dcm \
+  --output message.hl7 \
+  --mapping custom-mapping.json
+
+# Create mapping configuration
+dicom-gateway create-mapping \
+  --name "Hospital A Integration" \
+  --source dicom \
+  --target hl7 \
+  --output mapping.json
+```
+
+### Available Transformations
+
+- `uppercase` / `lowercase`: Case conversion
+- `trim`: Remove whitespace
+- `date_format`: Convert date formats
+- `split_name`: Extract name components
+- `combine_name`: Join name components
+- `extract_first` / `extract_last`: Extract first/last word
+- `remove_spaces`: Remove all spaces
+- `pad_left` / `pad_right`: Add padding
+- `substring`: Extract substring
+
+## Gateway Modes (Phase C)
+
+### Listener Mode
+
+Listen for HL7 messages and forward to PACS:
+
+```bash
+# Start HL7 listener
+dicom-gateway listen \
+  --protocol hl7 \
+  --port 2575 \
+  --forward pacs://server:11112 \
+  --message-types ADT,ORM \
+  --verbose
+
+# Listen for all message types
+dicom-gateway listen \
+  --port 2575 \
+  --forward pacs://server:11112
+```
+
+**Features:**
+- Real-time HL7 message processing
+- Automatic ACK generation
+- Message type filtering
+- Conversion to DICOM and forwarding
+- Multi-client support
+
+### Forwarder Mode
+
+Forward DICOM events as HL7/FHIR:
+
+```bash
+# Forward to HL7 destination
+dicom-gateway forward \
+  --listen-port 11112 \
+  --forward-hl7 hl7://server:2575 \
+  --message-type ORU \
+  --verbose
+
+# Forward to FHIR server
+dicom-gateway forward \
+  --listen-port 11112 \
+  --forward-fhir https://fhir.example.com/ImagingStudy \
+  --message-type ORU
+
+# Forward to both
+dicom-gateway forward \
+  --listen-port 11112 \
+  --forward-hl7 hl7://hl7server:2575 \
+  --forward-fhir https://fhir.example.com/ImagingStudy \
+  --message-type ORU
+```
+
+**Features:**
+- DICOM event listener
+- Automatic HL7/FHIR conversion
+- Multiple destination support
+- Configurable message types
+- Async processing
 
 ## Limitations
 
@@ -297,18 +441,33 @@ dicom-gateway/
 
 - **HL7 v2**: Basic support for ADT, ORM, ORU messages
 - **FHIR**: Core resources only (ImagingStudy, Patient, Practitioner, DiagnosticReport)
-- **IHE Profiles**: Not yet implemented (planned for future releases)
-- **Listener/Forwarder Modes**: Not yet implemented (planned for future releases)
+- **IHE Profiles**: Basic PDI, XDS-I, PIX, PDQ support (not fully certified)
+- **Listener/Forwarder**: Foundation implementation (TCP sockets, simplified DIMSE handling)
 
 ### Future Enhancements
 
-- Real-time HL7 message listener
-- DICOM event forwarder
-- Bidirectional synchronization
-- IHE profile support (PDI, XDS-I, PIX, etc.)
-- Custom mapping configuration files
+- Full DIMSE protocol integration for forwarder mode
+- IHE certification and extended profile support
 - Additional HL7 message types (DFT, SIU, etc.)
 - Additional FHIR resources (Observation, Procedure, etc.)
+- TLS/SSL support for secure connections
+- Enhanced error recovery and retry logic
+- Persistent message queuing
+- Load balancing for multiple destinations
+
+## Architecture
+
+### Components
+
+- **main.swift**: CLI interface with ArgumentParser
+- **GatewayTypes.swift**: Common types and errors
+- **HL7Parser.swift**: HL7 v2 parsing and generation
+- **DICOMToHL7Converter.swift**: DICOM → HL7 conversion
+- **HL7ToDICOMConverter.swift**: HL7 → DICOM conversion
+- **FHIRConverter.swift**: DICOM ↔ FHIR conversion
+- **GatewayListener.swift**: HL7 listener and DICOM forwarder (Phase C)
+- **IHEProfiles.swift**: IHE profile support (Phase D)
+- **MappingEngine.swift**: Custom mapping engine (Phase D)
 
 ## License
 
@@ -316,4 +475,8 @@ Part of DICOMKit - See main repository license.
 
 ## Version
 
-1.0.0 - Initial implementation with HL7 v2 and FHIR R4 support
+**1.1.0** - Phases A, B, C, and D complete
+- Phase A: HL7 v2 conversion
+- Phase B: FHIR conversion and batch processing
+- Phase C: Listener and forwarder modes
+- Phase D: IHE profiles and custom mapping engine

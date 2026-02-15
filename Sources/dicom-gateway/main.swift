@@ -34,7 +34,9 @@ struct DICOMGateway: AsyncParsableCommand {
             HL7ToDICOM.self,
             DICOMToFHIR.self,
             FHIRToDICOM.self,
-            BatchConvert.self
+            BatchConvert.self,
+            ListenCommand.self,
+            ForwardCommand.self
         ],
         defaultSubcommand: DICOMToHL7.self
     )
@@ -440,6 +442,129 @@ struct BatchConvert: AsyncParsableCommand {
         }
         
         return files
+    }
+}
+
+// MARK: - Listen Command
+
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+struct ListenCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "listen",
+        abstract: "Listen for HL7 messages and forward to PACS",
+        discussion: """
+            Run an HL7 TCP listener that receives HL7 v2 messages,
+            converts them to DICOM, and forwards to a PACS server.
+            
+            This enables real-time integration where HL7 messages trigger
+            DICOM operations (e.g., creating imaging orders from ORM messages).
+            """
+    )
+    
+    @Option(name: [.customLong("protocol"), .customShort("p")], help: "Protocol to listen for: hl7")
+    var protocolType: String = "hl7"
+    
+    @Option(name: .long, help: "Port to listen on")
+    var port: UInt16 = 2575
+    
+    @Option(name: .long, help: "Forward destination (e.g., pacs://server:11112)")
+    var forward: String?
+    
+    @Option(name: .long, help: "Message types to process (comma-separated, e.g., ADT,ORM)")
+    var messageTypes: String = ""
+    
+    @Flag(name: .shortAndLong, help: "Verbose output")
+    var verbose: Bool = false
+    
+    mutating func run() async throws {
+        guard protocolType.lowercased() == "hl7" else {
+            throw GatewayError.invalidProtocol("Only HL7 protocol is currently supported for listening")
+        }
+        
+        let types = messageTypes.isEmpty ? [] : messageTypes.split(separator: ",").map(String.init)
+        
+        let listener = HL7Listener(
+            port: port,
+            forwardDestination: forward,
+            messageTypes: types,
+            verbose: verbose
+        )
+        
+        // Set up signal handler for graceful shutdown
+        signal(SIGINT) { _ in
+            print("\nReceived interrupt signal, shutting down...")
+            Foundation.exit(0)
+        }
+        
+        do {
+            try await listener.start()
+        } catch {
+            if verbose {
+                print("Error: \(error)")
+            }
+            throw error
+        }
+    }
+}
+
+// MARK: - Forward Command
+
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+struct ForwardCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "forward",
+        abstract: "Forward DICOM events as HL7/FHIR messages",
+        discussion: """
+            Run a DICOM listener that receives DICOM files and forwards
+            them as HL7 v2 or FHIR messages to external systems.
+            
+            This enables integration where DICOM events trigger notifications
+            to other healthcare IT systems.
+            """
+    )
+    
+    @Option(name: .long, help: "Port to listen for DICOM connections")
+    var listenPort: UInt16 = 11112
+    
+    @Option(name: .long, help: "HL7 destination (e.g., hl7://server:2575)")
+    var forwardHl7: String?
+    
+    @Option(name: .long, help: "FHIR destination (e.g., https://fhir.example.com/ImagingStudy)")
+    var forwardFhir: String?
+    
+    @Option(name: .long, help: "HL7 message type to generate: ADT, ORM, ORU")
+    var messageType: String = "ORU"
+    
+    @Flag(name: .shortAndLong, help: "Verbose output")
+    var verbose: Bool = false
+    
+    mutating func run() async throws {
+        guard forwardHl7 != nil || forwardFhir != nil else {
+            throw GatewayError.invalidConfiguration("At least one forward destination (--forward-hl7 or --forward-fhir) must be specified")
+        }
+        
+        let forwarder = DICOMForwarder(
+            listenPort: listenPort,
+            forwardHL7Destination: forwardHl7,
+            forwardFHIRDestination: forwardFhir,
+            messageType: messageType,
+            verbose: verbose
+        )
+        
+        // Set up signal handler for graceful shutdown
+        signal(SIGINT) { _ in
+            print("\nReceived interrupt signal, shutting down...")
+            Foundation.exit(0)
+        }
+        
+        do {
+            try await forwarder.start()
+        } catch {
+            if verbose {
+                print("Error: \(error)")
+            }
+            throw error
+        }
     }
 }
 

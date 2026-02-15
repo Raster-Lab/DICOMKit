@@ -17,7 +17,7 @@ class DICOMToHL7Converter {
         let builder = HL7MessageBuilder()
         
         // MSH - Message Header
-        builder.addMSH(
+        _  = builder.addMSH(
             sendingApplication: "DICOMKit",
             sendingFacility: "IMAGING",
             receivingApplication: "HIS",
@@ -28,7 +28,7 @@ class DICOMToHL7Converter {
         
         // EVN - Event Type
         let eventTimestamp = formatHL7Timestamp(Date())
-        builder.addSegment(id: "EVN", fields: [
+        _  = builder.addSegment(id: "EVN", fields: [
             "A\(eventType)",
             eventTimestamp
         ])
@@ -39,7 +39,7 @@ class DICOMToHL7Converter {
         let dateOfBirth = extractDate(from: dicomFile, tag: .patientBirthDate)
         let sex = extractString(from: dicomFile, tag: .patientSex) ?? "U"
         
-        builder.addSegment(id: "PID", fields: [
+        _  = builder.addSegment(id: "PID", fields: [
             "",  // Set ID
             patientID,  // Patient ID (External)
             patientID,  // Patient ID (Internal)
@@ -58,7 +58,7 @@ class DICOMToHL7Converter {
         let accessionNumber = extractString(from: dicomFile, tag: .accessionNumber) ?? ""
         let studyDescription = extractString(from: dicomFile, tag: .studyDescription) ?? ""
         
-        builder.addSegment(id: "PV1", fields: [
+        _  = builder.addSegment(id: "PV1", fields: [
             "",  // Set ID
             "O",  // Patient Class (Outpatient)
             "",  // Assigned Patient Location
@@ -90,7 +90,7 @@ class DICOMToHL7Converter {
         let builder = HL7MessageBuilder()
         
         // MSH - Message Header
-        builder.addMSH(
+        _  = builder.addMSH(
             sendingApplication: "DICOMKit",
             sendingFacility: "IMAGING",
             receivingApplication: "RIS",
@@ -105,7 +105,7 @@ class DICOMToHL7Converter {
         let dateOfBirth = extractDate(from: dicomFile, tag: .patientBirthDate)
         let sex = extractString(from: dicomFile, tag: .patientSex) ?? "U"
         
-        builder.addSegment(id: "PID", fields: [
+        _  = builder.addSegment(id: "PID", fields: [
             "",
             patientID,
             patientID,
@@ -120,7 +120,7 @@ class DICOMToHL7Converter {
         let accessionNumber = extractString(from: dicomFile, tag: .accessionNumber) ?? ""
         let studyInstanceUID = extractString(from: dicomFile, tag: .studyInstanceUID) ?? ""
         
-        builder.addSegment(id: "ORC", fields: [
+        _  = builder.addSegment(id: "ORC", fields: [
             "NW",  // Order Control (New)
             accessionNumber,  // Placer Order Number
             studyInstanceUID,  // Filler Order Number
@@ -141,7 +141,7 @@ class DICOMToHL7Converter {
         let studyTime = extractTime(from: dicomFile, tag: .studyTime)
         let studyDateTime = combineDateTime(date: studyDate, time: studyTime)
         
-        builder.addSegment(id: "OBR", fields: [
+        _  = builder.addSegment(id: "OBR", fields: [
             "",  // Set ID
             accessionNumber,  // Placer Order Number
             studyInstanceUID,  // Filler Order Number
@@ -169,7 +169,7 @@ class DICOMToHL7Converter {
         let builder = HL7MessageBuilder()
         
         // MSH - Message Header
-        builder.addMSH(
+        _  = builder.addMSH(
             sendingApplication: "DICOMKit",
             sendingFacility: "IMAGING",
             receivingApplication: "LIS",
@@ -184,7 +184,7 @@ class DICOMToHL7Converter {
         let dateOfBirth = extractDate(from: dicomFile, tag: .patientBirthDate)
         let sex = extractString(from: dicomFile, tag: .patientSex) ?? "U"
         
-        builder.addSegment(id: "PID", fields: [
+        _  = builder.addSegment(id: "PID", fields: [
             "",
             patientID,
             patientID,
@@ -204,7 +204,7 @@ class DICOMToHL7Converter {
         let studyTime = extractTime(from: dicomFile, tag: .studyTime)
         let studyDateTime = combineDateTime(date: studyDate, time: studyTime)
         
-        builder.addSegment(id: "OBR", fields: [
+        _  = builder.addSegment(id: "OBR", fields: [
             "",
             accessionNumber,
             studyInstanceUID,
@@ -233,7 +233,7 @@ class DICOMToHL7Converter {
         // OBX - Observation Result (Image Count)
         let numberOfImages = extractString(from: dicomFile, tag: .numberOfSeriesRelatedInstances) ?? "0"
         
-        _ = builder.addSegment(id: "OBX", fields: [
+        _ = _  = builder.addSegment(id: "OBX", fields: [
             "1",  // Set ID
             "NM",  // Value Type (Numeric)
             "IMG_COUNT",  // Observation Identifier
