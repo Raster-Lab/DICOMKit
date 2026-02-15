@@ -1578,5 +1578,755 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(result.photometricInterpretation, "RGB")
         XCTAssertEqual(result.pixelData.count, pixelCount * 3)
     }
+    
+    // MARK: - Phase 4: Print Queue Tests
+    
+    func testPrintJobInitialization() {
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let jobID = UUID()
+        let imageURLs = [
+            URL(fileURLWithPath: "/tmp/image1.dcm"),
+            URL(fileURLWithPath: "/tmp/image2.dcm")
+        ]
+        
+        let job = PrintJob(
+            id: jobID,
+            configuration: config,
+            imageURLs: imageURLs,
+            options: .highQuality,
+            priority: .high,
+            label: "Urgent Print"
+        )
+        
+        XCTAssertEqual(job.id, jobID)
+        XCTAssertEqual(job.configuration.host, "192.168.1.100")
+        XCTAssertEqual(job.imageURLs.count, 2)
+        XCTAssertEqual(job.options.priority, .high)
+        XCTAssertEqual(job.priority, .high)
+        XCTAssertEqual(job.label, "Urgent Print")
+    }
+    
+    func testPrintJobDefaultValues() {
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let job = PrintJob(
+            configuration: config,
+            imageURLs: []
+        )
+        
+        XCTAssertEqual(job.priority, .medium)
+        XCTAssertNil(job.label)
+        XCTAssertEqual(job.options.numberOfCopies, 1)
+    }
+    
+    func testPrintJobRecordInitialization() {
+        let recordID = UUID()
+        let submittedAt = Date()
+        let completedAt = Date()
+        
+        let record = PrintJobRecord(
+            id: recordID,
+            label: "Test Job",
+            imageCount: 5,
+            submittedAt: submittedAt,
+            completedAt: completedAt,
+            success: true,
+            errorMessage: nil,
+            printerName: "Film Printer 1"
+        )
+        
+        XCTAssertEqual(record.id, recordID)
+        XCTAssertEqual(record.label, "Test Job")
+        XCTAssertEqual(record.imageCount, 5)
+        XCTAssertTrue(record.success)
+        XCTAssertNil(record.errorMessage)
+        XCTAssertEqual(record.printerName, "Film Printer 1")
+    }
+    
+    func testPrintJobRecordFailure() {
+        let record = PrintJobRecord(
+            id: UUID(),
+            label: "Failed Job",
+            imageCount: 3,
+            submittedAt: Date(),
+            completedAt: Date(),
+            success: false,
+            errorMessage: "Printer offline"
+        )
+        
+        XCTAssertFalse(record.success)
+        XCTAssertEqual(record.errorMessage, "Printer offline")
+    }
+    
+    func testPrintQueueJobStatus() {
+        let statusQueued = PrintQueueJobStatus.queued(position: 3)
+        let statusProcessing = PrintQueueJobStatus.processing
+        let statusCompleted = PrintQueueJobStatus.completed
+        let statusFailed = PrintQueueJobStatus.failed(message: "Error")
+        let statusCancelled = PrintQueueJobStatus.cancelled
+        
+        XCTAssertEqual(statusQueued, .queued(position: 3))
+        XCTAssertEqual(statusProcessing, .processing)
+        XCTAssertEqual(statusCompleted, .completed)
+        XCTAssertNotEqual(statusFailed, .completed)
+        XCTAssertEqual(statusCancelled, .cancelled)
+    }
+    
+    func testPrintQueueEnqueue() async {
+        let queue = PrintQueue()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let job = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/test.dcm")]
+        )
+        
+        let jobID = await queue.enqueue(job: job)
+        
+        XCTAssertEqual(jobID, job.id)
+        let count = await queue.queuedCount
+        XCTAssertEqual(count, 1)
+    }
+    
+    func testPrintQueuePriorityOrdering() async {
+        let queue = PrintQueue()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        // Add jobs with different priorities
+        let lowJob = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/low.dcm")],
+            priority: .low
+        )
+        let highJob = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/high.dcm")],
+            priority: .high
+        )
+        let medJob = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/med.dcm")],
+            priority: .medium
+        )
+        
+        await queue.enqueue(job: lowJob)
+        await queue.enqueue(job: highJob)
+        await queue.enqueue(job: medJob)
+        
+        // High priority should be first
+        let first = await queue.dequeue()
+        XCTAssertEqual(first?.id, highJob.id)
+        
+        // Medium priority should be second
+        let second = await queue.dequeue()
+        XCTAssertEqual(second?.id, medJob.id)
+        
+        // Low priority should be last
+        let third = await queue.dequeue()
+        XCTAssertEqual(third?.id, lowJob.id)
+    }
+    
+    func testPrintQueueCancel() async {
+        let queue = PrintQueue()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let job = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/test.dcm")]
+        )
+        
+        await queue.enqueue(job: job)
+        let cancelled = await queue.cancel(jobID: job.id)
+        
+        XCTAssertTrue(cancelled)
+        let count = await queue.queuedCount
+        XCTAssertEqual(count, 0)
+        
+        // Check it's in history as cancelled
+        let status = await queue.status(jobID: job.id)
+        XCTAssertEqual(status, .cancelled)
+    }
+    
+    func testPrintQueueStatus() async {
+        let queue = PrintQueue()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let job = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/test.dcm")]
+        )
+        
+        // Status before enqueue should be nil
+        let statusBefore = await queue.status(jobID: job.id)
+        XCTAssertNil(statusBefore)
+        
+        // After enqueue should be queued
+        await queue.enqueue(job: job)
+        let statusQueued = await queue.status(jobID: job.id)
+        XCTAssertEqual(statusQueued, .queued(position: 1))
+        
+        // After dequeue should be processing
+        _ = await queue.dequeue()
+        let statusProcessing = await queue.status(jobID: job.id)
+        XCTAssertEqual(statusProcessing, .processing)
+        
+        // After marking complete should be completed
+        await queue.markCompleted(jobID: job.id)
+        let statusCompleted = await queue.status(jobID: job.id)
+        XCTAssertEqual(statusCompleted, .completed)
+    }
+    
+    func testPrintQueueHistory() async {
+        let queue = PrintQueue()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        // Complete some jobs
+        for i in 1...3 {
+            let job = PrintJob(
+                configuration: config,
+                imageURLs: [URL(fileURLWithPath: "/tmp/test\(i).dcm")]
+            )
+            await queue.enqueue(job: job)
+            _ = await queue.dequeue()
+            await queue.markCompleted(jobID: job.id)
+        }
+        
+        let history = await queue.getHistory(limit: 10)
+        XCTAssertEqual(history.count, 3)
+        
+        // Most recent should be first
+        XCTAssertTrue(history[0].success)
+    }
+    
+    func testPrintQueueMarkFailed() async {
+        let queue = PrintQueue(retryPolicy: .none)
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let job = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/test.dcm")]
+        )
+        
+        await queue.enqueue(job: job)
+        _ = await queue.dequeue()
+        
+        let willRetry = await queue.markFailed(
+            jobID: job.id,
+            error: PrintError.printerUnavailable(message: "Offline"),
+            job: job
+        )
+        
+        XCTAssertFalse(willRetry)
+        
+        let status = await queue.status(jobID: job.id)
+        if case .failed = status {
+            // Success
+        } else {
+            XCTFail("Expected failed status")
+        }
+    }
+    
+    func testPrintQueueRetry() async {
+        let retryPolicy = PrintRetryPolicy(maxAttempts: 2)
+        let queue = PrintQueue(retryPolicy: retryPolicy)
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let job = PrintJob(
+            configuration: config,
+            imageURLs: [URL(fileURLWithPath: "/tmp/test.dcm")]
+        )
+        
+        await queue.enqueue(job: job)
+        _ = await queue.dequeue()
+        
+        // First failure should retry
+        let willRetry1 = await queue.markFailed(
+            jobID: job.id,
+            error: PrintError.networkError(message: "Timeout"),
+            job: job
+        )
+        XCTAssertTrue(willRetry1)
+        
+        // Should be back in queue
+        let count = await queue.queuedCount
+        XCTAssertEqual(count, 1)
+        
+        // Dequeue and fail again
+        _ = await queue.dequeue()
+        let willRetry2 = await queue.markFailed(
+            jobID: job.id,
+            error: PrintError.networkError(message: "Timeout"),
+            job: job
+        )
+        XCTAssertTrue(willRetry2)
+        
+        // Dequeue and fail third time - no more retries
+        _ = await queue.dequeue()
+        let willRetry3 = await queue.markFailed(
+            jobID: job.id,
+            error: PrintError.networkError(message: "Timeout"),
+            job: job
+        )
+        XCTAssertFalse(willRetry3)
+    }
+    
+    // MARK: - Phase 4: Printer Capabilities Tests
+    
+    func testPrinterCapabilitiesDefaults() {
+        let caps = PrinterCapabilities()
+        
+        XCTAssertFalse(caps.supportedFilmSizes.isEmpty)
+        XCTAssertTrue(caps.supportsColor)
+        XCTAssertEqual(caps.maxCopies, 99)
+        XCTAssertFalse(caps.supportedMediumTypes.isEmpty)
+        XCTAssertEqual(caps.maxImagesPerFilmBox, 25)
+    }
+    
+    func testPrinterCapabilitiesCustom() {
+        let caps = PrinterCapabilities(
+            supportedFilmSizes: [.size8InX10In, .size14InX17In],
+            supportsColor: false,
+            maxCopies: 10,
+            supportedMediumTypes: [.clearFilm],
+            supportedMagnificationTypes: [.replicate],
+            maxImagesPerFilmBox: 16
+        )
+        
+        XCTAssertEqual(caps.supportedFilmSizes.count, 2)
+        XCTAssertFalse(caps.supportsColor)
+        XCTAssertEqual(caps.maxCopies, 10)
+        XCTAssertEqual(caps.supportedMediumTypes.count, 1)
+        XCTAssertEqual(caps.maxImagesPerFilmBox, 16)
+    }
+    
+    func testFilmSizeCaseIterable() {
+        XCTAssertEqual(FilmSize.allCases.count, 12)
+        XCTAssertTrue(FilmSize.allCases.contains(.size8InX10In))
+        XCTAssertTrue(FilmSize.allCases.contains(.a4))
+    }
+    
+    func testMediumTypeCaseIterable() {
+        XCTAssertEqual(MediumType.allCases.count, 5)
+        XCTAssertTrue(MediumType.allCases.contains(.paper))
+        XCTAssertTrue(MediumType.allCases.contains(.mammoFilmBlueBase))
+    }
+    
+    func testMagnificationTypeCaseIterable() {
+        XCTAssertEqual(MagnificationType.allCases.count, 4)
+        XCTAssertTrue(MagnificationType.allCases.contains(.replicate))
+        XCTAssertTrue(MagnificationType.allCases.contains(.cubic))
+    }
+    
+    // MARK: - Phase 4: Printer Info Tests
+    
+    func testPrinterInfoInitialization() {
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let printer = PrinterInfo(
+            name: "Radiology Film Printer",
+            configuration: config,
+            capabilities: .default,
+            isDefault: true
+        )
+        
+        XCTAssertEqual(printer.name, "Radiology Film Printer")
+        XCTAssertEqual(printer.configuration.host, "192.168.1.100")
+        XCTAssertTrue(printer.isDefault)
+        XCTAssertTrue(printer.isAvailable)
+    }
+    
+    func testPrinterInfoEquality() {
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let id = UUID()
+        let printer1 = PrinterInfo(id: id, name: "Printer 1", configuration: config)
+        let printer2 = PrinterInfo(id: id, name: "Different Name", configuration: config)
+        let printer3 = PrinterInfo(name: "Printer 3", configuration: config)
+        
+        XCTAssertEqual(printer1, printer2) // Same ID
+        XCTAssertNotEqual(printer1, printer3) // Different ID
+    }
+    
+    // MARK: - Phase 4: Printer Registry Tests
+    
+    func testPrinterRegistryAddPrinter() async throws {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let printer = PrinterInfo(name: "Test Printer", configuration: config)
+        try await registry.addPrinter(printer)
+        
+        let count = await registry.count
+        XCTAssertEqual(count, 1)
+        
+        let retrieved = await registry.printer(id: printer.id)
+        XCTAssertEqual(retrieved?.name, "Test Printer")
+    }
+    
+    func testPrinterRegistryDefaultPrinter() async throws {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        // First printer becomes default
+        let printer1 = PrinterInfo(name: "Printer 1", configuration: config)
+        try await registry.addPrinter(printer1)
+        
+        let defaultPrinter = await registry.defaultPrinter()
+        XCTAssertEqual(defaultPrinter?.id, printer1.id)
+        
+        // Add second printer marked as default
+        let printer2 = PrinterInfo(name: "Printer 2", configuration: config, isDefault: true)
+        try await registry.addPrinter(printer2)
+        
+        let newDefault = await registry.defaultPrinter()
+        XCTAssertEqual(newDefault?.id, printer2.id)
+    }
+    
+    func testPrinterRegistryRemovePrinter() async throws {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let printer = PrinterInfo(name: "Test Printer", configuration: config)
+        try await registry.addPrinter(printer)
+        
+        let removed = await registry.removePrinter(id: printer.id)
+        XCTAssertNotNil(removed)
+        
+        let count = await registry.count
+        XCTAssertEqual(count, 0)
+    }
+    
+    func testPrinterRegistrySetDefaultPrinter() async throws {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let printer1 = PrinterInfo(name: "Printer 1", configuration: config)
+        let printer2 = PrinterInfo(name: "Printer 2", configuration: config)
+        
+        try await registry.addPrinter(printer1)
+        try await registry.addPrinter(printer2)
+        
+        try await registry.setDefaultPrinter(id: printer2.id)
+        
+        let defaultPrinter = await registry.defaultPrinter()
+        XCTAssertEqual(defaultPrinter?.id, printer2.id)
+    }
+    
+    func testPrinterRegistryDuplicateError() async {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let id = UUID()
+        let printer1 = PrinterInfo(id: id, name: "Printer 1", configuration: config)
+        let printer2 = PrinterInfo(id: id, name: "Printer 2", configuration: config)
+        
+        do {
+            try await registry.addPrinter(printer1)
+            try await registry.addPrinter(printer2)
+            XCTFail("Expected error for duplicate printer")
+        } catch let error as PrinterRegistryError {
+            XCTAssertEqual(error, .printerAlreadyExists(id: id))
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+    
+    func testPrinterRegistryNotFoundError() async {
+        let registry = PrinterRegistry()
+        
+        let nonExistentID = UUID()
+        
+        do {
+            try await registry.setDefaultPrinter(id: nonExistentID)
+            XCTFail("Expected error for non-existent printer")
+        } catch let error as PrinterRegistryError {
+            XCTAssertEqual(error, .printerNotFound(id: nonExistentID))
+        } catch {
+            XCTFail("Unexpected error type: \(error)")
+        }
+    }
+    
+    func testPrinterRegistrySelectPrinter() async throws {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        // Add grayscale-only printer
+        let grayscaleCaps = PrinterCapabilities(
+            supportedFilmSizes: [.size14InX17In],
+            supportsColor: false
+        )
+        let grayscalePrinter = PrinterInfo(
+            name: "Grayscale Printer",
+            configuration: config,
+            capabilities: grayscaleCaps
+        )
+        try await registry.addPrinter(grayscalePrinter)
+        
+        // Add color printer
+        let colorCaps = PrinterCapabilities(
+            supportedFilmSizes: [.size8InX10In, .size14InX17In],
+            supportsColor: true
+        )
+        let colorPrinter = PrinterInfo(
+            name: "Color Printer",
+            configuration: config,
+            capabilities: colorCaps
+        )
+        try await registry.addPrinter(colorPrinter)
+        
+        // Select printer for color job
+        let selected = await registry.selectPrinter(requiresColor: true)
+        XCTAssertEqual(selected?.name, "Color Printer")
+        
+        // Select printer for grayscale job should prefer default
+        let anyPrinter = await registry.selectPrinter(requiresColor: false)
+        XCTAssertNotNil(anyPrinter)
+    }
+    
+    func testPrinterRegistryAvailability() async throws {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let printer = PrinterInfo(name: "Test Printer", configuration: config)
+        try await registry.addPrinter(printer)
+        
+        await registry.updateAvailability(id: printer.id, isAvailable: false)
+        
+        let available = await registry.listAvailablePrinters()
+        XCTAssertEqual(available.count, 0)
+        
+        await registry.markSeen(id: printer.id)
+        
+        let nowAvailable = await registry.listAvailablePrinters()
+        XCTAssertEqual(nowAvailable.count, 1)
+    }
+    
+    func testPrinterRegistryByName() async throws {
+        let registry = PrinterRegistry()
+        let config = PrintConfiguration(
+            host: "192.168.1.100",
+            port: 104,
+            callingAETitle: "MYAPP",
+            calledAETitle: "PRINTER"
+        )
+        
+        let printer = PrinterInfo(name: "Radiology Film Printer", configuration: config)
+        try await registry.addPrinter(printer)
+        
+        let found = await registry.printer(named: "Radiology Film Printer")
+        XCTAssertNotNil(found)
+        XCTAssertEqual(found?.id, printer.id)
+        
+        let notFound = await registry.printer(named: "Non-existent")
+        XCTAssertNil(notFound)
+    }
+    
+    // MARK: - Phase 4: Print Error Tests
+    
+    func testPrintErrorDescriptions() {
+        let errors: [PrintError] = [
+            .printerUnavailable(message: "Offline"),
+            .filmSessionCreationFailed(statusCode: 0xA700),
+            .filmBoxCreationFailed(statusCode: 0xA700),
+            .imageBoxSetFailed(position: 3, statusCode: 0xA900),
+            .printJobFailed(status: "FAILURE", info: "Paper jam"),
+            .timeout(operation: "N-CREATE"),
+            .invalidConfiguration(reason: "Invalid port"),
+            .imagePreparationFailed(reason: "Missing pixel data"),
+            .networkError(message: "Connection refused"),
+            .queueFull(maxSize: 100)
+        ]
+        
+        for error in errors {
+            XCTAssertFalse(error.description.isEmpty)
+            XCTAssertFalse(error.recoverySuggestion.isEmpty)
+        }
+    }
+    
+    func testPrintErrorEquality() {
+        let error1 = PrintError.printerUnavailable(message: "Offline")
+        let error2 = PrintError.printerUnavailable(message: "Offline")
+        let error3 = PrintError.printerUnavailable(message: "Different")
+        
+        XCTAssertEqual(error1, error2)
+        XCTAssertNotEqual(error1, error3)
+    }
+    
+    func testPrintErrorRecoverySuggestions() {
+        let timeoutError = PrintError.timeout(operation: "N-CREATE")
+        XCTAssertTrue(timeoutError.recoverySuggestion.contains("timeout"))
+        
+        let printerError = PrintError.printerUnavailable(message: "")
+        XCTAssertTrue(printerError.recoverySuggestion.contains("powered on"))
+    }
+    
+    // MARK: - Phase 4: Partial Print Result Tests
+    
+    func testPartialPrintResultSuccess() {
+        let result = PartialPrintResult.success(
+            count: 5,
+            filmSessionUID: "1.2.3.4.5",
+            printJobUID: "1.2.3.4.6"
+        )
+        
+        XCTAssertTrue(result.isFullySuccessful)
+        XCTAssertFalse(result.isFullyFailed)
+        XCTAssertFalse(result.isPartiallySuccessful)
+        XCTAssertEqual(result.successCount, 5)
+        XCTAssertEqual(result.failureCount, 0)
+        XCTAssertEqual(result.filmSessionUID, "1.2.3.4.5")
+        XCTAssertEqual(result.printJobUID, "1.2.3.4.6")
+    }
+    
+    func testPartialPrintResultFailure() {
+        let result = PartialPrintResult.failure(
+            count: 3,
+            error: .printerUnavailable(message: "Offline")
+        )
+        
+        XCTAssertFalse(result.isFullySuccessful)
+        XCTAssertTrue(result.isFullyFailed)
+        XCTAssertFalse(result.isPartiallySuccessful)
+        XCTAssertEqual(result.successCount, 0)
+        XCTAssertEqual(result.failureCount, 3)
+        XCTAssertEqual(result.failedPositions, [1, 2, 3])
+        XCTAssertEqual(result.errors.count, 1)
+    }
+    
+    func testPartialPrintResultPartialSuccess() {
+        let result = PartialPrintResult(
+            successCount: 4,
+            failureCount: 2,
+            failedPositions: [3, 5],
+            errors: [
+                .imageBoxSetFailed(position: 3, statusCode: 0xA900),
+                .imageBoxSetFailed(position: 5, statusCode: 0xA900)
+            ]
+        )
+        
+        XCTAssertFalse(result.isFullySuccessful)
+        XCTAssertFalse(result.isFullyFailed)
+        XCTAssertTrue(result.isPartiallySuccessful)
+        XCTAssertEqual(result.successCount, 4)
+        XCTAssertEqual(result.failureCount, 2)
+        XCTAssertEqual(result.failedPositions, [3, 5])
+    }
+    
+    // MARK: - Phase 4: Printer Registry Error Tests
+    
+    func testPrinterRegistryErrorDescriptions() {
+        let id = UUID()
+        let errors: [PrinterRegistryError] = [
+            .printerAlreadyExists(id: id),
+            .printerNotFound(id: id),
+            .noPrinterAvailable
+        ]
+        
+        for error in errors {
+            XCTAssertFalse(error.description.isEmpty)
+        }
+    }
+    
+    func testPrinterRegistryErrorEquality() {
+        let id = UUID()
+        let error1 = PrinterRegistryError.printerAlreadyExists(id: id)
+        let error2 = PrinterRegistryError.printerAlreadyExists(id: id)
+        let error3 = PrinterRegistryError.printerNotFound(id: id)
+        
+        XCTAssertEqual(error1, error2)
+        XCTAssertNotEqual(error1, error3)
+    }
 }
+
 
