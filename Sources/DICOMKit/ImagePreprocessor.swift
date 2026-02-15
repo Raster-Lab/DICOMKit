@@ -95,14 +95,12 @@ public actor ImagePreprocessor {
     ///
     /// - Parameters:
     ///   - dataSet: The DICOM dataset containing the image
-    ///   - targetSize: Desired image size (unused in this version, reserved for future use)
     ///   - colorMode: Target color mode for printing
     ///   - windowSettings: Optional window settings (if nil, auto-calculated)
     /// - Returns: Prepared image ready for printing
     /// - Throws: ImagePreprocessingError if preprocessing fails
     public func prepareForPrint(
         dataSet: DataSet,
-        targetSize: CGSize? = nil,
         colorMode: PrintColorMode,
         windowSettings: WindowSettings? = nil
     ) async throws -> PreparedImage {
@@ -273,9 +271,9 @@ public actor ImagePreprocessor {
         let height = descriptor.rows
         
         // For palette color, we'll do a simplified conversion
-        // A full implementation would extract the LUT descriptors and data from the dataset
-        // For now, throw an error indicating this is not yet fully implemented
-        throw ImagePreprocessingError.unsupportedPhotometricInterpretation("PALETTE COLOR - full support pending")
+        // Full implementation requires extracting LUT descriptors and data from the dataset
+        // This is planned for a future enhancement
+        throw ImagePreprocessingError.notYetImplemented("Palette color image preprocessing")
     }
     
     // MARK: - Helper Methods
@@ -405,6 +403,7 @@ public enum ImagePreprocessingError: Error, CustomStringConvertible {
     case unsupportedBitsAllocated(Int)
     case invalidSamplesPerPixel(Int)
     case missingPaletteLUT
+    case notYetImplemented(String)
     
     public var description: String {
         switch self {
@@ -424,6 +423,8 @@ public enum ImagePreprocessingError: Error, CustomStringConvertible {
             return "Invalid samples per pixel: \(samples)"
         case .missingPaletteLUT:
             return "Missing palette color lookup table"
+        case .notYetImplemented(let feature):
+            return "Feature not yet implemented: \(feature)"
         }
     }
 }
