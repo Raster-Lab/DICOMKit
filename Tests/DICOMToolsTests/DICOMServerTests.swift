@@ -1,0 +1,304 @@
+import XCTest
+import Foundation
+@testable import DICOMKit
+@testable import DICOMCore
+
+// MARK: - DICOMServer Tests
+
+final class DICOMServerTests: XCTestCase {
+    
+    // MARK: - Server Configuration Tests
+    
+    func test_ServerConfiguration_Initialization() {
+        let config = ServerConfiguration(
+            aeTitle: "TEST_PACS",
+            port: 11112,
+            dataDirectory: "/tmp/test-data",
+            databaseURL: "sqlite:///tmp/test.db",
+            maxConcurrentConnections: 10,
+            maxPDUSize: 16384,
+            allowedCallingAETitles: ["SCU1", "SCU2"],
+            blockedCallingAETitles: ["OLD_SCU"],
+            enableTLS: false,
+            verbose: true
+        )
+        
+        XCTAssertEqual(config.aeTitle, "TEST_PACS")
+        XCTAssertEqual(config.port, 11112)
+        XCTAssertEqual(config.dataDirectory, "/tmp/test-data")
+        XCTAssertEqual(config.maxConcurrentConnections, 10)
+        XCTAssertTrue(config.verbose)
+    }
+    
+    func test_ServerConfiguration_DefaultValues() {
+        let config = ServerConfiguration(
+            aeTitle: "DEFAULT_PACS",
+            port: 11112,
+            dataDirectory: "/tmp/default",
+            databaseURL: ""
+        )
+        
+        XCTAssertEqual(config.aeTitle, "DEFAULT_PACS")
+        XCTAssertEqual(config.maxConcurrentConnections, 10)
+        XCTAssertEqual(config.maxPDUSize, 16384)
+        XCTAssertNil(config.allowedCallingAETitles)
+        XCTAssertFalse(config.enableTLS)
+        XCTAssertFalse(config.verbose)
+    }
+    
+    func test_ServerConfiguration_JSONEncoding() throws {
+        let config = ServerConfiguration(
+            aeTitle: "TEST_PACS",
+            port: 11112,
+            dataDirectory: "/tmp/test",
+            databaseURL: "sqlite:///tmp/test.db",
+            maxConcurrentConnections: 15,
+            maxPDUSize: 32768,
+            enableTLS: true,
+            verbose: false
+        )
+        
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(config)
+        
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(ServerConfiguration.self, from: data)
+        
+        XCTAssertEqual(decoded.aeTitle, config.aeTitle)
+        XCTAssertEqual(decoded.port, config.port)
+        XCTAssertEqual(decoded.maxConcurrentConnections, config.maxConcurrentConnections)
+        XCTAssertEqual(decoded.enableTLS, config.enableTLS)
+    }
+    
+    func test_ServerConfiguration_SaveAndLoad() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let configPath = tempDir.appendingPathComponent("test-config.json").path
+        
+        let config = ServerConfiguration(
+            aeTitle: "SAVE_TEST",
+            port: 11112,
+            dataDirectory: "/tmp/save-test",
+            databaseURL: "sqlite:///tmp/save-test.db"
+        )
+        
+        // Save
+        try config.save(to: configPath)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: configPath))
+        
+        // Load
+        let loaded = try ServerConfiguration.load(from: configPath)
+        XCTAssertEqual(loaded.aeTitle, config.aeTitle)
+        XCTAssertEqual(loaded.port, config.port)
+        
+        // Cleanup
+        try? FileManager.default.removeItem(atPath: configPath)
+    }
+    
+    // MARK: - Server Error Tests
+    
+    func test_ServerError_Description() {
+        let error1 = ServerError.invalidConfiguration("test message")
+        XCTAssertTrue(error1.description.contains("Invalid configuration"))
+        XCTAssertTrue(error1.description.contains("test message"))
+        
+        let error2 = ServerError.serverNotRunning
+        XCTAssertTrue(error2.description.contains("not running"))
+        
+        let error3 = ServerError.portInUse(11112)
+        XCTAssertTrue(error3.description.contains("11112"))
+        XCTAssertTrue(error3.description.contains("already in use"))
+        
+        let error4 = ServerError.databaseError("connection failed")
+        XCTAssertTrue(error4.description.contains("Database error"))
+        
+        let error5 = ServerError.storageError("disk full")
+        XCTAssertTrue(error5.description.contains("Storage error"))
+    }
+    
+    // MARK: - Storage Manager Tests
+    
+    func test_StorageManager_Initialization() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("storage-test")
+        let storage = try StorageManager(dataDirectory: tempDir.path)
+        
+        // Verify directory was created
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: tempDir.path, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+    
+    func test_StorageManager_StoreAndRetrieve() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("storage-store-test-\(UUID().uuidString)")
+        let storage = try StorageManager(dataDirectory: tempDir.path)
+        
+        // Create a test DICOM file
+        let dicomFile = try createTestDICOMFile()
+        
+        // Store
+        let filePath = try await storage.store(file: dicomFile)
+        XCTAssertFalse(filePath.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: filePath))
+        
+        // Retrieve
+        let sopInstanceUID = dicomFile.dataSet.string(for: .sopInstanceUID)!
+        let retrieved = try await storage.retrieve(sopInstanceUID: sopInstanceUID)
+        XCTAssertNotNil(retrieved)
+        XCTAssertEqual(retrieved?.dataSet.string(for: .sopInstanceUID), sopInstanceUID)
+        
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+    
+    func test_StorageManager_Statistics() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("storage-stats-test-\(UUID().uuidString)")
+        let storage = try StorageManager(dataDirectory: tempDir.path)
+        
+        // Store some files
+        for i in 0..<3 {
+            var file = try createTestDICOMFile()
+            // Update SOP Instance UID to make it unique
+            file.dataSet.setString("1.2.3.4.5.6.7.8.\(i)", for: .sopInstanceUID, vr: .UI)
+            _ = try await storage.store(file: file)
+        }
+        
+        // Check statistics
+        let stats = try await storage.statistics()
+        XCTAssertEqual(stats.totalFiles, 3)
+        XCTAssertGreaterThan(stats.totalSize, 0)
+        XCTAssertGreaterThan(stats.totalSizeMB, 0)
+        
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+    
+    func test_StorageManager_RetrieveNonExistent() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("storage-retrieve-test-\(UUID().uuidString)")
+        let storage = try StorageManager(dataDirectory: tempDir.path)
+        
+        let result = try await storage.retrieve(sopInstanceUID: "999.999.999")
+        XCTAssertNil(result)
+        
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+    
+    // MARK: - Database Manager Tests
+    
+    func test_DatabaseManager_SQLiteInitialization() throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let dbPath = tempDir.appendingPathComponent("test-\(UUID().uuidString).db").path
+        let connectionString = "sqlite://\(dbPath)"
+        
+        let database = try DatabaseManager(connectionString: connectionString)
+        XCTAssertNotNil(database)
+        
+        // Cleanup
+        try? FileManager.default.removeItem(atPath: dbPath)
+    }
+    
+    func test_DatabaseManager_PostgreSQLInitialization() throws {
+        let connectionString = "postgres://user:pass@localhost/testdb"
+        
+        let database = try DatabaseManager(connectionString: connectionString)
+        XCTAssertNotNil(database)
+    }
+    
+    func test_DatabaseManager_InvalidConnectionString() {
+        let connectionString = "invalid://connection"
+        
+        XCTAssertThrowsError(try DatabaseManager(connectionString: connectionString)) { error in
+            XCTAssertTrue(error is ServerError)
+            if case .databaseError(let message) = error as! ServerError {
+                XCTAssertTrue(message.contains("Unsupported database type"))
+            }
+        }
+    }
+    
+    // MARK: - DICOM Metadata Tests
+    
+    func test_DICOMMetadata_Codable() throws {
+        let metadata = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "DOE^JOHN",
+            studyInstanceUID: "1.2.3.4.5",
+            studyDate: "20260215",
+            studyDescription: "CT Chest",
+            seriesInstanceUID: "1.2.3.4.5.6",
+            seriesNumber: "1",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.5.6.7",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "1",
+            filePath: "/tmp/test.dcm"
+        )
+        
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(metadata)
+        
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(DICOMMetadata.self, from: data)
+        
+        XCTAssertEqual(decoded.patientID, metadata.patientID)
+        XCTAssertEqual(decoded.studyInstanceUID, metadata.studyInstanceUID)
+        XCTAssertEqual(decoded.sopInstanceUID, metadata.sopInstanceUID)
+        XCTAssertEqual(decoded.filePath, metadata.filePath)
+    }
+    
+    // MARK: - Storage Statistics Tests
+    
+    func test_StorageStatistics_SizeConversion() {
+        let stats = StorageStatistics(totalFiles: 100, totalSize: 1048576)
+        XCTAssertEqual(stats.totalFiles, 100)
+        XCTAssertEqual(stats.totalSize, 1048576)
+        XCTAssertEqual(stats.totalSizeMB, 1.0, accuracy: 0.01)
+    }
+    
+    func test_StorageStatistics_ZeroSize() {
+        let stats = StorageStatistics(totalFiles: 0, totalSize: 0)
+        XCTAssertEqual(stats.totalFiles, 0)
+        XCTAssertEqual(stats.totalSize, 0)
+        XCTAssertEqual(stats.totalSizeMB, 0.0)
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func createTestDICOMFile() throws -> DICOMFile {
+        var fileMetaInformation = DataSet()
+        var dataSet = DataSet()
+        
+        // File Meta Information
+        fileMetaInformation.setString("1.2.840.10008.1.2.1", for: .transferSyntaxUID, vr: .UI)
+        fileMetaInformation.setString("1.2.840.10008.5.1.4.1.1.2", for: .mediaStorageSOPClassUID, vr: .UI)
+        fileMetaInformation.setString("1.2.3.4.5.6.7.8.9", for: .mediaStorageSOPInstanceUID, vr: .UI)
+        fileMetaInformation.setString("1.2.826.0.1.3680043.10.1078", for: .implementationClassUID, vr: .UI)
+        fileMetaInformation.setString("DICOMKit_Test", for: .implementationVersionName, vr: .SH)
+        
+        // Patient Information
+        dataSet.setString("TEST001", for: .patientID, vr: .LO)
+        dataSet.setString("DOE^JOHN", for: .patientName, vr: .PN)
+        dataSet.setString("19800115", for: .patientBirthDate, vr: .DA)
+        dataSet.setString("M", for: .patientSex, vr: .CS)
+        
+        // Study Information
+        dataSet.setString("1.2.840.113619.2.62.994044785528.114289542805", for: .studyInstanceUID, vr: .UI)
+        dataSet.setString("ACC12345", for: .accessionNumber, vr: .SH)
+        dataSet.setString("CT Chest", for: .studyDescription, vr: .LO)
+        dataSet.setString("20260215", for: .studyDate, vr: .DA)
+        dataSet.setString("120000", for: .studyTime, vr: .TM)
+        
+        // Series Information
+        dataSet.setString("1.2.840.113619.2.62.994044785528.20070822161025697420", for: .seriesInstanceUID, vr: .UI)
+        dataSet.setString("CT", for: .modality, vr: .CS)
+        dataSet.setString("1", for: .seriesNumber, vr: .IS)
+        
+        // SOP Information
+        dataSet.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
+        dataSet.setString("1.2.3.4.5.6.7.8.9", for: .sopInstanceUID, vr: .UI)
+        dataSet.setString("1", for: .instanceNumber, vr: .IS)
+        
+        return DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataSet)
+    }
+}
