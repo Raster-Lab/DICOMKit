@@ -44,6 +44,7 @@
   - [Storage Service (C-STORE)](#dicom-storage-service---c-store-v07)
   - [Storage SCP](#dicom-storage-scp---receiving-files-v073)
   - [Batch Storage](#dicom-batch-storage-service-v072)
+  - [Print Management](#dicom-print-management-v140-v145)
   - [High-Level API](#dicom-client---unified-high-level-api-v067)
   - [TLS/Secure Connections](#tlssecure-connections-v074)
   - [Error Handling](#network-error-handling-v075)
@@ -92,7 +93,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 | Category | Description |
 |----------|-------------|
 | **🏥 Complete DICOM Support** | Read, write, parse, and render DICOM files with support for 7+ transfer syntaxes |
-| **🌐 DICOM Networking** | Full DIMSE support (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE) with TLS |
+| **🌐 DICOM Networking** | Full DIMSE support (C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE) with TLS and Print Management (PS3.4 Annex H) |
 | **☁️ DICOMweb** | WADO-RS, QIDO-RS, STOW-RS, and UPS-RS client and server implementations |
 | **📊 Structured Reporting** | Complete SR document creation with 8 specialized builders |
 | **🔬 Advanced Imaging** | RT Structure Sets, Segmentation, Parametric Maps, Presentation States |
@@ -2375,6 +2376,208 @@ let configuredStream = try await DICOMStorageService.storeBatch(
 let failFastConfig = BatchStorageConfiguration.failFast
 ```
 
+### DICOM Print Management (v1.4.0-v1.4.5)
+
+DICOMKit provides complete DICOM Print Management Service Class support (PS3.4 Annex H) for printing medical images to DICOM-compliant film printers and hard copy devices.
+
+#### Simple Single Image Printing
+
+```swift
+import DICOMNetwork
+
+// Configure printer connection
+let config = PrintConfiguration(
+    host: "192.168.1.100",
+    port: 11112,
+    callingAETitle: "WORKSTATION",
+    calledAETitle: "PRINT_SCP"
+)
+
+// Print with default settings
+let result = try await DICOMPrintService.printImage(
+    configuration: config,
+    imageData: pixelData.data,
+    options: .default
+)
+
+// Print with high quality preset
+let result = try await DICOMPrintService.printImage(
+    configuration: config,
+    imageData: pixelData.data,
+    options: .highQuality  // 14×17", clear film, high magnification
+)
+
+// Print with custom options
+let customOptions = PrintOptions(
+    filmSize: .size11InX14In,
+    filmOrientation: .landscape,
+    mediumType: .blueFilm,
+    numberOfCopies: 2,
+    priority: .high
+)
+```
+
+#### Multi-Image Printing with Automatic Layout
+
+```swift
+// Print multiple images - layout selected automatically
+let result = try await DICOMPrintService.printImages(
+    configuration: config,
+    images: [image1, image2, image3, image4],  // 2×2 grid
+    options: PrintOptions(
+        filmSize: .size14InX17In,
+        filmOrientation: .landscape
+    )
+)
+```
+
+#### Template-Based Printing
+
+```swift
+// Side-by-side comparison
+let comparison = ComparisonTemplate()
+try await DICOMPrintService.printWithTemplate(
+    configuration: config,
+    images: [beforeImage, afterImage],
+    template: comparison
+)
+
+// 3×3 grid
+let grid = GridTemplate(rows: 3, columns: 3)
+try await DICOMPrintService.printWithTemplate(
+    configuration: config,
+    images: arrayOf9Images,
+    template: grid
+)
+
+// Multi-phase temporal series (3×4)
+let multiPhase = MultiPhaseTemplate(rows: 3, columns: 4)
+try await DICOMPrintService.printWithTemplate(
+    configuration: config,
+    images: temporalSeries,
+    template: multiPhase
+)
+```
+
+#### Progress Tracking
+
+```swift
+// Monitor print progress in real-time
+for try await progress in DICOMPrintService.printImagesWithProgress(
+    configuration: config,
+    images: images,
+    options: .default
+) {
+    print("\(progress.phase): \(Int(progress.progress * 100))%")
+    
+    switch progress.phase {
+    case .connecting: print("Connecting to printer...")
+    case .preparingImages: print("Preparing images...")
+    case .uploadingImages: print("Uploading: \(progress.current)/\(progress.total)")
+    case .printing: print("Printing...")
+    case .completed: print("Print completed!")
+    default: break
+    }
+}
+```
+
+#### Print Queue Management
+
+```swift
+// Create print queue with retry policy
+let queue = PrintQueue(
+    maxHistorySize: 100,
+    retryPolicy: PrintRetryPolicy(
+        maxRetries: 3,
+        initialDelay: 2.0,
+        maxDelay: 30.0,
+        backoffMultiplier: 2.0
+    )
+)
+
+// Add print job with priority
+let job = PrintJob(
+    configuration: config,
+    imageURLs: imageURLs,
+    options: .highQuality,
+    priority: .high,
+    label: "Urgent CT Print"
+)
+let jobID = await queue.enqueue(job: job)
+
+// Check job status
+if let status = await queue.status(jobID: jobID) {
+    switch status {
+    case .queued(let position): print("Queued at position \(position)")
+    case .processing: print("Processing...")
+    case .completed: print("Completed!")
+    case .failed(let message): print("Failed: \(message)")
+    case .cancelled: print("Cancelled")
+    }
+}
+```
+
+#### Multiple Printer Management
+
+```swift
+// Create printer registry
+let registry = PrinterRegistry()
+
+// Add printers with capabilities
+let radiologyPrinter = PrinterInfo(
+    name: "Radiology Film Printer",
+    configuration: PrintConfiguration(...),
+    capabilities: PrinterCapabilities(
+        supportedFilmSizes: [.size14InX17In, .size11InX14In],
+        supportsColor: false,
+        maxCopies: 99,
+        supportedMediumTypes: [.clearFilm, .blueFilm]
+    ),
+    isDefault: true
+)
+try await registry.addPrinter(radiologyPrinter)
+
+// Select best printer for a job
+if let printer = await registry.selectPrinter(
+    requiresColor: false,
+    filmSize: .size14InX17In
+) {
+    print("Using: \(printer.name)")
+}
+```
+
+#### Image Preparation Pipeline
+
+```swift
+// Prepare images for optimal print quality
+let preprocessor = ImagePreprocessor()
+let preparedImage = try await preprocessor.prepareForPrint(
+    dataSet: dicomDataSet,
+    targetSize: CGSize(width: 1024, height: 1024),
+    colorMode: .grayscale
+)
+
+// Add annotations
+let annotator = AnnotationRenderer()
+let annotatedData = try await annotator.addAnnotations(
+    to: preparedImage.pixelData,
+    imageSize: CGSize(width: 1024, height: 1024),
+    annotations: [
+        PrintAnnotation(text: "L", position: .topLeft, fontSize: 24, color: .white),
+        PrintAnnotation(text: "Patient: John Doe", position: .bottomLeft, fontSize: 16, color: .white)
+    ]
+)
+```
+
+**Print Management Resources:**
+- 📖 [Print Management Guide](Sources/DICOMNetwork/DICOMNetwork.docc/PrintManagementGuide.md) - Complete API reference
+- 📚 [Getting Started with Printing](Documentation/GettingStartedWithPrinting.md) - Beginner-friendly tutorial
+- 🔧 [Print Best Practices](Documentation/PrintWorkflowBestPractices.md) - Production patterns
+- 🐛 [Troubleshooting Print Issues](Documentation/TroubleshootingPrint.md) - Common problems and solutions
+- 📱 [iOS Integration Example](Examples/PrintIntegrationIOS.md) - Complete iOS SwiftUI example
+- 💻 [macOS Integration Example](Examples/PrintIntegrationMacOS.md) - Complete macOS example
+- 🔧 CLI Tool: `dicom-print` - Command-line print operations
+
 ### DICOM Client - Unified High-Level API (v0.6.7)
 
 The `DICOMClient` provides a simplified, unified interface for all DICOM networking operations with built-in retry support.
@@ -4112,7 +4315,7 @@ cp .build/release/dicom-* /usr/local/bin/
 </details>
 
 <details>
-<summary><strong>🌐 DICOM Networking (7 tools)</strong></summary>
+<summary><strong>🌐 DICOM Networking (8 tools)</strong></summary>
 
 | Tool | Description | Example |
 |------|-------------|---------|
@@ -4120,6 +4323,7 @@ cp .build/release/dicom-* /usr/local/bin/
 | `dicom-query` | Query DICOM servers (C-FIND) | `dicom-query --host pacs.local --patient-name "Smith*"` |
 | `dicom-send` | Send DICOM files to servers (C-STORE) | `dicom-send scan.dcm --host pacs.local:104` |
 | `dicom-retrieve` | Retrieve from PACS (C-MOVE/C-GET) | `dicom-retrieve --study-uid 1.2.3...` |
+| `dicom-print` | Print to DICOM printers | `dicom-print send image.dcm --printer rad-film-1` |
 | `dicom-mwl` | Modality Worklist query | `dicom-mwl query --station-aet CT01` |
 | `dicom-mpps` | Modality Performed Procedure Step | `dicom-mpps create --mpps-uid 1.2.3...` |
 | `dicom-qr` | Combined Query/Retrieve operations | `dicom-qr --patient-id 12345 --retrieve` |
@@ -4454,6 +4658,21 @@ DICOM network protocol implementation:
 - `ImageBoxContent` - Image box content (position, polarity, crop behavior) (NEW in v1.4.0)
 - `PrinterStatus` - Printer status information (NEW in v1.4.0)
 - `PrintResult` - Print operation result (NEW in v1.4.0)
+- `PrintOptions` - High-level print configuration with presets (.default, .highQuality, .draft, .mammography) (NEW in v1.4.2)
+- `PrintTemplate` - Reusable print layouts (SingleImage, Comparison, Grid, MultiPhase) (NEW in v1.4.2)
+- `PrintProgress` - Progress reporting with AsyncThrowingStream support (NEW in v1.4.2)
+- `PrintLayout` - Optimal layout selection for image count (NEW in v1.4.2)
+- `PrintRetryPolicy` - Configurable retry logic with exponential backoff (NEW in v1.4.2)
+- `ImagePreprocessor` - Image preparation pipeline (window/level, rescale, polarity) (NEW in v1.4.3)
+- `ImageResizer` - High-quality image resizing (fit/fill/stretch modes, bicubic interpolation) (NEW in v1.4.3)
+- `AnnotationRenderer` - Text overlay rendering with positioning (NEW in v1.4.3)
+- `PreparedImage` - Processed image data ready for printing (NEW in v1.4.3)
+- `PrintJob` - Print job representation with priority and metadata (NEW in v1.4.4)
+- `PrintQueue` - Actor-based print queue with priority scheduling and retry (NEW in v1.4.4)
+- `PrinterRegistry` - Multiple printer management with load balancing (NEW in v1.4.4)
+- `PrinterCapabilities` - Printer feature tracking (film sizes, color, copies) (NEW in v1.4.4)
+- `PrintError` - Detailed error cases with recovery suggestions (NEW in v1.4.4)
+- `PartialPrintResult` - Partial failure handling (NEW in v1.4.4)
 
 ### DICOMKit (v0.9.2, v0.9.3, v0.9.4, v0.9.5, v0.9.6, v0.9.7, v0.9.8, v1.0.1, v1.0.2, v1.0.3, v1.0.4, v1.0.5, v1.0.6, v1.0.7, v1.0.8, v1.1.0, v1.5.0, v1.6.0, v1.7.0)
 High-level API:
