@@ -3,6 +3,16 @@ import ArgumentParser
 import DICOMCore
 import DICOMNetwork
 
+// MARK: - Constants
+
+/// Tool version - used in both CommandConfiguration and verbose output
+private let toolVersion = "1.4.5"
+
+/// DICOM file format constants
+private let dicomPreambleSize = 128
+private let dicomHeaderSize = 132  // Preamble (128) + Magic bytes (4)
+private let dicomMagicBytes = Data([0x44, 0x49, 0x43, 0x4D])  // "DICM"
+
 /// DICOM Print CLI Tool
 ///
 /// Provides command-line interface for DICOM Print Management operations.
@@ -46,7 +56,7 @@ struct DICOMPrint: ParsableCommand {
               dicom-print add-printer --name radiology-printer \\
                   --host 192.168.1.100 --port 11112 --called-ae PRINT_SCP
             """,
-        version: "1.4.5",
+        version: toolVersion,
         subcommands: [
             StatusCommand.self,
             SendCommand.self,
@@ -61,20 +71,44 @@ struct DICOMPrint: ParsableCommand {
 
 // MARK: - Async Runner Helper
 
-/// Runs async code synchronously
+/// Thread-safe container for async results
+private final class AsyncResultBox<T: Sendable>: @unchecked Sendable {
+    private var _value: Result<T, Error>?
+    private let lock = NSLock()
+    
+    var value: Result<T, Error>? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _value
+        }
+        set {
+            lock.lock()
+            defer { lock.unlock() }
+            _value = newValue
+        }
+    }
+}
+
+/// Runs async code synchronously using a thread-safe result container
 func runAsync<T: Sendable>(_ block: @Sendable @escaping () async throws -> T) throws -> T {
     let semaphore = DispatchSemaphore(value: 0)
-    nonisolated(unsafe) var result: Result<T, Error>!
+    let resultBox = AsyncResultBox<T>()
+    
     Task {
         do {
             let value = try await block()
-            result = .success(value)
+            resultBox.value = .success(value)
         } catch {
-            result = .failure(error)
+            resultBox.value = .failure(error)
         }
         semaphore.signal()
     }
     semaphore.wait()
+    
+    guard let result = resultBox.value else {
+        throw ValidationError("Async operation did not complete")
+    }
     return try result.get()
 }
 
@@ -255,7 +289,7 @@ struct SendCommand: ParsableCommand {
         )
         
         if verbose {
-            fprintln("DICOM Print Tool v1.4.5")
+            fprintln("DICOM Print Tool v\(toolVersion)")
             fprintln("=======================")
             fprintln("Server: \(serverInfo.host):\(serverInfo.port)")
             fprintln("Calling AE: \(aet)")
@@ -306,6 +340,7 @@ struct SendCommand: ParsableCommand {
         )
         
         // Read and print files
+        let parser = DICOMParser()
         var imageDataList: [Data] = []
         for path in filesToPrint {
             guard let data = FileManager.default.contents(atPath: path) else {
@@ -313,7 +348,6 @@ struct SendCommand: ParsableCommand {
             }
             
             // Parse DICOM and extract pixel data
-            let parser = DICOMParser()
             let dataSet = try parser.parse(data: data)
             
             // Get pixel data from the dataset
@@ -420,6 +454,10 @@ struct SendCommand: ParsableCommand {
         let filePattern = url.lastPathComponent
         
         guard let enumerator = fileManager.enumerator(atPath: directory) else {
+            // Log warning for debugging but return empty - directory may not exist or not be accessible
+            if verbose {
+                fprintln("Warning: Cannot enumerate directory for glob: \(directory)")
+            }
             return []
         }
         
@@ -484,19 +522,22 @@ struct SendCommand: ParsableCommand {
     }
     
     func isDICOMFile(_ path: String) -> Bool {
+        // Check file extension first
         let ext = (path as NSString).pathExtension.lowercased()
         if ["dcm", "dicom", "dic"].contains(ext) {
             return true
         }
         
+        // Check for DICOM magic bytes
         guard let fileHandle = FileHandle(forReadingAtPath: path),
-              let data = try? fileHandle.read(upToCount: 132) else {
+              let data = try? fileHandle.read(upToCount: dicomHeaderSize) else {
             return false
         }
         
-        if data.count >= 132 {
-            let magic = data[128..<132]
-            return magic == Data([0x44, 0x49, 0x43, 0x4D])
+        // DICOM files have "DICM" magic bytes at offset 128 (after preamble)
+        if data.count >= dicomHeaderSize {
+            let magic = data[dicomPreambleSize..<dicomHeaderSize]
+            return magic == dicomMagicBytes
         }
         
         return false

@@ -6,7 +6,7 @@ This document provides a quick reference for DICOM Print Management implementati
 
 **📄 Full Details**: See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the comprehensive implementation plan.
 
-## Current Status (v1.4.4)
+## Current Status (v1.4.5)
 
 ### ✅ What's Implemented
 
@@ -30,17 +30,26 @@ This document provides a quick reference for DICOM Print Management implementati
 - **Image Resizing**: `ImageResizer` actor with fit/fill/stretch modes and quality settings
 - **Annotation Rendering**: `AnnotationRenderer` actor for text overlays at various positions
 
-**Phase 4: Advanced Features (v1.4.4) - NEW**
+**Phase 4: Advanced Features (v1.4.4)**
 - **Print Queue**: `PrintQueue` actor with priority scheduling and retry logic
 - **Printer Registry**: `PrinterRegistry` actor for multiple printer management
 - **Enhanced Errors**: `PrintError` enum with detailed cases and recovery suggestions
 - **Partial Results**: `PartialPrintResult` for handling partial print failures
 - **Printer Capabilities**: `PrinterCapabilities` struct for printer feature tracking
 
-### ❌ What's Remaining (Phase 5)
+**Phase 5: CLI Tool (v1.4.5) - NEW**
+- **`dicom-print` CLI tool**: Command-line interface for DICOM print operations
+  - `status` - Query printer status using N-GET
+  - `send` - Send DICOM files to printer with layout/film size options
+  - `job` - Monitor print job status
+  - `list-printers` - List configured printers
+  - `add-printer` / `remove-printer` - Manage printer configurations
+- **Local configuration**: Printer configs stored in `~/.config/dicomkit/printers.json`
 
-- **Documentation & CLI** (Phase 5): `dicom-print` CLI tool, user guides
-- **Integration Tests**: Testing with real DICOM print SCPs
+### ❌ What's Remaining
+
+- **Documentation**: DocC API documentation, user guides and tutorials
+- **Integration Tests**: Testing with real DICOM print SCPs (DCM4CHEE, Orthanc)
 
 ## Quick Start Examples
 
