@@ -2,6 +2,12 @@ import Foundation
 import DICOMKit
 import DICOMCore
 
+#if os(macOS) || os(iOS)
+import CoreGraphics
+import ImageIO
+import UniformTypeIdentifiers
+#endif
+
 // MARK: - Plane Types
 
 enum PlaneType {
@@ -28,10 +34,6 @@ struct SliceImage {
     /// Save as PNG with optional windowing
     func savePNG(to url: URL, windowCenter: Double? = nil, windowWidth: Double? = nil) throws {
         #if os(macOS) || os(iOS)
-        import CoreGraphics
-        import ImageIO
-        import UniformTypeIdentifiers
-        
         // Apply windowing if specified
         let displayPixels: [UInt8]
         if let wc = windowCenter, let ww = windowWidth {
