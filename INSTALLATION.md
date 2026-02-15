@@ -32,38 +32,41 @@ swift --version
 
 ### Option 1: Homebrew (Recommended)
 
-The easiest way to install DICOMKit CLI tools is via Homebrew.
+The easiest way to install DICOMKit CLI tools is via Homebrew using the local formula.
 
-#### Installing from the Official Tap (After v1.0 Release)
-
-```bash
-# Add the DICOMKit tap
-brew tap Raster-Lab/dicomkit
-
-# Install DICOMKit CLI tools
-brew install dicomkit
-```
-
-This will install all 29 CLI tools:
-- Phase 1: `dicom-info`, `dicom-convert`, `dicom-validate`, `dicom-anon`, `dicom-dump`, `dicom-query`, `dicom-send`
-- Phase 2: `dicom-diff`, `dicom-retrieve`, `dicom-split`, `dicom-merge`
-- Phase 3: `dicom-json`, `dicom-xml`, `dicom-pdf`, `dicom-image`
-- Phase 4: `dicom-dcmdir`, `dicom-archive`, `dicom-export`
-- Phase 5: `dicom-qr`, `dicom-wado`, `dicom-echo`, `dicom-mwl`, `dicom-mpps`
-- Phase 6: `dicom-pixedit`, `dicom-tags`, `dicom-uid`, `dicom-compress`, `dicom-study`, `dicom-script`
-
-#### Installing from Local Formula (Development)
-
-If you want to test the Homebrew formula locally:
+#### Installing from Local Formula
 
 ```bash
 # Clone the repository
 git clone https://github.com/Raster-Lab/DICOMKit.git
 cd DICOMKit
 
-# Install using local formula
+# Install using local formula (builds from source)
 brew install --build-from-source Formula/dicomkit.rb
 ```
+
+This will install all 35 CLI tools:
+- Phase 1: `dicom-info`, `dicom-convert`, `dicom-validate`, `dicom-anon`, `dicom-dump`, `dicom-query`, `dicom-send`
+- Phase 2: `dicom-diff`, `dicom-retrieve`, `dicom-split`, `dicom-merge`
+- Phase 3: `dicom-json`, `dicom-xml`, `dicom-pdf`, `dicom-image`
+- Phase 4: `dicom-dcmdir`, `dicom-archive`, `dicom-export`
+- Phase 5: `dicom-qr`, `dicom-wado`, `dicom-echo`, `dicom-mwl`, `dicom-mpps`
+- Phase 6: `dicom-pixedit`, `dicom-tags`, `dicom-uid`, `dicom-compress`, `dicom-study`, `dicom-script`
+- Phase 7: `dicom-report`, `dicom-measure`, `dicom-viewer`, `dicom-cloud`, `dicom-3d`, `dicom-ai`
+
+#### Installing from a Homebrew Tap (Optional)
+
+If you have a dedicated Homebrew tap repository set up (see [HOMEBREW_TAP_SETUP.md](Documentation/HOMEBREW_TAP_SETUP.md)):
+
+```bash
+# Add the DICOMKit tap (requires homebrew-dicomkit repository to exist)
+brew tap Raster-Lab/dicomkit
+
+# Install DICOMKit CLI tools
+brew install dicomkit
+```
+
+> **Note**: The `brew tap` command requires a separate repository named `homebrew-dicomkit` to be created at `https://github.com/Raster-Lab/homebrew-dicomkit`. See the setup guide for details.
 
 ---
 
@@ -146,10 +149,13 @@ dicom-convert --help
 ls -1 /usr/local/bin/dicom-* | xargs -n 1 basename
 ```
 
-Expected output (29 tools):
+Expected output (35 tools):
 ```
+dicom-3d
+dicom-ai
 dicom-anon
 dicom-archive
+dicom-cloud
 dicom-compress
 dicom-convert
 dicom-dcmdir
@@ -160,6 +166,7 @@ dicom-export
 dicom-image
 dicom-info
 dicom-json
+dicom-measure
 dicom-merge
 dicom-mpps
 dicom-mwl
@@ -167,6 +174,7 @@ dicom-pdf
 dicom-pixedit
 dicom-qr
 dicom-query
+dicom-report
 dicom-retrieve
 dicom-script
 dicom-send
@@ -175,6 +183,7 @@ dicom-study
 dicom-tags
 dicom-uid
 dicom-validate
+dicom-viewer
 dicom-wado
 dicom-xml
 ```
