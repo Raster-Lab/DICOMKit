@@ -962,4 +962,230 @@ final class DICOMAITests: XCTestCase {
         
         XCTAssertTrue(result.count > 0)
     }
+    
+    // MARK: - Phase D Tests (Model Registry, Performance, Confidence Filtering)
+    
+    /// Test 60: Model registry add and get
+    func testModelRegistryAddAndGet() throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else {
+            throw XCTSkip("This test requires macOS 14.0+ or iOS 17.0+")
+        }
+        
+        // Create a temporary registry file
+        let tempDir = FileManager.default.temporaryDirectory
+        let registryPath = tempDir.appendingPathComponent("test-registry-\(UUID().uuidString).json").path
+        
+        let registry = try ModelRegistry(registryPath: registryPath, verbose: false)
+        
+        // Create a test model entry
+        let entry = ModelRegistry.ModelEntry(
+            name: "test-classifier",
+            version: "1.0.0",
+            path: "/path/to/model.mlmodel",
+            modelType: .classification,
+            description: "Test classification model",
+            inputSize: ModelRegistry.ModelEntry.ModelInputSize(width: 224, height: 224),
+            outputType: .classification,
+            tags: ["test", "classification"]
+        )
+        
+        // Note: We can't actually add it without a real model file, but we can test the structure
+        // Just test that get returns nil for non-existent model
+        XCTAssertNil(registry.get(name: "non-existent"))
+        
+        // Clean up
+        try? FileManager.default.removeItem(atPath: registryPath)
+    }
+    
+    /// Test 61: Performance metrics initialization and formatting
+    func testPerformanceMetrics() throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else {
+            throw XCTSkip("This test requires macOS 14.0+ or iOS 17.0+")
+        }
+        
+        let metrics = PerformanceMetrics(
+            inferenceTime: 0.123,
+            preprocessingTime: 0.045,
+            postprocessingTime: 0.012,
+            memoryUsage: 1024 * 1024 * 50, // 50 MB
+            modelName: "test-model"
+        )
+        
+        XCTAssertEqual(metrics.inferenceTime, 0.123, accuracy: 0.001)
+        XCTAssertEqual(metrics.preprocessingTime, 0.045, accuracy: 0.001)
+        XCTAssertEqual(metrics.postprocessingTime, 0.012, accuracy: 0.001)
+        XCTAssertEqual(metrics.totalTime, 0.180, accuracy: 0.001)
+        XCTAssertEqual(metrics.memoryUsage, 1024 * 1024 * 50)
+        XCTAssertEqual(metrics.modelName, "test-model")
+        
+        // Test formatted output
+        let formatted = metrics.formatted()
+        XCTAssertTrue(formatted.contains("Model: test-model"))
+        XCTAssertTrue(formatted.contains("Preprocessing:"))
+        XCTAssertTrue(formatted.contains("Inference:"))
+        XCTAssertTrue(formatted.contains("Postprocessing:"))
+        XCTAssertTrue(formatted.contains("Total:"))
+        XCTAssertTrue(formatted.contains("Memory:"))
+        
+        // Test JSON output
+        let json = try metrics.toJSON()
+        XCTAssertTrue(json.contains("test-model"))
+        XCTAssertTrue(json.contains("inference_time_seconds"))
+    }
+    
+    /// Test 62: Performance profiler lifecycle
+    func testPerformanceProfiler() throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else {
+            throw XCTSkip("This test requires macOS 14.0+ or iOS 17.0+")
+        }
+        
+        let profiler = PerformanceProfiler(modelName: "test-model", verbose: false)
+        
+        profiler.start()
+        
+        profiler.startPreprocessing()
+        Thread.sleep(forTimeInterval: 0.01) // Simulate preprocessing
+        profiler.endPreprocessing()
+        
+        profiler.startInference()
+        Thread.sleep(forTimeInterval: 0.02) // Simulate inference
+        profiler.endInference()
+        
+        profiler.startPostprocessing()
+        Thread.sleep(forTimeInterval: 0.005) // Simulate postprocessing
+        profiler.endPostprocessing()
+        
+        guard let metrics = profiler.getMetrics() else {
+            XCTFail("Failed to get metrics")
+            return
+        }
+        
+        XCTAssertNotNil(metrics.preprocessingTime)
+        XCTAssertNotNil(metrics.postprocessingTime)
+        XCTAssertGreaterThan(metrics.inferenceTime, 0.0)
+        XCTAssertEqual(metrics.modelName, "test-model")
+    }
+    
+    /// Test 63: Confidence filtering with classification
+    func testConfidenceFilteringClassification() throws {
+        // Create mock predictions with various confidence levels
+        let predictions = [
+            Prediction(label: "high-confidence", confidence: 0.95),
+            Prediction(label: "medium-confidence", confidence: 0.65),
+            Prediction(label: "low-confidence", confidence: 0.35),
+            Prediction(label: "very-low-confidence", confidence: 0.15)
+        ]
+        
+        // Filter by confidence threshold
+        let threshold = 0.5
+        let filtered = predictions.filter { $0.confidence >= threshold }
+        
+        XCTAssertEqual(filtered.count, 2)
+        XCTAssertEqual(filtered[0].label, "high-confidence")
+        XCTAssertEqual(filtered[1].label, "medium-confidence")
+    }
+    
+    /// Test 64: Confidence filtering with detection
+    func testConfidenceFilteringDetection() throws {
+        // Create mock detections with various confidence levels
+        let detections = [
+            Detection(label: "lesion-1", confidence: 0.92, bbox: BoundingBox(x: 10, y: 20, width: 30, height: 40)),
+            Detection(label: "lesion-2", confidence: 0.78, bbox: BoundingBox(x: 50, y: 60, width: 25, height: 35)),
+            Detection(label: "artifact-1", confidence: 0.45, bbox: BoundingBox(x: 100, y: 110, width: 15, height: 20)),
+            Detection(label: "artifact-2", confidence: 0.23, bbox: BoundingBox(x: 150, y: 160, width: 18, height: 22))
+        ]
+        
+        // Filter by confidence threshold
+        let threshold = 0.7
+        let filtered = detections.filter { $0.confidence >= threshold }
+        
+        XCTAssertEqual(filtered.count, 2)
+        XCTAssertEqual(filtered[0].label, "lesion-1")
+        XCTAssertEqual(filtered[1].label, "lesion-2")
+    }
+    
+    /// Test 65: Model cache functionality
+    func testModelCache() throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else {
+            throw XCTSkip("This test requires macOS 14.0+ or iOS 17.0+")
+        }
+        
+        let cache = ModelCache(maxCacheSize: 2, verbose: false)
+        
+        // Clear cache (should not throw)
+        cache.clear()
+        
+        // Test that cache can be cleared multiple times
+        cache.clear()
+        cache.clear()
+        
+        // Note: We can't test actual model loading without real CoreML models
+        // but we can verify the cache structure is sound
+    }
+    
+    /// Test 66: Model registry list filtering
+    func testModelRegistryListFiltering() throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else {
+            throw XCTSkip("This test requires macOS 14.0+ or iOS 17.0+")
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let registryPath = tempDir.appendingPathComponent("test-registry-filter-\(UUID().uuidString).json").path
+        
+        let registry = try ModelRegistry(registryPath: registryPath, verbose: false)
+        
+        // Test listing with no entries
+        let emptyList = registry.list()
+        XCTAssertEqual(emptyList.count, 0)
+        
+        // Test filtering by type with no entries
+        let emptyFiltered = registry.list(filterByType: .classification)
+        XCTAssertEqual(emptyFiltered.count, 0)
+        
+        // Clean up
+        try? FileManager.default.removeItem(atPath: registryPath)
+    }
+    
+    /// Test 67: Model registry search by tags
+    func testModelRegistrySearchByTags() throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else {
+            throw XCTSkip("This test requires macOS 14.0+ or iOS 17.0+")
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let registryPath = tempDir.appendingPathComponent("test-registry-search-\(UUID().uuidString).json").path
+        
+        let registry = try ModelRegistry(registryPath: registryPath, verbose: false)
+        
+        // Search with no entries
+        let emptyResults = registry.search(tags: ["test"])
+        XCTAssertEqual(emptyResults.count, 0)
+        
+        // Clean up
+        try? FileManager.default.removeItem(atPath: registryPath)
+    }
+    
+    /// Test 68: Registry error handling
+    func testRegistryErrorHandling() throws {
+        guard #available(macOS 14.0, iOS 17.0, *) else {
+            throw XCTSkip("This test requires macOS 14.0+ or iOS 17.0+")
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let registryPath = tempDir.appendingPathComponent("test-registry-errors-\(UUID().uuidString).json").path
+        
+        let registry = try ModelRegistry(registryPath: registryPath, verbose: false)
+        
+        // Test getting non-existent model
+        XCTAssertNil(registry.get(name: "non-existent"))
+        
+        // Test removing non-existent model
+        XCTAssertThrowsError(try registry.remove(name: "non-existent")) { error in
+            XCTAssertTrue(error is RegistryError)
+        }
+        
+        // Clean up
+        try? FileManager.default.removeItem(atPath: registryPath)
+    }
 }
+

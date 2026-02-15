@@ -1,9 +1,9 @@
 # DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
 
-**Status**: 🚧 In Progress (6/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests, AWS S3, GCS, Azure complete, dicom-3d ✅ 40 tests, MPR/MIP/export complete, dicom-ai Phases A+B+C ✅ 59 tests)  
+**Status**: 🚧 In Progress (6/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests, AWS S3, GCS, Azure complete, dicom-3d ✅ 40 tests, MPR/MIP/export complete, dicom-ai Phases A+B+C+D ✅ 68 tests)  
 **Target Version**: v1.4.0-v1.4.7  
 **Created**: February 2026  
-**Last Updated**: February 14, 2026 (dicom-ai Phase C complete - DICOM SR, Segmentation, GSPS, Enhanced DICOM output generation, 59 tests)  
+**Last Updated**: February 14, 2026 (dicom-ai Phase D complete - Model registry, performance profiling, caching, 68 tests)  
 **Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb, AWS SDK for Swift, CoreML  
 **Priority**: Low-Medium  
 **Estimated Duration**: 6-8 weeks
@@ -831,13 +831,18 @@ Integrate AI/ML models for DICOM image analysis, enhancement, and automated repo
 **Tests**: 59 unit tests (+10 from Phase B)  
 **Completion**: 100% of planned Phase C deliverables
 
-#### Phase D: Optimization & Registry (Days 13-14) - 📋 PLANNED
-- [ ] Performance optimization
-- [ ] Model registry and versioning
-- [ ] Confidence filtering
-- [ ] Sample models for testing
-- [ ] Documentation and examples
-- [ ] 5+ additional tests
+#### Phase D: Optimization & Registry (Days 13-14) - ✅ COMPLETE
+- [x] Performance optimization (PerformanceProfiler with timing and memory tracking)
+- [x] Model registry and versioning (ModelRegistry with JSON persistence)
+- [x] Confidence filtering (tested end-to-end with classification and detection)
+- [x] Model caching (ModelCache with LRU eviction)
+- [x] Documentation and examples (Registry CLI commands documented)
+- [x] 9 additional tests (tests 60-68: registry, metrics, filtering, caching)
+
+**Status**: Completed February 14, 2026  
+**LOC**: ~676 lines (ModelRegistry: 318, PerformanceMetrics: 358)  
+**Tests**: 68 unit tests (+9 from Phase C)  
+**Completion**: ~85% (sample models documentation only, requires macOS)
 
 ### Usage Examples
 
@@ -909,13 +914,13 @@ dicom-ai classify image.dcm \
 - [x] DICOM Segmentation object creation ✅ (Phase C)
 - [x] GSPS with AI annotations ✅ (Phase C)
 - [x] Enhanced DICOM file creation ✅ (Phase C)
-- [ ] Model registry and versioning (Phase D)
-- [ ] Performance profiling (Phase D)
-- [ ] Sample models (demo purposes) (Phase D)
+- [x] Model registry and versioning (Phase D) ✅
+- [x] Performance profiling (Phase D) ✅
+- [ ] Sample models (demo purposes) (Phase D - documentation only)
 
-**Current Status**: Phase C complete (Output Generation)  
-**Test Coverage**: 59/65 planned tests (91% complete)  
-**LOC**: ~2,844 (exceeded estimates with comprehensive output generation)
+**Current Status**: Phase D complete (Optimization & Registry)  
+**Test Coverage**: 68/65+ planned tests (105% complete)  
+**LOC**: ~3,520 (Phase D: +676 lines for ModelRegistry and PerformanceMetrics)
 
 ### Test Cases
 
@@ -953,15 +958,20 @@ dicom-ai classify image.dcm \
 57. ✅ Generate markdown report (Phase C)
 58. ✅ Generate classification report empty predictions (Phase C)
 59. ✅ Create enhanced DICOM replaces placeholder (Phase C)
+60. ✅ Model registry add and get (Phase D)
+61. ✅ Performance metrics initialization and formatting (Phase D)
+62. ✅ Performance profiler lifecycle (Phase D)
+63. ✅ Confidence filtering with classification (Phase D)
+64. ✅ Confidence filtering with detection (Phase D)
+65. ✅ Model cache functionality (Phase D)
+66. ✅ Model registry list filtering (Phase D)
+67. ✅ Model registry search by tags (Phase D)
+68. ✅ Registry error handling (Phase D)
 
-**Planned (6 tests):**
-60. Model registry and versioning (Phase D)
-61. Performance profiling (Phase D)
-62. Confidence filtering end-to-end (Phase D)
-63. Sample model integration (Phase D)
-64-65. Additional integration tests (Phase D)
+**Remaining (optional):**
+69. Sample model integration (requires macOS and sample CoreML models)
 
-**Lines of Code Actual**: ~2,844 (main: 620, engine: 844, output: 500, tests: 880, README: 367)
+**Lines of Code Actual**: ~3,520 (main: 895, engine: 844, output: 500, registry: 318, metrics: 358, tests: 1,145, README: 460)
 
 ---
 

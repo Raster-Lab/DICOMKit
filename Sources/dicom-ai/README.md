@@ -281,6 +281,66 @@ brain-mri.dcm,lesion,0.92,120,150,45,38
 
 ## Advanced Features (Phase B)
 
+### Model Registry (Phase D)
+
+Manage AI models with versioning and metadata tracking:
+
+```bash
+# Add a model to the registry
+dicom-ai registry add \
+  --name pneumonia-detector \
+  --path /path/to/model.mlmodel \
+  --version 1.0.0 \
+  --type classification \
+  --description "Pneumonia detection from chest X-rays" \
+  --input-width 224 \
+  --input-height 224 \
+  --output-type classification \
+  --tags chest,xray,pneumonia
+
+# List all models in registry
+dicom-ai registry list
+
+# List models by type
+dicom-ai registry list --type classification
+
+# Get detailed info about a model
+dicom-ai registry info --name pneumonia-detector
+
+# Search models by tags
+dicom-ai registry search --tags chest,xray
+
+# Remove a model from registry
+dicom-ai registry remove --name old-model
+
+# Clear all models (requires confirmation)
+dicom-ai registry clear --confirm
+```
+
+### Performance Profiling (Phase D)
+
+Track inference performance metrics:
+
+```bash
+# Enable performance profiling
+dicom-ai classify image.dcm \
+  --model classifier.mlmodel \
+  --profile
+
+# Save metrics to file
+dicom-ai classify image.dcm \
+  --model classifier.mlmodel \
+  --profile \
+  --profile-output metrics.json
+
+# Profiling output includes:
+# - Preprocessing time
+# - Inference time
+# - Postprocessing time
+# - Total time
+# - Memory usage
+```
+
 ### Enhanced Preprocessing
 
 Control image preprocessing with various normalization strategies:
@@ -445,13 +505,20 @@ dicom-ai enhance noisy-scan.dcm \
 - ✅ Enhanced DICOM file creation with AI-processed pixel data
 - ✅ Text, detection, and markdown report generation
 
-### Planned Features (Phase D)
+### Planned Features (Phase D) - 🚧 IN PROGRESS
 
-- Model registry and versioning
-- Custom confidence calibration
-- Model performance metrics and profiling
-- Full ONNX runtime integration (without CoreML conversion)
-- Sample models for demo/testing purposes
+#### Completed:
+- ✅ Model registry and versioning system (ModelRegistry class with add/remove/list/search operations)
+- ✅ Performance profiling and metrics tracking (PerformanceMetrics and PerformanceProfiler classes)
+- ✅ Model caching for faster repeated loads (ModelCache class with LRU eviction)
+- ✅ Registry CLI subcommands (add, list, remove, search, info, clear)
+- ✅ Performance profiling CLI flags (--profile, --profile-output)
+- ✅ 9 additional unit tests for Phase D functionality
+
+#### Remaining:
+- Sample models for demo/testing purposes (requires creating example CoreML models)
+- Full integration testing on macOS (current implementation is Linux-incompatible as expected for CoreML)
+- Documentation updates for registry and profiling features
 
 ## Troubleshooting
 
