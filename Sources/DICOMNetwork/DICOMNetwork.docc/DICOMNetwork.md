@@ -9,6 +9,7 @@ DICOMNetwork provides a complete implementation of the DICOM Upper Layer Protoco
 ### Key Features
 
 - **DIMSE Services**: C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET
+- **Print Management**: Complete DICOM Print Service Class support (PS3.4 Annex H)
 - **Association Management**: Full state machine implementation
 - **Security**: TLS/SSL support with certificate validation
 - **Reliability**: Connection pooling, retry policies, circuit breakers
@@ -20,6 +21,7 @@ DICOMNetwork provides a complete implementation of the DICOM Upper Layer Protoco
 ### Getting Started
 
 - <doc:NetworkingGuide>
+- <doc:PrintManagementGuide>
 
 ### DICOM Client
 
@@ -53,6 +55,18 @@ DICOMNetwork provides a complete implementation of the DICOM Upper Layer Protoco
 
 - ``StorageCommitmentService``
 - ``StorageCommitmentSCP``
+
+### Print Management
+
+- ``DICOMPrintService``
+- ``PrintConfiguration``
+- ``PrintOptions``
+- ``PrintTemplate``
+- ``PrintQueue``
+- ``PrinterRegistry``
+- ``ImagePreprocessor``
+- ``ImageResizer``
+- ``AnnotationRenderer``
 
 ### Store and Forward
 
