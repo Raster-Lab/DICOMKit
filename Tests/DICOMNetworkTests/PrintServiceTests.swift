@@ -808,5 +808,460 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertFalse(failedJob.isInProgress)
         XCTAssertFalse(failedJob.isCompleted)
     }
+    
+    // MARK: - Phase 2: PrintOptions Tests
+    
+    func testPrintOptionsDefaults() {
+        let options = PrintOptions()
+        
+        XCTAssertEqual(options.numberOfCopies, 1)
+        XCTAssertEqual(options.priority, .medium)
+        XCTAssertEqual(options.filmSize, .size8InX10In)
+        XCTAssertEqual(options.filmOrientation, .portrait)
+        XCTAssertEqual(options.mediumType, .clearFilm)
+        XCTAssertEqual(options.filmDestination, .processor)
+        XCTAssertEqual(options.borderDensity, "BLACK")
+        XCTAssertEqual(options.emptyImageDensity, "BLACK")
+        XCTAssertEqual(options.magnificationType, .replicate)
+        XCTAssertEqual(options.polarity, .normal)
+        XCTAssertEqual(options.trimOption, .no)
+        XCTAssertNil(options.sessionLabel)
+    }
+    
+    func testPrintOptionsCustomValues() {
+        let options = PrintOptions(
+            numberOfCopies: 3,
+            priority: .high,
+            filmSize: .size14InX17In,
+            filmOrientation: .landscape,
+            mediumType: .blueFilm,
+            filmDestination: .magazine,
+            borderDensity: "WHITE",
+            emptyImageDensity: "WHITE",
+            magnificationType: .bilinear,
+            polarity: .reverse,
+            trimOption: .yes,
+            sessionLabel: "Test Print"
+        )
+        
+        XCTAssertEqual(options.numberOfCopies, 3)
+        XCTAssertEqual(options.priority, .high)
+        XCTAssertEqual(options.filmSize, .size14InX17In)
+        XCTAssertEqual(options.filmOrientation, .landscape)
+        XCTAssertEqual(options.mediumType, .blueFilm)
+        XCTAssertEqual(options.filmDestination, .magazine)
+        XCTAssertEqual(options.borderDensity, "WHITE")
+        XCTAssertEqual(options.emptyImageDensity, "WHITE")
+        XCTAssertEqual(options.magnificationType, .bilinear)
+        XCTAssertEqual(options.polarity, .reverse)
+        XCTAssertEqual(options.trimOption, .yes)
+        XCTAssertEqual(options.sessionLabel, "Test Print")
+    }
+    
+    func testPrintOptionsStaticDefault() {
+        let options = PrintOptions.default
+        
+        XCTAssertEqual(options.numberOfCopies, 1)
+        XCTAssertEqual(options.priority, .medium)
+        XCTAssertEqual(options.filmSize, .size8InX10In)
+    }
+    
+    func testPrintOptionsStaticHighQuality() {
+        let options = PrintOptions.highQuality
+        
+        XCTAssertEqual(options.priority, .high)
+        XCTAssertEqual(options.filmSize, .size14InX17In)
+        XCTAssertEqual(options.mediumType, .clearFilm)
+        XCTAssertEqual(options.magnificationType, .bilinear)
+    }
+    
+    func testPrintOptionsStaticDraft() {
+        let options = PrintOptions.draft
+        
+        XCTAssertEqual(options.priority, .low)
+        XCTAssertEqual(options.filmSize, .size8_5InX11In)
+        XCTAssertEqual(options.mediumType, .paper)
+        XCTAssertEqual(options.magnificationType, .replicate)
+    }
+    
+    func testPrintOptionsStaticMammography() {
+        let options = PrintOptions.mammography
+        
+        XCTAssertEqual(options.priority, .high)
+        XCTAssertEqual(options.filmSize, .size14InX17In)
+        XCTAssertEqual(options.mediumType, .mammoFilmBlueBase)
+        XCTAssertEqual(options.magnificationType, .bilinear)
+    }
+    
+    // MARK: - Phase 2: PrintLayout Tests
+    
+    func testPrintLayoutBasicInitialization() {
+        let layout = PrintLayout(rows: 2, columns: 3)
+        
+        XCTAssertEqual(layout.rows, 2)
+        XCTAssertEqual(layout.columns, 3)
+        XCTAssertEqual(layout.imageCount, 6)
+        XCTAssertEqual(layout.imageDisplayFormat, "STANDARD\\2,3")
+    }
+    
+    func testPrintLayoutMinimumValues() {
+        let layout = PrintLayout(rows: 0, columns: 0)
+        
+        XCTAssertEqual(layout.rows, 1)
+        XCTAssertEqual(layout.columns, 1)
+        XCTAssertEqual(layout.imageCount, 1)
+    }
+    
+    func testPrintLayoutOptimalFor1Image() {
+        let layout = PrintLayout.optimalLayout(for: 1)
+        
+        XCTAssertEqual(layout.rows, 1)
+        XCTAssertEqual(layout.columns, 1)
+    }
+    
+    func testPrintLayoutOptimalFor2Images() {
+        let layout = PrintLayout.optimalLayout(for: 2)
+        
+        XCTAssertEqual(layout.rows, 1)
+        XCTAssertEqual(layout.columns, 2)
+    }
+    
+    func testPrintLayoutOptimalFor4Images() {
+        let layout = PrintLayout.optimalLayout(for: 4)
+        
+        XCTAssertEqual(layout.rows, 2)
+        XCTAssertEqual(layout.columns, 2)
+    }
+    
+    func testPrintLayoutOptimalFor6Images() {
+        let layout = PrintLayout.optimalLayout(for: 6)
+        
+        XCTAssertEqual(layout.rows, 2)
+        XCTAssertEqual(layout.columns, 3)
+    }
+    
+    func testPrintLayoutOptimalFor9Images() {
+        let layout = PrintLayout.optimalLayout(for: 9)
+        
+        XCTAssertEqual(layout.rows, 3)
+        XCTAssertEqual(layout.columns, 3)
+    }
+    
+    func testPrintLayoutOptimalFor12Images() {
+        let layout = PrintLayout.optimalLayout(for: 12)
+        
+        XCTAssertEqual(layout.rows, 3)
+        XCTAssertEqual(layout.columns, 4)
+    }
+    
+    func testPrintLayoutOptimalFor16Images() {
+        let layout = PrintLayout.optimalLayout(for: 16)
+        
+        XCTAssertEqual(layout.rows, 4)
+        XCTAssertEqual(layout.columns, 4)
+    }
+    
+    func testPrintLayoutOptimalFor20Images() {
+        let layout = PrintLayout.optimalLayout(for: 20)
+        
+        XCTAssertEqual(layout.rows, 4)
+        XCTAssertEqual(layout.columns, 5)
+    }
+    
+    func testPrintLayoutOptimalForMoreThan20Images() {
+        let layout = PrintLayout.optimalLayout(for: 30)
+        
+        XCTAssertEqual(layout.rows, 5)
+        XCTAssertEqual(layout.columns, 5)
+    }
+    
+    func testPrintLayoutStaticSingleImage() {
+        let layout = PrintLayout.singleImage
+        
+        XCTAssertEqual(layout.rows, 1)
+        XCTAssertEqual(layout.columns, 1)
+    }
+    
+    func testPrintLayoutStaticComparison() {
+        let layout = PrintLayout.comparison
+        
+        XCTAssertEqual(layout.rows, 1)
+        XCTAssertEqual(layout.columns, 2)
+    }
+    
+    func testPrintLayoutStaticGrid2x2() {
+        let layout = PrintLayout.grid2x2
+        
+        XCTAssertEqual(layout.rows, 2)
+        XCTAssertEqual(layout.columns, 2)
+    }
+    
+    func testPrintLayoutStaticGrid3x3() {
+        let layout = PrintLayout.grid3x3
+        
+        XCTAssertEqual(layout.rows, 3)
+        XCTAssertEqual(layout.columns, 3)
+    }
+    
+    func testPrintLayoutStaticGrid4x4() {
+        let layout = PrintLayout.grid4x4
+        
+        XCTAssertEqual(layout.rows, 4)
+        XCTAssertEqual(layout.columns, 4)
+    }
+    
+    func testPrintLayoutStaticMultiPhase2x3() {
+        let layout = PrintLayout.multiPhase2x3
+        
+        XCTAssertEqual(layout.rows, 2)
+        XCTAssertEqual(layout.columns, 3)
+        XCTAssertEqual(layout.imageCount, 6)
+    }
+    
+    func testPrintLayoutStaticMultiPhase3x4() {
+        let layout = PrintLayout.multiPhase3x4
+        
+        XCTAssertEqual(layout.rows, 3)
+        XCTAssertEqual(layout.columns, 4)
+        XCTAssertEqual(layout.imageCount, 12)
+    }
+    
+    func testPrintLayoutEquality() {
+        let layout1 = PrintLayout(rows: 2, columns: 3)
+        let layout2 = PrintLayout(rows: 2, columns: 3)
+        let layout3 = PrintLayout(rows: 3, columns: 2)
+        
+        XCTAssertEqual(layout1, layout2)
+        XCTAssertNotEqual(layout1, layout3)
+    }
+    
+    // MARK: - Phase 2: PrintProgress Tests
+    
+    func testPrintProgressConnecting() {
+        let progress = PrintProgress(
+            phase: .connecting,
+            progress: 0.0,
+            message: "Connecting..."
+        )
+        
+        XCTAssertEqual(progress.phase, .connecting)
+        XCTAssertEqual(progress.progress, 0.0, accuracy: 0.001)
+        XCTAssertEqual(progress.message, "Connecting...")
+    }
+    
+    func testPrintProgressUploadingImages() {
+        let progress = PrintProgress(
+            phase: .uploadingImages(current: 3, total: 10),
+            progress: 0.5,
+            message: "Uploading image 3 of 10"
+        )
+        
+        if case .uploadingImages(let current, let total) = progress.phase {
+            XCTAssertEqual(current, 3)
+            XCTAssertEqual(total, 10)
+        } else {
+            XCTFail("Expected uploadingImages phase")
+        }
+        
+        XCTAssertEqual(progress.progress, 0.5, accuracy: 0.001)
+    }
+    
+    func testPrintProgressCompleted() {
+        let progress = PrintProgress(
+            phase: .completed,
+            progress: 1.0,
+            message: "Print completed"
+        )
+        
+        XCTAssertEqual(progress.phase, .completed)
+        XCTAssertEqual(progress.progress, 1.0, accuracy: 0.001)
+    }
+    
+    func testPrintProgressClampedValues() {
+        // Test that progress values are clamped to 0.0 - 1.0
+        let progressOver = PrintProgress(phase: .printing, progress: 1.5, message: "")
+        XCTAssertEqual(progressOver.progress, 1.0, accuracy: 0.001)
+        
+        let progressUnder = PrintProgress(phase: .printing, progress: -0.5, message: "")
+        XCTAssertEqual(progressUnder.progress, 0.0, accuracy: 0.001)
+    }
+    
+    func testPrintProgressPhaseEquality() {
+        let phase1 = PrintProgress.Phase.connecting
+        let phase2 = PrintProgress.Phase.connecting
+        let phase3 = PrintProgress.Phase.printing
+        
+        XCTAssertEqual(phase1, phase2)
+        XCTAssertNotEqual(phase1, phase3)
+        
+        let upload1 = PrintProgress.Phase.uploadingImages(current: 1, total: 5)
+        let upload2 = PrintProgress.Phase.uploadingImages(current: 1, total: 5)
+        let upload3 = PrintProgress.Phase.uploadingImages(current: 2, total: 5)
+        
+        XCTAssertEqual(upload1, upload2)
+        XCTAssertNotEqual(upload1, upload3)
+    }
+    
+    // MARK: - Phase 2: Print Template Tests
+    
+    func testSingleImageTemplate() {
+        let template = SingleImageTemplate()
+        
+        XCTAssertEqual(template.name, "Single Image")
+        XCTAssertEqual(template.filmSize, .size8InX10In)
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\1,1")
+        XCTAssertEqual(template.imageCount, 1)
+        XCTAssertEqual(template.filmOrientation, .portrait)
+        
+        let filmBox = template.createFilmBox()
+        XCTAssertEqual(filmBox.imageDisplayFormat, "STANDARD\\1,1")
+        XCTAssertEqual(filmBox.filmSizeID, .size8InX10In)
+    }
+    
+    func testSingleImageTemplateCustom() {
+        let template = SingleImageTemplate(filmSize: .size14InX17In, filmOrientation: .landscape)
+        
+        XCTAssertEqual(template.filmSize, .size14InX17In)
+        XCTAssertEqual(template.filmOrientation, .landscape)
+        
+        let filmBox = template.createFilmBox()
+        XCTAssertEqual(filmBox.filmSizeID, .size14InX17In)
+        XCTAssertEqual(filmBox.filmOrientation, .landscape)
+    }
+    
+    func testComparisonTemplate() {
+        let template = ComparisonTemplate()
+        
+        XCTAssertEqual(template.name, "Comparison")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\1,2")
+        XCTAssertEqual(template.imageCount, 2)
+        XCTAssertEqual(template.filmOrientation, .landscape)
+        
+        let filmBox = template.createFilmBox()
+        XCTAssertEqual(filmBox.imageDisplayFormat, "STANDARD\\1,2")
+    }
+    
+    func testGridTemplate2x2() {
+        let template = GridTemplate(rows: 2, columns: 2)
+        
+        XCTAssertEqual(template.name, "2x2 Grid")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\2,2")
+        XCTAssertEqual(template.imageCount, 4)
+        
+        let filmBox = template.createFilmBox()
+        XCTAssertEqual(filmBox.imageDisplayFormat, "STANDARD\\2,2")
+    }
+    
+    func testGridTemplate3x4() {
+        let template = GridTemplate(rows: 3, columns: 4, filmSize: .size11InX17In)
+        
+        XCTAssertEqual(template.name, "3x4 Grid")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,4")
+        XCTAssertEqual(template.imageCount, 12)
+        XCTAssertEqual(template.filmSize, .size11InX17In)
+    }
+    
+    func testGridTemplateMinimumValues() {
+        let template = GridTemplate(rows: 0, columns: 0)
+        
+        XCTAssertEqual(template.imageCount, 1)
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\1,1")
+    }
+    
+    func testMultiPhaseTemplate2x3() {
+        let template = MultiPhaseTemplate(rows: 2, columns: 3)
+        
+        XCTAssertEqual(template.name, "Multi-Phase 2x3")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\2,3")
+        XCTAssertEqual(template.imageCount, 6)
+    }
+    
+    func testMultiPhaseTemplate3x4() {
+        let template = MultiPhaseTemplate(rows: 3, columns: 4)
+        
+        XCTAssertEqual(template.name, "Multi-Phase 3x4")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,4")
+        XCTAssertEqual(template.imageCount, 12)
+    }
+    
+    // MARK: - Phase 2: PrintRetryPolicy Tests
+    
+    func testPrintRetryPolicyDefaults() {
+        let policy = PrintRetryPolicy()
+        
+        XCTAssertEqual(policy.maxAttempts, 3)
+        XCTAssertEqual(policy.initialDelay, 1.0, accuracy: 0.001)
+        XCTAssertEqual(policy.backoffMultiplier, 2.0, accuracy: 0.001)
+        XCTAssertEqual(policy.maxDelay, 30.0, accuracy: 0.001)
+    }
+    
+    func testPrintRetryPolicyCustomValues() {
+        let policy = PrintRetryPolicy(
+            maxAttempts: 5,
+            initialDelay: 2.0,
+            backoffMultiplier: 3.0,
+            maxDelay: 60.0
+        )
+        
+        XCTAssertEqual(policy.maxAttempts, 5)
+        XCTAssertEqual(policy.initialDelay, 2.0, accuracy: 0.001)
+        XCTAssertEqual(policy.backoffMultiplier, 3.0, accuracy: 0.001)
+        XCTAssertEqual(policy.maxDelay, 60.0, accuracy: 0.001)
+    }
+    
+    func testPrintRetryPolicyDelayCalculation() {
+        let policy = PrintRetryPolicy(
+            initialDelay: 1.0,
+            backoffMultiplier: 2.0,
+            maxDelay: 10.0
+        )
+        
+        XCTAssertEqual(policy.delay(for: 0), 1.0, accuracy: 0.001)  // 1 * 2^0 = 1
+        XCTAssertEqual(policy.delay(for: 1), 2.0, accuracy: 0.001)  // 1 * 2^1 = 2
+        XCTAssertEqual(policy.delay(for: 2), 4.0, accuracy: 0.001)  // 1 * 2^2 = 4
+        XCTAssertEqual(policy.delay(for: 3), 8.0, accuracy: 0.001)  // 1 * 2^3 = 8
+        XCTAssertEqual(policy.delay(for: 4), 10.0, accuracy: 0.001) // 1 * 2^4 = 16, capped at 10
+    }
+    
+    func testPrintRetryPolicyDelayNegativeAttempt() {
+        let policy = PrintRetryPolicy(initialDelay: 1.0)
+        
+        XCTAssertEqual(policy.delay(for: -1), 1.0, accuracy: 0.001)
+    }
+    
+    func testPrintRetryPolicyStaticDefault() {
+        let policy = PrintRetryPolicy.default
+        
+        XCTAssertEqual(policy.maxAttempts, 3)
+    }
+    
+    func testPrintRetryPolicyStaticAggressive() {
+        let policy = PrintRetryPolicy.aggressive
+        
+        XCTAssertEqual(policy.maxAttempts, 5)
+        XCTAssertEqual(policy.initialDelay, 0.5, accuracy: 0.001)
+        XCTAssertEqual(policy.backoffMultiplier, 1.5, accuracy: 0.001)
+    }
+    
+    func testPrintRetryPolicyStaticNone() {
+        let policy = PrintRetryPolicy.none
+        
+        XCTAssertEqual(policy.maxAttempts, 0)
+    }
+    
+    func testPrintRetryPolicyMinimumValues() {
+        let policy = PrintRetryPolicy(
+            maxAttempts: -5,
+            initialDelay: -1.0,
+            backoffMultiplier: 0.5,
+            maxDelay: -10.0
+        )
+        
+        XCTAssertEqual(policy.maxAttempts, 0)
+        XCTAssertEqual(policy.initialDelay, 0.0, accuracy: 0.001)
+        XCTAssertEqual(policy.backoffMultiplier, 1.0, accuracy: 0.001)
+        XCTAssertEqual(policy.maxDelay, 0.0, accuracy: 0.001)
+    }
 }
+
 
