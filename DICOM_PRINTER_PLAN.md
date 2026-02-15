@@ -4,8 +4,8 @@
 
 This document provides a detailed plan for implementing complete DICOM Print Management Service Class support in DICOMKit. The DICOM Print Management Service enables medical imaging applications to send images to DICOM-compliant printers (film printers, hard copy devices) using the DIMSE-N protocol.
 
-**Status**: In Planning  
-**Target Version**: v1.4.1 (enhancement release)  
+**Status**: Phase 2 Complete (v1.4.2)  
+**Target Version**: v1.4.1-v1.4.5 (enhancement releases)  
 **Reference**: PS3.4 Annex H - Print Management Service Class  
 **Complexity**: High  
 **Dependencies**: 
@@ -14,9 +14,9 @@ This document provides a detailed plan for implementing complete DICOM Print Man
 
 ## Current State
 
-### What's Already Implemented (v1.4.0)
+### What's Already Implemented (v1.4.2)
 
-DICOMKit already has foundational print management support:
+DICOMKit now has comprehensive print management support:
 
 ✅ **DIMSE-N Messages** (PS3.7 Section 10.1)
 - `NCreateRequest` / `NCreateResponse` - Create managed SOP Instances
@@ -46,28 +46,42 @@ DICOMKit already has foundational print management support:
 - `PrintResult` - Operation results
 - Supporting enums for all print options
 
-✅ **Basic Print Service API**
+✅ **Complete Print Service API** (Phase 1)
 - `DICOMPrintService.getPrinterStatus()` - Query printer status via N-GET
+- `DICOMPrintService.createFilmSession()` - Create film session via N-CREATE
+- `DICOMPrintService.createFilmBox()` - Create film box via N-CREATE
+- `DICOMPrintService.setImageBox()` - Set image content via N-SET
+- `DICOMPrintService.printFilmBox()` - Print via N-ACTION
+- `DICOMPrintService.deleteFilmSession()` - Cleanup via N-DELETE
+- `DICOMPrintService.getPrintJobStatus()` - Monitor print job via N-GET
 
-### What's Missing
+✅ **High-Level Print API** (Phase 2 - NEW in v1.4.2)
+- `DICOMPrintService.printImage()` - Single image printing with auto workflow
+- `DICOMPrintService.printImages()` - Multi-image printing with automatic layout
+- `DICOMPrintService.printWithTemplate()` - Template-based printing
+- `DICOMPrintService.printImagesWithProgress()` - Printing with AsyncThrowingStream progress
 
-❌ **Complete Print Workflow Implementation**
-- N-CREATE Film Session
-- N-CREATE Film Box (with Image Box creation)
-- N-SET Image Box content (pixel data)
-- N-ACTION Print/Delete operations
-- N-DELETE Film Session cleanup
-- Event reporting and notification
+✅ **Print Options and Configuration** (Phase 2 - NEW in v1.4.2)
+- `PrintOptions` - Configurable print settings (copies, priority, film size, orientation)
+- Static presets: `.default`, `.highQuality`, `.draft`, `.mammography`
+- `PrintLayout` - Layout calculation with optimal selection for image count
+- `PrintRetryPolicy` - Configurable retry logic with exponential backoff
 
-❌ **High-Level Print API**
-- Single-image printing
-- Multi-image film layouts
-- Batch printing workflows
-- Print job status monitoring
-- Annotation support
-- Color vs. grayscale handling
+✅ **Print Templates** (Phase 2 - NEW in v1.4.2)
+- `PrintTemplate` protocol for reusable layouts
+- `SingleImageTemplate` - Single image (1×1)
+- `ComparisonTemplate` - Side-by-side comparison (1×2)
+- `GridTemplate` - Configurable grid layouts (2×2, 3×3, 4×4)
+- `MultiPhaseTemplate` - Temporal series layouts (2×3, 3×4, 4×5)
 
-❌ **Image Preparation Pipeline**
+✅ **Print Progress Tracking** (Phase 2 - NEW in v1.4.2)
+- `PrintProgress` struct with Phase enum
+- Progress phases: connecting, queryingPrinter, creatingSession, preparingImages, uploadingImages, printing, cleanup, completed
+- AsyncThrowingStream-based progress updates
+
+### What's Remaining (Phases 3-5)
+
+❌ **Image Preparation Pipeline** (Phase 3)
 - Window/level application
 - Resize and fit to image box
 - Rotation and orientation
@@ -75,13 +89,18 @@ DICOMKit already has foundational print management support:
 - Annotation overlay
 - MONOCHROME1/2 polarity handling
 
-❌ **Advanced Features**
-- Print queue management
-- Print job retry logic
-- Multiple printer support
-- Print templates/presets
-- Cost estimation
+❌ **Advanced Features** (Phase 4)
+- Print queue management with persistence
+- Multiple printer support with load balancing
+- Enhanced error recovery
+- Print cost estimation
 - Print history tracking
+
+❌ **Documentation and CLI Tool** (Phase 5)
+- DocC API documentation
+- User guides and tutorials
+- CLI tool: `dicom-print`
+- Integration examples
 
 ❌ **Testing and Validation**
 - Integration tests with DICOM print SCPs

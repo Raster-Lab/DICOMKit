@@ -6,48 +6,94 @@ This document provides a quick reference for DICOM Print Management implementati
 
 **📄 Full Details**: See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the comprehensive implementation plan.
 
-## Current Status (v1.4.0)
+## Current Status (v1.4.2)
 
 ### ✅ What's Implemented
 
+**Phase 1: Core Print Workflow (v1.4.0-v1.4.1)**
 - **DIMSE-N Messages**: N-CREATE, N-SET, N-GET, N-ACTION, N-DELETE (all request/response pairs)
 - **Print SOP Classes**: Film Session, Film Box, Image Box (Grayscale/Color), Printer, Print Job
 - **Print Data Models**: `FilmSession`, `FilmBox`, `ImageBoxContent`, `PrinterStatus`, `PrintResult`
 - **Print Tags**: 35 DICOM tags across groups 0x2000, 0x2010, 0x2020, 0x2100, 0x2110
-- **Basic API**: `DICOMPrintService.getPrinterStatus()` - Query printer status
+- **Complete Workflow API**: `createFilmSession`, `createFilmBox`, `setImageBox`, `printFilmBox`, `deleteFilmSession`, `getPrintJobStatus`
 
-### ❌ What's Missing
+**Phase 2: High-Level Print API (v1.4.2) - NEW**
+- **Simple Print API**: `printImage()`, `printImages()`, `printWithTemplate()`
+- **Progress Reporting**: `printImagesWithProgress()` with AsyncThrowingStream
+- **Print Options**: `PrintOptions` with presets (`.default`, `.highQuality`, `.draft`, `.mammography`)
+- **Print Templates**: `SingleImageTemplate`, `ComparisonTemplate`, `GridTemplate`, `MultiPhaseTemplate`
+- **Print Layout**: Automatic optimal layout selection for image count
+- **Print Retry**: `PrintRetryPolicy` with exponential backoff
 
-- **Complete Print Workflow**: N-CREATE Film Session/Film Box, N-SET Image Box content, N-ACTION Print, N-DELETE cleanup
-- **High-Level APIs**: Simple single-image and multi-image printing
-- **Image Preparation**: Window/level, resize, rotation, annotation overlay
-- **Advanced Features**: Print queue, multiple printers, retry logic, error recovery
-- **CLI Tool**: `dicom-print` command-line tool
+### ❌ What's Remaining (Phase 3-5)
+
+- **Image Preparation Pipeline** (Phase 3): Window/level, resize, rotation, annotation overlay
+- **Advanced Features** (Phase 4): Print queue, multiple printers, enhanced error recovery
+- **Documentation & CLI** (Phase 5): `dicom-print` CLI tool, user guides
 - **Integration Tests**: Testing with real DICOM print SCPs
 
-## Implementation Roadmap
+## Quick Start Examples
 
-### Phase 1: Complete Print Workflow API (v1.4.1)
-**Timeline**: 2-3 weeks | **Tests**: 40+
+### Simple Single Image Printing (NEW in v1.4.2)
 
 ```swift
-// Create film session
-let filmSessionUID = try await DICOMPrintService.createFilmSession(
+// Print a single image with default options
+let result = try await DICOMPrintService.printImage(
     configuration: printConfig,
-    session: filmSession
+    imageData: pixelData,
+    options: .default
 )
 
-// Create film box (returns image box UIDs)
-let filmBoxResult = try await DICOMPrintService.createFilmBox(
+// Print with high quality settings
+let result = try await DICOMPrintService.printImage(
     configuration: printConfig,
-    filmSessionUID: filmSessionUID,
-    filmBox: filmBox
+    imageData: pixelData,
+    options: .highQuality
 )
+```
 
-// Set image box content
-for (index, imageData) in images.enumerated() {
-    try await DICOMPrintService.setImageBox(
-        configuration: printConfig,
+### Multi-Image Printing with Auto Layout (NEW in v1.4.2)
+
+```swift
+// Print multiple images - layout is automatically selected
+let result = try await DICOMPrintService.printImages(
+    configuration: printConfig,
+    images: [image1, image2, image3, image4],
+    options: PrintOptions(
+        filmSize: .size14InX17In,
+        filmOrientation: .landscape,
+        numberOfCopies: 2
+    )
+)
+```
+
+### Template-Based Printing (NEW in v1.4.2)
+
+```swift
+// Print with a specific template
+let template = MultiPhaseTemplate(rows: 3, columns: 4)
+let result = try await DICOMPrintService.printWithTemplate(
+    configuration: printConfig,
+    images: multiPhaseImages,
+    template: template
+)
+```
+
+### Print with Progress Reporting (NEW in v1.4.2)
+
+```swift
+for try await progress in DICOMPrintService.printImagesWithProgress(
+    configuration: printConfig,
+    images: images,
+    options: .default
+) {
+    print("Phase: \(progress.phase)")
+    print("Progress: \(Int(progress.progress * 100))%")
+    print("Message: \(progress.message)")
+}
+```
+
+### Low-Level Workflow (Phase 1 API)
         content: ImageBoxContent(
             imageBoxUID: filmBoxResult.imageBoxUIDs[index],
             position: UInt16(index + 1),

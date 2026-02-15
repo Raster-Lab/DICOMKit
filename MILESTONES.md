@@ -3898,12 +3898,14 @@ See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement 
 - [ ] Print Execution and Monitoring (N-ACTION, N-GET Print Job)
 - [ ] 40+ unit tests, integration with DCM4CHEE/Orthanc
 
-**Phase 2 (v1.4.2)**: High-Level Print API
-- [ ] Simple print API (`printImage`, `printImages`)
-- [ ] Print templates for common layouts (1×1, 2×2, 3×4, etc.)
-- [ ] Print progress reporting and cancellation
-- [ ] Print retry logic with exponential backoff
-- [ ] 20+ unit tests
+**Phase 2 (v1.4.2)**: High-Level Print API ✅ **COMPLETE**
+- [x] Simple print API (`printImage`, `printImages`, `printWithTemplate`)
+- [x] Print templates for common layouts (SingleImage, Comparison, Grid 2×2/3×3/4×4, MultiPhase 2×3/3×4/4×5)
+- [x] Print progress reporting with `printImagesWithProgress()` AsyncThrowingStream
+- [x] Print retry logic with exponential backoff (`PrintRetryPolicy`)
+- [x] `PrintOptions` struct with presets (`.default`, `.highQuality`, `.draft`, `.mammography`)
+- [x] `PrintLayout` struct with optimal layout selection
+- [x] 50+ unit tests
 
 **Phase 3 (v1.4.3)**: Image Preparation Pipeline
 - [ ] Image preprocessing (window/level, MONOCHROME polarity, color space)
