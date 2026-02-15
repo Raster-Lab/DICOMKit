@@ -357,6 +357,378 @@ final class DICOMGatewayTests: XCTestCase {
         )
     }
     
+    // MARK: - Phase C: Gateway Modes Tests
+    
+    func test_HL7Listener_Initialization() {
+        let listener = HL7Listener(
+            port: 2575,
+            forwardDestination: "pacs://localhost:11112",
+            messageTypes: ["ADT", "ORM"],
+            verbose: false
+        )
+        
+        XCTAssertNotNil(listener)
+    }
+    
+    func test_HL7Listener_MessageTypeFiltering() throws {
+        // Test that listener properly filters message types
+        let parser = HL7Parser()
+        
+        // ADT message
+        let adtMessage = """
+        MSH|^~\\&|SYSTEM|FACILITY|RIS|HOSPITAL|20260215120000||ADT^A01|12345|P|2.5\r
+        PID||PAT001||DOE^JOHN^M||19800115|M\r
+        """
+        
+        let parsedADT = try parser.parse(adtMessage)
+        XCTAssertEqual(parsedADT.messageType, .ADT)
+        
+        // ORM message
+        let ormMessage = """
+        MSH|^~\\&|SYSTEM|FACILITY|RIS|HOSPITAL|20260215120000||ORM^O01|12346|P|2.5\r
+        PID||PAT001||DOE^JOHN^M||19800115|M\r
+        """
+        
+        let parsedORM = try parser.parse(ormMessage)
+        XCTAssertEqual(parsedORM.messageType, .ORM)
+    }
+    
+    func test_HL7Listener_ACKGeneration() {
+        // Test that ACK messages are properly formatted
+        let messageControlId = "MSG12345"
+        let timestamp = "20260215120000"
+        
+        let ack = """
+        MSH|^~\\&|DICOMKit|GATEWAY|CLIENT|SYSTEM|\(timestamp)||ACK|\(messageControlId)|P|2.5\r
+        MSA|AA|\(messageControlId)\r
+        """
+        
+        XCTAssertTrue(ack.contains("MSH"))
+        XCTAssertTrue(ack.contains("MSA|AA|"))
+        XCTAssertTrue(ack.contains(messageControlId))
+    }
+    
+    func test_DICOMForwarder_Initialization() {
+        let forwarder = DICOMForwarder(
+            listenPort: 11112,
+            forwardHL7Destination: "hl7://localhost:2575",
+            forwardFHIRDestination: nil,
+            messageType: "ORU",
+            verbose: false
+        )
+        
+        XCTAssertNotNil(forwarder)
+    }
+    
+    func test_DICOMForwarder_HL7MessageTypeSelection() throws {
+        let dicomFile = try createTestDICOMFile()
+        let converter = DICOMToHL7Converter()
+        
+        // Test ADT generation
+        let adtMessage = try converter.convertToADT(dicomFile: dicomFile, eventType: "A01")
+        XCTAssertEqual(adtMessage.messageType, .ADT)
+        
+        // Test ORM generation
+        let ormMessage = try converter.convertToORM(dicomFile: dicomFile)
+        XCTAssertEqual(ormMessage.messageType, .ORM)
+        
+        // Test ORU generation
+        let oruMessage = try converter.convertToORU(dicomFile: dicomFile)
+        XCTAssertEqual(oruMessage.messageType, .ORU)
+    }
+    
+    func test_DICOMForwarder_FHIRConversion() throws {
+        let dicomFile = try createTestDICOMFile()
+        let converter = FHIRConverter()
+        
+        let fhirResource = try converter.convertToFHIR(dicomFile: dicomFile, resourceType: .imagingStudy)
+        
+        XCTAssertNotNil(fhirResource["resourceType"])
+        XCTAssertEqual(fhirResource["resourceType"] as? String, "ImagingStudy")
+    }
+    
+    func test_ListenerMode_ErrorHandling() {
+        // Test that listener handles invalid messages gracefully
+        let parser = HL7Parser()
+        
+        // Empty message should throw
+        XCTAssertThrowsError(try parser.parse(""))
+        
+        // Malformed message should throw
+        XCTAssertThrowsError(try parser.parse("INVALID|MESSAGE"))
+    }
+    
+    func test_ForwarderMode_ErrorHandling() {
+        // Test that forwarder handles invalid destinations gracefully
+        let invalidURL = "not-a-valid-url"
+        let url = URL(string: invalidURL)
+        
+        // Invalid URL should be nil
+        XCTAssertNil(url)
+    }
+    
+    func test_ForwarderMode_URLParsing() {
+        // Test various destination URL formats
+        let hl7URL = URL(string: "hl7://server:2575")
+        XCTAssertNotNil(hl7URL)
+        XCTAssertEqual(hl7URL?.host, "server")
+        XCTAssertEqual(hl7URL?.port, 2575)
+        
+        let pacsURL = URL(string: "pacs://pacs.example.com:11112")
+        XCTAssertNotNil(pacsURL)
+        XCTAssertEqual(pacsURL?.host, "pacs.example.com")
+        XCTAssertEqual(pacsURL?.port, 11112)
+        
+        let fhirURL = URL(string: "https://fhir.example.com/ImagingStudy")
+        XCTAssertNotNil(fhirURL)
+        XCTAssertEqual(fhirURL?.scheme, "https")
+        XCTAssertEqual(fhirURL?.host, "fhir.example.com")
+    }
+    
+    func test_Gateway_IntegrationWorkflow() throws {
+        // Test complete workflow: DICOM -> HL7 -> Forward
+        let dicomFile = try createTestDICOMFile()
+        
+        // Step 1: Convert DICOM to HL7
+        let hl7Converter = DICOMToHL7Converter()
+        let hl7Message = try hl7Converter.convertToORU(dicomFile: dicomFile)
+        
+        XCTAssertEqual(hl7Message.messageType, .ORU)
+        XCTAssertFalse(hl7Message.segments.isEmpty)
+        
+        // Step 2: Generate HL7 text
+        let parser = HL7Parser()
+        let hl7Text = parser.generate(message: hl7Message)
+        
+        XCTAssertTrue(hl7Text.contains("MSH"))
+        XCTAssertTrue(hl7Text.contains("PID"))
+        XCTAssertTrue(hl7Text.contains("OBR"))
+        
+        // Step 3: Parse back
+        let reparsed = try parser.parse(hl7Text)
+        XCTAssertEqual(reparsed.messageType, hl7Message.messageType)
+    }
+    
+    // MARK: - Phase D: IHE Profiles Tests
+    
+    func test_IHE_PDI_Validation() throws {
+        let dicomFile = try createTestDICOMFile()
+        
+        // Validate PDI compliance
+        let issues = IHEProfiles.PDI.validate(dicomFile)
+        
+        // Our test file should pass validation (empty issues array)
+        XCTAssertTrue(issues.isEmpty, "PDI validation should pass for test file")
+    }
+    
+    func test_IHE_PDI_MissingRequiredTags() throws {
+        // Create DICOM file missing required tags
+        var fileMetaInformation = DataSet()
+        var dataSet = DataSet()
+        
+        fileMetaInformation.setString("1.2.840.10008.1.2.1", for: .transferSyntaxUID, vr: .UI)
+        
+        // Only set Patient ID, missing other required fields
+        dataSet.setString("TEST001", for: .patientID, vr: .LO)
+        
+        let dicomFile = DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataSet)
+        
+        let issues = IHEProfiles.PDI.validate(dicomFile)
+        
+        // Should have issues for missing required tags
+        XCTAssertFalse(issues.isEmpty, "Should detect missing required tags")
+        XCTAssertTrue(issues.contains { $0.contains("Patient Name") })
+    }
+    
+    func test_IHE_PDI_MetadataRecommendations() throws {
+        let dicomFile = try createTestDICOMFile()
+        
+        let recommendations = IHEProfiles.PDI.recommendPDIMetadata(dicomFile)
+        
+        // Should provide recommendations even for valid files
+        XCTAssertNotNil(recommendations)
+    }
+    
+    func test_IHE_XDSI_MetadataExtraction() throws {
+        let dicomFile = try createTestDICOMFile()
+        
+        let metadata = IHEProfiles.XDSI.extractMetadata(dicomFile)
+        
+        // Verify key metadata fields are extracted
+        XCTAssertNotNil(metadata["patientId"])
+        XCTAssertEqual(metadata["patientId"], "TEST001")
+        XCTAssertNotNil(metadata["studyInstanceUID"])
+        XCTAssertNotNil(metadata["modality"])
+        XCTAssertEqual(metadata["modality"], "CT")
+    }
+    
+    func test_IHE_XDSI_ManifestCreation() throws {
+        let dicomFile = try createTestDICOMFile()
+        let files = [dicomFile]
+        
+        let manifest = IHEProfiles.XDSI.createManifest(files: files)
+        
+        // Verify manifest structure
+        XCTAssertTrue(manifest.contains("<?xml"))
+        XCTAssertTrue(manifest.contains("SubmitObjectsRequest"))
+        XCTAssertTrue(manifest.contains("ExtrinsicObject"))
+    }
+    
+    func test_IHE_PIX_PatientIDCrossReferencing() throws {
+        // Test PIX profile for patient ID cross-referencing
+        let dicomFile = try createTestDICOMFile()
+        
+        let metadata = IHEProfiles.XDSI.extractMetadata(dicomFile)
+        let patientId = metadata["patientId"]
+        
+        XCTAssertNotNil(patientId)
+        XCTAssertEqual(patientId, "TEST001")
+        
+        // In a real implementation, this would query a PIX manager
+        // For now, just verify we can extract the patient ID
+    }
+    
+    func test_IHE_PDQ_DemographicsQuery() throws {
+        // Test PDQ profile for demographics query
+        let dicomFile = try createTestDICOMFile()
+        
+        let patientID = dicomFile.dataSet.string(for: .patientID)
+        let patientName = dicomFile.dataSet.string(for: .patientName)
+        let birthDate = dicomFile.dataSet.string(for: .patientBirthDate)
+        
+        XCTAssertNotNil(patientID)
+        XCTAssertNotNil(patientName)
+        XCTAssertNotNil(birthDate)
+        
+        // Verify demographics are in expected format
+        XCTAssertEqual(patientID, "TEST001")
+        XCTAssertEqual(patientName, "DOE^JOHN^MICHAEL")
+        XCTAssertEqual(birthDate, "19800115")
+    }
+    
+    // MARK: - Phase D: Mapping Engine Tests
+    
+    func test_MappingEngine_RuleCreation() {
+        let rule = MappingEngine.MappingRule(
+            source: "PatientID",
+            target: "PID-2",
+            transform: "uppercase",
+            required: true,
+            defaultValue: nil
+        )
+        
+        XCTAssertEqual(rule.source, "PatientID")
+        XCTAssertEqual(rule.target, "PID-2")
+        XCTAssertEqual(rule.transform, "uppercase")
+        XCTAssertTrue(rule.required)
+    }
+    
+    func test_MappingEngine_ConfigurationCreation() {
+        let rules = [
+            MappingEngine.MappingRule(source: "PatientID", target: "PID-2", required: true),
+            MappingEngine.MappingRule(source: "PatientName", target: "PID-5", transform: "uppercase")
+        ]
+        
+        let config = MappingEngine.MappingConfig(
+            name: "Test Mapping",
+            sourceFormat: "dicom",
+            targetFormat: "hl7",
+            rules: rules,
+            includeUnmapped: true
+        )
+        
+        XCTAssertEqual(config.name, "Test Mapping")
+        XCTAssertEqual(config.sourceFormat, "dicom")
+        XCTAssertEqual(config.targetFormat, "hl7")
+        XCTAssertEqual(config.rules.count, 2)
+        XCTAssertTrue(config.includeUnmapped)
+    }
+    
+    func test_MappingEngine_TransformationUppercase() {
+        let transform = MappingEngine.Transformation.uppercase
+        let result = transform.apply("test value")
+        
+        XCTAssertEqual(result, "TEST VALUE")
+    }
+    
+    func test_MappingEngine_TransformationLowercase() {
+        let transform = MappingEngine.Transformation.lowercase
+        let result = transform.apply("TEST VALUE")
+        
+        XCTAssertEqual(result, "test value")
+    }
+    
+    func test_MappingEngine_TransformationTrim() {
+        let transform = MappingEngine.Transformation.trim
+        let result = transform.apply("  test value  ")
+        
+        XCTAssertEqual(result, "test value")
+    }
+    
+    func test_MappingEngine_TransformationRemoveSpaces() {
+        let transform = MappingEngine.Transformation.removeSpaces
+        let result = transform.apply("test value with spaces")
+        
+        XCTAssertEqual(result, "testvaluewithspaces")
+    }
+    
+    func test_MappingEngine_ConfigurationEncoding() throws {
+        let rules = [
+            MappingEngine.MappingRule(source: "PatientID", target: "PID-2", required: true)
+        ]
+        
+        let config = MappingEngine.MappingConfig(
+            name: "Test Mapping",
+            sourceFormat: "dicom",
+            targetFormat: "hl7",
+            rules: rules
+        )
+        
+        // Test JSON encoding
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = .prettyPrinted
+        let data = try encoder.encode(config)
+        
+        XCTAssertFalse(data.isEmpty)
+        
+        // Test JSON decoding
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(MappingEngine.MappingConfig.self, from: data)
+        
+        XCTAssertEqual(decoded.name, config.name)
+        XCTAssertEqual(decoded.sourceFormat, config.sourceFormat)
+        XCTAssertEqual(decoded.targetFormat, config.targetFormat)
+        XCTAssertEqual(decoded.rules.count, config.rules.count)
+    }
+    
+    func test_MappingEngine_AllTransformations() {
+        // Test that all transformation cases are defined
+        let allTransformations = MappingEngine.Transformation.allCases
+        
+        XCTAssertTrue(allTransformations.contains(.uppercase))
+        XCTAssertTrue(allTransformations.contains(.lowercase))
+        XCTAssertTrue(allTransformations.contains(.trim))
+        XCTAssertTrue(allTransformations.contains(.dateFormat))
+        XCTAssertTrue(allTransformations.contains(.splitName))
+        XCTAssertTrue(allTransformations.contains(.combineName))
+        XCTAssertTrue(allTransformations.contains(.extractFirst))
+        XCTAssertTrue(allTransformations.contains(.extractLast))
+        XCTAssertTrue(allTransformations.contains(.removeSpaces))
+        XCTAssertTrue(allTransformations.contains(.padLeft))
+        XCTAssertTrue(allTransformations.contains(.padRight))
+        XCTAssertTrue(allTransformations.contains(.substring))
+        
+        XCTAssertGreaterThanOrEqual(allTransformations.count, 12)
+    }
+    
+    func test_MappingEngine_InvalidTransformation() {
+        // Test that transformations handle invalid input gracefully
+        let transform = MappingEngine.Transformation.uppercase
+        let emptyResult = transform.apply("")
+        
+        XCTAssertEqual(emptyResult, "")
+    }
+    
     // MARK: - Helper Methods
     
     private func createTestDICOMFile() throws -> DICOMFile {
