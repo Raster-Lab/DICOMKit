@@ -25,3 +25,8 @@ xcuserdata/
 # Dependencies
 Packages/
 Package.resolved
+
+# Docker volumes and runtime files
+docker-compose.override.yml
+orthanc-db-data/
+dcm4chee-db-data/

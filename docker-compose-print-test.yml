@@ -1,0 +1,100 @@
+version: '3.8'
+
+services:
+  # DCM4CHEE DICOM Archive with Print SCP support
+  dcm4chee:
+    image: dcm4che/dcm4chee-arc-psql:5.31.0
+    container_name: dcm4chee-print-scp
+    environment:
+      - POSTGRES_DB=pacsdb
+      - POSTGRES_USER=pacs
+      - POSTGRES_PASSWORD=pacs
+      - PRINT_SCP_AET=DCM4CHEE_PRINT
+      - ARCHIVE_DEVICE_NAME=dcm4chee-arc
+      - JAVA_OPTS=-Xms64m -Xmx512m
+    ports:
+      - "11112:11112"  # DICOM Print SCP
+      - "8080:8080"    # Web UI
+    depends_on:
+      - postgres-dcm4chee
+    networks:
+      - dicom-print-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/dcm4chee-arc/ui2/"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  postgres-dcm4chee:
+    image: postgres:15-alpine
+    container_name: postgres-dcm4chee
+    environment:
+      - POSTGRES_DB=pacsdb
+      - POSTGRES_USER=pacs
+      - POSTGRES_PASSWORD=pacs
+    volumes:
+      - dcm4chee-db-data:/var/lib/postgresql/data
+    networks:
+      - dicom-print-test
+
+  # Orthanc DICOM Server with Print Plugin (alternative test server)
+  orthanc:
+    image: jodogne/orthanc-plugins:latest
+    container_name: orthanc-print-scp
+    environment:
+      - ORTHANC_NAME=Orthanc Print SCP
+      - ORTHANC_AET=ORTHANC_PRINT
+      - DICOM_PORT=11113
+      - HTTP_PORT=8042
+      - ORTHANC_USERNAME=orthanc
+      - ORTHANC_PASSWORD=orthanc
+    ports:
+      - "11113:11113"  # DICOM Print SCP
+      - "8042:8042"    # Web UI / REST API
+    volumes:
+      - orthanc-db-data:/var/lib/orthanc/db
+      - ./orthanc-print-config.json:/etc/orthanc/orthanc.json:ro
+    networks:
+      - dicom-print-test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8042/system"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+volumes:
+  dcm4chee-db-data:
+    driver: local
+  orthanc-db-data:
+    driver: local
+
+networks:
+  dicom-print-test:
+    driver: bridge
+
+# Usage Instructions:
+#
+# 1. Start DCM4CHEE print server:
+#    docker-compose -f docker-compose-print-test.yml up -d dcm4chee postgres-dcm4chee
+#
+# 2. Start Orthanc print server (alternative):
+#    docker-compose -f docker-compose-print-test.yml up -d orthanc
+#
+# 3. Run DICOMKit print integration tests:
+#    swift test --filter PrintServiceIntegrationTests
+#
+# 4. Test with dicom-print CLI:
+#    dicom-print status pacs://localhost:11112 --aet WORKSTATION --called-ae DCM4CHEE_PRINT
+#    dicom-print send pacs://localhost:11112 test.dcm --aet WORKSTATION --called-ae DCM4CHEE_PRINT
+#
+# 5. Access web UIs:
+#    DCM4CHEE: http://localhost:8080/dcm4chee-arc/ui2/
+#    Orthanc:  http://localhost:8042/ (user: orthanc, pass: orthanc)
+#
+# 6. Stop services:
+#    docker-compose -f docker-compose-print-test.yml down
+#
+# 7. Clean up volumes (WARNING: deletes all data):
+#    docker-compose -f docker-compose-print-test.yml down -v
