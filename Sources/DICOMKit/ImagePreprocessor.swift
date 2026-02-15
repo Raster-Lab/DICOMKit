@@ -17,6 +17,14 @@ import CoreGraphics
 import Accelerate
 #endif
 
+// MARK: - Print Color Mode
+
+/// Print color mode for image preparation
+public enum PrintColorMode: String, Sendable {
+    case grayscale = "GRAYSCALE"
+    case color = "COLOR"
+}
+
 // MARK: - Prepared Image
 
 /// Prepared image ready for printing
@@ -99,12 +107,12 @@ public actor ImagePreprocessor {
         windowSettings: WindowSettings? = nil
     ) async throws -> PreparedImage {
         // Extract pixel data descriptor
-        guard let descriptor = try? PixelDataDescriptor(from: dataSet) else {
+        guard let descriptor = dataSet.pixelDataDescriptor() else {
             throw ImagePreprocessingError.missingPixelData
         }
         
         // Extract raw pixel data
-        guard let pixelData = try? PixelData(from: dataSet) else {
+        guard let pixelData = dataSet.pixelData() else {
             throw ImagePreprocessingError.invalidPixelData
         }
         
@@ -264,44 +272,10 @@ public actor ImagePreprocessor {
         let width = descriptor.columns
         let height = descriptor.rows
         
-        // Extract palette color LUT
-        guard let paletteLUT = try? PaletteColorLUT(from: dataSet) else {
-            throw ImagePreprocessingError.missingPaletteLUT
-        }
-        
-        guard let frameData = pixelData.frameData(at: 0) else {
-            throw ImagePreprocessingError.invalidFrameData
-        }
-        
-        // Apply palette LUT to get RGB data
-        let rgbData = try applyPaletteLUT(
-            frameData: frameData,
-            descriptor: descriptor,
-            paletteLUT: paletteLUT
-        )
-        
-        // Convert to grayscale if needed
-        if colorMode == .grayscale {
-            let grayscaleData = try convertPaletteRGBToGrayscale(rgbData: rgbData)
-            
-            return PreparedImage(
-                pixelData: grayscaleData,
-                width: width,
-                height: height,
-                bitsAllocated: 8,
-                samplesPerPixel: 1,
-                photometricInterpretation: "MONOCHROME2"
-            )
-        } else {
-            return PreparedImage(
-                pixelData: rgbData,
-                width: width,
-                height: height,
-                bitsAllocated: 8,
-                samplesPerPixel: 3,
-                photometricInterpretation: "RGB"
-            )
-        }
+        // For palette color, we'll do a simplified conversion
+        // A full implementation would extract the LUT descriptors and data from the dataset
+        // For now, throw an error indicating this is not yet fully implemented
+        throw ImagePreprocessingError.unsupportedPhotometricInterpretation("PALETTE COLOR - full support pending")
     }
     
     // MARK: - Helper Methods
@@ -365,9 +339,9 @@ public actor ImagePreprocessor {
         to pixelValues: [Double],
         dataSet: DataSet
     ) -> [Double] {
-        // Get rescale slope and intercept
-        let rescaleSlope = dataSet.double(forTag: .rescaleSlope) ?? 1.0
-        let rescaleIntercept = dataSet.double(forTag: .rescaleIntercept) ?? 0.0
+        // Get rescale slope and intercept using DataSet extension methods
+        let rescaleSlope = dataSet.rescaleSlope()
+        let rescaleIntercept = dataSet.rescaleIntercept()
         
         // Apply: outputValue = pixelValue * slope + intercept
         return pixelValues.map { $0 * rescaleSlope + rescaleIntercept }
@@ -416,62 +390,6 @@ public actor ImagePreprocessor {
         } else {
             throw ImagePreprocessingError.unsupportedBitsAllocated(descriptor.bitsAllocated)
         }
-    }
-    
-    private func applyPaletteLUT(
-        frameData: Data,
-        descriptor: PixelDataDescriptor,
-        paletteLUT: PaletteColorLUT
-    ) throws -> Data {
-        let totalPixels = descriptor.columns * descriptor.rows
-        var rgbBytes = [UInt8]()
-        rgbBytes.reserveCapacity(totalPixels * 3)
-        
-        for i in 0..<totalPixels {
-            let offset = i * descriptor.bytesPerSample
-            guard offset < frameData.count else {
-                throw ImagePreprocessingError.insufficientPixelData
-            }
-            
-            let index: Int
-            if descriptor.bytesPerSample == 1 {
-                index = Int(frameData[offset])
-            } else {
-                let byte1 = UInt16(frameData[offset])
-                let byte2 = UInt16(frameData[offset + 1])
-                index = Int((byte2 << 8) | byte1)
-            }
-            
-            let (r, g, b) = paletteLUT.lookup(index: index)
-            rgbBytes.append(r)
-            rgbBytes.append(g)
-            rgbBytes.append(b)
-        }
-        
-        return Data(rgbBytes)
-    }
-    
-    private func convertPaletteRGBToGrayscale(rgbData: Data) throws -> Data {
-        let totalRGBBytes = rgbData.count
-        guard totalRGBBytes % 3 == 0 else {
-            throw ImagePreprocessingError.invalidPixelData
-        }
-        
-        let totalPixels = totalRGBBytes / 3
-        var grayscaleBytes = [UInt8]()
-        grayscaleBytes.reserveCapacity(totalPixels)
-        
-        for i in 0..<totalPixels {
-            let offset = i * 3
-            let r = Double(rgbData[offset])
-            let g = Double(rgbData[offset + 1])
-            let b = Double(rgbData[offset + 2])
-            
-            let gray = 0.299 * r + 0.587 * g + 0.114 * b
-            grayscaleBytes.append(UInt8(min(max(gray, 0.0), 255.0)))
-        }
-        
-        return Data(grayscaleBytes)
     }
 }
 
