@@ -867,7 +867,7 @@ public struct PrintRetryPolicy: Sendable {
         self.maxAttempts = max(0, maxAttempts)
         self.initialDelay = max(0, initialDelay)
         self.backoffMultiplier = max(1.0, backoffMultiplier)
-        self.maxDelay = max(initialDelay, maxDelay)
+        self.maxDelay = max(max(0, maxDelay), self.initialDelay)
     }
     
     /// Calculates the delay for a given attempt number
@@ -2260,8 +2260,8 @@ public enum DICOMPrintService {
                 // Create film box from template
                 var filmBox = template.createFilmBox()
                 
-                // Override with options if specified
-                if options.filmOrientation != .portrait {
+                // Apply options' film orientation if it differs from template's default
+                if options.filmOrientation != template.filmOrientation {
                     filmBox = FilmBox(
                         sopInstanceUID: filmBox.sopInstanceUID,
                         imageDisplayFormat: filmBox.imageDisplayFormat,
