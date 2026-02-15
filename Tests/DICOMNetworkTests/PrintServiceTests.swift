@@ -1,5 +1,6 @@
 import XCTest
 import DICOMCore
+import DICOMKit
 @testable import DICOMNetwork
 
 final class PrintServiceTests: XCTestCase {
@@ -1262,6 +1263,320 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(policy.backoffMultiplier, 1.0, accuracy: 0.001)
         XCTAssertEqual(policy.maxDelay, 0.0, accuracy: 0.001)
     }
+    
+    // MARK: - Phase 3: Image Preparation Pipeline Tests
+    
+    // MARK: - PreparedImage Tests
+    
+    func testPreparedImageInitialization() {
+        let pixelData = Data([0x00, 0x01, 0x02, 0x03])
+        let image = PreparedImage(
+            pixelData: pixelData,
+            width: 512,
+            height: 512,
+            bitsAllocated: 8,
+            samplesPerPixel: 1,
+            photometricInterpretation: "MONOCHROME2"
+        )
+        
+        XCTAssertEqual(image.pixelData, pixelData)
+        XCTAssertEqual(image.width, 512)
+        XCTAssertEqual(image.height, 512)
+        XCTAssertEqual(image.bitsAllocated, 8)
+        XCTAssertEqual(image.samplesPerPixel, 1)
+        XCTAssertEqual(image.photometricInterpretation, "MONOCHROME2")
+    }
+    
+    func testPreparedImageWithRGBData() {
+        let pixelData = Data(count: 512 * 512 * 3)
+        let image = PreparedImage(
+            pixelData: pixelData,
+            width: 512,
+            height: 512,
+            bitsAllocated: 8,
+            samplesPerPixel: 3,
+            photometricInterpretation: "RGB"
+        )
+        
+        XCTAssertEqual(image.samplesPerPixel, 3)
+        XCTAssertEqual(image.photometricInterpretation, "RGB")
+    }
+    
+    // MARK: - ImagePreprocessor Tests
+    
+    func testImagePreprocessorInitialization() async {
+        let preprocessor = ImagePreprocessor()
+        // Actor initializes successfully
+        _ = preprocessor
+    }
+    
+    func testPreprocessMONOCHROME2ImageNoTransforms() async throws {
+        let width = 64
+        let height = 64
+        let pixelCount = width * height
+        
+        // Create simple grayscale pixel data
+        var pixelData = Data(count: pixelCount)
+        for i in 0..<pixelCount {
+            pixelData[i] = UInt8(i % 256)
+        }
+        
+        var dataSet = DataSet()
+        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        try dataSet.set(uint16: UInt16(height), for: .rows)
+        try dataSet.set(uint16: UInt16(width), for: .columns)
+        try dataSet.set(uint16: 8, for: .bitsAllocated)
+        try dataSet.set(uint16: 1, for: .samplesPerPixel)
+        try dataSet.set(string: "MONOCHROME2", for: .photometricInterpretation)
+        
+        let preprocessor = ImagePreprocessor()
+        let result = try await preprocessor.prepareForPrint(
+            dataSet: dataSet,
+            targetSize: CGSize(width: 64, height: 64),
+            colorMode: .grayscale
+        )
+        
+        XCTAssertEqual(result.width, width)
+        XCTAssertEqual(result.height, height)
+        XCTAssertEqual(result.bitsAllocated, 8)
+        XCTAssertEqual(result.samplesPerPixel, 1)
+        XCTAssertEqual(result.photometricInterpretation, "MONOCHROME2")
+        XCTAssertEqual(result.pixelData.count, pixelCount)
+    }
+    
+    func testPreprocessMONOCHROME1ImageInversion() async throws {
+        let width = 4
+        let height = 4
+        let pixelCount = width * height
+        
+        // Create pixel data with known values
+        var pixelData = Data(count: pixelCount)
+        for i in 0..<pixelCount {
+            pixelData[i] = UInt8(i * 16) // 0, 16, 32, 48, ...
+        }
+        
+        var dataSet = DataSet()
+        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        try dataSet.set(uint16: UInt16(height), for: .rows)
+        try dataSet.set(uint16: UInt16(width), for: .columns)
+        try dataSet.set(uint16: 8, for: .bitsAllocated)
+        try dataSet.set(uint16: 1, for: .samplesPerPixel)
+        try dataSet.set(string: "MONOCHROME1", for: .photometricInterpretation)
+        
+        let preprocessor = ImagePreprocessor()
+        let result = try await preprocessor.prepareForPrint(
+            dataSet: dataSet,
+            targetSize: CGSize(width: 4, height: 4),
+            colorMode: .grayscale
+        )
+        
+        XCTAssertEqual(result.photometricInterpretation, "MONOCHROME2")
+        XCTAssertEqual(result.pixelData.count, pixelCount)
+        
+        // Verify inversion: pixel 0 was 0, should now be 255
+        XCTAssertEqual(result.pixelData[0], 255)
+        // Pixel 1 was 16, should now be 239
+        XCTAssertEqual(result.pixelData[1], 239)
+    }
+    
+    func testPreprocessMONOCHROME1Image16BitInversion() async throws {
+        let width = 4
+        let height = 4
+        let pixelCount = width * height
+        
+        // Create 16-bit pixel data
+        var pixelData = Data(count: pixelCount * 2)
+        pixelData.withUnsafeMutableBytes { ptr in
+            guard let baseAddress = ptr.baseAddress else { return }
+            let buffer = baseAddress.assumingMemoryBound(to: UInt16.self)
+            for i in 0..<pixelCount {
+                buffer[i] = UInt16(i * 4096) // 0, 4096, 8192, ...
+            }
+        }
+        
+        var dataSet = DataSet()
+        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        try dataSet.set(uint16: UInt16(height), for: .rows)
+        try dataSet.set(uint16: UInt16(width), for: .columns)
+        try dataSet.set(uint16: 16, for: .bitsAllocated)
+        try dataSet.set(uint16: 1, for: .samplesPerPixel)
+        try dataSet.set(string: "MONOCHROME1", for: .photometricInterpretation)
+        
+        let preprocessor = ImagePreprocessor()
+        let result = try await preprocessor.prepareForPrint(
+            dataSet: dataSet,
+            targetSize: CGSize(width: 4, height: 4),
+            colorMode: .grayscale
+        )
+        
+        XCTAssertEqual(result.photometricInterpretation, "MONOCHROME2")
+        XCTAssertEqual(result.bitsAllocated, 16)
+        
+        // Verify 16-bit inversion
+        result.pixelData.withUnsafeBytes { ptr in
+            guard let baseAddress = ptr.baseAddress else { return }
+            let buffer = baseAddress.assumingMemoryBound(to: UInt16.self)
+            // First pixel was 0, should now be 65535
+            XCTAssertEqual(buffer[0], 65535)
+            // Second pixel was 4096, should now be 61439
+            XCTAssertEqual(buffer[1], 61439)
+        }
+    }
+    
+    func testPreprocessWithWindowLevel8Bit() async throws {
+        let width = 4
+        let height = 4
+        let pixelCount = width * height
+        
+        // Create pixel data with values 0-255 range
+        var pixelData = Data(count: pixelCount)
+        for i in 0..<pixelCount {
+            pixelData[i] = UInt8(i * 16)
+        }
+        
+        var dataSet = DataSet()
+        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        try dataSet.set(uint16: UInt16(height), for: .rows)
+        try dataSet.set(uint16: UInt16(width), for: .columns)
+        try dataSet.set(uint16: 8, for: .bitsAllocated)
+        try dataSet.set(uint16: 1, for: .samplesPerPixel)
+        try dataSet.set(string: "MONOCHROME2", for: .photometricInterpretation)
+        try dataSet.set(decimalString: [128.0], for: .windowCenter)
+        try dataSet.set(decimalString: [256.0], for: .windowWidth)
+        
+        let preprocessor = ImagePreprocessor()
+        let result = try await preprocessor.prepareForPrint(
+            dataSet: dataSet,
+            targetSize: CGSize(width: 4, height: 4),
+            colorMode: .grayscale
+        )
+        
+        XCTAssertEqual(result.pixelData.count, pixelCount)
+        // Window/level should normalize the values
+        XCTAssertTrue(result.pixelData[0] >= 0)
+        XCTAssertTrue(result.pixelData[pixelCount - 1] <= 255)
+    }
+    
+    func testPreprocessRGBToGrayscaleConversion() async throws {
+        let width = 2
+        let height = 2
+        let pixelCount = width * height
+        
+        // Create RGB pixel data (white, red, green, blue)
+        var pixelData = Data(count: pixelCount * 3)
+        // White: R=255, G=255, B=255
+        pixelData[0] = 255; pixelData[1] = 255; pixelData[2] = 255
+        // Red: R=255, G=0, B=0
+        pixelData[3] = 255; pixelData[4] = 0; pixelData[5] = 0
+        // Green: R=0, G=255, B=0
+        pixelData[6] = 0; pixelData[7] = 255; pixelData[8] = 0
+        // Blue: R=0, G=0, B=255
+        pixelData[9] = 0; pixelData[10] = 0; pixelData[11] = 255
+        
+        var dataSet = DataSet()
+        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        try dataSet.set(uint16: UInt16(height), for: .rows)
+        try dataSet.set(uint16: UInt16(width), for: .columns)
+        try dataSet.set(uint16: 8, for: .bitsAllocated)
+        try dataSet.set(uint16: 3, for: .samplesPerPixel)
+        try dataSet.set(string: "RGB", for: .photometricInterpretation)
+        
+        let preprocessor = ImagePreprocessor()
+        let result = try await preprocessor.prepareForPrint(
+            dataSet: dataSet,
+            targetSize: CGSize(width: 2, height: 2),
+            colorMode: .grayscale
+        )
+        
+        XCTAssertEqual(result.samplesPerPixel, 1)
+        XCTAssertEqual(result.photometricInterpretation, "MONOCHROME2")
+        XCTAssertEqual(result.pixelData.count, pixelCount)
+        
+        // White should be bright (close to 255)
+        XCTAssertGreaterThan(result.pixelData[0], 200)
+        // Using ITU-R BT.601 weights:
+        // Red: 0.299 * 255 ≈ 76
+        XCTAssertTrue(result.pixelData[1] > 50 && result.pixelData[1] < 100)
+        // Green: 0.587 * 255 ≈ 150
+        XCTAssertTrue(result.pixelData[2] > 120 && result.pixelData[2] < 180)
+        // Blue: 0.114 * 255 ≈ 29
+        XCTAssertTrue(result.pixelData[3] < 50)
+    }
+    
+    func testPreprocessMissingPixelDataThrowsError() async throws {
+        var dataSet = DataSet()
+        try dataSet.set(uint16: 64, for: .rows)
+        try dataSet.set(uint16: 64, for: .columns)
+        try dataSet.set(uint16: 8, for: .bitsAllocated)
+        
+        let preprocessor = ImagePreprocessor()
+        
+        do {
+            _ = try await preprocessor.prepareForPrint(
+                dataSet: dataSet,
+                targetSize: CGSize(width: 64, height: 64),
+                colorMode: .grayscale
+            )
+            XCTFail("Expected error for missing pixel data")
+        } catch {
+            // Expected error
+        }
+    }
+    
+    func testPreprocessMissingImageAttributesThrowsError() async throws {
+        var pixelData = Data(count: 64 * 64)
+        for i in 0..<(64 * 64) {
+            pixelData[i] = UInt8(i % 256)
+        }
+        
+        var dataSet = DataSet()
+        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        // Missing rows, columns, bitsAllocated
+        
+        let preprocessor = ImagePreprocessor()
+        
+        do {
+            _ = try await preprocessor.prepareForPrint(
+                dataSet: dataSet,
+                targetSize: CGSize(width: 64, height: 64),
+                colorMode: .grayscale
+            )
+            XCTFail("Expected error for missing image attributes")
+        } catch {
+            // Expected error
+        }
+    }
+    
+    func testPreprocessColorImagePreservesRGBWhenColorModeIsColor() async throws {
+        let width = 2
+        let height = 2
+        let pixelCount = width * height
+        
+        // Create RGB pixel data
+        var pixelData = Data(count: pixelCount * 3)
+        for i in 0..<(pixelCount * 3) {
+            pixelData[i] = UInt8(i % 256)
+        }
+        
+        var dataSet = DataSet()
+        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        try dataSet.set(uint16: UInt16(height), for: .rows)
+        try dataSet.set(uint16: UInt16(width), for: .columns)
+        try dataSet.set(uint16: 8, for: .bitsAllocated)
+        try dataSet.set(uint16: 3, for: .samplesPerPixel)
+        try dataSet.set(string: "RGB", for: .photometricInterpretation)
+        
+        let preprocessor = ImagePreprocessor()
+        let result = try await preprocessor.prepareForPrint(
+            dataSet: dataSet,
+            targetSize: CGSize(width: 2, height: 2),
+            colorMode: .color
+        )
+        
+        // RGB should be preserved when color mode is color
+        XCTAssertEqual(result.samplesPerPixel, 3)
+        XCTAssertEqual(result.photometricInterpretation, "RGB")
+        XCTAssertEqual(result.pixelData.count, pixelCount * 3)
+    }
 }
-
 
