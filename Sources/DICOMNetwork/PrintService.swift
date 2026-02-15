@@ -365,6 +365,53 @@ public struct FilmBoxResult: Sendable {
     }
 }
 
+// MARK: - Print Job Status
+
+/// Status of a print job (PS3.4 H.4.8)
+public struct PrintJobStatus: Sendable {
+    /// Print Job SOP Instance UID
+    public let printJobUID: String
+    
+    /// Execution status (PENDING, PRINTING, DONE, FAILURE)
+    public let executionStatus: String
+    
+    /// Additional status information (optional)
+    public let executionStatusInfo: String?
+    
+    /// Date when the print job was created
+    public let creationDate: Date?
+    
+    /// Time when the print job was created
+    public let creationTime: Date?
+    
+    public init(printJobUID: String,
+                executionStatus: String,
+                executionStatusInfo: String? = nil,
+                creationDate: Date? = nil,
+                creationTime: Date? = nil) {
+        self.printJobUID = printJobUID
+        self.executionStatus = executionStatus
+        self.executionStatusInfo = executionStatusInfo
+        self.creationDate = creationDate
+        self.creationTime = creationTime
+    }
+    
+    /// Whether the print job is still pending or printing
+    public var isInProgress: Bool {
+        executionStatus == "PENDING" || executionStatus == "PRINTING"
+    }
+    
+    /// Whether the print job completed successfully
+    public var isCompleted: Bool {
+        executionStatus == "DONE"
+    }
+    
+    /// Whether the print job failed
+    public var isFailed: Bool {
+        executionStatus == "FAILURE"
+    }
+}
+
 #if canImport(Network)
 
 // MARK: - DICOM Print Service
@@ -1278,6 +1325,163 @@ public enum DICOMPrintService {
             try? await association.abort()
             throw error
         }
+    }
+    
+    /// Gets the status of a print job using N-GET
+    ///
+    /// Sends N-GET to the Print SCP to retrieve the status of a Print Job SOP Instance.
+    /// This can be used to monitor the progress of a print operation.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - printJobUID: The Print Job SOP Instance UID to query
+    /// - Returns: The print job status
+    /// - Throws: `DICOMNetworkError` if the operation fails
+    ///
+    /// Reference: PS3.4 H.4.8 - Print Job SOP Class
+    public static func getPrintJobStatus(
+        configuration: PrintConfiguration,
+        printJobUID: String
+    ) async throws -> PrintJobStatus {
+        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
+        
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: sopClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+        
+        // Create association configuration
+        let associationConfig = try createPrintAssociationConfiguration(configuration)
+        
+        // Create association
+        let association = Association(configuration: associationConfig)
+        
+        do {
+            // Establish association
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            
+            // Verify presentation context was accepted
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+            
+            // Send N-GET request for Print Job SOP Instance
+            let request = NGetRequest(
+                messageID: 1,
+                requestedSOPClassUID: printJobSOPClassUID,
+                requestedSOPInstanceUID: printJobUID,
+                presentationContextID: 1
+            )
+            
+            let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+            let pdus = fragmenter.fragmentMessage(
+                commandSet: request.commandSet,
+                dataSet: nil,
+                presentationContextID: request.presentationContextID
+            )
+            
+            for pdu in pdus {
+                for pdv in pdu.presentationDataValues {
+                    try await association.send(pdv: pdv)
+                }
+            }
+            
+            // Receive N-GET response
+            let assembler = MessageAssembler()
+            let responsePDU = try await association.receive()
+            
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                let responseCommandSet = message.commandSet
+                let response = NGetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                
+                guard response.status.isSuccess else {
+                    try await association.abort()
+                    throw DICOMNetworkError.queryFailed(response.status)
+                }
+                
+                // Parse print job attributes from response data set
+                if let dataSetData = message.dataSet {
+                    let printJobStatus = parsePrintJobStatus(from: dataSetData, printJobUID: printJobUID)
+                    try await association.release()
+                    return printJobStatus
+                }
+                
+                // If no data set returned, return a default status
+                try await association.release()
+                return PrintJobStatus(
+                    printJobUID: printJobUID,
+                    executionStatus: "UNKNOWN"
+                )
+            }
+            
+            throw DICOMNetworkError.unexpectedResponse
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
+    
+    /// Parses print job status from response data
+    private static func parsePrintJobStatus(from data: Data, printJobUID: String) -> PrintJobStatus {
+        do {
+            // Parse the DICOM data set to extract Print Job attributes
+            let dataSet = try DICOMKit.DataSet(data: data)
+            
+            // Extract Execution Status (2100,0020) - CS
+            let executionStatus = dataSet[.executionStatus]?.stringValue ?? "UNKNOWN"
+            
+            // Extract Execution Status Info (2100,0030) - AE (optional)
+            let executionStatusInfo = dataSet[.executionStatusInfo]?.stringValue
+            
+            // Extract Creation Date (2100,0040) - DA (optional)
+            var creationDate: Date? = nil
+            if let dateString = dataSet[.creationDate]?.stringValue {
+                creationDate = parseDICOMDate(dateString)
+            }
+            
+            // Extract Creation Time (2100,0050) - TM (optional)
+            var creationTime: Date? = nil
+            if let timeString = dataSet[.creationTime]?.stringValue {
+                creationTime = parseDICOMTime(timeString)
+            }
+            
+            return PrintJobStatus(
+                printJobUID: printJobUID,
+                executionStatus: executionStatus,
+                executionStatusInfo: executionStatusInfo,
+                creationDate: creationDate,
+                creationTime: creationTime
+            )
+        } catch {
+            // If parsing fails, return a default status
+            return PrintJobStatus(
+                printJobUID: printJobUID,
+                executionStatus: "UNKNOWN"
+            )
+        }
+    }
+    
+    /// Parses DICOM Date (DA) format: YYYYMMDD
+    private static func parseDICOMDate(_ dateString: String) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.date(from: dateString)
+    }
+    
+    /// Parses DICOM Time (TM) format: HHMMSS.FFFFFF
+    private static func parseDICOMTime(_ timeString: String) -> Date? {
+        let formatter = DateFormatter()
+        // Handle various TM formats: HHMMSS, HHMMSS.F, HHMMSS.FFFFFF
+        let cleanedTime = timeString.components(separatedBy: ".").first ?? timeString
+        formatter.dateFormat = "HHmmss"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        return formatter.date(from: cleanedTime)
     }
 }
 
