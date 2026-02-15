@@ -3945,10 +3945,18 @@ See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement 
 - [x] `CaseIterable` conformance for FilmSize, MediumType, MagnificationType
 - [x] 60+ unit tests
 
-**Phase 5 (v1.4.5)**: Documentation and Examples
+**Phase 5 (v1.4.5)**: Documentation and CLI Tool
 - [ ] DocC API documentation
 - [ ] User guides and tutorials
-- [ ] CLI tool: `dicom-print` (query, send, monitor, configure)
+- [x] CLI tool: `dicom-print` (query, send, monitor, configure) ✅ NEW (February 2026)
+  - [x] `status` command - Query printer status using N-GET
+  - [x] `send` command - Send DICOM files with layout/film size options
+  - [x] `job` command - Monitor print job status
+  - [x] `list-printers` command - List configured printers
+  - [x] `add-printer` command - Add printer configuration
+  - [x] `remove-printer` command - Remove printer configuration
+  - [x] Local printer configuration management (~/.config/dicomkit/printers.json)
+  - [x] Synchronous command wrapper for async DICOM operations
 - [ ] Integration examples (iOS, macOS)
 - [ ] DCM4CHEE/Orthanc setup guides
 

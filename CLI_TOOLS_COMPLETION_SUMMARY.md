@@ -495,7 +495,34 @@ See [CLI_TOOLS_PHASE2.md](CLI_TOOLS_PHASE2.md) for detailed Phase 2 implementati
 
 ### Phase 3 Tools (Future)
 1. **dicom-worklist**: Modality Worklist (MWL) queries
-2. **dicom-print**: DICOM Print (C-PRINT) operations
+2. ~~**dicom-print**: DICOM Print (C-PRINT) operations~~ ✅ COMPLETE (February 2026)
+
+### dicom-print (NEW - February 2026)
+**Purpose**: DICOM Print Management CLI tool  
+**Lines of Code**: ~1,000  
+**Status**: ✅ Newly implemented as part of DICOM Print Phase 5
+
+**Features**:
+- Query printer status (N-GET)
+- Send DICOM files to printer with layout/film size options
+- Monitor print job status
+- Local printer configuration management
+- Multiple film sizes (8x10, 14x17, A4, A3, etc.)
+- Image layout options (1x1, 2x2, 2x3, 3x4, 4x5, etc.)
+- Dry run mode for testing
+
+**Example**:
+```bash
+# Query printer status
+dicom-print status pacs://192.168.1.100:11112 --aet WORKSTATION
+
+# Print DICOM files
+dicom-print send pacs://server:11112 *.dcm --aet APP --layout 2x3 --film-size 14x17
+
+# Manage printers
+dicom-print add-printer --name radiology --host 192.168.1.100 --port 11112 --called-ae PRINT_SCP
+dicom-print list-printers
+```
 
 ### Feature Enhancements
 1. QIDO-RS/STOW-RS support (DICOMweb/HTTP)

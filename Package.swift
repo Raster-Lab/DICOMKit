@@ -119,6 +119,10 @@ let package = Package(
             targets: ["dicom-echo"]
         ),
         .executable(
+            name: "dicom-print",
+            targets: ["dicom-print"]
+        ),
+        .executable(
             name: "dicom-mwl",
             targets: ["dicom-mwl"]
         ),
@@ -478,6 +482,17 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-echo",
+            exclude: ["README.md"]
+        ),
+        .executableTarget(
+            name: "dicom-print",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-print",
             exclude: ["README.md"]
         ),
         .executableTarget(
