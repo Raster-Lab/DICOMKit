@@ -412,6 +412,488 @@ public struct PrintJobStatus: Sendable {
     }
 }
 
+// MARK: - Print Options
+
+/// Options for print operations
+///
+/// Provides configuration options for print jobs including number of copies,
+/// priority, film size, orientation, and other print parameters.
+public struct PrintOptions: Sendable {
+    /// Number of copies to print
+    public let numberOfCopies: Int
+    
+    /// Print priority
+    public let priority: PrintPriority
+    
+    /// Film size
+    public let filmSize: FilmSize
+    
+    /// Film orientation (portrait or landscape)
+    public let filmOrientation: FilmOrientation
+    
+    /// Medium type (paper, film, etc.)
+    public let mediumType: MediumType
+    
+    /// Film destination
+    public let filmDestination: FilmDestination
+    
+    /// Border density (e.g., "BLACK", "WHITE")
+    public let borderDensity: String
+    
+    /// Empty image density
+    public let emptyImageDensity: String
+    
+    /// Magnification type
+    public let magnificationType: MagnificationType
+    
+    /// Image polarity
+    public let polarity: ImagePolarity
+    
+    /// Trim option
+    public let trimOption: TrimOption
+    
+    /// Optional session label
+    public let sessionLabel: String?
+    
+    /// Creates print options with specified parameters
+    public init(
+        numberOfCopies: Int = 1,
+        priority: PrintPriority = .medium,
+        filmSize: FilmSize = .size8InX10In,
+        filmOrientation: FilmOrientation = .portrait,
+        mediumType: MediumType = .clearFilm,
+        filmDestination: FilmDestination = .processor,
+        borderDensity: String = "BLACK",
+        emptyImageDensity: String = "BLACK",
+        magnificationType: MagnificationType = .replicate,
+        polarity: ImagePolarity = .normal,
+        trimOption: TrimOption = .no,
+        sessionLabel: String? = nil
+    ) {
+        self.numberOfCopies = numberOfCopies
+        self.priority = priority
+        self.filmSize = filmSize
+        self.filmOrientation = filmOrientation
+        self.mediumType = mediumType
+        self.filmDestination = filmDestination
+        self.borderDensity = borderDensity
+        self.emptyImageDensity = emptyImageDensity
+        self.magnificationType = magnificationType
+        self.polarity = polarity
+        self.trimOption = trimOption
+        self.sessionLabel = sessionLabel
+    }
+    
+    /// Default print options for general use
+    ///
+    /// Uses standard settings suitable for most print jobs:
+    /// - Single copy
+    /// - Medium priority
+    /// - 8x10 inch film
+    /// - Portrait orientation
+    /// - Clear film medium
+    public static let `default` = PrintOptions()
+    
+    /// High quality print options
+    ///
+    /// Uses settings optimized for best print quality:
+    /// - Bilinear magnification
+    /// - Clear film medium
+    /// - High priority
+    public static let highQuality = PrintOptions(
+        priority: .high,
+        filmSize: .size14InX17In,
+        mediumType: .clearFilm,
+        magnificationType: .bilinear
+    )
+    
+    /// Draft print options for quick previews
+    ///
+    /// Uses settings optimized for fast printing:
+    /// - Paper medium
+    /// - Low priority
+    /// - Smaller film size
+    public static let draft = PrintOptions(
+        priority: .low,
+        filmSize: .size8_5InX11In,
+        mediumType: .paper,
+        magnificationType: .replicate
+    )
+    
+    /// Mammography print options
+    ///
+    /// Uses settings suitable for mammography:
+    /// - Mammography blue film
+    /// - High priority
+    /// - Large film size
+    public static let mammography = PrintOptions(
+        priority: .high,
+        filmSize: .size14InX17In,
+        mediumType: .mammoFilmBlueBase,
+        magnificationType: .bilinear
+    )
+}
+
+// MARK: - Print Layout
+
+/// Represents a print layout (rows x columns)
+public struct PrintLayout: Sendable, Equatable {
+    /// Number of rows in the layout
+    public let rows: Int
+    
+    /// Number of columns in the layout
+    public let columns: Int
+    
+    /// Total number of image positions
+    public var imageCount: Int {
+        rows * columns
+    }
+    
+    /// Image display format string for DICOM
+    public var imageDisplayFormat: String {
+        "STANDARD\\\(rows),\(columns)"
+    }
+    
+    /// Creates a print layout with the specified dimensions
+    public init(rows: Int, columns: Int) {
+        self.rows = max(1, rows)
+        self.columns = max(1, columns)
+    }
+    
+    /// Determines the optimal layout for a given number of images
+    ///
+    /// - Parameter imageCount: Number of images to fit
+    /// - Returns: The optimal layout
+    public static func optimalLayout(for imageCount: Int) -> PrintLayout {
+        switch imageCount {
+        case 1:
+            return PrintLayout(rows: 1, columns: 1)
+        case 2:
+            return PrintLayout(rows: 1, columns: 2)
+        case 3, 4:
+            return PrintLayout(rows: 2, columns: 2)
+        case 5, 6:
+            return PrintLayout(rows: 2, columns: 3)
+        case 7, 8, 9:
+            return PrintLayout(rows: 3, columns: 3)
+        case 10, 11, 12:
+            return PrintLayout(rows: 3, columns: 4)
+        case 13, 14, 15, 16:
+            return PrintLayout(rows: 4, columns: 4)
+        case 17...20:
+            return PrintLayout(rows: 4, columns: 5)
+        default:
+            // For more than 20 images, use 5x5 layout
+            return PrintLayout(rows: 5, columns: 5)
+        }
+    }
+    
+    /// Standard single image layout (1x1)
+    public static let singleImage = PrintLayout(rows: 1, columns: 1)
+    
+    /// Standard comparison layout (1x2)
+    public static let comparison = PrintLayout(rows: 1, columns: 2)
+    
+    /// Standard 2x2 grid layout
+    public static let grid2x2 = PrintLayout(rows: 2, columns: 2)
+    
+    /// Standard 3x3 grid layout
+    public static let grid3x3 = PrintLayout(rows: 3, columns: 3)
+    
+    /// Standard 4x4 grid layout
+    public static let grid4x4 = PrintLayout(rows: 4, columns: 4)
+    
+    /// Multi-phase layout (2x3)
+    public static let multiPhase2x3 = PrintLayout(rows: 2, columns: 3)
+    
+    /// Multi-phase layout (3x4)
+    public static let multiPhase3x4 = PrintLayout(rows: 3, columns: 4)
+}
+
+// MARK: - Print Progress
+
+/// Progress information for print operations
+public struct PrintProgress: Sendable {
+    /// Phase of the print operation
+    public enum Phase: Sendable, Equatable {
+        /// Connecting to print server
+        case connecting
+        /// Querying printer status
+        case queryingPrinter
+        /// Creating print session
+        case creatingSession
+        /// Preparing images for printing
+        case preparingImages
+        /// Uploading images to printer
+        case uploadingImages(current: Int, total: Int)
+        /// Sending print command
+        case printing
+        /// Cleaning up session
+        case cleanup
+        /// Print operation completed
+        case completed
+    }
+    
+    /// Current phase of the operation
+    public let phase: Phase
+    
+    /// Progress value from 0.0 to 1.0
+    public let progress: Double
+    
+    /// Human-readable progress message
+    public let message: String
+    
+    /// Creates a progress update
+    public init(phase: Phase, progress: Double, message: String) {
+        self.phase = phase
+        self.progress = max(0.0, min(1.0, progress))
+        self.message = message
+    }
+}
+
+// MARK: - Print Template Protocol
+
+/// Protocol for defining reusable print layouts
+///
+/// Print templates encapsulate common print configurations that can be
+/// reused across different print jobs. Templates define the layout,
+/// film size, and other parameters.
+public protocol PrintTemplate: Sendable {
+    /// Template name
+    var name: String { get }
+    
+    /// Template description
+    var description: String { get }
+    
+    /// Preferred film size for this template
+    var filmSize: FilmSize { get }
+    
+    /// Image display format (e.g., "STANDARD\\2,2")
+    var imageDisplayFormat: String { get }
+    
+    /// Number of images this template can hold
+    var imageCount: Int { get }
+    
+    /// Preferred film orientation
+    var filmOrientation: FilmOrientation { get }
+    
+    /// Creates a FilmBox configured with this template's settings
+    func createFilmBox() -> FilmBox
+}
+
+// MARK: - Built-in Print Templates
+
+/// Single image print template (1x1)
+public struct SingleImageTemplate: PrintTemplate {
+    public let name = "Single Image"
+    public let description = "Single image fills entire film"
+    public let filmSize: FilmSize
+    public let imageDisplayFormat = "STANDARD\\1,1"
+    public let imageCount = 1
+    public let filmOrientation: FilmOrientation
+    
+    public init(filmSize: FilmSize = .size8InX10In, filmOrientation: FilmOrientation = .portrait) {
+        self.filmSize = filmSize
+        self.filmOrientation = filmOrientation
+    }
+    
+    public func createFilmBox() -> FilmBox {
+        FilmBox(
+            imageDisplayFormat: imageDisplayFormat,
+            filmOrientation: filmOrientation,
+            filmSizeID: filmSize
+        )
+    }
+}
+
+/// Comparison template (1x2) for side-by-side comparison
+public struct ComparisonTemplate: PrintTemplate {
+    public let name = "Comparison"
+    public let description = "Two images side by side for comparison"
+    public let filmSize: FilmSize
+    public let imageDisplayFormat = "STANDARD\\1,2"
+    public let imageCount = 2
+    public let filmOrientation: FilmOrientation
+    
+    public init(filmSize: FilmSize = .size11InX14In, filmOrientation: FilmOrientation = .landscape) {
+        self.filmSize = filmSize
+        self.filmOrientation = filmOrientation
+    }
+    
+    public func createFilmBox() -> FilmBox {
+        FilmBox(
+            imageDisplayFormat: imageDisplayFormat,
+            filmOrientation: filmOrientation,
+            filmSizeID: filmSize
+        )
+    }
+}
+
+/// Grid template for configurable row/column layouts
+public struct GridTemplate: PrintTemplate {
+    public let name: String
+    public let description: String
+    public let filmSize: FilmSize
+    public let imageDisplayFormat: String
+    public let imageCount: Int
+    public let filmOrientation: FilmOrientation
+    private let rows: Int
+    private let columns: Int
+    
+    public init(rows: Int, columns: Int, filmSize: FilmSize = .size14InX17In, filmOrientation: FilmOrientation = .portrait) {
+        self.rows = max(1, rows)
+        self.columns = max(1, columns)
+        self.name = "\(self.rows)x\(self.columns) Grid"
+        self.description = "\(self.rows * self.columns) images in a \(self.rows)x\(self.columns) grid"
+        self.filmSize = filmSize
+        self.imageDisplayFormat = "STANDARD\\\(self.rows),\(self.columns)"
+        self.imageCount = self.rows * self.columns
+        self.filmOrientation = filmOrientation
+    }
+    
+    public func createFilmBox() -> FilmBox {
+        FilmBox(
+            imageDisplayFormat: imageDisplayFormat,
+            filmOrientation: filmOrientation,
+            filmSizeID: filmSize
+        )
+    }
+}
+
+/// Multi-phase template for temporal series (e.g., 3x4 for multi-phase CT)
+public struct MultiPhaseTemplate: PrintTemplate {
+    public let name: String
+    public let description: String
+    public let filmSize: FilmSize
+    public let imageDisplayFormat: String
+    public let imageCount: Int
+    public let filmOrientation: FilmOrientation
+    private let rows: Int
+    private let columns: Int
+    
+    public init(rows: Int, columns: Int, filmSize: FilmSize = .size14InX17In, filmOrientation: FilmOrientation = .portrait) {
+        self.rows = max(1, rows)
+        self.columns = max(1, columns)
+        self.name = "Multi-Phase \(self.rows)x\(self.columns)"
+        self.description = "Multi-phase layout with \(self.rows * self.columns) images (\(self.rows) rows × \(self.columns) columns)"
+        self.filmSize = filmSize
+        self.imageDisplayFormat = "STANDARD\\\(self.rows),\(self.columns)"
+        self.imageCount = self.rows * self.columns
+        self.filmOrientation = filmOrientation
+    }
+    
+    public func createFilmBox() -> FilmBox {
+        FilmBox(
+            imageDisplayFormat: imageDisplayFormat,
+            filmOrientation: filmOrientation,
+            filmSizeID: filmSize
+        )
+    }
+}
+
+// MARK: - Convenience Template Extensions
+
+extension PrintTemplate where Self == SingleImageTemplate {
+    /// Single image template with default settings
+    public static var singleImage: SingleImageTemplate {
+        SingleImageTemplate()
+    }
+}
+
+extension PrintTemplate where Self == ComparisonTemplate {
+    /// Comparison template with default settings
+    public static var comparison: ComparisonTemplate {
+        ComparisonTemplate()
+    }
+}
+
+extension PrintTemplate where Self == GridTemplate {
+    /// 2x2 grid template
+    public static var grid2x2: GridTemplate {
+        GridTemplate(rows: 2, columns: 2)
+    }
+    
+    /// 3x3 grid template
+    public static var grid3x3: GridTemplate {
+        GridTemplate(rows: 3, columns: 3)
+    }
+    
+    /// 4x4 grid template
+    public static var grid4x4: GridTemplate {
+        GridTemplate(rows: 4, columns: 4)
+    }
+}
+
+extension PrintTemplate where Self == MultiPhaseTemplate {
+    /// Multi-phase 2x3 template
+    public static var multiPhase2x3: MultiPhaseTemplate {
+        MultiPhaseTemplate(rows: 2, columns: 3)
+    }
+    
+    /// Multi-phase 3x4 template
+    public static var multiPhase3x4: MultiPhaseTemplate {
+        MultiPhaseTemplate(rows: 3, columns: 4)
+    }
+    
+    /// Multi-phase 4x5 template
+    public static var multiPhase4x5: MultiPhaseTemplate {
+        MultiPhaseTemplate(rows: 4, columns: 5)
+    }
+}
+
+// MARK: - Print Retry Policy
+
+/// Policy for retrying print operations
+public struct PrintRetryPolicy: Sendable {
+    /// Maximum number of retry attempts
+    public let maxAttempts: Int
+    
+    /// Initial delay before first retry (in seconds)
+    public let initialDelay: TimeInterval
+    
+    /// Multiplier for exponential backoff
+    public let backoffMultiplier: Double
+    
+    /// Maximum delay between retries (in seconds)
+    public let maxDelay: TimeInterval
+    
+    /// Creates a retry policy with specified parameters
+    public init(
+        maxAttempts: Int = 3,
+        initialDelay: TimeInterval = 1.0,
+        backoffMultiplier: Double = 2.0,
+        maxDelay: TimeInterval = 30.0
+    ) {
+        self.maxAttempts = max(0, maxAttempts)
+        self.initialDelay = max(0, initialDelay)
+        self.backoffMultiplier = max(1.0, backoffMultiplier)
+        self.maxDelay = max(max(0, maxDelay), self.initialDelay)
+    }
+    
+    /// Calculates the delay for a given attempt number
+    /// - Parameter attempt: The attempt number (0-based)
+    /// - Returns: The delay in seconds
+    public func delay(for attempt: Int) -> TimeInterval {
+        guard attempt >= 0 else { return initialDelay }
+        let delay = initialDelay * pow(backoffMultiplier, Double(attempt))
+        return min(delay, maxDelay)
+    }
+    
+    /// Default retry policy
+    public static let `default` = PrintRetryPolicy()
+    
+    /// Aggressive retry policy for critical prints
+    public static let aggressive = PrintRetryPolicy(
+        maxAttempts: 5,
+        initialDelay: 0.5,
+        backoffMultiplier: 1.5,
+        maxDelay: 10.0
+    )
+    
+    /// No retry policy
+    public static let none = PrintRetryPolicy(maxAttempts: 0)
+}
+
 #if canImport(Network)
 
 // MARK: - DICOM Print Service
@@ -1482,6 +1964,563 @@ public enum DICOMPrintService {
         formatter.dateFormat = "HHmmss"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.date(from: cleanedTime)
+    }
+    
+    // MARK: - High-Level Print API (Phase 2)
+    
+    /// Prints a single image using the complete print workflow
+    ///
+    /// This is a convenience method that handles the complete print workflow:
+    /// 1. Creates a film session
+    /// 2. Creates a film box with single image layout
+    /// 3. Sets the image box content with the provided pixel data
+    /// 4. Prints the film box
+    /// 5. Cleans up by deleting the film session
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - imageData: The pixel data to print (should be properly formatted)
+    ///   - options: Print options (defaults to `.default`)
+    /// - Returns: The print result
+    /// - Throws: `DICOMNetworkError` if any step of the workflow fails
+    ///
+    /// Example:
+    /// ```swift
+    /// let result = try await DICOMPrintService.printImage(
+    ///     configuration: printConfig,
+    ///     imageData: pixelData,
+    ///     options: .highQuality
+    /// )
+    /// ```
+    public static func printImage(
+        configuration: PrintConfiguration,
+        imageData: Data,
+        options: PrintOptions = .default
+    ) async throws -> PrintResult {
+        // Create film session
+        let filmSession = FilmSession(
+            numberOfCopies: options.numberOfCopies,
+            printPriority: options.priority,
+            mediumType: options.mediumType,
+            filmDestination: options.filmDestination,
+            filmSessionLabel: options.sessionLabel
+        )
+        
+        let filmSessionUID = try await createFilmSession(configuration: configuration, session: filmSession)
+        
+        do {
+            // Create film box with single image layout
+            let filmBox = FilmBox(
+                imageDisplayFormat: "STANDARD\\1,1",
+                filmOrientation: options.filmOrientation,
+                filmSizeID: options.filmSize,
+                magnificationType: options.magnificationType,
+                borderDensity: options.borderDensity,
+                emptyImageDensity: options.emptyImageDensity,
+                trimOption: options.trimOption
+            )
+            
+            let filmBoxResult = try await createFilmBox(
+                configuration: configuration,
+                filmSessionUID: filmSessionUID,
+                filmBox: filmBox
+            )
+            
+            // Set image box content
+            guard !filmBoxResult.imageBoxUIDs.isEmpty else {
+                throw DICOMNetworkError.unexpectedResponse
+            }
+            
+            let imageBox = ImageBoxContent(
+                sopInstanceUID: filmBoxResult.imageBoxUIDs[0],
+                imagePosition: 1,
+                polarity: options.polarity
+            )
+            
+            try await setImageBox(
+                configuration: configuration,
+                imageBoxUID: filmBoxResult.imageBoxUIDs[0],
+                imageBox: imageBox,
+                pixelData: imageData
+            )
+            
+            // Print the film box
+            let printJobUID = try await printFilmBox(
+                configuration: configuration,
+                filmBoxUID: filmBoxResult.filmBoxUID
+            )
+            
+            // Cleanup: delete film session
+            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            
+            return PrintResult(
+                success: true,
+                status: .success,
+                filmSessionUID: filmSessionUID,
+                filmBoxUID: filmBoxResult.filmBoxUID,
+                printJobUID: printJobUID
+            )
+        } catch {
+            // Cleanup on error
+            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            throw error
+        }
+    }
+    
+    /// Prints multiple images using the complete print workflow with automatic layout
+    ///
+    /// This is a convenience method that handles the complete print workflow:
+    /// 1. Creates a film session
+    /// 2. Automatically determines the optimal layout based on image count
+    /// 3. Creates film box(es) as needed
+    /// 4. Sets image box content for each image
+    /// 5. Prints all film boxes
+    /// 6. Cleans up by deleting the film session
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - images: Array of pixel data to print
+    ///   - options: Print options (defaults to `.default`)
+    /// - Returns: The print result
+    /// - Throws: `DICOMNetworkError` if any step of the workflow fails
+    ///
+    /// Example:
+    /// ```swift
+    /// let result = try await DICOMPrintService.printImages(
+    ///     configuration: printConfig,
+    ///     images: [image1Data, image2Data, image3Data, image4Data],
+    ///     options: PrintOptions(filmSize: .size14InX17In)
+    /// )
+    /// ```
+    public static func printImages(
+        configuration: PrintConfiguration,
+        images: [Data],
+        options: PrintOptions = .default
+    ) async throws -> PrintResult {
+        guard !images.isEmpty else {
+            return PrintResult(
+                success: false,
+                status: .failedUnableToProcess,
+                errorMessage: "No images provided"
+            )
+        }
+        
+        // Single image: use printImage
+        if images.count == 1 {
+            return try await printImage(
+                configuration: configuration,
+                imageData: images[0],
+                options: options
+            )
+        }
+        
+        // Multiple images: determine optimal layout
+        let layout = PrintLayout.optimalLayout(for: images.count)
+        
+        // Create film session
+        let filmSession = FilmSession(
+            numberOfCopies: options.numberOfCopies,
+            printPriority: options.priority,
+            mediumType: options.mediumType,
+            filmDestination: options.filmDestination,
+            filmSessionLabel: options.sessionLabel
+        )
+        
+        let filmSessionUID = try await createFilmSession(configuration: configuration, session: filmSession)
+        
+        do {
+            var allPrintJobUIDs: [String] = []
+            var lastFilmBoxUID: String?
+            
+            // Calculate how many film boxes we need
+            let imagesPerFilm = layout.rows * layout.columns
+            let filmBoxCount = (images.count + imagesPerFilm - 1) / imagesPerFilm
+            
+            for filmIndex in 0..<filmBoxCount {
+                // Create film box with the layout
+                let filmBox = FilmBox(
+                    imageDisplayFormat: "STANDARD\\\(layout.rows),\(layout.columns)",
+                    filmOrientation: options.filmOrientation,
+                    filmSizeID: options.filmSize,
+                    magnificationType: options.magnificationType,
+                    borderDensity: options.borderDensity,
+                    emptyImageDensity: options.emptyImageDensity,
+                    trimOption: options.trimOption
+                )
+                
+                let filmBoxResult = try await createFilmBox(
+                    configuration: configuration,
+                    filmSessionUID: filmSessionUID,
+                    filmBox: filmBox
+                )
+                lastFilmBoxUID = filmBoxResult.filmBoxUID
+                
+                // Set image box contents for this film box
+                let startIndex = filmIndex * imagesPerFilm
+                let endIndex = min(startIndex + imagesPerFilm, images.count)
+                
+                for (imageIndex, globalIndex) in (startIndex..<endIndex).enumerated() {
+                    let position = UInt16(imageIndex + 1)
+                    
+                    guard imageIndex < filmBoxResult.imageBoxUIDs.count else {
+                        continue
+                    }
+                    
+                    let imageBox = ImageBoxContent(
+                        sopInstanceUID: filmBoxResult.imageBoxUIDs[imageIndex],
+                        imagePosition: position,
+                        polarity: options.polarity
+                    )
+                    
+                    try await setImageBox(
+                        configuration: configuration,
+                        imageBoxUID: filmBoxResult.imageBoxUIDs[imageIndex],
+                        imageBox: imageBox,
+                        pixelData: images[globalIndex]
+                    )
+                }
+                
+                // Print the film box
+                let printJobUID = try await printFilmBox(
+                    configuration: configuration,
+                    filmBoxUID: filmBoxResult.filmBoxUID
+                )
+                allPrintJobUIDs.append(printJobUID)
+            }
+            
+            // Cleanup: delete film session
+            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            
+            return PrintResult(
+                success: true,
+                status: .success,
+                filmSessionUID: filmSessionUID,
+                filmBoxUID: lastFilmBoxUID,
+                printJobUID: allPrintJobUIDs.last
+            )
+        } catch {
+            // Cleanup on error
+            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            throw error
+        }
+    }
+    
+    /// Prints images using a specific print template
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - images: Array of pixel data to print
+    ///   - template: The print template to use for layout
+    ///   - options: Print options (defaults to `.default`)
+    /// - Returns: The print result
+    /// - Throws: `DICOMNetworkError` if any step of the workflow fails
+    ///
+    /// Example:
+    /// ```swift
+    /// let result = try await DICOMPrintService.printWithTemplate(
+    ///     configuration: printConfig,
+    ///     images: multiPhaseImages,
+    ///     template: .multiPhase3x4
+    /// )
+    /// ```
+    public static func printWithTemplate(
+        configuration: PrintConfiguration,
+        images: [Data],
+        template: PrintTemplate,
+        options: PrintOptions = .default
+    ) async throws -> PrintResult {
+        guard !images.isEmpty else {
+            return PrintResult(
+                success: false,
+                status: .failedUnableToProcess,
+                errorMessage: "No images provided"
+            )
+        }
+        
+        // Create film session
+        let filmSession = FilmSession(
+            numberOfCopies: options.numberOfCopies,
+            printPriority: options.priority,
+            mediumType: options.mediumType,
+            filmDestination: options.filmDestination,
+            filmSessionLabel: options.sessionLabel
+        )
+        
+        let filmSessionUID = try await createFilmSession(configuration: configuration, session: filmSession)
+        
+        do {
+            var allPrintJobUIDs: [String] = []
+            var lastFilmBoxUID: String?
+            
+            // Calculate how many film boxes we need
+            let imagesPerFilm = template.imageCount
+            let filmBoxCount = (images.count + imagesPerFilm - 1) / imagesPerFilm
+            
+            for filmIndex in 0..<filmBoxCount {
+                // Create film box from template
+                var filmBox = template.createFilmBox()
+                
+                // Apply options' film orientation if it differs from template's default
+                if options.filmOrientation != template.filmOrientation {
+                    filmBox = FilmBox(
+                        sopInstanceUID: filmBox.sopInstanceUID,
+                        imageDisplayFormat: filmBox.imageDisplayFormat,
+                        filmOrientation: options.filmOrientation,
+                        filmSizeID: filmBox.filmSizeID,
+                        magnificationType: filmBox.magnificationType,
+                        borderDensity: filmBox.borderDensity,
+                        emptyImageDensity: filmBox.emptyImageDensity,
+                        trimOption: filmBox.trimOption,
+                        configurationInformation: filmBox.configurationInformation,
+                        imageBoxSOPInstanceUIDs: filmBox.imageBoxSOPInstanceUIDs
+                    )
+                }
+                
+                let filmBoxResult = try await createFilmBox(
+                    configuration: configuration,
+                    filmSessionUID: filmSessionUID,
+                    filmBox: filmBox
+                )
+                lastFilmBoxUID = filmBoxResult.filmBoxUID
+                
+                // Set image box contents for this film box
+                let startIndex = filmIndex * imagesPerFilm
+                let endIndex = min(startIndex + imagesPerFilm, images.count)
+                
+                for (imageIndex, globalIndex) in (startIndex..<endIndex).enumerated() {
+                    let position = UInt16(imageIndex + 1)
+                    
+                    guard imageIndex < filmBoxResult.imageBoxUIDs.count else {
+                        continue
+                    }
+                    
+                    let imageBox = ImageBoxContent(
+                        sopInstanceUID: filmBoxResult.imageBoxUIDs[imageIndex],
+                        imagePosition: position,
+                        polarity: options.polarity
+                    )
+                    
+                    try await setImageBox(
+                        configuration: configuration,
+                        imageBoxUID: filmBoxResult.imageBoxUIDs[imageIndex],
+                        imageBox: imageBox,
+                        pixelData: images[globalIndex]
+                    )
+                }
+                
+                // Print the film box
+                let printJobUID = try await printFilmBox(
+                    configuration: configuration,
+                    filmBoxUID: filmBoxResult.filmBoxUID
+                )
+                allPrintJobUIDs.append(printJobUID)
+            }
+            
+            // Cleanup: delete film session
+            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            
+            return PrintResult(
+                success: true,
+                status: .success,
+                filmSessionUID: filmSessionUID,
+                filmBoxUID: lastFilmBoxUID,
+                printJobUID: allPrintJobUIDs.last
+            )
+        } catch {
+            // Cleanup on error
+            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            throw error
+        }
+    }
+    
+    /// Prints images with progress reporting via AsyncThrowingStream
+    ///
+    /// Provides progress updates during the print workflow, allowing UI updates
+    /// and cancellation support.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - images: Array of pixel data to print
+    ///   - options: Print options (defaults to `.default`)
+    /// - Returns: An AsyncThrowingStream that yields PrintProgress updates
+    ///
+    /// Example:
+    /// ```swift
+    /// for try await progress in DICOMPrintService.printImagesWithProgress(
+    ///     configuration: printConfig,
+    ///     images: images
+    /// ) {
+    ///     print("Progress: \(progress.phase) - \(Int(progress.progress * 100))%")
+    /// }
+    /// ```
+    public static func printImagesWithProgress(
+        configuration: PrintConfiguration,
+        images: [Data],
+        options: PrintOptions = .default
+    ) -> AsyncThrowingStream<PrintProgress, Error> {
+        AsyncThrowingStream { continuation in
+            Task {
+                do {
+                    guard !images.isEmpty else {
+                        continuation.finish(throwing: DICOMNetworkError.unexpectedResponse)
+                        return
+                    }
+                    
+                    // Report: connecting
+                    continuation.yield(PrintProgress(
+                        phase: .connecting,
+                        progress: 0.0,
+                        message: "Connecting to print server..."
+                    ))
+                    
+                    // Report: querying printer
+                    continuation.yield(PrintProgress(
+                        phase: .queryingPrinter,
+                        progress: 0.05,
+                        message: "Querying printer status..."
+                    ))
+                    
+                    _ = try await getPrinterStatus(configuration: configuration)
+                    
+                    // Report: creating session
+                    continuation.yield(PrintProgress(
+                        phase: .creatingSession,
+                        progress: 0.1,
+                        message: "Creating print session..."
+                    ))
+                    
+                    let filmSession = FilmSession(
+                        numberOfCopies: options.numberOfCopies,
+                        printPriority: options.priority,
+                        mediumType: options.mediumType,
+                        filmDestination: options.filmDestination,
+                        filmSessionLabel: options.sessionLabel
+                    )
+                    
+                    let filmSessionUID = try await createFilmSession(
+                        configuration: configuration,
+                        session: filmSession
+                    )
+                    
+                    do {
+                        // Report: preparing images
+                        continuation.yield(PrintProgress(
+                            phase: .preparingImages,
+                            progress: 0.15,
+                            message: "Preparing images for printing..."
+                        ))
+                        
+                        let layout = images.count == 1
+                            ? PrintLayout(rows: 1, columns: 1)
+                            : PrintLayout.optimalLayout(for: images.count)
+                        
+                        let imagesPerFilm = layout.rows * layout.columns
+                        let filmBoxCount = (images.count + imagesPerFilm - 1) / imagesPerFilm
+                        
+                        let uploadStartProgress: Double = 0.2
+                        let uploadEndProgress: Double = 0.85
+                        let uploadProgressRange = uploadEndProgress - uploadStartProgress
+                        
+                        var totalImagesUploaded = 0
+                        
+                        for filmIndex in 0..<filmBoxCount {
+                            let filmBox = FilmBox(
+                                imageDisplayFormat: "STANDARD\\\(layout.rows),\(layout.columns)",
+                                filmOrientation: options.filmOrientation,
+                                filmSizeID: options.filmSize,
+                                magnificationType: options.magnificationType,
+                                borderDensity: options.borderDensity,
+                                emptyImageDensity: options.emptyImageDensity,
+                                trimOption: options.trimOption
+                            )
+                            
+                            let filmBoxResult = try await createFilmBox(
+                                configuration: configuration,
+                                filmSessionUID: filmSessionUID,
+                                filmBox: filmBox
+                            )
+                            
+                            let startIndex = filmIndex * imagesPerFilm
+                            let endIndex = min(startIndex + imagesPerFilm, images.count)
+                            
+                            for (imageIndex, globalIndex) in (startIndex..<endIndex).enumerated() {
+                                // Report: uploading image
+                                totalImagesUploaded += 1
+                                let imageProgress = Double(totalImagesUploaded) / Double(images.count)
+                                let overallProgress = uploadStartProgress + (uploadProgressRange * imageProgress)
+                                
+                                continuation.yield(PrintProgress(
+                                    phase: .uploadingImages(current: totalImagesUploaded, total: images.count),
+                                    progress: overallProgress,
+                                    message: "Uploading image \(totalImagesUploaded) of \(images.count)..."
+                                ))
+                                
+                                let position = UInt16(imageIndex + 1)
+                                
+                                guard imageIndex < filmBoxResult.imageBoxUIDs.count else {
+                                    continue
+                                }
+                                
+                                let imageBox = ImageBoxContent(
+                                    sopInstanceUID: filmBoxResult.imageBoxUIDs[imageIndex],
+                                    imagePosition: position,
+                                    polarity: options.polarity
+                                )
+                                
+                                try await setImageBox(
+                                    configuration: configuration,
+                                    imageBoxUID: filmBoxResult.imageBoxUIDs[imageIndex],
+                                    imageBox: imageBox,
+                                    pixelData: images[globalIndex]
+                                )
+                            }
+                            
+                            // Report: printing
+                            continuation.yield(PrintProgress(
+                                phase: .printing,
+                                progress: 0.9,
+                                message: "Sending print command..."
+                            ))
+                            
+                            _ = try await printFilmBox(
+                                configuration: configuration,
+                                filmBoxUID: filmBoxResult.filmBoxUID
+                            )
+                        }
+                        
+                        // Report: cleanup
+                        continuation.yield(PrintProgress(
+                            phase: .cleanup,
+                            progress: 0.95,
+                            message: "Cleaning up session..."
+                        ))
+                        
+                        try? await deleteFilmSession(
+                            configuration: configuration,
+                            filmSessionUID: filmSessionUID
+                        )
+                        
+                        // Report: complete
+                        continuation.yield(PrintProgress(
+                            phase: .completed,
+                            progress: 1.0,
+                            message: "Print job completed successfully"
+                        ))
+                        
+                        continuation.finish()
+                    } catch {
+                        // Cleanup on error
+                        try? await deleteFilmSession(
+                            configuration: configuration,
+                            filmSessionUID: filmSessionUID
+                        )
+                        continuation.finish(throwing: error)
+                    }
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
     }
 }
 
