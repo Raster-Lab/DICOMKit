@@ -1,6 +1,6 @@
 # CLI Tools Phase 7 - Quick Summary
 
-**Status**: 📋 Fully Planned and Ready for Implementation  
+**Status**: 🚧 In Progress (7/8 tools complete, 87.5%)  
 **Timeline**: 6-8 weeks (with parallel development)  
 **Total Effort**: 10,250-12,700 LOC, 295+ tests  
 **Target Version**: v1.4.0-v1.4.7
@@ -9,16 +9,16 @@
 
 ## At a Glance
 
-| # | Tool | Priority | Complexity | Timeline | LOC | Tests | Sprint |
-|---|------|----------|------------|----------|-----|-------|--------|
-| 30 | **dicom-report** | 🔴 High | Very High | 2 weeks | 1,200-1,500 | 45+ | Sprint 1 |
-| 31 | **dicom-measure** | 🔴 High | High | 1.5 weeks | 900-1,100 | 35+ | Sprint 1 |
-| 32 | **dicom-viewer** | 🟡 Medium | Medium | 1 week | 750-900 | 25+ | Sprint 2 |
-| 33 | **dicom-3d** | 🟡 Medium | Very High | 2 weeks | 1,500-1,800 | 40+ | Sprint 2-3 |
-| 34 | **dicom-ai** | 🟡 Medium | Very High | 2 weeks | 1,300-1,600 | 35+ | Sprint 3 |
-| 35 | **dicom-cloud** | 🟡 Medium | High | 1 week | 850-1,000 | 30+ | Sprint 2 |
-| 36 | **dicom-gateway** | 🟢 Low | Very High | 2 weeks | 1,400-1,700 | 40+ | Sprint 4 |
-| 37 | **dicom-server** | 🟢 Low | Very High | 2.5 weeks | 2,000-2,500 | 50+ | Sprint 4 |
+| # | Tool | Status | Complexity | Timeline | LOC | Tests | Sprint |
+|---|------|--------|------------|----------|-----|-------|--------|
+| 30 | **dicom-report** | ✅ Complete | Very High | 2 weeks | 1,200-1,500 | 88 | Sprint 1 |
+| 31 | **dicom-measure** | ✅ Complete | High | 1.5 weeks | 900-1,100 | 35+ | Sprint 1 |
+| 32 | **dicom-viewer** | ✅ Complete | Medium | 1 week | 750-900 | 25+ | Sprint 2 |
+| 33 | **dicom-3d** | ✅ Complete | Very High | 2 weeks | 1,500-1,800 | 40 | Sprint 2-3 |
+| 34 | **dicom-ai** | ✅ Complete | Very High | 2 weeks | 1,300-1,600 | 68 | Sprint 3 |
+| 35 | **dicom-cloud** | ✅ Complete | High | 1 week | 850-1,000 | 68 | Sprint 2 |
+| 36 | **dicom-gateway** | ✅ Complete | Very High | 2 weeks | 1,400-1,700 | 43 | Sprint 4 |
+| 37 | **dicom-server** | 🚧 In Progress | Very High | 2.5 weeks | 2,000-2,500 | 15/50+ | Sprint 4 |
 
 ---
 
@@ -258,8 +258,8 @@ dicom-server start --aet MY_PACS --database postgres://user:pass@localhost/pacs
 
 | Tool | Status | Developer | Notes |
 |------|--------|-----------|-------|
-| dicom-gateway | 📋 Planned | TBD | HL7 v2 first, then FHIR |
-| dicom-server | 📋 Planned | TBD | Core DIMSE services first |
+| dicom-gateway | ✅ Complete | Copilot | All phases A+B+C+D complete, 43 tests |
+| dicom-server | 🚧 In Progress | TBD | Phase A started, 15 tests, needs ~35 more |
 
 **Deliverables**: 2 tools, 90+ tests, 3,400-4,200 LOC
 

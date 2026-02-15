@@ -66,19 +66,19 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 
 **Total**: 29 CLI tools, 18,000+ lines of code, 753+ tests
 
-- 🚧 **Phase 7** (8 tools - 6 complete, 2 in progress)
+- 🚧 **Phase 7** (8 tools - 7 complete, 1 in progress)
   30. dicom-report - Clinical report generation from DICOM SR (Phase A+B+C complete, 88 tests ✅)
   31. dicom-measure - Medical measurements (distance, area, volume, SUV, HU) ✅
   32. dicom-viewer - Terminal-based DICOM image viewer ✅
   33. dicom-cloud - Cloud storage integration (Phase A+B+C complete: AWS S3, GCS, Azure, 68 tests ✅)
   34. dicom-3d - 3D reconstruction and MPR (complete, 40 tests ✅)
   35. dicom-ai - AI/ML integration (CoreML, Phases A+B+C+D complete, 68 tests ✅)
-  36. dicom-gateway - Protocol gateway (HL7 v2, FHIR, IHE) 🚧 Phase A+B complete (builds successfully, 17 tests)
+  36. dicom-gateway - Protocol gateway (HL7 v2, FHIR, IHE) ✅ All Phases A+B+C+D complete (builds successfully, 43 tests)
   37. dicom-server - Lightweight PACS server 🚧 Phase A started (builds successfully, 15 tests)
 
-**Phase 7 Status**: 🚧 In Progress - 6 tools complete, 2 in active development (dicom-gateway Phase C+D, dicom-server Phases A-D). See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for detailed specifications  
+**Phase 7 Status**: 🚧 In Progress - 7 tools complete, 1 in active development (dicom-server Phases A-D). See [CLI_TOOLS_PHASE7.md](CLI_TOOLS_PHASE7.md) for detailed specifications  
 **Phase 7 Estimate**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks development
-**Current Focus**: Completing dicom-gateway and dicom-server implementations
+**Current Focus**: Completing dicom-server implementation (dicom-gateway is now 100% complete)
 
 ### 4. GUI Application
 - ✅ **DICOMToolbox** (Complete - macOS SwiftUI application)
@@ -136,18 +136,18 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 4. **dicom-3d** - 3D reconstruction and MPR ✅ (40 tests, MPR/MIP/export complete)
 5. **dicom-ai** - AI/ML integration ✅ (CoreML Phases A+B+C+D complete, 68 tests)
 6. **dicom-cloud** - Cloud storage ✅ (AWS S3, GCS, Azure, 68 tests, Phase A+B+C complete)
-7. **dicom-gateway** - Protocol gateway (HL7 v2, FHIR, IHE) 📋 Planned
-8. **dicom-server** - Lightweight PACS server 📋 Planned
+7. **dicom-gateway** - Protocol gateway (HL7 v2, FHIR, IHE) ✅ Complete (Phases A+B+C+D, 43 tests)
+8. **dicom-server** - Lightweight PACS server 🚧 In Progress
 
 **Development Plan**:
 - **Sprint 1 (Weeks 1-2)**: dicom-report ✅, dicom-measure ✅
 - **Sprint 2 (Weeks 3-4)**: dicom-viewer ✅, dicom-cloud ✅, dicom-3d ✅
 - **Sprint 3 (Weeks 5-6)**: ✅ dicom-ai (Phases A+B+C+D complete, 68 tests)
-- **Sprint 4 (Weeks 7-8)**: dicom-gateway 📋, dicom-server 📋
+- **Sprint 4 (Weeks 7-8)**: dicom-gateway ✅, dicom-server 🚧
 
-**Progress**: 6/8 tools complete (75%), dicom-ai 100% complete (Phases A+B+C+D done, 68 tests), dicom-gateway ~60% complete (Phases A+B, 17 tests, builds successfully), dicom-server ~25% complete (Phase A started, 15 tests, builds successfully)  
+**Progress**: 7/8 tools complete (87.5%), dicom-ai 100% complete (Phases A+B+C+D done, 68 tests), dicom-gateway 100% complete (Phases A+B+C+D, 43 tests, builds successfully), dicom-server ~25% complete (Phase A started, 15 tests, builds successfully)  
 **Estimated Effort**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks
-**Remaining Work**: dicom-gateway Phases C+D (listener/forwarder modes, IHE profiles, ~23 more tests), dicom-server Phases A-D completion (DIMSE handlers, web UI, ~35 more tests)
+**Remaining Work**: dicom-server Phases A-D completion (DIMSE handlers, web UI, ~35 tests needed for 50+ target)
 
 ### Post v1.0 Framework Enhancements
 - Advanced DICOM IOD support (see [MILESTONES.md](MILESTONES.md) Milestone 11)
@@ -188,6 +188,6 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 ---
 
 **Date**: February 15, 2026  
-**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (6/8 tools complete: dicom-report, dicom-measure, dicom-viewer, dicom-cloud, dicom-3d, dicom-ai; 2/8 in development: dicom-gateway ~60%, dicom-server ~25%)  
-**Next Steps**: Complete dicom-gateway Phases C+D (listener/forwarder modes, IHE profiles) and dicom-server Phases A-D (DIMSE handlers, web interface, PostgreSQL support)
+**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (7/8 tools complete: dicom-report, dicom-measure, dicom-viewer, dicom-cloud, dicom-3d, dicom-ai, dicom-gateway ✅; 1/8 in development: dicom-server ~25%)  
+**Next Steps**: Complete dicom-server Phases A-D (DIMSE handlers, web interface, PostgreSQL support, 35+ tests)
 

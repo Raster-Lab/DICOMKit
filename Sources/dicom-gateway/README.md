@@ -475,8 +475,25 @@ Part of DICOMKit - See main repository license.
 
 ## Version
 
-**1.1.0** - Phases A, B, C, and D complete
-- Phase A: HL7 v2 conversion
-- Phase B: FHIR conversion and batch processing
-- Phase C: Listener and forwarder modes
-- Phase D: IHE profiles and custom mapping engine
+**1.1.0** - Phases A, B, C, and D complete (43+ tests)
+- Phase A: HL7 v2 conversion (9 tests)
+- Phase B: FHIR conversion and batch processing (8 tests)
+- Phase C: Listener and forwarder modes (10 tests)
+- Phase D: IHE profiles and custom mapping engine (16 tests)
+
+## Testing
+
+Comprehensive test suite with 43+ unit and integration tests covering:
+- HL7 v2 message parsing and generation
+- DICOM ↔ HL7 bidirectional conversion
+- DICOM ↔ FHIR bidirectional conversion
+- Gateway listener and forwarder modes
+- IHE profile validation (PDI, XDS-I, PIX, PDQ)
+- Custom mapping engine with transformations
+- Error handling and edge cases
+- Round-trip conversion validation
+
+Run tests:
+```bash
+swift test --filter DICOMGatewayTests
+```
