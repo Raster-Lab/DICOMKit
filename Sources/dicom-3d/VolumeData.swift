@@ -274,8 +274,10 @@ class VolumeLoader {
         }
         
         // Extract dimensions from first slice
-        let columns = try firstFile.dataSet.unsignedShort(for: .columns)
-        let rows = try firstFile.dataSet.unsignedShort(for: .rows)
+        guard let columns = firstFile.dataSet[.columns]?.uint16Value,
+              let rows = firstFile.dataSet[.rows]?.uint16Value else {
+            throw VolumeError.missingMetadata("Columns or Rows")
+        }
         let depth = slices.count
         
         let dimensions = VolumeDimensions(width: Int(columns), height: Int(rows), depth: depth)
@@ -307,9 +309,14 @@ class VolumeLoader {
         let spacing = VolumeSpacing(x: pixelSpacingValues[0], y: pixelSpacingValues[1], z: sliceSpacing)
         
         // Extract other metadata
-        let bitsAllocated = Int(try firstFile.dataSet.unsignedShort(for: .bitsAllocated))
-        let bitsStored = Int(try firstFile.dataSet.unsignedShort(for: .bitsStored))
-        let pixelRepresentation = Int(try firstFile.dataSet.unsignedShort(for: .pixelRepresentation))
+        guard let bitsAllocatedValue = firstFile.dataSet[.bitsAllocated]?.uint16Value,
+              let bitsStoredValue = firstFile.dataSet[.bitsStored]?.uint16Value,
+              let pixelRepValue = firstFile.dataSet[.pixelRepresentation]?.uint16Value else {
+            throw VolumeError.missingMetadata("Bits Allocated, Bits Stored, or Pixel Representation")
+        }
+        let bitsAllocated = Int(bitsAllocatedValue)
+        let bitsStored = Int(bitsStoredValue)
+        let pixelRepresentation = Int(pixelRepValue)
         let photometricInterpretation = try firstFile.dataSet.string(for: .photometricInterpretation) ?? "MONOCHROME2"
         
         let windowCenter = try? firstFile.dataSet.decimalString(for: .windowCenter)
