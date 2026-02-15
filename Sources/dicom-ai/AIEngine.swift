@@ -57,7 +57,11 @@ struct PreprocessingOptions: Sendable {
 
 @available(macOS 14.0, iOS 17.0, *)
 class AIEngine {
+    #if canImport(CoreML)
     private let model: MLModel?
+    #else
+    private let model: Any?
+    #endif
     private let verbose: Bool
     private let modelURL: URL
     private let preprocessingOptions: PreprocessingOptions

@@ -37,6 +37,11 @@ public actor PACSServer {
             throw ServerError.invalidConfiguration("Server is already running")
         }
         
+        // Initialize database if configured
+        if let db = database {
+            try await db.initialize()
+        }
+        
         // Create listener
         let parameters = NWParameters.tcp
         let port = NWEndpoint.Port(rawValue: configuration.port)!
