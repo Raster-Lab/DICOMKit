@@ -1,0 +1,52 @@
+{
+  "Name": "Orthanc Print SCP",
+  "DicomAet": "ORTHANC_PRINT",
+  "DicomPort": 11113,
+  "HttpPort": 8042,
+  
+  "RemoteAccessAllowed": true,
+  "AuthenticationEnabled": true,
+  "RegisteredUsers": {
+    "orthanc": "orthanc"
+  },
+  
+  "DicomModalities": {},
+  "DicomModalitiesInDatabase": false,
+  
+  "StorageDirectory": "/var/lib/orthanc/db",
+  "IndexDirectory": "/var/lib/orthanc/db",
+  
+  "SaveJobs": true,
+  "JobsHistorySize": 100,
+  
+  "Plugins": [
+    "/usr/share/orthanc/plugins"
+  ],
+  
+  "DicomScpTimeout": 30,
+  "DicomAssociationCloseDelay": 5,
+  
+  "DicomAlwaysAllowEcho": true,
+  "DicomAlwaysAllowStore": true,
+  "DicomAlwaysAllowFind": true,
+  "DicomAlwaysAllowGet": true,
+  "DicomAlwaysAllowMove": true,
+  
+  "DicomCheckCalledAet": false,
+  "DicomCheckModalityHost": false,
+  
+  "MaximumStorageSize": 1024,
+  "MaximumPatientCount": 100,
+  
+  "LogExportedResources": false,
+  "KeepAlive": true,
+  "TcpNoDelay": true,
+  
+  "HttpTimeout": 60,
+  "HttpVerbose": false,
+  
+  "OverwriteInstances": true,
+  "UnknownSopClassAccepted": true,
+  
+  "Locale": "en_US.UTF-8"
+}
