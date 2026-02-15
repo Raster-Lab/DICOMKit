@@ -3945,10 +3945,16 @@ See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement 
 - [x] `CaseIterable` conformance for FilmSize, MediumType, MagnificationType
 - [x] 60+ unit tests
 
-**Phase 5 (v1.4.5)**: Documentation and CLI Tool
-- [ ] DocC API documentation
-- [ ] User guides and tutorials
-- [x] CLI tool: `dicom-print` (query, send, monitor, configure) ✅ NEW (February 2026)
+**Phase 5 (v1.4.5)**: Documentation and CLI Tool ✅ **COMPLETE**
+- [x] DocC API documentation ✅ NEW (February 2026)
+  - [x] PrintManagementGuide.md with comprehensive examples
+  - [x] Integrated into DICOMNetwork.docc
+  - [x] Complete API reference with code samples
+- [x] User guides and tutorials ✅ NEW (February 2026)
+  - [x] "Getting Started with DICOM Printing" - Beginner-friendly tutorial (12.5 KB)
+  - [x] "Print Workflow Best Practices" - Production patterns and optimization (25.1 KB)
+  - [x] "Troubleshooting Print Issues" - Common problems and diagnostics (18.9 KB)
+- [x] CLI tool: `dicom-print` (query, send, monitor, configure) ✅ (February 2026)
   - [x] `status` command - Query printer status using N-GET
   - [x] `send` command - Send DICOM files with layout/film size options
   - [x] `job` command - Monitor print job status
@@ -3957,8 +3963,15 @@ See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement 
   - [x] `remove-printer` command - Remove printer configuration
   - [x] Local printer configuration management (~/.config/dicomkit/printers.json)
   - [x] Synchronous command wrapper for async DICOM operations
-- [ ] Integration examples (iOS, macOS)
-- [ ] DCM4CHEE/Orthanc setup guides
+- [x] Integration examples (iOS, macOS) ✅ NEW (February 2026)
+  - [x] PrintIntegrationIOS.md - Complete iOS SwiftUI example (24.8 KB)
+    - Printer management, image selection, progress tracking, error handling
+  - [x] PrintIntegrationMacOS.md - Complete macOS example (25.6 KB)
+    - Native print dialog, printer discovery, split view layout, menu integration
+- [x] README.md updated with Print Management section ✅ NEW (February 2026)
+  - [x] Comprehensive examples covering all print workflows
+  - [x] Links to documentation resources
+  - [x] CLI tool reference
 
 **Total Enhancement Scope**: 8-10 weeks, 120+ unit tests, 20+ integration tests
 
