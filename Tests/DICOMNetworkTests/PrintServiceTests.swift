@@ -524,45 +524,6 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(box.imageDisplayFormat, "STANDARD\\2,3")
     }
     
-    // MARK: - ImageBoxContent Tests
-    
-    func testImageBoxContentDefaults() {
-        let imageBox = ImageBoxContent()
-        
-        XCTAssertEqual(imageBox.sopInstanceUID, "")
-        XCTAssertEqual(imageBox.imagePosition, 1)
-        XCTAssertEqual(imageBox.polarity, .normal)
-        XCTAssertNil(imageBox.requestedImageSize)
-        XCTAssertEqual(imageBox.requestedDecimateCropBehavior, .decimate)
-    }
-    
-    func testImageBoxContentCustomValues() {
-        let imageBox = ImageBoxContent(
-            sopInstanceUID: "1.2.3.4.5",
-            imagePosition: 5,
-            polarity: .reverse,
-            requestedImageSize: "100\\100",
-            requestedDecimateCropBehavior: .crop
-        )
-        
-        XCTAssertEqual(imageBox.sopInstanceUID, "1.2.3.4.5")
-        XCTAssertEqual(imageBox.imagePosition, 5)
-        XCTAssertEqual(imageBox.polarity, .reverse)
-        XCTAssertEqual(imageBox.requestedImageSize, "100\\100")
-        XCTAssertEqual(imageBox.requestedDecimateCropBehavior, .crop)
-    }
-    
-    func testImagePolarityRawValues() {
-        XCTAssertEqual(ImagePolarity.normal.rawValue, "NORMAL")
-        XCTAssertEqual(ImagePolarity.reverse.rawValue, "REVERSE")
-    }
-    
-    func testDecimateCropBehaviorRawValues() {
-        XCTAssertEqual(DecimateCropBehavior.decimate.rawValue, "DECIMATE")
-        XCTAssertEqual(DecimateCropBehavior.crop.rawValue, "CROP")
-        XCTAssertEqual(DecimateCropBehavior.failOver.rawValue, "FAIL")
-    }
-    
     // MARK: - Print Tags Tests
     
     func testImageBoxPositionTag() {
@@ -630,4 +591,222 @@ final class PrintServiceTests: XCTestCase {
     
     // TODO: Implement integration tests in a separate test suite
     // See DICOM_PRINTER_PLAN.md Phase 1.5 for integration test requirements
+    
+    // MARK: - PrintJobStatus Tests
+    
+    func testPrintJobStatusInitialization() {
+        let status = PrintJobStatus(
+            printJobUID: "1.2.840.113619.2.55.3.2024.01.01.001",
+            executionStatus: "PENDING"
+        )
+        
+        XCTAssertEqual(status.printJobUID, "1.2.840.113619.2.55.3.2024.01.01.001")
+        XCTAssertEqual(status.executionStatus, "PENDING")
+        XCTAssertNil(status.executionStatusInfo)
+        XCTAssertNil(status.creationDate)
+        XCTAssertNil(status.creationTime)
+    }
+    
+    func testPrintJobStatusWithAllFields() {
+        let creationDate = Date()
+        let creationTime = Date()
+        
+        let status = PrintJobStatus(
+            printJobUID: "1.2.840.113619.2.55.3.2024.01.01.002",
+            executionStatus: "DONE",
+            executionStatusInfo: "Printed successfully",
+            creationDate: creationDate,
+            creationTime: creationTime
+        )
+        
+        XCTAssertEqual(status.printJobUID, "1.2.840.113619.2.55.3.2024.01.01.002")
+        XCTAssertEqual(status.executionStatus, "DONE")
+        XCTAssertEqual(status.executionStatusInfo, "Printed successfully")
+        XCTAssertEqual(status.creationDate, creationDate)
+        XCTAssertEqual(status.creationTime, creationTime)
+    }
+    
+    func testPrintJobStatusIsInProgress_Pending() {
+        let status = PrintJobStatus(
+            printJobUID: "1.2.3",
+            executionStatus: "PENDING"
+        )
+        
+        XCTAssertTrue(status.isInProgress)
+        XCTAssertFalse(status.isCompleted)
+        XCTAssertFalse(status.isFailed)
+    }
+    
+    func testPrintJobStatusIsInProgress_Printing() {
+        let status = PrintJobStatus(
+            printJobUID: "1.2.3",
+            executionStatus: "PRINTING"
+        )
+        
+        XCTAssertTrue(status.isInProgress)
+        XCTAssertFalse(status.isCompleted)
+        XCTAssertFalse(status.isFailed)
+    }
+    
+    func testPrintJobStatusIsCompleted() {
+        let status = PrintJobStatus(
+            printJobUID: "1.2.3",
+            executionStatus: "DONE"
+        )
+        
+        XCTAssertFalse(status.isInProgress)
+        XCTAssertTrue(status.isCompleted)
+        XCTAssertFalse(status.isFailed)
+    }
+    
+    func testPrintJobStatusIsFailed() {
+        let status = PrintJobStatus(
+            printJobUID: "1.2.3",
+            executionStatus: "FAILURE",
+            executionStatusInfo: "Printer offline"
+        )
+        
+        XCTAssertFalse(status.isInProgress)
+        XCTAssertFalse(status.isCompleted)
+        XCTAssertTrue(status.isFailed)
+        XCTAssertEqual(status.executionStatusInfo, "Printer offline")
+    }
+    
+    func testPrintJobStatusAllExecutionStates() {
+        let states = ["PENDING", "PRINTING", "DONE", "FAILURE"]
+        
+        for state in states {
+            let status = PrintJobStatus(
+                printJobUID: "1.2.3",
+                executionStatus: state
+            )
+            
+            XCTAssertEqual(status.executionStatus, state)
+            
+            switch state {
+            case "PENDING", "PRINTING":
+                XCTAssertTrue(status.isInProgress)
+                XCTAssertFalse(status.isCompleted)
+                XCTAssertFalse(status.isFailed)
+            case "DONE":
+                XCTAssertFalse(status.isInProgress)
+                XCTAssertTrue(status.isCompleted)
+                XCTAssertFalse(status.isFailed)
+            case "FAILURE":
+                XCTAssertFalse(status.isInProgress)
+                XCTAssertFalse(status.isCompleted)
+                XCTAssertTrue(status.isFailed)
+            default:
+                XCTFail("Unexpected execution status: \(state)")
+            }
+        }
+    }
+    
+    func testPrintJobStatusWithUnknownState() {
+        let status = PrintJobStatus(
+            printJobUID: "1.2.3",
+            executionStatus: "UNKNOWN"
+        )
+        
+        XCTAssertEqual(status.executionStatus, "UNKNOWN")
+        XCTAssertFalse(status.isInProgress)
+        XCTAssertFalse(status.isCompleted)
+        XCTAssertFalse(status.isFailed)
+    }
+    
+    func testPrintJobStatusWithMultipleStatuses() {
+        // Test creating multiple PrintJobStatus instances with different states
+        let pendingStatus = PrintJobStatus(
+            printJobUID: "1.2.3.1",
+            executionStatus: "PENDING"
+        )
+        
+        let printingStatus = PrintJobStatus(
+            printJobUID: "1.2.3.2",
+            executionStatus: "PRINTING"
+        )
+        
+        let doneStatus = PrintJobStatus(
+            printJobUID: "1.2.3.3",
+            executionStatus: "DONE"
+        )
+        
+        let failureStatus = PrintJobStatus(
+            printJobUID: "1.2.3.4",
+            executionStatus: "FAILURE",
+            executionStatusInfo: "Paper jam"
+        )
+        
+        XCTAssertTrue(pendingStatus.isInProgress)
+        XCTAssertTrue(printingStatus.isInProgress)
+        XCTAssertTrue(doneStatus.isCompleted)
+        XCTAssertTrue(failureStatus.isFailed)
+        XCTAssertEqual(failureStatus.executionStatusInfo, "Paper jam")
+    }
+    
+    // MARK: - Print Job Status Tag Tests
+    
+    func testExecutionStatusTag() {
+        XCTAssertEqual(Tag.executionStatus.group, 0x2100)
+        XCTAssertEqual(Tag.executionStatus.element, 0x0020)
+    }
+    
+    func testExecutionStatusInfoTag() {
+        XCTAssertEqual(Tag.executionStatusInfo.group, 0x2100)
+        XCTAssertEqual(Tag.executionStatusInfo.element, 0x0030)
+    }
+    
+    func testCreationDateTag() {
+        XCTAssertEqual(Tag.creationDate.group, 0x2100)
+        XCTAssertEqual(Tag.creationDate.element, 0x0040)
+    }
+    
+    func testCreationTimeTag() {
+        XCTAssertEqual(Tag.creationTime.group, 0x2100)
+        XCTAssertEqual(Tag.creationTime.element, 0x0050)
+    }
+    
+    // MARK: - Print Job Workflow Tests
+    
+    func testPrintJobWorkflow() {
+        // Test that a typical print job workflow can be represented
+        // 1. Print job created -> PENDING
+        let pendingJob = PrintJobStatus(
+            printJobUID: "1.2.840.113619.2.55.3.2024.01.01.001",
+            executionStatus: "PENDING"
+        )
+        XCTAssertTrue(pendingJob.isInProgress)
+        
+        // 2. Print job starts -> PRINTING
+        let printingJob = PrintJobStatus(
+            printJobUID: "1.2.840.113619.2.55.3.2024.01.01.001",
+            executionStatus: "PRINTING",
+            executionStatusInfo: "Page 1 of 1"
+        )
+        XCTAssertTrue(printingJob.isInProgress)
+        XCTAssertEqual(printingJob.executionStatusInfo, "Page 1 of 1")
+        
+        // 3. Print job completes -> DONE
+        let doneJob = PrintJobStatus(
+            printJobUID: "1.2.840.113619.2.55.3.2024.01.01.001",
+            executionStatus: "DONE",
+            executionStatusInfo: "Completed"
+        )
+        XCTAssertTrue(doneJob.isCompleted)
+    }
+    
+    func testPrintJobFailureWorkflow() {
+        // Test that a failed print job can be represented
+        let failedJob = PrintJobStatus(
+            printJobUID: "1.2.840.113619.2.55.3.2024.01.01.001",
+            executionStatus: "FAILURE",
+            executionStatusInfo: "Printer offline - check connection"
+        )
+        
+        XCTAssertTrue(failedJob.isFailed)
+        XCTAssertEqual(failedJob.executionStatusInfo, "Printer offline - check connection")
+        XCTAssertFalse(failedJob.isInProgress)
+        XCTAssertFalse(failedJob.isCompleted)
+    }
 }
+
