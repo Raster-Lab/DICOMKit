@@ -33,7 +33,7 @@ actor ServerSession {
         isActive = true
         
         connection.stateUpdateHandler = { [weak self] state in
-            Task { [weak self] in
+            Task {
                 await self?.handleConnectionState(state)
             }
         }

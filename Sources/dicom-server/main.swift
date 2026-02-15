@@ -133,8 +133,8 @@ struct StartCommand: AsyncParsableCommand {
             databaseURL: dbUrl,
             maxConcurrentConnections: maxConnections,
             maxPDUSize: maxPduSize,
-            allowedCallingAETitles: allowedAEs.flatMap { Set($0) },
-            blockedCallingAETitles: blockedAEs.flatMap { Set($0) },
+            allowedCallingAETitles: allowedAEs.map { Set($0) },
+            blockedCallingAETitles: blockedAEs.map { Set($0) },
             enableTLS: tls,
             verbose: verbose
         )

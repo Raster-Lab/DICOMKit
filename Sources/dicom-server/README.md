@@ -4,7 +4,7 @@ A lightweight DICOM PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and 
 
 ## Overview
 
-`dicom-server` is a production-ready PACS (Picture Archiving and Communication System) server implementation that provides essential DICOM networking services for development, testing, and small-scale clinical deployments.
+`dicom-server` is a foundational PACS (Picture Archiving and Communication System) server implementation that provides essential DICOM networking services for development, testing, and small-scale deployments. Currently in Phase A development with core infrastructure in place and DIMSE service handlers being implemented in subsequent phases.
 
 ## Features
 
