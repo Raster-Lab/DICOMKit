@@ -35,6 +35,7 @@ struct DICOMAI: ParsableCommand {
             Detect.self,
             Enhance.self,
             Batch.self,
+            Registry.self,
         ]
     )
 }
@@ -65,6 +66,12 @@ struct CommonOptions: ParsableArguments {
     
     @Option(name: .long, help: "Frame index for multi-frame images (default: 0)")
     var frame: Int = 0
+    
+    @Flag(name: .long, help: "Enable performance profiling")
+    var profile: Bool = false
+    
+    @Option(name: .long, help: "Output performance metrics to file")
+    var profileOutput: String?
 }
 
 enum OutputFormat: String, ExpressibleByArgument, CaseIterable, Sendable {
@@ -646,4 +653,349 @@ func createEnhancedDICOM(sourceDataSet: DataSet, enhancedImage: ProcessedImage, 
         enhancedImage: enhancedImage,
         frameIndex: frameIndex
     )
+}
+
+// MARK: - Registry Subcommand
+
+@available(macOS 14.0, iOS 17.0, *)
+struct Registry: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        abstract: "Manage AI model registry",
+        discussion: """
+            Manage the AI model registry for versioning and tracking models.
+            
+            Examples:
+              dicom-ai registry add --name pneumonia-v1 --path model.mlmodel --type classification
+              dicom-ai registry list
+              dicom-ai registry remove --name pneumonia-v1
+              dicom-ai registry search --tags chest,xray
+            """,
+        subcommands: [
+            RegistryAdd.self,
+            RegistryList.self,
+            RegistryRemove.self,
+            RegistrySearch.self,
+            RegistryInfo.self,
+            RegistryClear.self,
+        ]
+    )
+}
+
+@available(macOS 14.0, iOS 17.0, *)
+struct RegistryAdd: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "add",
+        abstract: "Add a model to the registry"
+    )
+    
+    @Option(name: .shortAndLong, help: "Model name")
+    var name: String
+    
+    @Option(name: .long, help: "Model path (.mlmodel or .mlmodelc)")
+    var path: String
+    
+    @Option(name: .long, help: "Model version (e.g., 1.0.0)")
+    var version: String = "1.0.0"
+    
+    @Option(name: .long, help: "Model type: classification, segmentation, detection, enhancement, other")
+    var type: String
+    
+    @Option(name: .long, help: "Model description")
+    var description: String?
+    
+    @Option(name: .long, help: "Input width")
+    var inputWidth: Int?
+    
+    @Option(name: .long, help: "Input height")
+    var inputHeight: Int?
+    
+    @Option(name: .long, help: "Output type: classification, segmentation, detection, image, multiArray")
+    var outputType: String = "classification"
+    
+    @Option(name: .long, help: "Tags (comma-separated)")
+    var tags: String?
+    
+    @Flag(name: .long, help: "Overwrite if model already exists")
+    var overwrite: Bool = false
+    
+    @Flag(name: .long, help: "Verbose output")
+    var verbose: Bool = false
+    
+    mutating func run() throws {
+        let registry = try ModelRegistry(verbose: verbose)
+        
+        // Parse model type
+        guard let modelType = parseModelType(type) else {
+            throw ValidationError("Invalid model type: \(type)")
+        }
+        
+        // Parse output type
+        guard let outType = parseOutputType(outputType) else {
+            throw ValidationError("Invalid output type: \(outputType)")
+        }
+        
+        // Parse tags
+        let tagList = tags?.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) } ?? []
+        
+        // Create input size if provided
+        let inputSize: ModelRegistry.ModelEntry.ModelInputSize?
+        if let width = inputWidth, let height = inputHeight {
+            inputSize = ModelRegistry.ModelEntry.ModelInputSize(width: width, height: height)
+        } else {
+            inputSize = nil
+        }
+        
+        let entry = ModelRegistry.ModelEntry(
+            name: name,
+            version: version,
+            path: path,
+            modelType: modelType,
+            description: description,
+            inputSize: inputSize,
+            outputType: outType,
+            tags: tagList
+        )
+        
+        try registry.add(entry, overwrite: overwrite)
+        
+        print("✓ Model '\(name)' (version \(version)) added to registry")
+    }
+    
+    private func parseModelType(_ type: String) -> ModelRegistry.ModelEntry.ModelType? {
+        switch type.lowercased() {
+        case "classification": return .classification
+        case "segmentation": return .segmentation
+        case "detection": return .detection
+        case "enhancement": return .enhancement
+        case "other": return .other
+        default: return nil
+        }
+    }
+    
+    private func parseOutputType(_ type: String) -> ModelRegistry.ModelEntry.ModelOutputType? {
+        switch type.lowercased() {
+        case "classification": return .classification
+        case "segmentation": return .segmentation
+        case "detection": return .detection
+        case "image": return .image
+        case "multiarray": return .multiArray
+        default: return nil
+        }
+    }
+}
+
+@available(macOS 14.0, iOS 17.0, *)
+struct RegistryList: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "list",
+        abstract: "List all models in the registry"
+    )
+    
+    @Option(name: .long, help: "Filter by model type")
+    var type: String?
+    
+    @Flag(name: .long, help: "Verbose output")
+    var verbose: Bool = false
+    
+    mutating func run() throws {
+        let registry = try ModelRegistry(verbose: verbose)
+        
+        let filterType: ModelRegistry.ModelEntry.ModelType?
+        if let typeStr = type {
+            filterType = parseModelType(typeStr)
+        } else {
+            filterType = nil
+        }
+        
+        let entries = registry.list(filterByType: filterType)
+        
+        if entries.isEmpty {
+            print("No models in registry")
+            return
+        }
+        
+        print("Models in registry (\(entries.count)):\n")
+        
+        for entry in entries {
+            print("Name: \(entry.name)")
+            print("Version: \(entry.version)")
+            print("Type: \(entry.modelType.rawValue)")
+            print("Path: \(entry.path)")
+            
+            if let desc = entry.description {
+                print("Description: \(desc)")
+            }
+            
+            if let size = entry.inputSize {
+                print("Input Size: \(size.width)×\(size.height)")
+            }
+            
+            print("Output Type: \(entry.outputType.rawValue)")
+            
+            if !entry.tags.isEmpty {
+                print("Tags: \(entry.tags.joined(separator: ", "))")
+            }
+            
+            print("Added: \(formatDate(entry.dateAdded))")
+            
+            if let lastUsed = entry.lastUsed {
+                print("Last Used: \(formatDate(lastUsed))")
+            }
+            
+            print()
+        }
+    }
+    
+    private func parseModelType(_ type: String) -> ModelRegistry.ModelEntry.ModelType? {
+        switch type.lowercased() {
+        case "classification": return .classification
+        case "segmentation": return .segmentation
+        case "detection": return .detection
+        case "enhancement": return .enhancement
+        case "other": return .other
+        default: return nil
+        }
+    }
+    
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
+    }
+}
+
+@available(macOS 14.0, iOS 17.0, *)
+struct RegistryRemove: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "remove",
+        abstract: "Remove a model from the registry"
+    )
+    
+    @Option(name: .shortAndLong, help: "Model name")
+    var name: String
+    
+    @Flag(name: .long, help: "Verbose output")
+    var verbose: Bool = false
+    
+    mutating func run() throws {
+        let registry = try ModelRegistry(verbose: verbose)
+        try registry.remove(name: name)
+        
+        print("✓ Model '\(name)' removed from registry")
+    }
+}
+
+@available(macOS 14.0, iOS 17.0, *)
+struct RegistrySearch: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "search",
+        abstract: "Search models by tags"
+    )
+    
+    @Option(name: .long, help: "Tags to search for (comma-separated)")
+    var tags: String
+    
+    @Flag(name: .long, help: "Verbose output")
+    var verbose: Bool = false
+    
+    mutating func run() throws {
+        let registry = try ModelRegistry(verbose: verbose)
+        
+        let tagList = tags.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }
+        let entries = registry.search(tags: tagList)
+        
+        if entries.isEmpty {
+            print("No models found with tags: \(tagList.joined(separator: ", "))")
+            return
+        }
+        
+        print("Found \(entries.count) model(s):\n")
+        
+        for entry in entries {
+            print("\(entry.name) (v\(entry.version)) - \(entry.modelType.rawValue)")
+            if let desc = entry.description {
+                print("  \(desc)")
+            }
+            print()
+        }
+    }
+}
+
+@available(macOS 14.0, iOS 17.0, *)
+struct RegistryInfo: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "info",
+        abstract: "Get detailed information about a model"
+    )
+    
+    @Option(name: .shortAndLong, help: "Model name")
+    var name: String
+    
+    @Flag(name: .long, help: "Verbose output")
+    var verbose: Bool = false
+    
+    mutating func run() throws {
+        let registry = try ModelRegistry(verbose: verbose)
+        
+        guard let entry = registry.get(name: name) else {
+            print("Model '\(name)' not found in registry")
+            throw ExitCode.failure
+        }
+        
+        print("Model: \(entry.name)")
+        print("Version: \(entry.version)")
+        print("Type: \(entry.modelType.rawValue)")
+        print("Output Type: \(entry.outputType.rawValue)")
+        print("Path: \(entry.path)")
+        
+        if let desc = entry.description {
+            print("Description: \(desc)")
+        }
+        
+        if let size = entry.inputSize {
+            print("Input Size: \(size.width)×\(size.height)")
+        }
+        
+        if !entry.tags.isEmpty {
+            print("Tags: \(entry.tags.joined(separator: ", "))")
+        }
+        
+        let formatter = DateFormatter()
+        formatter.dateStyle = .medium
+        formatter.timeStyle = .short
+        
+        print("Date Added: \(formatter.string(from: entry.dateAdded))")
+        
+        if let lastUsed = entry.lastUsed {
+            print("Last Used: \(formatter.string(from: lastUsed))")
+        }
+    }
+}
+
+@available(macOS 14.0, iOS 17.0, *)
+struct RegistryClear: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "clear",
+        abstract: "Clear all models from the registry"
+    )
+    
+    @Flag(name: .long, help: "Verbose output")
+    var verbose: Bool = false
+    
+    @Flag(name: .long, help: "Confirm clearing the registry")
+    var confirm: Bool = false
+    
+    mutating func run() throws {
+        if !confirm {
+            print("This will remove all models from the registry.")
+            print("Use --confirm to proceed.")
+            throw ExitCode.failure
+        }
+        
+        let registry = try ModelRegistry(verbose: verbose)
+        try registry.clear()
+        
+        print("✓ Registry cleared")
+    }
 }
