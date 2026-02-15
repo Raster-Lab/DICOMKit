@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMKit
 
 /// Storage manager for DICOM files
 actor StorageManager {

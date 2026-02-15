@@ -7,17 +7,23 @@ actor DatabaseManager {
     init(connectionString: String) throws {
         self.connectionString = connectionString
         
-        // Parse connection string
-        if connectionString.hasPrefix("sqlite://") {
-            try initializeSQLite()
-        } else if connectionString.hasPrefix("postgres://") {
-            try initializePostgreSQL()
-        } else {
+        // Validate connection string format
+        if !connectionString.hasPrefix("sqlite://") && !connectionString.hasPrefix("postgres://") {
             throw ServerError.databaseError("Unsupported database type in connection string: \(connectionString)")
         }
     }
     
-    private func initializeSQLite() throws {
+    /// Initialize the database connection
+    func initialize() async throws {
+        // Parse connection string and initialize
+        if connectionString.hasPrefix("sqlite://") {
+            try await initializeSQLite()
+        } else if connectionString.hasPrefix("postgres://") {
+            try await initializePostgreSQL()
+        }
+    }
+    
+    private func initializeSQLite() async throws {
         // TODO: Initialize SQLite database
         // For now, just validate the connection string
         guard connectionString.hasPrefix("sqlite://") else {
@@ -25,7 +31,7 @@ actor DatabaseManager {
         }
     }
     
-    private func initializePostgreSQL() throws {
+    private func initializePostgreSQL() async throws {
         // TODO: Initialize PostgreSQL database
         // For now, just validate the connection string
         guard connectionString.hasPrefix("postgres://") else {
