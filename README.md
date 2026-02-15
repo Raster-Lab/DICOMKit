@@ -1578,17 +1578,29 @@ Choose the modules you need:
 
 ### Homebrew (CLI Tools)
 
-Install all 31 CLI tools via Homebrew:
+Install all 35 CLI tools via Homebrew using the local formula:
 
 ```bash
-brew tap Raster-Lab/dicomkit
-brew install dicomkit
+# Clone the repository
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+
+# Install using local formula (builds from source)
+brew install --build-from-source Formula/dicomkit.rb
+```
+
+Or build and install directly:
+
+```bash
+# Clone and install using the provided script
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+./Scripts/install-cli-tools.sh
 ```
 
 ### Other Installation Methods
 
-- **Local Build Script**: `./Scripts/install-cli-tools.sh`
-- **Manual Build**: `swift build -c release`
+- **Manual Build**: `swift build -c release && cp .build/release/dicom-* /usr/local/bin/`
 - **Docker**: See [DISTRIBUTION.md](DISTRIBUTION.md) for container deployment
 
 📖 **Complete installation guide**: [INSTALLATION.md](INSTALLATION.md)  
@@ -4054,12 +4066,17 @@ DICOMKit includes **31+ command-line tools** for DICOM operations, all installab
 ### Installation
 
 ```bash
-# Install via Homebrew
-brew tap Raster-Lab/dicomkit
-brew install dicomkit
+# Install using local formula (recommended)
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+brew install --build-from-source Formula/dicomkit.rb
 
-# Or build from source
+# Or use the installation script
+./Scripts/install-cli-tools.sh
+
+# Or build directly from source
 swift build -c release
+cp .build/release/dicom-* /usr/local/bin/
 ```
 
 ### Complete Tool Reference

@@ -53,18 +53,32 @@ Then add the specific modules you need to your targets:
 
 ## CLI Tools Distribution
 
-DICOMKit includes 29 command-line tools for working with DICOM files. Multiple distribution methods are available:
+DICOMKit includes 35 command-line tools for working with DICOM files. Multiple distribution methods are available:
 
-### Method 1: Homebrew (Recommended for macOS Users)
+### Method 1: Homebrew with Local Formula (Recommended for macOS Users)
 
 The easiest installation method for macOS users:
 
 ```bash
+# Clone the repository
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+
+# Install using local formula (builds from source)
+brew install --build-from-source Formula/dicomkit.rb
+```
+
+#### Using a Homebrew Tap (Optional)
+
+If you have set up a dedicated Homebrew tap repository (see [HOMEBREW_TAP_SETUP.md](Documentation/HOMEBREW_TAP_SETUP.md)):
+
+```bash
+# Add the DICOMKit tap (requires separate repository)
 brew tap Raster-Lab/dicomkit
 brew install dicomkit
 ```
 
-See [HOMEBREW_TAP_SETUP.md](Documentation/HOMEBREW_TAP_SETUP.md) for tap setup details.
+> **Note**: The `brew tap` command requires a separate GitHub repository named `homebrew-dicomkit` to exist at `https://github.com/Raster-Lab/homebrew-dicomkit`. See the [tap setup guide](Documentation/HOMEBREW_TAP_SETUP.md) for instructions on creating this repository.
 
 ### Method 2: Direct Download from GitHub Releases
 

@@ -1,12 +1,67 @@
 # Homebrew Tap Setup Guide
 
-This guide explains how to set up a Homebrew tap for DICOMKit to make installation easier for users.
+This guide explains how to set up a Homebrew tap for DICOMKit to enable `brew install dicomkit` without cloning the repository first.
+
+## Quick Setup for Repository Maintainers
+
+To enable `brew install dicomkit` for users, you need to create a separate tap repository. A ready-to-use template is provided in the `homebrew-tap-template/` directory.
+
+### One-Time Setup (5 minutes)
+
+1. **Create a new GitHub repository** named `homebrew-dicomkit` at:
+   `https://github.com/Raster-Lab/homebrew-dicomkit`
+
+2. **Copy the template files** from this repository:
+   ```bash
+   # Clone both repositories
+   git clone https://github.com/Raster-Lab/DICOMKit.git
+   git clone https://github.com/Raster-Lab/homebrew-dicomkit.git
+   
+   # Copy the template files
+   cp -r DICOMKit/homebrew-tap-template/* homebrew-dicomkit/
+   
+   # Push to the tap repository
+   cd homebrew-dicomkit
+   git add .
+   git commit -m "Add DICOMKit formula"
+   git push
+   ```
+
+3. **That's it!** Users can now install with:
+   ```bash
+   brew install Raster-Lab/dicomkit/dicomkit
+   ```
+
+---
+
+## ⚠️ Important: Tap Repository Required
+
+**The `brew tap Raster-Lab/dicomkit` command requires a separate GitHub repository named `homebrew-dicomkit` to exist.** Without this repository, users will see an error like:
+
+```
+Error: repository 'https://github.com/Raster-Lab/homebrew-dicomkit/' not found
+```
+
+### Alternative: Install Without a Tap
+
+If the tap repository doesn't exist yet, users can install directly from the local formula:
+
+```bash
+# Clone the DICOMKit repository
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+
+# Install using the local formula
+brew install --build-from-source Formula/dicomkit.rb
+```
+
+---
 
 ## What is a Homebrew Tap?
 
 A Homebrew "tap" is a GitHub repository containing Homebrew formulae. Taps allow you to distribute software through Homebrew without submitting to the main Homebrew repository.
 
-## Setting Up the Tap Repository
+## Detailed Setup Instructions
 
 ### 1. Create a New Repository
 
@@ -197,7 +252,7 @@ https://github.com/Raster-Lab/DICOMKit
 Before releasing the tap publicly:
 
 - [ ] Formula installs successfully
-- [ ] All 29 CLI tools are present in `/usr/local/bin` (or `/opt/homebrew/bin` on Apple Silicon)
+- [ ] All 35 CLI tools are present in `/usr/local/bin` (or `/opt/homebrew/bin` on Apple Silicon)
 - [ ] Tools run without errors (`dicom-info --version`)
 - [ ] Formula passes `brew audit --strict`
 - [ ] Formula passes `brew test`
