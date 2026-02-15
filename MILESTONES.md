@@ -3891,12 +3891,12 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement roadmap:
 
-**Phase 1 (v1.4.1)**: Complete Print Workflow API
-- [ ] Film Session Management (N-CREATE, N-DELETE)
-- [ ] Film Box and Image Box Creation (N-CREATE with layout parsing)
-- [ ] Image Box Content Management (N-SET with pixel data)
-- [ ] Print Execution and Monitoring (N-ACTION, N-GET Print Job)
-- [ ] 40+ unit tests, integration with DCM4CHEE/Orthanc
+**Phase 1 (v1.4.1)**: Complete Print Workflow API ✅ **COMPLETE**
+- [x] Film Session Management (N-CREATE, N-DELETE)
+- [x] Film Box and Image Box Creation (N-CREATE with layout parsing)
+- [x] Image Box Content Management (N-SET with pixel data)
+- [x] Print Execution and Monitoring (N-ACTION, N-GET Print Job)
+- [x] 40+ unit tests, integration with DCM4CHEE/Orthanc
 
 **Phase 2 (v1.4.2)**: High-Level Print API ✅ **COMPLETE**
 - [x] Simple print API (`printImage`, `printImages`, `printWithTemplate`)
