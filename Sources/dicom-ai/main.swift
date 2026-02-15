@@ -12,7 +12,6 @@ import CoreML
 import Vision
 #endif
 
-@main
 struct DICOMAI: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-ai",
@@ -999,3 +998,15 @@ struct RegistryClear: ParsableCommand {
         print("✓ Registry cleared")
     }
 }
+
+// MARK: - Main Entry Point
+
+#if canImport(CoreML) || canImport(Vision)
+if #available(macOS 14.0, iOS 17.0, *) {
+    DICOMAI.main()
+} else {
+    fatalError("This tool requires macOS 14.0, iOS 17.0, or later")
+}
+#else
+print("✗ CoreML or Vision framework not available on this platform")
+#endif

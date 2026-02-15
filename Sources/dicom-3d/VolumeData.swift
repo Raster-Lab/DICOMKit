@@ -296,9 +296,9 @@ class VolumeLoader {
         } else {
             // Try to get from Slice Thickness or Spacing Between Slices
             if let thickness = try? firstFile.dataSet.decimalString(for: .sliceThickness) {
-                sliceSpacing = thickness
+                sliceSpacing = thickness.value
             } else if let spacing = try? firstFile.dataSet.decimalString(for: .spacingBetweenSlices) {
-                sliceSpacing = spacing
+                sliceSpacing = spacing.value
             } else {
                 sliceSpacing = 1.0
             }
@@ -315,8 +315,8 @@ class VolumeLoader {
         let windowCenter = try? firstFile.dataSet.decimalString(for: .windowCenter)
         let windowWidth = try? firstFile.dataSet.decimalString(for: .windowWidth)
         
-        let rescaleSlope = (try? firstFile.dataSet.decimalString(for: .rescaleSlope)) ?? 1.0
-        let rescaleIntercept = (try? firstFile.dataSet.decimalString(for: .rescaleIntercept)) ?? 0.0
+        let rescaleSlope = (try? firstFile.dataSet.decimalString(for: .rescaleSlope))?.value ?? 1.0
+        let rescaleIntercept = (try? firstFile.dataSet.decimalString(for: .rescaleIntercept))?.value ?? 0.0
         
         if verbose {
             print("Volume dimensions: \(dimensions.width)x\(dimensions.height)x\(dimensions.depth)")
@@ -357,8 +357,8 @@ class VolumeLoader {
             bitsStored: bitsStored,
             pixelRepresentation: pixelRepresentation,
             photometricInterpretation: photometricInterpretation,
-            windowCenter: windowCenter,
-            windowWidth: windowWidth,
+            windowCenter: windowCenter?.value,
+            windowWidth: windowWidth?.value,
             rescaleSlope: rescaleSlope,
             rescaleIntercept: rescaleIntercept
         )
