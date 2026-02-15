@@ -1478,7 +1478,7 @@ The following features have known limitations or are not yet implemented:
 |----------|------------|--------|
 | **Character Sets** | Extended character set conversion is read-only | ⚠️ Partial support via v1.0.9 |
 | **Transfer Syntaxes** | JPEG-LS and HTJ2K codecs not native | ❌ Platform codec fallback |
-| **DICOM Print** | Basic Print Management SOP only | ⚠️ v1.4.0 partial |
+| **DICOM Print** | Complete Print Management Service Class | ✅ v1.4.5 complete (all phases) |
 | **DICOM Storage Commitment** | Not implemented | ❌ Planned |
 | **DICOM Worklist Push** | Not implemented | ❌ Planned |
 | **Query/Retrieve Relational** | Basic Q/R only | ⚠️ No relational queries |
@@ -2574,6 +2574,7 @@ let annotatedData = try await annotator.addAnnotations(
 - 📚 [Getting Started with Printing](Documentation/GettingStartedWithPrinting.md) - Beginner-friendly tutorial
 - 🔧 [Print Best Practices](Documentation/PrintWorkflowBestPractices.md) - Production patterns
 - 🐛 [Troubleshooting Print Issues](Documentation/TroubleshootingPrint.md) - Common problems and solutions
+- 🖥️ [Print Server Setup](Documentation/PrintServerSetup.md) - Docker Compose test environment setup
 - 📱 [iOS Integration Example](Examples/PrintIntegrationIOS.md) - Complete iOS SwiftUI example
 - 💻 [macOS Integration Example](Examples/PrintIntegrationMacOS.md) - Complete macOS example
 - 🔧 CLI Tool: `dicom-print` - Command-line print operations
