@@ -4,7 +4,7 @@
 
 This document provides a detailed plan for implementing complete DICOM Print Management Service Class support in DICOMKit. The DICOM Print Management Service enables medical imaging applications to send images to DICOM-compliant printers (film printers, hard copy devices) using the DIMSE-N protocol.
 
-**Status**: Phase 2 Complete (v1.4.2)  
+**Status**: Phase 4 Complete (v1.4.4)  
 **Target Version**: v1.4.1-v1.4.5 (enhancement releases)  
 **Reference**: PS3.4 Annex H - Print Management Service Class  
 **Complexity**: High  
@@ -79,22 +79,38 @@ DICOMKit now has comprehensive print management support:
 - Progress phases: connecting, queryingPrinter, creatingSession, preparingImages, uploadingImages, printing, cleanup, completed
 - AsyncThrowingStream-based progress updates
 
-### What's Remaining (Phases 3-5)
+✅ **Image Preparation Pipeline** (Phase 3 - NEW in v1.4.3)
+- `ImagePreprocessor` actor for image pipeline
+- Window/level application for CT/MR
+- Rescale slope/intercept application
+- `PreparedImage` struct for processed images
+- MONOCHROME1/2 polarity handling with auto-inversion
+- `ImageResizer` actor with multiple algorithms
+- Resize modes: fit, fill, stretch
+- Quality settings: low (nearest neighbor), medium (bilinear), high (bicubic)
+- `AnnotationRenderer` actor for text overlays
+- Corner positions, custom positions, font sizing
+- Background opacity control
 
-❌ **Image Preparation Pipeline** (Phase 3)
-- Window/level application
-- Resize and fit to image box
-- Rotation and orientation
-- Border and margin handling
-- Annotation overlay
-- MONOCHROME1/2 polarity handling
+✅ **Advanced Features** (Phase 4 - NEW in v1.4.4)
+- `PrintJob` struct for job representation
+- `PrintJobRecord` for history tracking
+- `PrintQueue` actor for queue management
+  - Priority-based scheduling (high, medium, low)
+  - Automatic retry with configurable policy
+  - Job history tracking
+- `PrinterCapabilities` struct for printer features
+- `PrinterInfo` struct for printer management
+- `PrinterRegistry` actor for multiple printers
+  - Add/remove/update printers
+  - Default printer management
+  - Availability tracking with lastSeenAt
+  - Load balancing with capability matching
+- `PrintError` enum with detailed error cases and recovery suggestions
+- `PartialPrintResult` for partial failure handling
+- `PrinterRegistryError` enum
 
-❌ **Advanced Features** (Phase 4)
-- Print queue management with persistence
-- Multiple printer support with load balancing
-- Enhanced error recovery
-- Print cost estimation
-- Print history tracking
+### What's Remaining (Phase 5)
 
 ❌ **Documentation and CLI Tool** (Phase 5)
 - DocC API documentation

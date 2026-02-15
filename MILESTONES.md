@@ -3808,7 +3808,7 @@ Building on the successful Phase 1 CLI tools (7 tools in v1.0.14), this mileston
 
 ### Milestone 11.3: DICOM Print Management (v1.4.0)
 
-**Status**: ✅ Completed (Core Workflow Implemented)  
+**Status**: ✅ Completed (Phase 4 Complete - v1.4.4)  
 **Goal**: Implement DICOM Print Management Service Class (PS3.4 Annex H)  
 **Complexity**: Medium-High  
 **Dependencies**: Milestone 6 (DICOM Networking)
@@ -3907,19 +3907,43 @@ See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement 
 - [x] `PrintLayout` struct with optimal layout selection
 - [x] 50+ unit tests
 
-**Phase 3 (v1.4.3)**: Image Preparation Pipeline
-- [ ] Image preprocessing (window/level, MONOCHROME polarity, color space)
-- [ ] Image sizing and layout (resize, aspect ratio, rotation)
-- [ ] Annotation overlay (patient info, orientation markers)
-- [ ] SIMD acceleration with Accelerate framework
-- [ ] 30+ unit tests
+**Phase 3 (v1.4.3)**: Image Preparation Pipeline ✅ **COMPLETE**
+- [x] `ImagePreprocessor` actor for image pipeline
+- [x] Window/level application with auto-calculation
+- [x] Rescale slope/intercept application
+- [x] MONOCHROME1/2 polarity handling with auto-inversion
+- [x] RGB to grayscale conversion
+- [x] `ImageResizer` actor with multiple algorithms
+- [x] Resize modes: fit, fill, stretch
+- [x] Quality settings: low (nearest neighbor), medium (bilinear), high (bicubic)
+- [x] SIMD acceleration with Accelerate framework
+- [x] `AnnotationRenderer` actor for text overlays
+- [x] Corner positions, custom positions, font sizing
+- [x] Background opacity control
+- [x] `PreparedImage` struct for processed images
+- [x] 40+ unit tests
 
-**Phase 4 (v1.4.4)**: Advanced Features
-- [ ] Print queue management with persistence
-- [ ] Multiple printer support with load balancing
-- [ ] Enhanced error recovery and resilience
-- [ ] Print cost estimation and history tracking
-- [ ] 30+ unit tests
+**Phase 4 (v1.4.4)**: Advanced Features ✅ **COMPLETE**
+- [x] `PrintJob` struct for job representation
+- [x] `PrintJobRecord` for history tracking
+- [x] `PrintQueueJobStatus` enum for job status
+- [x] `PrintQueue` actor for queue management
+  - [x] Priority-based scheduling (high, medium, low)
+  - [x] Automatic retry with configurable `PrintRetryPolicy`
+  - [x] Job history tracking with `getHistory(limit:)`
+  - [x] Cancel support with `cancel(jobID:)`
+- [x] `PrinterCapabilities` struct for printer features
+- [x] `PrinterInfo` struct for printer management
+- [x] `PrinterRegistry` actor for multiple printers
+  - [x] Add/remove/update printers
+  - [x] Default printer management
+  - [x] Availability tracking with `lastSeenAt`
+  - [x] Load balancing with `selectPrinter(requiresColor:filmSize:)`
+- [x] `PrintError` enum with 10 detailed error cases and recovery suggestions
+- [x] `PartialPrintResult` for partial failure handling
+- [x] `PrinterRegistryError` enum
+- [x] `CaseIterable` conformance for FilmSize, MediumType, MagnificationType
+- [x] 60+ unit tests
 
 **Phase 5 (v1.4.5)**: Documentation and Examples
 - [ ] DocC API documentation

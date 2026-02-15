@@ -909,6 +909,878 @@ public struct PrintRetryPolicy: Sendable {
     public static let none = PrintRetryPolicy(maxAttempts: 0)
 }
 
+// MARK: - Phase 4: Print Job
+
+/// Represents a print job in the queue
+///
+/// Print jobs contain all information needed to execute a print operation,
+/// including the printer configuration, images to print, and options.
+public struct PrintJob: Sendable, Identifiable {
+    /// Unique identifier for this job
+    public let id: UUID
+    
+    /// Printer configuration
+    public let configuration: PrintConfiguration
+    
+    /// File URLs for images to print
+    public let imageURLs: [URL]
+    
+    /// Print options
+    public let options: PrintOptions
+    
+    /// Job priority
+    public let priority: PrintPriority
+    
+    /// Date when job was created
+    public let createdAt: Date
+    
+    /// Optional label for the job
+    public let label: String?
+    
+    /// Creates a new print job
+    public init(
+        id: UUID = UUID(),
+        configuration: PrintConfiguration,
+        imageURLs: [URL],
+        options: PrintOptions = .default,
+        priority: PrintPriority = .medium,
+        createdAt: Date = Date(),
+        label: String? = nil
+    ) {
+        self.id = id
+        self.configuration = configuration
+        self.imageURLs = imageURLs
+        self.options = options
+        self.priority = priority
+        self.createdAt = createdAt
+        self.label = label
+    }
+}
+
+// MARK: - Print Job Record
+
+/// Record of a completed print job for history tracking
+public struct PrintJobRecord: Sendable, Identifiable {
+    /// Unique identifier (matches the original job)
+    public let id: UUID
+    
+    /// Job label
+    public let label: String?
+    
+    /// Number of images printed
+    public let imageCount: Int
+    
+    /// Date when job was submitted
+    public let submittedAt: Date
+    
+    /// Date when job completed
+    public let completedAt: Date
+    
+    /// Whether the job completed successfully
+    public let success: Bool
+    
+    /// Error message if the job failed
+    public let errorMessage: String?
+    
+    /// Printer name that processed the job
+    public let printerName: String?
+    
+    public init(
+        id: UUID,
+        label: String?,
+        imageCount: Int,
+        submittedAt: Date,
+        completedAt: Date,
+        success: Bool,
+        errorMessage: String? = nil,
+        printerName: String? = nil
+    ) {
+        self.id = id
+        self.label = label
+        self.imageCount = imageCount
+        self.submittedAt = submittedAt
+        self.completedAt = completedAt
+        self.success = success
+        self.errorMessage = errorMessage
+        self.printerName = printerName
+    }
+}
+
+// MARK: - Print Queue Status
+
+/// Status of a job in the print queue
+public enum PrintQueueJobStatus: Sendable, Equatable {
+    /// Job is waiting to be processed
+    case queued(position: Int)
+    
+    /// Job is currently being processed
+    case processing
+    
+    /// Job completed successfully
+    case completed
+    
+    /// Job failed with an error
+    case failed(message: String)
+    
+    /// Job was cancelled
+    case cancelled
+}
+
+// MARK: - Print Queue
+
+/// Actor for managing a queue of print jobs
+///
+/// The print queue provides:
+/// - Priority-based scheduling
+/// - Concurrent job processing (for multiple printers)
+/// - Job history tracking
+/// - Automatic retry on failure
+public actor PrintQueue {
+    /// Queued jobs sorted by priority and creation time
+    private var queue: [PrintJob] = []
+    
+    /// Currently processing job IDs
+    private var processing: Set<UUID> = []
+    
+    /// Completed job records
+    private var history: [PrintJobRecord] = []
+    
+    /// Maximum number of history records to keep
+    private let maxHistorySize: Int
+    
+    /// Retry policy for failed jobs
+    private let retryPolicy: PrintRetryPolicy
+    
+    /// Retry counts for jobs
+    private var retryCounts: [UUID: Int] = [:]
+    
+    /// Creates a new print queue
+    /// - Parameters:
+    ///   - maxHistorySize: Maximum history records (default 100)
+    ///   - retryPolicy: Policy for retrying failed jobs
+    public init(maxHistorySize: Int = 100, retryPolicy: PrintRetryPolicy = .default) {
+        self.maxHistorySize = maxHistorySize
+        self.retryPolicy = retryPolicy
+    }
+    
+    // MARK: - Queue Operations
+    
+    /// Adds a job to the queue
+    /// - Parameter job: The job to enqueue
+    /// - Returns: The job ID
+    @discardableResult
+    public func enqueue(job: PrintJob) -> UUID {
+        queue.append(job)
+        sortQueue()
+        return job.id
+    }
+    
+    /// Retrieves and removes the next job from the queue
+    /// - Returns: The next job to process, or nil if queue is empty
+    public func dequeue() -> PrintJob? {
+        guard !queue.isEmpty else { return nil }
+        let job = queue.removeFirst()
+        processing.insert(job.id)
+        return job
+    }
+    
+    /// Peeks at the next job without removing it
+    /// - Returns: The next job, or nil if queue is empty
+    public func peek() -> PrintJob? {
+        queue.first
+    }
+    
+    /// Cancels a queued job
+    /// - Parameter jobID: ID of the job to cancel
+    /// - Returns: True if the job was found and cancelled
+    @discardableResult
+    public func cancel(jobID: UUID) -> Bool {
+        if let index = queue.firstIndex(where: { $0.id == jobID }) {
+            let job = queue.remove(at: index)
+            
+            // Record as cancelled
+            let record = PrintJobRecord(
+                id: job.id,
+                label: job.label,
+                imageCount: job.imageURLs.count,
+                submittedAt: job.createdAt,
+                completedAt: Date(),
+                success: false,
+                errorMessage: "Cancelled by user"
+            )
+            addToHistory(record)
+            
+            return true
+        }
+        return false
+    }
+    
+    /// Reports that a job completed successfully
+    /// - Parameters:
+    ///   - jobID: ID of the completed job
+    ///   - printerName: Name of the printer that processed the job
+    public func markCompleted(jobID: UUID, printerName: String? = nil) {
+        processing.remove(jobID)
+        retryCounts.removeValue(forKey: jobID)
+        
+        // Find job details for history (might be nil if already removed)
+        // Create a record with available information
+        let record = PrintJobRecord(
+            id: jobID,
+            label: nil,
+            imageCount: 0,
+            submittedAt: Date(),
+            completedAt: Date(),
+            success: true,
+            printerName: printerName
+        )
+        addToHistory(record)
+    }
+    
+    /// Reports that a job failed
+    /// - Parameters:
+    ///   - jobID: ID of the failed job
+    ///   - error: The error that caused the failure
+    ///   - job: The original job (for retry)
+    /// - Returns: True if the job will be retried
+    @discardableResult
+    public func markFailed(jobID: UUID, error: Error, job: PrintJob? = nil) -> Bool {
+        processing.remove(jobID)
+        
+        let retryCount = retryCounts[jobID] ?? 0
+        
+        // Check if we should retry
+        if retryCount < retryPolicy.maxAttempts, let job = job {
+            retryCounts[jobID] = retryCount + 1
+            // Re-queue the job
+            queue.append(job)
+            sortQueue()
+            return true
+        }
+        
+        // No more retries - record as failed
+        retryCounts.removeValue(forKey: jobID)
+        
+        let record = PrintJobRecord(
+            id: jobID,
+            label: job?.label,
+            imageCount: job?.imageURLs.count ?? 0,
+            submittedAt: job?.createdAt ?? Date(),
+            completedAt: Date(),
+            success: false,
+            errorMessage: error.localizedDescription
+        )
+        addToHistory(record)
+        
+        return false
+    }
+    
+    // MARK: - Queue Status
+    
+    /// Gets the status of a specific job
+    /// - Parameter jobID: ID of the job
+    /// - Returns: The job status, or nil if not found
+    public func status(jobID: UUID) -> PrintQueueJobStatus? {
+        if processing.contains(jobID) {
+            return .processing
+        }
+        
+        if let position = queue.firstIndex(where: { $0.id == jobID }) {
+            return .queued(position: position + 1)
+        }
+        
+        if let record = history.first(where: { $0.id == jobID }) {
+            if record.success {
+                return .completed
+            } else if record.errorMessage == "Cancelled by user" {
+                return .cancelled
+            } else {
+                return .failed(message: record.errorMessage ?? "Unknown error")
+            }
+        }
+        
+        return nil
+    }
+    
+    /// Number of jobs in the queue
+    public var queuedCount: Int {
+        queue.count
+    }
+    
+    /// Number of jobs currently being processed
+    public var processingCount: Int {
+        processing.count
+    }
+    
+    /// Whether the queue is empty
+    public var isEmpty: Bool {
+        queue.isEmpty
+    }
+    
+    /// Gets a copy of all queued jobs
+    public func allQueuedJobs() -> [PrintJob] {
+        queue
+    }
+    
+    // MARK: - History
+    
+    /// Gets print history
+    /// - Parameter limit: Maximum number of records to return
+    /// - Returns: Recent print job records (most recent first)
+    public func getHistory(limit: Int = 50) -> [PrintJobRecord] {
+        let count = min(limit, history.count)
+        return Array(history.prefix(count))
+    }
+    
+    /// Clears the print history
+    public func clearHistory() {
+        history.removeAll()
+    }
+    
+    // MARK: - Private Methods
+    
+    private func sortQueue() {
+        // Sort by priority (high first) then by creation time (oldest first)
+        queue.sort { job1, job2 in
+            if job1.priority != job2.priority {
+                return priorityValue(job1.priority) > priorityValue(job2.priority)
+            }
+            return job1.createdAt < job2.createdAt
+        }
+    }
+    
+    private func priorityValue(_ priority: PrintPriority) -> Int {
+        switch priority {
+        case .high: return 2
+        case .medium: return 1
+        case .low: return 0
+        }
+    }
+    
+    private func addToHistory(_ record: PrintJobRecord) {
+        history.insert(record, at: 0)
+        
+        // Trim history if needed
+        if history.count > maxHistorySize {
+            history = Array(history.prefix(maxHistorySize))
+        }
+    }
+}
+
+// MARK: - Printer Capabilities
+
+/// Capabilities of a DICOM printer
+public struct PrinterCapabilities: Sendable, Equatable {
+    /// Supported film sizes
+    public let supportedFilmSizes: [FilmSize]
+    
+    /// Whether the printer supports color
+    public let supportsColor: Bool
+    
+    /// Maximum number of copies per print job
+    public let maxCopies: Int
+    
+    /// Supported medium types
+    public let supportedMediumTypes: [MediumType]
+    
+    /// Supported magnification types
+    public let supportedMagnificationTypes: [MagnificationType]
+    
+    /// Maximum images per film box
+    public let maxImagesPerFilmBox: Int
+    
+    public init(
+        supportedFilmSizes: [FilmSize] = FilmSize.allCases,
+        supportsColor: Bool = true,
+        maxCopies: Int = 99,
+        supportedMediumTypes: [MediumType] = MediumType.allCases,
+        supportedMagnificationTypes: [MagnificationType] = MagnificationType.allCases,
+        maxImagesPerFilmBox: Int = 25
+    ) {
+        self.supportedFilmSizes = supportedFilmSizes
+        self.supportsColor = supportsColor
+        self.maxCopies = maxCopies
+        self.supportedMediumTypes = supportedMediumTypes
+        self.supportedMagnificationTypes = supportedMagnificationTypes
+        self.maxImagesPerFilmBox = maxImagesPerFilmBox
+    }
+    
+    /// Default capabilities (assumes full feature support)
+    public static let `default` = PrinterCapabilities()
+}
+
+// MARK: - FilmSize CaseIterable
+
+extension FilmSize: CaseIterable {
+    public static let allCases: [FilmSize] = [
+        .size8InX10In, .size8_5InX11In, .size10InX12In, .size10InX14In,
+        .size11InX14In, .size11InX17In, .size14InX14In, .size14InX17In,
+        .size24CmX24Cm, .size24CmX30Cm, .a4, .a3
+    ]
+}
+
+// MARK: - MediumType CaseIterable
+
+extension MediumType: CaseIterable {
+    public static let allCases: [MediumType] = [
+        .paper, .clearFilm, .blueFilm, .mammoFilmClearBase, .mammoFilmBlueBase
+    ]
+}
+
+// MARK: - MagnificationType CaseIterable
+
+extension MagnificationType: CaseIterable {
+    public static let allCases: [MagnificationType] = [
+        .replicate, .bilinear, .cubic, .none
+    ]
+}
+
+// MARK: - Printer Info
+
+/// Information about a configured DICOM printer
+public struct PrinterInfo: Sendable, Identifiable, Equatable {
+    /// Unique identifier for this printer
+    public let id: UUID
+    
+    /// Human-readable printer name
+    public let name: String
+    
+    /// Connection configuration
+    public let configuration: PrintConfiguration
+    
+    /// Printer capabilities
+    public let capabilities: PrinterCapabilities
+    
+    /// Whether this is the default printer
+    public var isDefault: Bool
+    
+    /// Whether the printer is currently available
+    public var isAvailable: Bool
+    
+    /// Last time the printer was successfully contacted
+    public var lastSeenAt: Date?
+    
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        configuration: PrintConfiguration,
+        capabilities: PrinterCapabilities = .default,
+        isDefault: Bool = false,
+        isAvailable: Bool = true,
+        lastSeenAt: Date? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.configuration = configuration
+        self.capabilities = capabilities
+        self.isDefault = isDefault
+        self.isAvailable = isAvailable
+        self.lastSeenAt = lastSeenAt
+    }
+    
+    public static func == (lhs: PrinterInfo, rhs: PrinterInfo) -> Bool {
+        lhs.id == rhs.id
+    }
+}
+
+// MARK: - Printer Registry
+
+/// Actor for managing multiple DICOM printers
+///
+/// The printer registry provides:
+/// - Printer discovery and registration
+/// - Health checks and availability tracking
+/// - Default printer selection
+/// - Load balancing across printers
+public actor PrinterRegistry {
+    /// Registered printers
+    private var printers: [UUID: PrinterInfo] = [:]
+    
+    /// ID of the default printer
+    private var defaultPrinterID: UUID?
+    
+    /// Creates a new printer registry
+    public init() {}
+    
+    // MARK: - Printer Management
+    
+    /// Adds a printer to the registry
+    /// - Parameter printer: Printer information
+    /// - Throws: PrinterRegistryError if a printer with the same ID exists
+    public func addPrinter(_ printer: PrinterInfo) throws {
+        guard printers[printer.id] == nil else {
+            throw PrinterRegistryError.printerAlreadyExists(id: printer.id)
+        }
+        
+        var info = printer
+        
+        // If this is the first printer or marked as default, set as default
+        if printers.isEmpty || printer.isDefault {
+            // Clear previous default
+            if let prevDefaultID = defaultPrinterID {
+                printers[prevDefaultID]?.isDefault = false
+            }
+            defaultPrinterID = printer.id
+            info.isDefault = true
+        }
+        
+        printers[printer.id] = info
+    }
+    
+    /// Removes a printer from the registry
+    /// - Parameter id: ID of the printer to remove
+    /// - Returns: The removed printer info, or nil if not found
+    @discardableResult
+    public func removePrinter(id: UUID) -> PrinterInfo? {
+        let removed = printers.removeValue(forKey: id)
+        
+        // If we removed the default, select a new default
+        if id == defaultPrinterID {
+            defaultPrinterID = printers.keys.first
+            if let newDefaultID = defaultPrinterID {
+                printers[newDefaultID]?.isDefault = true
+            }
+        }
+        
+        return removed
+    }
+    
+    /// Updates a printer in the registry
+    /// - Parameter printer: Updated printer information
+    /// - Throws: PrinterRegistryError if printer not found
+    public func updatePrinter(_ printer: PrinterInfo) throws {
+        guard printers[printer.id] != nil else {
+            throw PrinterRegistryError.printerNotFound(id: printer.id)
+        }
+        
+        var info = printer
+        
+        // Handle default printer logic
+        if printer.isDefault && defaultPrinterID != printer.id {
+            // Clear previous default
+            if let prevDefaultID = defaultPrinterID {
+                printers[prevDefaultID]?.isDefault = false
+            }
+            defaultPrinterID = printer.id
+        } else if !printer.isDefault && defaultPrinterID == printer.id {
+            // Can't unset default without setting another - keep it default
+            info.isDefault = true
+        }
+        
+        printers[printer.id] = info
+    }
+    
+    /// Gets a printer by ID
+    /// - Parameter id: Printer ID
+    /// - Returns: Printer info, or nil if not found
+    public func printer(id: UUID) -> PrinterInfo? {
+        printers[id]
+    }
+    
+    /// Gets a printer by name
+    /// - Parameter name: Printer name
+    /// - Returns: Printer info, or nil if not found
+    public func printer(named name: String) -> PrinterInfo? {
+        printers.values.first { $0.name == name }
+    }
+    
+    // MARK: - Listing
+    
+    /// Lists all registered printers
+    /// - Returns: Array of printer info
+    public func listPrinters() -> [PrinterInfo] {
+        Array(printers.values)
+    }
+    
+    /// Lists available printers (currently online)
+    /// - Returns: Array of available printer info
+    public func listAvailablePrinters() -> [PrinterInfo] {
+        printers.values.filter { $0.isAvailable }
+    }
+    
+    /// Number of registered printers
+    public var count: Int {
+        printers.count
+    }
+    
+    // MARK: - Default Printer
+    
+    /// Gets the default printer
+    /// - Returns: Default printer info, or nil if no printers registered
+    public func defaultPrinter() -> PrinterInfo? {
+        guard let id = defaultPrinterID else { return nil }
+        return printers[id]
+    }
+    
+    /// Sets the default printer
+    /// - Parameter id: ID of the printer to set as default
+    /// - Throws: PrinterRegistryError if printer not found
+    public func setDefaultPrinter(id: UUID) throws {
+        guard printers[id] != nil else {
+            throw PrinterRegistryError.printerNotFound(id: id)
+        }
+        
+        // Clear previous default
+        if let prevDefaultID = defaultPrinterID {
+            printers[prevDefaultID]?.isDefault = false
+        }
+        
+        printers[id]?.isDefault = true
+        defaultPrinterID = id
+    }
+    
+    // MARK: - Availability
+    
+    /// Updates the availability status of a printer
+    /// - Parameters:
+    ///   - id: Printer ID
+    ///   - isAvailable: Whether the printer is available
+    public func updateAvailability(id: UUID, isAvailable: Bool) {
+        printers[id]?.isAvailable = isAvailable
+        if isAvailable {
+            printers[id]?.lastSeenAt = Date()
+        }
+    }
+    
+    /// Marks a printer as seen (updates lastSeenAt)
+    /// - Parameter id: Printer ID
+    public func markSeen(id: UUID) {
+        printers[id]?.lastSeenAt = Date()
+        printers[id]?.isAvailable = true
+    }
+    
+    // MARK: - Load Balancing
+    
+    /// Selects the best available printer for a job
+    ///
+    /// Selection criteria:
+    /// 1. Must be available
+    /// 2. Must support required capabilities
+    /// 3. Prefers default printer if available
+    ///
+    /// - Parameters:
+    ///   - requiresColor: Whether the job requires color printing
+    ///   - filmSize: Required film size
+    /// - Returns: Best printer for the job, or nil if none suitable
+    public func selectPrinter(requiresColor: Bool = false, filmSize: FilmSize? = nil) -> PrinterInfo? {
+        let available = printers.values.filter { $0.isAvailable }
+        
+        guard !available.isEmpty else { return nil }
+        
+        // Filter by capabilities
+        let suitable = available.filter { printer in
+            // Check color support
+            if requiresColor && !printer.capabilities.supportsColor {
+                return false
+            }
+            
+            // Check film size support
+            if let size = filmSize, !printer.capabilities.supportedFilmSizes.contains(size) {
+                return false
+            }
+            
+            return true
+        }
+        
+        // Prefer default printer if it's suitable
+        if let defaultID = defaultPrinterID,
+           let defaultPrinter = suitable.first(where: { $0.id == defaultID }) {
+            return defaultPrinter
+        }
+        
+        // Return first suitable printer
+        return suitable.first
+    }
+}
+
+// MARK: - Printer Registry Error
+
+/// Errors that can occur in printer registry operations
+public enum PrinterRegistryError: Error, CustomStringConvertible, Equatable {
+    /// Printer with the specified ID already exists
+    case printerAlreadyExists(id: UUID)
+    
+    /// Printer with the specified ID was not found
+    case printerNotFound(id: UUID)
+    
+    /// No suitable printer available for the job
+    case noPrinterAvailable
+    
+    public var description: String {
+        switch self {
+        case .printerAlreadyExists(let id):
+            return "Printer already exists: \(id)"
+        case .printerNotFound(let id):
+            return "Printer not found: \(id)"
+        case .noPrinterAvailable:
+            return "No suitable printer available"
+        }
+    }
+}
+
+// MARK: - Print Error (Phase 4.3)
+
+/// Detailed error types for print operations
+public enum PrintError: Error, CustomStringConvertible, Equatable {
+    /// Printer is unavailable or offline
+    case printerUnavailable(message: String)
+    
+    /// Failed to create film session
+    case filmSessionCreationFailed(statusCode: UInt16)
+    
+    /// Failed to create film box
+    case filmBoxCreationFailed(statusCode: UInt16)
+    
+    /// Failed to set image box content
+    case imageBoxSetFailed(position: Int, statusCode: UInt16)
+    
+    /// Print job execution failed
+    case printJobFailed(status: String, info: String?)
+    
+    /// Operation timed out
+    case timeout(operation: String)
+    
+    /// Invalid configuration
+    case invalidConfiguration(reason: String)
+    
+    /// Image preparation failed
+    case imagePreparationFailed(reason: String)
+    
+    /// Network error
+    case networkError(message: String)
+    
+    /// Queue is full
+    case queueFull(maxSize: Int)
+    
+    public var description: String {
+        switch self {
+        case .printerUnavailable(let message):
+            return "Printer unavailable: \(message)"
+        case .filmSessionCreationFailed(let statusCode):
+            return "Failed to create film session (status: 0x\(String(statusCode, radix: 16, uppercase: true)))"
+        case .filmBoxCreationFailed(let statusCode):
+            return "Failed to create film box (status: 0x\(String(statusCode, radix: 16, uppercase: true)))"
+        case .imageBoxSetFailed(let position, let statusCode):
+            return "Failed to set image at position \(position) (status: 0x\(String(statusCode, radix: 16, uppercase: true)))"
+        case .printJobFailed(let status, let info):
+            if let info = info {
+                return "Print job failed: \(status) - \(info)"
+            }
+            return "Print job failed: \(status)"
+        case .timeout(let operation):
+            return "Operation timed out: \(operation)"
+        case .invalidConfiguration(let reason):
+            return "Invalid configuration: \(reason)"
+        case .imagePreparationFailed(let reason):
+            return "Image preparation failed: \(reason)"
+        case .networkError(let message):
+            return "Network error: \(message)"
+        case .queueFull(let maxSize):
+            return "Print queue is full (maximum \(maxSize) jobs)"
+        }
+    }
+    
+    /// Suggested recovery action for this error
+    public var recoverySuggestion: String {
+        switch self {
+        case .printerUnavailable:
+            return "Check that the printer is powered on and connected to the network. Verify the printer address and port."
+        case .filmSessionCreationFailed:
+            return "The printer may be busy or have insufficient resources. Try again later or check printer status."
+        case .filmBoxCreationFailed:
+            return "Verify that the film size and layout are supported by the printer."
+        case .imageBoxSetFailed:
+            return "Check that the image format is compatible with the printer. Try reducing image complexity."
+        case .printJobFailed:
+            return "Check the printer status for paper/film jams or other hardware issues."
+        case .timeout:
+            return "Increase the timeout value or check network connectivity."
+        case .invalidConfiguration:
+            return "Review and correct the printer configuration settings."
+        case .imagePreparationFailed:
+            return "Verify that the DICOM image is valid and contains pixel data."
+        case .networkError:
+            return "Check network connectivity and firewall settings."
+        case .queueFull:
+            return "Wait for current jobs to complete or cancel pending jobs."
+        }
+    }
+}
+
+// MARK: - Partial Print Result
+
+/// Result of a print operation that may have partially succeeded
+public struct PartialPrintResult: Sendable {
+    /// Number of images that printed successfully
+    public let successCount: Int
+    
+    /// Number of images that failed to print
+    public let failureCount: Int
+    
+    /// Positions of images that failed (1-based)
+    public let failedPositions: [Int]
+    
+    /// Errors that occurred during printing
+    public let errors: [PrintError]
+    
+    /// Film session UID (if created)
+    public let filmSessionUID: String?
+    
+    /// Print job UID (if created)
+    public let printJobUID: String?
+    
+    /// Overall success status
+    public var isFullySuccessful: Bool {
+        failureCount == 0
+    }
+    
+    /// Overall failure status
+    public var isFullyFailed: Bool {
+        successCount == 0 && failureCount > 0
+    }
+    
+    /// Partial success status
+    public var isPartiallySuccessful: Bool {
+        successCount > 0 && failureCount > 0
+    }
+    
+    public init(
+        successCount: Int,
+        failureCount: Int,
+        failedPositions: [Int] = [],
+        errors: [PrintError] = [],
+        filmSessionUID: String? = nil,
+        printJobUID: String? = nil
+    ) {
+        self.successCount = successCount
+        self.failureCount = failureCount
+        self.failedPositions = failedPositions
+        self.errors = errors
+        self.filmSessionUID = filmSessionUID
+        self.printJobUID = printJobUID
+    }
+    
+    /// Creates a successful result
+    public static func success(count: Int, filmSessionUID: String? = nil, printJobUID: String? = nil) -> PartialPrintResult {
+        PartialPrintResult(
+            successCount: count,
+            failureCount: 0,
+            filmSessionUID: filmSessionUID,
+            printJobUID: printJobUID
+        )
+    }
+    
+    /// Creates a failed result
+    public static func failure(count: Int, error: PrintError) -> PartialPrintResult {
+        PartialPrintResult(
+            successCount: 0,
+            failureCount: count,
+            failedPositions: Array(1...count),
+            errors: [error]
+        )
+    }
+}
+
 #if canImport(Network)
 
 // MARK: - DICOM Print Service

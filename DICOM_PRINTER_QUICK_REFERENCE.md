@@ -6,7 +6,7 @@ This document provides a quick reference for DICOM Print Management implementati
 
 **📄 Full Details**: See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the comprehensive implementation plan.
 
-## Current Status (v1.4.2)
+## Current Status (v1.4.4)
 
 ### ✅ What's Implemented
 
@@ -17,7 +17,7 @@ This document provides a quick reference for DICOM Print Management implementati
 - **Print Tags**: 35 DICOM tags across groups 0x2000, 0x2010, 0x2020, 0x2100, 0x2110
 - **Complete Workflow API**: `createFilmSession`, `createFilmBox`, `setImageBox`, `printFilmBox`, `deleteFilmSession`, `getPrintJobStatus`
 
-**Phase 2: High-Level Print API (v1.4.2) - NEW**
+**Phase 2: High-Level Print API (v1.4.2)**
 - **Simple Print API**: `printImage()`, `printImages()`, `printWithTemplate()`
 - **Progress Reporting**: `printImagesWithProgress()` with AsyncThrowingStream
 - **Print Options**: `PrintOptions` with presets (`.default`, `.highQuality`, `.draft`, `.mammography`)
@@ -25,10 +25,20 @@ This document provides a quick reference for DICOM Print Management implementati
 - **Print Layout**: Automatic optimal layout selection for image count
 - **Print Retry**: `PrintRetryPolicy` with exponential backoff
 
-### ❌ What's Remaining (Phase 3-5)
+**Phase 3: Image Preparation Pipeline (v1.4.3)**
+- **Image Preprocessing**: `ImagePreprocessor` actor with window/level, rescale, polarity handling
+- **Image Resizing**: `ImageResizer` actor with fit/fill/stretch modes and quality settings
+- **Annotation Rendering**: `AnnotationRenderer` actor for text overlays at various positions
 
-- **Image Preparation Pipeline** (Phase 3): Window/level, resize, rotation, annotation overlay
-- **Advanced Features** (Phase 4): Print queue, multiple printers, enhanced error recovery
+**Phase 4: Advanced Features (v1.4.4) - NEW**
+- **Print Queue**: `PrintQueue` actor with priority scheduling and retry logic
+- **Printer Registry**: `PrinterRegistry` actor for multiple printer management
+- **Enhanced Errors**: `PrintError` enum with detailed cases and recovery suggestions
+- **Partial Results**: `PartialPrintResult` for handling partial print failures
+- **Printer Capabilities**: `PrinterCapabilities` struct for printer feature tracking
+
+### ❌ What's Remaining (Phase 5)
+
 - **Documentation & CLI** (Phase 5): `dicom-print` CLI tool, user guides
 - **Integration Tests**: Testing with real DICOM print SCPs
 
@@ -195,37 +205,88 @@ let annotatedData = try await annotator.addAnnotations(
 )
 ```
 
-### Phase 4: Advanced Features (v1.4.4)
-**Timeline**: 1-2 weeks | **Tests**: 30+
+### Phase 4: Advanced Features (v1.4.4) - NEW
+**Status**: ✅ Complete | **Tests**: 60+
 
 ```swift
-// Print queue management
-let printQueue = PrintQueue()
-let jobID = try await printQueue.enqueue(
-    job: PrintJob(
-        configuration: printConfig,
-        images: imageURLs,
-        options: .highQuality,
-        priority: .high
-    )
-)
+// Create a print queue with retry policy
+let queue = PrintQueue(maxHistorySize: 100, retryPolicy: .default)
 
-// Multiple printer support
-let printerRegistry = PrinterRegistry()
-try await printerRegistry.addPrinter(
-    PrinterInfo(
-        name: "Radiology Film Printer",
-        configuration: printConfig1,
-        capabilities: capabilities,
-        isDefault: true
-    )
+// Add print jobs with priority
+let highPriorityJob = PrintJob(
+    configuration: printConfig,
+    imageURLs: [URL(fileURLWithPath: "/path/to/urgent.dcm")],
+    options: .highQuality,
+    priority: .high,
+    label: "Urgent CT Print"
 )
+let jobID = await queue.enqueue(job: highPriorityJob)
 
-let defaultPrinter = await printerRegistry.defaultPrinter()
+// Check job status
+if let status = await queue.status(jobID: jobID) {
+    switch status {
+    case .queued(let position):
+        print("Job queued at position \(position)")
+    case .processing:
+        print("Job is being processed")
+    case .completed:
+        print("Job completed successfully")
+    case .failed(let message):
+        print("Job failed: \(message)")
+    case .cancelled:
+        print("Job was cancelled")
+    }
+}
+
+// Multiple printer management
+let registry = PrinterRegistry()
+
+// Add printers with capabilities
+let radiologyCaps = PrinterCapabilities(
+    supportedFilmSizes: [.size14InX17In, .size11InX14In],
+    supportsColor: false,
+    maxCopies: 99,
+    supportedMediumTypes: [.clearFilm, .blueFilm]
+)
+let radiologyPrinter = PrinterInfo(
+    name: "Radiology Film Printer",
+    configuration: printConfig,
+    capabilities: radiologyCaps,
+    isDefault: true
+)
+try await registry.addPrinter(radiologyPrinter)
+
+// Select best printer for a job
+if let printer = await registry.selectPrinter(
+    requiresColor: false,
+    filmSize: .size14InX17In
+) {
+    print("Using printer: \(printer.name)")
+}
+
+// Track printer availability
+await registry.updateAvailability(id: radiologyPrinter.id, isAvailable: true)
+await registry.markSeen(id: radiologyPrinter.id)
+
+// Error handling with recovery suggestions
+let error = PrintError.printerUnavailable(message: "Printer offline")
+print("Error: \(error.description)")
+print("Suggestion: \(error.recoverySuggestion)")
+
+// Handle partial print results
+let result = PartialPrintResult(
+    successCount: 4,
+    failureCount: 2,
+    failedPositions: [3, 5],
+    errors: [.imageBoxSetFailed(position: 3, statusCode: 0xA900)]
+)
+if result.isPartiallySuccessful {
+    print("Printed \(result.successCount) images, \(result.failureCount) failed")
+}
 ```
 
 ### Phase 5: Documentation and Examples (v1.4.5)
-**Timeline**: 1 week
+**Status**: Planned | **Timeline**: 1 week
 
 CLI Tool: `dicom-print`
 
