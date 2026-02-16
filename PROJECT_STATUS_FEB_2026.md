@@ -74,11 +74,11 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
   34. dicom-3d - 3D reconstruction and MPR (complete, 40 tests ✅)
   35. dicom-ai - AI/ML integration (CoreML, Phases A+B+C+D complete, 68 tests ✅)
   36. dicom-gateway - Protocol gateway (HL7 v2, FHIR, IHE) ✅ All Phases A+B+C+D complete (builds successfully, 43 tests)
-  37. dicom-server - Lightweight PACS server 🚧 Phase A complete (C-ECHO, C-STORE, C-FIND implemented, 23 tests)
+  37. dicom-server - Lightweight PACS server 🚧 Phases A+B complete (C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET implemented, 35 tests)
 
-**Phase 7 Status**: 🚧 In Progress - 7 tools complete, 1 in active development (dicom-server Phases B-D remaining)  
+**Phase 7 Status**: 🚧 In Progress - 7 tools complete, 1 in active development (dicom-server ~70% complete)  
 **Phase 7 Estimate**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks development
-**Current Focus**: Completing dicom-server Phases B-D (C-MOVE, C-GET, web UI, PostgreSQL, ~27 tests needed for 50+ target)
+**Current Focus**: Completing dicom-server Phases C-D (full C-MOVE/C-GET network ops, web UI, PostgreSQL, ~15 tests needed for 50+ target)
 
 ### 4. GUI Application
 - ✅ **DICOMToolbox** (Complete - macOS SwiftUI application)
@@ -145,9 +145,9 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 - **Sprint 3 (Weeks 5-6)**: ✅ dicom-ai (Phases A+B+C+D complete, 68 tests)
 - **Sprint 4 (Weeks 7-8)**: dicom-gateway ✅, dicom-server 🚧
 
-**Progress**: 7/8 tools complete (87.5%), dicom-ai 100% complete (Phases A+B+C+D done, 68 tests), dicom-gateway 100% complete (Phases A+B+C+D, 43 tests, builds successfully), dicom-server Phase A complete (C-ECHO, C-STORE, C-FIND, 23 tests, ~46% complete)  
+**Progress**: 7/8 tools complete (87.5%), dicom-ai 100% complete (Phases A+B+C+D done, 68 tests), dicom-gateway 100% complete (Phases A+B+C+D, 43 tests, builds successfully), dicom-server Phases A+B complete (C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET, 35 tests, ~70% complete)  
 **Estimated Effort**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks
-**Remaining Work**: dicom-server Phases B-D (C-MOVE, C-GET, web UI, PostgreSQL support, ~27 tests needed for 50+ target)
+**Remaining Work**: dicom-server Phases C-D (full C-MOVE/C-GET network operations, web UI, PostgreSQL support, ~15 tests needed for 50+ target)
 
 ### Post v1.0 Framework Enhancements
 - Advanced DICOM IOD support (see [MILESTONES.md](MILESTONES.md) Milestone 11)
@@ -187,7 +187,7 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 
 ---
 
-**Date**: February 15, 2026  
-**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (7/8 tools complete: dicom-report, dicom-measure, dicom-viewer, dicom-cloud, dicom-3d, dicom-ai, dicom-gateway ✅; 1/8 in development: dicom-server Phase A complete ~46%)  
-**Next Steps**: Complete dicom-server Phases B-D (C-MOVE, C-GET, web interface, PostgreSQL support, ~27 tests)
+**Date**: February 16, 2026  
+**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (7/8 tools complete: dicom-report, dicom-measure, dicom-viewer, dicom-cloud, dicom-3d, dicom-ai, dicom-gateway ✅; 1/8 in development: dicom-server Phases A+B complete ~70%)  
+**Next Steps**: Complete dicom-server Phases C-D (full C-MOVE/C-GET network operations, web interface, PostgreSQL support, ~15 tests)
 

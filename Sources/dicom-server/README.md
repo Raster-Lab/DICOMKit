@@ -4,31 +4,33 @@ A lightweight DICOM PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and 
 
 ## Overview
 
-`dicom-server` is a foundational PACS (Picture Archiving and Communication System) server implementation that provides essential DICOM networking services for development, testing, and small-scale deployments. Currently in Phase A development with core infrastructure in place and DIMSE service handlers being implemented in subsequent phases.
+`dicom-server` is a foundational PACS (Picture Archiving and Communication System) server implementation that provides essential DICOM networking services for development, testing, and small-scale deployments. Phases A and B are complete with full C-ECHO, C-FIND, C-STORE, C-MOVE, and C-GET implementations.
 
 ## Features
 
-### DICOM Services
-- **C-ECHO**: Verification service for testing connectivity
-- **C-FIND**: Query service supporting Patient, Study, Series, and Instance levels
-- **C-STORE**: Storage service with automatic file organization and metadata indexing
-- **C-MOVE**: Retrieval service for moving DICOM instances to remote destinations
-- **C-GET**: Direct retrieval service for streaming DICOM instances
+### DICOM Services (Phase A+B Complete)
+- **C-ECHO**: Verification service for testing connectivity ✅
+- **C-FIND**: Query service supporting Patient, Study, Series, and Instance levels ✅
+- **C-STORE**: Storage service with automatic file organization and metadata indexing ✅
+- **C-MOVE**: Retrieval service for moving DICOM instances to remote destinations ✅
+- **C-GET**: Direct retrieval service for streaming DICOM instances ✅
 
 ### Storage Backend
 - **Filesystem**: Organized directory structure based on Study/Series UIDs
-- **SQLite**: Lightweight database for metadata indexing (default)
-- **PostgreSQL**: Full-featured database for large-scale deployments (optional)
+- **In-Memory Database**: Fast metadata indexing (Phase A/B default)
+- **SQLite**: Lightweight database for metadata indexing (Phase D)
+- **PostgreSQL**: Full-featured database for large-scale deployments (Phase D)
 
 ### Server Features
 - Configurable Application Entity Title
 - Access control with AE Title whitelist/blacklist
-- Multi-threaded connection handling
+- Query/Retrieve at all levels (Patient, Study, Series, Instance)
+- Multi-threaded connection handling (Phase B)
 - Support for multiple transfer syntaxes
-- TLS/SSL encryption (optional)
 - Comprehensive logging
-- REST API for management (coming soon)
-- Web interface for monitoring (coming soon)
+- TLS/SSL encryption (Phase D)
+- REST API for management (Phase C)
+- Web interface for monitoring (Phase C)
 
 ## Installation
 
@@ -248,7 +250,15 @@ The server is organized into several key components:
 - REST API not yet implemented (Phase C)
 - Storage Commitment (N-EVENT-REPORT) not yet implemented
 - Advanced query features (fuzzy matching, date ranges) partially implemented
-- C-MOVE destination must be pre-configured
+- C-MOVE actual network transfer to destination not yet implemented (Phase C)
+  - Currently validates destination and simulates transfer
+  - Full C-STORE SCU to destination will be added in Phase C
+- C-GET actual C-STORE on same association not yet implemented (Phase C)
+  - Currently validates files and simulates C-STORE
+  - Full sub-operation C-STORE will be added in Phase C
+- SQLite and PostgreSQL persistence (Phase D)
+  - Currently using in-memory database
+  - Persistent storage will be added in Phase D
 
 ## Testing
 
@@ -265,7 +275,12 @@ swift test --filter DICOMServerTests
 
 ## Version
 
-Version 1.0.0 (Phase A - Core Services)
+Version 1.0.0 (Phases A+B Complete - Core Services + C-MOVE/C-GET)
+
+**Phase A (Complete)**: C-ECHO, C-STORE, C-FIND with in-memory database
+**Phase B (Complete)**: C-MOVE, C-GET with query matching at all levels
+**Phase C (Planned)**: Web interface, REST API, full C-MOVE/C-GET network operations
+**Phase D (Planned)**: PostgreSQL backend, TLS/SSL, production deployment features
 
 ## License
 

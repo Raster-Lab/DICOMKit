@@ -562,4 +562,313 @@ final class DICOMServerTests: XCTestCase {
         // Cleanup
         try? FileManager.default.removeItem(at: tempDir)
     }
+    
+    // MARK: - C-MOVE Tests (Phase B)
+    
+    func test_DatabaseManager_QueryForRetrieve_StudyLevel() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index test files
+        let metadata1 = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "DOE^JOHN",
+            studyInstanceUID: "1.2.3.4",
+            studyDate: "20260101",
+            studyDescription: "CT Chest",
+            seriesInstanceUID: "1.2.3.4.5",
+            seriesNumber: "1",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.5.6",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "1",
+            filePath: "/tmp/test1.dcm"
+        )
+        
+        let metadata2 = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "DOE^JOHN",
+            studyInstanceUID: "1.2.3.4",
+            studyDate: "20260101",
+            studyDescription: "CT Chest",
+            seriesInstanceUID: "1.2.3.4.5",
+            seriesNumber: "1",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.5.7",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "2",
+            filePath: "/tmp/test2.dcm"
+        )
+        
+        try await db.index(filePath: "/tmp/test1.dcm", metadata: metadata1)
+        try await db.index(filePath: "/tmp/test2.dcm", metadata: metadata2)
+        
+        // Query for retrieval at study level
+        var queryDS = DataSet()
+        queryDS.setString("STUDY", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("1.2.3.4", for: .studyInstanceUID, vr: .UI)
+        
+        let instances = try await db.queryForRetrieve(queryDataset: queryDS, level: "STUDY")
+        XCTAssertEqual(instances.count, 2)
+        XCTAssertTrue(instances.contains { $0.sopInstanceUID == "1.2.3.4.5.6" })
+        XCTAssertTrue(instances.contains { $0.sopInstanceUID == "1.2.3.4.5.7" })
+    }
+    
+    func test_DatabaseManager_QueryForRetrieve_SeriesLevel() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index test files from two series
+        let metadata1 = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "DOE^JOHN",
+            studyInstanceUID: "1.2.3.4",
+            studyDate: "20260101",
+            studyDescription: "CT Chest",
+            seriesInstanceUID: "1.2.3.4.5",
+            seriesNumber: "1",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.5.6",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "1",
+            filePath: "/tmp/test1.dcm"
+        )
+        
+        let metadata2 = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "DOE^JOHN",
+            studyInstanceUID: "1.2.3.4",
+            studyDate: "20260101",
+            studyDescription: "CT Chest",
+            seriesInstanceUID: "1.2.3.4.6",
+            seriesNumber: "2",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.6.7",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "1",
+            filePath: "/tmp/test2.dcm"
+        )
+        
+        try await db.index(filePath: "/tmp/test1.dcm", metadata: metadata1)
+        try await db.index(filePath: "/tmp/test2.dcm", metadata: metadata2)
+        
+        // Query for specific series
+        var queryDS = DataSet()
+        queryDS.setString("SERIES", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("1.2.3.4.5", for: .seriesInstanceUID, vr: .UI)
+        
+        let instances = try await db.queryForRetrieve(queryDataset: queryDS, level: "SERIES")
+        XCTAssertEqual(instances.count, 1)
+        XCTAssertEqual(instances[0].sopInstanceUID, "1.2.3.4.5.6")
+    }
+    
+    func test_DatabaseManager_QueryForRetrieve_InstanceLevel() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index test file
+        let metadata = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "DOE^JOHN",
+            studyInstanceUID: "1.2.3.4",
+            studyDate: "20260101",
+            studyDescription: "CT Chest",
+            seriesInstanceUID: "1.2.3.4.5",
+            seriesNumber: "1",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.5.6",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "1",
+            filePath: "/tmp/test1.dcm"
+        )
+        
+        try await db.index(filePath: "/tmp/test1.dcm", metadata: metadata)
+        
+        // Query for specific instance
+        var queryDS = DataSet()
+        queryDS.setString("IMAGE", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("1.2.3.4.5.6", for: .sopInstanceUID, vr: .UI)
+        
+        let instances = try await db.queryForRetrieve(queryDataset: queryDS, level: "IMAGE")
+        XCTAssertEqual(instances.count, 1)
+        XCTAssertEqual(instances[0].sopInstanceUID, "1.2.3.4.5.6")
+        XCTAssertEqual(instances[0].filePath, "/tmp/test1.dcm")
+    }
+    
+    func test_DatabaseManager_QueryForRetrieve_PatientLevel() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index test files for patient
+        for i in 1...3 {
+            let metadata = DICOMMetadata(
+                patientID: "PAT001",
+                patientName: "DOE^JOHN",
+                studyInstanceUID: "1.2.3.\(i)",
+                studyDate: "20260101",
+                studyDescription: "Study \(i)",
+                seriesInstanceUID: "1.2.3.\(i).5",
+                seriesNumber: "1",
+                modality: "CT",
+                sopInstanceUID: "1.2.3.\(i).5.6",
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                instanceNumber: "1",
+                filePath: "/tmp/test\(i).dcm"
+            )
+            try await db.index(filePath: "/tmp/test\(i).dcm", metadata: metadata)
+        }
+        
+        // Query for patient
+        var queryDS = DataSet()
+        queryDS.setString("PATIENT", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("PAT001", for: .patientID, vr: .LO)
+        
+        let instances = try await db.queryForRetrieve(queryDataset: queryDS, level: "PATIENT")
+        XCTAssertEqual(instances.count, 3)
+    }
+    
+    func test_DatabaseManager_QueryForRetrieve_NoMatches() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Query without any indexed data
+        var queryDS = DataSet()
+        queryDS.setString("STUDY", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("999.999.999", for: .studyInstanceUID, vr: .UI)
+        
+        let instances = try await db.queryForRetrieve(queryDataset: queryDS, level: "STUDY")
+        XCTAssertEqual(instances.count, 0)
+    }
+    
+    func test_DatabaseManager_QueryForRetrieve_Wildcard() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index test files
+        for i in 1...3 {
+            let metadata = DICOMMetadata(
+                patientID: "PAT00\(i)",
+                patientName: "PATIENT\(i)^TEST",
+                studyInstanceUID: "1.2.3.\(i)",
+                studyDate: "20260101",
+                studyDescription: "Study \(i)",
+                seriesInstanceUID: "1.2.3.\(i).5",
+                seriesNumber: "1",
+                modality: "CT",
+                sopInstanceUID: "1.2.3.\(i).5.6",
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                instanceNumber: "1",
+                filePath: "/tmp/test\(i).dcm"
+            )
+            try await db.index(filePath: "/tmp/test\(i).dcm", metadata: metadata)
+        }
+        
+        // Query with wildcard
+        var queryDS = DataSet()
+        queryDS.setString("PATIENT", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("PAT*", for: .patientID, vr: .LO)
+        
+        let instances = try await db.queryForRetrieve(queryDataset: queryDS, level: "PATIENT")
+        XCTAssertEqual(instances.count, 3)
+    }
+    
+    // MARK: - C-GET Tests (Phase B)
+    
+    func test_CGetResponse_Creation() {
+        let response = CGetResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.3",
+            status: .success,
+            remaining: 0,
+            completed: 5,
+            failed: 0,
+            warning: 0,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 1)
+        XCTAssertEqual(response.affectedSOPClassUID, "1.2.840.10008.5.1.4.1.2.2.3")
+        XCTAssertTrue(response.status.isSuccess)
+        XCTAssertEqual(response.numberOfCompletedSuboperations, 5)
+        XCTAssertEqual(response.numberOfFailedSuboperations, 0)
+    }
+    
+    func test_CGetResponse_PendingStatus() {
+        let response = CGetResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.3",
+            status: .pending,
+            remaining: 3,
+            completed: 2,
+            failed: 0,
+            warning: 0,
+            presentationContextID: 1
+        )
+        
+        XCTAssertTrue(response.status.isPending)
+        XCTAssertEqual(response.numberOfRemainingSuboperations, 3)
+        XCTAssertEqual(response.numberOfCompletedSuboperations, 2)
+    }
+    
+    func test_CMoveResponse_Creation() {
+        let response = CMoveResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2",
+            status: .success,
+            remaining: 0,
+            completed: 10,
+            failed: 0,
+            warning: 0,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(response.messageIDBeingRespondedTo, 1)
+        XCTAssertEqual(response.affectedSOPClassUID, "1.2.840.10008.5.1.4.1.2.2.2")
+        XCTAssertTrue(response.status.isSuccess)
+        XCTAssertEqual(response.numberOfCompletedSuboperations, 10)
+    }
+    
+    func test_CMoveResponse_WithFailures() {
+        let response = CMoveResponse(
+            messageIDBeingRespondedTo: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2",
+            status: .warningSubOperationsCompleteOneOrMoreFailures,
+            remaining: 0,
+            completed: 8,
+            failed: 2,
+            warning: 0,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(response.numberOfCompletedSuboperations, 8)
+        XCTAssertEqual(response.numberOfFailedSuboperations, 2)
+        XCTAssertTrue(response.status.isWarning)
+    }
+    
+    func test_CMoveRequest_MoveDestination() {
+        let request = CMoveRequest(
+            messageID: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2",
+            moveDestination: "DEST_AE",
+            priority: .medium,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(request.messageID, 1)
+        XCTAssertEqual(request.moveDestination, "DEST_AE")
+        XCTAssertEqual(request.affectedSOPClassUID, "1.2.840.10008.5.1.4.1.2.2.2")
+    }
+    
+    func test_CGetRequest_Creation() {
+        let request = CGetRequest(
+            messageID: 1,
+            affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.3",
+            priority: .high,
+            presentationContextID: 1
+        )
+        
+        XCTAssertEqual(request.messageID, 1)
+        XCTAssertEqual(request.affectedSOPClassUID, "1.2.840.10008.5.1.4.1.2.2.3")
+        XCTAssertEqual(request.priority, .high)
+    }
 }
