@@ -32,6 +32,10 @@ public struct ServerConfiguration: Sendable, Codable {
     /// Verbose logging
     public let verbose: Bool
     
+    /// Known destination AE titles for C-MOVE operations
+    /// Maps AE title to (host, port, aeTitle)
+    public let knownDestinations: [String: DestinationAE]
+    
     public init(
         aeTitle: String,
         port: UInt16,
@@ -42,7 +46,8 @@ public struct ServerConfiguration: Sendable, Codable {
         allowedCallingAETitles: Set<String>? = nil,
         blockedCallingAETitles: Set<String>? = nil,
         enableTLS: Bool = false,
-        verbose: Bool = false
+        verbose: Bool = false,
+        knownDestinations: [String: DestinationAE] = [:]
     ) {
         self.aeTitle = aeTitle
         self.port = port
@@ -54,6 +59,7 @@ public struct ServerConfiguration: Sendable, Codable {
         self.blockedCallingAETitles = blockedCallingAETitles
         self.enableTLS = enableTLS
         self.verbose = verbose
+        self.knownDestinations = knownDestinations
     }
     
     /// Load configuration from a JSON file
@@ -69,6 +75,19 @@ public struct ServerConfiguration: Sendable, Codable {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         let data = try encoder.encode(self)
         try data.write(to: URL(fileURLWithPath: path))
+    }
+}
+
+/// Destination AE configuration for C-MOVE operations
+public struct DestinationAE: Sendable, Codable, Hashable {
+    public let host: String
+    public let port: UInt16
+    public let aeTitle: String
+    
+    public init(host: String, port: UInt16, aeTitle: String) {
+        self.host = host
+        self.port = port
+        self.aeTitle = aeTitle
     }
 }
 
