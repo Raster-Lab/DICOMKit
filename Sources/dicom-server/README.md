@@ -8,12 +8,19 @@ A lightweight DICOM PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and 
 
 ## Features
 
-### DICOM Services (Phase A+B Complete)
+### DICOM Services (Phase A+B+C Complete)
 - **C-ECHO**: Verification service for testing connectivity ✅
 - **C-FIND**: Query service supporting Patient, Study, Series, and Instance levels ✅
 - **C-STORE**: Storage service with automatic file organization and metadata indexing ✅
 - **C-MOVE**: Retrieval service for moving DICOM instances to remote destinations ✅
+  - Full network transfer implementation using DICOMNetwork's StorageService
+  - Destination AE lookup from configuration
+  - Support for host:port:aeTitle destination string format
+  - Error handling and status tracking
 - **C-GET**: Direct retrieval service for streaming DICOM instances ✅
+  - Full C-STORE sub-operations on same association
+  - DICOM file parsing and dataset extraction
+  - Presentation context management
 
 ### Storage Backend
 - **Filesystem**: Organized directory structure based on Study/Series UIDs
@@ -246,19 +253,14 @@ The server is organized into several key components:
 
 ## Limitations
 
-- Web interface not yet implemented (Phase C)
-- REST API not yet implemented (Phase C)
+- Web interface not yet implemented (Phase C/D)
+- REST API not yet implemented (Phase C/D)
 - Storage Commitment (N-EVENT-REPORT) not yet implemented
 - Advanced query features (fuzzy matching, date ranges) partially implemented
-- C-MOVE actual network transfer to destination not yet implemented (Phase C)
-  - Currently validates destination and simulates transfer
-  - Full C-STORE SCU to destination will be added in Phase C
-- C-GET actual C-STORE on same association not yet implemented (Phase C)
-  - Currently validates files and simulates C-STORE
-  - Full sub-operation C-STORE will be added in Phase C
 - SQLite and PostgreSQL persistence (Phase D)
   - Currently using in-memory database
   - Persistent storage will be added in Phase D
+- TLS/SSL encryption (Phase D)
 
 ## Testing
 
@@ -275,12 +277,13 @@ swift test --filter DICOMServerTests
 
 ## Version
 
-Version 1.0.0 (Phases A+B Complete - Core Services + C-MOVE/C-GET)
+Version 1.0.0 (Phases A+B+C Complete - Core Services, C-MOVE/C-GET with actual network transfers)
 
 **Phase A (Complete)**: C-ECHO, C-STORE, C-FIND with in-memory database
 **Phase B (Complete)**: C-MOVE, C-GET with query matching at all levels
-**Phase C (Planned)**: Web interface, REST API, full C-MOVE/C-GET network operations
-**Phase D (Planned)**: PostgreSQL backend, TLS/SSL, production deployment features
+**Phase C (Complete - Network Operations)**: Full C-MOVE network transfer to destinations, Full C-GET C-STORE on same association
+**Phase C (Deferred - Web/API)**: Web interface and REST API deferred to Phase D for integrated implementation
+**Phase D (Planned)**: Web interface, REST API, PostgreSQL backend, TLS/SSL, production deployment features
 
 ## License
 
