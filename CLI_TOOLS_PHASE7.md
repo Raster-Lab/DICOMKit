@@ -1,9 +1,9 @@
 # DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
 
-**Status**: 🚧 In Progress (6/8 tools: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests, AWS S3, GCS, Azure complete, dicom-3d ✅ 40 tests, MPR/MIP/export complete, dicom-ai Phases A+B+C+D ✅ 68 tests)  
+**Status**: 🚧 In Progress (7/8 tools complete: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests AWS S3/GCS/Azure, dicom-3d ✅ 40 tests, dicom-ai Phases A+B+C+D ✅ 68 tests, dicom-gateway ✅ 43 tests; dicom-server Phase A ✅ 23 tests)  
 **Target Version**: v1.4.0-v1.4.7  
 **Created**: February 2026  
-**Last Updated**: February 14, 2026 (dicom-ai Phase D complete - Model registry, performance profiling, caching, 68 tests)  
+**Last Updated**: February 15, 2026 (dicom-server Phase A complete - C-ECHO, C-STORE, C-FIND with in-memory database, 23 tests)  
 **Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb, AWS SDK for Swift, CoreML  
 **Priority**: Low-Medium  
 **Estimated Duration**: 6-8 weeks
@@ -1387,11 +1387,17 @@ Run a lightweight PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and C-
 
 ### Implementation Phases
 
-#### Phase A: Core Services (Days 1-6)
-- [ ] C-ECHO service
-- [ ] C-STORE SCP with file storage
-- [ ] Metadata indexer (SQLite)
-- [ ] C-FIND SCP
+#### Phase A: Core Services (Days 1-6) ✅ COMPLETE
+- [x] C-ECHO service
+- [x] C-STORE SCP with file storage
+- [x] Metadata indexer (in-memory database)
+- [x] C-FIND SCP (all query levels)
+- [x] Association negotiation
+- [x] AE Title validation
+- [x] 23 comprehensive tests
+
+**Status**: ✅ Complete (February 15, 2026)  
+**Implementation**: ServerSession with DIMSE handlers, DatabaseManager with in-memory indices, StorageManager with Study/Series/Instance hierarchy
 
 #### Phase B: Retrieval Services (Days 7-11)
 - [ ] C-MOVE SCP
@@ -1400,8 +1406,8 @@ Run a lightweight PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and C-
 - [ ] Query result caching
 
 #### Phase C: Management (Days 12-15)
-- [ ] Configuration file support
-- [ ] Access control (AE Title filtering)
+- [ ] Configuration file support (already exists)
+- [ ] Access control (AE Title filtering - already exists)
 - [ ] Web interface (basic monitoring)
 - [ ] REST API for management
 

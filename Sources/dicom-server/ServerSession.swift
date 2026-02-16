@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMNetwork
 
 #if canImport(Network)
 import Network
@@ -13,6 +14,9 @@ actor ServerSession {
     private let storage: StorageManager
     private let database: DatabaseManager?
     private var isActive = false
+    private var messageAssembler: MessageAssembler
+    private var acceptedPresentationContexts: [UInt8: AcceptedContext] = [:]
+    private var messageIDCounter: UInt16 = 0
     
     init(
         id: UUID,
@@ -26,6 +30,13 @@ actor ServerSession {
         self.configuration = configuration
         self.storage = storage
         self.database = database
+        self.messageAssembler = MessageAssembler()
+    }
+    
+    /// Accepted presentation context
+    struct AcceptedContext {
+        let abstractSyntax: String
+        let transferSyntax: String
     }
     
     /// Start the session
@@ -164,29 +175,494 @@ actor ServerSession {
     }
     
     private func handleAssociationRequest(_ data: Data) async throws {
-        // TODO: Parse and validate association request
-        // For now, accept all associations
-        
         if configuration.verbose {
             print("[ServerSession \(id)] Received A-ASSOCIATE-RQ")
         }
         
-        // Send association accept
-        let acceptPDU = createAssociationAccept()
-        try await send(acceptPDU)
+        // Decode the full PDU
+        var fullPDU = Data()
+        fullPDU.append(0x01) // PDU type
+        fullPDU.append(0x00) // Reserved
+        fullPDU.append(contentsOf: withUnsafeBytes(of: UInt32(data.count).bigEndian) { Array($0) })
+        fullPDU.append(data)
         
-        if configuration.verbose {
-            print("[ServerSession \(id)] Sent A-ASSOCIATE-AC")
+        do {
+            let pdu = try PDUDecoder.decode(from: fullPDU) as! AssociateRequestPDU
+            
+            // Validate calling AE Title if configured
+            if let allowed = configuration.allowedCallingAETitles, !allowed.isEmpty {
+                let callingAE = pdu.callingAETitle.trimmingCharacters(in: .whitespaces)
+                if !allowed.contains(callingAE) {
+                    if configuration.verbose {
+                        print("[ServerSession \(id)] Rejected: Calling AE '\(callingAE)' not in whitelist")
+                    }
+                    try await sendAssociationReject(result: 1, source: 1, reason: 3)
+                    await cancel()
+                    return
+                }
+            }
+            
+            // Check blocked AE Titles
+            if let blocked = configuration.blockedCallingAETitles, !blocked.isEmpty {
+                let callingAE = pdu.callingAETitle.trimmingCharacters(in: .whitespaces)
+                if blocked.contains(callingAE) {
+                    if configuration.verbose {
+                        print("[ServerSession \(id)] Rejected: Calling AE '\(callingAE)' is blocked")
+                    }
+                    try await sendAssociationReject(result: 1, source: 1, reason: 3)
+                    await cancel()
+                    return
+                }
+            }
+            
+            // Build association accept with negotiated presentation contexts
+            try await sendAssociationAccept(requestPDU: pdu)
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] Sent A-ASSOCIATE-AC")
+            }
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error decoding A-ASSOCIATE-RQ: \(error)")
+            }
+            try await sendAssociationReject(result: 2, source: 2, reason: 1)
+            await cancel()
         }
     }
     
-    private func handlePData(_ data: Data) async throws {
-        // TODO: Parse and handle DIMSE messages
-        // C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET
+    private func sendAssociationReject(result: UInt8, source: UInt8, reason: UInt8) async throws {
+        var data = Data()
+        data.append(0x03) // PDU type: A-ASSOCIATE-RJ
+        data.append(0x00) // Reserved
+        data.append(contentsOf: [0x00, 0x00, 0x00, 0x04]) // Length: 4
+        data.append(0x00) // Reserved
+        data.append(result)
+        data.append(source)
+        data.append(reason)
+        try await send(data)
+    }
+    
+    private func sendAssociationAccept(requestPDU: AssociateRequestPDU) async throws {
+        var contexts: [PresentationContextAccept] = []
         
+        // Negotiate each presentation context
+        for pc in requestPDU.presentationContexts {
+            let abstractSyntax = pc.abstractSyntax
+            
+            // Check if we support this SOP Class
+            let isSupported = isSupportedSOPClass(abstractSyntax)
+            
+            if isSupported {
+                // Find a supported transfer syntax
+                if let transferSyntax = findSupportedTransferSyntax(from: pc.transferSyntaxes) {
+                    // Accept this context
+                    contexts.append(PresentationContextAccept(
+                        id: pc.id,
+                        result: 0, // Acceptance
+                        transferSyntax: transferSyntax
+                    ))
+                    acceptedPresentationContexts[pc.id] = AcceptedContext(
+                        abstractSyntax: abstractSyntax,
+                        transferSyntax: transferSyntax
+                    )
+                    
+                    if configuration.verbose {
+                        print("[ServerSession \(id)] Accepted context \(pc.id): \(abstractSyntax)")
+                    }
+                } else {
+                    // Transfer syntax not supported
+                    contexts.append(PresentationContextAccept(
+                        id: pc.id,
+                        result: 4, // Transfer syntax not supported
+                        transferSyntax: ""
+                    ))
+                }
+            } else {
+                // Abstract syntax not supported
+                contexts.append(PresentationContextAccept(
+                    id: pc.id,
+                    result: 3, // Abstract syntax not supported
+                    transferSyntax: ""
+                ))
+            }
+        }
+        
+        // Build A-ASSOCIATE-AC PDU
+        let acceptPDU = AssociateAcceptPDU(
+            calledAETitle: configuration.aeTitle,
+            callingAETitle: requestPDU.callingAETitle,
+            applicationContextName: "1.2.840.10008.3.1.1.1",
+            presentationContextAccepts: contexts,
+            implementationClassUID: "1.2.826.0.1.3680043.9.7433.1.2",
+            implementationVersionName: "DICOMKIT_SCP"
+        )
+        
+        let data = try acceptPDU.encode()
+        try await send(data)
+    }
+    
+    private func isSupportedSOPClass(_ uid: String) -> Bool {
+        // Support common storage SOP Classes and verification
+        let supportedClasses: Set<String> = [
+            "1.2.840.10008.1.1", // Verification
+            "1.2.840.10008.5.1.4.1.1.2", // CT Image Storage
+            "1.2.840.10008.5.1.4.1.1.4", // MR Image Storage
+            "1.2.840.10008.5.1.4.1.1.1", // CR Image Storage
+            "1.2.840.10008.5.1.4.1.1.7", // Secondary Capture Image Storage
+            "1.2.840.10008.5.1.4.1.1.128", // PET Image Storage
+            "1.2.840.10008.5.1.4.1.2.1.1", // Patient Root Q/R - FIND
+            "1.2.840.10008.5.1.4.1.2.2.1", // Study Root Q/R - FIND
+            "1.2.840.10008.5.1.4.1.2.1.2", // Patient Root Q/R - MOVE
+            "1.2.840.10008.5.1.4.1.2.2.2", // Study Root Q/R - MOVE
+            "1.2.840.10008.5.1.4.1.2.1.3", // Patient Root Q/R - GET
+            "1.2.840.10008.5.1.4.1.2.2.3", // Study Root Q/R - GET
+        ]
+        return supportedClasses.contains(uid)
+    }
+    
+    private func findSupportedTransferSyntax(from syntaxes: [String]) -> String? {
+        // Prefer explicit VR little endian, then implicit VR
+        let preferredOrder: [String] = [
+            "1.2.840.10008.1.2.1", // Explicit VR Little Endian
+            "1.2.840.10008.1.2",   // Implicit VR Little Endian
+            "1.2.840.10008.1.2.2", // Explicit VR Big Endian
+        ]
+        
+        for syntax in preferredOrder {
+            if syntaxes.contains(syntax) {
+                return syntax
+            }
+        }
+        
+        return nil
+    }
+    
+    private func handlePData(_ data: Data) async throws {
         if configuration.verbose {
             print("[ServerSession \(id)] Received P-DATA-TF (\(data.count) bytes)")
         }
+        
+        // Decode P-DATA-TF PDU
+        var fullPDU = Data()
+        fullPDU.append(0x04) // PDU type
+        fullPDU.append(0x00) // Reserved
+        fullPDU.append(contentsOf: withUnsafeBytes(of: UInt32(data.count).bigEndian) { Array($0) })
+        fullPDU.append(data)
+        
+        do {
+            let pdu = try PDUDecoder.decode(from: fullPDU) as! DataTransferPDU
+            
+            // Add PDVs to message assembler
+            if let message = try messageAssembler.addPDVs(from: pdu) {
+                // Complete message assembled
+                try await handleDIMSEMessage(message)
+            }
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error decoding P-DATA-TF: \(error)")
+            }
+            throw error
+        }
+    }
+    
+    private func handleDIMSEMessage(_ message: AssembledMessage) async throws {
+        guard let command = message.command else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Unknown DIMSE command")
+            }
+            return
+        }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] Handling DIMSE command: \(command)")
+        }
+        
+        switch command {
+        case .cEchoRequest:
+            try await handleCEcho(message)
+        case .cStoreRequest:
+            try await handleCStore(message)
+        case .cFindRequest:
+            try await handleCFind(message)
+        case .cMoveRequest:
+            try await handleCMove(message)
+        case .cGetRequest:
+            try await handleCGet(message)
+        default:
+            if configuration.verbose {
+                print("[ServerSession \(id)] Unsupported DIMSE command: \(command)")
+            }
+        }
+    }
+    
+    // MARK: - C-ECHO Handler
+    
+    private func handleCEcho(_ message: AssembledMessage) async throws {
+        guard let request = message.asCEchoRequest() else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Invalid C-ECHO request")
+            }
+            return
+        }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-ECHO request received")
+        }
+        
+        // Create C-ECHO response
+        let response = CEchoResponse(
+            messageIDBeingRespondedTo: request.messageID,
+            affectedSOPClassUID: request.affectedSOPClassUID,
+            status: .success,
+            presentationContextID: request.presentationContextID
+        )
+        
+        // Send response
+        try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-ECHO response sent")
+        }
+    }
+    
+    // MARK: - C-STORE Handler
+    
+    private func handleCStore(_ message: AssembledMessage) async throws {
+        guard let request = message.asCStoreRequest() else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Invalid C-STORE request")
+            }
+            return
+        }
+        
+        guard let dataSetBytes = message.dataSet else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-STORE request missing data set")
+            }
+            // Send failure response
+            let response = CStoreResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                affectedSOPInstanceUID: request.affectedSOPInstanceUID,
+                status: .processingFailure,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            return
+        }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-STORE request: SOP Instance UID = \(request.affectedSOPInstanceUID)")
+        }
+        
+        do {
+            // Parse the data set to extract metadata
+            let dataset = try DataSet.read(from: dataSetBytes)
+            
+            // Store the file
+            let filePath = try await storage.storeFile(dataset: dataset, sopInstanceUID: request.affectedSOPInstanceUID)
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] Stored file: \(filePath)")
+            }
+            
+            // Index in database if available
+            if let db = database {
+                let metadata = extractMetadata(from: dataset, filePath: filePath)
+                try await db.index(filePath: filePath, metadata: metadata)
+                
+                if configuration.verbose {
+                    print("[ServerSession \(id)] Indexed in database")
+                }
+            }
+            
+            // Send success response
+            let response = CStoreResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                affectedSOPInstanceUID: request.affectedSOPInstanceUID,
+                status: .success,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-STORE response sent (success)")
+            }
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error storing file: \(error)")
+            }
+            
+            // Send failure response
+            let response = CStoreResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                affectedSOPInstanceUID: request.affectedSOPInstanceUID,
+                status: .processingFailure,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+        }
+    }
+    
+    // MARK: - C-FIND Handler
+    
+    private func handleCFind(_ message: AssembledMessage) async throws {
+        guard let request = message.asCFindRequest() else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Invalid C-FIND request")
+            }
+            return
+        }
+        
+        guard let dataSetBytes = message.dataSet else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-FIND request missing data set")
+            }
+            return
+        }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-FIND request received")
+        }
+        
+        do {
+            // Parse query dataset
+            let queryDataset = try DataSet.read(from: dataSetBytes)
+            
+            // Determine query level
+            let queryLevel = queryDataset.string(for: .queryRetrieveLevel) ?? "STUDY"
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] Query level: \(queryLevel)")
+            }
+            
+            // Query database
+            if let db = database {
+                let results = try await db.queryForFind(queryDataset: queryDataset, level: queryLevel)
+                
+                if configuration.verbose {
+                    print("[ServerSession \(id)] Found \(results.count) matches")
+                }
+                
+                // Send pending responses with results
+                for result in results {
+                    let response = CFindResponse(
+                        messageIDBeingRespondedTo: request.messageID,
+                        affectedSOPClassUID: request.affectedSOPClassUID,
+                        status: .pending,
+                        presentationContextID: request.presentationContextID
+                    )
+                    
+                    // Encode result dataset
+                    let resultBytes = result.write()
+                    try await sendDIMSEResponse(response.commandSet, dataSet: resultBytes, contextID: request.presentationContextID)
+                }
+                
+                // Send final success response
+                let finalResponse = CFindResponse(
+                    messageIDBeingRespondedTo: request.messageID,
+                    affectedSOPClassUID: request.affectedSOPClassUID,
+                    status: .success,
+                    presentationContextID: request.presentationContextID
+                )
+                try await sendDIMSEResponse(finalResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
+                
+                if configuration.verbose {
+                    print("[ServerSession \(id)] C-FIND complete")
+                }
+            } else {
+                // No database, send empty result
+                let response = CFindResponse(
+                    messageIDBeingRespondedTo: request.messageID,
+                    affectedSOPClassUID: request.affectedSOPClassUID,
+                    status: .success,
+                    presentationContextID: request.presentationContextID
+                )
+                try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            }
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error handling C-FIND: \(error)")
+            }
+            
+            // Send failure response
+            let response = CFindResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                status: .processingFailure,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+        }
+    }
+    
+    // MARK: - C-MOVE Handler (stub)
+    
+    private func handleCMove(_ message: AssembledMessage) async throws {
+        guard let request = message.asCMoveRequest() else { return }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-MOVE not yet implemented")
+        }
+        
+        // Send not implemented response
+        let response = CMoveResponse(
+            messageIDBeingRespondedTo: request.messageID,
+            affectedSOPClassUID: request.affectedSOPClassUID,
+            status: .refusedMoveDestinationUnknown,
+            presentationContextID: request.presentationContextID
+        )
+        try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+    }
+    
+    // MARK: - C-GET Handler (stub)
+    
+    private func handleCGet(_ message: AssembledMessage) async throws {
+        guard let request = message.asCGetRequest() else { return }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-GET not yet implemented")
+        }
+        
+        // Send not implemented response
+        let response = CGetResponse(
+            messageIDBeingRespondedTo: request.messageID,
+            affectedSOPClassUID: request.affectedSOPClassUID,
+            status: .refusedOutOfResources,
+            presentationContextID: request.presentationContextID
+        )
+        try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func sendDIMSEResponse(_ commandSet: CommandSet, dataSet: Data?, contextID: UInt8) async throws {
+        let fragmenter = MessageFragmenter(maxPDUSize: configuration.maxPDUSize)
+        let pdus = fragmenter.fragmentMessage(commandSet: commandSet, dataSet: dataSet, presentationContextID: contextID)
+        
+        for pdu in pdus {
+            let data = try pdu.encode()
+            try await send(data)
+        }
+    }
+    
+    private func extractMetadata(from dataset: DataSet, filePath: String) -> DICOMMetadata {
+        return DICOMMetadata(
+            patientID: dataset.string(for: .patientID),
+            patientName: dataset.string(for: .patientName),
+            studyInstanceUID: dataset.string(for: .studyInstanceUID),
+            studyDate: dataset.string(for: .studyDate),
+            studyDescription: dataset.string(for: .studyDescription),
+            seriesInstanceUID: dataset.string(for: .seriesInstanceUID),
+            seriesNumber: dataset.string(for: .seriesNumber),
+            modality: dataset.string(for: .modality),
+            sopInstanceUID: dataset.string(for: .sopInstanceUID) ?? "",
+            sopClassUID: dataset.string(for: .sopClassUID),
+            instanceNumber: dataset.string(for: .instanceNumber),
+            filePath: filePath
+        )
     }
     
     private func handleReleaseRequest() async throws {
@@ -204,43 +680,6 @@ actor ServerSession {
         
         // Close connection
         await cancel()
-    }
-    
-    private func createAssociationAccept() -> Data {
-        // Minimal A-ASSOCIATE-AC PDU
-        var data = Data()
-        data.append(0x02) // PDU type: A-ASSOCIATE-AC
-        data.append(0x00) // Reserved
-        
-        // PDU length (placeholder, will be updated)
-        let lengthOffset = data.count
-        data.append(contentsOf: [0x00, 0x00, 0x00, 0x00])
-        
-        // Protocol version
-        data.append(contentsOf: [0x00, 0x01])
-        
-        // Reserved
-        data.append(contentsOf: [0x00, 0x00])
-        
-        // Called AE Title (16 bytes, padded with spaces)
-        let calledAE = configuration.aeTitle.padding(toLength: 16, withPad: " ", startingAt: 0)
-        data.append(contentsOf: calledAE.utf8)
-        
-        // Calling AE Title (16 bytes, padded with spaces)
-        let callingAE = "ANY-SCU".padding(toLength: 16, withPad: " ", startingAt: 0)
-        data.append(contentsOf: callingAE.utf8)
-        
-        // Reserved (32 bytes)
-        data.append(contentsOf: [UInt8](repeating: 0x00, count: 32))
-        
-        // Update length field
-        let pduLength = UInt32(data.count - 6)
-        data[lengthOffset] = UInt8((pduLength >> 24) & 0xFF)
-        data[lengthOffset + 1] = UInt8((pduLength >> 16) & 0xFF)
-        data[lengthOffset + 2] = UInt8((pduLength >> 8) & 0xFF)
-        data[lengthOffset + 3] = UInt8(pduLength & 0xFF)
-        
-        return data
     }
     
     private func createReleaseResponse() -> Data {

@@ -39,6 +39,27 @@ actor StorageManager {
         return filePath
     }
     
+    /// Store a DICOM dataset
+    func storeFile(dataset: DataSet, sopInstanceUID: String) async throws -> String {
+        // Generate file path based on Study/Series/Instance UIDs
+        let studyUID = dataset.string(for: .studyInstanceUID) ?? "UNKNOWN_STUDY"
+        let seriesUID = dataset.string(for: .seriesInstanceUID) ?? "UNKNOWN_SERIES"
+        
+        // Create directory structure
+        let studyPath = "\(dataDirectory)/\(studyUID)"
+        let seriesPath = "\(studyPath)/\(seriesUID)"
+        
+        try fileManager.createDirectory(atPath: studyPath, withIntermediateDirectories: true)
+        try fileManager.createDirectory(atPath: seriesPath, withIntermediateDirectories: true)
+        
+        // Write file
+        let filePath = "\(seriesPath)/\(sopInstanceUID).dcm"
+        let data = dataset.write()
+        try data.write(to: URL(fileURLWithPath: filePath))
+        
+        return filePath
+    }
+    
     /// Retrieve a DICOM file by SOP Instance UID
     func retrieve(sopInstanceUID: String) async throws -> DICOMFile? {
         // Search for the file
