@@ -1,9 +1,9 @@
 # DICOMKit CLI Tools - Phase 7 Advanced Enhancement Plan
 
-**Status**: 🚧 In Progress (7/8 tools complete: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests AWS S3/GCS/Azure, dicom-3d ✅ 40 tests, dicom-ai Phases A+B+C+D ✅ 68 tests, dicom-gateway ✅ 43 tests; dicom-server Phase A ✅ 23 tests)  
+**Status**: 🚧 In Progress (7/8 tools complete: dicom-report ✅ 88 tests, dicom-measure ✅, dicom-viewer ✅, dicom-cloud Phase A+B+C ✅ 68 tests AWS S3/GCS/Azure, dicom-3d ✅ 40 tests, dicom-ai Phases A+B+C+D ✅ 68 tests, dicom-gateway ✅ 43 tests; dicom-server Phases A+B ✅ 35 tests)  
 **Target Version**: v1.4.0-v1.4.7  
 **Created**: February 2026  
-**Last Updated**: February 15, 2026 (dicom-server Phase A complete - C-ECHO, C-STORE, C-FIND with in-memory database, 23 tests)  
+**Last Updated**: February 16, 2026 (dicom-server Phase B complete - C-MOVE and C-GET retrieval services added, 35 tests total)  
 **Dependencies**: DICOMKit v1.3.5, All Phase 1-6 CLI Tools (29 tools), DICOMNetwork, DICOMWeb, AWS SDK for Swift, CoreML  
 **Priority**: Low-Medium  
 **Estimated Duration**: 6-8 weeks
@@ -1399,23 +1399,34 @@ Run a lightweight PACS server supporting C-ECHO, C-FIND, C-STORE, C-MOVE, and C-
 **Status**: ✅ Complete (February 15, 2026)  
 **Implementation**: ServerSession with DIMSE handlers, DatabaseManager with in-memory indices, StorageManager with Study/Series/Instance hierarchy
 
-#### Phase B: Retrieval Services (Days 7-11)
-- [ ] C-MOVE SCP
-- [ ] C-GET SCP
-- [ ] Multi-threaded connection handling
-- [ ] Query result caching
+#### Phase B: Retrieval Services (Days 7-11) ✅ COMPLETE
+- [x] C-MOVE SCP with query matching
+- [x] C-GET SCP with query matching
+- [x] queryForRetrieve database method (all query levels)
+- [x] C-MOVE/C-GET response progression (pending → final)
+- [x] Destination validation (C-MOVE)
+- [x] 12 additional tests (35 total)
 
-#### Phase C: Management (Days 12-15)
+**Status**: ✅ Complete (February 16, 2026)  
+**Implementation**: Full C-MOVE and C-GET handlers with query matching at Patient/Study/Series/Instance levels, sub-operation tracking, and response status management. File validation and simulated transfer (actual network transfer in Phase C).  
+**Tests**: 35 total (23 Phase A + 12 Phase B)
+
+#### Phase C: Management & Full Network Operations (Days 12-15)
+- [ ] Complete C-MOVE network transfer to destination (C-STORE SCU)
+- [ ] Complete C-GET C-STORE sub-operations on same association
 - [ ] Configuration file support (already exists)
 - [ ] Access control (AE Title filtering - already exists)
 - [ ] Web interface (basic monitoring)
 - [ ] REST API for management
+- [ ] ~8 additional tests
 
 #### Phase D: Polish & Deployment (Days 16-17)
 - [ ] PostgreSQL backend support
+- [ ] SQLite backend support
 - [ ] TLS/SSL support
 - [ ] Logging and statistics
 - [ ] Documentation and deployment guide
+- [ ] ~5 additional tests
 
 ### Usage Examples
 

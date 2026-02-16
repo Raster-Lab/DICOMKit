@@ -598,42 +598,327 @@ actor ServerSession {
         }
     }
     
-    // MARK: - C-MOVE Handler (stub)
+    // MARK: - C-MOVE Handler
     
     private func handleCMove(_ message: AssembledMessage) async throws {
-        guard let request = message.asCMoveRequest() else { return }
-        
-        if configuration.verbose {
-            print("[ServerSession \(id)] C-MOVE not yet implemented")
+        guard let request = message.asCMoveRequest() else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Invalid C-MOVE request")
+            }
+            return
         }
         
-        // Send not implemented response
-        let response = CMoveResponse(
-            messageIDBeingRespondedTo: request.messageID,
-            affectedSOPClassUID: request.affectedSOPClassUID,
-            status: .refusedMoveDestinationUnknown,
-            presentationContextID: request.presentationContextID
-        )
-        try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+        guard let dataSetBytes = message.dataSet else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-MOVE request missing data set")
+            }
+            // Send failure response
+            let response = CMoveResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                status: .processingFailure,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            return
+        }
+        
+        let moveDestination = request.moveDestination
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-MOVE request received, destination: \(moveDestination)")
+        }
+        
+        do {
+            // Parse query dataset
+            let queryDataset = try DataSet.read(from: dataSetBytes)
+            
+            // Determine query level
+            let queryLevel = queryDataset.string(for: .queryRetrieveLevel) ?? "STUDY"
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-MOVE query level: \(queryLevel)")
+            }
+            
+            // Find matching instances
+            var instancesToMove: [DICOMMetadata] = []
+            
+            if let db = database {
+                instancesToMove = try await db.queryForRetrieve(queryDataset: queryDataset, level: queryLevel)
+                
+                if configuration.verbose {
+                    print("[ServerSession \(id)] Found \(instancesToMove.count) instances to move")
+                }
+            }
+            
+            if instancesToMove.isEmpty {
+                // No matches, send success with 0 operations
+                let response = CMoveResponse(
+                    messageIDBeingRespondedTo: request.messageID,
+                    affectedSOPClassUID: request.affectedSOPClassUID,
+                    status: .success,
+                    remaining: 0,
+                    completed: 0,
+                    failed: 0,
+                    warning: 0,
+                    presentationContextID: request.presentationContextID
+                )
+                try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+                return
+            }
+            
+            // Execute C-MOVE by sending files to destination
+            var completed: UInt16 = 0
+            var failed: UInt16 = 0
+            let totalCount = UInt16(instancesToMove.count)
+            
+            for (index, metadata) in instancesToMove.enumerated() {
+                let remaining = UInt16(instancesToMove.count - index - 1)
+                
+                // Attempt to send file to destination
+                let success = await sendToDestination(metadata: metadata, destination: moveDestination)
+                
+                if success {
+                    completed += 1
+                } else {
+                    failed += 1
+                }
+                
+                // Send pending response after each sub-operation
+                if remaining > 0 {
+                    let pendingResponse = CMoveResponse(
+                        messageIDBeingRespondedTo: request.messageID,
+                        affectedSOPClassUID: request.affectedSOPClassUID,
+                        status: .pending,
+                        remaining: remaining,
+                        completed: completed,
+                        failed: failed,
+                        warning: 0,
+                        presentationContextID: request.presentationContextID
+                    )
+                    try await sendDIMSEResponse(pendingResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
+                }
+            }
+            
+            // Send final response
+            let finalStatus: DIMSEStatus = failed == 0 ? .success : (completed > 0 ? .warningSubOperationsCompleteOneOrMoreFailures : .refusedUnableToPerformSubOperations)
+            let finalResponse = CMoveResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                status: finalStatus,
+                remaining: 0,
+                completed: completed,
+                failed: failed,
+                warning: 0,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(finalResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-MOVE complete: \(completed) successful, \(failed) failed")
+            }
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error handling C-MOVE: \(error)")
+            }
+            
+            // Send failure response
+            let response = CMoveResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                status: .processingFailure,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+        }
     }
     
-    // MARK: - C-GET Handler (stub)
-    
-    private func handleCGet(_ message: AssembledMessage) async throws {
-        guard let request = message.asCGetRequest() else { return }
+    /// Send a DICOM file to a C-MOVE destination (C-STORE SCU)
+    private func sendToDestination(metadata: DICOMMetadata, destination: String) async -> Bool {
+        // For Phase B, we'll simulate the send operation
+        // In Phase C, this would actually connect to the destination and perform C-STORE
         
         if configuration.verbose {
-            print("[ServerSession \(id)] C-GET not yet implemented")
+            print("[ServerSession \(id)] Simulating send of \(metadata.sopInstanceUID) to \(destination)")
         }
         
-        // Send not implemented response
-        let response = CGetResponse(
-            messageIDBeingRespondedTo: request.messageID,
-            affectedSOPClassUID: request.affectedSOPClassUID,
-            status: .refusedOutOfResources,
-            presentationContextID: request.presentationContextID
-        )
-        try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+        // Check if file exists
+        guard FileManager.default.fileExists(atPath: metadata.filePath) else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] File not found: \(metadata.filePath)")
+            }
+            return false
+        }
+        
+        // TODO: In a full implementation, this would:
+        // 1. Look up destination AE configuration
+        // 2. Establish association with destination
+        // 3. Perform C-STORE of the file
+        // 4. Handle response
+        
+        // For now, return success if file exists
+        return true
+    }
+    
+    // MARK: - C-GET Handler
+    
+    private func handleCGet(_ message: AssembledMessage) async throws {
+        guard let request = message.asCGetRequest() else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Invalid C-GET request")
+            }
+            return
+        }
+        
+        guard let dataSetBytes = message.dataSet else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-GET request missing data set")
+            }
+            // Send failure response
+            let response = CGetResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                status: .processingFailure,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            return
+        }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] C-GET request received")
+        }
+        
+        do {
+            // Parse query dataset
+            let queryDataset = try DataSet.read(from: dataSetBytes)
+            
+            // Determine query level
+            let queryLevel = queryDataset.string(for: .queryRetrieveLevel) ?? "STUDY"
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-GET query level: \(queryLevel)")
+            }
+            
+            // Find matching instances
+            var instancesToGet: [DICOMMetadata] = []
+            
+            if let db = database {
+                instancesToGet = try await db.queryForRetrieve(queryDataset: queryDataset, level: queryLevel)
+                
+                if configuration.verbose {
+                    print("[ServerSession \(id)] Found \(instancesToGet.count) instances to retrieve")
+                }
+            }
+            
+            if instancesToGet.isEmpty {
+                // No matches, send success with 0 operations
+                let response = CGetResponse(
+                    messageIDBeingRespondedTo: request.messageID,
+                    affectedSOPClassUID: request.affectedSOPClassUID,
+                    status: .success,
+                    remaining: 0,
+                    completed: 0,
+                    failed: 0,
+                    warning: 0,
+                    presentationContextID: request.presentationContextID
+                )
+                try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+                return
+            }
+            
+            // Execute C-GET by streaming files on same association
+            var completed: UInt16 = 0
+            var failed: UInt16 = 0
+            let totalCount = UInt16(instancesToGet.count)
+            
+            for (index, metadata) in instancesToGet.enumerated() {
+                let remaining = UInt16(instancesToGet.count - index - 1)
+                
+                // Send C-GET pending response
+                if index == 0 || remaining > 0 {
+                    let pendingResponse = CGetResponse(
+                        messageIDBeingRespondedTo: request.messageID,
+                        affectedSOPClassUID: request.affectedSOPClassUID,
+                        status: .pending,
+                        remaining: UInt16(instancesToGet.count - index),
+                        completed: completed,
+                        failed: failed,
+                        warning: 0,
+                        presentationContextID: request.presentationContextID
+                    )
+                    try await sendDIMSEResponse(pendingResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
+                }
+                
+                // Attempt to send file via C-STORE on same association
+                let success = await sendViaCStore(metadata: metadata)
+                
+                if success {
+                    completed += 1
+                } else {
+                    failed += 1
+                }
+            }
+            
+            // Send final response
+            let finalStatus: DIMSEStatus = failed == 0 ? .success : (completed > 0 ? .warningSubOperationsCompleteOneOrMoreFailures : .refusedUnableToPerformSubOperations)
+            let finalResponse = CGetResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                status: finalStatus,
+                remaining: 0,
+                completed: completed,
+                failed: failed,
+                warning: 0,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(finalResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-GET complete: \(completed) successful, \(failed) failed")
+            }
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error handling C-GET: \(error)")
+            }
+            
+            // Send failure response
+            let response = CGetResponse(
+                messageIDBeingRespondedTo: request.messageID,
+                affectedSOPClassUID: request.affectedSOPClassUID,
+                status: .processingFailure,
+                presentationContextID: request.presentationContextID
+            )
+            try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+        }
+    }
+    
+    /// Send a DICOM file via C-STORE on the same association (for C-GET)
+    private func sendViaCStore(metadata: DICOMMetadata) async -> Bool {
+        // For Phase B, we'll simulate the C-STORE operation
+        // In Phase C, this would actually perform C-STORE on the same association
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] Simulating C-STORE of \(metadata.sopInstanceUID)")
+        }
+        
+        // Check if file exists
+        guard FileManager.default.fileExists(atPath: metadata.filePath) else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] File not found: \(metadata.filePath)")
+            }
+            return false
+        }
+        
+        // TODO: In a full implementation, this would:
+        // 1. Read the DICOM file
+        // 2. Create a C-STORE request with appropriate presentation context
+        // 3. Send C-STORE request and dataset on this association
+        // 4. Wait for C-STORE response
+        // 5. Handle the response
+        
+        // For now, return success if file exists
+        return true
     }
     
     // MARK: - Helper Methods

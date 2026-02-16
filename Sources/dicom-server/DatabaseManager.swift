@@ -97,6 +97,102 @@ actor DatabaseManager {
         return results
     }
     
+    /// Query DICOM metadata for C-MOVE/C-GET retrieval
+    /// Returns the actual file metadata for instances to be retrieved
+    func queryForRetrieve(queryDataset: DataSet, level: String) async throws -> [DICOMMetadata] {
+        var instances: [DICOMMetadata] = []
+        
+        switch level.uppercased() {
+        case "PATIENT":
+            // Retrieve all instances for matching patients
+            let patientID = queryDataset.string(for: .patientID)
+            for (pid, metadataList) in patientIndex {
+                if let queryPID = patientID, !queryPID.isEmpty {
+                    if !matchesWildcard(pid, pattern: queryPID) {
+                        continue
+                    }
+                }
+                instances.append(contentsOf: metadataList)
+            }
+            
+        case "STUDY":
+            // Retrieve all instances for matching studies
+            let studyInstanceUID = queryDataset.string(for: .studyInstanceUID)
+            let patientID = queryDataset.string(for: .patientID)
+            
+            for (suid, metadataList) in studyIndex {
+                if let queryUID = studyInstanceUID, !queryUID.isEmpty {
+                    if !matchesWildcard(suid, pattern: queryUID) {
+                        continue
+                    }
+                }
+                
+                // Also check patient ID if specified
+                if let queryPID = patientID, !queryPID.isEmpty {
+                    if let firstMeta = metadataList.first, let pid = firstMeta.patientID {
+                        if !matchesWildcard(pid, pattern: queryPID) {
+                            continue
+                        }
+                    }
+                }
+                
+                instances.append(contentsOf: metadataList)
+            }
+            
+        case "SERIES":
+            // Retrieve all instances for matching series
+            let seriesInstanceUID = queryDataset.string(for: .seriesInstanceUID)
+            let studyInstanceUID = queryDataset.string(for: .studyInstanceUID)
+            
+            for (seriesUID, metadataList) in seriesIndex {
+                if let querySeriesUID = seriesInstanceUID, !querySeriesUID.isEmpty {
+                    if !matchesWildcard(seriesUID, pattern: querySeriesUID) {
+                        continue
+                    }
+                }
+                
+                // Also check study UID if specified
+                if let queryStudyUID = studyInstanceUID, !queryStudyUID.isEmpty {
+                    if let firstMeta = metadataList.first, let suid = firstMeta.studyInstanceUID {
+                        if !matchesWildcard(suid, pattern: queryStudyUID) {
+                            continue
+                        }
+                    }
+                }
+                
+                instances.append(contentsOf: metadataList)
+            }
+            
+        case "IMAGE", "INSTANCE":
+            // Retrieve specific matching instances
+            let sopInstanceUID = queryDataset.string(for: .sopInstanceUID)
+            let seriesInstanceUID = queryDataset.string(for: .seriesInstanceUID)
+            
+            for (instUID, metadata) in instanceIndex {
+                if let queryUID = sopInstanceUID, !queryUID.isEmpty {
+                    if !matchesWildcard(instUID, pattern: queryUID) {
+                        continue
+                    }
+                }
+                
+                // Also check series UID if specified
+                if let querySeriesUID = seriesInstanceUID, !querySeriesUID.isEmpty {
+                    if let suid = metadata.seriesInstanceUID, !matchesWildcard(suid, pattern: querySeriesUID) {
+                        continue
+                    }
+                }
+                
+                instances.append(metadata)
+            }
+            
+        default:
+            // Unknown level, return empty
+            break
+        }
+        
+        return instances
+    }
+    
     private func queryPatientLevel(_ queryDataset: DataSet) async throws -> [DataSet] {
         let patientID = queryDataset.string(for: .patientID)
         let patientName = queryDataset.string(for: .patientName)
