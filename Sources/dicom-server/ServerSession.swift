@@ -735,11 +735,8 @@ actor ServerSession {
     
     /// Send a DICOM file to a C-MOVE destination (C-STORE SCU)
     private func sendToDestination(metadata: DICOMMetadata, destination: String) async -> Bool {
-        // For Phase B, we'll simulate the send operation
-        // In Phase C, this would actually connect to the destination and perform C-STORE
-        
         if configuration.verbose {
-            print("[ServerSession \(id)] Simulating send of \(metadata.sopInstanceUID) to \(destination)")
+            print("[ServerSession \(id)] Sending \(metadata.sopInstanceUID) to \(destination)")
         }
         
         // Check if file exists
@@ -750,14 +747,58 @@ actor ServerSession {
             return false
         }
         
-        // TODO: In a full implementation, this would:
-        // 1. Look up destination AE configuration
-        // 2. Establish association with destination
-        // 3. Perform C-STORE of the file
-        // 4. Handle response
+        // Look up destination AE configuration
+        let destConfig: (host: String, port: UInt16, aeTitle: String)
         
-        // For now, return success if file exists
-        return true
+        if let knownDest = configuration.knownDestinations[destination] {
+            // Use configured destination
+            destConfig = (knownDest.host, knownDest.port, knownDest.aeTitle)
+        } else {
+            // Try to parse destination as "host:port:aeTitle" format
+            let components = destination.split(separator: ":")
+            if components.count == 3,
+               let port = UInt16(components[1]) {
+                destConfig = (String(components[0]), port, String(components[2]))
+            } else {
+                // Use default values with destination as AE title
+                destConfig = ("localhost", 104, destination)
+            }
+        }
+        
+        if configuration.verbose {
+            print("[ServerSession \(id)] Destination: \(destConfig.aeTitle)@\(destConfig.host):\(destConfig.port)")
+        }
+        
+        do {
+            // Read the DICOM file
+            let fileURL = URL(fileURLWithPath: metadata.filePath)
+            let fileData = try Data(contentsOf: fileURL)
+            
+            // Use StorageService to send the file
+            let result = try await StorageService.store(
+                fileData: fileData,
+                to: destConfig.host,
+                port: destConfig.port,
+                callingAE: configuration.aeTitle,
+                calledAE: destConfig.aeTitle,
+                timeout: 30
+            )
+            
+            if configuration.verbose {
+                if result.success {
+                    print("[ServerSession \(id)] Successfully sent \(metadata.sopInstanceUID) to \(destination)")
+                } else {
+                    print("[ServerSession \(id)] Failed to send \(metadata.sopInstanceUID) to \(destination): \(result.status)")
+                }
+            }
+            
+            return result.success
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error sending to destination: \(error)")
+            }
+            return false
+        }
     }
     
     // MARK: - C-GET Handler
@@ -895,11 +936,8 @@ actor ServerSession {
     
     /// Send a DICOM file via C-STORE on the same association (for C-GET)
     private func sendViaCStore(metadata: DICOMMetadata) async -> Bool {
-        // For Phase B, we'll simulate the C-STORE operation
-        // In Phase C, this would actually perform C-STORE on the same association
-        
         if configuration.verbose {
-            print("[ServerSession \(id)] Simulating C-STORE of \(metadata.sopInstanceUID)")
+            print("[ServerSession \(id)] Sending \(metadata.sopInstanceUID) via C-STORE")
         }
         
         // Check if file exists
@@ -910,15 +948,133 @@ actor ServerSession {
             return false
         }
         
-        // TODO: In a full implementation, this would:
-        // 1. Read the DICOM file
-        // 2. Create a C-STORE request with appropriate presentation context
-        // 3. Send C-STORE request and dataset on this association
-        // 4. Wait for C-STORE response
-        // 5. Handle the response
+        // Ensure we have SOP Class UID
+        guard let sopClassUID = metadata.sopClassUID else {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Missing SOP Class UID in metadata")
+            }
+            return false
+        }
         
-        // For now, return success if file exists
-        return true
+        do {
+            // Read the DICOM file
+            let fileURL = URL(fileURLWithPath: metadata.filePath)
+            let fileData = try Data(contentsOf: fileURL)
+            
+            // Parse the file to extract dataset
+            guard fileData.count >= 132 else {
+                if configuration.verbose {
+                    print("[ServerSession \(id)] File too small to be valid DICOM")
+                }
+                return false
+            }
+            
+            // Validate "DICM" prefix at offset 128
+            let dicmOffset = 128
+            let dicmBytes = fileData[dicmOffset..<dicmOffset+4]
+            guard dicmBytes.elementsEqual([0x44, 0x49, 0x43, 0x4D]) else {
+                if configuration.verbose {
+                    print("[ServerSession \(id)] Invalid DICOM file (missing DICM prefix)")
+                }
+                return false
+            }
+            
+            // Parse File Meta Information to find the end of Group 0002
+            var offset = 132
+            var transferSyntaxUID: String?
+            
+            // File Meta Information uses Explicit VR Little Endian
+            while offset < fileData.count {
+                guard offset + 4 <= fileData.count else { break }
+                guard let group = fileData.readUInt16LE(at: offset),
+                      let element = fileData.readUInt16LE(at: offset + 2) else { break }
+                
+                // Stop when we exit Group 0002
+                if group != 0x0002 {
+                    break
+                }
+                
+                offset += 4
+                
+                // Read VR (2 bytes)
+                guard offset + 2 <= fileData.count else { break }
+                let vrBytes = fileData.subdata(in: offset..<offset+2)
+                let vrString = String(data: vrBytes, encoding: .ascii) ?? "UN"
+                offset += 2
+                
+                // Read length
+                var valueLength: UInt32 = 0
+                if ["OB", "OD", "OF", "OL", "OW", "SQ", "UC", "UN", "UR", "UT"].contains(vrString) {
+                    guard offset + 4 <= fileData.count else { break }
+                    offset += 2 // Reserved bytes
+                    valueLength = fileData.readUInt32LE(at: offset) ?? 0
+                    offset += 4
+                } else {
+                    guard offset + 2 <= fileData.count else { break }
+                    valueLength = UInt32(fileData.readUInt16LE(at: offset) ?? 0)
+                    offset += 2
+                }
+                
+                // Check for Transfer Syntax UID (0002,0010)
+                if group == 0x0002 && element == 0x0010 {
+                    let valueData = fileData.subdata(in: offset..<min(offset + Int(valueLength), fileData.count))
+                    transferSyntaxUID = String(data: valueData, encoding: .utf8)?.trimmingCharacters(in: .whitespaces)
+                }
+                
+                offset += Int(valueLength)
+            }
+            
+            // Extract the dataset (everything after Group 0002)
+            let datasetData = fileData[offset...]
+            
+            // Find a presentation context for this SOP Class
+            var contextID: UInt8? = nil
+            for (pcID, context) in acceptedPresentationContexts {
+                if context.abstractSyntax == sopClassUID {
+                    contextID = pcID
+                    break
+                }
+            }
+            
+            guard let presentationContextID = contextID else {
+                if configuration.verbose {
+                    print("[ServerSession \(id)] No presentation context found for SOP Class: \(sopClassUID)")
+                }
+                return false
+            }
+            
+            // Generate message ID
+            messageIDCounter = messageIDCounter &+ 1
+            let messageID = messageIDCounter
+            
+            // Create C-STORE request
+            let storeRequest = CStoreRequest(
+                messageID: messageID,
+                affectedSOPClassUID: sopClassUID,
+                affectedSOPInstanceUID: metadata.sopInstanceUID,
+                priority: .medium,
+                presentationContextID: presentationContextID
+            )
+            
+            // Send C-STORE request and dataset
+            try await sendDIMSEResponse(storeRequest.commandSet, dataSet: Data(datasetData), contextID: presentationContextID)
+            
+            if configuration.verbose {
+                print("[ServerSession \(id)] C-STORE sent for \(metadata.sopInstanceUID)")
+            }
+            
+            // Note: In a full implementation, we would wait for the C-STORE response
+            // For Phase C, we assume success if we can send the request
+            // A complete implementation would need to track pending C-STORE operations
+            // and handle responses asynchronously
+            
+            return true
+        } catch {
+            if configuration.verbose {
+                print("[ServerSession \(id)] Error sending C-STORE: \(error)")
+            }
+            return false
+        }
     }
     
     // MARK: - Helper Methods
