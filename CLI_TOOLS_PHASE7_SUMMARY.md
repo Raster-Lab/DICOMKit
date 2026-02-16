@@ -1,6 +1,6 @@
 # CLI Tools Phase 7 - Quick Summary
 
-**Status**: 🚧 In Progress (7/8 tools complete, 87.5%)  
+**Status**: 🚧 In Progress (7/8 tools complete, dicom-server Phase C network operations complete, 92% done)  
 **Timeline**: 6-8 weeks (with parallel development)  
 **Total Effort**: 10,250-12,700 LOC, 295+ tests  
 **Target Version**: v1.4.0-v1.4.7
@@ -18,7 +18,7 @@
 | 34 | **dicom-ai** | ✅ Complete | Very High | 2 weeks | 1,300-1,600 | 68 | Sprint 3 |
 | 35 | **dicom-cloud** | ✅ Complete | High | 1 week | 850-1,000 | 68 | Sprint 2 |
 | 36 | **dicom-gateway** | ✅ Complete | Very High | 2 weeks | 1,400-1,700 | 43 | Sprint 4 |
-| 37 | **dicom-server** | 🚧 In Progress | Very High | 2.5 weeks | 2,000-2,500 | 15/50+ | Sprint 4 |
+| 37 | **dicom-server** | 🚧 Phase C Done | Very High | 2.5 weeks | 2,000-2,500 | 35/50+ | Sprint 4 |
 
 ---
 
@@ -197,20 +197,28 @@ dicom-gateway listen --protocol hl7 --port 2575 --forward pacs://server:11112
 # Start PACS server
 dicom-server start --aet MY_PACS --port 11112 --data-dir /var/lib/dicom
 
-# With web interface
+# With web interface (Phase D)
 dicom-server start --aet MY_PACS --port 11112 --web-ui --web-port 8080
 
-# With PostgreSQL backend
+# With PostgreSQL backend (Phase D)
 dicom-server start --aet MY_PACS --database postgres://user:pass@localhost/pacs
 ```
 
 **Key Features**:
-- C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET
-- SQLite or PostgreSQL backend
-- Web UI for monitoring
-- REST API for management
-- Access control (AE Title filtering)
-- TLS/SSL support
+- C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET ✅
+- Full network operations for C-MOVE and C-GET ✅ (Phase C complete)
+- SQLite or PostgreSQL backend (Phase D planned)
+- Web UI for monitoring (Phase D planned)
+- REST API for management (Phase D planned)
+- Access control (AE Title filtering) ✅
+- TLS/SSL support (Phase D planned)
+
+**Phase Status**:
+- Phase A: ✅ Complete (C-ECHO, C-STORE, C-FIND)
+- Phase B: ✅ Complete (C-MOVE, C-GET query matching)
+- Phase C (Network): ✅ Complete (actual file transfers)
+- Phase C (Web/API): Deferred to Phase D
+- Phase D: 📋 Planned (database, web, API, TLS)
 
 ---
 
@@ -259,9 +267,11 @@ dicom-server start --aet MY_PACS --database postgres://user:pass@localhost/pacs
 | Tool | Status | Developer | Notes |
 |------|--------|-----------|-------|
 | dicom-gateway | ✅ Complete | Copilot | All phases A+B+C+D complete, 43 tests |
-| dicom-server | 🚧 In Progress | TBD | Phase A started, 15 tests, needs ~35 more |
+| dicom-server | 🚧 Phase C Done | Copilot | Network operations complete (A+B+C), needs Phase D (web/API/DB) |
 
-**Deliverables**: 2 tools, 90+ tests, 3,400-4,200 LOC
+**Deliverables**: 1 complete tool, 1 tool with Phase C network operations done, 78 tests total (43 gateway + 35 server), 4,400+ LOC
+
+**Phase C Achievement**: dicom-server now has fully functional C-MOVE (network transfer to destinations) and C-GET (C-STORE on same association) operations. Web interface and REST API deferred to Phase D for integrated production deployment.
 
 ---
 
