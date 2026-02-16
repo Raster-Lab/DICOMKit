@@ -13,6 +13,8 @@ actor ServerSession {
     private let configuration: ServerConfiguration
     private let storage: StorageManager
     private let database: DatabaseManager?
+    private let statistics: ServerStatistics
+    private let logger: ServerLogger
     private var isActive = false
     private var messageAssembler: MessageAssembler
     private var acceptedPresentationContexts: [UInt8: AcceptedContext] = [:]
@@ -23,13 +25,17 @@ actor ServerSession {
         connection: NWConnection,
         configuration: ServerConfiguration,
         storage: StorageManager,
-        database: DatabaseManager?
+        database: DatabaseManager?,
+        statistics: ServerStatistics,
+        logger: ServerLogger
     ) {
         self.id = id
         self.connection = connection
         self.configuration = configuration
         self.storage = storage
         self.database = database
+        self.statistics = statistics
+        self.logger = logger
         self.messageAssembler = MessageAssembler()
     }
     
@@ -398,7 +404,11 @@ actor ServerSession {
     // MARK: - C-ECHO Handler
     
     private func handleCEcho(_ message: AssembledMessage) async throws {
+        await statistics.recordEchoRequest()
+        await logger.debug("C-ECHO request received", context: "ServerSession")
+        
         guard let request = message.asCEchoRequest() else {
+            await logger.warning("Invalid C-ECHO request", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] Invalid C-ECHO request")
             }
@@ -420,6 +430,7 @@ actor ServerSession {
         // Send response
         try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
         
+        await logger.debug("C-ECHO response sent successfully", context: "ServerSession")
         if configuration.verbose {
             print("[ServerSession \(id)] C-ECHO response sent")
         }
@@ -428,14 +439,19 @@ actor ServerSession {
     // MARK: - C-STORE Handler
     
     private func handleCStore(_ message: AssembledMessage) async throws {
+        await logger.debug("C-STORE request received", context: "ServerSession")
+        
         guard let request = message.asCStoreRequest() else {
+            await logger.warning("Invalid C-STORE request", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] Invalid C-STORE request")
             }
+            await statistics.recordStoreRequest(success: false)
             return
         }
         
         guard let dataSetBytes = message.dataSet else {
+            await logger.warning("C-STORE request missing data set", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] C-STORE request missing data set")
             }
@@ -448,6 +464,7 @@ actor ServerSession {
                 presentationContextID: request.presentationContextID
             )
             try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            await statistics.recordStoreRequest(success: false)
             return
         }
         
@@ -486,10 +503,14 @@ actor ServerSession {
             )
             try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
             
+            await statistics.recordStoreRequest(success: true, bytesReceived: Int64(dataSetBytes.count))
+            await logger.info("C-STORE completed: \(request.affectedSOPInstanceUID)", context: "ServerSession")
+            
             if configuration.verbose {
                 print("[ServerSession \(id)] C-STORE response sent (success)")
             }
         } catch {
+            await logger.error("C-STORE failed", error: error, context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] Error storing file: \(error)")
             }
@@ -503,16 +524,21 @@ actor ServerSession {
                 presentationContextID: request.presentationContextID
             )
             try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+            await statistics.recordStoreRequest(success: false)
         }
     }
     
     // MARK: - C-FIND Handler
     
     private func handleCFind(_ message: AssembledMessage) async throws {
+        await logger.debug("C-FIND request received", context: "ServerSession")
+        
         guard let request = message.asCFindRequest() else {
+            await logger.warning("Invalid C-FIND request", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] Invalid C-FIND request")
             }
+            await statistics.recordFindRequest(success: false)
             return
         }
         
@@ -569,6 +595,9 @@ actor ServerSession {
                 )
                 try await sendDIMSEResponse(finalResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
                 
+                await statistics.recordFindRequest(success: true)
+                await logger.info("C-FIND completed: \(results.count) results", context: "ServerSession")
+                
                 if configuration.verbose {
                     print("[ServerSession \(id)] C-FIND complete")
                 }
@@ -581,8 +610,11 @@ actor ServerSession {
                     presentationContextID: request.presentationContextID
                 )
                 try await sendDIMSEResponse(response.commandSet, dataSet: nil, contextID: request.presentationContextID)
+                await statistics.recordFindRequest(success: true)
             }
         } catch {
+            await logger.error("C-FIND failed", error: error, context: "ServerSession")
+            await statistics.recordFindRequest(success: false)
             if configuration.verbose {
                 print("[ServerSession \(id)] Error handling C-FIND: \(error)")
             }
@@ -601,14 +633,19 @@ actor ServerSession {
     // MARK: - C-MOVE Handler
     
     private func handleCMove(_ message: AssembledMessage) async throws {
+        await logger.debug("C-MOVE request received", context: "ServerSession")
+        
         guard let request = message.asCMoveRequest() else {
+            await logger.warning("Invalid C-MOVE request", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] Invalid C-MOVE request")
             }
+            await statistics.recordMoveRequest(success: false)
             return
         }
         
         guard let dataSetBytes = message.dataSet else {
+            await logger.warning("C-MOVE request missing data set", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] C-MOVE request missing data set")
             }
@@ -714,10 +751,15 @@ actor ServerSession {
             )
             try await sendDIMSEResponse(finalResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
             
+            await statistics.recordMoveRequest(success: failed == 0, instancesSent: Int(completed))
+            await logger.info("C-MOVE complete: \(completed) successful, \(failed) failed", context: "ServerSession")
+            
             if configuration.verbose {
                 print("[ServerSession \(id)] C-MOVE complete: \(completed) successful, \(failed) failed")
             }
         } catch {
+            await logger.error("C-MOVE failed", error: error, context: "ServerSession")
+            await statistics.recordMoveRequest(success: false)
             if configuration.verbose {
                 print("[ServerSession \(id)] Error handling C-MOVE: \(error)")
             }
@@ -804,14 +846,19 @@ actor ServerSession {
     // MARK: - C-GET Handler
     
     private func handleCGet(_ message: AssembledMessage) async throws {
+        await logger.debug("C-GET request received", context: "ServerSession")
+        
         guard let request = message.asCGetRequest() else {
+            await logger.warning("Invalid C-GET request", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] Invalid C-GET request")
             }
+            await statistics.recordGetRequest(success: false)
             return
         }
         
         guard let dataSetBytes = message.dataSet else {
+            await logger.warning("C-GET request missing data set", context: "ServerSession")
             if configuration.verbose {
                 print("[ServerSession \(id)] C-GET request missing data set")
             }
@@ -915,10 +962,15 @@ actor ServerSession {
             )
             try await sendDIMSEResponse(finalResponse.commandSet, dataSet: nil, contextID: request.presentationContextID)
             
+            await statistics.recordGetRequest(success: failed == 0, bytesSent: 0) // TODO: Track actual bytes sent
+            await logger.info("C-GET complete: \(completed) successful, \(failed) failed", context: "ServerSession")
+            
             if configuration.verbose {
                 print("[ServerSession \(id)] C-GET complete: \(completed) successful, \(failed) failed")
             }
         } catch {
+            await logger.error("C-GET failed", error: error, context: "ServerSession")
+            await statistics.recordGetRequest(success: false)
             if configuration.verbose {
                 print("[ServerSession \(id)] Error handling C-GET: \(error)")
             }
