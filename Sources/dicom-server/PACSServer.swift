@@ -13,6 +13,8 @@ public actor PACSServer {
     private let configuration: ServerConfiguration
     private let storage: StorageManager
     private let database: DatabaseManager?
+    private let statistics: ServerStatistics
+    private let logger: ServerLogger
     private var listener: NWListener?
     private var isRunning = false
     private var activeSessions: [UUID: ServerSession] = [:]
@@ -29,6 +31,17 @@ public actor PACSServer {
         } else {
             self.database = nil
         }
+        
+        // Initialize statistics
+        self.statistics = ServerStatistics()
+        
+        // Initialize logger
+        self.logger = try ServerLogger(
+            minimumLevel: configuration.verbose ? .debug : .info,
+            includeTimestamp: true,
+            includeLevel: true,
+            logFilePath: nil // TODO: Add log file configuration
+        )
     }
     
     /// Start the PACS server
@@ -36,6 +49,9 @@ public actor PACSServer {
         guard !isRunning else {
             throw ServerError.invalidConfiguration("Server is already running")
         }
+        
+        await logger.info("Starting DICOM server on port \(configuration.port)", context: "PACSServer")
+        await logger.info("AE Title: \(configuration.aeTitle)", context: "PACSServer")
         
         // Initialize database if configured
         if let db = database {
@@ -81,6 +97,8 @@ public actor PACSServer {
     public func stop() async {
         guard isRunning else { return }
         
+        await logger.info("Stopping DICOM server", context: "PACSServer")
+        
         if configuration.verbose {
             print("[PACSServer] Stopping server...")
         }
@@ -96,23 +114,40 @@ public actor PACSServer {
         listener = nil
         isRunning = false
         
+        await logger.info("Server stopped", context: "PACSServer")
+        await logger.flush()
+        
         if configuration.verbose {
             print("[PACSServer] Server stopped")
         }
     }
     
+    /// Get current statistics
+    public func getStatistics() async -> StatisticsSummary {
+        return await statistics.getSummary()
+    }
+    
     private func handleListenerState(_ state: NWListener.State) {
         switch state {
         case .ready:
+            Task {
+                await logger.info("Listener ready", context: "PACSServer")
+            }
             if configuration.verbose {
                 print("[PACSServer] Listener ready")
             }
         case .failed(let error):
+            Task {
+                await logger.error("Listener failed", error: error, context: "PACSServer")
+            }
             if configuration.verbose {
                 print("[PACSServer] Listener failed: \(error)")
             }
             Task { await self.stop() }
         case .cancelled:
+            Task {
+                await logger.info("Listener cancelled", context: "PACSServer")
+            }
             if configuration.verbose {
                 print("[PACSServer] Listener cancelled")
             }
@@ -124,16 +159,21 @@ public actor PACSServer {
     private func handleNewConnection(_ connection: NWConnection) async {
         let sessionId = UUID()
         
+        await statistics.recordConnectionStart()
+        await logger.debug("New connection: \(sessionId)", context: "PACSServer")
+        
         if configuration.verbose {
             print("[PACSServer] New connection: \(sessionId)")
         }
         
         // Check if we've reached max connections
         if activeSessions.count >= configuration.maxConcurrentConnections {
+            await logger.warning("Max connections reached, rejecting connection", context: "PACSServer")
             if configuration.verbose {
                 print("[PACSServer] Max connections reached, rejecting connection")
             }
             connection.cancel()
+            await statistics.recordConnectionFailure()
             return
         }
         
@@ -143,7 +183,9 @@ public actor PACSServer {
             connection: connection,
             configuration: configuration,
             storage: storage,
-            database: database
+            database: database,
+            statistics: statistics,
+            logger: logger
         )
         
         activeSessions[sessionId] = session
@@ -152,6 +194,8 @@ public actor PACSServer {
         
         // Remove session when done
         activeSessions.removeValue(forKey: sessionId)
+        await statistics.recordConnectionEnd()
+        await logger.debug("Session ended: \(sessionId)", context: "PACSServer")
         
         if configuration.verbose {
             print("[PACSServer] Session ended: \(sessionId)")
@@ -172,6 +216,33 @@ public actor PACSServer {
     }
     
     public func stop() async {
+    }
+    
+    public func getStatistics() async -> StatisticsSummary {
+        // Return empty statistics for unsupported platforms
+        return StatisticsSummary(
+            totalConnections: 0,
+            activeConnections: 0,
+            failedConnections: 0,
+            echoRequests: 0,
+            storeRequests: 0,
+            findRequests: 0,
+            moveRequests: 0,
+            getRequests: 0,
+            successfulStores: 0,
+            failedStores: 0,
+            successfulFinds: 0,
+            failedFinds: 0,
+            successfulMoves: 0,
+            failedMoves: 0,
+            successfulGets: 0,
+            failedGets: 0,
+            bytesReceived: 0,
+            bytesSent: 0,
+            totalStoredInstances: 0,
+            startTime: Date(),
+            uptime: 0
+        )
     }
 }
 #endif
