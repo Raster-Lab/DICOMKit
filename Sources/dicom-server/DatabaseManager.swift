@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMKit
 
 /// Database manager for DICOM metadata indexing
 actor DatabaseManager {
