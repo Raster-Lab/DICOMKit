@@ -871,4 +871,257 @@ final class DICOMServerTests: XCTestCase {
         XCTAssertEqual(request.affectedSOPClassUID, "1.2.840.10008.5.1.4.1.2.2.3")
         XCTAssertEqual(request.priority, .high)
     }
+    
+    // MARK: - Phase D.5: ServerLogger Tests
+    
+    func test_LogLevel_Comparison() {
+        XCTAssertTrue(LogLevel.debug < LogLevel.info)
+        XCTAssertTrue(LogLevel.info < LogLevel.warning)
+        XCTAssertTrue(LogLevel.warning < LogLevel.error)
+        XCTAssertFalse(LogLevel.error < LogLevel.debug)
+    }
+    
+    func test_ServerLogger_Initialization() async throws {
+        let logger = try ServerLogger(minimumLevel: .debug, includeTimestamp: true, includeLevel: true)
+        
+        // Logger should be initialized without errors
+        await logger.debug("Test debug message")
+        await logger.info("Test info message")
+        await logger.warning("Test warning message")
+        await logger.error("Test error message")
+    }
+    
+    func test_ServerLogger_MinimumLevel_Filtering() async throws {
+        // Create logger with minimum level of WARNING
+        let logger = try ServerLogger(minimumLevel: .warning, includeTimestamp: false, includeLevel: true)
+        
+        // These should be filtered out (below WARNING level)
+        await logger.debug("Debug message - should not appear")
+        await logger.info("Info message - should not appear")
+        
+        // These should appear (WARNING and above)
+        await logger.warning("Warning message - should appear")
+        await logger.error("Error message - should appear")
+    }
+    
+    func test_ServerLogger_FileLogging() async throws {
+        let tempDir = FileManager.default.temporaryDirectory
+        let logPath = tempDir.appendingPathComponent("test-server-\(UUID().uuidString).log").path
+        
+        let logger = try ServerLogger(
+            minimumLevel: .info,
+            includeTimestamp: true,
+            includeLevel: true,
+            logFilePath: logPath
+        )
+        
+        await logger.info("Test message 1")
+        await logger.warning("Test message 2")
+        await logger.error("Test message 3")
+        await logger.flush()
+        
+        // Verify file exists
+        XCTAssertTrue(FileManager.default.fileExists(atPath: logPath))
+        
+        // Verify file content
+        let content = try String(contentsOfFile: logPath)
+        XCTAssertTrue(content.contains("[INFO] Test message 1"))
+        XCTAssertTrue(content.contains("[WARNING] Test message 2"))
+        XCTAssertTrue(content.contains("[ERROR] Test message 3"))
+        
+        // Cleanup
+        try? FileManager.default.removeItem(atPath: logPath)
+    }
+    
+    func test_ServerLogger_ContextLogging() async throws {
+        let logger = try ServerLogger(minimumLevel: .info, includeTimestamp: false, includeLevel: true)
+        
+        await logger.info("Connection established", context: "C-ECHO")
+        await logger.warning("Query timeout", context: "C-FIND")
+        await logger.error("Store failed", context: "C-STORE")
+    }
+    
+    func test_ServerLogger_ErrorWithException() async throws {
+        let logger = try ServerLogger(minimumLevel: .error, includeTimestamp: false, includeLevel: true)
+        
+        let testError = NSError(domain: "TestDomain", code: 42, userInfo: [NSLocalizedDescriptionKey: "Test error description"])
+        await logger.error("Operation failed", error: testError)
+    }
+    
+    // MARK: - Phase D.5: ServerStatistics Tests
+    
+    func test_ServerStatistics_ConnectionTracking() async {
+        let stats = ServerStatistics()
+        
+        // Start connection
+        await stats.recordConnectionStart()
+        var summary = await stats.getSummary()
+        XCTAssertEqual(summary.totalConnections, 1)
+        XCTAssertEqual(summary.activeConnections, 1)
+        
+        // Start another connection
+        await stats.recordConnectionStart()
+        summary = await stats.getSummary()
+        XCTAssertEqual(summary.totalConnections, 2)
+        XCTAssertEqual(summary.activeConnections, 2)
+        
+        // End one connection
+        await stats.recordConnectionEnd()
+        summary = await stats.getSummary()
+        XCTAssertEqual(summary.totalConnections, 2)
+        XCTAssertEqual(summary.activeConnections, 1)
+        
+        // Record failure
+        await stats.recordConnectionFailure()
+        summary = await stats.getSummary()
+        XCTAssertEqual(summary.failedConnections, 1)
+    }
+    
+    func test_ServerStatistics_EchoOperations() async {
+        let stats = ServerStatistics()
+        
+        await stats.recordEchoRequest()
+        await stats.recordEchoRequest()
+        await stats.recordEchoRequest()
+        
+        let summary = await stats.getSummary()
+        XCTAssertEqual(summary.echoRequests, 3)
+    }
+    
+    func test_ServerStatistics_StoreOperations() async {
+        let stats = ServerStatistics()
+        
+        // Record successful stores
+        await stats.recordStoreRequest(success: true, bytesReceived: 1024)
+        await stats.recordStoreRequest(success: true, bytesReceived: 2048)
+        
+        // Record failed store
+        await stats.recordStoreRequest(success: false)
+        
+        let summary = await stats.getSummary()
+        XCTAssertEqual(summary.storeRequests, 3)
+        XCTAssertEqual(summary.successfulStores, 2)
+        XCTAssertEqual(summary.failedStores, 1)
+        XCTAssertEqual(summary.bytesReceived, 3072)
+        XCTAssertEqual(summary.totalStoredInstances, 2)
+    }
+    
+    func test_ServerStatistics_FindOperations() async {
+        let stats = ServerStatistics()
+        
+        await stats.recordFindRequest(success: true)
+        await stats.recordFindRequest(success: true)
+        await stats.recordFindRequest(success: false)
+        
+        let summary = await stats.getSummary()
+        XCTAssertEqual(summary.findRequests, 3)
+        XCTAssertEqual(summary.successfulFinds, 2)
+        XCTAssertEqual(summary.failedFinds, 1)
+    }
+    
+    func test_ServerStatistics_MoveOperations() async {
+        let stats = ServerStatistics()
+        
+        await stats.recordMoveRequest(success: true, instancesSent: 10)
+        await stats.recordMoveRequest(success: true, instancesSent: 5)
+        await stats.recordMoveRequest(success: false)
+        
+        let summary = await stats.getSummary()
+        XCTAssertEqual(summary.moveRequests, 3)
+        XCTAssertEqual(summary.successfulMoves, 2)
+        XCTAssertEqual(summary.failedMoves, 1)
+    }
+    
+    func test_ServerStatistics_GetOperations() async {
+        let stats = ServerStatistics()
+        
+        await stats.recordGetRequest(success: true, bytesSent: 5000)
+        await stats.recordGetRequest(success: true, bytesSent: 10000)
+        await stats.recordGetRequest(success: false)
+        
+        let summary = await stats.getSummary()
+        XCTAssertEqual(summary.getRequests, 3)
+        XCTAssertEqual(summary.successfulGets, 2)
+        XCTAssertEqual(summary.failedGets, 1)
+        XCTAssertEqual(summary.bytesSent, 15000)
+    }
+    
+    func test_ServerStatistics_Reset() async {
+        let stats = ServerStatistics()
+        
+        // Record some operations
+        await stats.recordConnectionStart()
+        await stats.recordEchoRequest()
+        await stats.recordStoreRequest(success: true, bytesReceived: 1000)
+        await stats.recordFindRequest(success: true)
+        
+        // Verify stats are recorded
+        var summary = await stats.getSummary()
+        XCTAssertGreaterThan(summary.totalConnections, 0)
+        XCTAssertGreaterThan(summary.echoRequests, 0)
+        
+        // Reset
+        await stats.reset()
+        
+        // Verify all stats are zero
+        summary = await stats.getSummary()
+        XCTAssertEqual(summary.totalConnections, 0)
+        XCTAssertEqual(summary.activeConnections, 0)
+        XCTAssertEqual(summary.echoRequests, 0)
+        XCTAssertEqual(summary.storeRequests, 0)
+        XCTAssertEqual(summary.findRequests, 0)
+        XCTAssertEqual(summary.bytesReceived, 0)
+        XCTAssertEqual(summary.bytesSent, 0)
+    }
+    
+    func test_ServerStatistics_FormattedOutput() async {
+        let stats = ServerStatistics()
+        
+        // Record various operations
+        await stats.recordConnectionStart()
+        await stats.recordEchoRequest()
+        await stats.recordStoreRequest(success: true, bytesReceived: 1048576) // 1 MB
+        await stats.recordFindRequest(success: true)
+        
+        let summary = await stats.getSummary()
+        let formatted = summary.formatted()
+        
+        // Verify formatted output contains expected sections
+        XCTAssertTrue(formatted.contains("DICOM Server Statistics"))
+        XCTAssertTrue(formatted.contains("CONNECTIONS:"))
+        XCTAssertTrue(formatted.contains("OPERATIONS:"))
+        XCTAssertTrue(formatted.contains("STORAGE:"))
+        XCTAssertTrue(formatted.contains("SUCCESS RATES:"))
+        XCTAssertTrue(formatted.contains("Total:       1"))
+        XCTAssertTrue(formatted.contains("C-ECHO:      1"))
+    }
+    
+    func test_ServerStatistics_Uptime() async {
+        let stats = ServerStatistics()
+        
+        // Wait a tiny bit to ensure uptime is non-zero
+        try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        
+        let summary = await stats.getSummary()
+        XCTAssertGreaterThan(summary.uptime, 0)
+        XCTAssertEqual(summary.startTime.timeIntervalSinceReferenceDate,
+                      stats.startTime.timeIntervalSinceReferenceDate,
+                      accuracy: 0.1)
+    }
+    
+    func test_StatisticsSummary_BytesFormatting() async {
+        let stats = ServerStatistics()
+        
+        // Test various byte amounts
+        await stats.recordStoreRequest(success: true, bytesReceived: 500) // 500 B
+        await stats.recordStoreRequest(success: true, bytesReceived: 1024) // 1 KB
+        await stats.recordGetRequest(success: true, bytesSent: 1048576) // 1 MB
+        
+        let summary = await stats.getSummary()
+        let formatted = summary.formatted()
+        
+        // Verify bytes are formatted with appropriate units
+        XCTAssertTrue(formatted.contains("Received:"))
+        XCTAssertTrue(formatted.contains("Sent:"))
+    }
 }
