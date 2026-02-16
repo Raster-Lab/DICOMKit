@@ -301,4 +301,265 @@ final class DICOMServerTests: XCTestCase {
         
         return DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataSet)
     }
+    
+    // MARK: - Database Query Tests
+    
+    func test_DatabaseManager_IndexAndQuery() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Create test metadata
+        let metadata1 = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "DOE^JOHN",
+            studyInstanceUID: "1.2.3.4",
+            studyDate: "20260101",
+            studyDescription: "CT Chest",
+            seriesInstanceUID: "1.2.3.4.5",
+            seriesNumber: "1",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.5.6",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "1",
+            filePath: "/tmp/file1.dcm"
+        )
+        
+        // Index
+        try await db.index(filePath: "/tmp/file1.dcm", metadata: metadata1)
+        
+        // Query at study level
+        var queryDS = DataSet()
+        queryDS.setString("STUDY", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("PAT001", for: .patientID, vr: .LO)
+        
+        let results = try await db.queryForFind(queryDataset: queryDS, level: "STUDY")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].string(for: .studyInstanceUID), "1.2.3.4")
+    }
+    
+    func test_DatabaseManager_PatientLevelQuery() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index multiple patients
+        for i in 1...3 {
+            let metadata = DICOMMetadata(
+                patientID: "PAT00\(i)",
+                patientName: "PATIENT\(i)^TEST",
+                studyInstanceUID: "1.2.3.\(i)",
+                studyDate: "20260101",
+                studyDescription: "Test Study",
+                seriesInstanceUID: "1.2.3.\(i).1",
+                seriesNumber: "1",
+                modality: "CT",
+                sopInstanceUID: "1.2.3.\(i).1.1",
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                instanceNumber: "1",
+                filePath: "/tmp/file\(i).dcm"
+            )
+            try await db.index(filePath: "/tmp/file\(i).dcm", metadata: metadata)
+        }
+        
+        // Query all patients
+        var queryDS = DataSet()
+        queryDS.setString("PATIENT", for: .queryRetrieveLevel, vr: .CS)
+        
+        let results = try await db.queryForFind(queryDataset: queryDS, level: "PATIENT")
+        XCTAssertEqual(results.count, 3)
+    }
+    
+    func test_DatabaseManager_WildcardQuery() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index patients
+        let patients = ["SMITH^JOHN", "SMITH^JANE", "JONES^BOB"]
+        for (i, name) in patients.enumerated() {
+            let metadata = DICOMMetadata(
+                patientID: "PAT00\(i+1)",
+                patientName: name,
+                studyInstanceUID: "1.2.3.\(i+1)",
+                studyDate: "20260101",
+                studyDescription: "Test",
+                seriesInstanceUID: "1.2.3.\(i+1).1",
+                seriesNumber: "1",
+                modality: "CT",
+                sopInstanceUID: "1.2.3.\(i+1).1.1",
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                instanceNumber: "1",
+                filePath: "/tmp/file\(i+1).dcm"
+            )
+            try await db.index(filePath: "/tmp/file\(i+1).dcm", metadata: metadata)
+        }
+        
+        // Query with wildcard
+        var queryDS = DataSet()
+        queryDS.setString("PATIENT", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("SMITH*", for: .patientName, vr: .PN)
+        
+        let results = try await db.queryForFind(queryDataset: queryDS, level: "PATIENT")
+        XCTAssertEqual(results.count, 2)
+    }
+    
+    func test_DatabaseManager_SeriesLevelQuery() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index series
+        for i in 1...3 {
+            let metadata = DICOMMetadata(
+                patientID: "PAT001",
+                patientName: "TEST^PATIENT",
+                studyInstanceUID: "1.2.3.4",
+                studyDate: "20260101",
+                studyDescription: "Test Study",
+                seriesInstanceUID: "1.2.3.4.\(i)",
+                seriesNumber: "\(i)",
+                modality: i == 1 ? "CT" : "MR",
+                sopInstanceUID: "1.2.3.4.\(i).1",
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                instanceNumber: "1",
+                filePath: "/tmp/file\(i).dcm"
+            )
+            try await db.index(filePath: "/tmp/file\(i).dcm", metadata: metadata)
+        }
+        
+        // Query CT series only
+        var queryDS = DataSet()
+        queryDS.setString("SERIES", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("1.2.3.4", for: .studyInstanceUID, vr: .UI)
+        queryDS.setString("CT", for: .modality, vr: .CS)
+        
+        let results = try await db.queryForFind(queryDataset: queryDS, level: "SERIES")
+        XCTAssertEqual(results.count, 1)
+        XCTAssertEqual(results[0].string(for: .modality), "CT")
+    }
+    
+    func test_DatabaseManager_InstanceLevelQuery() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index instances
+        for i in 1...5 {
+            let metadata = DICOMMetadata(
+                patientID: "PAT001",
+                patientName: "TEST^PATIENT",
+                studyInstanceUID: "1.2.3.4",
+                studyDate: "20260101",
+                studyDescription: "Test Study",
+                seriesInstanceUID: "1.2.3.4.5",
+                seriesNumber: "1",
+                modality: "CT",
+                sopInstanceUID: "1.2.3.4.5.\(i)",
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                instanceNumber: "\(i)",
+                filePath: "/tmp/file\(i).dcm"
+            )
+            try await db.index(filePath: "/tmp/file\(i).dcm", metadata: metadata)
+        }
+        
+        // Query specific series
+        var queryDS = DataSet()
+        queryDS.setString("IMAGE", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("1.2.3.4.5", for: .seriesInstanceUID, vr: .UI)
+        
+        let results = try await db.queryForFind(queryDataset: queryDS, level: "IMAGE")
+        XCTAssertEqual(results.count, 5)
+    }
+    
+    func test_DatabaseManager_Delete() async throws {
+        let db = try DatabaseManager(connectionString: "")
+        try await db.initialize()
+        
+        // Index
+        let metadata = DICOMMetadata(
+            patientID: "PAT001",
+            patientName: "TEST^PATIENT",
+            studyInstanceUID: "1.2.3.4",
+            studyDate: "20260101",
+            studyDescription: "Test Study",
+            seriesInstanceUID: "1.2.3.4.5",
+            seriesNumber: "1",
+            modality: "CT",
+            sopInstanceUID: "1.2.3.4.5.6",
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            instanceNumber: "1",
+            filePath: "/tmp/file1.dcm"
+        )
+        try await db.index(filePath: "/tmp/file1.dcm", metadata: metadata)
+        
+        // Query - should find
+        var queryDS = DataSet()
+        queryDS.setString("IMAGE", for: .queryRetrieveLevel, vr: .CS)
+        queryDS.setString("1.2.3.4.5.6", for: .sopInstanceUID, vr: .UI)
+        
+        var results = try await db.queryForFind(queryDataset: queryDS, level: "IMAGE")
+        XCTAssertEqual(results.count, 1)
+        
+        // Delete
+        try await db.delete(sopInstanceUID: "1.2.3.4.5.6")
+        
+        // Query again - should not find
+        results = try await db.queryForFind(queryDataset: queryDS, level: "IMAGE")
+        XCTAssertEqual(results.count, 0)
+    }
+    
+    // MARK: - StorageManager DIMSE Integration Tests
+    
+    func test_StorageManager_StoreDataSet() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("storage-dataset-test-\(UUID().uuidString)")
+        let storage = try StorageManager(dataDirectory: tempDir.path)
+        
+        // Create test dataset
+        var dataSet = DataSet()
+        dataSet.setString("PAT001", for: .patientID, vr: .LO)
+        dataSet.setString("DOE^JOHN", for: .patientName, vr: .PN)
+        dataSet.setString("1.2.3.4", for: .studyInstanceUID, vr: .UI)
+        dataSet.setString("1.2.3.4.5", for: .seriesInstanceUID, vr: .UI)
+        dataSet.setString("1.2.3.4.5.6", for: .sopInstanceUID, vr: .UI)
+        dataSet.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
+        
+        // Store
+        let filePath = try await storage.storeFile(dataset: dataSet, sopInstanceUID: "1.2.3.4.5.6")
+        XCTAssertFalse(filePath.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: filePath))
+        XCTAssertTrue(filePath.contains("1.2.3.4"))
+        XCTAssertTrue(filePath.contains("1.2.3.4.5"))
+        
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
+    
+    func test_StorageManager_DirectoryStructure() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("storage-structure-test-\(UUID().uuidString)")
+        let storage = try StorageManager(dataDirectory: tempDir.path)
+        
+        // Create test dataset
+        var dataSet = DataSet()
+        dataSet.setString("STUDY_UID_123", for: .studyInstanceUID, vr: .UI)
+        dataSet.setString("SERIES_UID_456", for: .seriesInstanceUID, vr: .UI)
+        dataSet.setString("INSTANCE_UID_789", for: .sopInstanceUID, vr: .UI)
+        
+        // Store
+        let filePath = try await storage.storeFile(dataset: dataSet, sopInstanceUID: "INSTANCE_UID_789")
+        
+        // Verify directory structure
+        XCTAssertTrue(filePath.contains("STUDY_UID_123"))
+        XCTAssertTrue(filePath.contains("SERIES_UID_456"))
+        XCTAssertTrue(filePath.hasSuffix("INSTANCE_UID_789.dcm"))
+        
+        // Verify study directory exists
+        let studyDir = tempDir.appendingPathComponent("STUDY_UID_123").path
+        var isDirectory: ObjCBool = false
+        XCTAssertTrue(FileManager.default.fileExists(atPath: studyDir, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        
+        // Verify series directory exists
+        let seriesDir = tempDir.appendingPathComponent("STUDY_UID_123/SERIES_UID_456").path
+        XCTAssertTrue(FileManager.default.fileExists(atPath: seriesDir, isDirectory: &isDirectory))
+        XCTAssertTrue(isDirectory.boolValue)
+        
+        // Cleanup
+        try? FileManager.default.removeItem(at: tempDir)
+    }
 }
