@@ -41,7 +41,8 @@ struct DICOMServer: AsyncParsableCommand {
         subcommands: [
             StartCommand.self,
             StatusCommand.self,
-            StopCommand.self
+            StopCommand.self,
+            StatsCommand.self
         ],
         defaultSubcommand: StartCommand.self
     )
@@ -281,6 +282,67 @@ struct StopCommand: AsyncParsableCommand {
         print("To stop the server, send SIGINT (Ctrl+C) to the running process")
         
         // TODO: Implement proper shutdown mechanism with PID file or REST API
+    }
+}
+
+// MARK: - Stats Command
+
+@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+struct StatsCommand: AsyncParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "stats",
+        abstract: "Display server statistics"
+    )
+    
+    @Option(name: .shortAndLong, help: "Server host")
+    var host: String = "localhost"
+    
+    @Option(name: .shortAndLong, help: "Server port")
+    var port: UInt16 = 11112
+    
+    @Option(name: .long, help: "Calling AE Title")
+    var callingAe: String = "DICOM_STATS"
+    
+    @Option(name: .long, help: "Called AE Title")
+    var calledAe: String = "DICOMKIT_SCP"
+    
+    @Flag(name: .shortAndLong, help: "Verbose output")
+    var verbose: Bool = false
+    
+    func run() async throws {
+        #if canImport(Network)
+        if verbose {
+            print("Connecting to DICOM server at \(host):\(port)...")
+        }
+        
+        // For now, just perform a C-ECHO to check if server is running
+        // In a full implementation, we would query the server for statistics
+        // via a custom DICOM service or REST API
+        
+        let result = try await EchoService.echo(
+            host: host,
+            port: port,
+            callingAE: callingAe,
+            calledAE: calledAe,
+            timeout: 10.0
+        )
+        
+        if result.success {
+            print("Server is running at \(host):\(port)")
+            print()
+            print("Note: Detailed statistics require server-side implementation.")
+            print("Consider adding a REST API endpoint for statistics retrieval.")
+            print()
+            print("To view real-time server statistics, check the server logs or")
+            print("implement a management interface.")
+        } else {
+            print("Error: Unable to connect to server")
+            throw ExitCode.failure
+        }
+        #else
+        print("Error: Network operations not supported on this platform")
+        throw ExitCode.failure
+        #endif
     }
 }
 

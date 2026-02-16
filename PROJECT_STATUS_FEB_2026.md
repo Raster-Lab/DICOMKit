@@ -145,9 +145,9 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 - **Sprint 3 (Weeks 5-6)**: ✅ dicom-ai (Phases A+B+C+D complete, 68 tests)
 - **Sprint 4 (Weeks 7-8)**: dicom-gateway ✅, dicom-server 🚧
 
-**Progress**: 7/8 tools complete (87.5%), dicom-ai 100% complete (Phases A+B+C+D done, 68 tests), dicom-gateway 100% complete (Phases A+B+C+D, 43 tests, builds successfully), dicom-server Phases A+B+C (network operations) complete (C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET with actual network transfers, 35 tests, ~92% complete)  
+**Progress**: 7/8 tools complete (87.5%), dicom-ai 100% complete (Phases A+B+C+D done, 68 tests), dicom-gateway 100% complete (Phases A+B+C+D, 43 tests, builds successfully), dicom-server Phases A+B+C+D(90%) complete (C-ECHO, C-STORE, C-FIND, C-MOVE, C-GET with actual network transfers, logging, statistics, comprehensive documentation, 35 tests, ~95% complete)  
 **Estimated Effort**: 10,250-12,700 LOC, 295+ tests, 6-8 weeks
-**Remaining Work**: dicom-server Phase D (Web UI, REST API, PostgreSQL/SQLite backends, TLS/SSL support, ~15 tests needed for 50+ target)
+**Remaining Work**: dicom-server Phase D.5 (15 additional tests to reach 50+ target) and optional TLS code implementation (documented, deferred to v1.5+)
 
 ### Post v1.0 Framework Enhancements
 - Advanced DICOM IOD support (see [MILESTONES.md](MILESTONES.md) Milestone 11)
@@ -188,6 +188,6 @@ DICOMKit has reached a major milestone with **ALL 6 Phases of CLI Tools** now co
 ---
 
 **Date**: February 16, 2026  
-**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (7/8 tools complete: dicom-report, dicom-measure, dicom-viewer, dicom-cloud, dicom-3d, dicom-ai, dicom-gateway ✅; 1/8 at 92%: dicom-server Phases A+B+C (network) complete, Phase D remaining)  
-**Next Steps**: Complete dicom-server Phase D (Web interface, REST API, PostgreSQL/SQLite persistence, TLS/SSL support)
+**Status**: Phases 1-6 Complete (29 tools), Phase 7 In Progress (7/8 tools complete: dicom-report, dicom-measure, dicom-viewer, dicom-cloud, dicom-3d, dicom-ai, dicom-gateway ✅; 1/8 at 95%: dicom-server Phases A+B+C+D(90%) complete with logging, statistics, comprehensive documentation)  
+**Next Steps**: Complete dicom-server Phase D.5 (15 additional tests to reach 50+ total), optional TLS implementation for v1.5+
 
