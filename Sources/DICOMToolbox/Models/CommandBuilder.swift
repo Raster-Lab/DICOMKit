@@ -99,8 +99,30 @@ public final class CommandBuilder: Sendable {
                 }
 
             case .repeatable:
-                // Split comma-separated values into individual flag instances
-                let items = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                // Split comma-separated values into individual flag instances,
+                // preserving DICOM tag notation (GGGG,EEEE) where commas are
+                // part of the tag identifier.
+                let rawItems = value.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                var items: [String] = []
+                var idx = 0
+                while idx < rawItems.count {
+                    let current = rawItems[idx]
+                    // If current is exactly a 4-hex-digit group, try to pair it
+                    // with the next item to form a DICOM tag (GGGG,EEEE)
+                    if idx + 1 < rawItems.count,
+                       current.count == 4,
+                       current.allSatisfy({ $0.isHexDigit }) {
+                        let next = rawItems[idx + 1]
+                        let nextPrefix = next.prefix(4)
+                        if nextPrefix.count == 4, nextPrefix.allSatisfy({ $0.isHexDigit }) {
+                            items.append("\(current),\(next)")
+                            idx += 2
+                            continue
+                        }
+                    }
+                    items.append(current)
+                    idx += 1
+                }
                 for item in items {
                     parts.append(param.cliFlag)
                     parts.append(item)
