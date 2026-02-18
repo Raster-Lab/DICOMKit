@@ -97,7 +97,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 | **☁️ DICOMweb** | WADO-RS, QIDO-RS, STOW-RS, and UPS-RS client and server implementations |
 | **📊 Structured Reporting** | Complete SR document creation with 8 specialized builders |
 | **🔬 Advanced Imaging** | RT Structure Sets, Segmentation, Parametric Maps, Presentation States |
-| **🛠️ CLI Tools** | 31+ command-line tools for DICOM operations, all installable via Homebrew |
+| **🛠️ CLI Tools** | 38 command-line tools for DICOM operations, all installable via Homebrew |
 | **📱 Demo Applications** | Production-ready viewers for iOS, macOS, and visionOS |
 | **⚡ Performance** | SIMD acceleration, memory mapping, connection pooling, and caching |
 | **🔒 Security** | TLS 1.2/1.3, OAuth2 support, audit logging, and HIPAA-compliant anonymization |
@@ -1579,7 +1579,7 @@ Choose the modules you need:
 
 ### Homebrew (CLI Tools)
 
-Install all 35 CLI tools via Homebrew using the local formula:
+Install all 38 CLI tools via Homebrew using the local formula:
 
 ```bash
 # Clone the repository
@@ -4256,8 +4256,8 @@ A professional diagnostic workstation for macOS with PACS integration, MPR, and 
 **Remaining phases**: Advanced Features (Week 5).
 
 - **DICOMViewer visionOS** - ✅ Complete - Spatial 3D medical imaging with hand tracking, immersive volume rendering, and SharePlay collaboration (205 tests, 83% coverage)
-- **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-7 (31+ tools: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-measure, dicom-viewer with 863+ tests; dicom-report Phase C complete with template engine, image embedding, branding, multi-language support; dicom-ai Phases A+B+C complete with DICOM SR, Segmentation, GSPS output generation, 59 tests)
-- **DICOMToolbox GUI** - ✅ Complete (Phase 1-8) - SwiftUI macOS application providing graphical interface for all 30 CLI tools with drag-and-drop, real-time command preview, educational features, DICOM glossary, accessibility, settings, integration testing, documentation, and release preparation (Phases 1-8 implemented with 370+ tests)
+- **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-7 (38 tools including: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-print, dicom-measure, dicom-viewer, dicom-report, dicom-3d, dicom-ai, dicom-cloud, dicom-gateway, dicom-server with 1,111+ tests; all Phase 7 advanced tools complete)
+- **DICOMToolbox GUI** - ✅ Complete (Phase 1-8) - SwiftUI macOS application providing graphical interface for 37 CLI tools with drag-and-drop, real-time command preview, educational features, DICOM glossary, accessibility, settings, integration testing, documentation, and release preparation (Phases 1-8 implemented with 370+ tests)
 
 See [DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md) for complete plans, [CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md) for GUI toolbox details, and [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) for macOS viewer details.
 
@@ -4265,7 +4265,7 @@ See [DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md) for complete plans, [CL
 
 ## CLI Tools Reference
 
-DICOMKit includes **31+ command-line tools** for DICOM operations, all installable via Homebrew or built directly from source.
+DICOMKit includes **38 command-line tools** for DICOM operations, all installable via Homebrew or built directly from source.
 
 ### Installation
 
@@ -4388,14 +4388,47 @@ cp .build/release/dicom-* /usr/local/bin/
 </details>
 
 <details>
-<summary><strong>📊 Analysis & Reporting (4 tools)</strong></summary>
+<summary><strong>📊 Analysis & Reporting (5 tools)</strong></summary>
 
 | Tool | Description | Example |
 |------|-------------|---------|
+| `dicom-viewer` | Terminal-based DICOM image viewer | `dicom-viewer scan.dcm --interactive` |
 | `dicom-report` | Structured report generation with templates | `dicom-report generate --template radiology --input data.json` |
 | `dicom-measure` | Measurement extraction from images | `dicom-measure analyze scan.dcm --roi automatic` |
 | `dicom-3d` | MPR, volume, and surface operations | `dicom-3d mpr series/ --plane sagittal` |
 | `dicom-ai` | AI-assisted analysis with DICOM output | `dicom-ai analyze scan.dcm --model detection --output-sr` |
+
+</details>
+
+<details>
+<summary><strong>🔄 Enterprise Integration (1 tool)</strong></summary>
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `dicom-gateway` | Protocol gateway for HL7 v2, FHIR, and IHE | `dicom-gateway dicom-to-fhir study.dcm --output study.json` |
+
+**Supported Protocols:**
+- HL7 v2 (ADT, ORM, ORU messages)
+- HL7 FHIR (ImagingStudy, Patient, Practitioner, DiagnosticReport)
+- IHE profiles for healthcare interoperability
+- Bidirectional conversion (DICOM ↔ HL7, DICOM ↔ FHIR)
+
+</details>
+
+<details>
+<summary><strong>🖥️ Server Infrastructure (1 tool)</strong></summary>
+
+| Tool | Description | Example |
+|------|-------------|---------|
+| `dicom-server` | Lightweight PACS server with C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET | `dicom-server start --aet MY_PACS --port 11112` |
+
+**Server Features:**
+- Full DICOM networking services (C-ECHO, C-FIND, C-STORE, C-MOVE, C-GET)
+- Structured logging system with multiple log levels
+- Comprehensive statistics tracking
+- Support for SQLite and PostgreSQL backends
+- Access control with AE Title filtering
+- Multi-threaded connection handling
 
 </details>
 
