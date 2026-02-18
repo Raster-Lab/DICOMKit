@@ -48,8 +48,8 @@ struct AcceptCharsetTests {
             headers: ["Accept-Charset": "iso-8859-5, unicode-1-1;q=0.8, utf-8;q=1.0"]
         )
         
-        // Should be sorted by quality value (descending)
-        #expect(request.acceptCharsets == ["utf-8", "iso-8859-5", "unicode-1-1"])
+        // Should be sorted by quality value (descending), stable for equal values
+        #expect(request.acceptCharsets == ["iso-8859-5", "utf-8", "unicode-1-1"])
     }
     
     @Test("Charset with q=0 is excluded")

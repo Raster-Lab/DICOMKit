@@ -913,10 +913,10 @@ struct FileOrganizationToolRoutingTests {
 
 @Suite("Data Export Tool Routing Tests")
 struct DataExportToolRoutingTests {
-    @Test("Data Export category has exactly 6 tools")
+    @Test("Data Export category has exactly 7 tools")
     func testDataExportToolCount() {
         let tools = ToolRegistry.tools(for: .dataExport)
-        #expect(tools.count == 6)
+        #expect(tools.count == 7)
     }
 
     @Test("Data Export tools are in correct order")

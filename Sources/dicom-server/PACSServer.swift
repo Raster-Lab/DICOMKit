@@ -67,15 +67,17 @@ public actor PACSServer {
         
         // Set up listener state handler
         listener.stateUpdateHandler = { [weak self] state in
-            Task { [weak self] in
-                await self?.handleListenerState(state)
+            guard let self else { return }
+            Task {
+                await self.handleListenerState(state)
             }
         }
         
         // Set up new connection handler
         listener.newConnectionHandler = { [weak self] connection in
-            Task { [weak self] in
-                await self?.handleNewConnection(connection)
+            guard let self else { return }
+            Task {
+                await self.handleNewConnection(connection)
             }
         }
         

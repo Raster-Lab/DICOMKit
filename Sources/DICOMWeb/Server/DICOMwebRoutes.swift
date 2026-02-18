@@ -30,11 +30,30 @@ public struct DICOMwebRequest: Sendable {
         remoteAddress: String? = nil
     ) {
         self.method = method
-        self.path = path
-        self.queryParameters = queryParameters
         self.headers = headers
         self.body = body
         self.remoteAddress = remoteAddress
+        
+        // Parse query parameters from path if present
+        if let queryIndex = path.firstIndex(of: "?") {
+            self.path = String(path[path.startIndex..<queryIndex])
+            var parsedParams = queryParameters
+            let queryString = String(path[path.index(after: queryIndex)...])
+            for param in queryString.split(separator: "&") {
+                let parts = param.split(separator: "=", maxSplits: 1)
+                if parts.count == 2 {
+                    let key = String(parts[0])
+                    let value = String(parts[1])
+                    if parsedParams[key] == nil {
+                        parsedParams[key] = value
+                    }
+                }
+            }
+            self.queryParameters = parsedParams
+        } else {
+            self.path = path
+            self.queryParameters = queryParameters
+        }
     }
     
     /// Gets a header value (case-insensitive)
@@ -63,7 +82,7 @@ public struct DICOMwebRequest: Sendable {
     /// Parses the Accept-Charset header and returns an array of charset names with optional quality values.
     /// If no Accept-Charset header is present, defaults to ["utf-8"].
     ///
-    /// Example: "iso-8859-5, unicode-1-1;q=0.8, utf-8;q=1.0" returns ["utf-8", "iso-8859-5", "unicode-1-1"]
+    /// Example: "iso-8859-5, unicode-1-1;q=0.8, utf-8;q=1.0" returns ["iso-8859-5", "utf-8", "unicode-1-1"]
     ///
     /// Reference: RFC 7231 Section 5.3.3 - Accept-Charset
     public var acceptCharsets: [String] {
@@ -158,20 +177,19 @@ public struct DICOMwebRequest: Sendable {
         
         let rangeSpec = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
         
-        // Parse start-end
-        let parts = rangeSpec.split(separator: "-", maxSplits: 1)
+        // Find the first hyphen that separates start from end
+        // The range spec should be "start-end" or "start-" (open-ended)
+        guard let hyphenIndex = rangeSpec.firstIndex(of: "-") else { return nil }
         
-        guard parts.count == 2 else { return nil }
-        
-        let startStr = parts[0].trimmingCharacters(in: .whitespaces)
-        let endStr = parts[1].trimmingCharacters(in: .whitespaces)
+        let startStr = String(rangeSpec[rangeSpec.startIndex..<hyphenIndex]).trimmingCharacters(in: .whitespaces)
+        let endStr = String(rangeSpec[rangeSpec.index(after: hyphenIndex)...]).trimmingCharacters(in: .whitespaces)
         
         // Parse start position
         guard !startStr.isEmpty, let start = Int(startStr), start >= 0 else {
             return nil
         }
         
-        // Parse end position (may be empty for suffix range)
+        // Parse end position (may be empty for open-ended range)
         if endStr.isEmpty {
             // bytes=100- means from byte 100 to end
             return (start: start, end: Int.max)
@@ -473,12 +491,20 @@ public struct DICOMwebRouter: Sendable {
     ///   - method: The HTTP method
     /// - Returns: A route match if found, nil otherwise
     public func match(path: String, method: DICOMwebRequest.HTTPMethod) -> RouteMatch? {
+        // Strip query string from path if present
+        let pathWithoutQuery: String
+        if let queryIndex = path.firstIndex(of: "?") {
+            pathWithoutQuery = String(path[path.startIndex..<queryIndex])
+        } else {
+            pathWithoutQuery = path
+        }
+        
         // Remove prefix and normalize path
-        guard path.hasPrefix(pathPrefix) else {
+        guard pathWithoutQuery.hasPrefix(pathPrefix) else {
             return nil
         }
         
-        let relativePath = String(path.dropFirst(pathPrefix.count))
+        let relativePath = String(pathWithoutQuery.dropFirst(pathPrefix.count))
         let normalizedPath = relativePath.isEmpty ? "/" : relativePath
         
         // Split path into components
