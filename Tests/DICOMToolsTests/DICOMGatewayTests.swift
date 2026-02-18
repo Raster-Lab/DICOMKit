@@ -2,8 +2,7 @@ import XCTest
 import Foundation
 @testable import DICOMKit
 @testable import DICOMCore
-
-// MARK: - DICOMGateway Tests
+@testable import dicom_gateway
 
 final class DICOMGatewayTests: XCTestCase {
     
@@ -515,7 +514,7 @@ final class DICOMGatewayTests: XCTestCase {
         let dicomFile = try createTestDICOMFile()
         
         // Validate PDI compliance
-        let issues = IHEProfiles.PDI.validate(dicomFile)
+        let issues = try IHEProfiles.PDI.validate(dicomFile)
         
         // Our test file should pass validation (empty issues array)
         XCTAssertTrue(issues.isEmpty, "PDI validation should pass for test file")
@@ -533,7 +532,7 @@ final class DICOMGatewayTests: XCTestCase {
         
         let dicomFile = DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataSet)
         
-        let issues = IHEProfiles.PDI.validate(dicomFile)
+        let issues = try IHEProfiles.PDI.validate(dicomFile)
         
         // Should have issues for missing required tags
         XCTAssertFalse(issues.isEmpty, "Should detect missing required tags")
