@@ -30,11 +30,30 @@ public struct DICOMwebRequest: Sendable {
         remoteAddress: String? = nil
     ) {
         self.method = method
-        self.path = path
-        self.queryParameters = queryParameters
         self.headers = headers
         self.body = body
         self.remoteAddress = remoteAddress
+        
+        // Parse query parameters from path if present
+        if let queryIndex = path.firstIndex(of: "?") {
+            self.path = String(path[path.startIndex..<queryIndex])
+            var parsedParams = queryParameters
+            let queryString = String(path[path.index(after: queryIndex)...])
+            for param in queryString.split(separator: "&") {
+                let parts = param.split(separator: "=", maxSplits: 1)
+                if parts.count == 2 {
+                    let key = String(parts[0])
+                    let value = String(parts[1])
+                    if parsedParams[key] == nil {
+                        parsedParams[key] = value
+                    }
+                }
+            }
+            self.queryParameters = parsedParams
+        } else {
+            self.path = path
+            self.queryParameters = queryParameters
+        }
     }
     
     /// Gets a header value (case-insensitive)
@@ -472,12 +491,20 @@ public struct DICOMwebRouter: Sendable {
     ///   - method: The HTTP method
     /// - Returns: A route match if found, nil otherwise
     public func match(path: String, method: DICOMwebRequest.HTTPMethod) -> RouteMatch? {
+        // Strip query string from path if present
+        let pathWithoutQuery: String
+        if let queryIndex = path.firstIndex(of: "?") {
+            pathWithoutQuery = String(path[path.startIndex..<queryIndex])
+        } else {
+            pathWithoutQuery = path
+        }
+        
         // Remove prefix and normalize path
-        guard path.hasPrefix(pathPrefix) else {
+        guard pathWithoutQuery.hasPrefix(pathPrefix) else {
             return nil
         }
         
-        let relativePath = String(path.dropFirst(pathPrefix.count))
+        let relativePath = String(pathWithoutQuery.dropFirst(pathPrefix.count))
         let normalizedPath = relativePath.isEmpty ? "/" : relativePath
         
         // Split path into components
