@@ -260,7 +260,7 @@ let package = Package(
         ),
         .testTarget(
             name: "DICOMToolsTests",
-            dependencies: ["DICOMKit", "DICOMCore", "DICOMDictionary", "DICOMWeb"]
+            dependencies: ["DICOMKit", "DICOMCore", "DICOMDictionary", "DICOMNetwork", "DICOMWeb", "dicom-server", "dicom-gateway", "dicom-ai", "dicom-echo", "dicom-query"]
         ),
         .executableTarget(
             name: "dicom-info",

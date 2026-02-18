@@ -17,7 +17,8 @@ jobs:
     strategy:
       matrix:
         # Test on different Xcode versions for comprehensive coverage
-        xcode: ['15.2', '15.3']
+        # Xcode 15.3+ required for swift-tools-version: 5.10 (Swift 5.10)
+        xcode: ['15.3', '15.4']
     
     steps:
     - name: Checkout code
