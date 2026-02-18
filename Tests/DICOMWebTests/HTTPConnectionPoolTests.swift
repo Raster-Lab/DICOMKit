@@ -167,7 +167,11 @@ struct PooledConnectionTests {
     
     @Test("Pooled connection has unique IDs")
     func testUniqueConnectionIDs() async {
-        let pool = HTTPConnectionPool()
+        let config = HTTPConnectionPoolConfiguration(
+            maxConnectionsPerHost: 10,
+            maxStreamsPerConnection: 1
+        )
+        let pool = HTTPConnectionPool(configuration: config)
         await pool.start()
         
         let conn1 = await pool.acquireConnection(for: "example.com")

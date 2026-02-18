@@ -513,11 +513,13 @@ public actor DICOMStorageServer {
         self.listener = listener
         
         listener.stateUpdateHandler = { [weak self] state in
-            Task { await self?.handleListenerState(state) }
+            guard let self else { return }
+            Task { await self.handleListenerState(state) }
         }
         
         listener.newConnectionHandler = { [weak self] connection in
-            Task { await self?.handleNewConnection(connection) }
+            guard let self else { return }
+            Task { await self.handleNewConnection(connection) }
         }
         
         listener.start(queue: .global(qos: .userInitiated))

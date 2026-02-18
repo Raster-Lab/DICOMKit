@@ -279,7 +279,7 @@ public actor AnnotationRenderer {
             
             context.saveGState()
             if samplesPerPixel == 1 {
-                context.setGrayFillColor(0.0, alpha: annotation.backgroundOpacity)
+                context.setFillColor(gray: 0.0, alpha: annotation.backgroundOpacity)
             } else {
                 context.setFillColor(red: 0.0, green: 0.0, blue: 0.0, alpha: annotation.backgroundOpacity)
             }
@@ -291,7 +291,7 @@ public actor AnnotationRenderer {
         context.saveGState()
         if samplesPerPixel == 1 {
             let grayValue = CGFloat(annotation.color.byteValue) / 255.0
-            context.setGrayFillColor(grayValue, alpha: 1.0)
+            context.setFillColor(gray: grayValue, alpha: 1.0)
         } else {
             let colorValue = CGFloat(annotation.color.byteValue) / 255.0
             context.setFillColor(red: colorValue, green: colorValue, blue: colorValue, alpha: 1.0)

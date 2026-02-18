@@ -50,8 +50,9 @@ actor ServerSession {
         isActive = true
         
         connection.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
             Task {
-                await self?.handleConnectionState(state)
+                await self.handleConnectionState(state)
             }
         }
         

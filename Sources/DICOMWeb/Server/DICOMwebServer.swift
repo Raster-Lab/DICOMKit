@@ -227,13 +227,13 @@ public actor DICOMwebServer {
         case .storeInstancesInStudy:
             return try await handleStoreInstances(studyUID: match.parameters["studyUID"], request: request)
             
-        // Delete
+        // Delete (merge request query parameters for mode support)
         case .deleteStudy:
-            return try await handleDeleteStudy(parameters: match.parameters)
+            return try await handleDeleteStudy(parameters: match.parameters.merging(request.queryParameters) { current, _ in current })
         case .deleteSeries:
-            return try await handleDeleteSeries(parameters: match.parameters)
+            return try await handleDeleteSeries(parameters: match.parameters.merging(request.queryParameters) { current, _ in current })
         case .deleteInstance:
-            return try await handleDeleteInstance(parameters: match.parameters)
+            return try await handleDeleteInstance(parameters: match.parameters.merging(request.queryParameters) { current, _ in current })
             
         // UPS-RS Handlers
         case .searchWorkitems:
