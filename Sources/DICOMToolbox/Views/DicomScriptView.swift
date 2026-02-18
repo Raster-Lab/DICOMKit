@@ -88,12 +88,13 @@ public struct DicomScriptView: View {
             title: "Variables",
             help: "Define variables to pass to the script. Each variable uses KEY=VALUE format."
         ) {
-            RepeatableOptionView(
-                parameterID: "variables",
-                label: "Script Variables",
-                placeholder: "KEY=VALUE",
-                parameterValues: $parameterValues
-            )
+            if let runSub = tool.subcommands?.first(where: { $0.id == "run" }),
+               let variablesParam = runSub.parameters.first(where: { $0.id == "variables" }) {
+                RepeatableOptionView(
+                    parameter: variablesParam,
+                    parameterValues: $parameterValues
+                )
+            }
         }
 
         ParameterSectionView(
