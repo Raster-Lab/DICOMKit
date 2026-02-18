@@ -2,8 +2,8 @@ import XCTest
 import Foundation
 @testable import DICOMKit
 @testable import DICOMCore
-
-// MARK: - DICOMServer Tests
+@testable import DICOMNetwork
+@testable import dicom_server
 
 final class DICOMServerTests: XCTestCase {
     
@@ -158,9 +158,7 @@ final class DICOMServerTests: XCTestCase {
         
         // Store some files
         for i in 0..<3 {
-            var file = try createTestDICOMFile()
-            // Update SOP Instance UID to make it unique
-            file.dataSet.setString("1.2.3.4.5.6.7.8.\(i)", for: .sopInstanceUID, vr: .UI)
+            let file = try createTestDICOMFileWithUID("1.2.3.4.5.6.7.8.\(i)")
             _ = try await storage.store(file: file)
         }
         
@@ -298,6 +296,27 @@ final class DICOMServerTests: XCTestCase {
         dataSet.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
         dataSet.setString("1.2.3.4.5.6.7.8.9", for: .sopInstanceUID, vr: .UI)
         dataSet.setString("1", for: .instanceNumber, vr: .IS)
+        
+        return DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataSet)
+    }
+    
+    private func createTestDICOMFileWithUID(_ sopInstanceUID: String) throws -> DICOMFile {
+        var fileMetaInformation = DataSet()
+        var dataSet = DataSet()
+        
+        fileMetaInformation.setString("1.2.840.10008.1.2.1", for: .transferSyntaxUID, vr: .UI)
+        fileMetaInformation.setString("1.2.840.10008.5.1.4.1.1.2", for: .mediaStorageSOPClassUID, vr: .UI)
+        fileMetaInformation.setString(sopInstanceUID, for: .mediaStorageSOPInstanceUID, vr: .UI)
+        fileMetaInformation.setString("1.2.826.0.1.3680043.10.1078", for: .implementationClassUID, vr: .UI)
+        fileMetaInformation.setString("DICOMKit_Test", for: .implementationVersionName, vr: .SH)
+        
+        dataSet.setString("TEST001", for: .patientID, vr: .LO)
+        dataSet.setString("DOE^JOHN", for: .patientName, vr: .PN)
+        dataSet.setString("1.2.840.113619.2.62.994044785528.114289542805", for: .studyInstanceUID, vr: .UI)
+        dataSet.setString("1.2.840.113619.2.62.994044785528.20070822161025697420", for: .seriesInstanceUID, vr: .UI)
+        dataSet.setString("CT", for: .modality, vr: .CS)
+        dataSet.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
+        dataSet.setString(sopInstanceUID, for: .sopInstanceUID, vr: .UI)
         
         return DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataSet)
     }
@@ -797,7 +816,7 @@ final class DICOMServerTests: XCTestCase {
         let response = CGetResponse(
             messageIDBeingRespondedTo: 1,
             affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.3",
-            status: .pending,
+            status: .pending(warningOptionalKeys: false),
             remaining: 3,
             completed: 2,
             failed: 0,
@@ -832,7 +851,7 @@ final class DICOMServerTests: XCTestCase {
         let response = CMoveResponse(
             messageIDBeingRespondedTo: 1,
             affectedSOPClassUID: "1.2.840.10008.5.1.4.1.2.2.2",
-            status: .warningSubOperationsCompleteOneOrMoreFailures,
+            status: .warningCoercionOfDataElements,
             remaining: 0,
             completed: 8,
             failed: 2,
@@ -1103,9 +1122,10 @@ final class DICOMServerTests: XCTestCase {
         try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
         
         let summary = await stats.getSummary()
+        let statsStartTime = await stats.startTime
         XCTAssertGreaterThan(summary.uptime, 0)
         XCTAssertEqual(summary.startTime.timeIntervalSinceReferenceDate,
-                      stats.startTime.timeIntervalSinceReferenceDate,
+                      statsStartTime.timeIntervalSinceReferenceDate,
                       accuracy: 0.1)
     }
     

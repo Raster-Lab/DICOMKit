@@ -82,8 +82,8 @@ final class PrintServiceTests: XCTestCase {
     // MARK: - PrintColorMode Tests
     
     func testPrintColorModeRawValues() {
-        XCTAssertEqual(PrintColorMode.grayscale.rawValue, "GRAYSCALE")
-        XCTAssertEqual(PrintColorMode.color.rawValue, "COLOR")
+        XCTAssertEqual(DICOMNetwork.PrintColorMode.grayscale.rawValue, "GRAYSCALE")
+        XCTAssertEqual(DICOMNetwork.PrintColorMode.color.rawValue, "COLOR")
     }
     
     // MARK: - FilmSession Tests
@@ -1322,17 +1322,19 @@ final class PrintServiceTests: XCTestCase {
         }
         
         var dataSet = DataSet()
-        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
-        try dataSet.set(uint16: UInt16(height), for: .rows)
-        try dataSet.set(uint16: UInt16(width), for: .columns)
-        try dataSet.set(uint16: 8, for: .bitsAllocated)
-        try dataSet.set(uint16: 1, for: .samplesPerPixel)
-        try dataSet.set(string: "MONOCHROME2", for: .photometricInterpretation)
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
+        dataSet.setUInt16(UInt16(height), for: .rows)
+        dataSet.setUInt16(UInt16(width), for: .columns)
+        dataSet.setUInt16(8, for: .bitsAllocated)
+        dataSet.setUInt16(8, for: .bitsStored)
+        dataSet.setUInt16(7, for: .highBit)
+        dataSet.setUInt16(0, for: .pixelRepresentation)
+        dataSet.setUInt16(1, for: .samplesPerPixel)
+        dataSet.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
         
         let preprocessor = ImagePreprocessor()
         let result = try await preprocessor.prepareForPrint(
             dataSet: dataSet,
-            targetSize: CGSize(width: 64, height: 64),
             colorMode: .grayscale
         )
         
@@ -1356,17 +1358,19 @@ final class PrintServiceTests: XCTestCase {
         }
         
         var dataSet = DataSet()
-        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
-        try dataSet.set(uint16: UInt16(height), for: .rows)
-        try dataSet.set(uint16: UInt16(width), for: .columns)
-        try dataSet.set(uint16: 8, for: .bitsAllocated)
-        try dataSet.set(uint16: 1, for: .samplesPerPixel)
-        try dataSet.set(string: "MONOCHROME1", for: .photometricInterpretation)
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
+        dataSet.setUInt16(UInt16(height), for: .rows)
+        dataSet.setUInt16(UInt16(width), for: .columns)
+        dataSet.setUInt16(8, for: .bitsAllocated)
+        dataSet.setUInt16(8, for: .bitsStored)
+        dataSet.setUInt16(7, for: .highBit)
+        dataSet.setUInt16(0, for: .pixelRepresentation)
+        dataSet.setUInt16(1, for: .samplesPerPixel)
+        dataSet.setString("MONOCHROME1", for: .photometricInterpretation, vr: .CS)
         
         let preprocessor = ImagePreprocessor()
         let result = try await preprocessor.prepareForPrint(
             dataSet: dataSet,
-            targetSize: CGSize(width: 4, height: 4),
             colorMode: .grayscale
         )
         
@@ -1395,17 +1399,19 @@ final class PrintServiceTests: XCTestCase {
         }
         
         var dataSet = DataSet()
-        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
-        try dataSet.set(uint16: UInt16(height), for: .rows)
-        try dataSet.set(uint16: UInt16(width), for: .columns)
-        try dataSet.set(uint16: 16, for: .bitsAllocated)
-        try dataSet.set(uint16: 1, for: .samplesPerPixel)
-        try dataSet.set(string: "MONOCHROME1", for: .photometricInterpretation)
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
+        dataSet.setUInt16(UInt16(height), for: .rows)
+        dataSet.setUInt16(UInt16(width), for: .columns)
+        dataSet.setUInt16(16, for: .bitsAllocated)
+        dataSet.setUInt16(16, for: .bitsStored)
+        dataSet.setUInt16(15, for: .highBit)
+        dataSet.setUInt16(0, for: .pixelRepresentation)
+        dataSet.setUInt16(1, for: .samplesPerPixel)
+        dataSet.setString("MONOCHROME1", for: .photometricInterpretation, vr: .CS)
         
         let preprocessor = ImagePreprocessor()
         let result = try await preprocessor.prepareForPrint(
             dataSet: dataSet,
-            targetSize: CGSize(width: 4, height: 4),
             colorMode: .grayscale
         )
         
@@ -1435,19 +1441,21 @@ final class PrintServiceTests: XCTestCase {
         }
         
         var dataSet = DataSet()
-        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
-        try dataSet.set(uint16: UInt16(height), for: .rows)
-        try dataSet.set(uint16: UInt16(width), for: .columns)
-        try dataSet.set(uint16: 8, for: .bitsAllocated)
-        try dataSet.set(uint16: 1, for: .samplesPerPixel)
-        try dataSet.set(string: "MONOCHROME2", for: .photometricInterpretation)
-        try dataSet.set(decimalString: [128.0], for: .windowCenter)
-        try dataSet.set(decimalString: [256.0], for: .windowWidth)
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
+        dataSet.setUInt16(UInt16(height), for: .rows)
+        dataSet.setUInt16(UInt16(width), for: .columns)
+        dataSet.setUInt16(8, for: .bitsAllocated)
+        dataSet.setUInt16(8, for: .bitsStored)
+        dataSet.setUInt16(7, for: .highBit)
+        dataSet.setUInt16(0, for: .pixelRepresentation)
+        dataSet.setUInt16(1, for: .samplesPerPixel)
+        dataSet.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+        dataSet.setString(String(128.0), for: .windowCenter, vr: .DS)
+        dataSet.setString(String(256.0), for: .windowWidth, vr: .DS)
         
         let preprocessor = ImagePreprocessor()
         let result = try await preprocessor.prepareForPrint(
             dataSet: dataSet,
-            targetSize: CGSize(width: 4, height: 4),
             colorMode: .grayscale
         )
         
@@ -1474,17 +1482,19 @@ final class PrintServiceTests: XCTestCase {
         pixelData[9] = 0; pixelData[10] = 0; pixelData[11] = 255
         
         var dataSet = DataSet()
-        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
-        try dataSet.set(uint16: UInt16(height), for: .rows)
-        try dataSet.set(uint16: UInt16(width), for: .columns)
-        try dataSet.set(uint16: 8, for: .bitsAllocated)
-        try dataSet.set(uint16: 3, for: .samplesPerPixel)
-        try dataSet.set(string: "RGB", for: .photometricInterpretation)
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
+        dataSet.setUInt16(UInt16(height), for: .rows)
+        dataSet.setUInt16(UInt16(width), for: .columns)
+        dataSet.setUInt16(8, for: .bitsAllocated)
+        dataSet.setUInt16(8, for: .bitsStored)
+        dataSet.setUInt16(7, for: .highBit)
+        dataSet.setUInt16(0, for: .pixelRepresentation)
+        dataSet.setUInt16(3, for: .samplesPerPixel)
+        dataSet.setString("RGB", for: .photometricInterpretation, vr: .CS)
         
         let preprocessor = ImagePreprocessor()
         let result = try await preprocessor.prepareForPrint(
             dataSet: dataSet,
-            targetSize: CGSize(width: 2, height: 2),
             colorMode: .grayscale
         )
         
@@ -1505,16 +1515,15 @@ final class PrintServiceTests: XCTestCase {
     
     func testPreprocessMissingPixelDataThrowsError() async throws {
         var dataSet = DataSet()
-        try dataSet.set(uint16: 64, for: .rows)
-        try dataSet.set(uint16: 64, for: .columns)
-        try dataSet.set(uint16: 8, for: .bitsAllocated)
+        dataSet.setUInt16(64, for: .rows)
+        dataSet.setUInt16(64, for: .columns)
+        dataSet.setUInt16(8, for: .bitsAllocated)
         
         let preprocessor = ImagePreprocessor()
         
         do {
             _ = try await preprocessor.prepareForPrint(
                 dataSet: dataSet,
-                targetSize: CGSize(width: 64, height: 64),
                 colorMode: .grayscale
             )
             XCTFail("Expected error for missing pixel data")
@@ -1530,7 +1539,7 @@ final class PrintServiceTests: XCTestCase {
         }
         
         var dataSet = DataSet()
-        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
         // Missing rows, columns, bitsAllocated
         
         let preprocessor = ImagePreprocessor()
@@ -1538,7 +1547,6 @@ final class PrintServiceTests: XCTestCase {
         do {
             _ = try await preprocessor.prepareForPrint(
                 dataSet: dataSet,
-                targetSize: CGSize(width: 64, height: 64),
                 colorMode: .grayscale
             )
             XCTFail("Expected error for missing image attributes")
@@ -1559,17 +1567,19 @@ final class PrintServiceTests: XCTestCase {
         }
         
         var dataSet = DataSet()
-        try dataSet.set(element: DataElement(tag: .pixelData, data: pixelData))
-        try dataSet.set(uint16: UInt16(height), for: .rows)
-        try dataSet.set(uint16: UInt16(width), for: .columns)
-        try dataSet.set(uint16: 8, for: .bitsAllocated)
-        try dataSet.set(uint16: 3, for: .samplesPerPixel)
-        try dataSet.set(string: "RGB", for: .photometricInterpretation)
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
+        dataSet.setUInt16(UInt16(height), for: .rows)
+        dataSet.setUInt16(UInt16(width), for: .columns)
+        dataSet.setUInt16(8, for: .bitsAllocated)
+        dataSet.setUInt16(8, for: .bitsStored)
+        dataSet.setUInt16(7, for: .highBit)
+        dataSet.setUInt16(0, for: .pixelRepresentation)
+        dataSet.setUInt16(3, for: .samplesPerPixel)
+        dataSet.setString("RGB", for: .photometricInterpretation, vr: .CS)
         
         let preprocessor = ImagePreprocessor()
         let result = try await preprocessor.prepareForPrint(
             dataSet: dataSet,
-            targetSize: CGSize(width: 2, height: 2),
             colorMode: .color
         )
         

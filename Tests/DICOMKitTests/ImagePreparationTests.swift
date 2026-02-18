@@ -634,23 +634,23 @@ final class ImagePreparationTests: XCTestCase {
         var dataSet = DataSet()
         
         // Add image dimensions
-        dataSet.set(tag: .rows, value: UInt16(height))
-        dataSet.set(tag: .columns, value: UInt16(width))
-        dataSet.set(tag: .bitsAllocated, value: UInt16(bitsAllocated))
-        dataSet.set(tag: .bitsStored, value: UInt16(bitsAllocated))
-        dataSet.set(tag: .highBit, value: UInt16(bitsAllocated - 1))
-        dataSet.set(tag: .samplesPerPixel, value: UInt16(samplesPerPixel))
-        dataSet.set(tag: .photometricInterpretation, value: photometricInterpretation)
-        dataSet.set(tag: .pixelRepresentation, value: UInt16(0))
+        dataSet.setUInt16(UInt16(height), for: .rows)
+        dataSet.setUInt16(UInt16(width), for: .columns)
+        dataSet.setUInt16(UInt16(bitsAllocated), for: .bitsAllocated)
+        dataSet.setUInt16(UInt16(bitsAllocated), for: .bitsStored)
+        dataSet.setUInt16(UInt16(bitsAllocated - 1), for: .highBit)
+        dataSet.setUInt16(UInt16(samplesPerPixel), for: .samplesPerPixel)
+        dataSet.setString(photometricInterpretation, for: .photometricInterpretation, vr: .CS)
+        dataSet.setUInt16(UInt16(0), for: .pixelRepresentation)
         
         // Add pixel data
         let pixelCount = width * height * samplesPerPixel
         let pixelData = Data(repeating: 128, count: pixelCount)
-        dataSet.set(tag: .pixelData, value: pixelData)
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
         
         // Add optional rescale parameters
-        dataSet.set(tag: .rescaleSlope, value: "1.0")
-        dataSet.set(tag: .rescaleIntercept, value: "0.0")
+        dataSet.setString("1.0", for: .rescaleSlope, vr: .DS)
+        dataSet.setString("0.0", for: .rescaleIntercept, vr: .DS)
         
         return dataSet
     }

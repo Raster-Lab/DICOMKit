@@ -2,8 +2,7 @@ import XCTest
 import Foundation
 @testable import DICOMKit
 @testable import DICOMCore
-
-/// Tests for dicom-ai CLI tool functionality
+@testable import dicom_ai
 /// These tests validate AI model loading, preprocessing, and inference operations
 final class DICOMAITests: XCTestCase {
     
@@ -1012,8 +1011,8 @@ final class DICOMAITests: XCTestCase {
         )
         
         XCTAssertEqual(metrics.inferenceTime, 0.123, accuracy: 0.001)
-        XCTAssertEqual(metrics.preprocessingTime, 0.045, accuracy: 0.001)
-        XCTAssertEqual(metrics.postprocessingTime, 0.012, accuracy: 0.001)
+        XCTAssertEqual(metrics.preprocessingTime ?? 0.0, 0.045, accuracy: 0.001)
+        XCTAssertEqual(metrics.postprocessingTime ?? 0.0, 0.012, accuracy: 0.001)
         XCTAssertEqual(metrics.totalTime, 0.180, accuracy: 0.001)
         XCTAssertEqual(metrics.memoryUsage, 1024 * 1024 * 50)
         XCTAssertEqual(metrics.modelName, "test-model")

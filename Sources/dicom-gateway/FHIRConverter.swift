@@ -398,7 +398,4 @@ extension Tag {
     static let numberOfStudyRelatedSeries = Tag(group: 0x0020, element: 0x1206)
     static let numberOfStudyRelatedInstances = Tag(group: 0x0020, element: 0x1208)
     static let numberOfSeriesRelatedInstances = Tag(group: 0x0020, element: 0x1209)
-    static let seriesInstanceUID = Tag(group: 0x0020, element: 0x000E)
-    static let sopClassUID = Tag(group: 0x0008, element: 0x0016)
-    static let sopInstanceUID = Tag(group: 0x0008, element: 0x0018)
 }
