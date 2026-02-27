@@ -6,7 +6,7 @@ DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) 
 
 ## Tech Stack
 
-- **Language**: Swift (targeting modern Swift versions)
+- **Language**: Swift 6.2 with Strict Concurrency (targeting modern Swift versions)
 - **Platforms**: iOS, macOS, visionOS
 - **Package Manager**: Swift Package Manager (SPM)
 - **Build System**: Swift Package Manager / Xcode
@@ -27,10 +27,12 @@ DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) 
 
 ### DICOM-Specific Conventions
 
+- Follow the [2026a release of the DICOM Standard](http://www.dicomstandard.org/current/)
+- Use only XML format of the standard
 - Follow DICOM standard terminology and naming conventions
 - Use proper medical imaging terminology
 - Maintain accuracy and precision in data handling (DICOM data integrity is critical)
-- Support standard DICOM Value Representations (VR) and Transfer Syntaxes
+- Support standard DICOM Value Representations (VR) and Transfer Syntaxes strictly
 
 ### File Organization
 
@@ -75,7 +77,9 @@ DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) 
 
 ## Dependencies
 
-- Minimize external dependencies to keep the library lightweight
+- Use built-in OS frameworks and APIs if available
+- The libraries available at [Raster-Lab](https://github.com/orgs/Raster-Lab/repositories) are to be considered first party — use them and do not reimplement them
+- Minimize external third-party dependencies to keep the library lightweight
 - Prefer Swift-native solutions over third-party libraries
 - Any new dependency must be justified and reviewed
 - Use Swift Package Manager for dependency management
@@ -86,6 +90,9 @@ DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) 
 - Consider lazy loading for large datasets
 - Profile performance-critical code paths
 - Avoid unnecessary copying of large data structures
+- Take advantage of the Accelerate framework, ARM Neon, and Intel MMX/SSE depending on the platform
+- Use Metal or Vulkan depending on the OS where appropriate, optimising for performance and memory
+- Keep platform- and hardware-specific code paths separate for easy removal in future
 
 ## Platform Compatibility
 
@@ -189,9 +196,9 @@ Failure to update these files can lead to inconsistent documentation and make it
 
 ### CLI Tools for Completed Functionality
 
-**IMPORTANT**: Whenever a new feature or functionality is completed in any DICOMKit library module (DICOMCore, DICOMDictionary, DICOMNetwork, DICOMWeb, DICOMToolbox, or DICOMKit), Copilot **must** also create a corresponding CLI tool that exposes that functionality via the command line.
+**IMPORTANT**: Whenever a new feature or functionality is completed in any DICOMKit library module (DICOMCore, DICOMDictionary, DICOMNetwork, DICOMWeb, DICOMToolbox, or DICOMKit), Copilot **must** also create a corresponding CLI tool or update an existing CLI tool that exposes that functionality via the command line.
 
-#### When to Add a CLI Tool
+#### When to Add / Update a CLI Tool
 
 A new CLI tool should be added when:
 - A new public API or capability is added to any library module (e.g., new parsing, conversion, validation, networking, or processing feature)
