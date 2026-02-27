@@ -18,7 +18,7 @@ Implemented a production-ready CI/CD pipeline using GitHub Actions to automate b
 - **Purpose**: Continuous integration for every push and PR
 - **Runtime**: ~5-10 minutes
 - **Features**:
-  - Matrix builds on Xcode 15.2 and 15.3
+  - Matrix builds on Xcode 16.0 and 16.2
   - Parallel test execution (1,464+ tests)
   - Swift Package Manager caching
   - Platform validation (iOS, macOS, visionOS)

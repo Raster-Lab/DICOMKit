@@ -11,8 +11,8 @@ DICOMKit uses GitHub Actions for automated continuous integration, testing, and 
 **Triggers**: Push/PR to `main` or `develop` branches
 
 **Jobs**:
-- **test-macos**: Builds and tests on macOS 14 with multiple Xcode versions
-  - Matrix: Xcode 15.2 and 15.3
+- **test-macos**: Builds and tests on macOS 15 with multiple Xcode versions
+  - Matrix: Xcode 16.0 and 16.2
   - Caches Swift Package Manager dependencies
   - Runs parallel tests
   - Builds in both debug and release modes
