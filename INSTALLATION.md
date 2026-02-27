@@ -17,9 +17,9 @@ This guide provides detailed instructions for installing DICOMKit and its CLI to
 
 ## Requirements
 
-- **macOS**: macOS 14.0 (Sonoma) or later
-- **Xcode**: Xcode 15.0 or later (includes Swift 6.2+)
-- **Swift**: Swift 6.2 or later
+- **macOS**: macOS 15.0 (Sequoia) or later
+- **Xcode**: Xcode 16.0 or later (includes Swift 6+)
+- **Swift**: Swift 6.0 or later
 
 To check your Swift version:
 ```bash
