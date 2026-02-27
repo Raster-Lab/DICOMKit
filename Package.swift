@@ -1,4 +1,4 @@
-// swift-tools-version: 5.10
+// swift-tools-version: 6.0
 
 import PackageDescription
 
@@ -194,45 +194,27 @@ let package = Package(
     targets: [
         .target(
             name: "DICOMCore",
-            exclude: ["CharacterSetHandler+README.md"],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            exclude: ["CharacterSetHandler+README.md"]
         ),
         .target(
             name: "DICOMDictionary",
-            dependencies: ["DICOMCore"],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            dependencies: ["DICOMCore"]
         ),
         .target(
             name: "DICOMNetwork",
-            dependencies: ["DICOMCore", "DICOMDictionary"],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            dependencies: ["DICOMCore", "DICOMDictionary"]
         ),
         .target(
             name: "DICOMWeb",
-            dependencies: ["DICOMCore", "DICOMKit"],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            dependencies: ["DICOMCore", "DICOMKit"]
         ),
         .target(
             name: "DICOMKit",
             dependencies: ["DICOMCore", "DICOMDictionary"],
-            exclude: ["AI/SIMPLIFIED_README.md"],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            exclude: ["AI/SIMPLIFIED_README.md"]
         ),
         .target(
-            name: "DICOMToolbox",
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            name: "DICOMToolbox"
         ),
         .testTarget(
             name: "DICOMCoreTests",
@@ -356,10 +338,7 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-retrieve",
-            exclude: ["README.md"],
-            swiftSettings: [
-                .enableUpcomingFeature("StrictConcurrency")
-            ]
+            exclude: ["README.md"]
         ),
         .executableTarget(
             name: "dicom-split",
