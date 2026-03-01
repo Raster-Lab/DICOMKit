@@ -102,12 +102,6 @@ DICOMKit v1.0.0 is the first production-ready release of a comprehensive, pure S
 - PACS query/retrieve
 - Export and printing
 
-**DICOMViewer visionOS**: Spatial computing medical imaging
-- 3D volume rendering in immersive space
-- Hand tracking and gesture controls
-- Spatial measurements
-- Collaborative viewing
-
 **CLI Tools**: Seven command-line utilities
 - `dicom-info`: Display metadata
 - `dicom-dump`: Detailed data element dump

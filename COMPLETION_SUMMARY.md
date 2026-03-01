@@ -12,7 +12,6 @@
 Upon analyzing the repository, I identified that **CLI Tools Phase 2** was the next priority task. The repository showed:
 - ✅ DICOMViewer iOS - Complete
 - ✅ DICOMViewer macOS - Complete (Phase 5)
-- ✅ DICOMViewer visionOS - Complete
 - ✅ CLI Tools Phase 1 - Complete (7 tools)
 - 🚧 CLI Tools Phase 2 - In Progress (1 of 4 tools listed as complete)
 
@@ -102,7 +101,6 @@ Updated 4 documentation files to reflect Phase 2 completion:
 ### Demo Applications ✅
 - iOS Viewer (4 phases, 21 files, 35+ tests)
 - macOS Viewer (5 phases, 61 files, 379+ tests)
-- visionOS Viewer (4 phases, 42 files, 205+ tests)
 
 ### CLI Tools ✅
 - Phase 1: 7 tools (160+ tests)

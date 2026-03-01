@@ -17,7 +17,6 @@ This document provides a high-level overview. For detailed phase-by-phase implem
 - **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI (29 tools, 4-5 weeks, 318+ tests) 🆕 SwiftUI macOS app for all CLI tools
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS ✅ **IMPLEMENTED** (35+ unit tests, comprehensive documentation)
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 250+ unit tests, 70+ integration tests, 40+ UI tests)
-- **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 205+ unit tests, 45+ integration tests, 20+ device tests)
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Sample Code & Playgrounds (27 playgrounds, 1 week, 575+ test cases)
 
 **iOS Viewer Status**: ✅ **Complete with Automation** (February 2026)
@@ -421,146 +420,6 @@ DICOMViewerApp (macOS)
 - [ ] Zero data loss in read/anonymize/write workflows
 - [ ] Apple notarization and Gatekeeper approval
 - [ ] Comprehensive test coverage (85%+)
-
----
-
-### 3. DICOMViewer visionOS App
-
-**Platform**: visionOS 1+  
-**Complexity**: Very High  
-**Development Time**: 3-4 weeks  
-**Primary Use Cases**: Immersive 3D medical imaging, surgical planning, medical education, spatial anatomy visualization
-
-#### Core Features
-
-##### 3.1 Spatial Image Viewing
-- **3D Window Placement**
-  - Floating image windows in space
-  - Multi-study arrangement in room
-  - Distance-based scaling
-  - Spatial anchoring to physical space
-
-- **Immersive Viewing Mode**
-  - Full immersion for focused reading
-  - Adjustable immersion level (0-100%)
-  - Virtual environment customization
-  - Distraction-free clinical review
-
-##### 3.2 3D Volume Rendering
-- **Volume Visualization**
-  - Direct volume rendering with RealityKit
-  - Adjustable opacity transfer function
-  - Color mapping for multi-modality fusion
-  - Clipping planes for sectional views
-  - Preset rendering styles (MIP, VR, MinIP)
-
-- **Interactive 3D Manipulation**
-  - Hand tracking for rotation
-  - Pinch gestures for scaling
-  - Slice navigation with hand gestures
-  - Virtual trackpad for precise control
-
-##### 3.3 Spatial Measurements
-- **3D Measurement Tools**
-  - 3D distance measurements in space
-  - Volume ROI definition with hands
-  - Spatial annotations floating in 3D
-  - Angle measurements with ray casting
-
-- **Spatial Visualization**
-  - RT Structure Set as 3D contours
-  - Organ segmentation in 3D space
-  - Tumor tracking across slices
-  - Vessel centerlines and pathways
-
-##### 3.4 Hand Tracking Integration
-- **Gesture Controls**
-  - Air tap for selection
-  - Pinch and drag for measurements
-  - Two-hand rotation/scaling
-  - Palm menu for tool selection
-
-- **Spatial Interaction**
-  - Ray casting from index finger
-  - Direct manipulation of 3D objects
-  - Haptic feedback (via controller if available)
-  - Voice commands for common actions
-
-##### 3.5 Collaborative Features
-- **SharePlay Integration**
-  - Multi-user viewing session
-  - Synchronized navigation
-  - Spatial annotations visible to all
-  - Voice communication overlay
-
-- **Teaching Mode**
-  - Presenter view with annotations
-  - Student views follow presenter
-  - Quiz mode with hotspots
-  - Recording and playback
-
-##### 3.6 visionOS-Specific Features
-- **Spatial Computing**
-  - Room-aware placement of windows
-  - Persistent spatial anchors
-  - Eye tracking for UI focus
-  - Persona integration for collaboration
-
-- **RealityKit Integration**
-  - Volume rendering with RealityKit
-  - Custom shaders for medical imaging
-  - Particle effects for blood flow
-  - Physics simulation for surgical planning
-
-#### Technical Architecture
-
-```
-DICOMViewerApp (visionOS)
-├── App/
-│   ├── DICOMViewerApp.swift           // App entry point
-│   └── ImmersiveSpaceManager.swift    // Immersion control
-├── Views/
-│   ├── StudyGalleryView.swift         // 3D study browser
-│   ├── SpatialViewerView.swift        // Floating image viewer
-│   ├── ImmersiveVolumeView.swift      // Full immersion VR
-│   ├── MPRSpatialView.swift           // 3D MPR display
-│   └── MeasurementToolsView.swift     // 3D tool palette
-├── ViewModels/
-│   ├── SpatialViewerViewModel.swift   // Spatial state management
-│   ├── VolumeRenderingViewModel.swift // 3D rendering control
-│   └── GestureViewModel.swift         // Hand gesture processing
-├── RealityKit/
-│   ├── VolumeEntity.swift             // 3D volume entity
-│   ├── SliceEntity.swift              // 2D slice in 3D space
-│   ├── AnnotationEntity.swift         // 3D annotations
-│   └── Shaders/
-│       ├── VolumeShader.metal         // Volume rendering shader
-│       └── TransferFunction.metal     // Opacity/color transfer
-├── Services/
-│   ├── SpatialMappingService.swift    // Room mapping
-│   ├── HandTrackingService.swift      // Gesture recognition
-│   ├── VolumeRenderingService.swift   // RealityKit rendering
-│   └── SharePlayService.swift         // Collaboration
-└── Models/
-    ├── SpatialLayout.swift            // Window arrangement
-    ├── VolumeSettings.swift           // Rendering parameters
-    └── GestureAction.swift            // Gesture mappings
-```
-
-#### Testing Requirements
-- Simulator testing for basic functionality
-- visionOS device testing for hand tracking
-- Performance testing for volume rendering (30+ fps)
-- Memory constraints testing (2GB limit for immersive apps)
-- Accessibility testing with AssistiveTouch
-
-#### Acceptance Criteria
-- [ ] Smooth 60fps window rendering in shared space
-- [ ] 30fps volume rendering in full immersion
-- [ ] Accurate hand tracking for measurements (±2mm)
-- [ ] SharePlay sessions with 2+ users stable
-- [ ] Memory usage under 1.5GB for typical datasets
-- [ ] App Store submission approved
 
 ---
 
@@ -1174,7 +1033,6 @@ This comprehensive demo application plan provides a roadmap for creating product
 | **CLI Tools Suite** | [CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md) | 2-3 weeks | 370+ unit, 125+ integration tests |
 | **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) ✅ Complete | 3-4 weeks | 35+ unit tests (actual implementation) |
 | **macOS Viewer** | [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) | 4-5 weeks | 250+ unit, 70+ integration, 40+ UI tests |
-| **visionOS Viewer** | [VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md) | 3-4 weeks | 205+ unit, 45+ integration, 20+ device tests |
 | **Sample Code** | [SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md) | 1 week | 575+ playground tests across 27 playgrounds |
 | **TOTAL** | 5 detailed plans | **13-17 weeks** | **2,475+ total tests** |
 
@@ -1184,8 +1042,7 @@ This comprehensive demo application plan provides a roadmap for creating product
 1. ✅ **COMPLETE**: iOS Viewer (February 2026) - All 4 phases done, 21 Swift files, 35+ tests
 2. **Next**: CLI Tools Suite (Foundation) - 2-3 weeks
 3. **Then**: macOS Viewer (Desktop platform) - 4-5 weeks
-4. **Then**: visionOS Viewer (Spatial computing) - 3-4 weeks
-5. **Finally**: Sample Code & Playgrounds (Education) - 1 week
+4. **Finally**: Sample Code & Playgrounds (Education) - 1 week
 
 **Parallel Development** (if resources available):
 - ✅ iOS viewer complete (February 2026)

@@ -4255,7 +4255,6 @@ A professional diagnostic workstation for macOS with PACS integration, MPR, and 
 
 **Remaining phases**: Advanced Features (Week 5).
 
-- **DICOMViewer visionOS** - ✅ Complete - Spatial 3D medical imaging with hand tracking, immersive volume rendering, and SharePlay collaboration (205 tests, 83% coverage)
 - **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-7 (38 tools including: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-print, dicom-measure, dicom-viewer, dicom-report, dicom-3d, dicom-ai, dicom-cloud, dicom-gateway, dicom-server with 1,111+ tests; all Phase 7 advanced tools complete)
 - **DICOMToolbox GUI** - ✅ Complete (Phase 1-8) - SwiftUI macOS application providing graphical interface for 37 CLI tools with drag-and-drop, real-time command preview, educational features, DICOM glossary, accessibility, settings, integration testing, documentation, and release preparation (Phases 1-8 implemented with 370+ tests)
 
