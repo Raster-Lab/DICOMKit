@@ -21,7 +21,6 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 |-----------|---------------|----------|-------|--------------|
 | **CLI Tools** | [CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md) | 2-3 weeks | 495+ | 7 tools: info, convert, anon, validate, query, send, dump |
 | **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) ✅ Complete | 3-4 weeks | 35+ | Gestures, measurements, GSPS, cine playback |
-| **macOS Viewer** | [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) | 4-5 weeks | 360+ | PACS integration, MPR, 3D, printing |
 | **Sample Code** | [SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md) | 1 week | 575+ | 27 playgrounds in 6 categories |
 
 ---
@@ -113,32 +112,6 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 **Target Platforms**: iOS 17+, iPadOS 17+
 
 **Performance**: 60fps scrolling, <200MB memory, <2s app launch
-
----
-
-### macOS Viewer ([Full Plan](MACOS_VIEWER_PLAN.md))
-
-**Core Features**:
-- Advanced file management with SQLite database
-- Multi-viewport layouts with hanging protocols
-- PACS integration (C-FIND, C-MOVE, C-STORE, DICOMweb)
-- 2D MPR (axial, sagittal, coronal, oblique)
-- 3D visualization (MIP, volume rendering with Metal)
-- Comprehensive measurements and analysis
-- DICOM printing and PDF export
-
-**Timeline**: 5 weeks, 5 phases
-- Week 1: Foundation (database, file import, basic viewer)
-- Week 2: PACS integration (C-FIND, C-MOVE, C-STORE, DICOMweb)
-- Week 3: Advanced imaging (viewports, MPR, 3D)
-- Week 4: Measurements and printing
-- Week 5: Polish, integration testing, release
-
-**Test Coverage**: 250+ unit tests, 70+ integration tests, 40+ UI tests
-
-**Target Platforms**: macOS 14+ (Sonoma and later)
-
-**Performance**: 30fps volume rendering, <500MB memory for 1GB study
 
 ---
 
@@ -370,7 +343,6 @@ Continue through each phase:
 - Initial creation of all detailed plans
 - CLI_TOOLS_PLAN.md created
 - IOS_VIEWER_PLAN.md created
-- MACOS_VIEWER_PLAN.md created
 - SAMPLE_CODE_PLAN.md created
 - DEMO_APPLICATION_PLAN.md updated with cross-references
 - MILESTONES.md updated with detailed breakdowns

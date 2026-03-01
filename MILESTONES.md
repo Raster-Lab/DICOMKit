@@ -14,7 +14,6 @@ For Milestone 10.14 (Example Applications), detailed phase-by-phase implementati
 - **[CLI_TOOLS_MILESTONES.md](CLI_TOOLS_MILESTONES.md)** - Complete CLI Milestone Roadmap (29 tools across 6 phases, 695+ tests)
 - **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI Application (29 tools, 4-5 weeks, 370+ tests) - ✅ All phases complete
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 220+ tests)
-- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 360+ tests)
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - 27 Playgrounds (1 week, 575+ tests)
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview and strategy
 
@@ -3208,13 +3207,12 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 **Progress**: 
 - DICOMViewer iOS is complete (February 2026) with 21 Swift files, 35+ tests, and comprehensive documentation. 
-- DICOMViewer macOS **100% complete** (February 8, 2026) with 61 files, ~15,000 lines, 379+ tests (302 unit + 37 integration + 40+ UI). All Phase 5 features implemented: measurement export (CSV/JSON/text), PDF reports, watch folder auto-import, comprehensive testing, **tooltips, accessibility enhancements, and complete documentation** (KEYBOARD_SHORTCUTS.md 341 lines, USER_GUIDE.md 1067 lines).
+- DICOMViewer macOS removed from repository.
 - CLI Tools suite complete with 8 tools and 180+ tests (dicom-diff added in Phase 2).
 - Sample code/playgrounds complete with 27 playgrounds and 241 examples.
 **Detailed Implementation Plans**:
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification ✅ **COMPLETE**
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan ✅ **COMPLETE**
-- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan ✅ **COMPLETE (docs finished)**
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan ✅ **COMPLETE**
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview
 
@@ -3288,61 +3286,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - [x] Tests/README.md (test documentation)
 
 ##### DICOMViewer macOS App (4-5 weeks) - ✅ COMPLETE (February 2026)
-**Status**: Phase 5 complete (February 2026)  
-**Location**: `DICOMViewer-macOS/` - See [README.md](DICOMViewer-macOS/README.md), [STATUS.md](DICOMViewer-macOS/STATUS.md), and [USER_GUIDE.md](DICOMViewer-macOS/USER_GUIDE.md)  
-**Code**: 61 files (~15,000 lines), 379+ tests (302 unit + 37 integration + 40+ UI)
-
-- [x] **Phase 1: Foundation (Week 1)** ✅ COMPLETE:
-  - [x] Xcode project structure with XcodeGen
-  - [x] SwiftUI + MVVM architecture
-  - [x] Study database (SwiftData with Study/Series/Instance models)
-  - [x] File import (file browser, metadata extraction)
-  - [x] Drag-and-drop import (UI ready)
-  - [x] Study browser with list view, search, filter
-  - [x] Basic image viewer with W/L controls
-  - [x] Menu structure and Info.plist
-- [x] **Phase 2: PACS Integration (Week 2)** ✅ COMPLETE:
-  - [x] PACSServer SwiftData model for server configuration
-  - [x] PACSService wrapping C-ECHO, C-FIND, C-MOVE, C-STORE
-  - [x] DICOMWebService wrapping QIDO-RS, WADO-RS, STOW-RS
-  - [x] DownloadManager actor for download queue management
-  - [x] Server configuration UI (add, edit, delete, test connection)
-  - [x] PACS query view with search form and results table
-  - [x] Download queue view with progress tracking
-  - [x] Menu integration (Query PACS ⌘K, Configure Servers ⌘⇧,, Download Queue ⌘⇧D)
-  - [x] 22 new unit tests (PACSServerTests: 8, DownloadManagerTests: 14)
-- [x] **Phase 3: Professional Viewer (Week 3)** ✅ COMPLETE:
-  - [x] Multi-viewport layouts (1×1, 2×2, 3×3, 4×4)
-  - [x] Hanging protocols with automatic series assignment
-  - [x] Viewport linking (scroll, W/L, zoom, pan)
-  - [x] Cine playback with keyboard shortcuts and configurable FPS
-  - [x] Measurement data models and service (length, angle, ROI tools)
-  - [x] Measurement UI with toolbar, overlay, and list sidebar
-  - [x] Interactive measurement drawing with mouse support
-- [x] **Phase 4: MPR and 3D (Week 4)** ✅ COMPLETE:
-  - [x] Volume data model (3D voxel array with spacing and origin)
-  - [x] MPREngine (volume construction, axial/sagittal/coronal slice extraction)
-  - [x] MIP/MinIP/AverageIP projection rendering
-  - [x] Transfer function presets (bone, soft tissue, lung, angiography, MIP)
-  - [x] MPR view with 2×2 grid and reference line crosshairs
-  - [x] Volume rendering view with rotation, zoom, and slab controls
-  - [x] MPRViewModel and VolumeRenderingViewModel
-  - [x] Menu integration (MPR ⌘⇧M, 3D Rendering ⌘⇧3)
-  - [x] 80 new unit tests (VolumeTests: 23, MPREngineTests: 22, MPRViewModelTests: 15, VolumeRenderingViewModelTests: 20)
-- [x] **Phase 5: Advanced Features (Week 5)** ✅ COMPLETE:
-  - [x] Measurement export service (CSV, JSON, plain text, clipboard)
-  - [x] PDF report generator (patient info, measurements table, images)
-  - [x] Watch folder auto-import with FSEvents monitoring
-  - [x] 78 new unit tests (MeasurementExportServiceTests: 24, PDFReportGeneratorTests: 24, WatchFolderServiceTests: 30)
-  - [x] Integration test suite (37 tests): Import→View→Measure→Export, PACS workflows, viewport/MPR/3D workflows ✨
-  - [x] UI test suite (40+ tests): Application launch, study browser, image viewer, multi-viewport, PACS, measurements, MPR/3D, accessibility ✨
-  - [x] Documentation: User guide, keyboard shortcuts reference, README updates ✨
-  - ⏳ Advanced measurements and 3D tools (deferred)
-  - ⏳ Time-series analysis (deferred - low priority)
-  - ⏳ DICOM SR export (deferred - requires DICOMKit SR writing)
-  - ⏳ Film composer with layouts (deferred)
-  - ⏳ DICOM Print (C-PRINT) (deferred - requires DICOMNetwork C-PRINT support)
-  - ⏳ DICOMDIR support (deferred - requires DICOMKit DICOMDIR parsing)
+**Status**: Removed from repository.
 
 ##### DICOMTools CLI Suite (2-3 weeks) - ✅ COMPLETE
 - [x] dicom-info: File metadata display ✅ COMPLETE
@@ -3443,14 +3387,11 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | Component | Unit Tests | Integration Tests | UI/Device Tests | Total | Status |
 |-----------|------------|-------------------|-----------------|-------|--------|
 | iOS Viewer | 35+ | N/A | N/A | 35+ | ✅ Complete |
-| macOS Viewer | 224 (Phase 1-4) | 0 | 0 | 224 | 🚧 Phase 4/5 |
 | CLI Tools | 160+ | - | - | 160+ | ✅ Complete |
 | Sample Code | 27 playgrounds (100% complete) | 143 tests | - | 241 examples | ✅ Complete |
 | **TOTAL** | **1,045+** | **188+** | **20+** | **1,253+** | ✅ Complete |
 
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.
-
-**macOS Viewer Phase 4 Tests** (February 2026): 224 unit tests total across 14 test files - DatabaseService (8), PACSServer (8), DownloadManager (14), ViewportLayout (10), HangingProtocol (10), CineController (17), ViewportLayoutService (15), HangingProtocolService (10), Measurement (30), MeasurementService (32), Volume (23), MPREngine (22), MPRViewModel (15), VolumeRenderingViewModel (20). Full test suite (250+ unit, 70+ integration, 40+ UI) planned for Phase 5.
 
 **CLI Tools Actual Tests** (February 2026): 160+ unit tests across 7 tools (dicom-info, dicom-convert, dicom-validate, dicom-anon, dicom-dump, dicom-query, dicom-send). All core functionality tested. Integration tests (network operations) omitted as they require live PACS servers, but tools are production-ready with comprehensive error handling and mocking capabilities.
 
@@ -3458,7 +3399,6 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 #### Technical Notes
 - All apps use latest SwiftUI patterns
-- macOS viewer uses Metal for GPU acceleration
 - visionOS app uses RealityKit and ARKit
 - CLI tools support macOS and Linux
 - All code follows Swift API Design Guidelines
@@ -3548,7 +3488,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 | 10.11 ICC Color | v1.0.11 | Medium | ✅ Completed | ICC profile color management (84 tests, 100% pass rate) |
 | 10.12 Performance | v1.0.12 | High | ✅ Completed | Memory, parsing, SIMD optimization (49 tests, 100% pass rate) |
 | 10.13 Documentation | v1.0.13 | Medium | ✅ Completed | DocC catalogs, platform guides, conformance statement |
-| 10.14 Example Apps | v1.0.14 | Medium | ✅ Complete | iOS viewer ✅, CLI tools ✅, macOS ✅ (379+ tests), Playgrounds ✅, visionOS ✅ (270+ tests) |
+| 10.14 Example Apps | v1.0.14 | Medium | ✅ Complete | iOS viewer ✅, CLI tools ✅, Playgrounds ✅, visionOS ✅ (270+ tests) |
 | 10.15 Release Prep | v1.0.15 | Medium | ✅ Completed | Testing, security audit, release artifacts |
 
 ### Overall Technical Notes

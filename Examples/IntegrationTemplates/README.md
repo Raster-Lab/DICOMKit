@@ -72,9 +72,7 @@ Have a useful integration pattern? Consider contributing a template!
 
 ## Example Applications
 
-For complete, production-ready applications, see:
-
-- **DICOMViewer macOS** - Desktop diagnostic workstation ([DICOMViewer-macOS/](../../DICOMViewer-macOS/))
+For complete, production-ready applications, see the CLI tools and example code.
 
 ## Resources
 
