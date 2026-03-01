@@ -2,11 +2,11 @@
 
 ## Overview
 
-**DICOM Studio** is a comprehensive GUI application designed to showcase every feature of DICOMKit across Apple platforms. It serves as both a production-quality medical imaging tool and a living demonstration of the library's capabilities.
+**DICOM Studio** is a comprehensive macOS GUI application designed to showcase every feature of DICOMKit. It serves as both a production-quality medical imaging tool and a living demonstration of the library's capabilities.
 
-**Target Platforms**: iOS 17+, macOS 14+, visionOS 1+
+**Target Platforms**: macOS 14+
 **UI Framework**: SwiftUI
-**Language**: Swift 6 (Strict Concurrency)
+**Language**: Swift 6.2 (Strict Concurrency)
 **Dependencies**: DICOMKit, DICOMCore, DICOMDictionary, DICOMNetwork, DICOMWeb, DICOMToolbox
 **Architecture**: MVVM with service layer
 **Target Users**: Medical professionals, radiologists, researchers, developers, medical students
@@ -19,7 +19,7 @@
 1. **Complete Feature Coverage**: Showcase every public API in DICOMKit, DICOMCore, DICOMNetwork, DICOMWeb, and DICOMDictionary
 2. **Production Quality**: Deliver a polished, App Store–ready application
 3. **Educational Resource**: Serve as the definitive reference implementation for DICOMKit integration
-4. **Multi-Platform Excellence**: Demonstrate best practices on iOS, macOS, and visionOS
+4. **macOS Excellence**: Demonstrate best practices on macOS
 5. **Clinical Realism**: Validate library functionality in realistic medical imaging workflows
 
 ### Secondary Objectives
@@ -32,8 +32,8 @@
 ### Success Criteria
 - [ ] All DICOMKit public APIs exercised in at least one feature
 - [ ] 80%+ unit test coverage across all ViewModels
-- [ ] <200MB memory usage for typical studies on iOS
-- [ ] 60fps scrolling and gesture response across all platforms
+- [ ] Efficient memory usage for typical studies on macOS
+- [ ] 60fps scrolling and gesture response on macOS
 - [ ] Full VoiceOver and Dynamic Type support
 - [ ] Localization for English, Spanish, French, German, Japanese, Chinese (Simplified), Korean, Portuguese (Brazil), Arabic, Hebrew
 - [ ] Zero critical bugs at each milestone release
@@ -57,7 +57,7 @@
 | 11 | Security & Privacy Center | TLS, anonymization, audit logs, certificates | 2 weeks | 65+ |
 | 12 | Data Exchange & Export | JSON, XML, image export, PDF, DICOMDIR | 2 weeks | 70+ |
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
-| 14 | Platform-Specific Enhancements | macOS multi-window, iOS gestures, visionOS spatial | 3 weeks | 80+ |
+| 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, Touch Bar | 2 weeks | 80+ |
 | 15 | Polish, Accessibility & Release | i18n, a11y, UI tests, profiling, App Store | 2 weeks | 100+ |
 | **Total** | | | **34 weeks** | **1,200+** |
 
@@ -66,16 +66,16 @@
 ## Milestone 1: Project Foundation & Core Architecture
 
 **Status**: Planned
-**Goal**: Establish the multi-platform project structure, navigation framework, and shared infrastructure
+**Goal**: Establish the macOS project structure, navigation framework, and shared infrastructure
 **DICOMKit Features Showcased**: Project integration, Swift Package Manager setup
 
 ### Deliverables
 
 #### 1.1 Project Setup
-- [ ] Create multi-platform SwiftUI project (iOS, macOS, visionOS)
+- [ ] Create macOS SwiftUI project
 - [ ] Configure DICOMKit dependency via Swift Package Manager
 - [ ] Set up build configurations (Debug, Release, TestFlight)
-- [ ] Configure Info.plist with required permissions per platform
+- [ ] Configure Info.plist with required permissions
 - [ ] Add `.gitignore` for Xcode-specific files
 - [ ] Set up CI/CD pipeline (GitHub Actions) for build + test
 
@@ -102,8 +102,6 @@
   - [ ] Tools (data exchange, developer tools)
   - [ ] Settings (configuration)
 - [ ] macOS: NavigationSplitView with sidebar, detail, and inspector
-- [ ] iOS: TabView with NavigationStack per tab
-- [ ] visionOS: Ornament-based navigation with WindowGroup
 
 #### 1.4 Theming & Appearance
 - [ ] Implement light/dark mode support
@@ -124,16 +122,15 @@
 - [ ] About screen with DICOMKit version, licenses, acknowledgments
 
 ### Technical Notes
-- Use Swift 6 strict concurrency for all ViewModels and services
-- Leverage `@Observable` macro (iOS 17+) over `ObservableObject`
+- Use Swift 6.2 strict concurrency for all ViewModels and services
+- Leverage `@Observable` macro (macOS 14+) over `ObservableObject`
 - Use dependency injection for testability
-- Platform-conditional compilation with `#if os(iOS)`, `#if os(macOS)`, `#if os(visionOS)`
 
 ### Acceptance Criteria
-- [ ] Project builds on all three platforms without warnings
-- [ ] Navigation shell renders correctly on iOS, macOS, visionOS
+- [ ] Project builds on macOS without warnings
+- [ ] Navigation shell renders correctly on macOS
 - [ ] Settings persist across app launches
-- [ ] CI pipeline passes for all platforms
+- [ ] CI pipeline passes for macOS
 - [ ] Architecture documented in ARCHITECTURE.md
 
 ### Estimated Effort
@@ -151,7 +148,7 @@
 
 #### 2.1 File Import
 - [ ] SwiftUI document picker integration (`.fileImporter`)
-- [ ] Drag-and-drop import support (macOS, iPadOS)
+- [ ] Drag-and-drop import support (macOS)
 - [ ] Batch import with progress tracking
 - [ ] DICOM file validation during import:
   - [ ] Preamble and DICM prefix verification
@@ -279,7 +276,7 @@
 - [ ] Pinch-to-zoom with smooth interpolation
 - [ ] Pan gesture with momentum
 - [ ] Double-tap to fit/actual size toggle
-- [ ] Two-finger rotation (iPadOS, macOS trackpad)
+- [ ] Two-finger rotation (macOS trackpad)
 - [ ] Scroll wheel zoom (macOS)
 - [ ] Keyboard shortcuts (macOS):
   - [ ] Arrow keys for frame navigation
@@ -287,8 +284,6 @@
   - [ ] `R` for reset
   - [ ] `I` for invert
   - [ ] Space for play/pause
-- [ ] visionOS: Hand tracking for zoom/pan gestures
-
 #### 3.5 Image Caching & Performance
 - [ ] LRU image cache with configurable memory limit
 - [ ] Metadata-only parsing mode for fast browsing (2–10× faster)
@@ -310,7 +305,7 @@
 - [ ] Window/level adjusts in real-time (<16ms per frame)
 - [ ] Cine playback maintains 60fps for standard multi-frame
 - [ ] Memory usage <200MB for 500-frame multi-frame file
-- [ ] Zoom/pan/rotate gestures feel natural on all platforms
+- [ ] Zoom/pan/rotate gestures feel natural on macOS
 - [ ] Image cache reduces repeat-render time by >90%
 
 ### Estimated Effort
@@ -472,7 +467,7 @@
 - [ ] Measurements persist and reload correctly from SR
 - [ ] All annotation types render and interact correctly
 - [ ] Undo/redo works for all measurement operations
-- [ ] Touch and mouse input handled appropriately per platform
+- [ ] Touch and mouse input handled appropriately
 
 ### Estimated Effort
 **2 weeks** (1 developer)
@@ -517,7 +512,6 @@
 - [ ] Zoom and clip plane controls
 - [ ] Lighting and shading model (Phong)
 - [ ] GPU-accelerated rendering (Metal)
-- [ ] visionOS: Immersive 3D volume in shared/full space
 
 #### 6.4 Surface Extraction
 - [ ] Isosurface extraction (marching cubes)
@@ -536,7 +530,6 @@
 - Use DICOMKit's MPR reconstruction APIs
 - Metal shaders for GPU-accelerated volume rendering
 - Accelerate framework for projection computations (SIMD)
-- visionOS: RealityKit for spatial 3D volume display
 - Reference: DICOM PS3.3 C.7.6.2 (Image Plane Module), PS3.3 C.18.9 (3D Spatial Coordinates)
 
 ### Acceptance Criteria
@@ -545,7 +538,6 @@
 - [ ] MIP/MinIP/AvgIP projections match reference implementations
 - [ ] Volume rendering maintains >30fps on Apple Silicon
 - [ ] Surface extraction produces watertight meshes for 3D printing
-- [ ] visionOS volume rendering feels natural with hand gestures
 
 ### Estimated Effort
 **3 weeks** (1 developer)
@@ -721,7 +713,6 @@
 - [ ] 3D model viewer for STL/OBJ/MTL files:
   - [ ] 3D rotation/zoom controls
   - [ ] Surface color and lighting
-  - [ ] visionOS: spatial 3D model display
 - [ ] Document metadata display
 
 #### 8.7 Secondary Capture Display
@@ -1092,7 +1083,6 @@
 - [ ] Burn-in window/level option
 - [ ] Batch export all frames of multi-frame instance
 - [ ] Export resolution settings (original, scaled)
-- [ ] Share sheet integration (iOS)
 
 #### 12.4 Transfer Syntax Conversion
 - [ ] Convert between transfer syntaxes:
@@ -1233,11 +1223,11 @@
 
 ---
 
-## Milestone 14: Platform-Specific Enhancements
+## Milestone 14: macOS-Specific Enhancements
 
 **Status**: Planned
-**Goal**: Optimize DICOM Studio for each platform's unique capabilities and interaction paradigms
-**DICOMKit Features Showcased**: Cross-platform API consistency, platform-specific rendering optimizations
+**Goal**: Optimize DICOM Studio for macOS-specific capabilities and interaction paradigms
+**DICOMKit Features Showcased**: macOS API integration, platform-specific rendering optimizations
 
 ### Deliverables
 
@@ -1265,53 +1255,17 @@
 - [ ] AppleScript/Shortcuts automation support
 - [ ] Quick Look plugin for DICOM files
 
-#### 14.2 iOS Enhancements
-- [ ] Gesture-driven interface:
-  - [ ] Swipe navigation between series
-  - [ ] Long-press context menus
-  - [ ] Force Touch / Haptic Touch for quick actions
-- [ ] Compact and regular layout adaptation (iPhone/iPad)
-- [ ] Split View and Slide Over support (iPadOS)
-- [ ] Pencil support for annotations (iPadOS)
-- [ ] ShareSheet integration for all export types
-- [ ] Widget for recent studies (WidgetKit)
-- [ ] Spotlight search integration for imported studies
-- [ ] Background transfer support for large downloads
-- [ ] Live Activities for active transfers
-
-#### 14.3 visionOS Enhancements
-- [ ] Spatial 3D volume display:
-  - [ ] Volume rendering in shared space
-  - [ ] Full immersive space for 3D examination
-  - [ ] Hand tracking for zoom/rotate/slice
-- [ ] Multiple window arrangement in spatial environment
-- [ ] Ornament-based toolbars and controls
-- [ ] Eye tracking for gaze-based navigation
-- [ ] SharePlay for collaborative review:
-  - [ ] Synchronized viewing with remote participants
-  - [ ] Shared annotations and measurements
-  - [ ] Voice communication integration
-- [ ] Persona integration for collaborative sessions
-- [ ] Spatial audio for notification sounds
-
 ### Technical Notes
-- Platform-conditional compilation with `#if os(iOS)`, `#if os(macOS)`, `#if os(visionOS)`
 - macOS: AppKit interop via `NSViewRepresentable` where needed
-- iOS: UIKit interop via `UIViewRepresentable` where needed
-- visionOS: RealityKit for 3D content, ImmersiveSpace for volume rendering
-- Reference: Apple Human Interface Guidelines per platform
+- Reference: Apple Human Interface Guidelines for macOS
 
 ### Acceptance Criteria
 - [ ] macOS: All menu items and keyboard shortcuts functional
 - [ ] macOS: Multi-window operates independently
-- [ ] iOS: Layout adapts correctly to all device sizes (iPhone SE → iPad Pro)
-- [ ] iOS: All gestures feel natural and responsive
-- [ ] visionOS: 3D volume renders at >30fps with hand tracking
-- [ ] visionOS: SharePlay synchronizes within 100ms
-- [ ] Each platform feels native, not "ported"
+- [ ] macOS: Application feels native and polished
 
 ### Estimated Effort
-**3 weeks** (1 developer)
+**2 weeks** (1 developer)
 
 ---
 
@@ -1377,7 +1331,7 @@
 - [ ] CPU profiling with Instruments (Time Profiler)
 - [ ] GPU profiling for rendering and 3D (Metal System Trace)
 - [ ] Network profiling for DICOM/DICOMweb operations
-- [ ] Battery impact assessment (iOS)
+- [ ] Battery impact assessment
 - [ ] Optimize identified bottlenecks
 - [ ] Document performance characteristics
 
@@ -1403,7 +1357,7 @@
 ### Technical Notes
 - Use Xcode's localization export/import workflow
 - Run Accessibility Inspector automated audits
-- Profile on physical devices (iPhone, Mac, Vision Pro)
+- Profile on physical Mac hardware
 - Reference: Apple Accessibility Programming Guide, Apple Internationalization Guide, WCAG 2.1
 
 ### Acceptance Criteria
@@ -1411,7 +1365,7 @@
 - [ ] RTL layout mirrors properly for Arabic and Hebrew
 - [ ] VoiceOver navigates every screen without gaps
 - [ ] Dynamic Type works at all accessibility sizes without layout breaks
-- [ ] All UI tests pass on all platforms
+- [ ] All UI tests pass on macOS
 - [ ] Memory usage stays within platform limits
 - [ ] No memory leaks detected by Instruments
 - [ ] App Store review submission accepted
@@ -1427,7 +1381,7 @@
 
 ```
 DICOMStudio/
-├── Shared/                           # Cross-platform code
+├── Shared/                           # Shared code
 │   ├── Models/                       # Data models
 │   │   ├── StudyModel.swift
 │   │   ├── SeriesModel.swift
@@ -1447,7 +1401,7 @@ DICOMStudio/
 │   │   ├── NetworkService.swift
 │   │   ├── CacheService.swift
 │   │   └── AuditService.swift
-│   ├── Views/                        # Shared SwiftUI views
+│   ├── Views/                        # SwiftUI views
 │   │   ├── Library/
 │   │   ├── Viewer/
 │   │   ├── Networking/
@@ -1456,25 +1410,16 @@ DICOMStudio/
 │   │   ├── Tools/
 │   │   ├── Security/
 │   │   └── Components/               # Reusable UI components
-│   └── Resources/                    # Shared assets and localization
+│   └── Resources/                    # Assets and localization
 │       ├── Assets.xcassets
 │       └── Localizable.strings
-├── iOS/                              # iOS-specific
-│   ├── DICOMStudioApp.swift
-│   └── Views/
 ├── macOS/                            # macOS-specific
 │   ├── DICOMStudioApp.swift
 │   ├── Views/
 │   └── Commands/
-├── visionOS/                         # visionOS-specific
-│   ├── DICOMStudioApp.swift
-│   ├── Views/
-│   └── Spaces/
 └── Tests/
     ├── SharedTests/
-    ├── iOSTests/
-    ├── macOSTests/
-    └── visionOSTests/
+    └── macOSTests/
 ```
 
 ### Dependency Graph
@@ -1515,10 +1460,8 @@ DICOMStudio
 |------|--------|------------|------------|
 | Large scope causes timeline overrun | High | Medium | Strict milestone gating; defer non-essential features |
 | Metal/GPU complexity for 3D rendering | High | Medium | Start with CPU fallback; optimize incrementally |
-| visionOS API changes | Medium | Medium | Abstract visionOS-specific code behind protocols |
 | PACS test server availability | Medium | Low | Use Orthanc Docker for local testing |
 | App Store rejection for medical claims | High | Low | Avoid diagnostic claims; label as "viewer only" |
-| Memory pressure on iOS for large studies | High | Medium | Strict memory budgets; aggressive cache eviction |
 | Accessibility compliance gaps | Medium | Medium | Continuous accessibility auditing per milestone |
 | Localization accuracy for medical terms | Medium | Medium | Professional medical translator review |
 
@@ -1527,9 +1470,9 @@ DICOMStudio
 ## Dependencies & Prerequisites
 
 ### External
-- Xcode 15.4+ with iOS 17, macOS 14, visionOS 1 SDKs
+- Xcode 15.4+ with macOS 14 SDK
 - Test PACS server (Orthanc or dcm4chee via Docker)
-- Physical devices for each platform (iPhone, Mac, Vision Pro)
+- Mac for development and testing
 - Apple Developer Program membership (App Store distribution)
 
 ### Internal
@@ -1539,4 +1482,4 @@ DICOMStudio
 
 ---
 
-*This plan covers 15 milestones spanning approximately 34 weeks of development, with 1,200+ planned tests, showcasing every feature of DICOMKit across iOS, macOS, and visionOS platforms.*
+*This plan covers 15 milestones spanning approximately 34 weeks of development, with 1,200+ planned tests, showcasing every feature of DICOMKit on macOS.*
