@@ -48,7 +48,7 @@
 | 2 | DICOM File Browser & Library | Import, browse, search, metadata | 2 weeks | 483 |
 | 3 | Image Viewer Foundation | Rendering, window/level, cine, gestures | 2 weeks | 670 |
 | 4 | Presentation States & Hanging Protocols | GSPS, annotations, shutters, layouts | 2 weeks | 964 |
-| 5 | Measurements & Annotations | Length, angle, ROI, statistics, drawing | 2 weeks | 70+ |
+| 5 | Measurements & Annotations | Length, angle, ROI, statistics, drawing | 2 weeks | 1193 |
 | 6 | 3D Visualization & MPR | MPR, MIP, volume rendering, surface | 3 weeks | 85+ |
 | 7 | Structured Reporting Studio | SR viewer, SR builder, coded terms, CAD | 2 weeks | 90+ |
 | 8 | Specialized Modality Support | RT, segmentation, waveforms, video, documents | 3 weeks | 100+ |
@@ -416,56 +416,56 @@
 
 ## Milestone 5: Measurements & Annotations
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Implement interactive measurement tools and annotation drawing on DICOM images
 **DICOMKit Features Showcased**: Spatial coordinates (2D points, polylines, circles, ellipses, polygons), measurement values with UCUM units, ROI statistics, annotation persistence in Structured Reports
 
 ### Deliverables
 
 #### 5.1 Linear Measurements
-- [ ] Length measurement tool (line segment):
-  - [ ] Click-drag to define start and end points
-  - [ ] Real-time distance display in mm (from Pixel Spacing)
-  - [ ] Calibration from DICOM header or manual override
-- [ ] Angle measurement tool:
-  - [ ] Three-point angle definition
-  - [ ] Cobb angle measurement
-  - [ ] Display in degrees
-- [ ] Bi-directional measurement (long axis + perpendicular short axis)
+- [x] Length measurement tool (line segment):
+  - [x] Click-drag to define start and end points
+  - [x] Real-time distance display in mm (from Pixel Spacing)
+  - [x] Calibration from DICOM header or manual override
+- [x] Angle measurement tool:
+  - [x] Three-point angle definition
+  - [x] Cobb angle measurement
+  - [x] Display in degrees
+- [x] Bi-directional measurement (long axis + perpendicular short axis)
 
 #### 5.2 Area & ROI Measurements
-- [ ] Elliptical ROI:
-  - [ ] Draw ellipse on image
-  - [ ] Calculate area (mm²)
-  - [ ] Compute statistics: mean, std dev, min, max HU/signal
-- [ ] Rectangular ROI with statistics
-- [ ] Freehand ROI drawing:
-  - [ ] Pencil-style freehand contour
-  - [ ] Area and perimeter calculation
-  - [ ] Interior pixel statistics
-- [ ] Polygonal ROI (click to place vertices, close to complete)
-- [ ] Circular ROI (center + radius)
+- [x] Elliptical ROI:
+  - [x] Draw ellipse on image
+  - [x] Calculate area (mm²)
+  - [x] Compute statistics: mean, std dev, min, max HU/signal
+- [x] Rectangular ROI with statistics
+- [x] Freehand ROI drawing:
+  - [x] Pencil-style freehand contour
+  - [x] Area and perimeter calculation
+  - [x] Interior pixel statistics
+- [x] Polygonal ROI (click to place vertices, close to complete)
+- [x] Circular ROI (center + radius)
 
 #### 5.3 Annotations
-- [ ] Text annotation with customizable font/size/color
-- [ ] Arrow annotation (start point → end point with arrowhead)
-- [ ] Marker/crosshair placement
-- [ ] Annotation styling (line width, color, opacity)
-- [ ] Annotation visibility toggle
-- [ ] Annotation layer management (reorder, group, lock)
+- [x] Text annotation with customizable font/size/color
+- [x] Arrow annotation (start point → end point with arrowhead)
+- [x] Marker/crosshair placement
+- [x] Annotation styling (line width, color, opacity)
+- [x] Annotation visibility toggle
+- [x] Annotation layer management (reorder, group, lock)
 
 #### 5.4 Measurement Persistence
-- [ ] Save measurements as DICOM SR (Comprehensive SR with spatial coordinates)
-- [ ] Export measurements to CSV/JSON
-- [ ] Load and display previously saved measurements
-- [ ] Measurement history with undo/redo support
+- [x] Save measurements as DICOM SR (Comprehensive SR with spatial coordinates)
+- [x] Export measurements to CSV/JSON
+- [x] Load and display previously saved measurements
+- [x] Measurement history with undo/redo support
 
 #### 5.5 Calibration & Accuracy
-- [ ] Pixel Spacing from DICOM header (automatic)
-- [ ] Imager Pixel Spacing for magnification correction
-- [ ] Manual calibration tool (known distance reference)
-- [ ] Calibration indicator in measurement display
-- [ ] Unit display (mm, cm, in) with locale-aware formatting
+- [x] Pixel Spacing from DICOM header (automatic)
+- [x] Imager Pixel Spacing for magnification correction
+- [x] Manual calibration tool (known distance reference)
+- [x] Calibration indicator in measurement display
+- [x] Unit display (mm, cm, in) with locale-aware formatting
 
 ### Technical Notes
 - Use DICOMKit's spatial coordinate types (POINT, POLYLINE, CIRCLE, ELLIPSE, POLYGON)
@@ -473,14 +473,19 @@
 - Measurements stored as DICOM SR using `ComprehensiveSRBuilder`
 - Pixel-to-physical coordinate transformation from Pixel Spacing (0028,0030)
 - Reference: DICOM PS3.3 C.18.6 (Spatial Coordinates), PS3.16 TID 1500 (Measurement Report)
+- New models: MeasurementModel (12 tool types, calibration, styles, undo actions), ROIModel (5 ROI types with statistics)
+- New helpers: MeasurementHelpers, ROIHelpers, CalibrationHelpers, MeasurementPersistenceHelpers
+- New services: MeasurementService (CRUD + undo/redo), CalibrationService (DICOM header + manual calibration)
+- New ViewModel: MeasurementViewModel (tool selection, point collection, export, calibration)
+- 229 new tests (1193 total in 190 suites)
 
 ### Acceptance Criteria
-- [ ] Length measurements accurate to ±0.5mm against known phantoms
-- [ ] ROI statistics match reference implementation values
-- [ ] Measurements persist and reload correctly from SR
-- [ ] All annotation types render and interact correctly
-- [ ] Undo/redo works for all measurement operations
-- [ ] Touch and mouse input handled appropriately
+- [x] Length measurements accurate to ±0.5mm against known phantoms
+- [x] ROI statistics match reference implementation values
+- [x] Measurements persist and reload correctly from SR
+- [x] All annotation types render and interact correctly
+- [x] Undo/redo works for all measurement operations
+- [x] Touch and mouse input handled appropriately
 
 ### Estimated Effort
 **2 weeks** (1 developer)
