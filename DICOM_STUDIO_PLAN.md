@@ -31,7 +31,7 @@
 
 ### Success Criteria
 - [ ] All DICOMKit public APIs exercised in at least one feature
-- [ ] 80%+ unit test coverage across all ViewModels
+- [ ] 95% unit test coverage across all ViewModels
 - [ ] Efficient memory usage for typical studies on macOS
 - [ ] 60fps scrolling and gesture response on macOS
 - [ ] Full VoiceOver and Dynamic Type support
@@ -1311,7 +1311,7 @@
 - [ ] Accessibility audit with Xcode Accessibility Inspector
 
 #### 15.3 Comprehensive Testing
-- [ ] Unit tests for all ViewModels (80%+ coverage)
+- [ ] Unit tests for all ViewModels (95% coverage)
 - [ ] Integration tests for PACS connectivity
 - [ ] UI tests for critical user flows:
   - [ ] Import → Browse → View workflow
