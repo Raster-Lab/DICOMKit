@@ -3,34 +3,18 @@
 //
 // DICOM Studio — Modality-specific SF Symbol icons
 
-#if canImport(SwiftUI)
-import SwiftUI
+import Foundation
 
-/// Displays an SF Symbol icon appropriate for a DICOM modality.
+/// Platform-independent DICOM modality mapping utilities.
 ///
-/// Usage:
-/// ```swift
-/// ModalityIcon(modality: "CT")
-/// ModalityIcon(modality: "MR", size: 24)
-/// ```
-@available(macOS 14.0, iOS 17.0, *)
-public struct ModalityIcon: View {
-    let modality: String
-    let size: CGFloat
+/// Provides SF Symbol names and full modality names for DICOM modality codes
+/// without requiring SwiftUI.
+public enum ModalityMapping: Sendable {
 
-    public init(modality: String, size: CGFloat = 16) {
-        self.modality = modality.uppercased()
-        self.size = size
-    }
-
-    public var body: some View {
-        Image(systemName: systemImageName)
-            .font(.system(size: size))
-            .foregroundStyle(StudioColors.color(for: modality))
-            .accessibilityLabel("\(modalityFullName) modality")
-    }
-
-    /// Maps DICOM modality codes to appropriate SF Symbols.
+    /// Maps DICOM modality codes to appropriate SF Symbol names.
+    ///
+    /// - Parameter modality: DICOM modality code (e.g. "CT", "MR").
+    /// - Returns: SF Symbol name for the modality.
     public static func systemImage(for modality: String) -> String {
         switch modality.uppercased() {
         case "CT": return "cylinder.split.1x2"
@@ -59,12 +43,12 @@ public struct ModalityIcon: View {
         }
     }
 
-    private var systemImageName: String {
-        Self.systemImage(for: modality)
-    }
-
-    private var modalityFullName: String {
-        switch modality {
+    /// Returns the full human-readable name for a DICOM modality code.
+    ///
+    /// - Parameter modality: DICOM modality code (e.g. "CT", "MR").
+    /// - Returns: Human-readable modality name.
+    public static func fullName(for modality: String) -> String {
+        switch modality.uppercased() {
         case "CT": return "Computed Tomography"
         case "MR", "MRI": return "Magnetic Resonance"
         case "US": return "Ultrasound"
@@ -81,10 +65,43 @@ public struct ModalityIcon: View {
         case "PR": return "Presentation State"
         case "KO": return "Key Object"
         case "SEG": return "Segmentation"
-        case "RT": return "Radiation Therapy"
+        case "RT", "RTPLAN", "RTDOSE", "RTSTRUCT": return "Radiation Therapy"
         case "ECG": return "Electrocardiography"
-        default: return modality
+        case "HD": return "Hemodynamic Waveform"
+        case "IO": return "Intra-Oral Radiography"
+        case "OP": return "Ophthalmic Photography"
+        case "DOC", "PDF": return "Document"
+        case "VL": return "Visible Light"
+        default: return modality.uppercased()
         }
+    }
+}
+
+#if canImport(SwiftUI)
+import SwiftUI
+
+/// Displays an SF Symbol icon appropriate for a DICOM modality.
+///
+/// Usage:
+/// ```swift
+/// ModalityIcon(modality: "CT")
+/// ModalityIcon(modality: "MR", size: 24)
+/// ```
+@available(macOS 14.0, iOS 17.0, *)
+public struct ModalityIcon: View {
+    let modality: String
+    let size: CGFloat
+
+    public init(modality: String, size: CGFloat = 16) {
+        self.modality = modality.uppercased()
+        self.size = size
+    }
+
+    public var body: some View {
+        Image(systemName: ModalityMapping.systemImage(for: modality))
+            .font(.system(size: size))
+            .foregroundStyle(StudioColors.color(for: modality))
+            .accessibilityLabel("\(ModalityMapping.fullName(for: modality)) modality")
     }
 }
 #endif
