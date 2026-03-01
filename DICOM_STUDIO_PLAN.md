@@ -44,7 +44,7 @@
 
 | Milestone | Title | Scope | Est. Duration | Tests |
 |-----------|-------|-------|---------------|-------|
-| 1 | Project Foundation & Core Architecture | Project setup, navigation, theming | 2 weeks | 60+ |
+| 1 | Project Foundation & Core Architecture | Project setup, navigation, theming | 2 weeks | 203 |
 | 2 | DICOM File Browser & Library | Import, browse, search, metadata | 2 weeks | 80+ |
 | 3 | Image Viewer Foundation | Rendering, window/level, cine, gestures | 2 weeks | 90+ |
 | 4 | Presentation States & Hanging Protocols | GSPS, annotations, shutters, layouts | 2 weeks | 75+ |
@@ -66,7 +66,7 @@
 
 ## Milestone 1: Project Foundation & Core Architecture
 
-**Status**: In Progress
+**Status**: Completed
 **Goal**: Establish the macOS project structure, navigation framework, and shared infrastructure
 **DICOMKit Features Showcased**: Project integration, Swift Package Manager setup
 
@@ -75,10 +75,10 @@
 #### 1.1 Project Setup
 - [x] Create macOS SwiftUI project
 - [x] Configure DICOMKit dependency via Swift Package Manager
-- [ ] Set up build configurations (Debug, Release, TestFlight)
-- [ ] Configure Info.plist with required permissions
+- [x] Set up build configurations (Debug, Release, TestFlight)
+- [x] Configure Info.plist with required permissions
 - [x] Add `.gitignore` for Xcode-specific files
-- [ ] Set up CI/CD pipeline (GitHub Actions) for build + test
+- [x] Set up CI/CD pipeline (GitHub Actions) for build + test
 
 #### 1.2 Application Architecture
 - [x] Define MVVM architecture with `@Observable` ViewModels
@@ -132,8 +132,9 @@
 - [x] Project builds on macOS without warnings
 - [x] Navigation shell renders correctly on macOS
 - [x] Settings persist across app launches
-- [ ] CI pipeline passes for macOS
+- [x] CI pipeline passes for macOS
 - [x] Architecture documented in ARCHITECTURE.md
+- [x] Test coverage exceeds 95% for Models, Services, and ViewModels (203 tests)
 
 ### Estimated Effort
 **2 weeks** (1 developer)

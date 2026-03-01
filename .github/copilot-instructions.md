@@ -627,3 +627,101 @@ For questions during demo development:
 ---
 
 **Remember**: Demo applications are the showcase for DICOMKit. They should be polished, well-documented, and demonstrate best practices for medical imaging app development on Apple platforms.
+
+---
+
+## DICOM Studio Best Practices
+
+### Architecture & Code Organization
+
+- **MVVM Pattern**: All features must follow the Model–ViewModel–View pattern
+  - Models live in `Sources/DICOMStudio/Models/` — pure data types, `Sendable`, `Identifiable`, `Hashable`
+  - ViewModels live in `Sources/DICOMStudio/ViewModels/` — use `@Observable` macro, require `@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)`
+  - Views live in `Sources/DICOMStudio/Views/` — SwiftUI views gated behind `#if canImport(SwiftUI)`
+  - Services live in `Sources/DICOMStudio/Services/` — business logic, `Sendable`, dependency-injected
+  - Components live in `Sources/DICOMStudio/Components/` — reusable UI widgets
+
+- **Platform-Independent Logic**: Extract ALL testable logic from SwiftUI views into platform-independent helpers
+  - Place helper enums/structs OUTSIDE `#if canImport(SwiftUI)` guards
+  - Example: `ModalityMapping`, `VRDescriptions`, `DICOMTagFormatter` — pure functions that work on all platforms
+  - SwiftUI views delegate to these helpers for their logic
+  - This enables comprehensive testing on both macOS and Linux CI
+
+- **Dependency Injection**: All ViewModels accept services via `init` parameters with sensible defaults
+  ```swift
+  public init(settingsService: SettingsService = SettingsService()) { ... }
+  ```
+
+- **Strict Concurrency**: All types must be safe for Swift 6 strict concurrency
+  - Models: use `Sendable` conformance
+  - Services: use `final class` with `Sendable`
+  - ViewModels: use `@Observable` (inherently `@MainActor`-compatible)
+  - Use `nonisolated(unsafe)` only for static stored properties of non-Sendable types
+
+### Testing Standards
+
+- **Framework**: Use Swift Testing (`import Testing`, `@Suite`, `@Test`, `#expect`)
+- **Target**: >95% test coverage for all Models, Services, ViewModels, and Components
+- **Test File Naming**: `<TypeName>Tests.swift` (e.g., `SettingsServiceTests.swift`)
+- **Test Organization**: One `@Suite` per type, descriptive `@Test("...")` annotations
+- **Availability**: Mark ViewModel tests with `@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)`
+- **Edge Cases**: Test nil handling, empty collections, boundary values, error conditions
+- **Independence**: Each test must be self-contained — create temp files in `FileManager.default.temporaryDirectory` and clean up with `defer`
+
+### Component Helpers Pattern
+
+When adding new UI components:
+
+1. Create a platform-independent helper enum with `public static` methods:
+   ```swift
+   // Outside #if canImport(SwiftUI)
+   public enum MyHelper: Sendable {
+       public static func compute(input: String) -> String { ... }
+   }
+   ```
+
+2. Create the SwiftUI view inside the guard:
+   ```swift
+   #if canImport(SwiftUI)
+   @available(macOS 14.0, iOS 17.0, *)
+   public struct MyComponent: View {
+       public var body: some View {
+           Text(MyHelper.compute(input: data))
+       }
+   }
+   #endif
+   ```
+
+3. Test the helper directly:
+   ```swift
+   @Test("Computes correctly")
+   func testCompute() {
+       #expect(MyHelper.compute(input: "test") == "expected")
+   }
+   ```
+
+### CI/CD Requirements
+
+- DICOMStudio has a dedicated CI workflow: `.github/workflows/dicom-studio-ci.yml`
+- All PRs touching `Sources/DICOMStudio/` or `Tests/DICOMStudioTests/` trigger CI
+- Tests run on both macOS (Xcode 16.2) and Linux (Ubuntu 22.04 / Swift 6.2)
+- Code coverage is reported via `llvm-cov` on macOS
+- Release builds must compile without warnings
+
+### DICOM_STUDIO_PLAN.md Maintenance
+
+- **Update after every feature completion**: Mark checklist items as `[x]`
+- **Update Status field**: Change milestone status from "Planned" → "In Progress" → "Completed"
+- **Update Acceptance Criteria**: Mark criteria as `[x]` when verified
+- **Keep test counts current**: Update test count in the Milestone Summary table
+
+### Naming Conventions
+
+| Type | Convention | Example |
+|------|-----------|---------|
+| Models | `<Entity>Model` | `StudyModel`, `SeriesModel` |
+| Services | `<Domain>Service` | `DICOMFileService`, `StorageService` |
+| ViewModels | `<Feature>ViewModel` | `MainViewModel`, `SettingsViewModel` |
+| Helpers | `<Domain>Mapping/Descriptions/Formatter` | `ModalityMapping`, `VRDescriptions` |
+| Tests | `<Type>Tests` | `ComponentTests`, `ViewModelTests` |
+| Enums | `<Feature>Section/Status/Mode` | `SettingsSection`, `ConnectionStatus` |
