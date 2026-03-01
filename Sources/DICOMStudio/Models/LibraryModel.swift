@@ -115,4 +115,16 @@ public struct LibraryModel: Sendable {
         studySeries.removeAll()
         seriesInstances.removeAll()
     }
+
+    /// Toggles the favorite status of a study.
+    ///
+    /// - Parameter studyUID: The Study Instance UID to toggle.
+    /// - Returns: The new favorite state, or nil if the study was not found.
+    @discardableResult
+    public mutating func toggleFavorite(_ studyUID: String) -> Bool? {
+        guard var study = studies[studyUID] else { return nil }
+        study.isFavorite.toggle()
+        studies[studyUID] = study
+        return study.isFavorite
+    }
 }

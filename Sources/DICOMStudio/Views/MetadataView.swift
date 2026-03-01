@@ -5,6 +5,11 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+#if os(macOS)
+import AppKit
+#elseif os(iOS) || os(visionOS)
+import UIKit
+#endif
 
 /// Metadata viewer displaying all DICOM data elements in a tree structure.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
@@ -186,6 +191,18 @@ struct MetadataTreeRowView: View {
                 .lineLimit(2)
                 .frame(maxWidth: 200, alignment: .trailing)
 
+            // Copy button
+            Button {
+                copyToClipboard(ClipboardHelper.formatValueForClipboard(node.value))
+            } label: {
+                Image(systemName: "doc.on.doc")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Copy value of \(node.name)")
+            .help("Copy tag value to clipboard")
+
             // Length
             Text(node.lengthString)
                 .font(.caption2)
@@ -194,6 +211,15 @@ struct MetadataTreeRowView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(node.name), tag \(node.tagString), value \(node.value)")
+    }
+
+    private func copyToClipboard(_ text: String) {
+        #if os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #elseif os(iOS) || os(visionOS)
+        UIPasteboard.general.string = text
+        #endif
     }
 }
 #endif
