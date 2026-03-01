@@ -3226,7 +3226,7 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 
 ##### DICOMViewer iOS App (3-4 weeks) ✅ COMPLETE
 **Status**: Implementation complete (February 2026)  
-**Location**: `DICOMViewer-iOS/` - See [STATUS.md](DICOMViewer-iOS/STATUS.md) for details  
+**Location**: Removed from repository  
 **Code**: 21 Swift files (~3,500 lines), 35+ unit tests (717 lines)
 
 - [x] File management:

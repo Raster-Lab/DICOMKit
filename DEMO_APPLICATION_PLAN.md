@@ -25,7 +25,7 @@ This document provides a high-level overview. For detailed phase-by-phase implem
 - **NEW:** Automated project setup (XcodeGen + shell script)
 - 8 comprehensive documentation files
 - Ready for immediate use
-- See [DICOMViewer-iOS/STATUS.md](DICOMViewer-iOS/STATUS.md) and [DICOMViewer-iOS/SETUP_AUTOMATION.md](DICOMViewer-iOS/SETUP_AUTOMATION.md)
+- iOS viewer has been removed from the repository
 
 **Total Test Coverage**: 1,235+ unit tests, 240+ integration tests, 60+ UI tests, 575+ playground tests across all demo applications (iOS complete, others planned).
 
@@ -59,15 +59,7 @@ This document provides a high-level overview. For detailed phase-by-phase implem
 **Primary Use Cases**: Mobile medical image viewing, point-of-care consultation, emergency imaging review  
 **Status**: ✅ All features implemented, tested, and documented with automated setup
 
-**Quick Start:**
-```bash
-cd DICOMViewer-iOS
-brew install xcodegen
-xcodegen generate
-open DICOMViewer.xcodeproj
-```
-
-See [DICOMViewer-iOS/](DICOMViewer-iOS/) for complete implementation.
+**Status**: iOS viewer has been removed from the repository.
 
 #### Core Features
 
@@ -1203,7 +1195,7 @@ This comprehensive demo application plan provides a roadmap for creating product
 - Polish and integration (Week 14)
 
 **Next Steps**:
-1. ✅ iOS Viewer complete - See [DICOMViewer-iOS/STATUS.md](DICOMViewer-iOS/STATUS.md)
+1. iOS Viewer removed from repository
 2. Review CLI_TOOLS_PLAN.md and begin CLI suite implementation
 3. OR Review MACOS_VIEWER_PLAN.md and begin macOS viewer implementation  
 4. OR Review SAMPLE_CODE_PLAN.md and begin playground creation
