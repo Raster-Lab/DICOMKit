@@ -179,21 +179,6 @@ open DICOMViewer.xcodeproj
 # Build and run in Xcode
 ```
 
-### DICOMViewer visionOS
-
-Spatial computing medical imaging app for Apple Vision Pro.
-
-**Distribution Options:**
-1. **TestFlight** (recommended for beta testing)
-2. **App Store** (for public distribution)
-
-**Building from Source:**
-```bash
-cd DICOMViewer-visionOS
-open DICOMViewer.xcodeproj
-# Build and run in Xcode with visionOS simulator
-```
-
 **Note:** Demo applications are provided as examples and starting points. For production medical imaging applications, additional testing, validation, and regulatory compliance (FDA, CE marking, etc.) are required.
 
 ---

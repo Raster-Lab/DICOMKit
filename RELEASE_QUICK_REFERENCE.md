@@ -78,7 +78,6 @@
 ### Example Applications
 - **DICOMViewer iOS** - Mobile viewer
 - **DICOMViewer macOS** - Diagnostic workstation
-- **DICOMViewer visionOS** - Spatial computing viewer
 - **CLI Tools** - 7 command-line utilities
 
 ### Documentation

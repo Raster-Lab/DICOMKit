@@ -22,7 +22,6 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 | **CLI Tools** | [CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md) | 2-3 weeks | 495+ | 7 tools: info, convert, anon, validate, query, send, dump |
 | **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) ✅ Complete | 3-4 weeks | 35+ | Gestures, measurements, GSPS, cine playback |
 | **macOS Viewer** | [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) | 4-5 weeks | 360+ | PACS integration, MPR, 3D, printing |
-| **visionOS Viewer** | [VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md) | 3-4 weeks | 270+ | Spatial 3D, hand tracking, SharePlay |
 | **Sample Code** | [SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md) | 1 week | 575+ | 27 playgrounds in 6 categories |
 
 ---
@@ -143,32 +142,6 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 
 ---
 
-### visionOS Viewer ([Full Plan](VISIONOS_VIEWER_PLAN.md))
-
-**Core Features**:
-- Spatial image viewing (floating windows in 3D space)
-- 3D volume rendering in immersive space
-- Hand gesture controls and hand tracking
-- Eye tracking and gaze-based interaction
-- Clipping planes and MPR in 3D
-- Spatial measurements (3D length, angle, volume)
-- SharePlay collaboration with multiple users
-- Spatial audio and voice commands
-
-**Timeline**: 4 weeks, 4 phases
-- Week 1: Foundation (windows, immersive mode, basic volume rendering)
-- Week 2: Advanced rendering (volume rendering, clipping, MPR)
-- Week 3: Interaction (hand gestures, 3D measurements, eye tracking)
-- Week 4: Collaboration (SharePlay, spatial audio, polish)
-
-**Test Coverage**: 205+ unit tests, 45+ integration tests, 20+ device tests
-
-**Target Platforms**: visionOS 1.0+, Apple Vision Pro
-
-**Performance**: 60fps immersive mode, <1GB memory for 512³ volume
-
----
-
 ### Sample Code & Playgrounds ([Full Plan](SAMPLE_CODE_PLAN.md))
 
 **Playground Categories** (27 total):
@@ -232,7 +205,6 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 | CLI Tools | 370+ | 125+ | - | - | **495+** |
 | iOS Viewer | 160+ | 30+ | 30+ | - | **220+** |
 | macOS Viewer | 250+ | 70+ | 40+ | - | **360+** |
-| visionOS Viewer | 205+ | 45+ | 20+ | - | **270+** |
 | Sample Code | - | - | - | 575+ | **575+** |
 | **TOTAL** | **985+** | **270+** | **90+** | **575+** | **1,920+** |
 
@@ -248,8 +220,7 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 1. **CLI Tools** (Weeks 1-3): Foundation utilities
 2. **iOS Viewer** (Weeks 4-7): Mobile platform
 3. **macOS Viewer** (Weeks 8-12): Desktop platform
-4. **visionOS Viewer** (Weeks 13-16): Spatial computing
-5. **Sample Code** (Week 17): Educational resources
+4. **Sample Code** (Week 13): Educational resources
 
 **Advantages**:
 - Single developer maintains consistency
@@ -268,7 +239,6 @@ This guide provides quick navigation to all demo application plans for DICOMKit 
 - **Developer 1**: CLI Tools (Weeks 1-3) → Sample Code (Week 4)
 - **Developer 2**: iOS Viewer (Weeks 1-4)
 - **Developer 3**: macOS Viewer (Weeks 1-5)
-- **Developer 4**: visionOS Viewer (Weeks 1-4)
 
 **Week 5-6**: Integration, polish, documentation
 **Week 7-8**: Final testing, distribution, release
@@ -401,7 +371,6 @@ Continue through each phase:
 - CLI_TOOLS_PLAN.md created
 - IOS_VIEWER_PLAN.md created
 - MACOS_VIEWER_PLAN.md created
-- VISIONOS_VIEWER_PLAN.md created
 - SAMPLE_CODE_PLAN.md created
 - DEMO_APPLICATION_PLAN.md updated with cross-references
 - MILESTONES.md updated with detailed breakdowns

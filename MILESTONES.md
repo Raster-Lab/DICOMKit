@@ -15,7 +15,6 @@ For Milestone 10.14 (Example Applications), detailed phase-by-phase implementati
 - **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI Application (29 tools, 4-5 weeks, 370+ tests) - ✅ All phases complete
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS (3-4 weeks, 220+ tests)
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 360+ tests)
-- **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - DICOMViewer visionOS (3-4 weeks, 270+ tests)
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - 27 Playgrounds (1 week, 575+ tests)
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview and strategy
 
@@ -3212,13 +3211,10 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 - DICOMViewer macOS **100% complete** (February 8, 2026) with 61 files, ~15,000 lines, 379+ tests (302 unit + 37 integration + 40+ UI). All Phase 5 features implemented: measurement export (CSV/JSON/text), PDF reports, watch folder auto-import, comprehensive testing, **tooltips, accessibility enhancements, and complete documentation** (KEYBOARD_SHORTCUTS.md 341 lines, USER_GUIDE.md 1067 lines).
 - CLI Tools suite complete with 8 tools and 180+ tests (dicom-diff added in Phase 2).
 - Sample code/playgrounds complete with 27 playgrounds and 241 examples.
-- DICOMViewer visionOS complete (February 2026) with 43 files, ~2,200 lines, 270+ tests (205 unit + 45 integration + 20 device). All 4 phases implemented: foundation, advanced rendering, interaction & measurements, collaboration & polish. Features 3D volume rendering, spatial measurements, SharePlay collaboration, hand tracking, and eye tracking.
-
 **Detailed Implementation Plans**:
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - Complete CLI suite specification ✅ **COMPLETE**
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - iOS app detailed plan ✅ **COMPLETE**
 - **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - macOS app detailed plan ✅ **COMPLETE (docs finished)**
-- **[VISIONOS_VIEWER_PLAN.md](VISIONOS_VIEWER_PLAN.md)** - visionOS app detailed plan ✅ **COMPLETE**
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Playgrounds and examples plan ✅ **COMPLETE**
 - **[DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md)** - High-level overview
 
@@ -3348,46 +3344,6 @@ This milestone delivers comprehensive demo applications across all Apple platfor
   - ⏳ DICOM Print (C-PRINT) (deferred - requires DICOMNetwork C-PRINT support)
   - ⏳ DICOMDIR support (deferred - requires DICOMKit DICOMDIR parsing)
 
-##### DICOMViewer visionOS App (3-4 weeks) ✅ COMPLETE
-**Status**: Implementation complete (February 2026)  
-**Location**: `DICOMViewer-visionOS/` - See [README.md](DICOMViewer-visionOS/README.md) for details
-
-- [x] Spatial viewing:
-  - [x] Floating image windows in space
-  - [x] Multiple windows simultaneously
-  - [x] Window management with hand gestures
-  - [x] Immersive mode for focused viewing
-- [x] 3D volume rendering:
-  - [x] Volumetric display in space
-  - [x] Walk around volumes
-  - [x] Scale from miniature to life-size
-  - [x] MIP and direct volume rendering
-  - [x] Transfer function editor in space
-- [x] Clipping and slicing:
-  - [x] Hand-placed clipping planes
-  - [x] Multiple clip planes
-  - [x] Animated clipping
-  - [x] MPR slices as floating planes
-- [x] Spatial measurements:
-  - [x] 3D length and angle measurements
-  - [x] Volume ROI
-  - [x] Spatial annotations
-- [x] Hand tracking:
-  - [x] Custom medical imaging gestures
-  - [x] Window/level hand gestures
-  - [x] Measurement placement with pinch
-  - [x] Volume manipulation
-- [x] Eye tracking:
-  - [x] Gaze-based selection
-  - [x] Gaze-activated menus
-  - [x] Window focus follows gaze
-- [x] Collaboration:
-  - [x] SharePlay integration
-  - [x] Multi-user viewing sessions
-  - [x] Shared measurements and annotations
-  - [x] Spatial voice chat
-- [x] Testing: 205+ unit tests, 45+ integration tests, 20+ device tests (270+ total)
-
 ##### DICOMTools CLI Suite (2-3 weeks) - ✅ COMPLETE
 - [x] dicom-info: File metadata display ✅ COMPLETE
   - [x] Plain text, JSON, CSV output (XML deferred)
@@ -3488,7 +3444,6 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 |-----------|------------|-------------------|-----------------|-------|--------|
 | iOS Viewer | 35+ | N/A | N/A | 35+ | ✅ Complete |
 | macOS Viewer | 224 (Phase 1-4) | 0 | 0 | 224 | 🚧 Phase 4/5 |
-| visionOS Viewer | 205+ | 45+ | 20+ | 270+ | ✅ Complete |
 | CLI Tools | 160+ | - | - | 160+ | ✅ Complete |
 | Sample Code | 27 playgrounds (100% complete) | 143 tests | - | 241 examples | ✅ Complete |
 | **TOTAL** | **1,045+** | **188+** | **20+** | **1,253+** | ✅ Complete |
@@ -3496,8 +3451,6 @@ This milestone delivers comprehensive demo applications across all Apple platfor
 **iOS Viewer Actual Tests** (February 2026): 35+ unit tests covering measurement calculations, GSPS parsing, ROI statistics, and presentation state rendering. Integration and UI tests omitted to maintain minimal implementation scope focused on demonstrating DICOMKit capabilities.
 
 **macOS Viewer Phase 4 Tests** (February 2026): 224 unit tests total across 14 test files - DatabaseService (8), PACSServer (8), DownloadManager (14), ViewportLayout (10), HangingProtocol (10), CineController (17), ViewportLayoutService (15), HangingProtocolService (10), Measurement (30), MeasurementService (32), Volume (23), MPREngine (22), MPRViewModel (15), VolumeRenderingViewModel (20). Full test suite (250+ unit, 70+ integration, 40+ UI) planned for Phase 5.
-
-**visionOS Viewer Actual Tests** (February 2026): 270+ tests across 43 Swift files covering all 4 implementation phases. Tests include Volume3D (15), TransferFunction (10), SpatialMeasurement (10), VolumeViewModel (25), MeasurementViewModel (20), VolumeRendering integration (15), and comprehensive coverage of spatial computing features (3D rendering, hand gestures, eye tracking, SharePlay collaboration). All core visionOS-specific functionality tested including RealityKit entities, ARKit tracking, and Metal shaders.
 
 **CLI Tools Actual Tests** (February 2026): 160+ unit tests across 7 tools (dicom-info, dicom-convert, dicom-validate, dicom-anon, dicom-dump, dicom-query, dicom-send). All core functionality tested. Integration tests (network operations) omitted as they require live PACS servers, but tools are production-ready with comprehensive error handling and mocking capabilities.
 

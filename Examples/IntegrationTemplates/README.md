@@ -75,7 +75,6 @@ Have a useful integration pattern? Consider contributing a template!
 For complete, production-ready applications, see:
 
 - **DICOMViewer macOS** - Desktop diagnostic workstation ([DICOMViewer-macOS/](../../DICOMViewer-macOS/))
-- **DICOMViewer visionOS** - Spatial computing viewer ([DICOMViewer-visionOS/](../../DICOMViewer-visionOS/))
 
 ## Resources
 

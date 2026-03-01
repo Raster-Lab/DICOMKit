@@ -72,7 +72,6 @@
 ### Example Applications
 - **DICOMViewer iOS**: Mobile viewer with gesture controls
 - **DICOMViewer macOS**: Professional diagnostic workstation
-- **DICOMViewer visionOS**: Spatial computing medical imaging
 - **CLI Tools**: 7 command-line utilities
 - **Playgrounds**: 27 Xcode Playgrounds
 

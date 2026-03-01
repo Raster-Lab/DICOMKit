@@ -20,7 +20,6 @@ DICOMKit has reached a major milestone with **ALL 7 Phases of CLI Tools** now co
 ### 2. Demo Applications
 - ✅ **DICOMViewer iOS** (Complete - 4 phases, 21 files, 35+ tests)
 - ✅ **DICOMViewer macOS** (Complete - 5 phases, 61 files, 379+ tests)
-- ✅ **DICOMViewer visionOS** (Complete - 4 phases, 42 files, 205+ tests)
 
 ### 3. CLI Tools Suite (ALL 6 PHASES COMPLETE)
 - ✅ **Phase 1** (7 tools - 160+ tests)
