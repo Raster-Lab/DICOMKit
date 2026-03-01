@@ -198,13 +198,6 @@ This is the first production-ready release of DICOMKit, a pure Swift DICOM toolk
 - PACS query/retrieve integration
 - Export and printing capabilities
 
-#### DICOMViewer visionOS
-- Spatial computing medical imaging
-- 3D volume rendering in immersive space
-- Hand tracking and gesture controls
-- Spatial measurements
-- Collaborative viewing support
-
 #### Command-Line Tools
 - **dicom-info**: Display DICOM file metadata
 - **dicom-dump**: Detailed data element dump
