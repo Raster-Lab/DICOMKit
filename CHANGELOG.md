@@ -192,11 +192,7 @@ This is the first production-ready release of DICOMKit, a pure Swift DICOM toolk
 - Local file import and PACS integration
 
 #### DICOMViewer macOS
-- Professional diagnostic workstation
-- Multi-monitor support, MPR (Multi-Planar Reconstruction)
-- Advanced measurement tools
-- PACS query/retrieve integration
-- Export and printing capabilities
+- Removed from the repository.
 
 #### Command-Line Tools
 - **dicom-info**: Display DICOM file metadata

@@ -219,7 +219,6 @@ dicom-print add-printer --name rad-printer \
 
 ### Integration Opportunities
 - DICOMViewer iOS: Print from mobile devices
-- DICOMViewer macOS: Professional workstation printing
 - DICOMToolbox: Batch printing workflows
 - Enterprise PACS: Film printing for diagnostic review
 
