@@ -57,7 +57,7 @@
 | 11 | Security & Privacy Center | TLS, anonymization, audit logs, certificates | 2 weeks | 65+ |
 | 12 | Data Exchange & Export | JSON, XML, image export, PDF, DICOMDIR | 2 weeks | 70+ |
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
-| 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, Touch Bar | 2 weeks | 80+ |
+| 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, automation | 2 weeks | 80+ |
 | 15 | Polish, Accessibility & Release | i18n, a11y, UI tests, profiling, App Store | 2 weeks | 100+ |
 | **Total** | | | **34 weeks** | **1,200+** |
 
@@ -1250,7 +1250,6 @@
   - [ ] Cmd+1-9: Window presets
   - [ ] Cmd+Shift+F: Fullscreen
   - [ ] Arrow keys: Frame navigation
-- [ ] Touch Bar support (if available)
 - [ ] Dock icon badges (transfer count)
 - [ ] AppleScript/Shortcuts automation support
 - [ ] Quick Look plugin for DICOM files
