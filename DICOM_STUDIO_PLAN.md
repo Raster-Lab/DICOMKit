@@ -59,7 +59,8 @@
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
 | 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, automation | 2 weeks | 80+ |
 | 15 | Polish, Accessibility & Release | i18n, a11y, UI tests, profiling, App Store | 2 weeks | 100+ |
-| **Total** | | | **34 weeks** | **1,200+** |
+| 16 | CLI Tools Workshop | Interactive GUI for all 29 CLI tools, command builder, console | 3 weeks | 120+ |
+| **Total** | | | **37 weeks** | **1,320+** |
 
 ---
 
@@ -100,6 +101,7 @@
   - [ ] Networking (DICOM/DICOMweb)
   - [ ] Reporting (structured reports)
   - [ ] Tools (data exchange, developer tools)
+  - [ ] CLI Workshop (interactive GUI for all 29 CLI tools)
   - [ ] Settings (configuration)
 - [ ] macOS: NavigationSplitView with sidebar, detail, and inspector
 
@@ -1374,6 +1376,376 @@
 
 ---
 
+## Milestone 16: CLI Tools Workshop
+
+**Status**: Planned
+**Goal**: Provide an interactive graphical interface within DICOM Studio for all 29 DICOMKit command-line tools, serving as both an educational resource for new DICOM users and a productivity tool for experienced professionals
+**DICOMKit Features Showcased**: DICOMToolbox command builder, all CLI tool parameters, `Process`-based execution, real-time output streaming, drag-and-drop file handling, PACS network configuration
+
+### Design Philosophy
+
+The CLI Tools Workshop integrates directly into DICOM Studio as a dedicated feature area, providing:
+
+1. **Educational First** — Every parameter includes contextual help, explanations, and expandable discussions referencing the DICOM standard
+2. **Visual Command Building** — Users configure tools through native SwiftUI controls (pickers, toggles, steppers, text fields) while the exact CLI syntax builds in real time
+3. **Execute In-App** — Run the constructed command directly and view results without leaving DICOM Studio
+4. **DICOM Network Aware** — Common PACS connection parameters (local AE title, called AET, host, port, timeout) are displayed in a persistent bar above the tab interface and automatically populate into network tool parameters
+5. **Apple HIG Compliant** — Native SwiftUI components following the latest Apple Human Interface Design Guidelines
+
+### Application Layout
+
+```
++================================================================+
+|  DICOM Studio — CLI Tools Workshop                     macOS 14+|
++================================================================+
+|                                                                 |
+|  +-----------------------------------------------------------+ |
+|  |  PACS / Network Configuration (Always Visible)             | |
+|  |  [AE Title: ____] [Called AET: ____] [Host: ____]          | |
+|  |  [Port: ____]     [Timeout: ____s]  [Protocol: DICOM/Web] | |
+|  |  [Saved Profiles: v]  [Save]  [Delete]  [Test Connection]  | |
+|  +-----------------------------------------------------------+ |
+|                                                                 |
+|  +-----------------------------------------------------------+ |
+|  | File Inspection | Processing | Organization | Export |      | |
+|  | Network Ops     | Automation |                              | |
+|  +-----------------------------------------------------------+ |
+|  |                                                             | |
+|  |  +------------------+  +----------------------------------+ | |
+|  |  | Tool List        |  | Parameter Configuration          | | |
+|  |  | - dicom-info     |  |                                  | | |
+|  |  | - dicom-dump     |  |  [Input File]  [Drop Zone]       | | |
+|  |  | - dicom-tags     |  |  [Format: v]   [Options...]      | | |
+|  |  |   ...            |  |  [Flags]       [Help ⓘ]          | | |
+|  |  +------------------+  +----------------------------------+ | |
+|  |                                                             | |
+|  +-----------------------------------------------------------+ |
+|                                                                 |
+|  +-----------------------------------------------------------+ |
+|  | $ dicom-info --format json --statistics scan.dcm    [Run]  | |
+|  |                                                             | |
+|  | (command output appears here after execution)               | |
+|  +-----------------------------------------------------------+ |
++================================================================+
+```
+
+### Deliverables
+
+#### 16.1 Network Configuration Bar
+- [ ] `CLINetworkConfigView` component — always visible above the tool tabs
+- [ ] Fields with validation:
+  - [ ] **AE Title** (`TextField`, 16-char max, ASCII-only validation)
+  - [ ] **Called AET** (`TextField`, default: "ANY-SCP")
+  - [ ] **Host** (`TextField`, hostname or IP address)
+  - [ ] **Port** (`Stepper` + `TextField`, range: 1–65535, default: 11112)
+  - [ ] **Timeout** (`Stepper`, range: 5–300s, default: 60)
+  - [ ] **Protocol** (`Picker`: DICOM / DICOMweb)
+- [ ] Persistence via `Codable` structs stored in `UserDefaults` (for atomicity when saving/loading complete profiles); OAuth2 tokens and sensitive credentials stored in Keychain
+- [ ] Server profile management (save, load, delete named profiles)
+- [ ] Test Connection button — runs `dicom-echo` inline and displays result
+- [ ] Validation badges (green checkmark when all fields are valid)
+
+#### 16.2 Tool Tab Interface
+- [ ] `TabView` with 6 logical tabs (`.tabViewStyle(.automatic)`):
+  - [ ] **File Inspection** (4 tools): dicom-info, dicom-dump, dicom-tags, dicom-diff
+  - [ ] **File Processing** (4 tools): dicom-convert, dicom-validate, dicom-anon, dicom-compress
+  - [ ] **File Organization** (4 tools): dicom-split, dicom-merge, dicom-dcmdir, dicom-archive
+  - [ ] **Data Export** (6 tools): dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-export, dicom-pixedit
+  - [ ] **Network Operations** (8 tools): dicom-echo, dicom-query, dicom-send, dicom-retrieve, dicom-qr, dicom-wado, dicom-mwl, dicom-mpps
+  - [ ] **Automation** (3 tools): dicom-study, dicom-uid, dicom-script
+- [ ] `NavigationSplitView` within each tab for tool sidebar + parameter panel
+- [ ] SF Symbol icons for each tab (doc.text.magnifyingglass, gearshape.2, folder.badge.gearshape, square.and.arrow.up, network, terminal)
+
+#### 16.3 Parameter Configuration Panel
+- [ ] Dynamic `Form` with `Section` and `DisclosureGroup` for each tool's parameters
+- [ ] SwiftUI control mapping for every CLI parameter type:
+
+  | Parameter Type | SwiftUI Control | Example |
+  |---------------|-----------------|---------|
+  | File path (`@Argument`) | `FileDropZoneView` + `.fileImporter()` | DICOM file input |
+  | Output path (`@Option --output`) | `.fileExporter()` / `NSSavePanel` | Save anonymized file |
+  | Enum option (`@Option` enum) | `Picker` (`.segmented` or `.menu` style) | `--format text\|json\|csv` |
+  | String option (`@Option`) | `TextField` with placeholder | `--patient-name "SMITH*"` |
+  | Integer option (`@Option`) | `Stepper` or `TextField` (numeric) | `--timeout 60` |
+  | Boolean flag (`@Flag`) | `Toggle` (`.switch` style) | `--verbose`, `--recursive` |
+  | Repeatable option (array) | Dynamic `List` with Add/Remove | `--tag Name --tag ID` |
+  | Date option (`@Option`) | `DatePicker` + manual text fallback | `--study-date 20240101` |
+  | Subcommand | `Picker` at top of parameter panel | `dicom-export single\|bulk` |
+
+- [ ] Parameter explanations:
+  - [ ] `.help()` modifier for brief tooltip on hover
+  - [ ] `DisclosureGroup` for detailed explanation with examples
+  - [ ] `Button` + `.popover()` with `Image(systemName: "info.circle")` for extended documentation referencing DICOM standard sections
+  - [ ] `Text("*").foregroundStyle(.red)` for required field indicators
+  - [ ] Real-time validation feedback with `Text` in `.foregroundStyle(.red)`
+
+#### 16.4 File Drop Zone
+- [ ] `FileDropZoneView` — reusable drag-and-drop target:
+  - [ ] Dashed border when empty, solid border when file selected
+  - [ ] Blue highlight border on drag hover
+  - [ ] `.onDrop(of:)` delegate for file URL types
+  - [ ] `.fileImporter()` as alternative Browse button
+  - [ ] File validation (verify DICOM preamble/header)
+  - [ ] Display selected filename and file size with remove button
+  - [ ] Multi-file variant for tools accepting multiple inputs (dicom-merge, dicom-send) with reordering
+- [ ] `OutputPathView` — output file/directory configuration:
+  - [ ] `.fileExporter()` or `NSSavePanel` integration
+  - [ ] Required for all tools that produce file output
+  - [ ] Display configured path with change/clear buttons
+
+#### 16.5 Console Window
+- [ ] `CLIConsoleView` component — always visible below the tool tabs
+- [ ] Command preview section:
+  - [ ] Monospaced font using `.font(.system(.body, design: .monospaced))` (SF Mono)
+  - [ ] Real-time command syntax preview updated as parameters change
+  - [ ] Syntax highlighting: tool name in **bold**, flags in blue, values in green, file paths in orange
+  - [ ] Copy-to-clipboard button for the generated command
+- [ ] Execute (Run) button:
+  - [ ] Enabled only when all required parameters are provided (`isCommandValid`)
+  - [ ] `.disabled(!isCommandValid)` modifier
+  - [ ] Positioned next to the console window
+  - [ ] SF Symbol `play.fill` icon
+  - [ ] Cancel button (SF Symbol `stop.fill`) appears during execution
+- [ ] Output section:
+  - [ ] Scrollable, selectable text area
+  - [ ] Real-time output streaming during command execution
+  - [ ] Status indicators: idle | running (ProgressView spinner) | success (green checkmark) | error (red ✕)
+  - [ ] Clear output button
+  - [ ] Copy output to clipboard button
+
+#### 16.6 Command Builder Engine
+- [ ] `CLICommandBuilder` — builds CLI command string from parameter model:
+  - [ ] Observes parameter changes and regenerates syntax in real time
+  - [ ] Validates all required parameters are present
+  - [ ] Publishes `isValid: Bool` to control Execute button state
+  - [ ] Supports all parameter types: positional arguments, options, flags, subcommands
+  - [ ] Handles DICOM tag notation (GGGG,EEEE) for repeatable tag parameters
+- [ ] `CLICommandExecutor` actor (Swift concurrency):
+  - [ ] Executes via `Foundation.Process` with stdout/stderr pipes
+  - [ ] Streams output in real-time to the console via `AsyncStream`
+  - [ ] Supports cancellation via `Task` cancellation
+  - [ ] Reports exit code with success/failure indicator
+- [ ] Command history:
+  - [ ] Stores last 50 executed commands
+  - [ ] Click to reload parameters into the tool view
+  - [ ] Export history as a shell script
+  - [ ] Re-run previous command button
+  - [ ] PHI-aware: automatically redact patient names, IDs, and sensitive credentials (OAuth2 tokens replaced with `<redacted>`) before persisting to history
+  - [ ] "Clear History" button and option to auto-clear on app quit
+  - [ ] History stored encrypted at rest for HIPAA compliance
+
+#### 16.7 Tool-Specific Parameter Views
+
+##### File Inspection Tab (4 tools)
+
+- [ ] **dicom-info** (`DicomInfoToolView`):
+  Input file (drop zone), format picker (text | json | csv), tag filter (repeatable), show private tags toggle, show statistics toggle, force parse toggle — each with help popover explaining the option
+
+- [ ] **dicom-dump** (`DicomDumpToolView`):
+  Input file, tag filter field, offset (hex), length stepper, bytes-per-line stepper (8 | 16 | 32), annotate toggle, no-color toggle, highlight tag, force parse toggle
+
+- [ ] **dicom-tags** (`DicomTagsToolView`):
+  Input file, output path, set tags (repeatable key=value), delete tags (repeatable), copy-from file, tag list file, delete private toggle, dry run toggle, verbose toggle
+
+- [ ] **dicom-diff** (`DicomDiffToolView`):
+  File 1 (drop zone), File 2 (drop zone), format picker (text | json | summary), ignore tags (repeatable), numeric tolerance field, ignore private toggle, compare pixels toggle, quick mode toggle, show identical toggle
+
+##### File Processing Tab (4 tools)
+
+- [ ] **dicom-convert** (`DicomConvertToolView`):
+  Input file/directory, output path (required), transfer syntax picker with expandable explanation per syntax, output format (dicom | png | jpeg | tiff), JPEG quality slider (1–100, conditional on jpeg format), window center/width fields, frame stepper, apply window toggle, strip private toggle, validate toggle, recursive toggle, force parse toggle
+
+- [ ] **dicom-validate** (`DicomValidateToolView`):
+  Input file/directory, validation level picker (segmented: 1 | 2 | 3 | 4) with expandable descriptions per level, IOD type picker (searchable), output format (text | json), output file (optional), detailed toggle, recursive toggle, strict mode toggle with warning, force parse toggle
+
+- [ ] **dicom-anon** (`DicomAnonToolView`):
+  Input file/directory, output path, profile picker (basic | clinical-trial | research) with DICOM PS3.15 references, date shift stepper, regenerate UIDs toggle, remove tags (repeatable), replace tags (repeatable key=value), keep tags (repeatable), recursive toggle, dry run toggle (highlighted), backup toggle, audit log path, force parse toggle, verbose toggle
+
+- [ ] **dicom-compress** (`DicomCompressToolView`):
+  Subcommand picker (compress | decompress | info | batch) with dynamic form per subcommand — compress: input/output/codec/quality; decompress: input/output/target syntax; info: input only; batch: input dir/output dir/codec/quality/recursive; verbose toggle
+
+##### File Organization Tab (4 tools)
+
+- [ ] **dicom-split** (`DicomSplitToolView`):
+  Input file, output directory, frame range, format picker, window center/width, filename pattern, apply window toggle, recursive toggle
+
+- [ ] **dicom-merge** (`DicomMergeToolView`):
+  Multiple input files (multi-file drop zone with add/remove/reorder), output file, format, merge level, sort-by field, sort order, validate toggle, recursive toggle
+
+- [ ] **dicom-dcmdir** (`DicomDcmdirToolView`):
+  Subcommand picker (create | validate | dump | update) with dynamic form — create: input dir/output/file-set-ID/profile/recursive; validate: input; dump: input; update: input/add/remove
+
+- [ ] **dicom-archive** (`DicomArchiveToolView`):
+  Input file/directory, output, format, recursive toggle
+
+##### Data Export Tab (6 tools)
+
+- [ ] **dicom-json** (`DicomJsonToolView`):
+  Input file, output file, format (standard | dicomweb), inline threshold, bulk data URL, reverse toggle (JSON → DICOM), pretty print toggle, stream toggle, metadata-only toggle
+
+- [ ] **dicom-xml** (`DicomXmlToolView`):
+  Input file, output file, inline threshold, bulk data URL, reverse toggle, pretty print toggle, no-keywords toggle, metadata-only toggle
+
+- [ ] **dicom-pdf** (`DicomPdfToolView`):
+  Input file, output file, patient name/ID fields, document title, extract toggle (toggles between encapsulate and extract modes), show metadata toggle
+
+- [ ] **dicom-image** (`DicomImageToolView`):
+  Input image, output file, patient name/ID, modality picker, use EXIF toggle, split pages toggle, recursive toggle
+
+- [ ] **dicom-export** (`DicomExportToolView`):
+  Subcommand picker (single | contact-sheet | animate | bulk) with dynamic forms per subcommand, format/quality/apply-window/organize-by options
+
+- [ ] **dicom-pixedit** (`DicomPixeditToolView`):
+  Input file, output file, mask region (x,y,w,h), fill value, crop region, apply window toggle, invert toggle
+
+##### Network Operations Tab (8 tools)
+
+- [ ] **dicom-echo** (`DicomEchoToolView`):
+  Server URL (auto-built from Network Config), AE Title/Called AET (inherited, overridable), count stepper, timeout (inherited, overridable), show statistics toggle, run diagnostics toggle, verbose toggle
+
+- [ ] **dicom-query** (`DicomQueryToolView`):
+  Server URL (inherited), AE Title/Called AET (inherited), query level picker (segmented: patient | study | series | instance), search criteria section (patient name, ID, study date via DatePicker, modality picker, study description, referring physician, accession number, study/series UID), output format (table | json | csv | compact), verbose toggle
+
+- [ ] **dicom-send** (`DicomSendToolView`):
+  Server URL (inherited), AE Title/Called AET (inherited), files to send (multi-file drop zone), recursive toggle, verify-first toggle, retry stepper (0–10), priority picker (low | medium | high), dry run toggle, verbose toggle
+
+- [ ] **dicom-retrieve** (`DicomRetrieveToolView`):
+  Server URL (inherited), AE Title/Called AET (inherited), study/series/instance UID fields, UID list file (drop zone), output directory (required), method picker (C-MOVE | C-GET), move destination (conditional on C-MOVE), parallel stepper (1–8), hierarchical toggle, verbose toggle
+
+- [ ] **dicom-qr** (`DicomQRToolView`):
+  Combined query-retrieve interface with server URL, AE Title/Called AET/move destination (inherited), query parameters (same as dicom-query), retrieve options (method, output, parallel, hierarchical), workflow mode picker (interactive | auto | review), validate retrieved toggle
+
+- [ ] **dicom-wado** (`DicomWadoToolView`):
+  Subcommand picker (retrieve | query | store | ups), base URL (https://), study/series/instance UID fields, OAuth2 token (SecureField — stored in Keychain, never logged, displayed as `<redacted>` in console command preview and command history), frames (comma-separated), output directory, metadata format (json | xml), retrieve-mode toggles (metadata-only, rendered, thumbnail), verbose toggle
+
+- [ ] **dicom-mwl** (`DicomMWLToolView`):
+  Server URL (inherited), AE Title/Called AET (inherited), query date (DatePicker), station name, patient name, modality picker, JSON output toggle
+
+- [ ] **dicom-mpps** (`DicomMPPSToolView`):
+  Subcommand picker (create | update), server URL (inherited), AE Title/Called AET (inherited), study UID, status picker (IN PROGRESS | COMPLETED | DISCONTINUED)
+
+##### Automation Tab (3 tools)
+
+- [ ] **dicom-study** (`DicomStudyToolView`):
+  Subcommand picker (organize | summary | check | stats | compare) with dynamic forms per subcommand, pattern builder with common placeholders, format picker, expected-series count
+
+- [ ] **dicom-uid** (`DicomUIDToolView`):
+  Subcommand picker (generate | validate | lookup | regenerate) — generate: count stepper/type/root OID; validate: input UIDs or file; lookup: UID field; regenerate: input file/output; JSON output toggle
+
+- [ ] **dicom-script** (`DicomScriptToolView`):
+  Subcommand picker (run | validate | template), script file (drop zone), variable editor (repeatable key=value), template picker with preview, parallel toggle, dry run toggle, log output path
+
+#### 16.8 Educational Features
+- [ ] Beginner/Advanced mode toggle:
+  - [ ] Beginner mode hides advanced parameters (e.g., force parse, byte order options)
+  - [ ] Advanced mode shows all parameters
+- [ ] "What does this do?" expandable section for every tool with DICOM standard references
+- [ ] Example command presets ("Show me an example") per tool
+- [ ] DICOM Glossary sidebar (searchable terms)
+- [ ] Context-sensitive help linking to DICOM PS3.x standard sections
+
+### Key UI Components
+
+| Component | Description | SwiftUI Implementation |
+|-----------|-------------|----------------------|
+| **Network Config Bar** | Persistent PACS connection settings above tabs | `Form` in a `GroupBox`, `@AppStorage` persistence |
+| **Tab Interface** | 6 logical tool groupings | `TabView` with `.tabViewStyle(.automatic)` |
+| **Tool Sidebar** | Tool selection within each tab | `List` with `NavigationSplitView` |
+| **Parameter Panel** | Dynamic form for selected tool | `Form` with `Section` and `DisclosureGroup` |
+| **File Drop Zone** | Drag-and-drop + native file picker | Custom `DropDelegate` + `.fileImporter()` |
+| **Output Path Picker** | File save configuration for output | `.fileExporter()` / `NSSavePanel` |
+| **Console Window** | Command preview (SF Mono) + output | `ScrollView` with `.font(.system(.body, design: .monospaced))` |
+| **Execute Button** | Run command when syntax is valid | `Button` with `.disabled(!isCommandValid)` |
+| **Info Popover** | Parameter help with DICOM references | `Button` + `.popover()` with `Image(systemName: "info.circle")` |
+| **Validation Feedback** | Real-time parameter validation | `Text` with `.foregroundStyle(.red)` |
+
+### Complete Tool-to-Tab Mapping
+
+| # | Tool | Tab | Network | Subcommands | File Input | File Output |
+|---|------|-----|:-------:|:-----------:|:----------:|:-----------:|
+| 1 | dicom-info | File Inspection | — | — | ✓ | — |
+| 2 | dicom-dump | File Inspection | — | — | ✓ | — |
+| 3 | dicom-tags | File Inspection | — | — | ✓ | ✓ |
+| 4 | dicom-diff | File Inspection | — | — | ✓ (×2) | — |
+| 5 | dicom-convert | File Processing | — | — | ✓ | ✓ |
+| 6 | dicom-validate | File Processing | — | — | ✓ | Optional |
+| 7 | dicom-anon | File Processing | — | — | ✓ | ✓ |
+| 8 | dicom-compress | File Processing | — | ✓ | ✓ | ✓ |
+| 9 | dicom-split | File Organization | — | — | ✓ | ✓ |
+| 10 | dicom-merge | File Organization | — | — | ✓ (multi) | ✓ |
+| 11 | dicom-dcmdir | File Organization | — | ✓ | ✓ | ✓ |
+| 12 | dicom-archive | File Organization | — | — | ✓ | ✓ |
+| 13 | dicom-json | Data Export | — | — | ✓ | ✓ |
+| 14 | dicom-xml | Data Export | — | — | ✓ | ✓ |
+| 15 | dicom-pdf | Data Export | — | — | ✓ | ✓ |
+| 16 | dicom-image | Data Export | — | — | ✓ | ✓ |
+| 17 | dicom-export | Data Export | — | ✓ | ✓ | ✓ |
+| 18 | dicom-pixedit | Data Export | — | — | ✓ | ✓ |
+| 19 | dicom-echo | Network Operations | ✓ | — | — | — |
+| 20 | dicom-query | Network Operations | ✓ | — | — | — |
+| 21 | dicom-send | Network Operations | ✓ | — | ✓ (multi) | — |
+| 22 | dicom-retrieve | Network Operations | ✓ | — | Optional | ✓ |
+| 23 | dicom-qr | Network Operations | ✓ | ✓ | — | ✓ |
+| 24 | dicom-wado | Network Operations | ✓ | ✓ | Optional | ✓ |
+| 25 | dicom-mwl | Network Operations | ✓ | ✓ | — | — |
+| 26 | dicom-mpps | Network Operations | ✓ | ✓ | — | — |
+| 27 | dicom-study | Automation | — | ✓ | ✓ | Optional |
+| 28 | dicom-uid | Automation | — | ✓ | Optional | — |
+| 29 | dicom-script | Automation | — | ✓ | ✓ | Optional |
+
+### SF Symbol Recommendations
+
+| Element | SF Symbol | Usage |
+|---------|-----------|-------|
+| File Inspection tab | `doc.text.magnifyingglass` | Tab icon |
+| File Processing tab | `gearshape.2` | Tab icon |
+| File Organization tab | `folder.badge.gearshape` | Tab icon |
+| Data Export tab | `square.and.arrow.up` | Tab icon |
+| Network Operations tab | `network` | Tab icon |
+| Automation tab | `terminal` | Tab icon |
+| File Drop Zone (empty) | `doc.badge.plus` | Drop target icon |
+| Execute Button | `play.fill` | Run command |
+| Cancel Button | `stop.fill` | Cancel execution |
+| Copy Button | `doc.on.doc` | Copy to clipboard |
+| Help / Info | `info.circle` | Parameter help popover |
+| Warning | `exclamationmark.triangle` | Validation warning |
+| Success | `checkmark.circle.fill` | Command succeeded |
+| Error | `xmark.circle.fill` | Command failed |
+| History | `clock.arrow.circlepath` | Command history |
+
+### Technical Notes
+- Integrate into the existing DICOM Studio sidebar navigation as a "CLI Tools" or "Workshop" entry
+- Use `DICOMToolbox` module's `CommandBuilder` and `CommandExecutor` for command construction and execution
+- Network parameters auto-populate into network tools from the persistent config bar
+- Override mechanism: local tool-level values take precedence over global config
+- Execute commands via `Foundation.Process` with stdout/stderr pipes
+- Stream output asynchronously using Swift concurrency (`AsyncStream`, `Task`)
+- Use `Codable` structs with `UserDefaults` for network profiles and command history; store OAuth2 tokens in Keychain
+- Console view must redact sensitive credentials (replace with `<redacted>`) in command preview and history
+- All parameter views should use `@Observable` ViewModels for two-way binding
+- Reference: DICOM PS3.2 (Conformance), PS3.5 (Data Structures), PS3.6 (Data Dictionary), PS3.7 (Message Exchange), PS3.15 (Security), PS3.18 (Web Services)
+
+### Acceptance Criteria
+- [ ] All 29 CLI tools are accessible through the Workshop GUI with all parameters configurable
+- [ ] Network configuration bar is always visible and persists across app launches
+- [ ] Network parameters auto-populate into all network tool views
+- [ ] Every parameter has at least a tooltip; complex parameters have expandable help with DICOM references
+- [ ] File drag-and-drop works for all file input parameters with visual feedback
+- [ ] File output parameters present a save panel for path configuration
+- [ ] Command preview updates in real-time as parameters are changed (SF Mono font)
+- [ ] Execute button correctly enables when all required parameters are valid, disabled otherwise
+- [ ] Command output displays in the monospaced console with real-time streaming
+- [ ] Command execution supports cancellation
+- [ ] Command history stores and replays the last 50 commands
+- [ ] Beginner/Advanced mode toggle hides/shows advanced parameters
+- [ ] VoiceOver, keyboard navigation, and Dynamic Type are fully supported
+- [ ] All 29 tools generate valid command syntax verified by unit tests
+
+### Estimated Effort
+**3 weeks** (1 developer)
+
+---
+
 ## Architecture Overview
 
 ### Application Structure
@@ -1392,6 +1764,7 @@ DICOMStudio/
 │   │   ├── NetworkingViewModel.swift
 │   │   ├── ReportingViewModel.swift
 │   │   ├── SecurityViewModel.swift
+│   │   ├── CLIWorkshopViewModel.swift    # CLI Tools Workshop
 │   │   └── SettingsViewModel.swift
 │   ├── Services/                     # Service layer
 │   │   ├── DICOMFileService.swift
@@ -1399,7 +1772,9 @@ DICOMStudio/
 │   │   ├── StorageService.swift
 │   │   ├── NetworkService.swift
 │   │   ├── CacheService.swift
-│   │   └── AuditService.swift
+│   │   ├── AuditService.swift
+│   │   ├── CLICommandBuilderService.swift  # Command syntax builder
+│   │   └── CLICommandExecutorService.swift # Process-based execution
 │   ├── Views/                        # SwiftUI views
 │   │   ├── Library/
 │   │   ├── Viewer/
@@ -1408,6 +1783,23 @@ DICOMStudio/
 │   │   ├── Modalities/
 │   │   ├── Tools/
 │   │   ├── Security/
+│   │   ├── CLIWorkshop/              # CLI Tools Workshop views
+│   │   │   ├── CLIWorkshopView.swift       # Main workshop container
+│   │   │   ├── CLINetworkConfigView.swift  # Persistent PACS config bar
+│   │   │   ├── CLIConsoleView.swift        # Console with SF Mono
+│   │   │   ├── FileDropZoneView.swift      # Drag-and-drop component
+│   │   │   ├── OutputPathView.swift        # Save path configuration
+│   │   │   ├── ToolTabs/                   # Per-tab tool views
+│   │   │   │   ├── FileInspectionTab/
+│   │   │   │   ├── FileProcessingTab/
+│   │   │   │   ├── FileOrganizationTab/
+│   │   │   │   ├── DataExportTab/
+│   │   │   │   ├── NetworkOpsTab/
+│   │   │   │   └── AutomationTab/
+│   │   │   └── Shared/                     # Reusable parameter controls
+│   │   │       ├── ParameterSectionView.swift
+│   │   │       ├── EnumPickerView.swift
+│   │   │       └── RepeatableOptionView.swift
 │   │   └── Components/               # Reusable UI components
 │   └── Resources/                    # Assets and localization
 │       ├── Assets.xcassets
@@ -1450,6 +1842,7 @@ DICOMStudio
 | Security & Privacy | DICOMNetwork | DICOMKit |
 | Data Exchange | DICOMKit, DICOMCore | DICOMDictionary |
 | Developer Tools | DICOMDictionary | DICOMCore |
+| CLI Tools Workshop | DICOMToolbox | DICOMKit, DICOMNetwork, DICOMWeb, ArgumentParser |
 
 ---
 
@@ -1463,6 +1856,9 @@ DICOMStudio
 | App Store rejection for medical claims | High | Low | Avoid diagnostic claims; label as "viewer only" |
 | Accessibility compliance gaps | Medium | Medium | Continuous accessibility auditing per milestone |
 | Localization accuracy for medical terms | Medium | Medium | Professional medical translator review |
+| CLI tool not found at runtime (Workshop) | High | Medium | Bundle CLI executables in the app bundle's `Contents/Resources/CLITools/` directory for App Store distribution; locate via `Bundle.main.resourcePath`; verify tool availability at launch with user-visible diagnostics |
+| Long-running CLI commands block UI (Workshop) | High | Low | Swift concurrency with Task cancellation; timeout limits |
+| Large command output overwhelms console (Workshop) | Medium | Medium | Virtualized scrolling; output truncation with "show all" option |
 
 ---
 
@@ -1481,4 +1877,4 @@ DICOMStudio
 
 ---
 
-*This plan covers 15 milestones spanning approximately 34 weeks of development, with 1,200+ planned tests, showcasing every feature of DICOMKit on macOS.*
+*This plan covers 16 milestones spanning approximately 37 weeks of development, with 1,320+ planned tests, showcasing every feature of DICOMKit on macOS — including an interactive CLI Tools Workshop providing a graphical interface for all 29 command-line tools.*
