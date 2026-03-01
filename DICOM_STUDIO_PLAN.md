@@ -7,7 +7,7 @@
 **Target Platforms**: iOS 17+, macOS 14+, visionOS 1+
 **UI Framework**: SwiftUI
 **Language**: Swift 6 (Strict Concurrency)
-**Dependencies**: DICOMKit, DICOMCore, DICOMDictionary, DICOMNetwork, DICOMWeb
+**Dependencies**: DICOMKit, DICOMCore, DICOMDictionary, DICOMNetwork, DICOMWeb, DICOMToolbox
 **Architecture**: MVVM with service layer
 **Target Users**: Medical professionals, radiologists, researchers, developers, medical students
 
@@ -35,7 +35,7 @@
 - [ ] <200MB memory usage for typical studies on iOS
 - [ ] 60fps scrolling and gesture response across all platforms
 - [ ] Full VoiceOver and Dynamic Type support
-- [ ] Localization for English, Spanish, French, German, Japanese, Chinese (Simplified)
+- [ ] Localization for English, Spanish, French, German, Japanese, Chinese (Simplified), Korean, Portuguese (Brazil), Arabic, Hebrew
 - [ ] Zero critical bugs at each milestone release
 
 ---
@@ -1486,6 +1486,7 @@ DICOMStudio
 ├── DICOMDictionary    (Tag dictionary, UID registry, Transfer Syntax registry)
 ├── DICOMNetwork       (C-ECHO/FIND/MOVE/GET/STORE, MWL, MPPS, Print, TLS)
 ├── DICOMWeb           (QIDO-RS, WADO-RS, STOW-RS, UPS-RS, OAuth2)
+├── DICOMToolbox       (Reusable command/tool execution, file processing utilities)
 └── ArgumentParser     (For any CLI-invocable features)
 ```
 
