@@ -1440,7 +1440,7 @@ The CLI Tools Workshop integrates directly into DICOM Studio as a dedicated feat
   - [ ] **Port** (`Stepper` + `TextField`, range: 1–65535, default: 11112)
   - [ ] **Timeout** (`Stepper`, range: 5–300s, default: 60)
   - [ ] **Protocol** (`Picker`: DICOM / DICOMweb)
-- [ ] `@AppStorage` persistence for all network fields
+- [ ] Persistence via `Codable` structs stored in `UserDefaults` (for atomicity when saving/loading complete profiles); OAuth2 tokens and sensitive credentials stored in Keychain
 - [ ] Server profile management (save, load, delete named profiles)
 - [ ] Test Connection button — runs `dicom-echo` inline and displays result
 - [ ] Validation badges (green checkmark when all fields are valid)
@@ -1530,6 +1530,9 @@ The CLI Tools Workshop integrates directly into DICOM Studio as a dedicated feat
   - [ ] Click to reload parameters into the tool view
   - [ ] Export history as a shell script
   - [ ] Re-run previous command button
+  - [ ] PHI-aware: automatically redact patient names, IDs, and sensitive credentials (OAuth2 tokens replaced with `<redacted>`) before persisting to history
+  - [ ] "Clear History" button and option to auto-clear on app quit
+  - [ ] History stored encrypted at rest for HIPAA compliance
 
 #### 16.7 Tool-Specific Parameter Views
 
@@ -1613,7 +1616,7 @@ The CLI Tools Workshop integrates directly into DICOM Studio as a dedicated feat
   Combined query-retrieve interface with server URL, AE Title/Called AET/move destination (inherited), query parameters (same as dicom-query), retrieve options (method, output, parallel, hierarchical), workflow mode picker (interactive | auto | review), validate retrieved toggle
 
 - [ ] **dicom-wado** (`DicomWadoToolView`):
-  Subcommand picker (retrieve | query | store | ups), base URL (https://), study/series/instance UID fields, OAuth2 token (SecureField), frames (comma-separated), output directory, metadata format (json | xml), retrieve-mode toggles (metadata-only, rendered, thumbnail), verbose toggle
+  Subcommand picker (retrieve | query | store | ups), base URL (https://), study/series/instance UID fields, OAuth2 token (SecureField — stored in Keychain, never logged, displayed as `<redacted>` in console command preview and command history), frames (comma-separated), output directory, metadata format (json | xml), retrieve-mode toggles (metadata-only, rendered, thumbnail), verbose toggle
 
 - [ ] **dicom-mwl** (`DicomMWLToolView`):
   Server URL (inherited), AE Title/Called AET (inherited), query date (DatePicker), station name, patient name, modality picker, JSON output toggle
@@ -1717,7 +1720,8 @@ The CLI Tools Workshop integrates directly into DICOM Studio as a dedicated feat
 - Override mechanism: local tool-level values take precedence over global config
 - Execute commands via `Foundation.Process` with stdout/stderr pipes
 - Stream output asynchronously using Swift concurrency (`AsyncStream`, `Task`)
-- Use `@AppStorage` and `Codable` JSON for persistence of network profiles and command history
+- Use `Codable` structs with `UserDefaults` for network profiles and command history; store OAuth2 tokens in Keychain
+- Console view must redact sensitive credentials (replace with `<redacted>`) in command preview and history
 - All parameter views should use `@Observable` ViewModels for two-way binding
 - Reference: DICOM PS3.2 (Conformance), PS3.5 (Data Structures), PS3.6 (Data Dictionary), PS3.7 (Message Exchange), PS3.15 (Security), PS3.18 (Web Services)
 
@@ -1852,7 +1856,7 @@ DICOMStudio
 | App Store rejection for medical claims | High | Low | Avoid diagnostic claims; label as "viewer only" |
 | Accessibility compliance gaps | Medium | Medium | Continuous accessibility auditing per milestone |
 | Localization accuracy for medical terms | Medium | Medium | Professional medical translator review |
-| CLI tool not found at runtime (Workshop) | High | Medium | Bundle tools with app or configure PATH; verify at launch |
+| CLI tool not found at runtime (Workshop) | High | Medium | Bundle CLI executables in the app bundle's `Contents/Resources/CLITools/` directory for App Store distribution; locate via `Bundle.main.resourcePath`; verify tool availability at launch with user-visible diagnostics |
 | Long-running CLI commands block UI (Workshop) | High | Low | Swift concurrency with Task cancellation; timeout limits |
 | Large command output overwhelms console (Workshop) | Medium | Medium | Virtualized scrolling; output truncation with "show all" option |
 
