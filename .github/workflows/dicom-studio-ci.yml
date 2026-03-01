@@ -1,0 +1,156 @@
+name: DICOM Studio CI
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'Sources/DICOMStudio/**'
+      - 'Tests/DICOMStudioTests/**'
+      - 'Package.swift'
+      - '.github/workflows/dicom-studio-ci.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'Sources/DICOMStudio/**'
+      - 'Tests/DICOMStudioTests/**'
+      - 'Package.swift'
+      - '.github/workflows/dicom-studio-ci.yml'
+  workflow_dispatch:
+
+env:
+  SWIFT_VERSION: '6.2'
+
+jobs:
+  build-and-test:
+    name: Build & Test DICOMStudio
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: macos-15
+            xcode: '16.2'
+          - os: ubuntu-22.04
+            xcode: ''
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode (macOS)
+      if: runner.os == 'macOS'
+      run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+
+    - name: Install Swift (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        wget -q https://download.swift.org/swift-6.2-release/ubuntu2204/swift-6.2-RELEASE/swift-6.2-RELEASE-ubuntu22.04.tar.gz
+        tar xzf swift-6.2-RELEASE-ubuntu22.04.tar.gz
+        sudo mv swift-6.2-RELEASE-ubuntu22.04 /usr/share/swift
+        echo "/usr/share/swift/usr/bin" >> $GITHUB_PATH
+
+    - name: Install system dependencies (Linux)
+      if: runner.os == 'Linux'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          binutils git gnupg2 libc6-dev libcurl4-openssl-dev \
+          libedit2 libgcc-11-dev libpython3.10 libsqlite3-0 \
+          libstdc++-11-dev libxml2-dev libz3-dev pkg-config \
+          tzdata unzip zlib1g-dev
+
+    - name: Show Swift version
+      run: swift --version
+
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: |
+          .build
+          ~/Library/Developer/Xcode/DerivedData
+        key: ${{ runner.os }}-studio-spm-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-studio-spm-
+
+    - name: Build DICOMStudio
+      run: swift build --target DICOMStudio -v
+
+    - name: Run DICOMStudio Tests
+      run: swift test --filter DICOMStudioTests -v
+
+    - name: Build DICOMStudio (Release)
+      run: swift build --target DICOMStudio -c release
+
+  test-coverage:
+    name: Test Coverage Report
+    runs-on: macos-15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: |
+          .build
+          ~/Library/Developer/Xcode/DerivedData
+        key: ${{ runner.os }}-studio-coverage-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-studio-coverage-
+
+    - name: Run Tests with Coverage
+      run: |
+        swift test --filter DICOMStudioTests \
+          --enable-code-coverage \
+          -v
+
+    - name: Generate Coverage Report
+      run: |
+        BIN_PATH=$(swift build --show-bin-path)
+        PROFDATA=$(find .build -name "default.profdata" -type f | head -1)
+        
+        if [ -z "$PROFDATA" ]; then
+          echo "::warning::No profdata file found"
+          exit 0
+        fi
+        
+        # Find the test binary
+        TEST_BIN=$(find .build -name "DICOMKitPackageTests" -type f | head -1)
+        if [ -z "$TEST_BIN" ]; then
+          TEST_BIN=$(find .build -name "*.xctest" -type d | head -1)
+        fi
+        
+        if [ -z "$TEST_BIN" ]; then
+          echo "::warning::No test binary found"
+          exit 0
+        fi
+        
+        echo "## DICOMStudio Test Coverage Report" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        # Generate line-by-line coverage for DICOMStudio sources
+        xcrun llvm-cov report "$TEST_BIN" \
+          -instr-profile="$PROFDATA" \
+          -ignore-filename-regex='Tests/|\.build/|Views/|App/' \
+          Sources/DICOMStudio/ 2>/dev/null || echo "Coverage report generation completed"
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "✅ DICOMStudio tests completed successfully" >> $GITHUB_STEP_SUMMARY
+
+  summary:
+    name: DICOMStudio CI Summary
+    runs-on: ubuntu-latest
+    needs: [build-and-test, test-coverage]
+    if: always()
+
+    steps:
+    - name: Check status
+      run: |
+        if [ "${{ needs.build-and-test.result }}" != "success" ]; then
+          echo "::error::DICOMStudio build or tests failed"
+          exit 1
+        fi
+        echo "✅ DICOMStudio CI pipeline completed successfully"

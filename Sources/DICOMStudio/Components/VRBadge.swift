@@ -3,56 +3,20 @@
 //
 // DICOM Studio — Value Representation badge component
 
-#if canImport(SwiftUI)
-import SwiftUI
+import Foundation
 
-/// Displays a DICOM Value Representation as a compact badge.
+/// Platform-independent DICOM Value Representation descriptions.
 ///
-/// Usage:
-/// ```swift
-/// VRBadge(vr: "PN")
-/// VRBadge(vr: "UI")
-/// ```
-@available(macOS 14.0, iOS 17.0, *)
-public struct VRBadge: View {
-    let vr: String
+/// Provides human-readable names and category groupings for
+/// DICOM VR codes without requiring SwiftUI.
+public enum VRDescriptions: Sendable {
 
-    public init(vr: String) {
-        self.vr = vr.uppercased()
-    }
-
-    public var body: some View {
-        Text(vr)
-            .font(.system(size: StudioTypography.captionSize, weight: .semibold, design: .monospaced))
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(badgeColor.opacity(0.15))
-            .foregroundStyle(badgeColor)
-            .clipShape(RoundedRectangle(cornerRadius: 4))
-            .accessibilityLabel("Value Representation \(vrFullName)")
-    }
-
-    private var badgeColor: Color {
-        switch vr {
-        case "PN", "LO", "SH", "CS", "LT", "ST", "UT", "UC":
-            return .blue
-        case "UI", "AE":
-            return .purple
-        case "DA", "TM", "DT":
-            return .orange
-        case "IS", "DS", "US", "SS", "UL", "SL", "FL", "FD":
-            return .green
-        case "OB", "OW", "OF", "OD", "UN":
-            return .red
-        case "SQ":
-            return .indigo
-        default:
-            return .gray
-        }
-    }
-
-    private var vrFullName: String {
-        switch vr {
+    /// Returns the full human-readable name for a DICOM VR code.
+    ///
+    /// - Parameter vr: Two-letter DICOM VR code (e.g. "PN", "UI").
+    /// - Returns: Human-readable VR name.
+    public static func fullName(for vr: String) -> String {
+        switch vr.uppercased() {
         case "PN": return "Person Name"
         case "LO": return "Long String"
         case "SH": return "Short String"
@@ -80,7 +44,75 @@ public struct VRBadge: View {
         case "OF": return "Other Float"
         case "OD": return "Other Double"
         case "UN": return "Unknown"
-        default: return vr
+        default: return vr.uppercased()
+        }
+    }
+
+    /// Returns the color category for a DICOM VR code.
+    ///
+    /// Categories are: `"string"`, `"identifier"`, `"datetime"`,
+    /// `"numeric"`, `"binary"`, `"sequence"`, or `"other"`.
+    ///
+    /// - Parameter vr: Two-letter DICOM VR code.
+    /// - Returns: Category name for color grouping.
+    public static func category(for vr: String) -> String {
+        switch vr.uppercased() {
+        case "PN", "LO", "SH", "CS", "LT", "ST", "UT", "UC":
+            return "string"
+        case "UI", "AE":
+            return "identifier"
+        case "DA", "TM", "DT":
+            return "datetime"
+        case "IS", "DS", "US", "SS", "UL", "SL", "FL", "FD":
+            return "numeric"
+        case "OB", "OW", "OF", "OD", "UN":
+            return "binary"
+        case "SQ":
+            return "sequence"
+        default:
+            return "other"
+        }
+    }
+}
+
+#if canImport(SwiftUI)
+import SwiftUI
+
+/// Displays a DICOM Value Representation as a compact badge.
+///
+/// Usage:
+/// ```swift
+/// VRBadge(vr: "PN")
+/// VRBadge(vr: "UI")
+/// ```
+@available(macOS 14.0, iOS 17.0, *)
+public struct VRBadge: View {
+    let vr: String
+
+    public init(vr: String) {
+        self.vr = vr.uppercased()
+    }
+
+    public var body: some View {
+        Text(vr)
+            .font(.system(size: StudioTypography.captionSize, weight: .semibold, design: .monospaced))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(badgeColor.opacity(0.15))
+            .foregroundStyle(badgeColor)
+            .clipShape(RoundedRectangle(cornerRadius: 4))
+            .accessibilityLabel("Value Representation \(VRDescriptions.fullName(for: vr))")
+    }
+
+    private var badgeColor: Color {
+        switch VRDescriptions.category(for: vr) {
+        case "string": return .blue
+        case "identifier": return .purple
+        case "datetime": return .orange
+        case "numeric": return .green
+        case "binary": return .red
+        case "sequence": return .indigo
+        default: return .gray
         }
     }
 }
