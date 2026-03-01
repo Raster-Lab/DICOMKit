@@ -185,6 +185,10 @@ let package = Package(
         .executable(
             name: "dicom-server",
             targets: ["dicom-server"]
+        ),
+        .library(
+            name: "DICOMStudio",
+            targets: ["DICOMStudio"]
         )
     ],
     dependencies: [
@@ -652,6 +656,19 @@ let package = Package(
             ],
             path: "Sources/dicom-server",
             exclude: ["README.md"]
+        ),
+        .target(
+            name: "DICOMStudio",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary"
+            ],
+            path: "Sources/DICOMStudio"
+        ),
+        .testTarget(
+            name: "DICOMStudioTests",
+            dependencies: ["DICOMStudio"]
         )
     ]
 )
