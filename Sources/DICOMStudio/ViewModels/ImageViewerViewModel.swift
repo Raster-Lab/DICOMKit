@@ -227,11 +227,10 @@ public final class ImageViewerViewModel {
 
         let start = Date()
 
-        let center = isInverted ? windowCenter : windowCenter
         let image = renderingService.renderFrame(
             from: file,
             frameIndex: currentFrameIndex,
-            windowCenter: center,
+            windowCenter: windowCenter,
             windowWidth: windowWidth
         )
 

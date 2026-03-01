@@ -39,10 +39,12 @@ public enum WindowLevelPresets: Sendable {
     // MARK: - CT Presets
 
     /// Standard CT presets for various tissue types.
+    /// Reference: Standard clinical window/level settings per radiological practice.
     public static let ctPresets: [WindowLevelPreset] = [
         WindowLevelPreset(name: "Abdomen", center: 40, width: 400, modality: "CT"),
         WindowLevelPreset(name: "Bone", center: 300, width: 1500, modality: "CT"),
         WindowLevelPreset(name: "Brain", center: 40, width: 80, modality: "CT"),
+        // Chest soft tissue uses the same W/L as Abdomen per standard clinical convention
         WindowLevelPreset(name: "Chest", center: 40, width: 400, modality: "CT"),
         WindowLevelPreset(name: "Lung", center: -600, width: 1500, modality: "CT"),
         WindowLevelPreset(name: "Liver", center: 60, width: 150, modality: "CT"),
