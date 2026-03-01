@@ -5,6 +5,7 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Study browser view displaying the Patient → Study → Series → Instance hierarchy.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
@@ -36,10 +37,34 @@ public struct StudyBrowserView: View {
                 importProgressBar(progress: progress)
             }
         }
+        .fileImporter(
+            isPresented: $viewModel.isFileImporterPresented,
+            allowedContentTypes: [.data, .folder],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                viewModel.handleImportedURLs(urls)
+            case .failure(let error):
+                viewModel.lastError = "File import failed: \(error.localizedDescription)"
+            }
+        }
+        .dropDestination(for: URL.self) { urls, _ in
+            viewModel.handleImportedURLs(urls)
+            return true
+        }
     }
 
     private var browserToolbar: some View {
         HStack {
+            // Import button
+            Button {
+                viewModel.showFileImporter()
+            } label: {
+                Image(systemName: "plus")
+                    .accessibilityLabel("Import DICOM files")
+            }
+
             // Search field
             HStack {
                 Image(systemName: "magnifyingglass")
@@ -110,6 +135,11 @@ public struct StudyBrowserView: View {
                 .font(.title2)
             Text("Import DICOM files to get started")
                 .foregroundStyle(.secondary)
+            Button("Import Files...") {
+                viewModel.showFileImporter()
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel("Import DICOM files")
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -142,6 +172,24 @@ public struct StudyBrowserView: View {
                 instanceCount: viewModel.library.instancesForSeries(study.studyInstanceUID).count
             )
             .tag(study.studyInstanceUID)
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button(role: .destructive) {
+                    viewModel.removeStudy(study.studyInstanceUID)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                Button {
+                    viewModel.toggleFavorite(study.studyInstanceUID)
+                } label: {
+                    Label(
+                        study.isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: study.isFavorite ? "star.slash" : "star.fill"
+                    )
+                }
+                .tint(.yellow)
+            }
         }
     }
 

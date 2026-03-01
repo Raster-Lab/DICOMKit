@@ -61,6 +61,9 @@ public struct StudyModel: Identifiable, Hashable, Sendable {
     /// File system path where study files are stored.
     public var storagePath: String?
 
+    /// Whether this study is marked as a favorite.
+    public var isFavorite: Bool
+
     /// Creates a new study model.
     public init(
         id: UUID = UUID(),
@@ -79,7 +82,8 @@ public struct StudyModel: Identifiable, Hashable, Sendable {
         numberOfSeries: Int = 0,
         numberOfInstances: Int = 0,
         modalitiesInStudy: Set<String> = [],
-        storagePath: String? = nil
+        storagePath: String? = nil,
+        isFavorite: Bool = false
     ) {
         self.id = id
         self.studyInstanceUID = studyInstanceUID
@@ -98,6 +102,7 @@ public struct StudyModel: Identifiable, Hashable, Sendable {
         self.numberOfInstances = numberOfInstances
         self.modalitiesInStudy = modalitiesInStudy
         self.storagePath = storagePath
+        self.isFavorite = isFavorite
     }
 
     /// Returns a display-friendly patient name (e.g., "Doe, John" from "Doe^John").
