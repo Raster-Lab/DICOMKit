@@ -36,7 +36,7 @@ public struct ModalityIcon: View {
         case "CT": return "cylinder.split.1x2"
         case "MR", "MRI": return "brain.head.profile"
         case "US": return "waveform.path.ecg"
-        case "CR", "DX", "RG": return "xray"
+        case "CR", "DX": return "xray"
         case "NM": return "atom"
         case "PT", "PET": return "sparkles"
         case "MG": return "rectangle.compress.vertical"

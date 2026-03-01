@@ -664,7 +664,8 @@ let package = Package(
                 "DICOMCore",
                 "DICOMDictionary"
             ],
-            path: "Sources/DICOMStudio"
+            path: "Sources/DICOMStudio",
+            exclude: ["ARCHITECTURE.md"]
         ),
         .testTarget(
             name: "DICOMStudioTests",
