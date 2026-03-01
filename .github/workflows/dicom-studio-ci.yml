@@ -17,6 +17,9 @@ on:
       - '.github/workflows/dicom-studio-ci.yml'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
   SWIFT_VERSION: '6.2'
 
