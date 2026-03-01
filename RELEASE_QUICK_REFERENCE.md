@@ -77,7 +77,6 @@
 
 ### Example Applications
 - **DICOMViewer iOS** - Mobile viewer
-- **DICOMViewer macOS** - Diagnostic workstation
 - **CLI Tools** - 7 command-line utilities
 
 ### Documentation

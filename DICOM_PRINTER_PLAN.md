@@ -851,7 +851,7 @@ public struct PartialPrintResult: Sendable {
   
 - [ ] **Integration Examples**
   - [ ] iOS print integration (DICOMViewer iOS)
-  - [ ] macOS print dialog integration (DICOMViewer macOS)
+  - [ ] macOS print dialog integration
   - [ ] CLI print tool (dicom-print)
   
 - [ ] **Testing Documentation**

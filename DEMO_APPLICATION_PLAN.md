@@ -16,7 +16,6 @@ This document provides a high-level overview. For detailed phase-by-phase implem
 - **[CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md)** - DICOMTools CLI Suite (7 tools, 2-3 weeks, 370+ unit tests, 125+ integration tests)
 - **[CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md)** - DICOMToolbox GUI (29 tools, 4-5 weeks, 318+ tests) 🆕 SwiftUI macOS app for all CLI tools
 - **[IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md)** - DICOMViewer iOS ✅ **IMPLEMENTED** (35+ unit tests, comprehensive documentation)
-- **[MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md)** - DICOMViewer macOS (4-5 weeks, 250+ unit tests, 70+ integration tests, 40+ UI tests)
 - **[SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md)** - Sample Code & Playgrounds (27 playgrounds, 1 week, 575+ test cases)
 
 **iOS Viewer Status**: ✅ **Complete with Automation** (February 2026)
@@ -226,200 +225,7 @@ DICOMViewerApp (iOS)
 
 ### 2. DICOMViewer macOS App
 
-**Platform**: macOS 14+  
-**Complexity**: Very High  
-**Development Time**: 4-5 weeks  
-**Primary Use Cases**: Diagnostic workstation, clinical review, teaching files, research imaging
-
-#### Core Features
-
-##### 2.1 Advanced File Management
-- **Drag-and-Drop Import**
-  - Multi-file drag support from Finder
-  - Folder drag for batch import
-  - Automatic study/series organization
-  - Import progress with cancel option
-
-- **File Organization**
-  - Study database with SQLite backend
-  - Smart folders based on filters
-  - Study archiving and compression
-  - Backup and restore functionality
-  - Duplicate detection and management
-
-- **External Storage**
-  - Network drive access (SMB, AFP)
-  - External hard drive monitoring
-  - DICOMDIR support for CD/DVD
-  - Watch folder for auto-import
-
-##### 2.2 Professional Viewer
-- **Multi-Window Viewing**
-  - Independent viewer windows per study
-  - Window tiling and arrangement
-  - Multi-monitor support
-  - Synchronized scrolling/windowing across windows
-  - Picture-in-picture comparison
-
-- **Advanced Layouts**
-  - 1x1, 1x2, 2x2, 2x3, 3x3 grid layouts
-  - Custom grid configurations
-  - Drag-and-drop series assignment to viewports
-  - Layout templates (chest, abdomen, spine, etc.)
-  - Hanging protocol support (from Milestone 10.3)
-
-- **Series Comparison**
-  - Side-by-side prior comparison
-  - Stack synchronization (scroll/zoom/pan)
-  - Temporal subtraction display
-  - Linked crosshairs for MPR correlation
-  - Registration and fusion for multi-modality
-
-##### 2.3 Advanced Measurement and Analysis
-- **Comprehensive Measurement Tools**
-  - All iOS measurement tools plus:
-  - Cobb angle for spine measurements
-  - Cardiothoracic ratio (CTR)
-  - SUV measurements for PET
-  - Time-intensity curves for perfusion
-  - Volume measurements with 3D ROI
-
-- **Advanced Visualization**
-  - Maximum Intensity Projection (MIP)
-  - Minimum Intensity Projection (MinIP)
-  - Average Intensity Projection (AvgIP)
-  - Multiplanar Reconstruction (MPR): axial, sagittal, coronal
-  - Curved MPR for vessel analysis
-  - 3D volume rendering preview
-
-- **RT Support** (from Milestone 10.4, 10.5)
-  - RT Structure Set overlay
-  - Contour visualization and editing
-  - Dose distribution display
-  - Isodose lines and color wash
-  - DVH (Dose Volume Histogram) plotting
-
-##### 2.4 PACS Integration
-- **DICOM Networking** (from Milestones 6, 7)
-  - C-FIND query to remote PACS
-  - C-MOVE/C-GET retrieve studies
-  - C-STORE send images to PACS
-  - C-ECHO verification
-  - Worklist (MWL) query for scheduled procedures
-
-- **DICOMweb Integration** (from Milestone 8)
-  - QIDO-RS search interface
-  - WADO-RS retrieve
-  - STOW-RS upload
-  - Server configuration management
-  - OAuth/token authentication
-
-- **Connection Management**
-  - AE Title configuration
-  - Server presets (PACS, research archives)
-  - Connection testing and diagnostics
-  - Transfer syntax negotiation
-  - Compression preferences
-
-##### 2.5 Professional Features
-- **Batch Processing**
-  - Batch anonymization with script support
-  - Batch export (PNG, JPEG, TIFF, PDF)
-  - Batch transfer syntax conversion
-  - Batch PACS upload
-  - Custom automation scripts (Swift scripting)
-
-- **Reporting Integration**
-  - Create SR documents from measurements
-  - Link measurements to report templates
-  - Export to standard report formats
-  - Voice dictation support (macOS Speech)
-  - Third-party RIS integration hooks
-
-- **Print and Export**
-  - DICOM print (grayscale and color)
-  - Multi-image layout printing
-  - Export to PACS-compatible formats
-  - PDF report generation with images
-  - High-resolution image export
-
-##### 2.6 UI/UX Design
-- **AppKit + SwiftUI Hybrid**
-  - AppKit for professional controls
-  - SwiftUI for settings and dialogs
-  - Menu bar with full keyboard shortcuts
-  - Contextual menus on right-click
-  - Toolbar customization
-
-- **Workspace Management**
-  - Save and restore workspace layouts
-  - Project-based organization
-  - Session persistence
-  - Window state restoration
-  - Tabbed interface for studies
-
-- **Accessibility**
-  - Full keyboard navigation
-  - VoiceOver support
-  - High contrast mode
-  - Text size adjustment
-  - Reduced motion support
-
-#### Technical Architecture
-
-```
-DICOMViewerApp (macOS)
-├── App/
-│   ├── AppDelegate.swift              // Application lifecycle
-│   └── MenuBuilder.swift              // Menu bar configuration
-├── Windows/
-│   ├── ViewerWindowController.swift   // Main viewer window
-│   ├── ComparisonWindowController.swift
-│   └── PACSQueryWindowController.swift
-├── Views/
-│   ├── StudyBrowserView.swift         // Study list
-│   ├── ViewportView.swift             // Single image viewport
-│   ├── GridLayoutView.swift           // Multi-viewport grid
-│   ├── MPRView.swift                  // Multiplanar reconstruction
-│   ├── MeasurementPaletteView.swift   // Tool palette
-│   └── PACSQueryView.swift            // Network query UI
-├── ViewModels/
-│   ├── StudyDatabaseViewModel.swift   // Database management
-│   ├── ViewerViewModel.swift          // Viewer coordination
-│   ├── PACSConnectionViewModel.swift  // Network operations
-│   └── BatchProcessingViewModel.swift
-├── Services/
-│   ├── StudyDatabase.swift            // SQLite persistence
-│   ├── PACSService.swift              // DICOM network client
-│   ├── DICOMwebService.swift          // DICOMweb client
-│   ├── RenderingEngine.swift          // Metal-accelerated rendering
-│   ├── MPREngine.swift                // Multiplanar reconstruction
-│   └── ExportService.swift            // Export operations
-├── Models/
-│   ├── Workspace.swift                // Workspace configuration
-│   ├── Layout.swift                   // Grid layout model
-│   └── PACSConnection.swift           // PACS server config
-└── Utilities/
-    ├── KeyboardShortcuts.swift        // Shortcut handlers
-    ├── DICOMPrint.swift               // Print support
-    └── ScriptingSupport.swift         // Automation APIs
-```
-
-#### Testing Requirements
-- Unit tests for all measurement tools
-- Integration tests for PACS connectivity
-- UI tests for window management
-- Performance tests with 1000+ series datasets
-- Memory leak detection
-- Sandbox and hardened runtime compliance
-
-#### Acceptance Criteria
-- [ ] Diagnostic-quality rendering matching reference viewers
-- [ ] Successful PACS integration with major vendors (GE, Siemens, Philips)
-- [ ] 30+ fps MPR reconstruction for typical CT datasets
-- [ ] Zero data loss in read/anonymize/write workflows
-- [ ] Apple notarization and Gatekeeper approval
-- [ ] Comprehensive test coverage (85%+)
+**Status**: Removed from the repository.
 
 ---
 
@@ -814,21 +620,7 @@ DICOMKit.playgroundbook/
 - [x] Create metadata browser (Complete with search and grouping)
 - [x] Add export functionality (PNG/JPEG export with burn-in option)
 
-#### Week 4: macOS Foundation
-- [ ] Port iOS viewer to macOS AppKit/SwiftUI
-- [ ] Implement multi-window architecture
-- [ ] Build grid layout system
-- [ ] Add PACS integration UI
-- [ ] Implement hanging protocol support
-
-#### Week 5: macOS Advanced Features
-- [ ] Add MPR reconstruction
-- [ ] Implement RT structure visualization
-- [ ] Build batch processing engine
-- [ ] Add DICOMweb client UI
-- [ ] Create workspace management
-
-**Milestone**: ✅ **iOS app feature-complete** (February 2026), macOS app pending
+**Milestone**: ✅ **iOS app feature-complete** (February 2026)
 
 ### Phase 3: visionOS and CLI (Weeks 6-7)
 **Focus**: Spatial computing and automation tools
@@ -1032,32 +824,28 @@ This comprehensive demo application plan provides a roadmap for creating product
 |-----------|---------------|----------|---------------|
 | **CLI Tools Suite** | [CLI_TOOLS_PLAN.md](CLI_TOOLS_PLAN.md) | 2-3 weeks | 370+ unit, 125+ integration tests |
 | **iOS Viewer** | [IOS_VIEWER_PLAN.md](IOS_VIEWER_PLAN.md) ✅ Complete | 3-4 weeks | 35+ unit tests (actual implementation) |
-| **macOS Viewer** | [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) | 4-5 weeks | 250+ unit, 70+ integration, 40+ UI tests |
 | **Sample Code** | [SAMPLE_CODE_PLAN.md](SAMPLE_CODE_PLAN.md) | 1 week | 575+ playground tests across 27 playgrounds |
-| **TOTAL** | 5 detailed plans | **13-17 weeks** | **2,475+ total tests** |
+| **TOTAL** | 4 detailed plans | **9-12 weeks** | **2,005+ total tests** |
 
 ### Implementation Approach
 
 **Sequential Development** (recommended):
 1. ✅ **COMPLETE**: iOS Viewer (February 2026) - All 4 phases done, 21 Swift files, 35+ tests
 2. **Next**: CLI Tools Suite (Foundation) - 2-3 weeks
-3. **Then**: macOS Viewer (Desktop platform) - 4-5 weeks
-4. **Finally**: Sample Code & Playgrounds (Education) - 1 week
+3. **Finally**: Sample Code & Playgrounds (Education) - 1 week
 
 **Parallel Development** (if resources available):
 - ✅ iOS viewer complete (February 2026)
 - CLI Tools and Sample Code can be developed simultaneously (Weeks 1-4)
-- macOS Viewer (Weeks 5-9)
-- visionOS standalone (Weeks 10-13)
-- Polish and integration (Week 14)
+- visionOS standalone (Weeks 5-8)
+- Polish and integration (Week 9)
 
 **Next Steps**:
 1. iOS Viewer removed from repository
 2. Review CLI_TOOLS_PLAN.md and begin CLI suite implementation
-3. OR Review MACOS_VIEWER_PLAN.md and begin macOS viewer implementation  
-4. OR Review SAMPLE_CODE_PLAN.md and begin playground creation
-5. Regular progress reviews at end of each phase
-6. Release demo applications alongside v1.0 release
+3. OR Review SAMPLE_CODE_PLAN.md and begin playground creation
+4. Regular progress reviews at end of each phase
+5. Release demo applications alongside v1.0 release
 
 **Estimated Total Effort**: 13-17 weeks sequential (1 senior developer) OR 6-8 weeks parallel (3-4 developers)  
 **Target Completion**: Milestone 10.14 (v1.0.14)  

@@ -163,23 +163,7 @@ Mobile DICOM viewer for iPhone and iPad.
 
 **Status**: iOS viewer has been removed from the repository.
 
-### DICOMViewer macOS
-
-Professional diagnostic workstation for macOS.
-
-**Distribution Options:**
-1. **Mac App Store**
-2. **Direct Download** (.dmg package)
-3. **Homebrew Cask** (future)
-
-**Building from Source:**
-```bash
-cd DICOMViewer-macOS
-open DICOMViewer.xcodeproj
-# Build and run in Xcode
-```
-
-**Note:** Demo applications are provided as examples and starting points. For production medical imaging applications, additional testing, validation, and regulatory compliance (FDA, CE marking, etc.) are required.
+**Status**: macOS viewer has been removed from the repository.
 
 ---
 

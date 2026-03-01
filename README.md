@@ -4247,18 +4247,10 @@ A production-quality mobile DICOM viewer for iOS and iPadOS. **Implementation co
 
 #### Planned Demo Applications
 
-**DICOMViewer macOS** - 🚧 Phase 4/5 Complete (February 2026)
-
-A professional diagnostic workstation for macOS with PACS integration, MPR, and 3D visualization. **Phase 4 (MPR and 3D) complete** with 54 files, ~13,500 lines, 224 unit tests. Core features include SwiftData database, file import, study browser, image viewer, C-ECHO/C-FIND/C-MOVE/C-STORE support, DICOMweb (QIDO-RS/WADO-RS/STOW-RS), server configuration UI, query interface, download queue, multi-viewport layouts, hanging protocols, cine playback, measurements, MPR reconstruction (axial/sagittal/coronal), MIP/MinIP/AverageIP projections, and volume rendering with transfer function presets.
-
-**Status**: Phase 4 complete. Ready for Phase 5 (Advanced Features). See [DICOMViewer-macOS/STATUS.md](DICOMViewer-macOS/STATUS.md) for detailed progress and [DICOMViewer-macOS/BUILD.md](DICOMViewer-macOS/BUILD.md) for build instructions.
-
-**Remaining phases**: Advanced Features (Week 5).
-
 - **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-7 (38 tools including: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-print, dicom-measure, dicom-viewer, dicom-report, dicom-3d, dicom-ai, dicom-cloud, dicom-gateway, dicom-server with 1,111+ tests; all Phase 7 advanced tools complete)
 - **DICOMToolbox GUI** - ✅ Complete (Phase 1-8) - SwiftUI macOS application providing graphical interface for 37 CLI tools with drag-and-drop, real-time command preview, educational features, DICOM glossary, accessibility, settings, integration testing, documentation, and release preparation (Phases 1-8 implemented with 370+ tests)
 
-See [DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md) for complete plans, [CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md) for GUI toolbox details, and [MACOS_VIEWER_PLAN.md](MACOS_VIEWER_PLAN.md) for macOS viewer details.
+See [DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md) for complete plans and [CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md) for GUI toolbox details.
 
 ---
 
@@ -5215,7 +5207,6 @@ All parsing behavior is documented with PS3.5 section references. We do not tran
 | **🐛 Issues** | Bug reports and feature requests | [GitHub Issues](https://github.com/Raster-Lab/DICOMKit/issues) |
 | **💬 Discussions** | Questions, ideas, and community support | [GitHub Discussions](https://github.com/Raster-Lab/DICOMKit/discussions) |
 | **📖 Examples** | Working code samples | [Examples/](Examples/), [Playgrounds/](Playgrounds/) |
-| **📱 Demo Apps** | Production-quality applications | [DICOMViewer-macOS/](DICOMViewer-macOS/) |
 | **❓ FAQ** | Frequently asked questions | [Documentation/FAQ.md](Documentation/FAQ.md) |
 | **🔧 Troubleshooting** | Common issues and solutions | [Documentation/Troubleshooting.md](Documentation/Troubleshooting.md) |
 

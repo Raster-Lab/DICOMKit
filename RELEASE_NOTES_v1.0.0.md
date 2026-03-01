@@ -95,12 +95,7 @@ DICOMKit v1.0.0 is the first production-ready release of a comprehensive, pure S
 - PACS integration
 - Local file import
 
-**DICOMViewer macOS**: Professional diagnostic workstation
-- Multi-monitor support
-- MPR (Multi-Planar Reconstruction)
-- Advanced measurement tools
-- PACS query/retrieve
-- Export and printing
+**DICOMViewer macOS**: Removed from the repository.
 
 **CLI Tools**: Seven command-line utilities
 - `dicom-info`: Display metadata
