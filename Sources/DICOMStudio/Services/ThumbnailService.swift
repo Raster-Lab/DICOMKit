@@ -43,4 +43,41 @@ public final class ThumbnailService: Sendable {
 
     /// Maximum thumbnail dimension.
     public var maxSize: Int { maxThumbnailSize }
+
+    /// Returns the thumbnail URL for a given SOP Instance UID and frame number.
+    ///
+    /// - Parameters:
+    ///   - sopInstanceUID: The SOP Instance UID.
+    ///   - frameNumber: The frame number (0-based, default 0).
+    /// - Returns: The file URL for the cached thumbnail.
+    public func thumbnailURL(for sopInstanceUID: String, frameNumber: Int) -> URL {
+        let key = ThumbnailHelpers.cacheKey(sopInstanceUID: sopInstanceUID, frameNumber: frameNumber)
+        return storageService.thumbnailDirectory
+            .appendingPathComponent("\(key).png")
+    }
+
+    /// Determines whether a thumbnail should be generated for an instance.
+    ///
+    /// - Parameter instance: The DICOM instance model.
+    /// - Returns: `true` if the instance contains renderable pixel data.
+    public func shouldGenerateThumbnail(for instance: InstanceModel) -> Bool {
+        ThumbnailHelpers.shouldGenerateThumbnail(
+            rows: instance.rows,
+            columns: instance.columns,
+            photometricInterpretation: instance.photometricInterpretation
+        )
+    }
+
+    /// Returns the scaled thumbnail dimensions for an instance.
+    ///
+    /// - Parameter instance: The DICOM instance model.
+    /// - Returns: A tuple of (width, height) or nil if dimensions are unavailable.
+    public func thumbnailDimensions(for instance: InstanceModel) -> (width: Int, height: Int)? {
+        guard let rows = instance.rows, let columns = instance.columns else { return nil }
+        return ThumbnailHelpers.thumbnailDimensions(
+            imageWidth: columns,
+            imageHeight: rows,
+            maxSize: maxThumbnailSize
+        )
+    }
 }

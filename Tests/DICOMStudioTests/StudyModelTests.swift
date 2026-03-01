@@ -119,4 +119,16 @@ struct StudyModelTests {
         let study = StudyModel(studyInstanceUID: "1.2.3", storagePath: "/tmp/dicom/study1")
         #expect(study.storagePath == "/tmp/dicom/study1")
     }
+
+    @Test("Study favorite default is false")
+    func testStudyFavoriteDefault() {
+        let study = StudyModel(studyInstanceUID: "1.2.3")
+        #expect(study.isFavorite == false)
+    }
+
+    @Test("Study favorite can be set to true")
+    func testStudyFavoriteTrue() {
+        let study = StudyModel(studyInstanceUID: "1.2.3", isFavorite: true)
+        #expect(study.isFavorite == true)
+    }
 }

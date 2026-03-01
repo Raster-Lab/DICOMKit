@@ -208,4 +208,27 @@ struct LibraryModelTests {
         #expect(library.studyCount == 1)
         #expect(library.studies["1.2.3"]?.patientName == "New Name")
     }
+
+    @Test("Toggle favorite on existing study")
+    func testToggleFavorite() {
+        var library = LibraryModel()
+        library.addStudy(StudyModel(studyInstanceUID: "1.2.3"))
+
+        #expect(library.studies["1.2.3"]?.isFavorite == false)
+
+        let result1 = library.toggleFavorite("1.2.3")
+        #expect(result1 == true)
+        #expect(library.studies["1.2.3"]?.isFavorite == true)
+
+        let result2 = library.toggleFavorite("1.2.3")
+        #expect(result2 == false)
+        #expect(library.studies["1.2.3"]?.isFavorite == false)
+    }
+
+    @Test("Toggle favorite on nonexistent study returns nil")
+    func testToggleFavoriteNonexistent() {
+        var library = LibraryModel()
+        let result = library.toggleFavorite("nonexistent")
+        #expect(result == nil)
+    }
 }

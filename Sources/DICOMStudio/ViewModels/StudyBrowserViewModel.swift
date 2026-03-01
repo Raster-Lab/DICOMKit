@@ -48,6 +48,9 @@ public final class StudyBrowserViewModel {
     /// Last import error message.
     public var lastError: String?
 
+    /// Whether the file importer dialog is presented.
+    public var isFileImporterPresented: Bool
+
     /// Creates a study browser ViewModel.
     public init(
         library: LibraryModel = LibraryModel(),
@@ -66,6 +69,7 @@ public final class StudyBrowserViewModel {
         self.importProgress = nil
         self.isImporting = false
         self.lastError = nil
+        self.isFileImporterPresented = false
     }
 
     /// Returns the filtered and sorted studies for display.
@@ -190,5 +194,57 @@ public final class StudyBrowserViewModel {
         } catch {
             lastError = "Failed to save library: \(error.localizedDescription)"
         }
+    }
+
+    /// Presents the file importer dialog.
+    public func showFileImporter() {
+        isFileImporterPresented = true
+    }
+
+    /// Handles file URLs selected via the file importer or drag-and-drop.
+    ///
+    /// Automatically detects DICOMDIR files and imports their referenced files,
+    /// or directly imports the provided file URLs.
+    ///
+    /// - Parameter urls: The selected file URLs.
+    public func handleImportedURLs(_ urls: [URL]) {
+        var filesToImport: [URL] = []
+
+        for url in urls {
+            if DICOMDIRParser.isDICOMDIR(url: url) {
+                // Scan directory for referenced files from DICOMDIR location
+                let dirURL = url.deletingLastPathComponent()
+                let scanned = importService.scanDirectory(at: dirURL, recursive: true)
+                filesToImport.append(contentsOf: scanned)
+            } else {
+                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                if isDirectory {
+                    let scanned = importService.scanDirectory(at: url, recursive: true)
+                    filesToImport.append(contentsOf: scanned)
+                } else {
+                    filesToImport.append(url)
+                }
+            }
+        }
+
+        if !filesToImport.isEmpty {
+            importFiles(from: filesToImport)
+        }
+    }
+
+    /// Toggles the favorite status of a study.
+    ///
+    /// - Parameter studyUID: The Study Instance UID to toggle.
+    public func toggleFavorite(_ studyUID: String) {
+        library.toggleFavorite(studyUID)
+        saveLibrary()
+    }
+
+    /// Returns whether a study is marked as favorite.
+    ///
+    /// - Parameter studyUID: The Study Instance UID to check.
+    /// - Returns: `true` if the study is a favorite.
+    public func isFavorite(_ studyUID: String) -> Bool {
+        library.studies[studyUID]?.isFavorite ?? false
     }
 }

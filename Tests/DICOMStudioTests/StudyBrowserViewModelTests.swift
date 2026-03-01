@@ -206,6 +206,45 @@ struct StudyBrowserViewModelTests {
         let vm = StudyBrowserViewModel(importService: importSvc)
         #expect(vm.importService === importSvc)
     }
+
+    @Test("File importer initially not presented")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testFileImporterInitialState() {
+        let vm = StudyBrowserViewModel()
+        #expect(vm.isFileImporterPresented == false)
+    }
+
+    @Test("Show file importer sets presented")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testShowFileImporter() {
+        let vm = StudyBrowserViewModel()
+        vm.showFileImporter()
+        #expect(vm.isFileImporterPresented == true)
+    }
+
+    @Test("Toggle favorite on study")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testToggleFavorite() {
+        var library = LibraryModel()
+        library.addStudy(StudyModel(
+            studyInstanceUID: "1.2.3",
+            studyID: "S1",
+            modalitiesInStudy: ["CT"]
+        ))
+        let vm = StudyBrowserViewModel(library: library)
+        #expect(vm.isFavorite("1.2.3") == false)
+        vm.toggleFavorite("1.2.3")
+        #expect(vm.isFavorite("1.2.3") == true)
+        vm.toggleFavorite("1.2.3")
+        #expect(vm.isFavorite("1.2.3") == false)
+    }
+
+    @Test("Is favorite returns false for unknown study")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testIsFavoriteUnknown() {
+        let vm = StudyBrowserViewModel()
+        #expect(vm.isFavorite("nonexistent") == false)
+    }
 }
 
 @Suite("TransferSyntaxDescriptions Tests")

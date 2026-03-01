@@ -45,7 +45,7 @@
 | Milestone | Title | Scope | Est. Duration | Tests |
 |-----------|-------|-------|---------------|-------|
 | 1 | Project Foundation & Core Architecture | Project setup, navigation, theming | 2 weeks | 203 |
-| 2 | DICOM File Browser & Library | Import, browse, search, metadata | 2 weeks | 210 |
+| 2 | DICOM File Browser & Library | Import, browse, search, metadata | 2 weeks | 483 |
 | 3 | Image Viewer Foundation | Rendering, window/level, cine, gestures | 2 weeks | 90+ |
 | 4 | Presentation States & Hanging Protocols | GSPS, annotations, shutters, layouts | 2 weeks | 75+ |
 | 5 | Measurements & Annotations | Length, angle, ROI, statistics, drawing | 2 weeks | 70+ |
@@ -150,30 +150,30 @@
 ### Deliverables
 
 #### 2.1 File Import
-- [ ] SwiftUI document picker integration (`.fileImporter`)
-- [ ] Drag-and-drop import support (macOS)
+- [x] SwiftUI document picker integration (`.fileImporter`)
+- [x] Drag-and-drop import support (macOS)
 - [x] Batch import with progress tracking
 - [x] DICOM file validation during import:
   - [x] Preamble and DICM prefix verification
   - [x] File Meta Information parsing
   - [x] Required tag validation (SOP Class UID, Instance UID)
   - [x] Transfer Syntax support check
-- [ ] Import from Files app, iCloud Drive, email attachments, AirDrop
-- [ ] DICOMDIR import for CD/DVD media
+- [x] Import from Files app, iCloud Drive, email attachments, AirDrop
+- [x] DICOMDIR import for CD/DVD media
 
 #### 2.2 Study Browser
 - [x] Patient → Study → Series → Instance hierarchy display
 - [x] Grid view and list view toggle
-- [ ] Thumbnail generation with `ThumbnailService`:
-  - [ ] Pixel data extraction via DICOMKit
-  - [ ] Basic windowing applied for visibility
-  - [ ] Background generation to avoid UI blocking
-  - [ ] Disk caching for performance
+- [x] Thumbnail generation with `ThumbnailService`:
+  - [x] Pixel data extraction via DICOMKit
+  - [x] Basic windowing applied for visibility
+  - [x] Background generation to avoid UI blocking
+  - [x] Disk caching for performance
 - [x] Sort by date, patient name, modality, study description
 - [x] Filter by modality, date range, patient name
 - [x] Full-text search across all metadata fields
 - [x] Study count, series count, and instance count badges
-- [ ] Swipe actions: delete, share, favorite
+- [x] Swipe actions: delete, share, favorite
 
 #### 2.3 Metadata Viewer
 - [x] Complete DICOM tag browser for any loaded file:
@@ -193,7 +193,7 @@
     - [x] `DICOMUniversalResourceIdentifier` (UR) → clickable URL
   - [x] Private tag display with vendor identification (Siemens, GE, Philips)
   - [x] Tag search by name, group, or keyword
-  - [ ] Copy tag value to clipboard
+  - [x] Copy tag value to clipboard
 - [x] Character set display with international text rendering (18 repertoires)
 - [x] Transfer syntax information panel
 - [x] File Meta Information summary
