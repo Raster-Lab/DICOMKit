@@ -161,12 +161,7 @@ Mobile DICOM viewer for iPhone and iPad.
 2. **App Store** (for public distribution)
 3. **Direct Installation** (Xcode required)
 
-**Building from Source:**
-```bash
-cd DICOMViewer-iOS
-open DICOMViewer.xcodeproj
-# Build and run in Xcode
-```
+**Status**: iOS viewer has been removed from the repository.
 
 ### DICOMViewer macOS
 
