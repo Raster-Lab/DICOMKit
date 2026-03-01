@@ -4243,7 +4243,7 @@ A production-quality mobile DICOM viewer for iOS and iPadOS. **Implementation co
 - **Export & Metadata**: PNG/JPEG export with burn-in annotations; Photos app integration; complete metadata viewer with search
 - **Polish**: Side-by-side comparison mode; synchronized scrolling/W/L/zoom; VoiceOver accessibility; Dynamic Type; haptic feedback; performance optimized
 
-**Status**: Ready for Xcode project creation and testing. See [DICOMViewer-iOS/STATUS.md](DICOMViewer-iOS/STATUS.md) for detailed implementation report and [DICOMViewer-iOS/BUILD.md](DICOMViewer-iOS/BUILD.md) for setup instructions.
+**Status**: Removed. iOS viewer has been removed from the repository.
 
 #### Planned Demo Applications
 
@@ -5216,7 +5216,7 @@ All parsing behavior is documented with PS3.5 section references. We do not tran
 | **🐛 Issues** | Bug reports and feature requests | [GitHub Issues](https://github.com/Raster-Lab/DICOMKit/issues) |
 | **💬 Discussions** | Questions, ideas, and community support | [GitHub Discussions](https://github.com/Raster-Lab/DICOMKit/discussions) |
 | **📖 Examples** | Working code samples | [Examples/](Examples/), [Playgrounds/](Playgrounds/) |
-| **📱 Demo Apps** | Production-quality applications | [DICOMViewer-iOS/](DICOMViewer-iOS/) |
+| **📱 Demo Apps** | Production-quality applications | [DICOMViewer-macOS/](DICOMViewer-macOS/) |
 | **❓ FAQ** | Frequently asked questions | [Documentation/FAQ.md](Documentation/FAQ.md) |
 | **🔧 Troubleshooting** | Common issues and solutions | [Documentation/Troubleshooting.md](Documentation/Troubleshooting.md) |
 

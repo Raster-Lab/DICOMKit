@@ -74,7 +74,6 @@ Have a useful integration pattern? Consider contributing a template!
 
 For complete, production-ready applications, see:
 
-- **DICOMViewer iOS** - Mobile DICOM viewer ([DICOMViewer-iOS/](../../DICOMViewer-iOS/))
 - **DICOMViewer macOS** - Desktop diagnostic workstation ([DICOMViewer-macOS/](../../DICOMViewer-macOS/))
 - **DICOMViewer visionOS** - Spatial computing viewer ([DICOMViewer-visionOS/](../../DICOMViewer-visionOS/))
 
