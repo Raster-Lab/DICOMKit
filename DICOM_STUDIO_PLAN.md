@@ -66,62 +66,62 @@
 
 ## Milestone 1: Project Foundation & Core Architecture
 
-**Status**: Planned
+**Status**: In Progress
 **Goal**: Establish the macOS project structure, navigation framework, and shared infrastructure
 **DICOMKit Features Showcased**: Project integration, Swift Package Manager setup
 
 ### Deliverables
 
 #### 1.1 Project Setup
-- [ ] Create macOS SwiftUI project
-- [ ] Configure DICOMKit dependency via Swift Package Manager
+- [x] Create macOS SwiftUI project
+- [x] Configure DICOMKit dependency via Swift Package Manager
 - [ ] Set up build configurations (Debug, Release, TestFlight)
 - [ ] Configure Info.plist with required permissions
-- [ ] Add `.gitignore` for Xcode-specific files
+- [x] Add `.gitignore` for Xcode-specific files
 - [ ] Set up CI/CD pipeline (GitHub Actions) for build + test
 
 #### 1.2 Application Architecture
-- [ ] Define MVVM architecture with `@Observable` ViewModels
-- [ ] Create shared service layer:
-  - [ ] `DICOMFileService` — File I/O operations via DICOMKit
-  - [ ] `ThumbnailService` — Thumbnail generation and caching
-  - [ ] `StorageService` — Local storage management
-  - [ ] `SettingsService` — User preferences and configuration
-  - [ ] `NavigationService` — App-wide routing and deep linking
-- [ ] Create shared data models:
-  - [ ] `StudyModel` — Study-level metadata
-  - [ ] `SeriesModel` — Series-level metadata
-  - [ ] `InstanceModel` — Instance-level metadata
-  - [ ] `LibraryModel` — Local file database
+- [x] Define MVVM architecture with `@Observable` ViewModels
+- [x] Create shared service layer:
+  - [x] `DICOMFileService` — File I/O operations via DICOMKit
+  - [x] `ThumbnailService` — Thumbnail generation and caching
+  - [x] `StorageService` — Local storage management
+  - [x] `SettingsService` — User preferences and configuration
+  - [x] `NavigationService` — App-wide routing and deep linking
+- [x] Create shared data models:
+  - [x] `StudyModel` — Study-level metadata
+  - [x] `SeriesModel` — Series-level metadata
+  - [x] `InstanceModel` — Instance-level metadata
+  - [x] `LibraryModel` — Local file database
 
 #### 1.3 Navigation & Shell
-- [ ] Implement sidebar/tab-based navigation for feature areas:
-  - [ ] Library (file browser)
-  - [ ] Viewer (image display)
-  - [ ] Networking (DICOM/DICOMweb)
-  - [ ] Reporting (structured reports)
-  - [ ] Tools (data exchange, developer tools)
-  - [ ] CLI Workshop (interactive GUI for all 29 CLI tools)
-  - [ ] Settings (configuration)
-- [ ] macOS: NavigationSplitView with sidebar, detail, and inspector
+- [x] Implement sidebar/tab-based navigation for feature areas:
+  - [x] Library (file browser)
+  - [x] Viewer (image display)
+  - [x] Networking (DICOM/DICOMweb)
+  - [x] Reporting (structured reports)
+  - [x] Tools (data exchange, developer tools)
+  - [x] CLI Workshop (interactive GUI for all 29 CLI tools)
+  - [x] Settings (configuration)
+- [x] macOS: NavigationSplitView with sidebar, detail, and inspector
 
 #### 1.4 Theming & Appearance
-- [ ] Implement light/dark mode support
-- [ ] Create medical imaging color palette (radiology-appropriate)
-- [ ] Define typography scale using Dynamic Type
-- [ ] Support Increased Contrast accessibility setting
-- [ ] Create reusable UI components library:
-  - [ ] `DICOMTagView` — Displays a DICOM tag with group/element
-  - [ ] `VRBadge` — Shows Value Representation type
-  - [ ] `ModalityIcon` — Modality-specific SF Symbol icons
-  - [ ] `StatusIndicator` — Connection/transfer status
+- [x] Implement light/dark mode support
+- [x] Create medical imaging color palette (radiology-appropriate)
+- [x] Define typography scale using Dynamic Type
+- [x] Support Increased Contrast accessibility setting
+- [x] Create reusable UI components library:
+  - [x] `DICOMTagView` — Displays a DICOM tag with group/element
+  - [x] `VRBadge` — Shows Value Representation type
+  - [x] `ModalityIcon` — Modality-specific SF Symbol icons
+  - [x] `StatusIndicator` — Connection/transfer status
 
 #### 1.5 Settings Infrastructure
-- [ ] User preferences storage (UserDefaults + SwiftData)
-- [ ] General settings (appearance, default window presets)
-- [ ] Privacy settings (anonymization defaults, audit logging)
-- [ ] Performance settings (cache size, memory limits, threading)
-- [ ] About screen with DICOMKit version, licenses, acknowledgments
+- [x] User preferences storage (UserDefaults + SwiftData)
+- [x] General settings (appearance, default window presets)
+- [x] Privacy settings (anonymization defaults, audit logging)
+- [x] Performance settings (cache size, memory limits, threading)
+- [x] About screen with DICOMKit version, licenses, acknowledgments
 
 ### Technical Notes
 - Use Swift 6.2 strict concurrency for all ViewModels and services
@@ -129,11 +129,11 @@
 - Use dependency injection for testability
 
 ### Acceptance Criteria
-- [ ] Project builds on macOS without warnings
-- [ ] Navigation shell renders correctly on macOS
-- [ ] Settings persist across app launches
+- [x] Project builds on macOS without warnings
+- [x] Navigation shell renders correctly on macOS
+- [x] Settings persist across app launches
 - [ ] CI pipeline passes for macOS
-- [ ] Architecture documented in ARCHITECTURE.md
+- [x] Architecture documented in ARCHITECTURE.md
 
 ### Estimated Effort
 **2 weeks** (1 developer)
