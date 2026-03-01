@@ -46,7 +46,7 @@
 |-----------|-------|-------|---------------|-------|
 | 1 | Project Foundation & Core Architecture | Project setup, navigation, theming | 2 weeks | 203 |
 | 2 | DICOM File Browser & Library | Import, browse, search, metadata | 2 weeks | 483 |
-| 3 | Image Viewer Foundation | Rendering, window/level, cine, gestures | 2 weeks | 90+ |
+| 3 | Image Viewer Foundation | Rendering, window/level, cine, gestures | 2 weeks | 670 |
 | 4 | Presentation States & Hanging Protocols | GSPS, annotations, shutters, layouts | 2 weeks | 75+ |
 | 5 | Measurements & Annotations | Length, angle, ROI, statistics, drawing | 2 weeks | 70+ |
 | 6 | 3D Visualization & MPR | MPR, MIP, volume rendering, surface | 3 weeks | 85+ |
@@ -228,74 +228,74 @@
 
 ## Milestone 3: Image Viewer Foundation
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Implement core medical image viewing with rendering, windowing, multi-frame playback, and gesture controls
 **DICOMKit Features Showcased**: `CGImage` rendering, `WindowSettings`, `PixelData`/`PixelDataDescriptor`, photometric interpretations (MONOCHROME1/2, RGB, PALETTE COLOR, YBR_FULL), multi-frame support, SIMD-accelerated windowing, lazy pixel data loading, image caching
 
 ### Deliverables
 
 #### 3.1 Image Rendering
-- [ ] Render DICOM pixel data to `CGImage` via DICOMKit:
-  - [ ] Uncompressed pixel data (all bit depths: 1-bit to 32-bit)
-  - [ ] JPEG Baseline/Extended/Lossless compressed data
-  - [ ] JPEG 2000 compressed data
-  - [ ] JPEG-LS compressed data
-  - [ ] RLE compressed data
-- [ ] Support all photometric interpretations:
-  - [ ] MONOCHROME1 (inverted grayscale)
-  - [ ] MONOCHROME2 (standard grayscale)
-  - [ ] RGB (color)
-  - [ ] PALETTE COLOR (lookup table)
-  - [ ] YBR_FULL / YBR_FULL_422 / YBR_PARTIAL_422
-- [ ] Display pixel data metadata overlay:
-  - [ ] Rows × Columns
-  - [ ] Bits Allocated / Bits Stored / High Bit
-  - [ ] Pixel Representation (signed/unsigned)
-  - [ ] Samples Per Pixel / Planar Configuration
+- [x] Render DICOM pixel data to `CGImage` via DICOMKit:
+  - [x] Uncompressed pixel data (all bit depths: 1-bit to 32-bit)
+  - [x] JPEG Baseline/Extended/Lossless compressed data
+  - [x] JPEG 2000 compressed data
+  - [x] JPEG-LS compressed data
+  - [x] RLE compressed data
+- [x] Support all photometric interpretations:
+  - [x] MONOCHROME1 (inverted grayscale)
+  - [x] MONOCHROME2 (standard grayscale)
+  - [x] RGB (color)
+  - [x] PALETTE COLOR (lookup table)
+  - [x] YBR_FULL / YBR_FULL_422 / YBR_PARTIAL_422
+- [x] Display pixel data metadata overlay:
+  - [x] Rows × Columns
+  - [x] Bits Allocated / Bits Stored / High Bit
+  - [x] Pixel Representation (signed/unsigned)
+  - [x] Samples Per Pixel / Planar Configuration
 
 #### 3.2 Window/Level Controls
-- [ ] Interactive window/level adjustment via drag gesture
-- [ ] Window Center/Width numeric input fields
-- [ ] Preset window settings for common modalities:
-  - [ ] CT: Abdomen, Bone, Brain, Chest, Lung, Liver, Mediastinum, Stroke
-  - [ ] MR: T1, T2, FLAIR defaults
-  - [ ] Custom user-defined presets
-- [ ] Real-time window/level update with SIMD acceleration (via Accelerate framework)
-- [ ] Auto window/level from DICOM header values
-- [ ] VOI LUT support (linear, sigmoid, table lookup)
-- [ ] Grayscale inversion toggle
+- [x] Interactive window/level adjustment via drag gesture
+- [x] Window Center/Width numeric input fields
+- [x] Preset window settings for common modalities:
+  - [x] CT: Abdomen, Bone, Brain, Chest, Lung, Liver, Mediastinum, Stroke
+  - [x] MR: T1, T2, FLAIR defaults
+  - [x] Custom user-defined presets
+- [x] Real-time window/level update with SIMD acceleration (via Accelerate framework)
+- [x] Auto window/level from DICOM header values
+- [x] VOI LUT support (linear, sigmoid, table lookup)
+- [x] Grayscale inversion toggle
 
 #### 3.3 Multi-Frame & Cine Playback
-- [ ] Frame navigation with slider/scrubber control
-- [ ] Frame number display (current / total)
-- [ ] Cine playback with configurable frame rate (1–60 fps)
-- [ ] Play/Pause/Stop controls
-- [ ] Loop and bounce playback modes
-- [ ] Frame-by-frame stepping (forward/backward)
-- [ ] Lazy pixel data loading for large multi-frame files (`LazyPixelDataLoader`)
-- [ ] Memory-mapped file access for files >100MB
+- [x] Frame navigation with slider/scrubber control
+- [x] Frame number display (current / total)
+- [x] Cine playback with configurable frame rate (1–60 fps)
+- [x] Play/Pause/Stop controls
+- [x] Loop and bounce playback modes
+- [x] Frame-by-frame stepping (forward/backward)
+- [x] Lazy pixel data loading for large multi-frame files (`LazyPixelDataLoader`)
+- [x] Memory-mapped file access for files >100MB
 
 #### 3.4 Gesture Controls
-- [ ] Pinch-to-zoom with smooth interpolation
-- [ ] Pan gesture with momentum
-- [ ] Double-tap to fit/actual size toggle
-- [ ] Two-finger rotation (macOS trackpad)
-- [ ] Scroll wheel zoom (macOS)
-- [ ] Keyboard shortcuts (macOS):
-  - [ ] Arrow keys for frame navigation
-  - [ ] `+`/`-` for zoom
-  - [ ] `R` for reset
-  - [ ] `I` for invert
-  - [ ] Space for play/pause
+- [x] Pinch-to-zoom with smooth interpolation
+- [x] Pan gesture with momentum
+- [x] Double-tap to fit/actual size toggle
+- [x] Two-finger rotation (macOS trackpad)
+- [x] Scroll wheel zoom (macOS)
+- [x] Keyboard shortcuts (macOS):
+  - [x] Arrow keys for frame navigation
+  - [x] `+`/`-` for zoom
+  - [x] `R` for reset
+  - [x] `I` for invert
+  - [x] Space for play/pause
 #### 3.5 Image Caching & Performance
-- [ ] LRU image cache with configurable memory limit
-- [ ] Metadata-only parsing mode for fast browsing (2–10× faster)
-- [ ] Background prefetching of adjacent frames
-- [ ] Streaming parser for large files
-- [ ] Performance overlay showing render time, cache hit rate, memory usage
+- [x] LRU image cache with configurable memory limit
+- [x] Metadata-only parsing mode for fast browsing (2–10× faster)
+- [x] Background prefetching of adjacent frames
+- [x] Streaming parser for large files
+- [x] Performance overlay showing render time, cache hit rate, memory usage
 
 ### Technical Notes
-- Use `DICOMFile.image(frame:windowCenter:windowWidth:)` for rendering
+- Use `DICOMFile.renderFrame(_:window:)` and `renderFrameWithStoredWindow(_:)` for rendering
 - Use `PixelDataDescriptor` to determine rendering parameters
 - Use `WindowSettings` for VOI LUT transforms
 - SIMD acceleration via Accelerate framework for real-time windowing
@@ -303,13 +303,13 @@
 - Reference: DICOM PS3.3 C.7.6.3 (Image Pixel Module), PS3.3 C.11 (VOI LUT)
 
 ### Acceptance Criteria
-- [ ] All transfer syntaxes render correctly
-- [ ] All photometric interpretations display correctly
-- [ ] Window/level adjusts in real-time (<16ms per frame)
-- [ ] Cine playback maintains 60fps for standard multi-frame
-- [ ] Memory usage <200MB for 500-frame multi-frame file
-- [ ] Zoom/pan/rotate gestures feel natural on macOS
-- [ ] Image cache reduces repeat-render time by >90%
+- [x] All transfer syntaxes render correctly
+- [x] All photometric interpretations display correctly
+- [x] Window/level adjusts in real-time (<16ms per frame)
+- [x] Cine playback maintains 60fps for standard multi-frame
+- [x] Memory usage <200MB for 500-frame multi-frame file
+- [x] Zoom/pan/rotate gestures feel natural on macOS
+- [x] Image cache reduces repeat-render time by >90%
 
 ### Estimated Effort
 **2 weeks** (1 developer)
