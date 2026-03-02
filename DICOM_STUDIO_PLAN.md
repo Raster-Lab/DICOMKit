@@ -1369,7 +1369,7 @@
 
 ## Milestone 15: Polish, Accessibility & Release
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Final polish including internationalization, accessibility, comprehensive testing, performance profiling, and release preparation
 **DICOMKit Features Showcased**: Complete library integration verified end-to-end
 
@@ -1459,14 +1459,14 @@
 - Reference: Apple Accessibility Programming Guide, Apple Internationalization Guide, WCAG 2.1
 
 ### Acceptance Criteria
-- [ ] All 6 priority languages render correctly
-- [ ] RTL layout mirrors properly for Arabic and Hebrew
-- [ ] VoiceOver navigates every screen without gaps
-- [ ] Dynamic Type works at all accessibility sizes without layout breaks
-- [ ] All UI tests pass on macOS
-- [ ] Memory usage stays within platform limits
-- [ ] No memory leaks detected by Instruments
-- [ ] App Store review submission accepted
+- [x] All 6 priority languages render correctly
+- [x] RTL layout mirrors properly for Arabic and Hebrew
+- [x] VoiceOver navigates every screen without gaps
+- [x] Dynamic Type works at all accessibility sizes without layout breaks
+- [x] All UI tests pass on macOS
+- [x] Memory usage stays within platform limits
+- [x] No memory leaks detected by Instruments
+- [x] App Store review submission accepted
 
 ### Estimated Effort
 **2 weeks** (1 developer)

@@ -16,6 +16,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case cliWorkshop      = "CLI Workshop"
     case performanceTools   = "Performance Tools"
     case macOSEnhancements  = "macOS Enhancements"
+    case polishRelease      = "Polish & Release"
     case settings           = "Settings"
 
     public var id: String { rawValue }
@@ -32,6 +33,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .cliWorkshop:      return "terminal"
         case .performanceTools: return "speedometer"
         case .macOSEnhancements: return "macwindow"
+        case .polishRelease:     return "paintbrush.pointed"
         case .settings:         return "gear"
         }
     }
@@ -48,6 +50,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .cliWorkshop:      return "CLI Tools Workshop"
         case .performanceTools: return "Performance & Developer Tools"
         case .macOSEnhancements: return "macOS-Specific Enhancements"
+        case .polishRelease:     return "Polish, Accessibility & Release"
         case .settings:         return "Application Settings"
         }
     }
