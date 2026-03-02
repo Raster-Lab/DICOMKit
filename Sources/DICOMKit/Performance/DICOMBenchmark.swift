@@ -5,7 +5,7 @@ import CoreFoundation
 #endif
 
 #if canImport(Darwin)
-import Darwin
+@preconcurrency import Darwin
 #endif
 
 /// Benchmark result for a single measurement
@@ -172,10 +172,11 @@ public struct DICOMBenchmark {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size)/4
         
+        let taskPort = mach_task_self_
         let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
                 task_info(
-                    mach_task_self_,
+                    taskPort,
                     task_flavor_t(MACH_TASK_BASIC_INFO),
                     $0,
                     &count
