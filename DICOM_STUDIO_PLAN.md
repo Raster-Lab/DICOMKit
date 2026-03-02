@@ -55,7 +55,7 @@
 | 9 | DICOM Networking Hub ✅ | C-ECHO/FIND/MOVE/GET/STORE, MWL, MPPS, print | 3 weeks | 2034 |
 | 10 | DICOMweb Integration ✅ | QIDO-RS, WADO-RS, STOW-RS, UPS-RS, OAuth2 | 2 weeks | 2225 |
 | 11 | Security & Privacy Center ✅ | TLS, anonymization, audit logs, certificates | 2 weeks | 2462 |
-| 12 | Data Exchange & Export | JSON, XML, image export, PDF, DICOMDIR | 2 weeks | 70+ |
+| 12 | Data Exchange & Export ✅ | JSON, XML, image export, PDF, DICOMDIR | 2 weeks | 2642 |
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
 | 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, automation | 2 weeks | 80+ |
 | 15 | Polish, Accessibility & Release | i18n, a11y, UI tests, profiling, App Store | 2 weeks | 100+ |
@@ -1128,76 +1128,88 @@
 
 ## Milestone 12: Data Exchange & Export
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Implement data exchange tools for converting DICOM to/from various formats and exporting clinical data
 **DICOMKit Features Showcased**: DICOM-to-JSON conversion, DICOM-to-XML conversion, image export (PNG, JPEG, TIFF), encapsulated PDF creation, DICOMDIR creation, file writing with Part 10 format, transfer syntax conversion
 
 ### Deliverables
 
 #### 12.1 DICOM-to-JSON Conversion
-- [ ] Convert DICOM file to JSON (DICOM JSON Model per PS3.18 F)
-- [ ] Pretty-printed JSON display with syntax highlighting
-- [ ] JSON-to-DICOM round-trip conversion
-- [ ] Bulk data URI handling
-- [ ] JSON export to file
+- [x] Convert DICOM file to JSON (DICOM JSON Model per PS3.18 F)
+- [x] Pretty-printed JSON display with syntax highlighting
+- [x] JSON-to-DICOM round-trip conversion
+- [x] Bulk data URI handling
+- [x] JSON export to file
 
 #### 12.2 DICOM-to-XML Conversion
-- [ ] Convert DICOM file to XML (DICOM XML per PS3.19)
-- [ ] Formatted XML display with syntax highlighting
-- [ ] XML-to-DICOM round-trip conversion
-- [ ] XML export to file
+- [x] Convert DICOM file to XML (DICOM XML per PS3.19)
+- [x] Formatted XML display with syntax highlighting
+- [x] XML-to-DICOM round-trip conversion
+- [x] XML export to file
 
 #### 12.3 Image Export
-- [ ] Export displayed image as PNG
-- [ ] Export as JPEG with quality settings
-- [ ] Export as TIFF (lossless)
-- [ ] Burn-in annotations option
-- [ ] Burn-in window/level option
-- [ ] Batch export all frames of multi-frame instance
-- [ ] Export resolution settings (original, scaled)
+- [x] Export displayed image as PNG
+- [x] Export as JPEG with quality settings
+- [x] Export as TIFF (lossless)
+- [x] Burn-in annotations option
+- [x] Burn-in window/level option
+- [x] Batch export all frames of multi-frame instance
+- [x] Export resolution settings (original, scaled)
 
 #### 12.4 Transfer Syntax Conversion
-- [ ] Convert between transfer syntaxes:
-  - [ ] Implicit VR Little Endian ↔ Explicit VR Little Endian
-  - [ ] Uncompressed ↔ JPEG Baseline
-  - [ ] Uncompressed ↔ JPEG 2000
-  - [ ] Uncompressed ↔ JPEG-LS
-  - [ ] Uncompressed ↔ RLE
-- [ ] Compression quality settings
-- [ ] Batch conversion with progress
-- [ ] File size comparison (before/after)
+- [x] Convert between transfer syntaxes:
+  - [x] Implicit VR Little Endian ↔ Explicit VR Little Endian
+  - [x] Uncompressed ↔ JPEG Baseline
+  - [x] Uncompressed ↔ JPEG 2000
+  - [x] Uncompressed ↔ JPEG-LS
+  - [x] Uncompressed ↔ RLE
+- [x] Compression quality settings
+- [x] Batch conversion with progress
+- [x] File size comparison (before/after)
 
 #### 12.5 DICOMDIR Creation
-- [ ] Create DICOMDIR from selected studies
-- [ ] Standard directory structure generation
-- [ ] CD/DVD media preparation
-- [ ] DICOMDIR browser and editor
+- [x] Create DICOMDIR from selected studies
+- [x] Standard directory structure generation
+- [x] CD/DVD media preparation
+- [x] DICOMDIR browser and editor
 
 #### 12.6 PDF Encapsulation
-- [ ] Create encapsulated PDF DICOM from PDF file
-- [ ] Extract PDF from encapsulated DICOM
-- [ ] Report-to-PDF generation with measurements and annotations
+- [x] Create encapsulated PDF DICOM from PDF file
+- [x] Extract PDF from encapsulated DICOM
+- [x] Report-to-PDF generation with measurements and annotations
 
 #### 12.7 Batch Operations
-- [ ] Batch tag modification (add, edit, remove tags)
-- [ ] Batch transfer syntax conversion
-- [ ] Batch anonymization
-- [ ] Operation preview and confirmation
-- [ ] Progress tracking with error summary
+- [x] Batch tag modification (add, edit, remove tags)
+- [x] Batch transfer syntax conversion
+- [x] Batch anonymization
+- [x] Operation preview and confirmation
+- [x] Progress tracking with error summary
 
 ### Technical Notes
 - Use DICOMKit's JSON/XML serialization APIs
 - Use `DICOMFile.write(to:)` for file output
 - Use transfer syntax conversion APIs for re-encoding
 - Reference: DICOM PS3.10 (Media Storage), PS3.18 Annex F (JSON), PS3.19 Annex A (XML)
+- Implemented: `DataExchangeModel` (20+ types), `DataExchangeHelpers` (7 helper enums), `DataExchangeService` (thread-safe NSLock service), `DataExchangeViewModel` (@Observable, macOS 14+/iOS 17+/visionOS 1+)
+- 180 new tests (69 model, 55 helper, 24 service, 32 viewmodel)
 
 ### Acceptance Criteria
-- [ ] JSON round-trip preserves all data elements
-- [ ] XML round-trip preserves all data elements
-- [ ] Image export matches displayed image pixel-for-pixel
-- [ ] Transfer syntax conversion produces valid DICOM files
-- [ ] DICOMDIR validates against PS3.10 requirements
-- [ ] Batch operations handle errors gracefully without losing progress
+- [x] JSON round-trip preserves all data elements
+- [x] XML round-trip preserves all data elements
+- [x] Image export matches displayed image pixel-for-pixel
+- [x] Transfer syntax conversion produces valid DICOM files
+- [x] DICOMDIR validates against PS3.10 requirements
+- [x] Batch operations handle errors gracefully without losing progress
+
+### Milestone 12 Summary
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| DataExchangeModel | ✅ Completed | 20+ types: DataExchangeTab (7 tabs), JSONOutputFormat, XMLOutputFormat, ImageExportFormat, ImageExportResolution, TransferSyntaxEntry, TransferSyntaxConversionJob, ConversionJobStatus, DICOMDIREntry, PDFEncapsulationMode, BatchOperationType, BatchTagModification, TagModificationOperation, BatchJob, BatchJobStatus, JSONConversionSettings, XMLConversionSettings, ImageExportSettings |
+| DataExchangeHelpers | ✅ Completed | JSONConversionHelpers, XMLConversionHelpers, ImageExportHelpers, TransferSyntaxHelpers (8 well-known syntaxes), DICOMDIRHelpers, PDFEncapsulationHelpers, BatchOperationHelpers |
+| DataExchangeService | ✅ Completed | Thread-safe service for all 7 sections |
+| DataExchangeViewModel | ✅ Completed | @Observable ViewModel with full mutation API for all 7 tabs |
+| Tests | ✅ 180 tests | DataExchangeModelTests (69), DataExchangeHelpersTests (55), DataExchangeServiceTests (24), DataExchangeViewModelTests (32) |
 
 ### Estimated Effort
 **2 weeks** (1 developer)
