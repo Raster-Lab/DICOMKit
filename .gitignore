@@ -1,6 +1,6 @@
 # Swift Package Manager
 .build/
-.swiftpm/
+.swiftpm/xcode/package.xcworkspace/
 *.xcodeproj
 *.xcworkspace
 DerivedData/
