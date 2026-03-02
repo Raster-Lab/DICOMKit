@@ -88,6 +88,30 @@ public struct MainView: View {
                 systemImage: "terminal",
                 description: "Interactive GUI for all DICOMKit command-line tools with command builder and console."
             )
+        case .security:
+            PlaceholderFeatureView(
+                title: "Security & Privacy",
+                systemImage: "lock.shield",
+                description: "Manage DICOM security, TLS certificates, and privacy settings."
+            )
+        case .performanceTools:
+            PlaceholderFeatureView(
+                title: "Performance Tools",
+                systemImage: "speedometer",
+                description: "Monitor and optimize DICOM processing performance metrics."
+            )
+        case .macOSEnhancements:
+            PlaceholderFeatureView(
+                title: "macOS Enhancements",
+                systemImage: "macwindow",
+                description: "Platform-specific macOS features and integrations."
+            )
+        case .polishRelease:
+            PlaceholderFeatureView(
+                title: "Polish & Release",
+                systemImage: "paintbrush.pointed",
+                description: "Final polish, release preparation, and quality assurance tools."
+            )
         case .settings:
             SettingsView(viewModel: SettingsViewModel(settingsService: viewModel.settingsService))
         }
