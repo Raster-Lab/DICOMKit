@@ -320,7 +320,7 @@ public struct ParametricMapPixelDataExtractor: Sendable {
     ) -> RealWorldValueMapping? {
         // Check per-frame mapping first
         if frameIndex < parametricMap.perFrameFunctionalGroups.count {
-            let frameGroup = parametricMap.perFrameFunctionalGroups[frameIndex]
+            _ = parametricMap.perFrameFunctionalGroups[frameIndex]
             // Try to extract mapping from frame functional group
             // For now, fall back to shared mapping
         }
