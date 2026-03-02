@@ -12,7 +12,6 @@ import DICOMStudio
 /// Provides the `@main` entry for the macOS SwiftUI app,
 /// referencing views and view-models from the DICOMStudio library.
 @main
-@available(macOS 14.0, *)
 struct DICOMStudioApp: App {
     @State private var viewModel = MainViewModel()
 
