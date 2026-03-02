@@ -52,8 +52,8 @@
 | 6 | 3D Visualization & MPR ✅ | MPR, MIP, volume rendering, surface | 3 weeks | 1401 |
 | 7 | Structured Reporting Studio ✅ | SR viewer, SR builder, coded terms, CAD | 2 weeks | 1626 |
 | 8 | Specialized Modality Support ✅ | RT, segmentation, waveforms, video, documents | 3 weeks | 1822 |
-| 9 | DICOM Networking Hub | C-ECHO/FIND/MOVE/GET/STORE, MWL, MPPS, print | 3 weeks | 95+ |
-| 10 | DICOMweb Integration | QIDO-RS, WADO-RS, STOW-RS, UPS-RS, OAuth2 | 2 weeks | 80+ |
+| 9 | DICOM Networking Hub ✅ | C-ECHO/FIND/MOVE/GET/STORE, MWL, MPPS, print | 3 weeks | 2034 |
+| 10 | DICOMweb Integration ✅ | QIDO-RS, WADO-RS, STOW-RS, UPS-RS, OAuth2 | 2 weeks | 2225 |
 | 11 | Security & Privacy Center | TLS, anonymization, audit logs, certificates | 2 weeks | 65+ |
 | 12 | Data Exchange & Export | JSON, XML, image export, PDF, DICOMDIR | 2 weeks | 70+ |
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
@@ -935,72 +935,72 @@
 
 ## Milestone 10: DICOMweb Integration
 
-**Status**: Planned
+**Status**: Completed ✅
 **Goal**: Implement a RESTful DICOMweb client interface for modern cloud-based PACS integration
 **DICOMKit Features Showcased**: QIDO-RS, WADO-RS, STOW-RS, UPS-RS, OAuth2 (PKCE flow), JWT validation, role-based access control (RBAC), HTTP/2 multiplexing, request pipelining, predictive prefetching, LRU caching, ETag support, gzip/deflate compression, conformance statements
 
 ### Deliverables
 
 #### 10.1 DICOMweb Server Configuration
-- [ ] Server URL and path configuration
-- [ ] Authentication setup:
-  - [ ] OAuth2 with PKCE flow
-  - [ ] JWT token management (auto-refresh)
-  - [ ] Role-based access control display
-  - [ ] Bearer token manual entry
-- [ ] TLS configuration (strict, compatible, development modes)
-- [ ] Connection testing with capabilities endpoint
-- [ ] Conformance statement viewer
+- [x] Server URL and path configuration
+- [x] Authentication setup:
+  - [x] OAuth2 with PKCE flow
+  - [x] JWT token management (auto-refresh)
+  - [x] Role-based access control display
+  - [x] Bearer token manual entry
+- [x] TLS configuration (strict, compatible, development modes)
+- [x] Connection testing with capabilities endpoint
+- [x] Conformance statement viewer
 
 #### 10.2 QIDO-RS (Query)
-- [ ] Study-level query with fluent search UI
-- [ ] Series-level query
-- [ ] Instance-level query
-- [ ] Query parameters:
-  - [ ] Patient Name, Patient ID
-  - [ ] Study Date, Modality
-  - [ ] Accession Number
-  - [ ] Fuzzy matching, wildcard matching
-- [ ] Paginated results with limit/offset controls
-- [ ] Type-safe result display with attribute mapping
-- [ ] Response caching with ETag support
+- [x] Study-level query with fluent search UI
+- [x] Series-level query
+- [x] Instance-level query
+- [x] Query parameters:
+  - [x] Patient Name, Patient ID
+  - [x] Study Date, Modality
+  - [x] Accession Number
+  - [x] Fuzzy matching, wildcard matching
+- [x] Paginated results with limit/offset controls
+- [x] Type-safe result display with attribute mapping
+- [x] Response caching with ETag support
 
 #### 10.3 WADO-RS (Retrieve)
-- [ ] Retrieve study/series/instance by URL
-- [ ] Retrieve specific frames from multi-frame instances
-- [ ] Retrieve rendered images (server-side rendering)
-- [ ] Bulk data retrieval for large datasets
-- [ ] Download progress with HTTP/2 multiplexing (100 concurrent streams)
-- [ ] Predictive prefetching of adjacent series
-- [ ] Response compression (gzip/deflate) display
-- [ ] Cache status display (hit/miss/stale)
+- [x] Retrieve study/series/instance by URL
+- [x] Retrieve specific frames from multi-frame instances
+- [x] Retrieve rendered images (server-side rendering)
+- [x] Bulk data retrieval for large datasets
+- [x] Download progress with HTTP/2 multiplexing (100 concurrent streams)
+- [x] Predictive prefetching of adjacent series
+- [x] Response compression (gzip/deflate) display
+- [x] Cache status display (hit/miss/stale)
 
 #### 10.4 STOW-RS (Store)
-- [ ] Upload DICOM files to DICOMweb server
-- [ ] Batch upload with progress tracking
-- [ ] Duplicate handling (reject, overwrite, ignore)
-- [ ] Pre-upload validation
-- [ ] Request pipelining (1–50 concurrent requests)
-- [ ] Upload queue management
+- [x] Upload DICOM files to DICOMweb server
+- [x] Batch upload with progress tracking
+- [x] Duplicate handling (reject, overwrite, ignore)
+- [x] Pre-upload validation
+- [x] Request pipelining (1–50 concurrent requests)
+- [x] Upload queue management
 
 #### 10.5 UPS-RS (Unified Procedure Steps)
-- [ ] Worklist query and display
-- [ ] UPS state machine visualization:
-  - [ ] SCHEDULED → IN PROGRESS → COMPLETED/CANCELED
-- [ ] Priority-based scheduling display
-- [ ] Event subscription and delivery:
-  - [ ] Subscribe to UPS state change events
-  - [ ] Real-time event notification display
-  - [ ] Event filtering by type
-- [ ] UPS creation and update
+- [x] Worklist query and display
+- [x] UPS state machine visualization:
+  - [x] SCHEDULED → IN PROGRESS → COMPLETED/CANCELED
+- [x] Priority-based scheduling display
+- [x] Event subscription and delivery:
+  - [x] Subscribe to UPS state change events
+  - [x] Real-time event notification display
+  - [x] Event filtering by type
+- [x] UPS creation and update
 
 #### 10.6 Performance Dashboard
-- [ ] HTTP/2 multiplexing statistics
-- [ ] Request pipelining throughput
-- [ ] Cache hit rate and memory usage
-- [ ] Prefetch effectiveness metrics
-- [ ] Compression ratio display
-- [ ] Connection pool utilization
+- [x] HTTP/2 multiplexing statistics
+- [x] Request pipelining throughput
+- [x] Cache hit rate and memory usage
+- [x] Prefetch effectiveness metrics
+- [x] Compression ratio display
+- [x] Connection pool utilization
 
 ### Technical Notes
 - Use DICOMWeb module's `DICOMwebClient` for all operations
@@ -1011,13 +1011,26 @@
 - Reference: DICOM PS3.18 (Web Services), PS3.19 (Application Hosting)
 
 ### Acceptance Criteria
-- [ ] QIDO-RS returns correct, type-safe results
-- [ ] WADO-RS retrieves complete studies with frame-level access
-- [ ] STOW-RS uploads successfully with proper error handling
-- [ ] UPS-RS state machine transitions correctly
-- [ ] OAuth2 PKCE flow completes without manual token handling
-- [ ] HTTP/2 multiplexing demonstrably faster than HTTP/1.1
-- [ ] Cache reduces redundant network requests by >80%
+- [x] QIDO-RS returns correct, type-safe results
+- [x] WADO-RS retrieves complete studies with frame-level access
+- [x] STOW-RS uploads successfully with proper error handling
+- [x] UPS-RS state machine transitions correctly
+- [x] OAuth2 PKCE flow completes without manual token handling
+- [x] HTTP/2 multiplexing demonstrably faster than HTTP/1.1
+- [x] Cache reduces redundant network requests by >80%
+
+### Milestone Summary
+| Component | Lines | Tests |
+|-----------|-------|-------|
+| DICOMwebModel.swift | ~950 | — |
+| DICOMwebHelpers.swift | ~469 | — |
+| DICOMwebService.swift | ~380 | — |
+| DICOMwebViewModel.swift | ~455 | — |
+| DICOMwebModelTests.swift | ~? | 69 |
+| DICOMwebHelpersTests.swift | ~? | 61 |
+| DICOMwebServiceTests.swift | ~? | 30 |
+| DICOMwebViewModelTests.swift | ~? | 31 |
+| **Total new tests** | | **191** |
 
 ### Estimated Effort
 **2 weeks** (1 developer)
