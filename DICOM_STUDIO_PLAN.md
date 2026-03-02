@@ -59,7 +59,7 @@
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
 | 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, automation | 2 weeks | 80+ |
 | 15 | Polish, Accessibility & Release | i18n, a11y, UI tests, profiling, App Store | 2 weeks | 100+ |
-| 16 | CLI Tools Workshop | Interactive GUI for all 29 CLI tools, command builder, console | 3 weeks | 120+ |
+| 16 | CLI Tools Workshop ✅ | Interactive GUI for all 29 CLI tools, command builder, console | 3 weeks | 172 |
 | **Total** | | | **37 weeks** | **1,320+** |
 
 ---
@@ -1475,7 +1475,7 @@
 
 ## Milestone 16: CLI Tools Workshop
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Provide an interactive graphical interface within DICOM Studio for all 29 DICOMKit command-line tools, serving as both an educational resource for new DICOM users and a productivity tool for experienced professionals
 **DICOMKit Features Showcased**: DICOMToolbox command builder, all CLI tool parameters, `Process`-based execution, real-time output streaming, drag-and-drop file handling, PACS network configuration
 
@@ -1823,20 +1823,20 @@ The CLI Tools Workshop integrates directly into DICOM Studio as a dedicated feat
 - Reference: DICOM PS3.2 (Conformance), PS3.5 (Data Structures), PS3.6 (Data Dictionary), PS3.7 (Message Exchange), PS3.15 (Security), PS3.18 (Web Services)
 
 ### Acceptance Criteria
-- [ ] All 29 CLI tools are accessible through the Workshop GUI with all parameters configurable
-- [ ] Network configuration bar is always visible and persists across app launches
-- [ ] Network parameters auto-populate into all network tool views
-- [ ] Every parameter has at least a tooltip; complex parameters have expandable help with DICOM references
-- [ ] File drag-and-drop works for all file input parameters with visual feedback
-- [ ] File output parameters present a save panel for path configuration
-- [ ] Command preview updates in real-time as parameters are changed (SF Mono font)
-- [ ] Execute button correctly enables when all required parameters are valid, disabled otherwise
-- [ ] Command output displays in the monospaced console with real-time streaming
-- [ ] Command execution supports cancellation
-- [ ] Command history stores and replays the last 50 commands
-- [ ] Beginner/Advanced mode toggle hides/shows advanced parameters
-- [ ] VoiceOver, keyboard navigation, and Dynamic Type are fully supported
-- [ ] All 29 tools generate valid command syntax verified by unit tests
+- [x] All 29 CLI tools are accessible through the Workshop GUI with all parameters configurable
+- [x] Network configuration bar is always visible and persists across app launches
+- [x] Network parameters auto-populate into all network tool views
+- [x] Every parameter has at least a tooltip; complex parameters have expandable help with DICOM references
+- [x] File drag-and-drop works for all file input parameters with visual feedback
+- [x] File output parameters present a save panel for path configuration
+- [x] Command preview updates in real-time as parameters are changed (SF Mono font)
+- [x] Execute button correctly enables when all required parameters are valid, disabled otherwise
+- [x] Command output displays in the monospaced console with real-time streaming
+- [x] Command execution supports cancellation
+- [x] Command history stores and replays the last 50 commands
+- [x] Beginner/Advanced mode toggle hides/shows advanced parameters
+- [x] VoiceOver, keyboard navigation, and Dynamic Type are fully supported
+- [x] All 29 tools generate valid command syntax verified by unit tests
 
 ### Estimated Effort
 **3 weeks** (1 developer)
