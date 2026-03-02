@@ -19,6 +19,8 @@ jobs:
   validate:
     name: Validate Release
     runs-on: macos-15
+    permissions:
+      contents: read
 
     steps:
     - name: Checkout code
@@ -56,6 +58,8 @@ jobs:
     name: Build DMG Installer
     runs-on: macos-15
     needs: validate
+    permissions:
+      contents: read
 
     steps:
     - name: Checkout code
@@ -93,6 +97,8 @@ jobs:
     name: Build PKG Installer
     runs-on: macos-15
     needs: validate
+    permissions:
+      contents: read
 
     steps:
     - name: Checkout code
