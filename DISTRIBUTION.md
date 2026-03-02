@@ -204,12 +204,19 @@ Optional signing and notarization:
 
 ### Method 3: Homebrew Cask
 
-Install DICOM Studio via Homebrew using the local cask formula:
+Install DICOM Studio via Homebrew using the local cask formula (requires cloning the repository):
 
 ```bash
 git clone https://github.com/Raster-Lab/DICOMKit.git
 cd DICOMKit
 brew install --cask Formula/dicomstudio.rb
+```
+
+Or, if a Homebrew tap has been set up (see [HOMEBREW_TAP_SETUP.md](Documentation/HOMEBREW_TAP_SETUP.md)):
+
+```bash
+brew tap Raster-Lab/dicomkit
+brew install --cask dicomstudio
 ```
 
 To uninstall:

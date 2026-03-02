@@ -1,7 +1,7 @@
 # Homebrew Cask for DICOM Studio macOS Application
 cask "dicomstudio" do
   version "1.0.16"
-  sha256 "" # Will be filled in upon first release
+  sha256 :no_check # Replace with actual SHA-256 after first release build
 
   url "https://github.com/Raster-Lab/DICOMKit/releases/download/v#{version}/DICOMStudio-#{version}.dmg"
   name "DICOM Studio"

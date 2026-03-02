@@ -168,10 +168,19 @@ Double-click the resulting `DICOMStudio-<version>.pkg` to run the guided install
 
 ### Homebrew Cask
 
+Install from a local formula (requires cloning the repository):
+
 ```bash
 git clone https://github.com/Raster-Lab/DICOMKit.git
 cd DICOMKit
 brew install --cask Formula/dicomstudio.rb
+```
+
+Or, if a Homebrew tap has been set up (see [HOMEBREW_TAP_SETUP.md](Documentation/HOMEBREW_TAP_SETUP.md)):
+
+```bash
+brew tap Raster-Lab/dicomkit
+brew install --cask dicomstudio
 ```
 
 To uninstall:
