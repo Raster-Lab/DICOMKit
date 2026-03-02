@@ -10,6 +10,10 @@ This guide provides detailed instructions for installing DICOMKit and its CLI to
   - [Option 2: Local Build Script](#option-2-local-build-script)
   - [Option 3: Manual Build](#option-3-manual-build)
   - [Option 4: Swift Package Manager](#option-4-swift-package-manager)
+- [DICOM Studio Application](#dicom-studio-application)
+  - [DMG Installer](#dmg-installer)
+  - [PKG Installer](#pkg-installer)
+  - [Homebrew Cask](#homebrew-cask)
 - [Verification](#verification)
 - [Uninstallation](#uninstallation)
 
@@ -130,6 +134,50 @@ import DICOMKit      // High-level API
 import DICOMCore     // Core parsing
 import DICOMNetwork  // PACS networking
 import DICOMWeb      // DICOMweb services
+```
+
+---
+
+## DICOM Studio Application
+
+DICOM Studio is a native macOS application for professional DICOM medical image viewing, analysis, and management. It can be installed via DMG, .pkg, or Homebrew.
+
+### DMG Installer
+
+Download from GitHub Releases or build locally:
+
+```bash
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+./Scripts/package-dicom-studio-dmg.sh
+```
+
+Open the resulting `DICOMStudio-<version>.dmg` and drag the app to your Applications folder.
+
+### PKG Installer
+
+Download from GitHub Releases or build locally:
+
+```bash
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+./Scripts/package-dicom-studio-pkg.sh
+```
+
+Double-click the resulting `DICOMStudio-<version>.pkg` to run the guided installer.
+
+### Homebrew Cask
+
+```bash
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+brew install --cask Formula/dicomstudio.rb
+```
+
+To uninstall:
+
+```bash
+brew uninstall --cask dicomstudio
 ```
 
 ---

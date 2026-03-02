@@ -1,0 +1,209 @@
+name: DICOM Studio Release
+
+on:
+  push:
+    tags:
+      - 'studio-v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. studio-v1.0.16)'
+        required: true
+        type: string
+
+env:
+  SWIFT_VERSION: '6.2'
+  APP_NAME: 'DICOMStudio'
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: macos-15
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+
+    - name: Get tag name
+      id: get_tag
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+        else
+          echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Validate version tag
+      run: |
+        TAG=${{ steps.get_tag.outputs.tag }}
+        if [[ ! $TAG =~ ^studio-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          echo "::error::Invalid version tag format: $TAG (expected: studio-v1.2.3)"
+          exit 1
+        fi
+        echo "✅ Valid version tag: $TAG"
+
+    - name: Build and test
+      run: |
+        swift build -c release
+        swift test --filter DICOMStudioTests
+
+  build-dmg:
+    name: Build DMG Installer
+    runs-on: macos-15
+    needs: validate
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+
+    - name: Get version
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          TAG=${{ inputs.tag }}
+        else
+          TAG=${GITHUB_REF#refs/tags/}
+        fi
+        VERSION=${TAG#studio-v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+    - name: Build DMG
+      run: |
+        chmod +x Scripts/package-dicom-studio-dmg.sh
+        ./Scripts/package-dicom-studio-dmg.sh --version ${{ steps.get_version.outputs.version }}
+
+    - name: Upload DMG artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dicom-studio-dmg
+        path: |
+          DICOMStudio-*.dmg
+          DICOMStudio-*.dmg.sha256
+
+  build-pkg:
+    name: Build PKG Installer
+    runs-on: macos-15
+    needs: validate
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+
+    - name: Get version
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          TAG=${{ inputs.tag }}
+        else
+          TAG=${GITHUB_REF#refs/tags/}
+        fi
+        VERSION=${TAG#studio-v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+    - name: Build PKG
+      run: |
+        chmod +x Scripts/package-dicom-studio-pkg.sh
+        ./Scripts/package-dicom-studio-pkg.sh --version ${{ steps.get_version.outputs.version }}
+
+    - name: Upload PKG artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dicom-studio-pkg
+        path: |
+          DICOMStudio-*.pkg
+          DICOMStudio-*.pkg.sha256
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [build-dmg, build-pkg]
+    permissions:
+      contents: write
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Get version
+      id: get_version
+      run: |
+        if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+          TAG=${{ inputs.tag }}
+        else
+          TAG=${GITHUB_REF#refs/tags/}
+        fi
+        VERSION=${TAG#studio-v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: Generate release notes
+      run: |
+        VERSION=${{ steps.get_version.outputs.version }}
+        cat > release_notes.md << EOF
+        ## DICOM Studio v${VERSION}
+
+        ### Installation
+
+        **DMG Installer (Recommended)**
+        1. Download \`DICOMStudio-${VERSION}.dmg\`
+        2. Open the DMG and drag DICOM Studio to your Applications folder
+
+        **PKG Installer**
+        1. Download \`DICOMStudio-${VERSION}.pkg\`
+        2. Double-click to run the guided installer
+
+        **Homebrew Cask**
+        \`\`\`bash
+        brew install --cask Formula/dicomstudio.rb
+        \`\`\`
+
+        ### System Requirements
+        - macOS 14.0 (Sonoma) or later
+        - Apple Silicon or Intel processor
+
+        ### Features
+        - DICOM file browsing and metadata inspection
+        - Medical image viewing with window/level controls
+        - PACS connectivity (C-ECHO, C-FIND, C-MOVE, C-STORE)
+        - DICOMweb integration (QIDO-RS, WADO-RS, STOW-RS)
+        - DICOM file anonymization and validation
+        - Structured report viewing
+        - Volume visualization (MPR, 3D rendering)
+        - Measurement and annotation tools
+        EOF
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ steps.get_version.outputs.tag }}
+        name: DICOM Studio ${{ steps.get_version.outputs.version }}
+        body_path: release_notes.md
+        draft: false
+        prerelease: ${{ contains(steps.get_version.outputs.version, '-') }}
+        files: |
+          artifacts/dicom-studio-dmg/DICOMStudio-*.dmg
+          artifacts/dicom-studio-dmg/DICOMStudio-*.dmg.sha256
+          artifacts/dicom-studio-pkg/DICOMStudio-*.pkg
+          artifacts/dicom-studio-pkg/DICOMStudio-*.pkg.sha256
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
