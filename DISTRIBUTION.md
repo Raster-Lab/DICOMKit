@@ -148,6 +148,100 @@ cd DICOMKit
 
 ---
 
+## DICOM Studio Distribution
+
+DICOM Studio is a native macOS application for viewing, analyzing, and managing DICOM medical imaging files. Multiple installer formats are available.
+
+### Method 1: DMG Installer (Recommended)
+
+Download the DMG from GitHub Releases and drag DICOM Studio to your Applications folder:
+
+1. Go to https://github.com/Raster-Lab/DICOMKit/releases
+2. Download `DICOMStudio-<version>.dmg`
+3. Open the DMG and drag `DICOMStudio.app` to the Applications folder
+
+Or build the DMG locally:
+
+```bash
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+./Scripts/package-dicom-studio-dmg.sh --version 1.0.16
+```
+
+Optional code signing and notarization:
+
+```bash
+./Scripts/package-dicom-studio-dmg.sh \
+    --version 1.0.16 \
+    --sign "Developer ID Application: Your Name (TEAM_ID)" \
+    --notarize
+```
+
+### Method 2: macOS .pkg Installer
+
+The .pkg installer provides a guided installation experience:
+
+1. Go to https://github.com/Raster-Lab/DICOMKit/releases
+2. Download `DICOMStudio-<version>.pkg`
+3. Double-click to run the guided installer
+
+Or build the .pkg locally:
+
+```bash
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+./Scripts/package-dicom-studio-pkg.sh --version 1.0.16
+```
+
+Optional signing and notarization:
+
+```bash
+./Scripts/package-dicom-studio-pkg.sh \
+    --version 1.0.16 \
+    --sign "Developer ID Installer: Your Name (TEAM_ID)" \
+    --notarize
+```
+
+### Method 3: Homebrew Cask
+
+Install DICOM Studio via Homebrew using the local cask formula (requires cloning the repository):
+
+```bash
+git clone https://github.com/Raster-Lab/DICOMKit.git
+cd DICOMKit
+brew install --cask Formula/dicomstudio.rb
+```
+
+Or, if a Homebrew tap has been set up (see [HOMEBREW_TAP_SETUP.md](Documentation/HOMEBREW_TAP_SETUP.md)):
+
+```bash
+brew tap Raster-Lab/dicomkit
+brew install --cask dicomstudio
+```
+
+To uninstall:
+
+```bash
+brew uninstall --cask dicomstudio
+```
+
+### CI/CD Automated Releases
+
+DICOM Studio releases are automated via the `dicom-studio-release.yml` GitHub Actions workflow. The workflow is triggered by pushing a tag matching `studio-v*.*.*`:
+
+```bash
+git tag studio-v1.0.16
+git push origin studio-v1.0.16
+```
+
+This will:
+1. Validate the build and run DICOMStudio tests
+2. Build both DMG and .pkg installers
+3. Generate SHA-256 checksums
+4. Create a GitHub Release with all artifacts
+
+---
+
 ## Demo Applications
 
 DICOMKit includes three fully-functional demo applications:
