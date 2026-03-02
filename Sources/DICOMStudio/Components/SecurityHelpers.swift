@@ -1,0 +1,367 @@
+// SecurityHelpers.swift
+// DICOMStudio
+//
+// DICOM Studio — Platform-independent helpers for the Security & Privacy Center display
+// Reference: DICOM PS3.15 (Security and System Management Profiles)
+// Reference: HIPAA Security Rule §164.312
+
+import Foundation
+
+// MARK: - TLS Helpers
+
+/// Platform-independent helpers for TLS configuration display and validation.
+public enum SecurityTLSHelpers: Sendable {
+
+    /// Well-known cipher suites for display.
+    public static let strongCipherSuites: [String] = [
+        "TLS_AES_256_GCM_SHA384",
+        "TLS_CHACHA20_POLY1305_SHA256",
+        "TLS_AES_128_GCM_SHA256"
+    ]
+
+    /// Returns a risk label for a TLS mode.
+    public static func riskLabel(for mode: SecurityTLSMode) -> String {
+        switch mode {
+        case .strict:      return "High Security"
+        case .compatible:  return "Standard Security"
+        case .development: return "Development Only — Not for Production"
+        }
+    }
+
+    /// Returns a human-readable description of the certificate expiry.
+    public static func expiryDescription(for entry: SecurityCertificateEntry) -> String {
+        let days = entry.daysUntilExpiry
+        if days < 0 {
+            return "Expired \(abs(days)) day(s) ago"
+        } else if days == 0 {
+            return "Expires today"
+        } else if days == 1 {
+            return "Expires tomorrow"
+        } else if days <= 30 {
+            return "Expires in \(days) days"
+        } else {
+            return "Expires in \(days / 30) month(s)"
+        }
+    }
+
+    /// Returns a short fingerprint for display (first 16 hex chars + "...").
+    public static func shortFingerprint(_ fingerprint: String) -> String {
+        let clean = fingerprint.replacingOccurrences(of: ":", with: "")
+        guard clean.count >= 16 else { return fingerprint }
+        return String(clean.prefix(16)) + "..."
+    }
+
+    /// Returns true if the fingerprint string looks like a valid SHA-256 fingerprint.
+    public static func isValidFingerprint(_ fingerprint: String) -> Bool {
+        let clean = fingerprint.replacingOccurrences(of: ":", with: "")
+        return clean.count == 64 && clean.allSatisfy { $0.isHexDigit }
+    }
+
+    /// Returns validation error for a pinned hostname, or nil if valid.
+    public static func pinnedHostnameValidationError(for hostname: String) -> String? {
+        if hostname.trimmingCharacters(in: .whitespaces).isEmpty {
+            return "Hostname must not be empty."
+        }
+        let parts = hostname.split(separator: ".").map(String.init)
+        if parts.isEmpty {
+            return "Hostname must contain at least one label."
+        }
+        return nil
+    }
+
+    /// Returns the security indicator color name for a certificate status.
+    public static func colorName(for status: SecurityCertificateStatus) -> String {
+        switch status {
+        case .valid:        return "green"
+        case .expiringSoon: return "orange"
+        case .expired:      return "red"
+        case .missing:      return "gray"
+        case .untrusted:    return "red"
+        case .revoked:      return "red"
+        }
+    }
+
+    /// Returns the overall security level label for a server.
+    public static func securityLabel(for server: SecurityServerEntry) -> String {
+        var parts: [String] = [server.tlsMode.displayName]
+        if server.isMTLSEnabled { parts.append("mTLS") }
+        if server.isPinningEnabled { parts.append("Pinned") }
+        return parts.joined(separator: " · ")
+    }
+}
+
+// MARK: - Anonymization Helpers
+
+/// Platform-independent helpers for anonymization display and validation.
+public enum AnonymizationHelpers: Sendable {
+
+    /// The 18 HIPAA direct identifiers (tag, name) pairs.
+    /// Reference: HIPAA 45 CFR §164.514(b)(2)(i)
+    public static let hipaaDirectIdentifierTags: [(tag: String, name: String)] = [
+        ("0010,0010", "Patient Name"),
+        ("0010,0020", "Patient ID"),
+        ("0010,0030", "Patient Birth Date"),
+        ("0010,0040", "Patient Sex"),
+        ("0010,1000", "Other Patient IDs"),
+        ("0010,1010", "Patient Age"),
+        ("0010,1040", "Patient Telephone Numbers"),
+        ("0010,2160", "Ethnic Group"),
+        ("0010,21B0", "Additional Patient History"),
+        ("0010,4000", "Patient Comments"),
+        ("0008,0014", "Instance Creator UID"),
+        ("0008,0080", "Institution Name"),
+        ("0008,0081", "Institution Address"),
+        ("0008,0090", "Referring Physician Name"),
+        ("0008,1010", "Station Name"),
+        ("0008,1070", "Operator Name"),
+        ("0008,103E", "Series Description"),
+        ("0032,1032", "Requesting Physician")
+    ]
+
+    /// Returns default rules for the given anonymization profile.
+    public static func defaultRules(for profile: AnonymizationProfile) -> [AnonymizationTagRule] {
+        switch profile {
+        case .basic, .hipaaeSafeHarbor:
+            return hipaaDirectIdentifierTags.map { tagPair in
+                AnonymizationTagRule(
+                    tag: tagPair.tag,
+                    tagName: tagPair.name,
+                    action: .remove
+                )
+            }
+        case .custom:
+            return []
+        }
+    }
+
+    /// Returns a validation error for a tag string, or nil if valid.
+    public static func tagValidationError(for tag: String) -> String? {
+        let cleaned = tag.replacingOccurrences(of: ",", with: "")
+                        .replacingOccurrences(of: "(", with: "")
+                        .replacingOccurrences(of: ")", with: "")
+                        .trimmingCharacters(in: .whitespaces)
+        if cleaned.isEmpty { return "Tag must not be empty." }
+        if cleaned.count != 8 { return "Tag must be 8 hex characters (e.g. 00100010)." }
+        if !cleaned.allSatisfy({ $0.isHexDigit }) { return "Tag must contain only hex characters." }
+        return nil
+    }
+
+    /// Returns a formatted tag string in (gggg,eeee) notation.
+    public static func formatTag(_ raw: String) -> String {
+        let cleaned = raw.replacingOccurrences(of: ",", with: "")
+                        .replacingOccurrences(of: "(", with: "")
+                        .replacingOccurrences(of: ")", with: "")
+                        .uppercased()
+        guard cleaned.count == 8 else { return raw.uppercased() }
+        let group = String(cleaned.prefix(4))
+        let element = String(cleaned.suffix(4))
+        return "(\(group),\(element))"
+    }
+
+    /// Returns progress text for an anonymization job.
+    public static func progressText(for job: AnonymizationJob) -> String {
+        switch job.status {
+        case .pending:
+            return "Waiting to start"
+        case .running:
+            return "\(job.processedFiles) of \(job.totalFiles) files"
+        case .completed:
+            if job.failedFiles > 0 {
+                return "Completed with \(job.failedFiles) error(s)"
+            }
+            return "Completed (\(job.totalFiles) files)"
+        case .failed:
+            return "Failed: \(job.errorMessage ?? "Unknown error")"
+        case .cancelled:
+            return "Cancelled after \(job.processedFiles) files"
+        }
+    }
+
+    /// Returns a summary for the before/after preview of a rule set.
+    public static func previewSummary(rules: [AnonymizationTagRule]) -> String {
+        let counts = rules.reduce(into: [TagAction: Int]()) { acc, rule in
+            acc[rule.action, default: 0] += 1
+        }
+        let parts = counts.sorted { $0.key.rawValue < $1.key.rawValue }.map { "\($0.value) \($0.key.displayName)" }
+        if parts.isEmpty { return "No rules defined" }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Returns true if the date shift value is within a safe range.
+    public static func isValidDateShift(_ days: Int) -> Bool {
+        days >= -3650 && days <= 3650
+    }
+}
+
+// MARK: - Audit Log Helpers
+
+/// Platform-independent helpers for audit log display and export.
+public enum SecurityAuditHelpers: Sendable {
+
+    /// ISO 8601 date-time formatter for audit log timestamps.
+    nonisolated(unsafe) public static let iso8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withTimeZone]
+        return f
+    }()
+
+    /// Returns a formatted timestamp string for display.
+    public static func formattedTimestamp(_ date: Date) -> String {
+        iso8601Formatter.string(from: date)
+    }
+
+    /// Returns true if the entry's timestamp falls within the given date range.
+    public static func entry(_ entry: SecurityAuditEntry, isInRange range: ClosedRange<Date>) -> Bool {
+        range.contains(entry.timestamp)
+    }
+
+    /// Filters entries by event type.
+    public static func filter(_ entries: [SecurityAuditEntry], byType type: SecurityAuditEventType) -> [SecurityAuditEntry] {
+        entries.filter { $0.eventType == type }
+    }
+
+    /// Filters entries by user identity (case-insensitive substring match).
+    public static func filter(_ entries: [SecurityAuditEntry], byUser user: String) -> [SecurityAuditEntry] {
+        guard !user.isEmpty else { return entries }
+        return entries.filter { $0.userIdentity.localizedCaseInsensitiveContains(user) }
+    }
+
+    /// Filters entries by patient or study reference (case-insensitive substring match).
+    public static func filter(_ entries: [SecurityAuditEntry], byReference ref: String) -> [SecurityAuditEntry] {
+        guard !ref.isEmpty else { return entries }
+        return entries.filter {
+            $0.patientReference.localizedCaseInsensitiveContains(ref) ||
+            $0.studyReference.localizedCaseInsensitiveContains(ref)
+        }
+    }
+
+    /// Converts a list of entries to CSV text.
+    public static func toCSV(_ entries: [SecurityAuditEntry]) -> String {
+        let header = "ID,Timestamp,EventType,User,Patient,Study,Description,Success,SourceHost"
+        let rows = entries.map { e in
+            [
+                e.id.uuidString,
+                formattedTimestamp(e.timestamp),
+                e.eventType.rawValue,
+                csvEscape(e.userIdentity),
+                csvEscape(e.patientReference),
+                csvEscape(e.studyReference),
+                csvEscape(e.description),
+                e.success ? "true" : "false",
+                csvEscape(e.sourceHost)
+            ].joined(separator: ",")
+        }
+        return ([header] + rows).joined(separator: "\n")
+    }
+
+    private static func csvEscape(_ value: String) -> String {
+        if value.contains(",") || value.contains("\"") || value.contains("\n") {
+            return "\"" + value.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        return value
+    }
+
+    /// Converts a list of entries to a JSON-serializable array of dictionaries.
+    public static func toJSONDictionaries(_ entries: [SecurityAuditEntry]) -> [[String: String]] {
+        entries.map { e in
+            [
+                "id": e.id.uuidString,
+                "timestamp": formattedTimestamp(e.timestamp),
+                "eventType": e.eventType.rawValue,
+                "userIdentity": e.userIdentity,
+                "patientReference": e.patientReference,
+                "studyReference": e.studyReference,
+                "description": e.description,
+                "success": e.success ? "true" : "false",
+                "sourceHost": e.sourceHost
+            ]
+        }
+    }
+
+    /// Returns statistics about the entries (counts per event type).
+    public static func statistics(_ entries: [SecurityAuditEntry]) -> [SecurityAuditEventType: Int] {
+        entries.reduce(into: [SecurityAuditEventType: Int]()) { acc, entry in
+            acc[entry.eventType, default: 0] += 1
+        }
+    }
+
+    /// Applies the retention policy by removing entries older than the cutoff.
+    public static func applyRetentionPolicy(
+        _ entries: [SecurityAuditEntry],
+        policy: SecurityAuditRetentionPolicy
+    ) -> [SecurityAuditEntry] {
+        guard let days = policy.retentionDays else { return entries }
+        let cutoff = Date().addingTimeInterval(-Double(days) * 24 * 3600)
+        return entries.filter { $0.timestamp > cutoff }
+    }
+}
+
+// MARK: - Access Control Helpers
+
+/// Platform-independent helpers for access control display and session management.
+public enum AccessControlHelpers: Sendable {
+
+    /// Returns whether a role has permission to perform the given action.
+    public static func hasPermission(_ role: UserRole, for action: String) -> Bool {
+        switch action {
+        case "view":          return true // all roles can view
+        case "import":        return role.privilegeLevel >= UserRole.clinician.privilegeLevel
+        case "export":        return role.privilegeLevel >= UserRole.clinician.privilegeLevel
+        case "anonymize":     return role.privilegeLevel >= UserRole.clinician.privilegeLevel
+        case "delete":        return role.privilegeLevel >= UserRole.admin.privilegeLevel
+        case "manageUsers":   return role.privilegeLevel >= UserRole.admin.privilegeLevel
+        case "viewAuditLog":  return role.privilegeLevel >= UserRole.admin.privilegeLevel
+        case "systemConfig":  return role.privilegeLevel >= UserRole.superAdmin.privilegeLevel
+        default:              return false
+        }
+    }
+
+    /// Returns the standard permission matrix entries.
+    public static func standardPermissionMatrix() -> [PermissionEntry] {
+        let actions: [(permission: String, description: String)] = [
+            ("view",          "View DICOM studies and images"),
+            ("import",        "Import DICOM files"),
+            ("export",        "Export and download studies"),
+            ("anonymize",     "Run anonymization jobs"),
+            ("delete",        "Delete studies and series"),
+            ("manageUsers",   "Manage user accounts and roles"),
+            ("viewAuditLog",  "Access the audit log"),
+            ("systemConfig",  "System-wide configuration")
+        ]
+        return actions.map { action in
+            let rolePerms = UserRole.allCases.reduce(into: [UserRole: Bool]()) { acc, role in
+                acc[role] = hasPermission(role, for: action.permission)
+            }
+            return PermissionEntry(
+                permission: action.permission,
+                description: action.description,
+                rolePermissions: rolePerms
+            )
+        }
+    }
+
+    /// Returns the remaining idle time (in seconds) before session timeout, or nil if already expired.
+    public static func remainingSessionTime(for session: AccessControlSession) -> TimeInterval? {
+        let elapsed = Date().timeIntervalSince(session.lastActivityAt)
+        let remaining = session.timeoutInterval - elapsed
+        return remaining > 0 ? remaining : nil
+    }
+
+    /// Returns a human-readable session duration string.
+    public static func sessionDurationText(for session: AccessControlSession) -> String {
+        let duration = Date().timeIntervalSince(session.startedAt)
+        let hours = Int(duration) / 3600
+        let minutes = (Int(duration) % 3600) / 60
+        if hours > 0 {
+            return "\(hours)h \(minutes)m"
+        }
+        return "\(minutes)m"
+    }
+
+    /// Returns a short JWT scope summary for display.
+    public static func scopeSummary(_ scopes: [String]) -> String {
+        if scopes.isEmpty { return "No scopes" }
+        if scopes.count <= 3 { return scopes.joined(separator: ", ") }
+        return "\(scopes.prefix(3).joined(separator: ", ")) +\(scopes.count - 3) more"
+    }
+}
