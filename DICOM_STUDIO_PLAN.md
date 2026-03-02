@@ -798,116 +798,116 @@
 
 ## Milestone 9: DICOM Networking Hub
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Implement a full DICOM networking interface for server connectivity, query/retrieve, storage, and print management
 **DICOMKit Features Showcased**: `DICOMClient`, C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE, Modality Worklist (MWL), MPPS, Print Management (N-CREATE/SET/GET/DELETE), TLS (1.2/1.3), mTLS, certificate pinning, connection pooling, circuit breaker, bandwidth limiting, retry policies, batch operations, progress tracking, pre-send validation, HIPAA audit logging
 
 ### Deliverables
 
 #### 9.1 Server Configuration Manager
-- [ ] PACS server profile management:
-  - [ ] Server name, hostname, port, AE Title
-  - [ ] Local AE Title configuration
-  - [ ] TLS/SSL settings (TLS 1.2, TLS 1.3, mTLS)
-  - [ ] Certificate management (import, pin, trust)
-  - [ ] Self-signed certificate support
-- [ ] Multiple server profiles with quick switching
-- [ ] Connection testing with C-ECHO
-- [ ] Server status indicator (online/offline/error)
-- [ ] Import/export server configurations
+- [x] PACS server profile management:
+  - [x] Server name, hostname, port, AE Title
+  - [x] Local AE Title configuration
+  - [x] TLS/SSL settings (TLS 1.2, TLS 1.3, mTLS)
+  - [x] Certificate management (import, pin, trust)
+  - [x] Self-signed certificate support
+- [x] Multiple server profiles with quick switching
+- [x] Connection testing with C-ECHO
+- [x] Server status indicator (online/offline/error)
+- [x] Import/export server configurations
 
 #### 9.2 C-ECHO (Verification)
-- [ ] One-tap connectivity test to any configured server
-- [ ] Response time display (latency in ms)
-- [ ] Detailed error reporting for failed connections
-- [ ] Connection history log
-- [ ] Batch echo to test all configured servers
+- [x] One-tap connectivity test to any configured server
+- [x] Response time display (latency in ms)
+- [x] Detailed error reporting for failed connections
+- [x] Connection history log
+- [x] Batch echo to test all configured servers
 
 #### 9.3 C-FIND (Query)
-- [ ] Query builder with level selection:
-  - [ ] Patient-level query
-  - [ ] Study-level query
-  - [ ] Series-level query
-  - [ ] Instance-level query
-- [ ] Query fields:
-  - [ ] Patient Name, Patient ID
-  - [ ] Study Date (range), Study Description
-  - [ ] Modality, Accession Number
-  - [ ] Series Description, Series Number
-- [ ] Wildcard support (`*`, `?`)
-- [ ] Query result display in paginated table
-- [ ] Drill-down from study → series → instance
-- [ ] Saved query templates for repeated searches
-- [ ] Query history with re-execute
+- [x] Query builder with level selection:
+  - [x] Patient-level query
+  - [x] Study-level query
+  - [x] Series-level query
+  - [x] Instance-level query
+- [x] Query fields:
+  - [x] Patient Name, Patient ID
+  - [x] Study Date (range), Study Description
+  - [x] Modality, Accession Number
+  - [x] Series Description, Series Number
+- [x] Wildcard support (`*`, `?`)
+- [x] Query result display in paginated table
+- [x] Drill-down from study → series → instance
+- [x] Saved query templates for repeated searches
+- [x] Query history with re-execute
 
 #### 9.4 C-MOVE / C-GET (Retrieve)
-- [ ] Retrieve study/series/instance from query results
-- [ ] C-MOVE with move destination configuration
-- [ ] C-GET for direct retrieval
-- [ ] Download progress with percentage and speed
-- [ ] Transfer queue management:
-  - [ ] Queue display with priority ordering
-  - [ ] Pause/resume individual transfers
-  - [ ] Cancel transfer
-  - [ ] Retry failed transfers
-- [ ] Bandwidth limiting controls
-- [ ] Auto-import retrieved files to local library
+- [x] Retrieve study/series/instance from query results
+- [x] C-MOVE with move destination configuration
+- [x] C-GET for direct retrieval
+- [x] Download progress with percentage and speed
+- [x] Transfer queue management:
+  - [x] Queue display with priority ordering
+  - [x] Pause/resume individual transfers
+  - [x] Cancel transfer
+  - [x] Retry failed transfers
+- [x] Bandwidth limiting controls
+- [x] Auto-import retrieved files to local library
 
 #### 9.5 C-STORE (Send)
-- [ ] Send files from local library to remote server
-- [ ] Pre-send validation (4 validation levels, 7 IODs)
-- [ ] Batch send with progress tracking
-- [ ] Send queue management
-- [ ] Transfer status (pending, sending, completed, failed)
-- [ ] Retry policy configuration (max retries, backoff)
-- [ ] Circuit breaker display (open/closed/half-open state)
+- [x] Send files from local library to remote server
+- [x] Pre-send validation (4 validation levels, 7 IODs)
+- [x] Batch send with progress tracking
+- [x] Send queue management
+- [x] Transfer status (pending, sending, completed, failed)
+- [x] Retry policy configuration (max retries, backoff)
+- [x] Circuit breaker display (open/closed/half-open state)
 
 #### 9.6 Modality Worklist (MWL)
-- [ ] Query worklist from configured server
-- [ ] Display scheduled procedures:
-  - [ ] Patient demographics
-  - [ ] Scheduled procedure step
-  - [ ] Requested procedure
-  - [ ] Referring physician
-- [ ] Filter by date, modality, station
-- [ ] Refresh with configurable interval
-- [ ] Auto-populate study data from worklist
+- [x] Query worklist from configured server
+- [x] Display scheduled procedures:
+  - [x] Patient demographics
+  - [x] Scheduled procedure step
+  - [x] Requested procedure
+  - [x] Referring physician
+- [x] Filter by date, modality, station
+- [x] Refresh with configurable interval
+- [x] Auto-populate study data from worklist
 
 #### 9.7 Modality Performed Procedure Step (MPPS)
-- [ ] Create MPPS (N-CREATE) for procedure tracking
-- [ ] Update MPPS status (N-SET):
-  - [ ] In Progress → Completed
-  - [ ] In Progress → Discontinued
-- [ ] Display performed procedure attributes
-- [ ] Dose and exposure information tracking
+- [x] Create MPPS (N-CREATE) for procedure tracking
+- [x] Update MPPS status (N-SET):
+  - [x] In Progress → Completed
+  - [x] In Progress → Discontinued
+- [x] Display performed procedure attributes
+- [x] Dose and exposure information tracking
 
 #### 9.8 Print Management
-- [ ] DICOM Print service connection
-- [ ] Film Session creation and configuration:
-  - [ ] Number of copies
-  - [ ] Print priority
-  - [ ] Medium type (paper, film)
-- [ ] Film Box layout configuration:
-  - [ ] Standard formats (STANDARD\1,1 through STANDARD\4,5)
-  - [ ] Custom layouts
-- [ ] Image Box placement and configuration:
-  - [ ] Image selection from viewer
-  - [ ] Magnification type
-  - [ ] Polarity (normal/reverse)
-- [ ] Print preview before sending
-- [ ] Print queue management
-- [ ] Multiple printer support with status display
+- [x] DICOM Print service connection
+- [x] Film Session creation and configuration:
+  - [x] Number of copies
+  - [x] Print priority
+  - [x] Medium type (paper, film)
+- [x] Film Box layout configuration:
+  - [x] Standard formats (STANDARD\1,1 through STANDARD\4,5)
+  - [x] Custom layouts
+- [x] Image Box placement and configuration:
+  - [x] Image selection from viewer
+  - [x] Magnification type
+  - [x] Polarity (normal/reverse)
+- [x] Print preview before sending
+- [x] Print queue management
+- [x] Multiple printer support with status display
 
 #### 9.9 Network Monitoring
-- [ ] Connection pool status display
-- [ ] Active association count
-- [ ] Transfer throughput graph (bytes/sec)
-- [ ] HIPAA audit log viewer:
-  - [ ] All network operations logged
-  - [ ] Searchable log entries
-  - [ ] Export audit log
-- [ ] Error categorization (transient, permanent, timeout)
-- [ ] Recovery suggestions for errors
+- [x] Connection pool status display
+- [x] Active association count
+- [x] Transfer throughput graph (bytes/sec)
+- [x] HIPAA audit log viewer:
+  - [x] All network operations logged
+  - [x] Searchable log entries
+  - [x] Export audit log
+- [x] Error categorization (transient, permanent, timeout)
+- [x] Recovery suggestions for errors
 
 ### Technical Notes
 - Use `DICOMClient` for all DICOM networking operations
@@ -919,14 +919,14 @@
 - Reference: DICOM PS3.4 (Service Class Specifications), PS3.7 (Message Exchange), PS3.8 (Network Communication), PS3.15 (Security and System Management), PS3.4 Annex H (Print Management)
 
 ### Acceptance Criteria
-- [ ] C-ECHO succeeds against Orthanc/dcm4chee test servers
-- [ ] C-FIND returns correct results for all query levels
-- [ ] C-MOVE/C-GET retrieves complete studies without data loss
-- [ ] C-STORE sends validated files successfully
-- [ ] TLS connections negotiate correctly
-- [ ] Transfer queue handles concurrent operations
-- [ ] Audit log captures all network events
-- [ ] Print preview matches final output
+- [x] C-ECHO succeeds against Orthanc/dcm4chee test servers
+- [x] C-FIND returns correct results for all query levels
+- [x] C-MOVE/C-GET retrieves complete studies without data loss
+- [x] C-STORE sends validated files successfully
+- [x] TLS connections negotiate correctly
+- [x] Transfer queue handles concurrent operations
+- [x] Audit log captures all network events
+- [x] Print preview matches final output
 
 ### Estimated Effort
 **3 weeks** (1 developer)
