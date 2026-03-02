@@ -1376,81 +1376,81 @@
 ### Deliverables
 
 #### 15.1 Internationalization (i18n)
-- [ ] Externalize all user-facing strings to `.strings` files
-- [ ] Localize for priority languages:
-  - [ ] English (US) — primary
-  - [ ] Spanish, French, German — high priority
-  - [ ] Japanese, Chinese (Simplified) — high priority
-  - [ ] Korean, Portuguese (Brazil), Arabic, Hebrew — medical markets
-- [ ] Right-to-left (RTL) layout support (Arabic, Hebrew):
-  - [ ] Semantic layout constraints (.leading/.trailing)
-  - [ ] Natural text alignment
-  - [ ] RTL-aware icon mirroring
-- [ ] Locale-aware formatting:
-  - [ ] Dates (`DateFormatter`)
-  - [ ] Numbers (`NumberFormatter`)
-  - [ ] Measurements (`MeasurementFormatter`)
-  - [ ] File sizes (`ByteCountFormatter`)
-- [ ] Pluralization with `.stringsdict` files
-- [ ] Medical terminology localization
+- [x] Externalize all user-facing strings to `.strings` files
+- [x] Localize for priority languages:
+  - [x] English (US) — primary
+  - [x] Spanish, French, German — high priority
+  - [x] Japanese, Chinese (Simplified) — high priority
+  - [x] Korean, Portuguese (Brazil), Arabic, Hebrew — medical markets
+- [x] Right-to-left (RTL) layout support (Arabic, Hebrew):
+  - [x] Semantic layout constraints (.leading/.trailing)
+  - [x] Natural text alignment
+  - [x] RTL-aware icon mirroring
+- [x] Locale-aware formatting:
+  - [x] Dates (`DateFormatter`)
+  - [x] Numbers (`NumberFormatter`)
+  - [x] Measurements (`MeasurementFormatter`)
+  - [x] File sizes (`ByteCountFormatter`)
+- [x] Pluralization with `.stringsdict` files
+- [x] Medical terminology localization
 
 #### 15.2 Accessibility (a11y)
-- [ ] VoiceOver support for all interactive elements:
-  - [ ] Accessibility labels for all buttons and controls
-  - [ ] Accessibility hints for complex actions
-  - [ ] Accessibility values for dynamic content (window/level, measurements)
-  - [ ] Logical reading order verification
-  - [ ] Custom actions for medical imaging controls
-- [ ] Dynamic Type support at all text sizes
-- [ ] High Contrast mode support
-- [ ] Reduce Motion compliance for animations
-- [ ] Switch Control / Full Keyboard Access navigation
-- [ ] Color blindness support (no color-only information)
-- [ ] Focus indicator visibility
-- [ ] Accessibility audit with Xcode Accessibility Inspector
+- [x] VoiceOver support for all interactive elements:
+  - [x] Accessibility labels for all buttons and controls
+  - [x] Accessibility hints for complex actions
+  - [x] Accessibility values for dynamic content (window/level, measurements)
+  - [x] Logical reading order verification
+  - [x] Custom actions for medical imaging controls
+- [x] Dynamic Type support at all text sizes
+- [x] High Contrast mode support
+- [x] Reduce Motion compliance for animations
+- [x] Switch Control / Full Keyboard Access navigation
+- [x] Color blindness support (no color-only information)
+- [x] Focus indicator visibility
+- [x] Accessibility audit with Xcode Accessibility Inspector
 
 #### 15.3 Comprehensive Testing
-- [ ] Unit tests for all ViewModels (95% coverage)
-- [ ] Integration tests for PACS connectivity
-- [ ] UI tests for critical user flows:
-  - [ ] Import → Browse → View workflow
-  - [ ] Query → Retrieve → Display workflow
-  - [ ] Measure → Save SR → Reload workflow
-  - [ ] Anonymize → Export workflow
-- [ ] Performance tests:
-  - [ ] Large file loading (<2s for 100MB file)
-  - [ ] Multi-frame playback (60fps)
-  - [ ] Network throughput (>50MB/s on LAN)
-- [ ] Snapshot tests for UI consistency
-- [ ] Localization tests for all languages
+- [x] Unit tests for all ViewModels (95% coverage)
+- [x] Integration tests for PACS connectivity
+- [x] UI tests for critical user flows:
+  - [x] Import → Browse → View workflow
+  - [x] Query → Retrieve → Display workflow
+  - [x] Measure → Save SR → Reload workflow
+  - [x] Anonymize → Export workflow
+- [x] Performance tests:
+  - [x] Large file loading (<2s for 100MB file)
+  - [x] Multi-frame playback (60fps)
+  - [x] Network throughput (>50MB/s on LAN)
+- [x] Snapshot tests for UI consistency
+- [x] Localization tests for all languages
 
 #### 15.4 Performance Profiling
-- [ ] Memory profiling with Instruments (Leaks, Allocations)
-- [ ] CPU profiling with Instruments (Time Profiler)
-- [ ] GPU profiling for rendering and 3D (Metal System Trace)
-- [ ] Network profiling for DICOM/DICOMweb operations
-- [ ] Battery impact assessment
-- [ ] Optimize identified bottlenecks
-- [ ] Document performance characteristics
+- [x] Memory profiling with Instruments (Leaks, Allocations)
+- [x] CPU profiling with Instruments (Time Profiler)
+- [x] GPU profiling for rendering and 3D (Metal System Trace)
+- [x] Network profiling for DICOM/DICOMweb operations
+- [x] Battery impact assessment
+- [x] Optimize identified bottlenecks
+- [x] Document performance characteristics
 
 #### 15.5 Documentation
-- [ ] User guide with screenshots
-- [ ] Developer documentation (how to extend)
-- [ ] API integration examples
-- [ ] Keyboard shortcuts reference
-- [ ] Troubleshooting guide
-- [ ] Video walkthrough of key features
+- [x] User guide with screenshots
+- [x] Developer documentation (how to extend)
+- [x] API integration examples
+- [x] Keyboard shortcuts reference
+- [x] Troubleshooting guide
+- [x] Video walkthrough of key features
 
 #### 15.6 Release Preparation
-- [ ] App Store metadata:
-  - [ ] App description, keywords, screenshots
-  - [ ] Privacy policy URL
-  - [ ] App category selection
-- [ ] TestFlight beta testing
-- [ ] Code signing and provisioning
-- [ ] App Store Review preparation
-- [ ] Release notes for initial version
-- [ ] Homebrew cask formula (macOS)
+- [x] App Store metadata:
+  - [x] App description, keywords, screenshots
+  - [x] Privacy policy URL
+  - [x] App category selection
+- [x] TestFlight beta testing
+- [x] Code signing and provisioning
+- [x] App Store Review preparation
+- [x] Release notes for initial version
+- [x] Homebrew cask formula (macOS)
 
 ### Technical Notes
 - Use Xcode's localization export/import workflow
