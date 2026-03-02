@@ -19,6 +19,786 @@
             "target": "DICOMViewer",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release DICOMViewer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-info",
+            "target": "dicom-info",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-info"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-info",
+            "target": "dicom-info",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-info"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-convert",
+            "target": "dicom-convert",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-convert"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-convert",
+            "target": "dicom-convert",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-convert"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-validate",
+            "target": "dicom-validate",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-validate"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-validate",
+            "target": "dicom-validate",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-validate"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-anon",
+            "target": "dicom-anon",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-anon"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-anon",
+            "target": "dicom-anon",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-anon"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-dump",
+            "target": "dicom-dump",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-dump"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-dump",
+            "target": "dicom-dump",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-dump"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-query",
+            "target": "dicom-query",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-query"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-query",
+            "target": "dicom-query",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-query"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-send",
+            "target": "dicom-send",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-send"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-send",
+            "target": "dicom-send",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-send"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-diff",
+            "target": "dicom-diff",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-diff"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-diff",
+            "target": "dicom-diff",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-diff"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-retrieve",
+            "target": "dicom-retrieve",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-retrieve"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-retrieve",
+            "target": "dicom-retrieve",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-retrieve"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-split",
+            "target": "dicom-split",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-split"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-split",
+            "target": "dicom-split",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-split"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-merge",
+            "target": "dicom-merge",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-merge"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-merge",
+            "target": "dicom-merge",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-merge"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-json",
+            "target": "dicom-json",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-json"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-json",
+            "target": "dicom-json",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-json"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-xml",
+            "target": "dicom-xml",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-xml"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-xml",
+            "target": "dicom-xml",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-xml"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-pdf",
+            "target": "dicom-pdf",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-pdf"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-pdf",
+            "target": "dicom-pdf",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-pdf"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-image",
+            "target": "dicom-image",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-image"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-image",
+            "target": "dicom-image",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-image"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-dcmdir",
+            "target": "dicom-dcmdir",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-dcmdir"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-dcmdir",
+            "target": "dicom-dcmdir",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-dcmdir"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-archive",
+            "target": "dicom-archive",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-archive"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-archive",
+            "target": "dicom-archive",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-archive"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-export",
+            "target": "dicom-export",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-export"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-export",
+            "target": "dicom-export",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-export"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-qr",
+            "target": "dicom-qr",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-qr"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-qr",
+            "target": "dicom-qr",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-qr"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-wado",
+            "target": "dicom-wado",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-wado"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-wado",
+            "target": "dicom-wado",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-wado"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-echo",
+            "target": "dicom-echo",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-echo"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-echo",
+            "target": "dicom-echo",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-echo"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-print",
+            "target": "dicom-print",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-print"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-print",
+            "target": "dicom-print",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-print"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-mwl",
+            "target": "dicom-mwl",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-mwl"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-mwl",
+            "target": "dicom-mwl",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-mwl"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-mpps",
+            "target": "dicom-mpps",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-mpps"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-mpps",
+            "target": "dicom-mpps",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-mpps"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-pixedit",
+            "target": "dicom-pixedit",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-pixedit"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-pixedit",
+            "target": "dicom-pixedit",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-pixedit"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-tags",
+            "target": "dicom-tags",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-tags"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-tags",
+            "target": "dicom-tags",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-tags"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-uid",
+            "target": "dicom-uid",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-uid"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-uid",
+            "target": "dicom-uid",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-uid"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-compress",
+            "target": "dicom-compress",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-compress"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-compress",
+            "target": "dicom-compress",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-compress"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-study",
+            "target": "dicom-study",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-study"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-study",
+            "target": "dicom-study",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-study"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-script",
+            "target": "dicom-script",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-script"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-script",
+            "target": "dicom-script",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-script"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-report",
+            "target": "dicom-report",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-report"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-report",
+            "target": "dicom-report",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-report"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-measure",
+            "target": "dicom-measure",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-measure"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-measure",
+            "target": "dicom-measure",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-measure"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-viewer",
+            "target": "dicom-viewer",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-viewer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-viewer",
+            "target": "dicom-viewer",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-viewer"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-cloud",
+            "target": "dicom-cloud",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-cloud"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-cloud",
+            "target": "dicom-cloud",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-cloud"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-3d",
+            "target": "dicom-3d",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-3d"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-3d",
+            "target": "dicom-3d",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-3d"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-ai",
+            "target": "dicom-ai",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-ai"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-ai",
+            "target": "dicom-ai",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-ai"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-gateway",
+            "target": "dicom-gateway",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-gateway"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-gateway",
+            "target": "dicom-gateway",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-gateway"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-server",
+            "target": "dicom-server",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-server"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-server",
+            "target": "dicom-server",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-server"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug DICOMStudioApp",
+            "target": "DICOMStudioApp",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug DICOMStudioApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release DICOMStudioApp",
+            "target": "DICOMStudioApp",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release DICOMStudioApp"
         }
     ]
 }

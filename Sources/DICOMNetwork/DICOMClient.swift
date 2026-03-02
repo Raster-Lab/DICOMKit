@@ -996,7 +996,8 @@ public final class DICOMClient: Sendable {
              .sopClassNotSupported, .unexpectedPDUType, .invalidPDU,
              .encodingFailed, .decodingFailed, .pduTooLarge,
              .associationAborted, .queryFailed, .retrieveFailed,
-             .circuitBreakerOpen, .storeFailed, .partialFailure:
+             .circuitBreakerOpen, .storeFailed, .partialFailure,
+             .printOperationFailed, .unexpectedResponse:
             // Client-side or protocol errors shouldn't affect circuit breaker
             return false
         }
@@ -1027,7 +1028,8 @@ public final class DICOMClient: Sendable {
              .encodingFailed, .decodingFailed, .pduTooLarge:
             // Protocol/configuration errors - don't retry
             return false
-        case .associationAborted, .queryFailed, .retrieveFailed, .storeFailed:
+        case .associationAborted, .queryFailed, .retrieveFailed, .storeFailed,
+             .printOperationFailed:
             // Application-level failures - don't retry
             return false
         case .circuitBreakerOpen:
@@ -1035,6 +1037,9 @@ public final class DICOMClient: Sendable {
             return false
         case .partialFailure:
             // Partial failures shouldn't be retried as some operations succeeded
+            return false
+        case .unexpectedResponse:
+            // Unexpected response format - don't retry
             return false
         }
     }
