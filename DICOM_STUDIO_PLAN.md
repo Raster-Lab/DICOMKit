@@ -50,7 +50,7 @@
 | 4 | Presentation States & Hanging Protocols | GSPS, annotations, shutters, layouts | 2 weeks | 964 |
 | 5 | Measurements & Annotations | Length, angle, ROI, statistics, drawing | 2 weeks | 1193 |
 | 6 | 3D Visualization & MPR ✅ | MPR, MIP, volume rendering, surface | 3 weeks | 1401 |
-| 7 | Structured Reporting Studio | SR viewer, SR builder, coded terms, CAD | 2 weeks | 90+ |
+| 7 | Structured Reporting Studio ✅ | SR viewer, SR builder, coded terms, CAD | 2 weeks | 1626 |
 | 8 | Specialized Modality Support | RT, segmentation, waveforms, video, documents | 3 weeks | 100+ |
 | 9 | DICOM Networking Hub | C-ECHO/FIND/MOVE/GET/STORE, MWL, MPPS, print | 3 weeks | 95+ |
 | 10 | DICOMweb Integration | QIDO-RS, WADO-RS, STOW-RS, UPS-RS, OAuth2 | 2 weeks | 80+ |
@@ -577,81 +577,81 @@
 
 ## Milestone 7: Structured Reporting Studio
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Implement a comprehensive SR viewer and builder showcasing all 8 SR document types and coded terminology
 **DICOMKit Features Showcased**: All 8 SR builders (Basic Text, Enhanced, Comprehensive, Comprehensive 3D, Measurement Report, Key Object Selection, Mammography CAD, Chest CAD), 15 content item value types, coded concepts, relationship types, SNOMED CT/LOINC/RadLex/UCUM terminology
 
 ### Deliverables
 
 #### 7.1 SR Document Viewer
-- [ ] Hierarchical tree display of SR content:
-  - [ ] Container items with relationship types (CONTAINS, HAS OBS CONTEXT, etc.)
-  - [ ] Text content items
-  - [ ] Code content items (with terminology lookup)
-  - [ ] Numeric measurement items (with UCUM units)
-  - [ ] Date/Time/DateTime content items
-  - [ ] Person Name content items
-  - [ ] UID reference items
-  - [ ] Spatial coordinate items (2D and 3D)
-  - [ ] Temporal coordinate items
-  - [ ] Composite/Image/Waveform reference items
-- [ ] Inline rendering of referenced images at spatial coordinates
-- [ ] Coded concept display with terminology source (SNOMED, LOINC, RadLex)
-- [ ] Expand/collapse all tree nodes
-- [ ] Search within SR content
+- [x] Hierarchical tree display of SR content:
+  - [x] Container items with relationship types (CONTAINS, HAS OBS CONTEXT, etc.)
+  - [x] Text content items
+  - [x] Code content items (with terminology lookup)
+  - [x] Numeric measurement items (with UCUM units)
+  - [x] Date/Time/DateTime content items
+  - [x] Person Name content items
+  - [x] UID reference items
+  - [x] Spatial coordinate items (2D and 3D)
+  - [x] Temporal coordinate items
+  - [x] Composite/Image/Waveform reference items
+- [x] Inline rendering of referenced images at spatial coordinates
+- [x] Coded concept display with terminology source (SNOMED, LOINC, RadLex)
+- [x] Expand/collapse all tree nodes
+- [x] Search within SR content
 
 #### 7.2 SR Document Builder
-- [ ] **Basic Text SR Builder**:
-  - [ ] Free-text narrative reports
-  - [ ] Hierarchical sections (Findings, Impression, Recommendations)
-  - [ ] Template selection for common report types
-- [ ] **Enhanced SR Builder**:
-  - [ ] Numeric measurements with UCUM units
-  - [ ] Coded findings with terminology picker
-  - [ ] Referenced images
-- [ ] **Comprehensive SR Builder**:
-  - [ ] 2D spatial coordinates (points, polylines, circles, ellipses, polygons)
-  - [ ] Measurements linked to image regions
-  - [ ] Multiple content item types
-- [ ] **Comprehensive 3D SR Builder**:
-  - [ ] 3D spatial coordinates for volumetric measurements
-  - [ ] Cross-sectional reference frames
-  - [ ] Volumetric ROI definitions
-- [ ] **Measurement Report Builder** (TID 1500):
-  - [ ] Imaging measurements with tracking identifiers
-  - [ ] RECIST/WHO lesion tracking
-  - [ ] Time-point comparison (baseline → follow-up)
-  - [ ] Quantitative imaging biomarkers
-- [ ] **Key Object Selection Builder**:
-  - [ ] Flag significant images from a study
-  - [ ] Purpose categories: teaching, quality control, referral, conference
-  - [ ] Key image description and reason
-- [ ] **Mammography CAD SR Builder**:
-  - [ ] Mass detection findings
-  - [ ] Calcification cluster findings
-  - [ ] Architectural distortion findings
-  - [ ] BI-RADS assessment categories
-- [ ] **Chest CAD SR Builder**:
-  - [ ] Nodule detection findings
-  - [ ] Mass detection findings
-  - [ ] Consolidation and lesion findings
-  - [ ] Finding location and confidence
+- [x] **Basic Text SR Builder**:
+  - [x] Free-text narrative reports
+  - [x] Hierarchical sections (Findings, Impression, Recommendations)
+  - [x] Template selection for common report types
+- [x] **Enhanced SR Builder**:
+  - [x] Numeric measurements with UCUM units
+  - [x] Coded findings with terminology picker
+  - [x] Referenced images
+- [x] **Comprehensive SR Builder**:
+  - [x] 2D spatial coordinates (points, polylines, circles, ellipses, polygons)
+  - [x] Measurements linked to image regions
+  - [x] Multiple content item types
+- [x] **Comprehensive 3D SR Builder**:
+  - [x] 3D spatial coordinates for volumetric measurements
+  - [x] Cross-sectional reference frames
+  - [x] Volumetric ROI definitions
+- [x] **Measurement Report Builder** (TID 1500):
+  - [x] Imaging measurements with tracking identifiers
+  - [x] RECIST/WHO lesion tracking
+  - [x] Time-point comparison (baseline → follow-up)
+  - [x] Quantitative imaging biomarkers
+- [x] **Key Object Selection Builder**:
+  - [x] Flag significant images from a study
+  - [x] Purpose categories: teaching, quality control, referral, conference
+  - [x] Key image description and reason
+- [x] **Mammography CAD SR Builder**:
+  - [x] Mass detection findings
+  - [x] Calcification cluster findings
+  - [x] Architectural distortion findings
+  - [x] BI-RADS assessment categories
+- [x] **Chest CAD SR Builder**:
+  - [x] Nodule detection findings
+  - [x] Mass detection findings
+  - [x] Consolidation and lesion findings
+  - [x] Finding location and confidence
 
 #### 7.3 Coded Terminology Browser
-- [ ] SNOMED CT concept search and browse
-- [ ] LOINC observation code search
-- [ ] RadLex radiology lexicon search
-- [ ] UCUM unit lookup and conversion
-- [ ] Cross-terminology mapping display
-- [ ] Recently used terms quick-access list
-- [ ] Favorites for frequently used codes
+- [x] SNOMED CT concept search and browse
+- [x] LOINC observation code search
+- [x] RadLex radiology lexicon search
+- [x] UCUM unit lookup and conversion
+- [x] Cross-terminology mapping display
+- [x] Recently used terms quick-access list
+- [x] Favorites for frequently used codes
 
 #### 7.4 CAD Findings Visualization
-- [ ] Overlay CAD marks on referenced images
-- [ ] Color-coded findings by type (mass, calcification, nodule)
-- [ ] Confidence score display
-- [ ] Finding detail panel with coded attributes
-- [ ] Accept/reject CAD finding workflow
+- [x] Overlay CAD marks on referenced images
+- [x] Color-coded findings by type (mass, calcification, nodule)
+- [x] Confidence score display
+- [x] Finding detail panel with coded attributes
+- [x] Accept/reject CAD finding workflow
 
 ### Technical Notes
 - Use all 8 SR builder types from DICOMKit
@@ -660,11 +660,11 @@
 - Reference: DICOM PS3.3 C.17 (SR Document), PS3.16 (Content Mapping Resources)
 
 ### Acceptance Criteria
-- [ ] All 8 SR document types create valid DICOM SR files
-- [ ] SR viewer correctly renders all 15 content item value types
-- [ ] Coded terminology search returns results within 200ms
-- [ ] CAD findings overlay accurately on referenced images
-- [ ] Round-trip: create SR → save → reload → display matches original
+- [x] All 8 SR document types create valid DICOM SR files
+- [x] SR viewer correctly renders all 15 content item value types
+- [x] Coded terminology search returns results within 200ms
+- [x] CAD findings overlay accurately on referenced images
+- [x] Round-trip: create SR → save → reload → display matches original
 
 ### Estimated Effort
 **2 weeks** (1 developer)
