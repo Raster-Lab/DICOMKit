@@ -189,6 +189,10 @@ let package = Package(
         .library(
             name: "DICOMStudio",
             targets: ["DICOMStudio"]
+        ),
+        .executable(
+            name: "DICOMStudioApp",
+            targets: ["DICOMStudioApp"]
         )
     ],
     dependencies: [
@@ -665,7 +669,14 @@ let package = Package(
                 "DICOMDictionary"
             ],
             path: "Sources/DICOMStudio",
-            exclude: ["ARCHITECTURE.md"]
+            exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]
+        ),
+        .executableTarget(
+            name: "DICOMStudioApp",
+            dependencies: [
+                "DICOMStudio"
+            ],
+            path: "Sources/DICOMStudioApp"
         ),
         .testTarget(
             name: "DICOMStudioTests",
