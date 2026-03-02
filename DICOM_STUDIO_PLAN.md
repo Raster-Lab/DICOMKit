@@ -1218,89 +1218,92 @@
 
 ## Milestone 13: Performance & Developer Tools
 
-**Status**: Planned
+**Status**: Completed ✅
 **Goal**: Implement performance monitoring, diagnostics, and developer-facing tools for DICOMKit exploration
 **DICOMKit Features Showcased**: SIMD acceleration benchmarks, metadata-only parsing, streaming parser, memory-mapped file access, image caching (LRU eviction), `DICOMDictionary` (7,000+ tags), UID dictionary (100+ UIDs), Transfer Syntax registry (30+ syntaxes), SOP Class registry
 
 ### Deliverables
 
 #### 13.1 Performance Dashboard
-- [ ] Real-time metrics display:
-  - [ ] File parse time (full parse vs. metadata-only)
-  - [ ] Image render time (with/without SIMD)
-  - [ ] Cache hit/miss rate
-  - [ ] Memory usage (resident, virtual)
-  - [ ] Active memory-mapped files count
-- [ ] Benchmark runner:
-  - [ ] Parse 100 files benchmark
-  - [ ] Render 100 frames benchmark
-  - [ ] Window/level 1000 iterations benchmark
-  - [ ] Network round-trip latency benchmark
-- [ ] Performance comparison charts (before/after optimization)
-- [ ] Export benchmark results to CSV
+- [x] Real-time metrics display:
+  - [x] File parse time (full parse vs. metadata-only)
+  - [x] Image render time (with/without SIMD)
+  - [x] Cache hit/miss rate
+  - [x] Memory usage (resident, virtual)
+  - [x] Active memory-mapped files count
+- [x] Benchmark runner:
+  - [x] Parse 100 files benchmark
+  - [x] Render 100 frames benchmark
+  - [x] Window/level 1000 iterations benchmark
+  - [x] Network round-trip latency benchmark
+- [x] Performance comparison charts (before/after optimization)
+- [x] Export benchmark results to CSV
 
 #### 13.2 Cache Management
-- [ ] Image cache inspector:
-  - [ ] Current cache size vs. maximum
-  - [ ] Cached items list with size and age
-  - [ ] LRU eviction visualization
-  - [ ] Manual cache clear
-- [ ] Thumbnail cache management
-- [ ] Network response cache inspector (DICOMweb)
-- [ ] Cache size configuration per type
+- [x] Image cache inspector:
+  - [x] Current cache size vs. maximum
+  - [x] Cached items list with size and age
+  - [x] LRU eviction visualization
+  - [x] Manual cache clear
+- [x] Thumbnail cache management
+- [x] Network response cache inspector (DICOMweb)
+- [x] Cache size configuration per type
 
 #### 13.3 Tag Dictionary Explorer
-- [ ] Browse all 7,000+ DICOM tags from `DICOMDictionary`
-- [ ] Search by tag name, keyword, group, or element number
-- [ ] Filter by tag group (Patient, Study, Series, Equipment, Image, etc.)
-- [ ] Tag detail view:
-  - [ ] Tag number (GGGG,EEEE)
-  - [ ] Name, keyword
-  - [ ] Value Representation
-  - [ ] Value Multiplicity
-  - [ ] Retired status
-  - [ ] Description and usage notes
-- [ ] Private tag registry browser (Siemens, GE, Philips creators)
+- [x] Browse all 7,000+ DICOM tags from `DICOMDictionary`
+- [x] Search by tag name, keyword, group, or element number
+- [x] Filter by tag group (Patient, Study, Series, Equipment, Image, etc.)
+- [x] Tag detail view:
+  - [x] Tag number (GGGG,EEEE)
+  - [x] Name, keyword
+  - [x] Value Representation
+  - [x] Value Multiplicity
+  - [x] Retired status
+  - [x] Description and usage notes
+- [x] Private tag registry browser (Siemens, GE, Philips creators)
 
 #### 13.4 UID Lookup Tool
-- [ ] Browse all registered UIDs:
-  - [ ] Transfer Syntax UIDs (30+ entries)
-  - [ ] SOP Class UIDs (100+ entries)
-  - [ ] Well-known DICOM UIDs
-- [ ] Search by UID value or name
-- [ ] UID generation tool (create new DICOM UIDs)
-- [ ] UID validation (check format compliance)
-- [ ] Copy UID to clipboard
+- [x] Browse all registered UIDs:
+  - [x] Transfer Syntax UIDs (30+ entries)
+  - [x] SOP Class UIDs (100+ entries)
+  - [x] Well-known DICOM UIDs
+- [x] Search by UID value or name
+- [x] UID generation tool (create new DICOM UIDs)
+- [x] UID validation (check format compliance)
+- [x] Copy UID to clipboard
 
 #### 13.5 Transfer Syntax Information
-- [ ] List all supported transfer syntaxes with details:
-  - [ ] UID, name, description
-  - [ ] Compression type (none, lossy, lossless)
-  - [ ] Byte order (little/big endian)
-  - [ ] VR encoding (implicit/explicit)
-  - [ ] Support status in DICOMKit
-- [ ] Transfer syntax compatibility checker
+- [x] List all supported transfer syntaxes with details:
+  - [x] UID, name, description
+  - [x] Compression type (none, lossy, lossless)
+  - [x] Byte order (little/big endian)
+  - [x] VR encoding (implicit/explicit)
+  - [x] Support status in DICOMKit
+- [x] Transfer syntax compatibility checker
 
 #### 13.6 DICOM Conformance Statement Viewer
-- [ ] Display DICOMKit's conformance statement
-- [ ] Supported SOP classes list with role (SCU/SCP)
-- [ ] Supported transfer syntaxes per SOP class
-- [ ] Network services capability matrix
-- [ ] DICOMweb services capability matrix
+- [x] Display DICOMKit's conformance statement
+- [x] Supported SOP classes list with role (SCU/SCP)
+- [x] Supported transfer syntaxes per SOP class
+- [x] Network services capability matrix
+- [x] DICOMweb services capability matrix
 
 ### Technical Notes
 - Use `DICOMDictionary.shared` for tag and UID data
 - Use Instruments-style charts for performance visualization
 - Accelerate framework timing for SIMD benchmarks
 - Reference: DICOM PS3.2 (Conformance), PS3.5 (Data Structures), PS3.6 (Data Dictionary)
+- New files: `PerformanceToolsModel.swift`, `PerformanceToolsHelpers.swift`, `PerformanceToolsService.swift`, `PerformanceToolsViewModel.swift`
+- New navigation destination: `.performanceTools` in `NavigationService.swift`
+- 179 new tests across 4 suites
 
 ### Acceptance Criteria
-- [ ] Performance dashboard updates in real-time during operations
-- [ ] Tag dictionary search returns results within 50ms
-- [ ] All 7,000+ tags display correctly with full metadata
-- [ ] UID generation produces valid DICOM UIDs
-- [ ] Benchmarks produce reproducible results (±5% variance)
-- [ ] Conformance statement accurately reflects DICOMKit capabilities
+- [x] Performance dashboard updates in real-time during operations
+- [x] Tag dictionary search returns results within 50ms
+- [x] All 7,000+ tags display correctly with full metadata
+- [x] UID generation produces valid DICOM UIDs
+- [x] Benchmarks produce reproducible results (±5% variance)
+- [x] Conformance statement accurately reflects DICOMKit capabilities
 
 ### Estimated Effort
 **2 weeks** (1 developer)
