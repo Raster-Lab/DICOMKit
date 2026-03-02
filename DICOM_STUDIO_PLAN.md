@@ -54,7 +54,7 @@
 | 8 | Specialized Modality Support ✅ | RT, segmentation, waveforms, video, documents | 3 weeks | 1822 |
 | 9 | DICOM Networking Hub ✅ | C-ECHO/FIND/MOVE/GET/STORE, MWL, MPPS, print | 3 weeks | 2034 |
 | 10 | DICOMweb Integration ✅ | QIDO-RS, WADO-RS, STOW-RS, UPS-RS, OAuth2 | 2 weeks | 2225 |
-| 11 | Security & Privacy Center | TLS, anonymization, audit logs, certificates | 2 weeks | 65+ |
+| 11 | Security & Privacy Center ✅ | TLS, anonymization, audit logs, certificates | 2 weeks | 2462 |
 | 12 | Data Exchange & Export | JSON, XML, image export, PDF, DICOMDIR | 2 weeks | 70+ |
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
 | 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, automation | 2 weeks | 80+ |
@@ -1039,60 +1039,60 @@
 
 ## Milestone 11: Security & Privacy Center
 
-**Status**: Planned
+**Status**: Completed
 **Goal**: Implement a security and privacy management interface for HIPAA compliance, anonymization, and audit
 **DICOMKit Features Showcased**: TLS 1.2/1.3 configuration, mutual TLS (mTLS), certificate pinning, self-signed certificate support, DICOM anonymization profiles, HIPAA-compliant audit logging (file/console/OSLog handlers), pre-send validation
 
 ### Deliverables
 
 #### 11.1 TLS Configuration UI
-- [ ] TLS mode selection:
-  - [ ] Strict mode (TLS 1.3 only)
-  - [ ] Compatible mode (TLS 1.2+)
-  - [ ] Development mode (allow self-signed)
-- [ ] Certificate management:
-  - [ ] Import CA certificates
-  - [ ] Client certificate for mTLS
-  - [ ] Certificate pinning configuration
-  - [ ] Certificate chain viewer
-  - [ ] Expiration warnings
-- [ ] Connection security indicator per server
-- [ ] TLS handshake details display
+- [x] TLS mode selection:
+  - [x] Strict mode (TLS 1.3 only)
+  - [x] Compatible mode (TLS 1.2+)
+  - [x] Development mode (allow self-signed)
+- [x] Certificate management:
+  - [x] Import CA certificates
+  - [x] Client certificate for mTLS
+  - [x] Certificate pinning configuration
+  - [x] Certificate chain viewer
+  - [x] Expiration warnings
+- [x] Connection security indicator per server
+- [x] TLS handshake details display
 
 #### 11.2 Anonymization Tool
-- [ ] File anonymization with profile selection:
-  - [ ] Basic profile (remove direct identifiers)
-  - [ ] HIPAA Safe Harbor profile
-  - [ ] Custom anonymization rules
-- [ ] Tag-level controls:
-  - [ ] Remove, replace, hash, encrypt per tag
-  - [ ] Date shifting (configurable offset)
-  - [ ] UID remapping (consistent replacement)
-- [ ] Batch anonymization with progress
-- [ ] Preview before/after anonymization
-- [ ] Anonymization log with reversibility option (key escrow)
-- [ ] PHI detection scanner
+- [x] File anonymization with profile selection:
+  - [x] Basic profile (remove direct identifiers)
+  - [x] HIPAA Safe Harbor profile
+  - [x] Custom anonymization rules
+- [x] Tag-level controls:
+  - [x] Remove, replace, hash, encrypt per tag
+  - [x] Date shifting (configurable offset)
+  - [x] UID remapping (consistent replacement)
+- [x] Batch anonymization with progress
+- [x] Preview before/after anonymization
+- [x] Anonymization log with reversibility option (key escrow)
+- [x] PHI detection scanner
 
 #### 11.3 Audit Log Viewer
-- [ ] HIPAA-compliant audit trail display:
-  - [ ] All file access events
-  - [ ] All network operations
-  - [ ] User actions (view, modify, export)
-  - [ ] Timestamps with timezone
-- [ ] Search and filter audit entries by:
-  - [ ] Date range
-  - [ ] Event type
-  - [ ] User identity
-  - [ ] Patient/study reference
-- [ ] Audit log export (CSV, JSON, ATNA format)
-- [ ] Log handler configuration (file, console, OSLog)
-- [ ] Log retention policy settings
+- [x] HIPAA-compliant audit trail display:
+  - [x] All file access events
+  - [x] All network operations
+  - [x] User actions (view, modify, export)
+  - [x] Timestamps with timezone
+- [x] Search and filter audit entries by:
+  - [x] Date range
+  - [x] Event type
+  - [x] User identity
+  - [x] Patient/study reference
+- [x] Audit log export (CSV, JSON, ATNA format)
+- [x] Log handler configuration (file, console, OSLog)
+- [x] Log retention policy settings
 
 #### 11.4 Access Control
-- [ ] User role display (from OAuth2/JWT)
-- [ ] Permission matrix visualization
-- [ ] Session management (timeout, auto-lock)
-- [ ] Emergency access ("break-glass") tracking
+- [x] User role display (from OAuth2/JWT)
+- [x] Permission matrix visualization
+- [x] Session management (timeout, auto-lock)
+- [x] Emergency access ("break-glass") tracking
 
 ### Technical Notes
 - Use DICOMNetwork's TLS configuration APIs
@@ -1101,12 +1101,25 @@
 - Reference: DICOM PS3.15 (Security and System Management Profiles), HIPAA Security Rule §164.312
 
 ### Acceptance Criteria
-- [ ] TLS configuration applies correctly to all network connections
-- [ ] Anonymization removes all specified PHI tags
-- [ ] Audit log captures all user-initiated operations
-- [ ] Date shifting maintains relative date relationships
-- [ ] UID remapping is consistent within a session
-- [ ] Export anonymized files pass validation
+- [x] TLS configuration applies correctly to all network connections
+- [x] Anonymization removes all specified PHI tags
+- [x] Audit log captures all user-initiated operations
+- [x] Date shifting maintains relative date relationships
+- [x] UID remapping is consistent within a session
+- [x] Export anonymized files pass validation
+
+### Milestone Summary
+| Component | Lines | Tests |
+|-----------|-------|-------|
+| SecurityModel.swift | ~560 | — |
+| SecurityHelpers.swift | ~290 | — |
+| SecurityService.swift | ~310 | — |
+| SecurityViewModel.swift | ~305 | — |
+| SecurityModelTests.swift | ~380 | 73 |
+| SecurityHelpersTests.swift | ~410 | 67 |
+| SecurityServiceTests.swift | ~300 | 58 |
+| SecurityViewModelTests.swift | ~380 | 59 |
+| **Total new tests** | | **237** |
 
 ### Estimated Effort
 **2 weeks** (1 developer)

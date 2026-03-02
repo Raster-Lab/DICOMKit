@@ -48,15 +48,16 @@ struct NavigationServiceTests {
         #expect(primary.count == NavigationDestination.allCases.count - 1)
     }
 
-    @Test("All seven destinations exist")
+    @Test("All eight destinations exist")
     func testAllDestinationsExist() {
         let allCases = NavigationDestination.allCases
-        #expect(allCases.count == 7)
+        #expect(allCases.count == 8)
         #expect(allCases.contains(.library))
         #expect(allCases.contains(.viewer))
         #expect(allCases.contains(.networking))
         #expect(allCases.contains(.reporting))
         #expect(allCases.contains(.tools))
+        #expect(allCases.contains(.security))
         #expect(allCases.contains(.cliWorkshop))
         #expect(allCases.contains(.settings))
     }
@@ -75,6 +76,7 @@ struct NavigationServiceTests {
         #expect(NavigationDestination.networking.systemImage == "network")
         #expect(NavigationDestination.reporting.systemImage == "doc.text")
         #expect(NavigationDestination.tools.systemImage == "wrench.and.screwdriver")
+        #expect(NavigationDestination.security.systemImage == "lock.shield")
         #expect(NavigationDestination.cliWorkshop.systemImage == "terminal")
         #expect(NavigationDestination.settings.systemImage == "gear")
     }
