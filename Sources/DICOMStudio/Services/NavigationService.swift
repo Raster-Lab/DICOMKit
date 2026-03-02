@@ -7,39 +7,42 @@ import Foundation
 
 /// Sidebar navigation destinations in DICOM Studio.
 public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable {
-    case library = "Library"
-    case viewer = "Viewer"
-    case networking = "Networking"
-    case reporting = "Reporting"
-    case tools = "Tools"
-    case cliWorkshop = "CLI Workshop"
-    case settings = "Settings"
+    case library        = "Library"
+    case viewer         = "Viewer"
+    case networking     = "Networking"
+    case reporting      = "Reporting"
+    case tools          = "Tools"
+    case security       = "Security"
+    case cliWorkshop    = "CLI Workshop"
+    case settings       = "Settings"
 
     public var id: String { rawValue }
 
     /// SF Symbol name for this destination.
     public var systemImage: String {
         switch self {
-        case .library: return "folder"
-        case .viewer: return "photo"
-        case .networking: return "network"
-        case .reporting: return "doc.text"
-        case .tools: return "wrench.and.screwdriver"
-        case .cliWorkshop: return "terminal"
-        case .settings: return "gear"
+        case .library:      return "folder"
+        case .viewer:       return "photo"
+        case .networking:   return "network"
+        case .reporting:    return "doc.text"
+        case .tools:        return "wrench.and.screwdriver"
+        case .security:     return "lock.shield"
+        case .cliWorkshop:  return "terminal"
+        case .settings:     return "gear"
         }
     }
 
     /// Short description for accessibility labels.
     public var accessibilityLabel: String {
         switch self {
-        case .library: return "DICOM File Library"
-        case .viewer: return "Image Viewer"
-        case .networking: return "DICOM Networking Hub"
-        case .reporting: return "Structured Reporting"
-        case .tools: return "Data Exchange and Developer Tools"
-        case .cliWorkshop: return "CLI Tools Workshop"
-        case .settings: return "Application Settings"
+        case .library:      return "DICOM File Library"
+        case .viewer:       return "Image Viewer"
+        case .networking:   return "DICOM Networking Hub"
+        case .reporting:    return "Structured Reporting"
+        case .tools:        return "Data Exchange and Developer Tools"
+        case .security:     return "Security & Privacy Center"
+        case .cliWorkshop:  return "CLI Tools Workshop"
+        case .settings:     return "Application Settings"
         }
     }
 }
