@@ -14,8 +14,9 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case tools            = "Tools"
     case security         = "Security"
     case cliWorkshop      = "CLI Workshop"
-    case performanceTools = "Performance Tools"
-    case settings         = "Settings"
+    case performanceTools   = "Performance Tools"
+    case macOSEnhancements  = "macOS Enhancements"
+    case settings           = "Settings"
 
     public var id: String { rawValue }
 
@@ -30,6 +31,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .security:         return "lock.shield"
         case .cliWorkshop:      return "terminal"
         case .performanceTools: return "speedometer"
+        case .macOSEnhancements: return "macwindow"
         case .settings:         return "gear"
         }
     }
@@ -45,6 +47,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .security:         return "Security & Privacy Center"
         case .cliWorkshop:      return "CLI Tools Workshop"
         case .performanceTools: return "Performance & Developer Tools"
+        case .macOSEnhancements: return "macOS-Specific Enhancements"
         case .settings:         return "Application Settings"
         }
     }
