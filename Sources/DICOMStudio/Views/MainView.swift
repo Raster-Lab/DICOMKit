@@ -53,87 +53,31 @@ public struct MainView: View {
     private func detailView(for destination: NavigationDestination) -> some View {
         switch destination {
         case .library:
-            PlaceholderFeatureView(
-                title: "DICOM Library",
-                systemImage: "folder",
-                description: "Import, browse, and search DICOM files organized by study, series, and instance."
-            )
+            StudyBrowserView(viewModel: StudyBrowserViewModel(
+                library: viewModel.library,
+                importService: ImportService(),
+                libraryStorageService: LibraryStorageService()
+            ))
         case .viewer:
-            PlaceholderFeatureView(
-                title: "Image Viewer",
-                systemImage: "photo",
-                description: "View DICOM images with window/level controls, measurements, and multi-frame playback."
-            )
+            ImageViewerView(viewModel: ImageViewerViewModel())
         case .networking:
-            PlaceholderFeatureView(
-                title: "Networking Hub",
-                systemImage: "network",
-                description: "Connect to DICOM servers for C-ECHO, C-FIND, C-MOVE, C-GET, C-STORE, and DICOMweb operations."
-            )
+            NetworkingView(viewModel: NetworkingViewModel())
         case .reporting:
-            PlaceholderFeatureView(
-                title: "Structured Reporting",
-                systemImage: "doc.text",
-                description: "View, create, and edit DICOM Structured Reports with coded terminology."
-            )
+            StructuredReportView(viewModel: StructuredReportViewModel())
         case .tools:
-            PlaceholderFeatureView(
-                title: "Tools",
-                systemImage: "wrench.and.screwdriver",
-                description: "Data exchange, export, conversion, and developer tools for DICOM files."
-            )
+            DataExchangeView(viewModel: DataExchangeViewModel())
         case .cliWorkshop:
-            PlaceholderFeatureView(
-                title: "CLI Workshop",
-                systemImage: "terminal",
-                description: "Interactive GUI for all DICOMKit command-line tools with command builder and console."
-            )
+            CLIWorkshopView(viewModel: CLIWorkshopViewModel())
         case .security:
-            PlaceholderFeatureView(
-                title: "Security & Privacy",
-                systemImage: "lock.shield",
-                description: "Manage DICOM security, TLS certificates, and privacy settings."
-            )
+            SecurityView(viewModel: SecurityViewModel())
         case .performanceTools:
-            PlaceholderFeatureView(
-                title: "Performance Tools",
-                systemImage: "speedometer",
-                description: "Monitor and optimize DICOM processing performance metrics."
-            )
+            PerformanceToolsView(viewModel: PerformanceToolsViewModel())
         case .macOSEnhancements:
-            PlaceholderFeatureView(
-                title: "macOS Enhancements",
-                systemImage: "macwindow",
-                description: "Platform-specific macOS features and integrations."
-            )
+            MacOSEnhancementsView(viewModel: MacOSEnhancementsViewModel())
         case .polishRelease:
-            PlaceholderFeatureView(
-                title: "Polish & Release",
-                systemImage: "paintbrush.pointed",
-                description: "Final polish, release preparation, and quality assurance tools."
-            )
+            PolishReleaseView(viewModel: PolishReleaseViewModel())
         case .settings:
             SettingsView(viewModel: SettingsViewModel(settingsService: viewModel.settingsService))
-        }
-    }
-}
-
-/// Placeholder view for feature areas not yet implemented.
-@available(macOS 14.0, iOS 17.0, *)
-struct PlaceholderFeatureView: View {
-    let title: String
-    let systemImage: String
-    let description: String
-
-    var body: some View {
-        ContentUnavailableView {
-            Label(title, systemImage: systemImage)
-        } description: {
-            Text(description)
-        } actions: {
-            Text("Coming in a future milestone")
-                .font(.caption)
-                .foregroundStyle(.secondary)
         }
     }
 }

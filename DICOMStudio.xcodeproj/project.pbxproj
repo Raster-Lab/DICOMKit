@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 60;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -29,17 +29,17 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		DA0A00000000000000000002 /* Project */ = {
+		DA0A00000000000000000002 = {
 			isa = PBXGroup;
 			children = (
-				DA0A00000000000000000003 /* Sources */,
+				DA0A00000000000000000003 /* Sources/DICOMStudioApp */,
 				DA0A00000000000000000012 /* DICOMStudio.entitlements */,
 				DA0A00000000000000000004 /* Products */,
 				DA0A00000000000000000005 /* Frameworks */,
 			);
 			sourceTree = "<group>";
 		};
-		DA0A00000000000000000003 /* Sources */ = {
+		DA0A00000000000000000003 /* Sources/DICOMStudioApp */ = {
 			isa = PBXGroup;
 			children = (
 				DA0A00000000000000000010 /* DICOMStudioApp.swift */,
@@ -107,7 +107,7 @@
 				en,
 				Base,
 			);
-			mainGroup = DA0A00000000000000000002 /* Project */;
+			mainGroup = DA0A00000000000000000002;
 			packageReferences = (
 				DA0A00000000000000000070 /* XCLocalSwiftPackageReference "." */,
 			);
@@ -254,12 +254,14 @@
 				CODE_SIGN_ENTITLEMENTS = DICOMStudio.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = DNNZZNE8R2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "DICOM Studio";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Raster Lab. All rights reserved.";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rasterlab.DICOMStudio;
+				PRODUCT_MODULE_NAME = DICOMStudioApp;
 				PRODUCT_NAME = DICOMStudio;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
@@ -273,12 +275,14 @@
 				CODE_SIGN_ENTITLEMENTS = DICOMStudio.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
+				DEVELOPMENT_TEAM = DNNZZNE8R2;
 				ENABLE_HARDENED_RUNTIME = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "DICOM Studio";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.medical";
 				INFOPLIST_KEY_NSHumanReadableCopyright = "Copyright © 2025 Raster Lab. All rights reserved.";
 				PRODUCT_BUNDLE_IDENTIFIER = com.rasterlab.DICOMStudio;
+				PRODUCT_MODULE_NAME = DICOMStudioApp;
 				PRODUCT_NAME = DICOMStudio;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_STRICT_CONCURRENCY = complete;
