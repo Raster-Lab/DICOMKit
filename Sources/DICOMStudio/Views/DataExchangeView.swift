@@ -37,6 +37,36 @@ public struct DataExchangeView: View {
                 Text(error)
             }
         }
+        .sheet(isPresented: $viewModel.isJSONExportSheetPresented) {
+            FilePathInputSheet(title: "Select DICOM File for JSON", label: "DICOM File Path") { path in
+                viewModel.setJSONInputFilePath(path)
+            }
+        }
+        .sheet(isPresented: $viewModel.isXMLExportSheetPresented) {
+            FilePathInputSheet(title: "Select DICOM File for XML", label: "DICOM File Path") { path in
+                viewModel.setXMLInputFilePath(path)
+            }
+        }
+        .sheet(isPresented: $viewModel.isImageExportSheetPresented) {
+            FilePathInputSheet(title: "Select DICOM File for Image Export", label: "DICOM File Path") { path in
+                viewModel.setImageInputFilePath(path)
+            }
+        }
+        .sheet(isPresented: $viewModel.isAddConversionJobSheetPresented) {
+            AddConversionJobSheet { job in
+                viewModel.addConversionJob(job)
+            }
+        }
+        .sheet(isPresented: $viewModel.isAddDICOMDIREntrySheetPresented) {
+            AddDICOMDIREntrySheet { entry in
+                viewModel.addDICOMDIREntry(entry)
+            }
+        }
+        .sheet(isPresented: $viewModel.isAddBatchJobSheetPresented) {
+            AddBatchJobSheet { job in
+                viewModel.addBatchJob(job)
+            }
+        }
     }
 
     private var tabPicker: some View {
@@ -524,6 +554,269 @@ public struct DataExchangeView: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - File Path Input Sheet
+
+/// Generic sheet for entering a file path (used for JSON/XML/Image browse buttons).
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct FilePathInputSheet: View {
+    let title: String
+    let label: String
+    let onSelect: (String) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var filePath: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(label, text: $filePath)
+                        .accessibilityLabel(label)
+                }
+
+                Section {
+                    Text("Enter the full path to the DICOM file, or drag and drop a file onto this field.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle(title)
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Select") {
+                        onSelect(filePath.trimmingCharacters(in: .whitespaces))
+                        dismiss()
+                    }
+                    .disabled(filePath.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 400, minHeight: 200)
+    }
+}
+
+// MARK: - Add Conversion Job Sheet
+
+/// Sheet for adding a transfer syntax conversion job.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct AddConversionJobSheet: View {
+    let onSave: (TransferSyntaxConversionJob) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var sourceFilePath: String = ""
+    @State private var targetSyntaxUID: String = "1.2.840.10008.1.2.1"
+
+    private let commonSyntaxes = [
+        ("Explicit VR Little Endian", "1.2.840.10008.1.2.1"),
+        ("Implicit VR Little Endian", "1.2.840.10008.1.2"),
+        ("JPEG Lossless", "1.2.840.10008.1.2.4.70"),
+        ("JPEG 2000 Lossless", "1.2.840.10008.1.2.4.90"),
+        ("JPEG 2000", "1.2.840.10008.1.2.4.91"),
+        ("RLE Lossless", "1.2.840.10008.1.2.5"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Source") {
+                    TextField("DICOM File Path", text: $sourceFilePath)
+                        .accessibilityLabel("Source DICOM file path")
+                }
+
+                Section("Target Transfer Syntax") {
+                    Picker("Transfer Syntax", selection: $targetSyntaxUID) {
+                        ForEach(commonSyntaxes, id: \.1) { name, uid in
+                            Text(name).tag(uid)
+                        }
+                    }
+                    .accessibilityLabel("Target transfer syntax")
+
+                    Text(targetSyntaxUID)
+                        .font(.caption.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Add Conversion Job")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let job = TransferSyntaxConversionJob(
+                            sourceFilePath: sourceFilePath.trimmingCharacters(in: .whitespaces),
+                            targetTransferSyntaxUID: targetSyntaxUID
+                        )
+                        onSave(job)
+                        dismiss()
+                    }
+                    .disabled(sourceFilePath.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 300)
+    }
+}
+
+// MARK: - Add DICOMDIR Entry Sheet
+
+/// Sheet for adding a DICOM study entry to the DICOMDIR.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct AddDICOMDIREntrySheet: View {
+    let onSave: (DICOMDIREntry) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var studyInstanceUID: String = ""
+    @State private var patientName: String = ""
+    @State private var patientID: String = ""
+    @State private var studyDate: String = ""
+    @State private var modalities: String = "CT"
+    @State private var seriesCount: String = "1"
+    @State private var instanceCount: String = "1"
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Patient") {
+                    TextField("Patient Name", text: $patientName)
+                        .accessibilityLabel("Patient name")
+                    TextField("Patient ID", text: $patientID)
+                        .accessibilityLabel("Patient ID")
+                }
+
+                Section("Study") {
+                    TextField("Study Instance UID", text: $studyInstanceUID)
+                        .accessibilityLabel("Study instance UID")
+                    TextField("Study Date (YYYYMMDD)", text: $studyDate)
+                        .accessibilityLabel("Study date")
+                }
+
+                Section("Contents") {
+                    TextField("Modalities (comma separated)", text: $modalities)
+                        .accessibilityLabel("Modalities")
+                    TextField("Series Count", text: $seriesCount)
+                        .accessibilityLabel("Number of series")
+                    TextField("Instance Count", text: $instanceCount)
+                        .accessibilityLabel("Number of instances")
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Add DICOMDIR Entry")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let modalityList = modalities
+                            .components(separatedBy: ",")
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        let entry = DICOMDIREntry(
+                            studyInstanceUID: studyInstanceUID.trimmingCharacters(in: .whitespaces),
+                            patientName: patientName.trimmingCharacters(in: .whitespaces),
+                            patientID: patientID.trimmingCharacters(in: .whitespaces),
+                            studyDate: studyDate.trimmingCharacters(in: .whitespaces),
+                            modalities: modalityList,
+                            seriesCount: Int(seriesCount) ?? 1,
+                            instanceCount: Int(instanceCount) ?? 1
+                        )
+                        onSave(entry)
+                        dismiss()
+                    }
+                    .disabled(patientName.trimmingCharacters(in: .whitespaces).isEmpty ||
+                              studyInstanceUID.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 400)
+    }
+}
+
+// MARK: - Add Batch Job Sheet
+
+/// Sheet for creating a new batch operation job.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct AddBatchJobSheet: View {
+    let onSave: (BatchJob) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var operationType: BatchOperationType = .tagModification
+    @State private var inputPaths: String = ""
+    @State private var outputDirectory: String = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Operation") {
+                    Picker("Operation Type", selection: $operationType) {
+                        ForEach(BatchOperationType.allCases, id: \.self) { type in
+                            Label(type.displayName, systemImage: type.sfSymbol).tag(type)
+                        }
+                    }
+                    .accessibilityLabel("Batch operation type")
+                }
+
+                Section("Input Files") {
+                    TextField("File or directory paths (one per line)", text: $inputPaths, axis: .vertical)
+                        .lineLimit(3...6)
+                        .accessibilityLabel("Input file paths")
+                }
+
+                Section("Output") {
+                    TextField("Output Directory", text: $outputDirectory)
+                        .accessibilityLabel("Output directory")
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("New Batch Job")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        let paths = inputPaths
+                            .components(separatedBy: .newlines)
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        let job = BatchJob(
+                            operationType: operationType,
+                            inputPaths: paths,
+                            outputDirectory: outputDirectory.trimmingCharacters(in: .whitespaces)
+                        )
+                        onSave(job)
+                        dismiss()
+                    }
+                    .disabled(inputPaths.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              outputDirectory.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 380)
     }
 }
 #endif

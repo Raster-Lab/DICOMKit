@@ -36,6 +36,28 @@ public struct SecurityView: View {
                 Text(error)
             }
         }
+        .sheet(isPresented: $viewModel.isAddCertificateSheetPresented) {
+            AddCertificateSheet { certificate in
+                viewModel.addCertificate(certificate)
+            }
+        }
+        .sheet(isPresented: $viewModel.isNewJobSheetPresented) {
+            NewAnonymizationJobSheet(viewModel: viewModel)
+        }
+        .sheet(isPresented: $viewModel.isAuditExportSheetPresented) {
+            AuditExportSheet(viewModel: viewModel)
+        }
+        .alert("Break-Glass Access", isPresented: $viewModel.isBreakGlassDialogPresented) {
+            TextField("Reason for emergency access", text: $viewModel.breakGlassReason)
+            Button("Cancel", role: .cancel) {
+                viewModel.breakGlassReason = ""
+            }
+            Button("Confirm", role: .destructive) {
+                viewModel.recordBreakGlassEvent(resource: "Emergency Access")
+            }
+        } message: {
+            Text("Enter a reason for break-glass emergency access. This will be logged for compliance.")
+        }
     }
 
     private var tabPicker: some View {
@@ -543,6 +565,208 @@ public struct SecurityView: View {
         case .anonymization: return .indigo
         case .securityAlert, .breakGlassAccess: return .red
         }
+    }
+}
+
+// MARK: - Add Certificate Sheet
+
+/// Sheet for adding a TLS certificate to the certificate store.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct AddCertificateSheet: View {
+    let onSave: (SecurityCertificateEntry) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var commonName: String = ""
+    @State private var issuer: String = ""
+    @State private var isPinned: Bool = false
+    @State private var pinnedHostname: String = ""
+    @State private var isClientCertificate: Bool = false
+    @State private var isCACertificate: Bool = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Certificate Details") {
+                    TextField("Common Name (CN)", text: $commonName)
+                        .accessibilityLabel("Certificate common name")
+                    TextField("Issuer", text: $issuer)
+                        .accessibilityLabel("Certificate issuer")
+                }
+
+                Section("Certificate Type") {
+                    Toggle("Client Certificate (mTLS)", isOn: $isClientCertificate)
+                        .accessibilityLabel("Is client certificate for mutual TLS")
+                    Toggle("CA Certificate", isOn: $isCACertificate)
+                        .accessibilityLabel("Is certificate authority certificate")
+                }
+
+                Section("Pinning") {
+                    Toggle("Pin to Server", isOn: $isPinned)
+                        .accessibilityLabel("Pin certificate to specific server")
+                    if isPinned {
+                        TextField("Server Hostname", text: $pinnedHostname)
+                            .accessibilityLabel("Hostname to pin certificate to")
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("Add Certificate")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Add") {
+                        let cert = SecurityCertificateEntry(
+                            commonName: commonName.trimmingCharacters(in: .whitespaces),
+                            issuer: issuer,
+                            isPinned: isPinned,
+                            isClientCertificate: isClientCertificate,
+                            isCACertificate: isCACertificate,
+                            pinnedHostname: pinnedHostname
+                        )
+                        onSave(cert)
+                        dismiss()
+                    }
+                    .disabled(commonName.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 400, minHeight: 350)
+    }
+}
+
+// MARK: - Anonymization Job Sheet
+
+/// Sheet for creating a new anonymization job.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct NewAnonymizationJobSheet: View {
+    @Bindable var viewModel: SecurityViewModel
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var filePaths: String = ""
+    @State private var outputDirectory: String = ""
+    @State private var keyEscrow: Bool = false
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Files") {
+                    TextField("File paths (one per line)", text: $filePaths, axis: .vertical)
+                        .lineLimit(3...6)
+                        .accessibilityLabel("DICOM file paths to anonymize")
+                }
+
+                Section("Profile") {
+                    Picker("Anonymization Profile", selection: $viewModel.selectedProfile) {
+                        ForEach(AnonymizationProfile.allCases, id: \.self) { profile in
+                            Text(profile.rawValue).tag(profile)
+                        }
+                    }
+                    .accessibilityLabel("Anonymization profile")
+                }
+
+                Section("Output") {
+                    TextField("Output Directory", text: $outputDirectory)
+                        .accessibilityLabel("Output directory for anonymized files")
+                    Toggle("Key Escrow (Reversible)", isOn: $keyEscrow)
+                        .accessibilityLabel("Enable key escrow for reversible anonymization")
+                }
+            }
+            .formStyle(.grouped)
+            .navigationTitle("New Anonymization Job")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Create") {
+                        let paths = filePaths
+                            .components(separatedBy: .newlines)
+                            .map { $0.trimmingCharacters(in: .whitespaces) }
+                            .filter { !$0.isEmpty }
+                        viewModel.stagedFilePaths = paths
+                        viewModel.outputDirectory = outputDirectory
+                        viewModel.keyEscrowEnabled = keyEscrow
+                        viewModel.enqueueAnonymizationJob()
+                        dismiss()
+                    }
+                    .disabled(filePaths.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              outputDirectory.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 420, minHeight: 380)
+    }
+}
+
+// MARK: - Audit Export Sheet
+
+/// Sheet for configuring and exporting the audit log.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+struct AuditExportSheet: View {
+    @Bindable var viewModel: SecurityViewModel
+
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var exportedText: String = ""
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Form {
+                    Section("Export Format") {
+                        Picker("Format", selection: $viewModel.auditExportFormat) {
+                            ForEach(SecurityAuditExportFormat.allCases, id: \.self) { fmt in
+                                Text(fmt.displayName).tag(fmt)
+                            }
+                        }
+                        .accessibilityLabel("Audit log export format")
+                    }
+
+                    Section("Preview") {
+                        if exportedText.isEmpty {
+                            Text("Click Export to generate output.")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ScrollView {
+                                Text(exportedText)
+                                    .font(.system(.caption2, design: .monospaced))
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(minHeight: 150, maxHeight: 250)
+                        }
+                    }
+                }
+                .formStyle(.grouped)
+            }
+            .navigationTitle("Export Audit Log")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Export") {
+                        exportedText = viewModel.exportAuditLogCSV()
+                    }
+                    .disabled(viewModel.filteredAuditEntries.isEmpty)
+                }
+            }
+        }
+        .frame(minWidth: 500, minHeight: 400)
     }
 }
 #endif
