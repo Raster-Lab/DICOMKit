@@ -29,6 +29,18 @@ public struct PerformanceToolsView: View {
                     .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
             }
         }
+        .confirmationDialog(
+            "Clear All Caches",
+            isPresented: $viewModel.isClearCacheConfirmPresented,
+            titleVisibility: .visible
+        ) {
+            Button("Clear All", role: .destructive) {
+                viewModel.clearAllCaches()
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to clear all caches? This action cannot be undone.")
+        }
     }
 
     private var tabPicker: some View {
