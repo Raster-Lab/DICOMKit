@@ -4,6 +4,7 @@
 *.xcodeproj
 !DICOMStudio.xcodeproj
 *.xcworkspace
+!DICOMStudio.xcodeproj/project.xcworkspace/
 DerivedData/
 
 # macOS
@@ -26,6 +27,7 @@ xcuserdata/
 # Dependencies
 Packages/
 Package.resolved
+!DICOMStudio.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
 
 # Docker volumes and runtime files
 docker-compose.override.yml
