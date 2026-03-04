@@ -2014,28 +2014,28 @@ public enum DICOMPrintService {
             var elements: [DataElement] = []
             
             // Number of Copies (2000,0010) - IS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .numberOfCopies,
                 vr: .IS,
                 value: String(session.numberOfCopies)
             ))
             
             // Print Priority (2000,0020) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .printPriority,
                 vr: .CS,
                 value: session.printPriority.rawValue
             ))
             
             // Medium Type (2000,0030) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .mediumType,
                 vr: .CS,
                 value: session.mediumType.rawValue
             ))
             
             // Film Destination (2000,0040) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .filmDestination,
                 vr: .CS,
                 value: session.filmDestination.rawValue
@@ -2043,7 +2043,7 @@ public enum DICOMPrintService {
             
             // Film Session Label (2000,0050) - LO (optional)
             if let label = session.filmSessionLabel {
-                elements.append(DICOMWriter.string(
+                elements.append(DataElement.string(
                     tag: .filmSessionLabel,
                     vr: .LO,
                     value: label
@@ -2152,49 +2152,49 @@ public enum DICOMPrintService {
             var elements: [DataElement] = []
             
             // Image Display Format (2010,0010) - ST
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .imageDisplayFormat,
                 vr: .ST,
                 value: filmBox.imageDisplayFormat
             ))
             
             // Film Orientation (2010,0040) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .filmOrientation,
                 vr: .CS,
                 value: filmBox.filmOrientation.rawValue
             ))
             
             // Film Size ID (2010,0050) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .filmSizeID,
                 vr: .CS,
                 value: filmBox.filmSizeID.rawValue
             ))
             
             // Magnification Type (2010,0060) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .magnificationType,
                 vr: .CS,
                 value: filmBox.magnificationType.rawValue
             ))
             
             // Border Density (2010,0100) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .borderDensity,
                 vr: .CS,
                 value: filmBox.borderDensity
             ))
             
             // Empty Image Density (2010,0110) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .emptyImageDensity,
                 vr: .CS,
                 value: filmBox.emptyImageDensity
             ))
             
             // Trim (2010,0140) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .trim,
                 vr: .CS,
                 value: filmBox.trimOption.rawValue
@@ -2202,7 +2202,7 @@ public enum DICOMPrintService {
             
             // Configuration Information (2010,0150) - ST (optional)
             if let config = filmBox.configurationInformation {
-                elements.append(DICOMWriter.string(
+                elements.append(DataElement.string(
                     tag: .configurationInformation,
                     vr: .ST,
                     value: config
@@ -2212,8 +2212,8 @@ public enum DICOMPrintService {
             // Referenced Film Session Sequence (2010,0500) - SQ
             // This references the parent Film Session
             let sessionSequenceItem = SequenceItem(elements: [
-                DICOMWriter.string(tag: .referencedSOPClassUID, vr: .UI, value: basicFilmSessionSOPClassUID),
-                DICOMWriter.string(tag: .referencedSOPInstanceUID, vr: .UI, value: filmSessionUID)
+                DataElement.string(tag: .referencedSOPClassUID, vr: .UI, value: basicFilmSessionSOPClassUID),
+                DataElement.string(tag: .referencedSOPInstanceUID, vr: .UI, value: filmSessionUID)
             ])
             
             let writer = DICOMWriter()
@@ -2386,13 +2386,13 @@ public enum DICOMPrintService {
             var elements: [DataElement] = []
             
             // Image Position (2020,0010) - US
-            elements.append(DICOMWriter.uint16(
+            elements.append(DataElement.uint16(
                 tag: .imageBoxPosition,
                 value: imageBox.imagePosition
             ))
             
             // Polarity (2020,0020) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .polarity,
                 vr: .CS,
                 value: imageBox.polarity.rawValue
@@ -2400,7 +2400,7 @@ public enum DICOMPrintService {
             
             // Requested Image Size (2020,0030) - DS (optional)
             if let requestedSize = imageBox.requestedImageSize {
-                elements.append(DICOMWriter.string(
+                elements.append(DataElement.string(
                     tag: .requestedImageSize,
                     vr: .DS,
                     value: requestedSize
@@ -2408,7 +2408,7 @@ public enum DICOMPrintService {
             }
             
             // Requested Decimate/Crop Behavior (2020,0040) - CS
-            elements.append(DICOMWriter.string(
+            elements.append(DataElement.string(
                 tag: .requestedDecimateCropBehavior,
                 vr: .CS,
                 value: imageBox.requestedDecimateCropBehavior.rawValue
@@ -2426,7 +2426,7 @@ public enum DICOMPrintService {
                 // - Samples Per Pixel (0028,0002)
                 // - Pixel Representation (0028,0103)
                 // - Pixel Aspect Ratio (0028,0034) if applicable
-                let pixelElement = DICOMWriter.data(tag: .pixelData, vr: .OB, data: pixelData)
+                let pixelElement = DataElement.data(tag: .pixelData, vr: .OB, data: pixelData)
                 let sequenceItem = SequenceItem(elements: [pixelElement])
                 let writer = DICOMWriter()
                 let seqItemsData = writer.serializeSequenceItem(sequenceItem)
@@ -2440,7 +2440,7 @@ public enum DICOMPrintService {
             } else {
                 // Preformatted Color Image Sequence (2020,0111) - SQ
                 // NOTE: Same as grayscale - assumes preformatted image data
-                let pixelElement = DICOMWriter.data(tag: .pixelData, vr: .OB, data: pixelData)
+                let pixelElement = DataElement.data(tag: .pixelData, vr: .OB, data: pixelData)
                 let sequenceItem = SequenceItem(elements: [pixelElement])
                 let writer = DICOMWriter()
                 let seqItemsData = writer.serializeSequenceItem(sequenceItem)
