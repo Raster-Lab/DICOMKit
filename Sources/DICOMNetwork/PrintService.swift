@@ -1987,7 +1987,7 @@ public enum DICOMPrintService {
         
         let presentationContext = try PresentationContext(
             id: 1,
-            abstractSyntax: sopClassUID,
+            abstractSyntax: basicFilmSessionSOPClassUID,
             transferSyntaxes: [
                 explicitVRLittleEndianTransferSyntaxUID,
                 implicitVRLittleEndianTransferSyntaxUID
@@ -2007,51 +2007,51 @@ public enum DICOMPrintService {
             // Verify presentation context was accepted
             guard negotiated.isContextAccepted(1) else {
                 try await association.abort()
-                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+                throw DICOMNetworkError.sopClassNotSupported(basicFilmSessionSOPClassUID)
             }
             
             // Build data set with Film Session attributes
-            var dataSet = DICOMKit.DataSet()
+            var elements: [DataElement] = []
             
             // Number of Copies (2000,0010) - IS
-            dataSet[.numberOfCopies] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .numberOfCopies,
-                vr: .integerString,
-                values: [String(session.numberOfCopies)]
-            )
+                vr: .IS,
+                value: String(session.numberOfCopies)
+            ))
             
             // Print Priority (2000,0020) - CS
-            dataSet[.printPriority] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .printPriority,
-                vr: .codeString,
-                values: [session.printPriority.rawValue]
-            )
+                vr: .CS,
+                value: session.printPriority.rawValue
+            ))
             
             // Medium Type (2000,0030) - CS
-            dataSet[.mediumType] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .mediumType,
-                vr: .codeString,
-                values: [session.mediumType.rawValue]
-            )
+                vr: .CS,
+                value: session.mediumType.rawValue
+            ))
             
             // Film Destination (2000,0040) - CS
-            dataSet[.filmDestination] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .filmDestination,
-                vr: .codeString,
-                values: [session.filmDestination.rawValue]
-            )
+                vr: .CS,
+                value: session.filmDestination.rawValue
+            ))
             
             // Film Session Label (2000,0050) - LO (optional)
             if let label = session.filmSessionLabel {
-                dataSet[.filmSessionLabel] = DataElement(
+                elements.append(DICOMWriter.string(
                     tag: .filmSessionLabel,
-                    vr: .longString,
-                    values: [label]
-                )
+                    vr: .LO,
+                    value: label
+                ))
             }
             
             // Encode data set
-            let dataSetData = dataSet.write()
+            let dataSetData = serializeElements(elements)
             
             // Send N-CREATE request for Film Session
             let request = NCreateRequest(
@@ -2149,89 +2149,85 @@ public enum DICOMPrintService {
             }
             
             // Build data set with Film Box attributes
-            var dataSet = DICOMKit.DataSet()
+            var elements: [DataElement] = []
             
             // Image Display Format (2010,0010) - ST
-            dataSet[.imageDisplayFormat] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .imageDisplayFormat,
-                vr: .shortText,
-                values: [filmBox.imageDisplayFormat]
-            )
+                vr: .ST,
+                value: filmBox.imageDisplayFormat
+            ))
             
             // Film Orientation (2010,0040) - CS
-            dataSet[.filmOrientation] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .filmOrientation,
-                vr: .codeString,
-                values: [filmBox.filmOrientation.rawValue]
-            )
+                vr: .CS,
+                value: filmBox.filmOrientation.rawValue
+            ))
             
             // Film Size ID (2010,0050) - CS
-            dataSet[.filmSizeID] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .filmSizeID,
-                vr: .codeString,
-                values: [filmBox.filmSizeID.rawValue]
-            )
+                vr: .CS,
+                value: filmBox.filmSizeID.rawValue
+            ))
             
             // Magnification Type (2010,0060) - CS
-            dataSet[.magnificationType] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .magnificationType,
-                vr: .codeString,
-                values: [filmBox.magnificationType.rawValue]
-            )
+                vr: .CS,
+                value: filmBox.magnificationType.rawValue
+            ))
             
             // Border Density (2010,0100) - CS
-            dataSet[.borderDensity] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .borderDensity,
-                vr: .codeString,
-                values: [filmBox.borderDensity]
-            )
+                vr: .CS,
+                value: filmBox.borderDensity
+            ))
             
             // Empty Image Density (2010,0110) - CS
-            dataSet[.emptyImageDensity] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .emptyImageDensity,
-                vr: .codeString,
-                values: [filmBox.emptyImageDensity]
-            )
+                vr: .CS,
+                value: filmBox.emptyImageDensity
+            ))
             
             // Trim (2010,0140) - CS
-            dataSet[.trim] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .trim,
-                vr: .codeString,
-                values: [filmBox.trimOption.rawValue]
-            )
+                vr: .CS,
+                value: filmBox.trimOption.rawValue
+            ))
             
             // Configuration Information (2010,0150) - ST (optional)
             if let config = filmBox.configurationInformation {
-                dataSet[.configurationInformation] = DataElement(
+                elements.append(DICOMWriter.string(
                     tag: .configurationInformation,
-                    vr: .shortText,
-                    values: [config]
-                )
+                    vr: .ST,
+                    value: config
+                ))
             }
             
             // Referenced Film Session Sequence (2010,0500) - SQ
             // This references the parent Film Session
-            var sessionItem = DICOMKit.DataSet()
-            sessionItem[.referencedSOPClassUID] = DataElement(
-                tag: .referencedSOPClassUID,
-                vr: .uniqueIdentifier,
-                values: [basicFilmSessionSOPClassUID]
-            )
-            sessionItem[.referencedSOPInstanceUID] = DataElement(
-                tag: .referencedSOPInstanceUID,
-                vr: .uniqueIdentifier,
-                values: [filmSessionUID]
-            )
+            let sessionSequenceItem = SequenceItem(elements: [
+                DICOMWriter.string(tag: .referencedSOPClassUID, vr: .UI, value: basicFilmSessionSOPClassUID),
+                DICOMWriter.string(tag: .referencedSOPInstanceUID, vr: .UI, value: filmSessionUID)
+            ])
             
-            let sessionSequence = SequenceItem(dataSet: sessionItem)
-            dataSet[.referencedFilmSessionSequence] = DataElement(
+            let writer = DICOMWriter()
+            let seqItemsData = writer.serializeSequenceItem(sessionSequenceItem)
+            elements.append(DataElement(
                 tag: .referencedFilmSessionSequence,
-                vr: .sequence,
-                items: [sessionSequence]
-            )
+                vr: .SQ,
+                length: UInt32(seqItemsData.count),
+                valueData: seqItemsData,
+                sequenceItems: [sessionSequenceItem]
+            ))
             
             // Encode data set
-            let dataSetData = dataSet.write()
+            let dataSetData = serializeElements(elements)
             
             // Send N-CREATE request for Film Box
             let request = NCreateRequest(
@@ -2300,35 +2296,42 @@ public enum DICOMPrintService {
     /// - Returns: Array of Image Box SOP Instance UIDs
     private static func parseImageBoxUIDs(from data: Data) -> [String] {
         // Parse the data set to extract Referenced Image Box Sequence (2010,0510)
-        guard !data.isEmpty else {
+        // by scanning raw Explicit VR Little Endian binary data for UI elements
+        // within sequence items containing Referenced SOP Instance UID (0008,1155)
+        guard data.count >= 8 else {
             return []
         }
         
-        do {
-            // Parse the DICOM data set (response data sets are typically raw data sets
-            // without File Meta Information, so we'll try force reading)
-            let file = try DICOMFile.read(from: data, force: true)
-            let dataSet = file.dataSet
-            
-            // Extract Referenced Image Box Sequence (2010,0510)
-            guard let sequence = dataSet[.referencedImageBoxSequence],
-                  case .sequence(let items) = sequence.value else {
-                return []
-            }
-            
-            // Extract Referenced SOP Instance UID from each item
-            var imageBoxUIDs: [String] = []
-            for item in items {
-                if let uid = item.dataSet[.referencedSOPInstanceUID]?.stringValue {
-                    imageBoxUIDs.append(uid)
+        var imageBoxUIDs: [String] = []
+        // Scan for Referenced SOP Instance UID (0008,1155) elements in the binary data
+        let targetGroup: UInt16 = 0x0008
+        let targetElement: UInt16 = 0x1155
+        var offset = 0
+        
+        data.withUnsafeBytes { buffer in
+            while offset + 8 <= buffer.count {
+                let group = buffer.load(fromByteOffset: offset, as: UInt16.self).littleEndian
+                let element = buffer.load(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
+                
+                if group == targetGroup && element == targetElement {
+                    // Found Referenced SOP Instance UID - extract the value
+                    // VR is at offset+4 (2 bytes), length at offset+6 (2 bytes for UI)
+                    let length = Int(buffer.load(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
+                    guard length > 0, length < 256, offset + 8 + length <= buffer.count else { break }
+                    let valueData = Data(bytes: buffer.baseAddress!.advanced(by: offset + 8), count: length)
+                    if let uid = String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) {
+                        if !uid.isEmpty {
+                            imageBoxUIDs.append(uid)
+                        }
+                    }
+                    offset += 8 + length
+                } else {
+                    offset += 1
                 }
             }
-            
-            return imageBoxUIDs
-        } catch {
-            // If parsing fails, return empty array
-            return []
         }
+        
+        return imageBoxUIDs
     }
     
     /// Sets the content of an image box using N-SET
@@ -2380,44 +2383,40 @@ public enum DICOMPrintService {
             }
             
             // Build data set with Image Box attributes
-            var dataSet = DICOMKit.DataSet()
+            var elements: [DataElement] = []
             
             // Image Position (2020,0010) - US
-            dataSet[.imageBoxPosition] = DataElement(
+            elements.append(DICOMWriter.uint16(
                 tag: .imageBoxPosition,
-                vr: .unsignedShort,
-                values: [imageBox.imagePosition]
-            )
+                value: imageBox.imagePosition
+            ))
             
             // Polarity (2020,0020) - CS
-            dataSet[.polarity] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .polarity,
-                vr: .codeString,
-                values: [imageBox.polarity.rawValue]
-            )
+                vr: .CS,
+                value: imageBox.polarity.rawValue
+            ))
             
             // Requested Image Size (2020,0030) - DS (optional)
             if let requestedSize = imageBox.requestedImageSize {
-                dataSet[.requestedImageSize] = DataElement(
+                elements.append(DICOMWriter.string(
                     tag: .requestedImageSize,
-                    vr: .decimalString,
-                    values: [requestedSize]
-                )
+                    vr: .DS,
+                    value: requestedSize
+                ))
             }
             
             // Requested Decimate/Crop Behavior (2020,0040) - CS
-            dataSet[.requestedDecimateCropBehavior] = DataElement(
+            elements.append(DICOMWriter.string(
                 tag: .requestedDecimateCropBehavior,
-                vr: .codeString,
-                values: [imageBox.requestedDecimateCropBehavior.rawValue]
-            )
+                vr: .CS,
+                value: imageBox.requestedDecimateCropBehavior.rawValue
+            ))
             
             // Add pixel data based on color mode
             if configuration.colorMode == .grayscale {
                 // Preformatted Grayscale Image Sequence (2020,0110) - SQ
-                var imageItem = DICOMKit.DataSet()
-                
-                // Add pixel data to the sequence item
                 // NOTE: This is a Phase 1 simplified implementation that assumes the pixelData
                 // parameter contains a complete preformatted image with embedded attributes.
                 // Future enhancement: Accept a PixelDataDescriptor parameter containing:
@@ -2427,39 +2426,35 @@ public enum DICOMPrintService {
                 // - Samples Per Pixel (0028,0002)
                 // - Pixel Representation (0028,0103)
                 // - Pixel Aspect Ratio (0028,0034) if applicable
-                imageItem[.pixelData] = DataElement(
-                    tag: .pixelData,
-                    vr: .otherByteString,
-                    data: pixelData
-                )
-                
-                let sequenceItem = SequenceItem(dataSet: imageItem)
-                dataSet[.preformattedGrayscaleImageSequence] = DataElement(
+                let pixelElement = DICOMWriter.data(tag: .pixelData, vr: .OB, data: pixelData)
+                let sequenceItem = SequenceItem(elements: [pixelElement])
+                let writer = DICOMWriter()
+                let seqItemsData = writer.serializeSequenceItem(sequenceItem)
+                elements.append(DataElement(
                     tag: .preformattedGrayscaleImageSequence,
-                    vr: .sequence,
-                    items: [sequenceItem]
-                )
+                    vr: .SQ,
+                    length: UInt32(seqItemsData.count),
+                    valueData: seqItemsData,
+                    sequenceItems: [sequenceItem]
+                ))
             } else {
                 // Preformatted Color Image Sequence (2020,0111) - SQ
-                var imageItem = DICOMKit.DataSet()
-                
                 // NOTE: Same as grayscale - assumes preformatted image data
-                imageItem[.pixelData] = DataElement(
-                    tag: .pixelData,
-                    vr: .otherByteString,
-                    data: pixelData
-                )
-                
-                let sequenceItem = SequenceItem(dataSet: imageItem)
-                dataSet[.preformattedColorImageSequence] = DataElement(
+                let pixelElement = DICOMWriter.data(tag: .pixelData, vr: .OB, data: pixelData)
+                let sequenceItem = SequenceItem(elements: [pixelElement])
+                let writer = DICOMWriter()
+                let seqItemsData = writer.serializeSequenceItem(sequenceItem)
+                elements.append(DataElement(
                     tag: .preformattedColorImageSequence,
-                    vr: .sequence,
-                    items: [sequenceItem]
-                )
+                    vr: .SQ,
+                    length: UInt32(seqItemsData.count),
+                    valueData: seqItemsData,
+                    sequenceItems: [sequenceItem]
+                ))
             }
             
             // Encode data set
-            let dataSetData = dataSet.write()
+            let dataSetData = serializeElements(elements)
             
             // Send N-SET request for Image Box
             let request = NSetRequest(
@@ -2797,42 +2792,33 @@ public enum DICOMPrintService {
     
     /// Parses print job status from response data
     private static func parsePrintJobStatus(from data: Data, printJobUID: String) -> PrintJobStatus {
-        do {
-            // Parse the DICOM data set to extract Print Job attributes
-            let dataSet = try DICOMKit.DataSet(data: data)
-            
-            // Extract Execution Status (2100,0020) - CS
-            let executionStatus = dataSet[.executionStatus]?.stringValue ?? "UNKNOWN"
-            
-            // Extract Execution Status Info (2100,0030) - AE (optional)
-            let executionStatusInfo = dataSet[.executionStatusInfo]?.stringValue
-            
-            // Extract Creation Date (2100,0040) - DA (optional)
-            var creationDate: Date? = nil
-            if let dateString = dataSet[.creationDate]?.stringValue {
-                creationDate = parseDICOMDate(dateString)
-            }
-            
-            // Extract Creation Time (2100,0050) - TM (optional)
-            var creationTime: Date? = nil
-            if let timeString = dataSet[.creationTime]?.stringValue {
-                creationTime = parseDICOMTime(timeString)
-            }
-            
-            return PrintJobStatus(
-                printJobUID: printJobUID,
-                executionStatus: executionStatus,
-                executionStatusInfo: executionStatusInfo,
-                creationDate: creationDate,
-                creationTime: creationTime
-            )
-        } catch {
-            // If parsing fails, return a default status
-            return PrintJobStatus(
-                printJobUID: printJobUID,
-                executionStatus: "UNKNOWN"
-            )
+        // Parse raw Explicit VR Little Endian binary data to extract Print Job attributes
+        
+        // Extract Execution Status (2100,0020) - CS
+        let executionStatus = extractStringValue(from: data, group: 0x2100, element: 0x0020) ?? "UNKNOWN"
+        
+        // Extract Execution Status Info (2100,0030) - CS (optional)
+        let executionStatusInfo = extractStringValue(from: data, group: 0x2100, element: 0x0030)
+        
+        // Extract Creation Date (2100,0040) - DA (optional)
+        var creationDate: Date? = nil
+        if let dateString = extractStringValue(from: data, group: 0x2100, element: 0x0040) {
+            creationDate = parseDICOMDate(dateString)
         }
+        
+        // Extract Creation Time (2100,0050) - TM (optional)
+        var creationTime: Date? = nil
+        if let timeString = extractStringValue(from: data, group: 0x2100, element: 0x0050) {
+            creationTime = parseDICOMTime(timeString)
+        }
+        
+        return PrintJobStatus(
+            printJobUID: printJobUID,
+            executionStatus: executionStatus,
+            executionStatusInfo: executionStatusInfo,
+            creationDate: creationDate,
+            creationTime: creationTime
+        )
     }
     
     /// Parses DICOM Date (DA) format: YYYYMMDD
@@ -2851,6 +2837,81 @@ public enum DICOMPrintService {
         formatter.dateFormat = "HHmmss"
         formatter.locale = Locale(identifier: "en_US_POSIX")
         return formatter.date(from: cleanedTime)
+    }
+    
+    // MARK: - Data Set Serialization Helpers
+    
+    /// Serializes an array of DataElements into raw Explicit VR Little Endian binary data
+    /// - Parameter elements: Array of data elements to serialize (will be sorted by tag)
+    /// - Returns: Serialized data set as Data
+    private static func serializeElements(_ elements: [DataElement]) -> Data {
+        let writer = DICOMWriter()
+        var data = Data()
+        for element in elements.sorted(by: { $0.tag < $1.tag }) {
+            data.append(writer.serializeElement(element))
+        }
+        return data
+    }
+    
+    /// Extracts a string value from raw Explicit VR Little Endian binary data for a specific tag
+    /// - Parameters:
+    ///   - data: Raw DICOM data set bytes
+    ///   - group: Tag group number
+    ///   - element: Tag element number
+    /// - Returns: The string value if found, nil otherwise
+    private static func extractStringValue(from data: Data, group: UInt16, element: UInt16) -> String? {
+        guard data.count >= 8 else { return nil }
+        
+        return data.withUnsafeBytes { buffer -> String? in
+            var offset = 0
+            
+            while offset + 8 <= buffer.count {
+                let g = buffer.load(fromByteOffset: offset, as: UInt16.self).littleEndian
+                let e = buffer.load(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
+                
+                // Read VR (2 bytes ASCII)
+                guard offset + 6 <= buffer.count else { break }
+                let vrByte0 = buffer.load(fromByteOffset: offset + 4, as: UInt8.self)
+                let vrByte1 = buffer.load(fromByteOffset: offset + 5, as: UInt8.self)
+                let vrString = String(UnicodeScalar(vrByte0)) + String(UnicodeScalar(vrByte1))
+                
+                // Determine length field size based on VR
+                let uses32BitLength = ["OB", "OD", "OF", "OL", "OW", "SQ", "UC", "UN", "UR", "UT"].contains(vrString)
+                let headerSize: Int
+                let valueLength: Int
+                
+                if uses32BitLength {
+                    guard offset + 12 <= buffer.count else { break }
+                    // 2 reserved bytes + 4 byte length
+                    valueLength = Int(buffer.load(fromByteOffset: offset + 8, as: UInt32.self).littleEndian)
+                    headerSize = 12
+                } else {
+                    guard offset + 8 <= buffer.count else { break }
+                    valueLength = Int(buffer.load(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
+                    headerSize = 8
+                }
+                
+                if g == group && e == element {
+                    // Found the target tag - validate length is reasonable (< 1MB)
+                    guard valueLength != 0xFFFFFFFF,
+                          valueLength < 1_048_576,
+                          offset + headerSize + valueLength <= buffer.count else {
+                        return nil
+                    }
+                    let valueData = Data(bytes: buffer.baseAddress!.advanced(by: offset + headerSize), count: valueLength)
+                    return String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+                }
+                
+                // Skip to next element
+                if valueLength == 0xFFFFFFFF {
+                    // Undefined length - skip (can't parse further without full sequence parser)
+                    break
+                }
+                offset += headerSize + valueLength
+            }
+            
+            return nil
+        }
     }
     
     // MARK: - High-Level Print API (Phase 2)
