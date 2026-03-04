@@ -2216,7 +2216,8 @@ public enum DICOMPrintService {
                 DICOMWriter.string(tag: .referencedSOPInstanceUID, vr: .UI, value: filmSessionUID)
             ])
             
-            let seqItemsData = DICOMWriter().serializeSequenceItem(sessionSequenceItem)
+            let writer = DICOMWriter()
+            let seqItemsData = writer.serializeSequenceItem(sessionSequenceItem)
             elements.append(DataElement(
                 tag: .referencedFilmSessionSequence,
                 vr: .SQ,
@@ -2307,25 +2308,26 @@ public enum DICOMPrintService {
         let targetElement: UInt16 = 0x1155
         var offset = 0
         
-        while offset + 8 <= data.count {
-            let group = data.subdata(in: offset..<(offset + 2)).withUnsafeBytes { $0.load(as: UInt16.self).littleEndian }
-            let element = data.subdata(in: (offset + 2)..<(offset + 4)).withUnsafeBytes { $0.load(as: UInt16.self).littleEndian }
-            
-            if group == targetGroup && element == targetElement {
-                // Found Referenced SOP Instance UID - extract the value
-                // VR is at offset+4 (2 bytes), length at offset+6 (2 bytes for UI)
-                guard offset + 8 <= data.count else { break }
-                let length = data.subdata(in: (offset + 6)..<(offset + 8)).withUnsafeBytes { $0.load(as: UInt16.self).littleEndian }
-                guard offset + 8 + Int(length) <= data.count else { break }
-                let valueData = data.subdata(in: (offset + 8)..<(offset + 8 + Int(length)))
-                if let uid = String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) {
-                    if !uid.isEmpty {
-                        imageBoxUIDs.append(uid)
+        data.withUnsafeBytes { buffer in
+            while offset + 8 <= buffer.count {
+                let group = buffer.load(fromByteOffset: offset, as: UInt16.self).littleEndian
+                let element = buffer.load(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
+                
+                if group == targetGroup && element == targetElement {
+                    // Found Referenced SOP Instance UID - extract the value
+                    // VR is at offset+4 (2 bytes), length at offset+6 (2 bytes for UI)
+                    let length = Int(buffer.load(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
+                    guard length > 0, length < 256, offset + 8 + length <= buffer.count else { break }
+                    let valueData = Data(bytes: buffer.baseAddress!.advanced(by: offset + 8), count: length)
+                    if let uid = String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) {
+                        if !uid.isEmpty {
+                            imageBoxUIDs.append(uid)
+                        }
                     }
+                    offset += 8 + length
+                } else {
+                    offset += 1
                 }
-                offset += 8 + Int(length)
-            } else {
-                offset += 1
             }
         }
         
@@ -2426,7 +2428,8 @@ public enum DICOMPrintService {
                 // - Pixel Aspect Ratio (0028,0034) if applicable
                 let pixelElement = DICOMWriter.data(tag: .pixelData, vr: .OB, data: pixelData)
                 let sequenceItem = SequenceItem(elements: [pixelElement])
-                let seqItemsData = DICOMWriter().serializeSequenceItem(sequenceItem)
+                let writer = DICOMWriter()
+                let seqItemsData = writer.serializeSequenceItem(sequenceItem)
                 elements.append(DataElement(
                     tag: .preformattedGrayscaleImageSequence,
                     vr: .SQ,
@@ -2439,7 +2442,8 @@ public enum DICOMPrintService {
                 // NOTE: Same as grayscale - assumes preformatted image data
                 let pixelElement = DICOMWriter.data(tag: .pixelData, vr: .OB, data: pixelData)
                 let sequenceItem = SequenceItem(elements: [pixelElement])
-                let seqItemsData = DICOMWriter().serializeSequenceItem(sequenceItem)
+                let writer = DICOMWriter()
+                let seqItemsData = writer.serializeSequenceItem(sequenceItem)
                 elements.append(DataElement(
                     tag: .preformattedColorImageSequence,
                     vr: .SQ,
@@ -2857,51 +2861,57 @@ public enum DICOMPrintService {
     /// - Returns: The string value if found, nil otherwise
     private static func extractStringValue(from data: Data, group: UInt16, element: UInt16) -> String? {
         guard data.count >= 8 else { return nil }
-        var offset = 0
         
-        while offset + 8 <= data.count {
-            let g = data.subdata(in: offset..<(offset + 2)).withUnsafeBytes { $0.load(as: UInt16.self).littleEndian }
-            let e = data.subdata(in: (offset + 2)..<(offset + 4)).withUnsafeBytes { $0.load(as: UInt16.self).littleEndian }
+        return data.withUnsafeBytes { buffer -> String? in
+            var offset = 0
             
-            // Read VR (2 bytes ASCII)
-            guard offset + 6 <= data.count else { break }
-            let vrBytes = data.subdata(in: (offset + 4)..<(offset + 6))
-            let vrString = String(data: vrBytes, encoding: .ascii) ?? ""
-            
-            // Determine length field size based on VR
-            let uses32BitLength = ["OB", "OD", "OF", "OL", "OW", "SQ", "UC", "UN", "UR", "UT"].contains(vrString)
-            let headerSize: Int
-            let valueLength: Int
-            
-            if uses32BitLength {
-                guard offset + 12 <= data.count else { break }
-                // 2 reserved bytes + 4 byte length
-                valueLength = Int(data.subdata(in: (offset + 8)..<(offset + 12)).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian })
-                headerSize = 12
-            } else {
-                guard offset + 8 <= data.count else { break }
-                valueLength = Int(data.subdata(in: (offset + 6)..<(offset + 8)).withUnsafeBytes { $0.load(as: UInt16.self).littleEndian })
-                headerSize = 8
-            }
-            
-            if g == group && e == element {
-                // Found the target tag
-                guard valueLength != 0xFFFFFFFF && offset + headerSize + valueLength <= data.count else {
-                    return nil
+            while offset + 8 <= buffer.count {
+                let g = buffer.load(fromByteOffset: offset, as: UInt16.self).littleEndian
+                let e = buffer.load(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
+                
+                // Read VR (2 bytes ASCII)
+                guard offset + 6 <= buffer.count else { break }
+                let vrByte0 = buffer.load(fromByteOffset: offset + 4, as: UInt8.self)
+                let vrByte1 = buffer.load(fromByteOffset: offset + 5, as: UInt8.self)
+                let vrString = String(UnicodeScalar(vrByte0)) + String(UnicodeScalar(vrByte1))
+                
+                // Determine length field size based on VR
+                let uses32BitLength = ["OB", "OD", "OF", "OL", "OW", "SQ", "UC", "UN", "UR", "UT"].contains(vrString)
+                let headerSize: Int
+                let valueLength: Int
+                
+                if uses32BitLength {
+                    guard offset + 12 <= buffer.count else { break }
+                    // 2 reserved bytes + 4 byte length
+                    valueLength = Int(buffer.load(fromByteOffset: offset + 8, as: UInt32.self).littleEndian)
+                    headerSize = 12
+                } else {
+                    guard offset + 8 <= buffer.count else { break }
+                    valueLength = Int(buffer.load(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
+                    headerSize = 8
                 }
-                let valueData = data.subdata(in: (offset + headerSize)..<(offset + headerSize + valueLength))
-                return String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+                
+                if g == group && e == element {
+                    // Found the target tag - validate length is reasonable (< 1MB)
+                    guard valueLength != 0xFFFFFFFF,
+                          valueLength < 1_048_576,
+                          offset + headerSize + valueLength <= buffer.count else {
+                        return nil
+                    }
+                    let valueData = Data(bytes: buffer.baseAddress!.advanced(by: offset + headerSize), count: valueLength)
+                    return String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+                }
+                
+                // Skip to next element
+                if valueLength == 0xFFFFFFFF {
+                    // Undefined length - skip (can't parse further without full sequence parser)
+                    break
+                }
+                offset += headerSize + valueLength
             }
             
-            // Skip to next element
-            if valueLength == 0xFFFFFFFF {
-                // Undefined length - skip (can't parse further without full sequence parser)
-                break
-            }
-            offset += headerSize + valueLength
+            return nil
         }
-        
-        return nil
     }
     
     // MARK: - High-Level Print API (Phase 2)
