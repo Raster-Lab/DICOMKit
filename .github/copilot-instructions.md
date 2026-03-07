@@ -186,11 +186,17 @@ Ensure all version references are consistent throughout the README:
 This helps maintain accurate and up-to-date documentation for users of DICOMKit.
 
 ### Reminder
-**IMPORTANT**: Always update BOTH README.md AND MILESTONES.md when completing tasks that involve:
+**IMPORTANT**: Always update README.md, MILESTONES.md, AND any relevant plan/milestone files when completing tasks that involve:
 - New features or functionality
 - Milestone progress (items completed, status changes)
 - Version updates
 - API additions or changes
+
+**For DICOM Studio v2 work** (Milestones 17–23), also update `DICOM_STUDIO_V2_MILESTONES.md`:
+- Mark completed deliverable items as `[x]`
+- Update milestone Status fields (`Planned` → `In Progress` → `Completed ✅`)
+- Add a Milestone Summary table when a milestone is fully completed
+- Update the Milestone Summary table at the end of the document
 
 Failure to update these files can lead to inconsistent documentation and make it difficult for users and contributors to understand the current state of the project.
 
@@ -714,6 +720,43 @@ When adding new UI components:
 - **Update Status field**: Change milestone status from "Planned" → "In Progress" → "Completed"
 - **Update Acceptance Criteria**: Mark criteria as `[x]` when verified
 - **Keep test counts current**: Update test count in the Milestone Summary table
+
+### DICOM_STUDIO_V2_MILESTONES.md Maintenance
+
+**IMPORTANT**: Whenever any work is completed on DICOM Studio v2 (Milestones 17–23), update
+`DICOM_STUDIO_V2_MILESTONES.md` to reflect the current state of progress.
+
+1. **Update the Status field** for the milestone:
+   - Change `Planned` → `In Progress` when the first deliverable is started
+   - Change `In Progress` → `Completed ✅` when all deliverables and acceptance criteria are met
+
+2. **Update deliverable checklist items** (`- [ ]` → `- [x]`) for every completed sub-item:
+   - Mark each sub-item as `[x]` as soon as it is implemented
+   - Do NOT leave items unchecked if the corresponding code has been merged
+
+3. **Update acceptance criteria** (`- [ ]` → `- [x]`) when each criterion is verified:
+   - Verify criteria against the actual running code where possible
+   - Unit test criteria: mark `[x]` only when the tests exist and pass
+
+4. **Add a Milestone Summary table** at the end of each completed milestone section
+   (immediately before the `---` separator) following this format:
+   ```markdown
+   ### Milestone N Summary
+
+   | Component | Status | Details |
+   |-----------|--------|---------|
+   | `ModelFile` | ✅ Completed | N+ types: TypeA, TypeB, ... |
+   | `HelpersFile` | ✅ Completed | N helper enums: HelperA, HelperB, ... |
+   | `ServiceFile` | ✅ Completed | Thread-safe service covering all sections |
+   | `ViewModelFile` | ✅ Completed | @Observable ViewModel with full mutation API |
+   ```
+
+5. **Update the Milestone Summary table** (at the end of the document) with the new status:
+   - Change `Planned` → `✅ Completed` in the Status column
+   - Update the Key Deliverables column if the scope changed during implementation
+
+6. **Add the v2 milestone version tag** to the DICOMStudio module header in README.md
+   if a new version number was assigned (e.g., "DICOMStudio (v2.0.0-alpha.1, ...)")
 
 ### Naming Conventions
 

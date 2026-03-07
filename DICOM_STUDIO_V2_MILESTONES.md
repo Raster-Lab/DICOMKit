@@ -59,7 +59,7 @@ The 38 CLI tools are organized into the following browser categories:
 ## Milestone 17: CLI Shell Foundation & Tool Management
 
 **Version**: v2.0.0-alpha.1
-**Status**: Planned
+**Status**: Completed ✅
 **Estimated Effort**: 3 weeks (1 developer)
 
 ### Goal
@@ -72,94 +72,94 @@ This milestone establishes the core infrastructure that all subsequent milestone
 
 #### 17.1 Tool Discovery & Registry
 
-- [ ] `ToolRegistryService` — discovers installed `dicom-*` binaries on the system
-  - [ ] Search `$PATH`, `/usr/local/bin`, `~/.local/bin`, Homebrew prefix, and a bundled
+- [x] `ToolRegistryService` — discovers installed `dicom-*` binaries on the system
+  - [x] Search `$PATH`, `/usr/local/bin`, `~/.local/bin`, Homebrew prefix, and a bundled
         `~/.dicomstudio/tools/` directory
-  - [ ] Parse `--version` output from each discovered tool to extract version string
-  - [ ] Build an in-memory registry mapping tool name → path, version, and availability
-  - [ ] Provide `async` API: `discoverTools() async -> [ToolInfo]`
-  - [ ] Cache discovery results with a configurable TTL (default: session lifetime)
-- [ ] `ToolInfo` model — represents a single discovered tool
-  - [ ] Properties: `name`, `path`, `version`, `isCompatible`, `category`
-  - [ ] `Sendable`, `Identifiable`, `Hashable`, `Codable`
-- [ ] `ToolCategory` enum — the 9 browser categories listed in the Overview
-  - [ ] Computed property mapping each of the 38 tools to its category
-  - [ ] SF Symbol and display name for each category
+  - [x] Parse `--version` output from each discovered tool to extract version string
+  - [x] Build an in-memory registry mapping tool name → path, version, and availability
+  - [x] Provide `async` API: `discoverTools() async -> [ToolInfo]`
+  - [x] Cache discovery results with a configurable TTL (default: session lifetime)
+- [x] `ToolInfo` model — represents a single discovered tool
+  - [x] Properties: `name`, `path`, `version`, `isCompatible`, `category`
+  - [x] `Sendable`, `Identifiable`, `Hashable`, `Codable`
+- [x] `ToolCategory` enum — the 9 browser categories listed in the Overview
+  - [x] Computed property mapping each of the 38 tools to its category
+  - [x] SF Symbol and display name for each category
 
 #### 17.2 Version Compatibility Checking
 
-- [ ] `VersionService` — compares tool versions against DICOM Studio's embedded version
-  - [ ] Parse semantic version strings (`major.minor.patch`)
-  - [ ] Define compatibility rules: tools must match `major.minor` of DICOM Studio
-  - [ ] Identify missing tools, outdated tools, and tools with version mismatches
-  - [ ] Generate a `VersionReport` summarizing compatibility status
-- [ ] `VersionReport` model
-  - [ ] Properties: `studioVersion`, `compatibleTools`, `incompatibleTools`,
+- [x] `VersionService` — compares tool versions against DICOM Studio's embedded version
+  - [x] Parse semantic version strings (`major.minor.patch`)
+  - [x] Define compatibility rules: tools must match `major.minor` of DICOM Studio
+  - [x] Identify missing tools, outdated tools, and tools with version mismatches
+  - [x] Generate a `VersionReport` summarizing compatibility status
+- [x] `VersionReport` model
+  - [x] Properties: `studioVersion`, `compatibleTools`, `incompatibleTools`,
         `missingTools`, `overallStatus`
-  - [ ] `Sendable`, `Codable`
+  - [x] `Sendable`, `Codable`
 
 #### 17.3 GitHub Release Integration
 
-- [ ] `GitHubReleaseService` — interacts with the GitHub Releases API
-  - [ ] Fetch latest release metadata:
+- [x] `GitHubReleaseService` — interacts with the GitHub Releases API
+  - [x] Fetch latest release metadata:
         `GET https://api.github.com/repos/Raster-Lab/DICOMKit/releases/latest`
-  - [ ] Fetch release by tag:
+  - [x] Fetch release by tag:
         `GET https://api.github.com/repos/Raster-Lab/DICOMKit/releases/tags/{tag}`
-  - [ ] List release assets to find platform-specific tool binaries
-  - [ ] Download release assets with progress reporting via `AsyncStream<DownloadProgress>`
-  - [ ] Verify downloaded binary integrity (SHA-256 checksum from release notes)
-  - [ ] Handle rate limiting and authentication (optional GitHub token)
-- [ ] `ReleaseInfo` model — GitHub release metadata
-  - [ ] Properties: `tagName`, `name`, `body`, `assets`, `publishedAt`, `isPrerelease`
-  - [ ] `Sendable`, `Codable`
-- [ ] `ReleaseAsset` model — individual downloadable asset
-  - [ ] Properties: `name`, `downloadURL`, `size`, `contentType`, `checksum`
-  - [ ] `Sendable`, `Codable`
+  - [x] List release assets to find platform-specific tool binaries
+  - [x] Download release assets with progress reporting via `AsyncStream<DownloadProgress>`
+  - [x] Verify downloaded binary integrity (SHA-256 checksum from release notes)
+  - [x] Handle rate limiting and authentication (optional GitHub token)
+- [x] `ReleaseInfo` model — GitHub release metadata
+  - [x] Properties: `tagName`, `name`, `body`, `assets`, `publishedAt`, `isPrerelease`
+  - [x] `Sendable`, `Codable`
+- [x] `ReleaseAsset` model — individual downloadable asset
+  - [x] Properties: `name`, `downloadURL`, `size`, `contentType`, `checksum`
+  - [x] `Sendable`, `Codable`
 
 #### 17.4 Tool Installation Manager
 
-- [ ] `ToolInstallService` — downloads and installs CLI tool binaries
-  - [ ] Default install directory: `~/.dicomstudio/tools/` (user-writable, no sudo required)
-  - [ ] Download the universal macOS binary archive from GitHub Releases
-  - [ ] Extract archive (`.tar.gz` or `.zip`) to install directory
-  - [ ] Set executable permissions (`chmod +x`)
-  - [ ] Verify installation by invoking `<tool> --version`
-  - [ ] Rollback on failure (restore previous version if one existed)
-  - [ ] Progress reporting: download progress, extraction progress, verification
-- [ ] `InstallationState` enum — `idle`, `downloading(progress)`, `extracting`,
+- [x] `ToolInstallService` — downloads and installs CLI tool binaries
+  - [x] Default install directory: `~/.dicomstudio/tools/` (user-writable, no sudo required)
+  - [x] Download the universal macOS binary archive from GitHub Releases
+  - [x] Extract archive (`.tar.gz` or `.zip`) to install directory
+  - [x] Set executable permissions (`chmod +x`)
+  - [x] Verify installation by invoking `<tool> --version`
+  - [x] Rollback on failure (restore previous version if one existed)
+  - [x] Progress reporting: download progress, extraction progress, verification
+- [x] `InstallationState` enum — `idle`, `downloading(progress)`, `extracting`,
       `verifying`, `completed`, `failed(error)`
-- [ ] `InstallationPreferences` — user-configurable install directory, auto-update toggle
+- [x] `InstallationPreferences` — user-configurable install directory, auto-update toggle
 
 #### 17.5 Self-Update Mechanism
 
-- [ ] `AutoUpdateService` — checks for newer DICOM Studio versions
-  - [ ] On launch, check GitHub Releases for a version newer than the running app
-  - [ ] Compare using semantic versioning (ignore pre-release tags by default)
-  - [ ] Present update notification with release notes
-  - [ ] Download the new `.app` bundle or `.dmg` from GitHub Releases
-  - [ ] Optionally use Sparkle-compatible appcast or direct GitHub API
-  - [ ] Configurable update check frequency: on launch, daily, weekly, never
-- [ ] `UpdateState` enum — `upToDate`, `updateAvailable(ReleaseInfo)`,
+- [x] `AutoUpdateService` — checks for newer DICOM Studio versions
+  - [x] On launch, check GitHub Releases for a version newer than the running app
+  - [x] Compare using semantic versioning (ignore pre-release tags by default)
+  - [x] Present update notification with release notes
+  - [x] Download the new `.app` bundle or `.dmg` from GitHub Releases
+  - [x] Optionally use Sparkle-compatible appcast or direct GitHub API
+  - [x] Configurable update check frequency: on launch, daily, weekly, never
+- [x] `UpdateState` enum — `upToDate`, `updateAvailable(ReleaseInfo)`,
       `downloading(progress)`, `readyToInstall`, `failed(error)`
 
 #### 17.6 Launch Sequence Orchestration
 
-- [ ] `LaunchCoordinator` — orchestrates the startup sequence
-  - [ ] Step 1: Discover installed tools (`ToolRegistryService`)
-  - [ ] Step 2: Check version compatibility (`VersionService`)
-  - [ ] Step 3: Check for self-update (`AutoUpdateService`)
-  - [ ] Step 4: Present results to user
+- [x] `LaunchCoordinator` — orchestrates the startup sequence
+  - [x] Step 1: Discover installed tools (`ToolRegistryService`)
+  - [x] Step 2: Check version compatibility (`VersionService`)
+  - [x] Step 3: Check for self-update (`AutoUpdateService`)
+  - [x] Step 4: Present results to user
     - If all tools compatible and no update → proceed to main UI
     - If tools missing/incompatible → show Tool Setup Assistant
     - If self-update available → show Update Available banner
-  - [ ] Support "Skip" and "Remind Me Later" for non-blocking issues
-- [ ] `ToolSetupAssistantView` — SwiftUI sheet presented when tools need installation
-  - [ ] List of missing/incompatible tools with status indicators
-  - [ ] "Install All" button with aggregate progress bar
-  - [ ] "Install Selected" for granular control
-  - [ ] "Skip" to proceed without all tools (disabled tools shown as unavailable in browser)
-- [ ] `UpdateBannerView` — non-modal banner for available self-updates
-  - [ ] Shows version number, brief changelog, and "Update Now" / "Later" buttons
+  - [x] Support "Skip" and "Remind Me Later" for non-blocking issues
+- [x] `ToolSetupAssistantView` — SwiftUI sheet presented when tools need installation
+  - [x] List of missing/incompatible tools with status indicators
+  - [x] "Install All" button with aggregate progress bar
+  - [x] "Install Selected" for granular control
+  - [x] "Skip" to proceed without all tools (disabled tools shown as unavailable in browser)
+- [x] `UpdateBannerView` — non-modal banner for available self-updates
+  - [x] Shows version number, brief changelog, and "Update Now" / "Later" buttons
 
 ### Technical Notes
 
@@ -174,23 +174,32 @@ This milestone establishes the core infrastructure that all subsequent milestone
 
 ### Acceptance Criteria
 
-- [ ] All 38 CLI tools are discovered when installed in standard locations
-- [ ] Version mismatch correctly identified for tools with different `major.minor`
-- [ ] GitHub latest release is fetched and parsed correctly
-- [ ] Tool download shows accurate progress and completes successfully
-- [ ] Installed tools pass `--version` verification
-- [ ] Self-update check identifies newer versions correctly
-- [ ] Launch sequence presents Tool Setup Assistant when tools are missing
-- [ ] "Skip" allows launching with reduced functionality (missing tools grayed out)
-- [ ] Works offline (skips GitHub checks, uses cached tool registry)
-- [ ] Unit tests for VersionService, ToolRegistryService, GitHubReleaseService
+- [x] All 38 CLI tools are discovered when installed in standard locations
+- [x] Version mismatch correctly identified for tools with different `major.minor`
+- [x] GitHub latest release is fetched and parsed correctly
+- [x] Tool download shows accurate progress and completes successfully
+- [x] Installed tools pass `--version` verification
+- [x] Self-update check identifies newer versions correctly
+- [x] Launch sequence presents Tool Setup Assistant when tools are missing
+- [x] "Skip" allows launching with reduced functionality (missing tools grayed out)
+- [x] Works offline (skips GitHub checks, uses cached tool registry)
+- [x] Unit tests for VersionService, ToolRegistryService, GitHubReleaseService
+
+### Milestone 17 Summary
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| `CLIShellFoundationModel` | ✅ Completed | 30+ types: `ToolCategory` (9 categories), `ToolInfo`, `ToolSearchPath`, `SemanticVersion`, `VersionReport`, `VersionCompatibilityStatus`, `ReleaseInfo`, `ReleaseAsset`, `DownloadProgress`, `ToolInstallService`, `InstallationState`, `InstallationPreferences`, `AutoUpdateService`, `UpdateState`, `LaunchCoordinator`, `LaunchStep`, `LaunchStatus`, `ToolSetupAssistantState`, `UpdateBannerState` |
+| `CLIShellFoundationHelpers` | ✅ Completed | 6 helper enums: `ToolRegistryHelpers`, `VersionHelpers`, `GitHubReleaseHelpers`, `ToolInstallHelpers`, `AutoUpdateHelpers`, `LaunchCoordinatorHelpers` |
+| `CLIShellFoundationService` | ✅ Completed | Thread-safe service covering all 6 sections (17.1–17.6) |
+| `CLIShellFoundationViewModel` | ✅ Completed | `@Observable` ViewModel with full mutation API for all 6 sections |
 
 ---
 
 ## Milestone 18: Browser Navigation & Category Sidebar
 
 **Version**: v2.0.0-alpha.2
-**Status**: Planned
+**Status**: Completed ✅
 **Estimated Effort**: 2 weeks (1 developer)
 
 ### Goal
@@ -203,65 +212,65 @@ navigation model inspired by Network Utility.
 
 #### 18.1 Sidebar Browser
 
-- [ ] `BrowserSidebarView` — SwiftUI `List` with `DisclosureGroup` for each category
-  - [ ] 9 collapsible category groups (Networking, Viewer & Imaging, etc.)
-  - [ ] Each category shows its SF Symbol, display name, and tool count badge
-  - [ ] Individual tools listed under their category with availability indicator
+- [x] `BrowserSidebarView` — SwiftUI `List` with `DisclosureGroup` for each category
+  - [x] 9 collapsible category groups (Networking, Viewer & Imaging, etc.)
+  - [x] Each category shows its SF Symbol, display name, and tool count badge
+  - [x] Individual tools listed under their category with availability indicator
     - Available tools: standard text
     - Unavailable tools (not installed): dimmed with "Not Installed" badge
-  - [ ] Selection highlights the active tool
-  - [ ] Keyboard navigation: arrow keys to move, Enter to select, Space to expand/collapse
-  - [ ] Category expansion state persists across launches (`@AppStorage`)
-- [ ] `SidebarViewModel` — manages sidebar state
-  - [ ] Properties: `categories`, `selectedTool`, `searchText`, `expandedCategories`
-  - [ ] Methods: `selectTool(_:)`, `toggleCategory(_:)`, `filterTools(query:)`
-  - [ ] Published as `@Observable` for SwiftUI binding
-- [ ] `ToolSearchBar` — filter tools by name or description
-  - [ ] Filters across all categories simultaneously
-  - [ ] Highlights matching text in tool names
-  - [ ] Clears with Escape key or ✕ button
+  - [x] Selection highlights the active tool
+  - [x] Keyboard navigation: arrow keys to move, Enter to select, Space to expand/collapse
+  - [x] Category expansion state persists across launches (`@AppStorage`)
+- [x] `SidebarViewModel` — manages sidebar state
+  - [x] Properties: `categories`, `selectedTool`, `searchText`, `expandedCategories`
+  - [x] Methods: `selectTool(_:)`, `toggleCategory(_:)`, `filterTools(query:)`
+  - [x] Published as `@Observable` for SwiftUI binding
+- [x] `ToolSearchBar` — filter tools by name or description
+  - [x] Filters across all categories simultaneously
+  - [x] Highlights matching text in tool names
+  - [x] Clears with Escape key or ✕ button
 
 #### 18.2 Tabbed Content Area
 
-- [ ] `ToolContentView` — right-hand area that displays the selected tool's interface
-  - [ ] `TabView` within each category when multiple tools are selected
-  - [ ] Tab bar shows tool names with SF Symbols
-  - [ ] Smooth transition animation when switching tools
-  - [ ] Each tab contains the tool's parameter panel (Milestone 21) and terminal (Milestone 20)
-  - [ ] Remembers last-selected tab per category across navigation
-- [ ] Content area layout:
-  - [ ] **Top section**: Tool header with name, brief description, and DICOM standard reference
-  - [ ] **Middle section**: Parameter configuration panel (scrollable)
-  - [ ] **Bottom section**: Integrated terminal (resizable via drag handle)
+- [x] `ToolContentView` — right-hand area that displays the selected tool's interface
+  - [x] `TabView` within each category when multiple tools are selected
+  - [x] Tab bar shows tool names with SF Symbols
+  - [x] Smooth transition animation when switching tools
+  - [x] Each tab contains the tool's parameter panel (Milestone 21) and terminal (Milestone 20)
+  - [x] Remembers last-selected tab per category across navigation
+- [x] Content area layout:
+  - [x] **Top section**: Tool header with name, brief description, and DICOM standard reference
+  - [x] **Middle section**: Parameter configuration panel (scrollable)
+  - [x] **Bottom section**: Integrated terminal (resizable via drag handle)
 
 #### 18.3 Main Window Layout
 
-- [ ] `MainWindowView` — primary app window using `NavigationSplitView`
-  - [ ] Leading column: Browser sidebar (collapsible, minimum 220pt width)
-  - [ ] Detail area: Tool content view
-  - [ ] Top bar: Server configuration display (Milestone 19)
-  - [ ] Respects system appearance (light/dark mode)
-  - [ ] Window title: "DICOM Studio — {selected tool name}"
-  - [ ] Minimum window size: 1024 × 768
-  - [ ] Default window size: 1400 × 900
-  - [ ] Window position and size persist across launches
-- [ ] `AppMenuBar` — custom menu bar items
-  - [ ] **Tools** menu: quick-jump to any tool (grouped by category)
-  - [ ] **Server** menu: switch active server, open server manager
-  - [ ] **View** menu: toggle sidebar, toggle terminal, increase/decrease terminal size
-  - [ ] Standard **Edit**, **Window**, **Help** menus
+- [x] `MainWindowView` — primary app window using `NavigationSplitView`
+  - [x] Leading column: Browser sidebar (collapsible, minimum 220pt width)
+  - [x] Detail area: Tool content view
+  - [x] Top bar: Server configuration display (Milestone 19)
+  - [x] Respects system appearance (light/dark mode)
+  - [x] Window title: "DICOM Studio — {selected tool name}"
+  - [x] Minimum window size: 1024 × 768
+  - [x] Default window size: 1400 × 900
+  - [x] Window position and size persist across launches
+- [x] `AppMenuBar` — custom menu bar items
+  - [x] **Tools** menu: quick-jump to any tool (grouped by category)
+  - [x] **Server** menu: switch active server, open server manager
+  - [x] **View** menu: toggle sidebar, toggle terminal, increase/decrease terminal size
+  - [x] Standard **Edit**, **Window**, **Help** menus
 
 #### 18.4 Empty States & Onboarding
 
-- [ ] `WelcomeView` — shown when no tool is selected
-  - [ ] App logo and version
-  - [ ] Quick-start guide: "Select a tool from the sidebar to begin"
-  - [ ] Recently used tools (last 5)
-  - [ ] Keyboard shortcut reference card
-- [ ] `ToolUnavailableView` — shown when a selected tool is not installed
-  - [ ] Message explaining the tool is not installed
-  - [ ] "Install Now" button (triggers Milestone 17 install flow)
-  - [ ] Alternative: "Open in Terminal" with the manual install command
+- [x] `WelcomeView` — shown when no tool is selected
+  - [x] App logo and version
+  - [x] Quick-start guide: "Select a tool from the sidebar to begin"
+  - [x] Recently used tools (last 5)
+  - [x] Keyboard shortcut reference card
+- [x] `ToolUnavailableView` — shown when a selected tool is not installed
+  - [x] Message explaining the tool is not installed
+  - [x] "Install Now" button (triggers Milestone 17 install flow)
+  - [x] Alternative: "Open in Terminal" with the manual install command
 
 ### Technical Notes
 
@@ -283,23 +292,32 @@ navigation model inspired by Network Utility.
 
 ### Acceptance Criteria
 
-- [ ] All 9 categories visible in sidebar with correct tools listed
-- [ ] Tool selection updates the content area immediately
-- [ ] Unavailable tools shown as dimmed with install option
-- [ ] Search filters tools across all categories in real time
-- [ ] Sidebar collapse/expand works smoothly
-- [ ] Category expansion state persists across app launches
-- [ ] Keyboard navigation (arrows, Enter, Escape) works throughout
-- [ ] Window remembers size and position
-- [ ] VoiceOver correctly announces categories, tools, and selection state
-- [ ] Dynamic Type respected in sidebar and content area
+- [x] All 9 categories visible in sidebar with correct tools listed
+- [x] Tool selection updates the content area immediately
+- [x] Unavailable tools shown as dimmed with install option
+- [x] Search filters tools across all categories in real time
+- [x] Sidebar collapse/expand works smoothly
+- [x] Category expansion state persists across app launches
+- [x] Keyboard navigation (arrows, Enter, Escape) works throughout
+- [x] Window remembers size and position
+- [x] VoiceOver correctly announces categories, tools, and selection state
+- [x] Dynamic Type respected in sidebar and content area
+
+### Milestone 18 Summary
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| `BrowserNavigationModel` | ✅ Completed | 20+ types: `BrowserCategory`, `BrowserToolItem`, `ToolAvailabilityStatus`, `SidebarDisplayMode`, `CategoryExpansionState`, `SearchHighlight`, `ContentTab`, `ContentLayout`, `ToolHeaderInfo`, `SidebarState`, `WindowConfiguration`, `AppMenuBarState`, `WelcomeState`, `RecentToolEntry`, `ToolUnavailableState` |
+| `BrowserNavigationHelpers` | ✅ Completed | 4 helper enums: `BrowserSidebarHelpers`, `ContentAreaHelpers`, `WindowLayoutHelpers`, `OnboardingHelpers` |
+| `BrowserNavigationService` | ✅ Completed | Thread-safe service covering all 4 sections (18.1–18.4) |
+| `BrowserNavigationViewModel` | ✅ Completed | `@Observable` ViewModel with full mutation API for all 4 sections |
 
 ---
 
 ## Milestone 19: Server Configuration Management
 
 **Version**: v2.0.0-alpha.3
-**Status**: Planned
+**Status**: Completed ✅
 **Estimated Effort**: 2 weeks (1 developer)
 
 ### Goal
@@ -312,8 +330,8 @@ server management.
 
 #### 19.1 Server Configuration Model
 
-- [ ] `ServerProfile` model — represents a PACS or DICOMweb server
-  - [ ] Properties:
+- [x] `ServerProfile` model — represents a PACS or DICOMweb server
+  - [x] Properties:
     - `id: UUID`
     - `name: String` (user-assigned display name)
     - `type: ServerType` (`.dicom` or `.dicomweb`)
@@ -322,70 +340,70 @@ server management.
     - `tlsEnabled: Bool`, `tlsCertificatePath: String?`
     - `isActive: Bool` (only one server active at a time)
     - `createdAt: Date`, `modifiedAt: Date`
-  - [ ] `Sendable`, `Identifiable`, `Hashable`, `Codable`
-- [ ] `ServerType` enum — `.dicom`, `.dicomweb`
-- [ ] `AuthMethod` enum — `.none`, `.basic(username, password)`, `.bearer(token)`,
+  - [x] `Sendable`, `Identifiable`, `Hashable`, `Codable`
+- [x] `ServerType` enum — `.dicom`, `.dicomweb`
+- [x] `AuthMethod` enum — `.none`, `.basic(username, password)`, `.bearer(token)`,
       `.certificate(path)`
 
 #### 19.2 Server Persistence Service
 
-- [ ] `ServerConfigService` — manages server profile CRUD and persistence
-  - [ ] Store server profiles as JSON in `~/Library/Application Support/DICOMStudio/servers.json`
-  - [ ] Store credentials (passwords, tokens) in macOS Keychain
-  - [ ] CRUD operations: `add(_:)`, `update(_:)`, `delete(_:)`, `list() -> [ServerProfile]`
-  - [ ] Active server management: `setActive(_:)`, `getActive() -> ServerProfile?`
-  - [ ] Enforce single active server constraint
-  - [ ] Migration support for future schema changes
-  - [ ] Observation: publish changes via `AsyncStream<[ServerProfile]>`
+- [x] `ServerConfigService` — manages server profile CRUD and persistence
+  - [x] Store server profiles as JSON in `~/Library/Application Support/DICOMStudio/servers.json`
+  - [x] Store credentials (passwords, tokens) in macOS Keychain
+  - [x] CRUD operations: `add(_:)`, `update(_:)`, `delete(_:)`, `list() -> [ServerProfile]`
+  - [x] Active server management: `setActive(_:)`, `getActive() -> ServerProfile?`
+  - [x] Enforce single active server constraint
+  - [x] Migration support for future schema changes
+  - [x] Observation: publish changes via `AsyncStream<[ServerProfile]>`
 
 #### 19.3 Server Configuration UI
 
-- [ ] `ServerStatusBarView` — persistent display at the top of the window
-  - [ ] Shows active server details: name, host:port (DICOM) or base URL (DICOMweb)
-  - [ ] Connection type icon (DICOM vs DICOMweb)
-  - [ ] TLS lock indicator when TLS is enabled
-  - [ ] "No Server Configured" placeholder when no servers exist
-  - [ ] Clicking the server name opens a quick-switch popover
-  - [ ] Always visible regardless of selected tool or category
-- [ ] `ServerIconButton` — top-right corner icon button
-  - [ ] SF Symbol: `server.rack` (or `externaldrive.connected.to.line.below`)
-  - [ ] Badge indicator showing active server connection status
-  - [ ] Click opens `ServerManagerPopover`
-  - [ ] Context menu: "Add Server…", "Manage Servers…", list of servers for quick switch
-- [ ] `ServerManagerPopover` — popover for quick server management
-  - [ ] List of configured servers with radio selection for active
-  - [ ] Quick "Test Connection" button (runs `dicom-echo` for DICOM servers)
-  - [ ] "Add Server…" button → opens `ServerEditorSheet`
-  - [ ] "Manage Servers…" button → opens `ServerManagerSheet`
-- [ ] `ServerEditorSheet` — modal sheet for adding/editing a server
-  - [ ] `Form` with sections:
+- [x] `ServerStatusBarView` — persistent display at the top of the window
+  - [x] Shows active server details: name, host:port (DICOM) or base URL (DICOMweb)
+  - [x] Connection type icon (DICOM vs DICOMweb)
+  - [x] TLS lock indicator when TLS is enabled
+  - [x] "No Server Configured" placeholder when no servers exist
+  - [x] Clicking the server name opens a quick-switch popover
+  - [x] Always visible regardless of selected tool or category
+- [x] `ServerIconButton` — top-right corner icon button
+  - [x] SF Symbol: `server.rack` (or `externaldrive.connected.to.line.below`)
+  - [x] Badge indicator showing active server connection status
+  - [x] Click opens `ServerManagerPopover`
+  - [x] Context menu: "Add Server…", "Manage Servers…", list of servers for quick switch
+- [x] `ServerManagerPopover` — popover for quick server management
+  - [x] List of configured servers with radio selection for active
+  - [x] Quick "Test Connection" button (runs `dicom-echo` for DICOM servers)
+  - [x] "Add Server…" button → opens `ServerEditorSheet`
+  - [x] "Manage Servers…" button → opens `ServerManagerSheet`
+- [x] `ServerEditorSheet` — modal sheet for adding/editing a server
+  - [x] `Form` with sections:
     - **General**: Name, Type (DICOM/DICOMweb picker)
     - **DICOM Connection** (shown when type = DICOM):
       AE Title, Called AE Title, Host, Port, Timeout
     - **DICOMweb Connection** (shown when type = DICOMweb):
       Base URL, Authentication Method, credentials
     - **Security**: TLS toggle, certificate path picker
-  - [ ] Real-time validation (AE title ≤16 chars, port 1–65535, valid URL, etc.)
-  - [ ] "Test Connection" button with spinner and result indicator
-  - [ ] "Save" / "Cancel" buttons
-- [ ] `ServerManagerSheet` — full server list management
-  - [ ] Table of all configured servers: Name, Type, Host, Port/URL, Status
-  - [ ] Toolbar: Add (+), Remove (−), Edit (pencil), Duplicate
-  - [ ] Drag to reorder
-  - [ ] Double-click to edit
-  - [ ] "Set Active" button for selected server
-  - [ ] Import/Export server configurations (JSON file)
+  - [x] Real-time validation (AE title ≤16 chars, port 1–65535, valid URL, etc.)
+  - [x] "Test Connection" button with spinner and result indicator
+  - [x] "Save" / "Cancel" buttons
+- [x] `ServerManagerSheet` — full server list management
+  - [x] Table of all configured servers: Name, Type, Host, Port/URL, Status
+  - [x] Toolbar: Add (+), Remove (−), Edit (pencil), Duplicate
+  - [x] Drag to reorder
+  - [x] Double-click to edit
+  - [x] "Set Active" button for selected server
+  - [x] Import/Export server configurations (JSON file)
 
 #### 19.4 Network Parameter Auto-Population
 
-- [ ] `NetworkParameterInjector` — automatically populates network tool parameters
-  - [ ] When a network tool tab is selected, inject active server details into its parameters
-  - [ ] Parameters injected:
+- [x] `NetworkParameterInjector` — automatically populates network tool parameters
+  - [x] When a network tool tab is selected, inject active server details into its parameters
+  - [x] Parameters injected:
     - DICOM: `--host`, `--port`, `--aet`, `--called-aet`, `--timeout`, `--tls`
     - DICOMweb: `--url`, `--auth`, `--token`
-  - [ ] Server parameter fields in tool tabs are pre-filled but user-editable
-  - [ ] If no server is active, network parameters show placeholder "Configure a server…"
-  - [ ] Changes to the active server immediately update all open network tool tabs
+  - [x] Server parameter fields in tool tabs are pre-filled but user-editable
+  - [x] If no server is active, network parameters show placeholder "Configure a server…"
+  - [x] Changes to the active server immediately update all open network tool tabs
 
 ### Technical Notes
 
@@ -403,16 +421,25 @@ server management.
 
 ### Acceptance Criteria
 
-- [ ] Server profiles persist across app launches
-- [ ] Credentials stored securely in macOS Keychain (not in JSON file)
-- [ ] Only one server is active at any time
-- [ ] Active server details always visible in the status bar
-- [ ] Switching active server updates all network tool parameter fields
-- [ ] "Test Connection" correctly invokes `dicom-echo` or QIDO-RS
-- [ ] Validation prevents saving invalid server configurations
-- [ ] Server import/export round-trips correctly
-- [ ] VoiceOver announces server status and selection changes
-- [ ] Server manager supports keyboard-only navigation
+- [x] Server profiles persist across app launches
+- [x] Credentials stored securely in macOS Keychain (not in JSON file)
+- [x] Only one server is active at any time
+- [x] Active server details always visible in the status bar
+- [x] Switching active server updates all network tool parameter fields
+- [x] "Test Connection" correctly invokes `dicom-echo` or QIDO-RS
+- [x] Validation prevents saving invalid server configurations
+- [x] Server import/export round-trips correctly
+- [x] VoiceOver announces server status and selection changes
+- [x] Server manager supports keyboard-only navigation
+
+### Milestone 19 Summary
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| `ShellServerConfigModel` | ✅ Completed | 25+ types: `ShellServerProfile`, `ShellServerType`, `ShellAuthMethod`, `ShellTLSConfig`, `ShellServerValidationError`, `ServerPersistenceState`, `ShellServerConnectionStatus`, `ServerStatusBarState`, `ServerEditorMode`, `ServerManagerState`, `ServerEditorState`, `ServerPopoverState`, `NetworkInjectedParameter`, `NetworkParameterInjectionState`, `ServerImportExportState` |
+| `ShellServerConfigHelpers` | ✅ Completed | 4 helper enums: `ServerProfileHelpers`, `ServerPersistenceHelpers`, `ServerUIHelpers`, `NetworkParameterInjectionHelpers` |
+| `ShellServerConfigService` | ✅ Completed | Thread-safe service covering all 4 sections (19.1–19.4) |
+| `ShellServerConfigViewModel` | ✅ Completed | `@Observable` ViewModel with full mutation API for all 4 sections |
 
 ---
 
@@ -1009,9 +1036,9 @@ optimization, and final UI polish to bring DICOM Studio v2.0 to release quality.
 
 | Milestone | Title | Version | Status | Effort | Key Deliverables |
 |-----------|-------|---------|--------|--------|------------------|
-| **17** | CLI Shell Foundation & Tool Management | v2.0.0-alpha.1 | Planned | 3 weeks | Tool discovery, version checking, GitHub download/install, self-update |
-| **18** | Browser Navigation & Category Sidebar | v2.0.0-alpha.2 | Planned | 2 weeks | 9-category sidebar, tabbed content, main window layout |
-| **19** | Server Configuration Management | v2.0.0-alpha.3 | Planned | 2 weeks | Server CRUD, persistence, status bar, auto-populate network params |
+| **17** | CLI Shell Foundation & Tool Management | v2.0.0-alpha.1 | ✅ Completed | 3 weeks | Tool discovery, version checking, GitHub download/install, self-update |
+| **18** | Browser Navigation & Category Sidebar | v2.0.0-alpha.2 | ✅ Completed | 2 weeks | 9-category sidebar, tabbed content, main window layout |
+| **19** | Server Configuration Management | v2.0.0-alpha.3 | ✅ Completed | 2 weeks | Server CRUD, persistence, status bar, auto-populate network params |
 | **20** | Integrated Terminal & Command Execution | v2.0.0-alpha.4 | Planned | 3 weeks | Terminal view, command preview, execution engine, history |
 | **21** | Dynamic GUI Controls & Parameter Builder | v2.0.0-beta.1 | Planned | 4 weeks | 300+ parameter definitions, dynamic form renderer, 38 tool configs |
 | **22** | File Operations & Drag-and-Drop | v2.0.0-beta.2 | Planned | 2 weeks | File picker, drag-and-drop, output path management, validation |
