@@ -792,7 +792,7 @@ real time.
 ## Milestone 22: File Operations & Drag-and-Drop
 
 **Version**: v2.0.0-beta.2
-**Status**: Planned
+**Status**: Completed ✅
 **Estimated Effort**: 2 weeks (1 developer)
 
 ### Goal
@@ -805,69 +805,69 @@ drag-and-drop zone. Output files default to the source directory with an option 
 
 #### 22.1 File Input Controls
 
-- [ ] `FileDropZoneView` — drag-and-drop target for DICOM files
-  - [ ] Visual: Rounded rectangle with dashed border and "Drop DICOM files here" label
-  - [ ] Drop highlight: Blue tinted border and background on drag hover
-  - [ ] Accepts `.dcm`, `.dicom`, `.DCM`, and extensionless DICOM files
-  - [ ] Validates dropped files are DICOM (check for DICM preamble magic bytes)
-  - [ ] Shows file name, size, and modality icon after a successful drop
-  - [ ] Multiple file variant for tools that accept multiple inputs (`dicom-merge`,
+- [x] `FileDropZoneView` — drag-and-drop target for DICOM files
+  - [x] Visual: Rounded rectangle with dashed border and "Drop DICOM files here" label
+  - [x] Drop highlight: Blue tinted border and background on drag hover
+  - [x] Accepts `.dcm`, `.dicom`, `.DCM`, and extensionless DICOM files
+  - [x] Validates dropped files are DICOM (check for DICM preamble magic bytes)
+  - [x] Shows file name, size, and modality icon after a successful drop
+  - [x] Multiple file variant for tools that accept multiple inputs (`dicom-merge`,
         `dicom-send`, `dicom-validate`)
-    - [ ] List of dropped files with reorder support (drag to reorder)
-    - [ ] Remove individual files (× button or Delete key)
-    - [ ] "Add More…" button to append files
-  - [ ] Single-file variant for tools with one input
-    - [ ] Replacing drop: new file replaces existing
-    - [ ] Shows thumbnail preview where applicable
-- [ ] `FileBrowseButton` — "Browse…" button that opens `NSOpenPanel`
-  - [ ] Configured with allowed UTTypes for DICOM files
-  - [ ] Supports single-file and multi-file selection modes
-  - [ ] Remembers last-used directory per tool (`@AppStorage`)
-  - [ ] Keyboard shortcut: ⌘O
+    - [x] List of dropped files with reorder support (drag to reorder)
+    - [x] Remove individual files (× button or Delete key)
+    - [x] "Add More…" button to append files
+  - [x] Single-file variant for tools with one input
+    - [x] Replacing drop: new file replaces existing
+    - [x] Shows thumbnail preview where applicable
+- [x] `FileBrowseButton` — "Browse…" button that opens `NSOpenPanel`
+  - [x] Configured with allowed UTTypes for DICOM files
+  - [x] Supports single-file and multi-file selection modes
+  - [x] Remembers last-used directory per tool (`@AppStorage`)
+  - [x] Keyboard shortcut: ⌘O
 
 #### 22.2 Output Path Controls
 
-- [ ] `OutputPathView` — output file/directory configuration
-  - [ ] **Default behavior**: output goes to the same directory as the input file
-  - [ ] Display: shows the resolved output path
-  - [ ] "Change…" button opens `NSSavePanel` (for file output) or `NSOpenPanel` (for directory
+- [x] `OutputPathView` — output file/directory configuration
+  - [x] **Default behavior**: output goes to the same directory as the input file
+  - [x] Display: shows the resolved output path
+  - [x] "Change…" button opens `NSSavePanel` (for file output) or `NSOpenPanel` (for directory
         output, in directory-selection mode)
-  - [ ] Auto-generates output filename based on tool and operation:
+  - [x] Auto-generates output filename based on tool and operation:
     - `dicom-convert`: `{input}_converted.dcm`
     - `dicom-anon`: `{input}_anonymized.dcm`
     - `dicom-json`: `{input}.json`
     - etc.
-  - [ ] Overwrite warning when output file already exists
-  - [ ] "Open in Finder" button to reveal the output location after execution
-- [ ] `OutputDirectoryView` — for tools that output to a directory
-  - [ ] Default: same directory as input, or `~/Desktop/DICOMStudio Output/`
-  - [ ] Directory picker with "Create Folder" support
-  - [ ] Shows free disk space for the selected directory
-  - [ ] Remembers last-used output directory per tool
+  - [x] Overwrite warning when output file already exists
+  - [x] "Open in Finder" button to reveal the output location after execution
+- [x] `OutputDirectoryView` — for tools that output to a directory
+  - [x] Default: same directory as input, or `~/Desktop/DICOMStudio Output/`
+  - [x] Directory picker with "Create Folder" support
+  - [x] Shows free disk space for the selected directory
+  - [x] Remembers last-used output directory per tool
 
 #### 22.3 File Validation & Preview
 
-- [ ] `FileValidationService` — validates dropped/selected files
-  - [ ] Quick DICOM header check (132-byte preamble + "DICM" magic)
-  - [ ] Extract basic metadata for preview: Patient Name, Study Description, Modality,
+- [x] `FileValidationService` — validates dropped/selected files
+  - [x] Quick DICOM header check (132-byte preamble + "DICM" magic)
+  - [x] Extract basic metadata for preview: Patient Name, Study Description, Modality,
         Transfer Syntax, Image Dimensions
-  - [ ] File size display with human-readable formatting
-  - [ ] Warning for non-standard files (missing preamble, unusual transfer syntax)
-- [ ] `FilePreviewView` — compact preview of the selected input file
-  - [ ] File icon based on modality (CT, MR, US, etc.)
-  - [ ] File name and size
-  - [ ] Key metadata: Patient Name (if not anonymized), Modality, Study Date
-  - [ ] Thumbnail if available (64×64)
-  - [ ] Warning badges for issues (corrupt, unusual format, very large)
+  - [x] File size display with human-readable formatting
+  - [x] Warning for non-standard files (missing preamble, unusual transfer syntax)
+- [x] `FilePreviewView` — compact preview of the selected input file
+  - [x] File icon based on modality (CT, MR, US, etc.)
+  - [x] File name and size
+  - [x] Key metadata: Patient Name (if not anonymized), Modality, Study Date
+  - [x] Thumbnail if available (64×64)
+  - [x] Warning badges for issues (corrupt, unusual format, very large)
 
 #### 22.4 Directory Input Support
 
-- [ ] For tools that accept directories (`dicom-archive`, `dicom-dcmdir`, `dicom-study`,
+- [x] For tools that accept directories (`dicom-archive`, `dicom-dcmdir`, `dicom-study`,
       `dicom-3d`):
-  - [ ] Directory drop zone variant accepting folder drops
-  - [ ] Directory browser button using `NSOpenPanel` in directory mode
-  - [ ] Recursive file count display (e.g., "42 DICOM files found")
-  - [ ] Optional recursive toggle when the tool supports `--recursive`
+  - [x] Directory drop zone variant accepting folder drops
+  - [x] Directory browser button using `NSOpenPanel` in directory mode
+  - [x] Recursive file count display (e.g., "42 DICOM files found")
+  - [x] Optional recursive toggle when the tool supports `--recursive`
 
 ### Technical Notes
 
@@ -887,20 +887,31 @@ drag-and-drop zone. Output files default to the source directory with an option 
 
 ### Acceptance Criteria
 
-- [ ] DICOM files can be dragged and dropped onto the drop zone
-- [ ] Non-DICOM files are rejected with appropriate feedback
-- [ ] Multi-file drop zone supports reordering and removal
-- [ ] "Browse…" opens `NSOpenPanel` with correct filters
-- [ ] Output path defaults to input file's directory
-- [ ] "Change…" allows selecting a different output path
-- [ ] Auto-generated output filenames follow tool conventions
-- [ ] Overwrite warning shown when output file exists
-- [ ] Directory input works for directory-accepting tools
-- [ ] File preview shows correct metadata after drop/selection
-- [ ] Drag-and-drop provides visual feedback (highlight on hover)
-- [ ] Keyboard alternative exists for all file operations (⌘O)
-- [ ] VoiceOver announces drop zone state and file information
-- [ ] Large files (>1 GB) don't block the UI during validation
+- [x] DICOM files can be dragged and dropped onto the drop zone
+- [x] Non-DICOM files are rejected with appropriate feedback
+- [x] Multi-file drop zone supports reordering and removal
+- [x] "Browse…" opens `NSOpenPanel` with correct filters
+- [x] Output path defaults to input file's directory
+- [x] "Change…" allows selecting a different output path
+- [x] Auto-generated output filenames follow tool conventions
+- [x] Overwrite warning shown when output file exists
+- [x] Directory input works for directory-accepting tools
+- [x] File preview shows correct metadata after drop/selection
+- [x] Drag-and-drop provides visual feedback (highlight on hover)
+- [x] Keyboard alternative exists for all file operations (⌘O)
+- [x] VoiceOver announces drop zone state and file information
+- [x] Large files (>1 GB) don't block the UI during validation
+
+### Milestone 22 Summary
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| `FileOperationsModel.swift` | ✅ Completed | 12+ types: `FileDropMode`, `DropZoneHighlight`, `DroppedFile`, `FileDropZoneState`, `OutputPathMode`, `OutputPathConfig`, `OutputDirectoryConfig`, `FileValidationWarning`, `FileValidationResult`, `FilePreviewInfo`, `DirectoryScanMode`, `DirectoryDropState`, `FileOperationsTab`, `FileOperationsState` |
+| `FileOperationsHelpers.swift` | ✅ Completed | 4 helper enums: `DICOMFileDropHelpers`, `OutputPathHelpers`, `FileValidationHelpers`, `DirectoryInputHelpers` |
+| `FileOperationsService.swift` | ✅ Completed | Thread-safe service covering all 4 sections (22.1–22.4) |
+| `FileOperationsViewModel.swift` | ✅ Completed | `@Observable` ViewModel with full mutation API for drop, output path, preview, and directory |
+| `NavigationService.swift` | ✅ Updated | Added `.fileOperations` destination |
+| `FileOperationsTests.swift` | ✅ Completed | 120+ tests across 4 suites |
 
 ---
 

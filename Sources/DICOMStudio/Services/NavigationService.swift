@@ -17,6 +17,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case performanceTools   = "Performance Tools"
     case macOSEnhancements  = "macOS Enhancements"
     case polishRelease      = "Polish & Release"
+    case fileOperations     = "File Operations"
     case settings           = "Settings"
 
     public var id: String { rawValue }
@@ -34,6 +35,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .performanceTools: return "speedometer"
         case .macOSEnhancements: return "macwindow"
         case .polishRelease:     return "paintbrush.pointed"
+        case .fileOperations:    return "doc.badge.arrow.up"
         case .settings:         return "gear"
         }
     }
@@ -51,6 +53,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .performanceTools: return "Performance & Developer Tools"
         case .macOSEnhancements: return "macOS-Specific Enhancements"
         case .polishRelease:     return "Polish, Accessibility & Release"
+        case .fileOperations:    return "File Operations & Drag-and-Drop"
         case .settings:         return "Application Settings"
         }
     }
