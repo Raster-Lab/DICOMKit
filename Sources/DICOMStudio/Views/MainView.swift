@@ -76,6 +76,10 @@ public struct MainView: View {
             MacOSEnhancementsView(viewModel: MacOSEnhancementsViewModel())
         case .polishRelease:
             PolishReleaseView(viewModel: PolishReleaseViewModel())
+        case .fileOperations:
+            FileOperationsView(viewModel: FileOperationsViewModel())
+        case .integrationTesting:
+            IntegrationTestingView(viewModel: IntegrationTestingViewModel())
         case .settings:
             SettingsView(viewModel: SettingsViewModel(settingsService: viewModel.settingsService))
         }
