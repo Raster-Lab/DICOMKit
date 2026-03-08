@@ -64,6 +64,15 @@ jobs:
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
       
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-sanitize-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-sanitize-
+          ${{ runner.os }}-spm-
+      
     - name: Build with sanitizers
       run: |
         # Build with Address Sanitizer to detect memory issues
@@ -86,6 +95,15 @@ jobs:
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
       
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-perf-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-perf-
+          ${{ runner.os }}-spm-
+      
     - name: Build in release mode
       run: swift build -c release
       
@@ -105,6 +123,15 @@ jobs:
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
       
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-deps-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-deps-
+          ${{ runner.os }}-spm-
+      
     - name: Update dependencies
       run: swift package update
       
@@ -121,6 +148,7 @@ jobs:
     name: Build Matrix Test
     runs-on: macos-15
     strategy:
+      fail-fast: false
       matrix:
         config: ['debug', 'release']
     
@@ -131,6 +159,15 @@ jobs:
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
       
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-matrix-${{ matrix.config }}-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-matrix-${{ matrix.config }}-
+          ${{ runner.os }}-spm-
+      
     - name: Build in ${{ matrix.config }} mode
       run: swift build -c ${{ matrix.config }}
       continue-on-error: true
@@ -138,7 +175,7 @@ jobs:
   summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [comprehensive-test, memory-leak-check, performance-benchmark]
+    needs: [comprehensive-test, memory-leak-check, performance-benchmark, dependency-update-check, build-matrix]
     if: always()
     
     steps:
@@ -149,6 +186,8 @@ jobs:
         echo "- Comprehensive Tests: ${{ needs.comprehensive-test.result }}" >> $GITHUB_STEP_SUMMARY
         echo "- Memory Leak Check: ${{ needs.memory-leak-check.result }}" >> $GITHUB_STEP_SUMMARY
         echo "- Performance Benchmarks: ${{ needs.performance-benchmark.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Dependency Update Check: ${{ needs.dependency-update-check.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Build Matrix: ${{ needs.build-matrix.result }}" >> $GITHUB_STEP_SUMMARY
         
         if [ "${{ needs.comprehensive-test.result }}" != "success" ]; then
           echo "" >> $GITHUB_STEP_SUMMARY
