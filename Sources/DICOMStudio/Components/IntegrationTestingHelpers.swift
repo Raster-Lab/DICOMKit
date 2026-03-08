@@ -178,7 +178,7 @@ public enum PerformanceBenchmarkHelpers: Sendable {
 
     /// Whether every benchmark result meets its target.
     public static func meetsAllTargets(results: [PerformanceBenchmarkResult]) -> Bool {
-        results.allSatisfy { $0.meetsTarget }
+        !results.isEmpty && results.allSatisfy { $0.meetsTarget }
     }
 
     /// Human-readable summary such as "5/7 targets met".
