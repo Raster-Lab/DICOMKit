@@ -17,6 +17,10 @@ on:
       - '.github/workflows/dicom-studio-ci.yml'
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 permissions:
   contents: read
 
@@ -28,6 +32,7 @@ jobs:
     name: Build & Test DICOMStudio
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: macos-15
