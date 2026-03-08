@@ -33,6 +33,11 @@ public final class ImportService: Sendable {
         at url: URL,
         existingInstanceUIDs: Set<String> = []
     ) -> ImportResult {
+        // Gain sandbox access to the URL (required for drag-and-drop and
+        // file-picker selections in a sandboxed app).
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+
         // Read raw data for validation
         let data: Data
         do {
@@ -162,6 +167,10 @@ public final class ImportService: Sendable {
         at directoryURL: URL,
         recursive: Bool = false
     ) -> [URL] {
+        // Gain sandbox access to the directory URL.
+        let accessed = directoryURL.startAccessingSecurityScopedResource()
+        defer { if accessed { directoryURL.stopAccessingSecurityScopedResource() } }
+
         let fm = FileManager.default
         var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]
         if !recursive {
