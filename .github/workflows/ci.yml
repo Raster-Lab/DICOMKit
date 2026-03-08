@@ -7,6 +7,10 @@ on:
     branches: [ main, develop ]
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   SWIFT_VERSION: '6.2'
 
@@ -15,6 +19,7 @@ jobs:
     name: Test on macOS
     runs-on: macos-15
     strategy:
+      fail-fast: false
       matrix:
         # Test on different Xcode versions for comprehensive coverage
         # Xcode 16.0+ required for swift-tools-version: 6.0 (Swift 6)
@@ -163,6 +168,15 @@ jobs:
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
       
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-quality-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-quality-
+          ${{ runner.os }}-spm-
+      
     - name: Check for compiler warnings
       run: |
         swift build 2>&1 | tee build.log
@@ -187,6 +201,7 @@ jobs:
     name: Validate Platform Support
     runs-on: macos-15
     strategy:
+      fail-fast: false
       matrix:
         destination: 
           - 'platform=iOS Simulator,name=iPhone 16 Pro,OS=18.0'
@@ -200,6 +215,15 @@ jobs:
       
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+      
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: .build
+        key: ${{ runner.os }}-spm-platform-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-spm-platform-
+          ${{ runner.os }}-spm-
       
     - name: List available destinations
       run: xcodebuild -showdestinations -scheme DICOMKit-Package || true
@@ -234,7 +258,7 @@ jobs:
   summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [test-macos, test-linux, build-documentation, code-quality]
+    needs: [test-macos, test-linux, build-documentation, code-quality, validate-platforms, security-scan]
     if: always()
     
     steps:
@@ -250,5 +274,11 @@ jobs:
         fi
         if [ "${{ needs.code-quality.result }}" != "success" ]; then
           echo "::warning::Code quality checks had issues"
+        fi
+        if [ "${{ needs.validate-platforms.result }}" != "success" ]; then
+          echo "::warning::Platform validation had issues"
+        fi
+        if [ "${{ needs.security-scan.result }}" != "success" ]; then
+          echo "::warning::Security scan had issues"
         fi
         echo "✅ CI pipeline completed successfully"
