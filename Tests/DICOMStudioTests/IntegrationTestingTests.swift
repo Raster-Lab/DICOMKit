@@ -789,7 +789,7 @@ struct IntegrationTestingServiceTests {
     func test_service_updateTestStatus() {
         let service = IntegrationTestingService()
         service.initializeTestSuites()
-        service.updateTestStatus(suiteIndex: 0, testIndex: 0, status: .passed, error: nil, duration: 0.5)
+        service.updateTestStatus(suiteIndex: 0, testIndex: 0, status: .passed, errorMessage: nil, duration: 0.5)
         let suites = service.getTestSuites()
         #expect(suites[0].testCases[0].status == .passed)
         #expect(suites[0].testCases[0].durationSeconds == 0.5)
@@ -887,10 +887,10 @@ struct IntegrationTestingServiceTests {
 
 // MARK: - ViewModel Tests
 
-@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 @Suite("Integration Testing ViewModel Tests")
 struct IntegrationTestingViewModelTests {
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializes with default state")
     func test_viewModel_init_defaultState() {
         let vm = IntegrationTestingViewModel()
@@ -898,6 +898,7 @@ struct IntegrationTestingViewModelTests {
         #expect(vm.testSuites.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel selectTab updates tab")
     func test_viewModel_selectTab() {
         let vm = IntegrationTestingViewModel()
@@ -905,6 +906,7 @@ struct IntegrationTestingViewModelTests {
         #expect(vm.selectedTab == .performance)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializeTestSuites populates suites")
     func test_viewModel_initializeTestSuites() {
         let vm = IntegrationTestingViewModel()
@@ -912,6 +914,7 @@ struct IntegrationTestingViewModelTests {
         #expect(vm.testSuites.count == 9)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel runAllTests sets running status")
     func test_viewModel_runAllTests() {
         let vm = IntegrationTestingViewModel()
@@ -924,6 +927,7 @@ struct IntegrationTestingViewModelTests {
         }
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel resetAllTests sets pending status")
     func test_viewModel_resetAllTests() {
         let vm = IntegrationTestingViewModel()
@@ -937,6 +941,7 @@ struct IntegrationTestingViewModelTests {
         }
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializeUnitTestEntries populates entries")
     func test_viewModel_initializeUnitTestEntries() {
         let vm = IntegrationTestingViewModel()
@@ -944,6 +949,7 @@ struct IntegrationTestingViewModelTests {
         #expect(vm.unitTestEntries.count == 10)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializeAccessibilityAudits populates audits")
     func test_viewModel_initializeAccessibilityAudits() {
         let vm = IntegrationTestingViewModel()
@@ -951,6 +957,7 @@ struct IntegrationTestingViewModelTests {
         #expect(!vm.accessibilityAudits.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializeKeyboardShortcuts populates shortcuts")
     func test_viewModel_initializeKeyboardShortcuts() {
         let vm = IntegrationTestingViewModel()
@@ -958,6 +965,7 @@ struct IntegrationTestingViewModelTests {
         #expect(!vm.keyboardShortcuts.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializeBenchmarks populates results")
     func test_viewModel_initializeBenchmarks() {
         let vm = IntegrationTestingViewModel()
@@ -965,6 +973,7 @@ struct IntegrationTestingViewModelTests {
         #expect(vm.benchmarkResults.count == 7)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializePolishChecks populates checks")
     func test_viewModel_initializePolishChecks() {
         let vm = IntegrationTestingViewModel()
@@ -972,6 +981,7 @@ struct IntegrationTestingViewModelTests {
         #expect(!vm.polishChecks.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel initializeDocumentationEntries populates entries")
     func test_viewModel_initializeDocumentationEntries() {
         let vm = IntegrationTestingViewModel()
@@ -979,30 +989,35 @@ struct IntegrationTestingViewModelTests {
         #expect(!vm.documentationEntries.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel e2eTestSummary returns string")
     func test_viewModel_e2eTestSummary() {
         let vm = IntegrationTestingViewModel()
         #expect(!vm.e2eTestSummary.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel unitTestCoverageSummary returns string")
     func test_viewModel_unitTestCoverageSummary() {
         let vm = IntegrationTestingViewModel()
         #expect(!vm.unitTestCoverageSummary.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel performanceSummary returns string")
     func test_viewModel_performanceSummary() {
         let vm = IntegrationTestingViewModel()
         #expect(!vm.performanceSummary.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel polishCompletionSummary returns string")
     func test_viewModel_polishCompletionSummary() {
         let vm = IntegrationTestingViewModel()
         #expect(!vm.polishCompletionSummary.isEmpty)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("ViewModel documentationProgressSummary returns string")
     func test_viewModel_documentationProgressSummary() {
         let vm = IntegrationTestingViewModel()
