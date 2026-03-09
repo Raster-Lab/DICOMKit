@@ -8,6 +8,7 @@ import Testing
 import Foundation
 
 @Suite("MainViewModel Tests")
+@MainActor
 struct MainViewModelTests {
 
     @Test("Default state")

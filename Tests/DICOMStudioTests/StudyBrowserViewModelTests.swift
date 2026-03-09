@@ -8,6 +8,7 @@ import Testing
 import Foundation
 
 @Suite("StudyBrowserViewModel Tests")
+@MainActor
 struct StudyBrowserViewModelTests {
 
     @Test("Default state")
