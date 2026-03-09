@@ -13,6 +13,7 @@ import Observation
 /// for automatic SwiftUI view updates.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 @Observable
+@MainActor
 public final class MainViewModel {
     /// Currently selected sidebar navigation destination.
     public var selectedDestination: NavigationDestination?
@@ -27,7 +28,13 @@ public final class MainViewModel {
     public var searchText: String
 
     /// The local DICOM file library.
-    public var library: LibraryModel
+    ///
+    /// This is a computed passthrough to the study browser's library,
+    /// ensuring a single source of truth across the application.
+    public var library: LibraryModel {
+        get { studyBrowserViewModel.library }
+        set { studyBrowserViewModel.library = newValue }
+    }
 
     /// Application settings service.
     public let settingsService: SettingsService
@@ -47,25 +54,46 @@ public final class MainViewModel {
     /// Status message displayed in the status bar.
     public var statusMessage: String
 
+    /// The library storage service for persistence.
+    public let libraryStorageService: LibraryStorageService
+
+    /// Persistent study browser ViewModel — survives tab switches.
+    public var studyBrowserViewModel: StudyBrowserViewModel
+
     /// Creates the main ViewModel with dependency-injected services.
     public init(
         settingsService: SettingsService = SettingsService(),
         fileService: DICOMFileService = DICOMFileService(),
         navigationService: NavigationService = NavigationService(),
         storageService: StorageService = StorageService(),
-        thumbnailService: ThumbnailService? = nil
+        thumbnailService: ThumbnailService? = nil,
+        libraryStorageService: LibraryStorageService = LibraryStorageService()
     ) {
         self.settingsService = settingsService
         self.fileService = fileService
         self.navigationService = navigationService
         self.storageService = storageService
         self.thumbnailService = thumbnailService ?? ThumbnailService(storageService: storageService)
+        self.libraryStorageService = libraryStorageService
         self.selectedDestination = NavigationService.defaultDestination
         self.isInspectorVisible = false
         self.showWelcomeSheet = settingsService.showWelcomeOnLaunch
         self.searchText = ""
-        self.library = LibraryModel()
         self.statusMessage = "Ready"
+
+        // Load persisted library from disk so imports survive app restarts.
+        let savedLibrary = libraryStorageService.load()
+
+        // Create a single StudyBrowserViewModel that lives for the
+        // entire app session — switching tabs no longer destroys it.
+        // The `library` computed property on MainViewModel delegates
+        // to this ViewModel, keeping a single source of truth.
+        let importService = ImportService(fileService: fileService)
+        self.studyBrowserViewModel = StudyBrowserViewModel(
+            library: savedLibrary,
+            importService: importService,
+            libraryStorageService: libraryStorageService
+        )
     }
 
     /// Navigates to the specified destination.

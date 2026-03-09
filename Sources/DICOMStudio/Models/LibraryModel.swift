@@ -86,8 +86,16 @@ public struct LibraryModel: Sendable {
         }
     }
 
-    /// Adds an instance to the library, linking it to its parent series.
+    /// Adds or updates an instance in the library, linking it to its parent series.
+    ///
+    /// If the instance already exists (same SOP Instance UID) and its series
+    /// assignment has changed, the old series mapping is updated.
     public mutating func addInstance(_ instance: InstanceModel) {
+        // If instance already exists, remove from old series mapping
+        if let existing = instances[instance.sopInstanceUID],
+           existing.seriesInstanceUID != instance.seriesInstanceUID {
+            seriesInstances[existing.seriesInstanceUID]?.remove(instance.sopInstanceUID)
+        }
         instances[instance.sopInstanceUID] = instance
         seriesInstances[instance.seriesInstanceUID, default: []].insert(instance.sopInstanceUID)
     }

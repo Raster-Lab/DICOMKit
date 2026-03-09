@@ -6,6 +6,10 @@
 import Foundation
 import DICOMKit
 import DICOMCore
+import os.log
+
+/// Logger for import service diagnostics.
+private let logger = Logger(subsystem: "com.dicomstudio", category: "ImportService")
 
 /// Service for importing DICOM files into the local library.
 ///
@@ -33,16 +37,20 @@ public final class ImportService: Sendable {
         at url: URL,
         existingInstanceUIDs: Set<String> = []
     ) -> ImportResult {
-        // Gain sandbox access to the URL (required for drag-and-drop and
-        // file-picker selections in a sandboxed app).
+        // Try to gain sandbox access.  For direct file-picker URLs this
+        // acquires the security scope; for child URLs enumerated from an
+        // already-scoped parent directory it is a harmless no-op.
         let accessed = url.startAccessingSecurityScopedResource()
         defer { if accessed { url.stopAccessingSecurityScopedResource() } }
+        logger.info("importFile: \(url.lastPathComponent) — securityScope=\(accessed)")
 
-        // Read raw data for validation
+        // Read raw data once — reuse it for validation *and* parsing
+        // so we stay inside the security scope and avoid redundant I/O.
         let data: Data
         do {
             data = try Data(contentsOf: url)
         } catch {
+            logger.error("importFile: Cannot read \(url.lastPathComponent) — \(error.localizedDescription)")
             return ImportResult(
                 sourceURL: url,
                 validationIssues: [ValidationIssue(
@@ -52,24 +60,23 @@ public final class ImportService: Sendable {
                 )]
             )
         }
+        logger.debug("importFile: Read \(data.count) bytes from \(url.lastPathComponent)")
 
         // Run structural validation
         var allIssues = ImportValidation.validate(data: data)
 
         // If structural validation found errors, don't try to parse
         if ImportValidation.shouldReject(allIssues) {
+            logger.warning("importFile: Validation rejected \(url.lastPathComponent) — \(allIssues.map(\.message).joined(separator: "; "))")
             return ImportResult(sourceURL: url, validationIssues: allIssues)
         }
 
-        // Try to parse the DICOM file
-        let instance: InstanceModel
-        let study: StudyModel
-        let series: SeriesModel
+        // Parse the DICOM data **once** to produce all three models.
+        let parsed: DICOMParseResult
         do {
-            instance = try fileService.parseFile(at: url)
-            study = try fileService.extractStudyMetadata(from: url)
-            series = try fileService.extractSeriesMetadata(from: url)
+            parsed = try fileService.parseAllMetadata(data: data, url: url)
         } catch {
+            logger.error("importFile: Parse failed for \(url.lastPathComponent) — \(error.localizedDescription)")
             allIssues.append(ValidationIssue(
                 severity: .error,
                 message: "DICOM parse error: \(error.localizedDescription)",
@@ -77,6 +84,10 @@ public final class ImportService: Sendable {
             ))
             return ImportResult(sourceURL: url, validationIssues: allIssues)
         }
+
+        let instance = parsed.instance
+        let study    = parsed.study
+        let series   = parsed.series
 
         // Validate required tags
         let tagIssues = ImportValidation.validateRequiredTags(
@@ -100,6 +111,7 @@ public final class ImportService: Sendable {
             ))
         }
 
+        logger.info("importFile: OK \(url.lastPathComponent) — patient=\(study.patientName ?? "?"), modality=\(series.modality), duplicate=\(isDuplicate)")
         return ImportResult(
             sourceURL: url,
             instance: instance,
@@ -159,6 +171,17 @@ public final class ImportService: Sendable {
 
     /// Scans a directory for DICOM files (non-recursive by default).
     ///
+    /// Recognised files:
+    /// - `.dcm`, `.dicom`, `.dic` extensions
+    /// - Files with **no** extension (common on CD/DVD media)
+    /// - Files whose first 132 bytes contain the DICM magic (catches
+    ///   numeric-name files like `IM000001` produced by many PACS)
+    ///
+    /// > **Security note:** The caller is responsible for holding
+    /// > security-scoped resource access on `directoryURL` if the
+    /// > app is sandboxed.  `handleImportedURLs` keeps the parent
+    /// > scope alive for the full duration of the import.
+    ///
     /// - Parameters:
     ///   - directoryURL: The directory to scan.
     ///   - recursive: Whether to scan subdirectories.
@@ -167,10 +190,7 @@ public final class ImportService: Sendable {
         at directoryURL: URL,
         recursive: Bool = false
     ) -> [URL] {
-        // Gain sandbox access to the directory URL.
-        let accessed = directoryURL.startAccessingSecurityScopedResource()
-        defer { if accessed { directoryURL.stopAccessingSecurityScopedResource() } }
-
+        logger.info("scanDirectory: \(directoryURL.path) recursive=\(recursive)")
         let fm = FileManager.default
         var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles]
         if !recursive {
@@ -182,20 +202,36 @@ public final class ImportService: Sendable {
             includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
             options: options
         ) else {
+            logger.error("scanDirectory: FileManager.enumerator returned nil for \(directoryURL.path)")
             return []
         }
 
         var urls: [URL] = []
         for case let url as URL in enumerator {
-            let values = try? url.resourceValues(forKeys: [.isRegularFileKey])
-            if values?.isRegularFile == true {
-                let ext = url.pathExtension.lowercased()
-                // Include files with .dcm extension, no extension, or common DICOM extensions
-                if ext == "dcm" || ext == "dicom" || ext == "dic" || ext.isEmpty {
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values?.isRegularFile == true else { continue }
+
+            let ext = url.pathExtension.lowercased()
+
+            // Fast path: known DICOM extensions or no extension at all.
+            if ext == "dcm" || ext == "dicom" || ext == "dic" || ext.isEmpty {
+                urls.append(url)
+                continue
+            }
+
+            // Slow path: files with an unrecognised extension may still be
+            // DICOM (e.g. IM000001, CT.1, 0001).  Probe the first 132 bytes
+            // for the DICM magic signature.
+            if let fileSize = values?.fileSize, fileSize >= ImportValidation.minimumFileSize,
+               let handle = try? FileHandle(forReadingFrom: url) {
+                defer { try? handle.close() }
+                if let header = try? handle.read(upToCount: ImportValidation.minimumFileSize),
+                   ImportValidation.hasDICMMagic(header) {
                     urls.append(url)
                 }
             }
         }
+        logger.info("scanDirectory: Found \(urls.count) candidate files in \(directoryURL.lastPathComponent)")
         return urls
     }
 }

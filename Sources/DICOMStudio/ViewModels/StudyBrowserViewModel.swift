@@ -5,11 +5,16 @@
 
 import Foundation
 import Observation
+import os.log
+
+/// Logger for study browser ViewModel diagnostics.
+private let logger = Logger(subsystem: "com.dicomstudio", category: "StudyBrowser")
 
 /// ViewModel for the study browser view, managing display, sorting,
 /// filtering, and search across the DICOM library.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 @Observable
+@MainActor
 public final class StudyBrowserViewModel {
 
     /// The library model being browsed.
@@ -106,6 +111,7 @@ public final class StudyBrowserViewModel {
     ///
     /// - Parameter urls: File URLs to import.
     public func importFiles(from urls: [URL]) {
+        logger.info("importFiles: starting import of \(urls.count) file(s)")
         isImporting = true
         lastError = nil
         let existingUIDs = Set(library.instances.keys)
@@ -117,26 +123,54 @@ public final class StudyBrowserViewModel {
             self?.importProgress = progress
         }
 
-        // Add successful results to the library
-        for result in results where result.succeeded && !result.isDuplicate {
+        // Build up a local copy of the library and apply all changes
+        // at once.  This ensures SwiftUI sees a single @Observable
+        // mutation (the final assignment) instead of dozens of
+        // individual addStudy/addSeries/addInstance calls, which
+        // guarantees a clean UI refresh.
+        var updatedLibrary = library
+        var importedCount = 0
+        var updatedCount = 0
+        for result in results where result.succeeded {
             if let study = result.study {
-                library.addStudy(study)
+                updatedLibrary.addStudy(study)
             }
             if let series = result.series {
-                library.addSeries(series)
+                updatedLibrary.addSeries(series)
             }
             if let instance = result.instance {
-                library.addInstance(instance)
+                updatedLibrary.addInstance(instance)
+            }
+            if result.isDuplicate {
+                updatedCount += 1
+            } else {
+                importedCount += 1
             }
         }
 
+        // Single atomic assignment — triggers one @Observable change.
+        library = updatedLibrary
         isImporting = false
 
-        // Auto-save after import
-        do {
-            try libraryStorageService.save(library)
-        } catch {
-            lastError = "Failed to save library: \(error.localizedDescription)"
+        // Report failures so the user can see what went wrong.
+        let failedResults = results.filter { !$0.succeeded }
+        let duplicateCount = results.filter { $0.isDuplicate }.count
+        logger.info("importFiles: done — imported=\(importedCount), updated=\(updatedCount), failed=\(failedResults.count), duplicates=\(duplicateCount)")
+        if !failedResults.isEmpty {
+            let firstError = failedResults.first?.validationIssues
+                .first(where: { $0.severity == .error })?.message ?? "Unknown error"
+            lastError = "\(failedResults.count) of \(urls.count) files failed to import. \(firstError)"
+        } else if importedCount == 0 && updatedCount == 0 && duplicateCount == 0 && !urls.isEmpty {
+            lastError = "No valid DICOM files found in the selected location."
+        }
+
+        // Auto-save after import or update
+        if importedCount > 0 || updatedCount > 0 {
+            do {
+                try libraryStorageService.save(library)
+            } catch {
+                lastError = "Failed to save library: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -206,19 +240,43 @@ public final class StudyBrowserViewModel {
     /// Automatically detects DICOMDIR files and imports their referenced files,
     /// or directly imports the provided file URLs.
     ///
+    /// Acquires security-scoped resource access on every incoming URL so that
+    /// sandbox-protected locations (e.g. ~/Downloads) can be read, and keeps
+    /// parent-directory scopes alive through the entire import.
+    ///
     /// - Parameter urls: The selected file URLs.
     public func handleImportedURLs(_ urls: [URL]) {
+        logger.info("handleImportedURLs: received \(urls.count) URL(s)")
+        // Track security-scoped accesses so we can release them *after*
+        // all child-file imports complete.  Child URLs enumerated from a
+        // security-scoped directory inherit the parent's scope, so we must
+        // NOT release the parent scope until we're fully done.
+        var accessedURLs: [(url: URL, accessed: Bool)] = []
+        defer {
+            for entry in accessedURLs.reversed() where entry.accessed {
+                entry.url.stopAccessingSecurityScopedResource()
+            }
+        }
+
         var filesToImport: [URL] = []
 
         for url in urls {
+            // Gain sandbox access to each top-level URL *before* any I/O.
+            let accessed = url.startAccessingSecurityScopedResource()
+            accessedURLs.append((url: url, accessed: accessed))
+            logger.info("  URL: \(url.path) — securityScope=\(accessed)")
+
             if DICOMDIRParser.isDICOMDIR(url: url) {
-                // Scan directory for referenced files from DICOMDIR location
-                let dirURL = url.deletingLastPathComponent()
-                let scanned = importService.scanDirectory(at: dirURL, recursive: true)
+                logger.info("  Detected DICOMDIR — scanning parent directory recursively")
+                let mediaRoot = url.deletingLastPathComponent()
+                let scanned = importService.scanDirectory(at: mediaRoot, recursive: true)
                 filesToImport.append(contentsOf: scanned)
             } else {
-                let isDirectory = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
-                if isDirectory {
+                // Use URL-based resource values — never convert to .path first,
+                // as that can lose the security-scoped bookmark.
+                let isDir = (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? false
+                logger.info("  isDirectory=\(isDir)")
+                if isDir {
                     let scanned = importService.scanDirectory(at: url, recursive: true)
                     filesToImport.append(contentsOf: scanned)
                 } else {
@@ -226,6 +284,8 @@ public final class StudyBrowserViewModel {
                 }
             }
         }
+
+        logger.info("handleImportedURLs: \(filesToImport.count) total files to import")
 
         if !filesToImport.isEmpty {
             importFiles(from: filesToImport)

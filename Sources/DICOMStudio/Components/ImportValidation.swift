@@ -23,40 +23,50 @@ public enum ImportValidation: Sendable {
     /// Offset where the DICM magic bytes are located.
     public static let dicmMagicOffset: Int = 128
 
+    /// Minimum data for any DICOM content (a single minimal element).
+    public static let absoluteMinimumFileSize: Int = 8
+
     /// Validates raw file data for DICOM compliance.
+    ///
+    /// The validation is intentionally lenient: missing Part 10
+    /// preamble/magic is reported as a **warning**, not an error,
+    /// because legacy DICOM files are still parseable via forced
+    /// parsing.  Only truly too-small files are rejected outright.
     ///
     /// - Parameter data: The raw file data.
     /// - Returns: Array of validation issues found.
     public static func validate(data: Data) -> [ValidationIssue] {
         var issues: [ValidationIssue] = []
 
-        // Check minimum file size
-        if data.count < minimumFileSize {
+        // Reject files that are far too small to contain any DICOM data.
+        if data.count < absoluteMinimumFileSize {
             issues.append(ValidationIssue(
                 severity: .error,
-                message: "File is too small to be a valid DICOM file (\(data.count) bytes, minimum \(minimumFileSize))",
+                message: "File is too small to be a valid DICOM file (\(data.count) bytes)",
                 rule: .fileSize
             ))
             return issues
         }
 
-        // Check preamble (first 128 bytes should exist, typically zeros)
-        let preamble = data.prefix(dicmMagicOffset)
-        if preamble.count < dicmMagicOffset {
+        // Files smaller than 132 bytes cannot be standard Part 10 but
+        // may still be legacy DICOM — flag as warning, not error.
+        if data.count < minimumFileSize {
             issues.append(ValidationIssue(
-                severity: .error,
-                message: "File is missing the 128-byte DICOM preamble",
-                rule: .preamble
+                severity: .warning,
+                message: "File is smaller than standard Part 10 minimum (\(data.count) bytes, expected ≥\(minimumFileSize))",
+                rule: .fileSize
             ))
+            return issues
         }
 
-        // Check DICM magic bytes
+        // Check DICM magic bytes — missing magic is a warning because
+        // force-parsing can still succeed for legacy files.
         let magicRange = dicmMagicOffset..<(dicmMagicOffset + 4)
         let magicBytes = Array(data[magicRange])
         if magicBytes != dicmMagicBytes {
             issues.append(ValidationIssue(
-                severity: .error,
-                message: "Missing DICM magic bytes at offset 128",
+                severity: .warning,
+                message: "Missing DICM magic bytes at offset 128 (may be a legacy DICOM file)",
                 rule: .dicmMagic
             ))
         }

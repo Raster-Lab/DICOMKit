@@ -168,18 +168,32 @@ struct DICOMParser {
                 break
             }
             
-            // Parse this element
+            // Parse this element.  Save the offset before attempting so
+            // we can try to skip over a problematic element on failure
+            // rather than silently losing every element that follows.
+            let savedOffset = offset
             let element: DataElement
             if isExplicitVR {
-                guard let parsed = try? parseExplicitVRElement(byteOrder: byteOrder) else {
+                do {
+                    element = try parseExplicitVRElement(byteOrder: byteOrder)
+                } catch {
+                    // Restore offset and try to skip the element
+                    offset = savedOffset
+                    if trySkipElement(isExplicitVR: true, byteOrder: byteOrder) {
+                        continue
+                    }
                     break
                 }
-                element = parsed
             } else {
-                guard let parsed = try? parseImplicitVRElement(byteOrder: byteOrder) else {
+                do {
+                    element = try parseImplicitVRElement(byteOrder: byteOrder)
+                } catch {
+                    offset = savedOffset
+                    if trySkipElement(isExplicitVR: false, byteOrder: byteOrder) {
+                        continue
+                    }
                     break
                 }
-                element = parsed
             }
             
             elements.append(element)
@@ -444,6 +458,69 @@ struct DICOMParser {
         }
         return Tag(group: groupNumber, element: elementNumber)
     }
+
+    // MARK: - Error Recovery
+
+    /// Attempts to skip over a problematic data element by reading its tag
+    /// and length, then advancing past its value bytes.
+    ///
+    /// This provides resilience when a single element fails to parse —
+    /// the parser can skip it and continue reading subsequent elements
+    /// instead of losing all remaining data.
+    ///
+    /// - Parameters:
+    ///   - isExplicitVR: Whether the element uses explicit VR encoding.
+    ///   - byteOrder: Byte order for reading multi-byte values.
+    /// - Returns: `true` if the skip succeeded and parsing can continue.
+    private mutating func trySkipElement(isExplicitVR: Bool, byteOrder: ByteOrder) -> Bool {
+        // Need at least tag (4 bytes) + length field
+        guard offset + 8 <= data.count else { return false }
+
+        // Skip the tag (4 bytes)
+        offset += 4
+
+        if isExplicitVR {
+            // Read VR (2 bytes)
+            guard offset + 2 <= data.count else { return false }
+            let vrByte0 = data[offset]
+            let vrByte1 = data[offset + 1]
+            offset += 2
+
+            let vr: VR
+            if let vrString = String(bytes: [vrByte0, vrByte1], encoding: .ascii),
+               let parsedVR = VR(rawValue: vrString) {
+                vr = parsedVR
+            } else {
+                vr = .UN
+            }
+
+            if vr.uses32BitLength {
+                // Skip 2 reserved bytes + read 4-byte length
+                guard offset + 6 <= data.count else { return false }
+                offset += 2
+                guard let length = readUInt32(at: offset, byteOrder: byteOrder) else { return false }
+                offset += 4
+                if length == 0xFFFFFFFF { return false } // Can't skip undefined length
+                guard offset + Int(length) <= data.count else { return false }
+                offset += Int(length)
+            } else {
+                // Read 2-byte length
+                guard let length = readUInt16(at: offset, byteOrder: byteOrder) else { return false }
+                offset += 2
+                guard offset + Int(length) <= data.count else { return false }
+                offset += Int(length)
+            }
+        } else {
+            // Implicit VR: 4-byte length
+            guard let length = readUInt32(at: offset, byteOrder: byteOrder) else { return false }
+            offset += 4
+            if length == 0xFFFFFFFF { return false } // Can't skip undefined length
+            guard offset + Int(length) <= data.count else { return false }
+            offset += Int(length)
+        }
+
+        return true
+    }
     
     // MARK: - Byte Order Helpers
     
@@ -526,9 +603,15 @@ struct DICOMParser {
             return try parseSequenceElement(tag: tag, vr: vr, valueLength: valueLength, isExplicitVR: false, byteOrder: byteOrder)
         }
         
-        // Handle undefined length for non-sequence elements - skip to delimiter
+        // Handle undefined length for non-sequence elements.
+        // Per PS3.5 Annex E, elements with undefined length should be
+        // treated as sequences — commonly private sequence data whose
+        // actual VR (SQ) is not in the reader's data dictionary.
         if valueLength == 0xFFFFFFFF {
-            throw DICOMError.parsingFailed("Undefined length for non-sequence elements not supported")
+            return try parseSequenceElement(
+                tag: tag, vr: vr, valueLength: valueLength,
+                isExplicitVR: false, byteOrder: byteOrder
+            )
         }
         
         guard offset + Int(valueLength) <= data.count else {
@@ -603,9 +686,16 @@ struct DICOMParser {
             return try parseSequenceElement(tag: tag, vr: vr, valueLength: valueLength, isExplicitVR: true, byteOrder: byteOrder)
         }
         
-        // Handle undefined length for non-sequence elements
+        // Handle undefined length for non-sequence elements.
+        // Per PS3.5 Annex E, elements with VR = UN and undefined
+        // length should be treated as sequences.  This commonly
+        // occurs for private sequence data whose actual VR (SQ) is
+        // not in the reader's data dictionary.
         if valueLength == 0xFFFFFFFF {
-            throw DICOMError.parsingFailed("Undefined length for non-sequence elements not supported")
+            return try parseSequenceElement(
+                tag: tag, vr: vr, valueLength: valueLength,
+                isExplicitVR: true, byteOrder: byteOrder
+            )
         }
         
         guard offset + Int(valueLength) <= data.count else {

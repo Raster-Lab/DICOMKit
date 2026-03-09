@@ -24,9 +24,9 @@ public struct StudyBrowserView: View {
             Divider()
 
             // Content
-            if viewModel.library.studyCount == 0 {
+            if viewModel.library.studyCount == 0 && !viewModel.isImporting {
                 emptyLibraryView
-            } else if viewModel.displayStudies.isEmpty {
+            } else if viewModel.displayStudies.isEmpty && !viewModel.isImporting {
                 noResultsView
             } else {
                 studyList
@@ -35,6 +35,27 @@ public struct StudyBrowserView: View {
             // Import progress
             if viewModel.isImporting, let progress = viewModel.importProgress {
                 importProgressBar(progress: progress)
+            }
+
+            // Error banner — shown when the last operation failed.
+            if let error = viewModel.lastError {
+                HStack {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.yellow)
+                    Text(error)
+                        .font(.caption)
+                        .lineLimit(2)
+                    Spacer()
+                    Button("Dismiss") {
+                        viewModel.lastError = nil
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                }
+                .padding(8)
+                .background(.red.opacity(0.1))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Import error: \(error)")
             }
         }
         .fileImporter(

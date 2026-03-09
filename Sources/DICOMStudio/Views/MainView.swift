@@ -53,11 +53,8 @@ public struct MainView: View {
     private func detailView(for destination: NavigationDestination) -> some View {
         switch destination {
         case .library:
-            StudyBrowserView(viewModel: StudyBrowserViewModel(
-                library: viewModel.library,
-                importService: ImportService(),
-                libraryStorageService: LibraryStorageService()
-            ))
+            StudyBrowserView(viewModel: viewModel.studyBrowserViewModel)
+                .id(NavigationDestination.library)
         case .viewer:
             ImageViewerView(viewModel: ImageViewerViewModel())
         case .networking:
