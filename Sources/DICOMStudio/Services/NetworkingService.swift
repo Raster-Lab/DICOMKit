@@ -66,9 +66,23 @@ public final class NetworkingService: @unchecked Sendable {
 
     private var _auditLog: [AuditLogEntry] = []
 
+    // MARK: - Persistence
+
+    private let profileStorage: ServerProfileStorageService?
+
     // MARK: - Init
 
-    public init() {}
+    public init(profileStorage: ServerProfileStorageService? = nil) {
+        self.profileStorage = profileStorage
+        if let saved = profileStorage?.load(), !saved.isEmpty {
+            _serverProfiles = saved
+        }
+    }
+
+    /// Persists current server profiles to disk.
+    private func _persistProfiles() {
+        try? profileStorage?.save(_serverProfiles)
+    }
 
     // MARK: - Server Profiles
 
@@ -86,6 +100,7 @@ public final class NetworkingService: @unchecked Sendable {
                 }
             }
             _serverProfiles.append(profile)
+            _persistProfiles()
         }
     }
 
@@ -99,6 +114,7 @@ public final class NetworkingService: @unchecked Sendable {
                 }
             }
             _serverProfiles[idx] = profile
+            _persistProfiles()
         }
     }
 
@@ -106,6 +122,7 @@ public final class NetworkingService: @unchecked Sendable {
     public func removeServerProfile(id: UUID) {
         lock.withLock {
             _serverProfiles.removeAll { $0.id == id }
+            _persistProfiles()
         }
     }
 

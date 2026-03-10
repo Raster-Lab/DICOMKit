@@ -5,6 +5,7 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Main DICOM image viewer view.
 ///
@@ -52,6 +53,14 @@ public struct ImageViewerView: View {
                     Text("Open a DICOM file to view it here")
                         .font(.caption)
                         .foregroundStyle(.gray.opacity(0.7))
+                    Button {
+                        viewModel.isFileImporterPresented = true
+                    } label: {
+                        Label("Open DICOM File", systemImage: "folder")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .padding(.top, 8)
+                    .accessibilityHint("Opens a file picker to select a DICOM file")
                 }
             }
         }
@@ -75,6 +84,22 @@ public struct ImageViewerView: View {
         }
         .toolbar {
             viewerToolbar
+        }
+        .fileImporter(
+            isPresented: $viewModel.isFileImporterPresented,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    let accessing = url.startAccessingSecurityScopedResource()
+                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                    viewModel.loadFile(at: url.path)
+                }
+            case .failure(let error):
+                viewModel.errorMessage = "Failed to open file: \(error.localizedDescription)"
+            }
         }
     }
 
@@ -152,6 +177,16 @@ public struct ImageViewerView: View {
     @ToolbarContentBuilder
     private var viewerToolbar: some ToolbarContent {
         ToolbarItemGroup {
+            Button {
+                viewModel.isFileImporterPresented = true
+            } label: {
+                Image(systemName: "folder")
+            }
+            .accessibilityLabel("Open DICOM file")
+            .help("Open a DICOM file (O)")
+
+            Divider()
+
             Button {
                 viewModel.zoomIn()
             } label: {

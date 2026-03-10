@@ -58,7 +58,7 @@ public enum NetworkingTab: String, Sendable, Equatable, Hashable, CaseIterable {
 
 /// TLS mode for DICOM connections.
 /// Reference: DICOM PS3.15 Annex B - Secure Transport Connection Profiles
-public enum TLSMode: String, Sendable, Equatable, Hashable, CaseIterable {
+public enum TLSMode: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
     case none  = "NONE"
     case tls12 = "TLS_1_2"
     case tls13 = "TLS_1_3"
@@ -84,7 +84,7 @@ public enum TLSMode: String, Sendable, Equatable, Hashable, CaseIterable {
 // MARK: - Server Connection Status
 
 /// Connection status of a DICOM server.
-public enum ServerConnectionStatus: String, Sendable, Equatable, Hashable {
+public enum ServerConnectionStatus: String, Sendable, Equatable, Hashable, Codable {
     case unknown   = "UNKNOWN"
     case testing   = "TESTING"
     case online    = "ONLINE"
@@ -118,7 +118,7 @@ public enum ServerConnectionStatus: String, Sendable, Equatable, Hashable {
 
 /// A DICOM server configuration profile.
 /// Reference: DICOM PS3.8 Section 9 - AE Title
-public struct PACSServerProfile: Sendable, Identifiable, Equatable, Hashable {
+public struct PACSServerProfile: Sendable, Identifiable, Equatable, Hashable, Codable {
     /// Unique profile identifier.
     public let id: UUID
     /// Human-readable profile name.

@@ -662,7 +662,8 @@ let package = Package(
             dependencies: [
                 "DICOMKit",
                 "DICOMCore",
-                "DICOMDictionary"
+                "DICOMDictionary",
+                "DICOMNetwork"
             ],
             path: "Sources/DICOMStudio",
             exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]

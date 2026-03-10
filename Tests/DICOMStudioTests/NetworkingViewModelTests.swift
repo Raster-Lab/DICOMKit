@@ -6,6 +6,7 @@ import Testing
 import Foundation
 
 @Suite("Networking ViewModel Tests")
+@MainActor
 struct NetworkingViewModelTests {
 
     // MARK: - Navigation
@@ -84,50 +85,51 @@ struct NetworkingViewModelTests {
 
     // MARK: - C-ECHO
 
-    @Test("performEcho appends echo history")
+    @Test("performEcho records result for unreachable server")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testPerformEcho() {
+    func testPerformEcho() async {
         let vm = NetworkingViewModel()
-        let profile = PACSServerProfile(name: "PACS", host: "h",
+        let profile = PACSServerProfile(name: "PACS", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
-        vm.performEcho(profileID: profile.id, latencyMs: 20, success: true)
+        await vm.performEcho(profileID: profile.id)
         #expect(vm.echoHistory.count == 1)
-        #expect(vm.echoHistory.first?.success == true)
+        // Unreachable host should fail
+        #expect(vm.echoHistory.first?.success == false)
     }
 
     @Test("performEcho failure updates server status to error")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testPerformEchoFailure() {
+    func testPerformEchoFailure() async {
         let vm = NetworkingViewModel()
-        let profile = PACSServerProfile(name: "PACS", host: "h",
+        let profile = PACSServerProfile(name: "PACS", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
-        vm.performEcho(profileID: profile.id, success: false, errorMessage: "Refused")
+        await vm.performEcho(profileID: profile.id)
         #expect(vm.serverProfiles.first?.status == .error)
     }
 
     @Test("clearEchoHistory empties echoHistory")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testClearEchoHistory() {
+    func testClearEchoHistory() async {
         let vm = NetworkingViewModel()
-        let profile = PACSServerProfile(name: "P", host: "h",
+        let profile = PACSServerProfile(name: "P", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
-        vm.performEcho(profileID: profile.id, success: true)
+        await vm.performEcho(profileID: profile.id)
         vm.clearEchoHistory()
         #expect(vm.echoHistory.isEmpty)
     }
 
     @Test("performBatchEcho runs echo for each server")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testPerformBatchEcho() {
+    func testPerformBatchEcho() async {
         let vm = NetworkingViewModel()
-        let p1 = PACSServerProfile(name: "P1", host: "h1", remoteAETitle: "A1", localAETitle: "DS")
-        let p2 = PACSServerProfile(name: "P2", host: "h2", remoteAETitle: "A2", localAETitle: "DS")
+        let p1 = PACSServerProfile(name: "P1", host: "192.0.2.1", remoteAETitle: "A1", localAETitle: "DS")
+        let p2 = PACSServerProfile(name: "P2", host: "192.0.2.2", remoteAETitle: "A2", localAETitle: "DS")
         vm.addServerProfile(p1)
         vm.addServerProfile(p2)
-        vm.performBatchEcho()
+        await vm.performBatchEcho()
         #expect(vm.echoHistory.count == 2)
         #expect(vm.isBatchEchoInProgress == false)
     }
@@ -424,24 +426,24 @@ struct NetworkingViewModelTests {
 
     @Test("filteredAuditLog returns all when searchQuery is empty")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testFilteredAuditLogEmpty() {
+    func testFilteredAuditLogEmpty() async {
         let vm = NetworkingViewModel()
-        let profile = PACSServerProfile(name: "P", host: "h",
+        let profile = PACSServerProfile(name: "P", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
-        vm.performEcho(profileID: profile.id, success: true)
+        await vm.performEcho(profileID: profile.id)
         vm.auditLogSearchQuery = ""
         #expect(vm.filteredAuditLog.count == vm.auditLog.count)
     }
 
     @Test("filteredAuditLog filters by search query")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testFilteredAuditLogSearch() {
+    func testFilteredAuditLogSearch() async {
         let vm = NetworkingViewModel()
-        let profile = PACSServerProfile(name: "MY_PACS", host: "h",
+        let profile = PACSServerProfile(name: "MY_PACS", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
-        vm.performEcho(profileID: profile.id, success: true)
+        await vm.performEcho(profileID: profile.id)
         vm.auditLogSearchQuery = "echo"
         #expect(!vm.filteredAuditLog.isEmpty)
     }
@@ -456,12 +458,12 @@ struct NetworkingViewModelTests {
 
     @Test("clearAuditLog empties auditLog")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testClearAuditLog() {
+    func testClearAuditLog() async {
         let vm = NetworkingViewModel()
-        let profile = PACSServerProfile(name: "P", host: "h",
+        let profile = PACSServerProfile(name: "P", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
-        vm.performEcho(profileID: profile.id, success: true)
+        await vm.performEcho(profileID: profile.id)
         vm.clearAuditLog()
         #expect(vm.auditLog.isEmpty)
     }

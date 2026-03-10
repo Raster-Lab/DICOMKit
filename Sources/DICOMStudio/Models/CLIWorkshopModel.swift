@@ -138,6 +138,30 @@ public enum CLIConnectionTestStatus: String, Sendable, Equatable, Hashable, Case
 
 // MARK: - 16.2 Tool Definitions
 
+/// Grouping for network operation tools: DIMSE services vs DICOMweb.
+public enum NetworkToolGroup: String, Sendable, Equatable, Hashable, CaseIterable, Identifiable {
+    case dimse    = "DIMSE"
+    case dicomweb = "DICOMWEB"
+
+    public var id: String { rawValue }
+
+    /// Human-readable section header.
+    public var displayName: String {
+        switch self {
+        case .dimse:    return "DIMSE Services"
+        case .dicomweb: return "DICOMweb"
+        }
+    }
+
+    /// SF Symbol for this group.
+    public var sfSymbol: String {
+        switch self {
+        case .dimse:    return "server.rack"
+        case .dicomweb: return "globe"
+        }
+    }
+}
+
 /// A CLI tool definition with metadata.
 public struct CLIToolDefinition: Sendable, Identifiable, Hashable {
     public let id: String
@@ -149,6 +173,7 @@ public struct CLIToolDefinition: Sendable, Identifiable, Hashable {
     public var dicomStandardRef: String
     public var hasSubcommands: Bool
     public var requiresNetwork: Bool
+    public var networkToolGroup: NetworkToolGroup?
 
     public init(
         id: String,
@@ -159,7 +184,8 @@ public struct CLIToolDefinition: Sendable, Identifiable, Hashable {
         briefDescription: String,
         dicomStandardRef: String = "",
         hasSubcommands: Bool = false,
-        requiresNetwork: Bool = false
+        requiresNetwork: Bool = false,
+        networkToolGroup: NetworkToolGroup? = nil
     ) {
         self.id = id
         self.name = name
@@ -170,6 +196,7 @@ public struct CLIToolDefinition: Sendable, Identifiable, Hashable {
         self.dicomStandardRef = dicomStandardRef
         self.hasSubcommands = hasSubcommands
         self.requiresNetwork = requiresNetwork
+        self.networkToolGroup = networkToolGroup
     }
 }
 

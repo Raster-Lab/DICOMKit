@@ -155,7 +155,7 @@ public struct NetworkingView: View {
                             Label("Edit", systemImage: "pencil")
                         }
                         Button {
-                            viewModel.performEcho(profileID: profile.id)
+                            Task { await viewModel.performEcho(profileID: profile.id) }
                         } label: {
                             Label("Test Connection", systemImage: "network")
                         }
@@ -185,7 +185,7 @@ public struct NetworkingView: View {
                         .frame(width: 100)
                 }
                 Button("Batch Echo All") {
-                    viewModel.performBatchEcho()
+                    Task { await viewModel.performBatchEcho() }
                 }
                 .disabled(viewModel.serverProfiles.isEmpty || viewModel.isBatchEchoInProgress)
                 .accessibilityLabel("Perform batch echo on all servers")

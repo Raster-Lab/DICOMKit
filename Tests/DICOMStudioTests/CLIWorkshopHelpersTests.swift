@@ -172,6 +172,45 @@ struct CLIWorkshopHelpersTests {
         }
     }
 
+    @Test("all network tools have a networkToolGroup assigned")
+    func testNetworkToolsHaveGroup() {
+        let networkTools = ToolCatalogHelpers.networkOperationsTools()
+        for tool in networkTools {
+            #expect(tool.networkToolGroup != nil, "Tool \(tool.id) should have a networkToolGroup")
+        }
+    }
+
+    @Test("groupedNetworkOperationsTools returns DIMSE and DICOMweb sections")
+    func testGroupedNetworkOperationsTools() {
+        let grouped = ToolCatalogHelpers.groupedNetworkOperationsTools()
+        #expect(grouped.count == 2)
+        #expect(grouped[0].group == .dimse)
+        #expect(grouped[1].group == .dicomweb)
+    }
+
+    @Test("DIMSE group contains 7 tools")
+    func testDIMSEGroupCount() {
+        let grouped = ToolCatalogHelpers.groupedNetworkOperationsTools()
+        let dimse = grouped.first { $0.group == .dimse }
+        #expect(dimse != nil)
+        #expect(dimse?.tools.count == 7)
+    }
+
+    @Test("DICOMweb group contains 1 tool")
+    func testDICOMwebGroupCount() {
+        let grouped = ToolCatalogHelpers.groupedNetworkOperationsTools()
+        let web = grouped.first { $0.group == .dicomweb }
+        #expect(web != nil)
+        #expect(web?.tools.count == 1)
+        #expect(web?.tools.first?.id == "dicom-wado")
+    }
+
+    @Test("NetworkToolGroup has correct display names")
+    func testNetworkToolGroupDisplayNames() {
+        #expect(NetworkToolGroup.dimse.displayName == "DIMSE Services")
+        #expect(NetworkToolGroup.dicomweb.displayName == "DICOMweb")
+    }
+
     @Test("tools with subcommands are identified correctly")
     func testToolsWithSubcommands() {
         let allTools = ToolCatalogHelpers.allTools()

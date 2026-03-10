@@ -8,6 +8,7 @@ import Testing
 import Foundation
 
 @Suite("CLI Workshop ViewModel Tests")
+@MainActor
 struct CLIWorkshopViewModelTests {
 
     // MARK: - Initialization

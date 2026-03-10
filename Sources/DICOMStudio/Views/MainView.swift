@@ -56,15 +56,18 @@ public struct MainView: View {
             StudyBrowserView(viewModel: viewModel.studyBrowserViewModel)
                 .id(NavigationDestination.library)
         case .viewer:
-            ImageViewerView(viewModel: ImageViewerViewModel())
+            ImageViewerView(viewModel: viewModel.imageViewerViewModel)
         case .networking:
-            NetworkingView(viewModel: NetworkingViewModel())
+            NetworkingView(viewModel: viewModel.networkingViewModel)
         case .reporting:
             StructuredReportView(viewModel: StructuredReportViewModel())
         case .tools:
             DataExchangeView(viewModel: DataExchangeViewModel())
         case .cliWorkshop:
-            CLIWorkshopView(viewModel: CLIWorkshopViewModel())
+            CLIWorkshopView(viewModel: viewModel.cliWorkshopViewModel)
+                .onAppear {
+                    viewModel.cliWorkshopViewModel.savedServerProfiles = viewModel.networkingViewModel.serverProfiles
+                }
         case .security:
             SecurityView(viewModel: SecurityViewModel())
         case .performanceTools:

@@ -193,6 +193,27 @@ public struct StudyBrowserView: View {
                 instanceCount: viewModel.library.instancesForSeries(study.studyInstanceUID).count
             )
             .tag(study.studyInstanceUID)
+            .contextMenu {
+                Button {
+                    viewModel.openStudyInViewer(study.studyInstanceUID)
+                } label: {
+                    Label("Open in Viewer", systemImage: "photo")
+                }
+                Divider()
+                Button {
+                    viewModel.toggleFavorite(study.studyInstanceUID)
+                } label: {
+                    Label(
+                        study.isFavorite ? "Unfavorite" : "Favorite",
+                        systemImage: study.isFavorite ? "star.slash" : "star.fill"
+                    )
+                }
+                Button(role: .destructive) {
+                    viewModel.removeStudy(study.studyInstanceUID)
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                 Button(role: .destructive) {
                     viewModel.removeStudy(study.studyInstanceUID)
