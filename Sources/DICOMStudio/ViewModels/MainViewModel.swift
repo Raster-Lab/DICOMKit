@@ -60,6 +60,15 @@ public final class MainViewModel {
     /// Persistent study browser ViewModel — survives tab switches.
     public var studyBrowserViewModel: StudyBrowserViewModel
 
+    /// Persistent image viewer ViewModel — survives tab switches.
+    public var imageViewerViewModel: ImageViewerViewModel
+
+    /// Persistent networking ViewModel — survives tab switches.
+    public var networkingViewModel: NetworkingViewModel
+
+    /// Persistent CLI Workshop ViewModel — survives tab switches.
+    public var cliWorkshopViewModel: CLIWorkshopViewModel
+
     /// Creates the main ViewModel with dependency-injected services.
     public init(
         settingsService: SettingsService = SettingsService(),
@@ -94,11 +103,41 @@ public final class MainViewModel {
             importService: importService,
             libraryStorageService: libraryStorageService
         )
+
+        self.imageViewerViewModel = ImageViewerViewModel()
+
+        let profileStorage = ServerProfileStorageService(storageService: storageService)
+        let networkingService = NetworkingService(profileStorage: profileStorage)
+        self.networkingViewModel = NetworkingViewModel(service: networkingService)
+
+        self.cliWorkshopViewModel = CLIWorkshopViewModel()
+        // Share saved server profiles so CLI Workshop can pick from them.
+        self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
+
+        // Wire the study browser's "open in viewer" callback.
+        self.studyBrowserViewModel.onOpenInViewer = { [weak self] filePath in
+            guard let self else { return }
+            self.imageViewerViewModel.loadFile(at: filePath)
+            self.selectedDestination = .viewer
+        }
     }
 
     /// Navigates to the specified destination.
     public func navigate(to destination: NavigationDestination) {
         selectedDestination = destination
+    }
+
+    /// Opens the first displayable instance of the given study in the viewer.
+    public func openStudyInViewer(_ studyUID: String) {
+        let seriesList = library.seriesForStudy(studyUID)
+        for series in seriesList {
+            let instances = library.instancesForSeries(series.seriesInstanceUID)
+            if let first = instances.first {
+                imageViewerViewModel.loadFile(at: first.filePath)
+                selectedDestination = .viewer
+                return
+            }
+        }
     }
 
     /// Toggles the inspector panel.

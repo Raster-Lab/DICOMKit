@@ -6,6 +6,7 @@
 
 import Foundation
 import Observation
+import DICOMNetwork
 
 /// ViewModel for the DICOM Networking Hub, managing state for all nine networking
 /// sections: server configuration, C-ECHO, C-FIND, C-MOVE/GET, C-STORE, MWL,
@@ -13,6 +14,7 @@ import Observation
 ///
 /// Requires macOS 14+ / iOS 17+ for the `@Observable` macro.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+@MainActor
 @Observable
 public final class NetworkingViewModel {
 
@@ -189,34 +191,48 @@ public final class NetworkingViewModel {
 
     // MARK: - 9.2 C-ECHO Operations
 
-    /// Simulates a C-ECHO operation against the given server profile.
-    ///
-    /// In production this would use DICOMClient to perform a real echo;
-    /// here we create a result representing the outcome.
-    public func performEcho(profileID: UUID, latencyMs: Double? = nil, success: Bool = true, errorMessage: String? = nil) {
+    /// Performs a real C-ECHO verification against the given server profile
+    /// using DICOMNetwork's VerificationService.
+    public func performEcho(profileID: UUID) async {
         guard let profile = serverProfiles.first(where: { $0.id == profileID }) else { return }
         service.setServerStatus(profileID: profileID, status: .testing)
         serverProfiles = service.getServerProfiles()
 
-        let result = EchoResult(
-            serverProfileID: profileID,
-            serverName: profile.name,
-            success: success,
-            latencyMs: success ? (latencyMs ?? 15.0) : nil,
-            errorMessage: success ? nil : (errorMessage ?? "Connection refused")
-        )
+        let result: EchoResult
+        do {
+            let verificationResult = try await DICOMVerificationService.echo(
+                host: profile.host,
+                port: profile.port,
+                callingAE: profile.localAETitle,
+                calledAE: profile.remoteAETitle,
+                timeout: profile.timeoutSeconds
+            )
+            result = EchoResult(
+                serverProfileID: profileID,
+                serverName: profile.name,
+                success: verificationResult.success,
+                latencyMs: verificationResult.roundTripTime * 1000
+            )
+        } catch {
+            result = EchoResult(
+                serverProfileID: profileID,
+                serverName: profile.name,
+                success: false,
+                errorMessage: error.localizedDescription
+            )
+        }
         service.recordEchoResult(result)
         echoHistory  = service.getEchoHistory()
         serverProfiles = service.getServerProfiles()
         auditLog     = service.getAuditLog()
     }
 
-    /// Performs a simulated batch echo to all configured servers.
-    public func performBatchEcho() {
+    /// Performs a batch echo to all configured servers.
+    public func performBatchEcho() async {
         isBatchEchoInProgress = true
         batchEchoProgress = 0
         for profile in serverProfiles {
-            performEcho(profileID: profile.id)
+            await performEcho(profileID: profile.id)
             batchEchoProgress += 1
         }
         isBatchEchoInProgress = false

@@ -56,6 +56,10 @@ public final class StudyBrowserViewModel {
     /// Whether the file importer dialog is presented.
     public var isFileImporterPresented: Bool
 
+    /// Callback invoked when the user requests to open a file in the viewer.
+    /// The parameter is the file path of the instance to view.
+    public var onOpenInViewer: ((String) -> Void)?
+
     /// Creates a study browser ViewModel.
     public init(
         library: LibraryModel = LibraryModel(),
@@ -75,6 +79,7 @@ public final class StudyBrowserViewModel {
         self.isImporting = false
         self.lastError = nil
         self.isFileImporterPresented = false
+        self.onOpenInViewer = nil
     }
 
     /// Returns the filtered and sorted studies for display.
@@ -233,6 +238,20 @@ public final class StudyBrowserViewModel {
     /// Presents the file importer dialog.
     public func showFileImporter() {
         isFileImporterPresented = true
+    }
+
+    /// Opens the selected study's first instance in the image viewer.
+    ///
+    /// - Parameter studyUID: The Study Instance UID to open.
+    public func openStudyInViewer(_ studyUID: String) {
+        let seriesList = library.seriesForStudy(studyUID)
+        for series in seriesList {
+            let instances = library.instancesForSeries(series.seriesInstanceUID)
+            if let first = instances.first {
+                onOpenInViewer?(first.filePath)
+                return
+            }
+        }
     }
 
     /// Handles file URLs selected via the file importer or drag-and-drop.

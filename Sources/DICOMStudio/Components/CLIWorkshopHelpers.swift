@@ -171,36 +171,53 @@ public enum ToolCatalogHelpers: Sendable {
             CLIToolDefinition(id: "dicom-echo", name: "dicom-echo", displayName: "DICOM Echo",
                               category: .networkOperations, sfSymbol: "wave.3.right",
                               briefDescription: "Verify DICOM network connectivity with C-ECHO",
-                              dicomStandardRef: "PS3.7", requiresNetwork: true),
+                              dicomStandardRef: "PS3.7", requiresNetwork: true,
+                              networkToolGroup: .dimse),
             CLIToolDefinition(id: "dicom-query", name: "dicom-query", displayName: "DICOM Query",
                               category: .networkOperations, sfSymbol: "magnifyingglass",
                               briefDescription: "Query DICOM servers with C-FIND",
-                              dicomStandardRef: "PS3.4", requiresNetwork: true),
+                              dicomStandardRef: "PS3.4", requiresNetwork: true,
+                              networkToolGroup: .dimse),
             CLIToolDefinition(id: "dicom-send", name: "dicom-send", displayName: "DICOM Send",
                               category: .networkOperations, sfSymbol: "arrow.up.circle",
                               briefDescription: "Send DICOM files to servers with C-STORE",
-                              dicomStandardRef: "PS3.4", requiresNetwork: true),
+                              dicomStandardRef: "PS3.4", requiresNetwork: true,
+                              networkToolGroup: .dimse),
             CLIToolDefinition(id: "dicom-retrieve", name: "dicom-retrieve", displayName: "DICOM Retrieve",
                               category: .networkOperations, sfSymbol: "arrow.down.circle",
                               briefDescription: "Retrieve DICOM files from PACS with C-MOVE/C-GET",
-                              dicomStandardRef: "PS3.4", requiresNetwork: true),
+                              dicomStandardRef: "PS3.4", requiresNetwork: true,
+                              networkToolGroup: .dimse),
             CLIToolDefinition(id: "dicom-qr", name: "dicom-qr", displayName: "Query-Retrieve",
                               category: .networkOperations, sfSymbol: "arrow.up.arrow.down.circle",
                               briefDescription: "Combined query-retrieve workflow",
-                              dicomStandardRef: "PS3.4", requiresNetwork: true),
-            CLIToolDefinition(id: "dicom-wado", name: "dicom-wado", displayName: "DICOMweb",
-                              category: .networkOperations, sfSymbol: "globe",
-                              briefDescription: "DICOMweb WADO-RS, QIDO-RS, STOW-RS, and UPS-RS",
-                              dicomStandardRef: "PS3.18", hasSubcommands: true, requiresNetwork: true),
+                              dicomStandardRef: "PS3.4", requiresNetwork: true,
+                              networkToolGroup: .dimse),
             CLIToolDefinition(id: "dicom-mwl", name: "dicom-mwl", displayName: "Modality Worklist",
                               category: .networkOperations, sfSymbol: "list.clipboard",
                               briefDescription: "Query Modality Worklist for scheduled procedures",
-                              dicomStandardRef: "PS3.4", requiresNetwork: true),
+                              dicomStandardRef: "PS3.4", requiresNetwork: true,
+                              networkToolGroup: .dimse),
             CLIToolDefinition(id: "dicom-mpps", name: "dicom-mpps", displayName: "MPPS",
                               category: .networkOperations, sfSymbol: "clock.arrow.2.circlepath",
                               briefDescription: "Modality Performed Procedure Step management",
-                              dicomStandardRef: "PS3.4", hasSubcommands: true, requiresNetwork: true),
+                              dicomStandardRef: "PS3.4", hasSubcommands: true, requiresNetwork: true,
+                              networkToolGroup: .dimse),
+            CLIToolDefinition(id: "dicom-wado", name: "dicom-wado", displayName: "DICOMweb",
+                              category: .networkOperations, sfSymbol: "globe",
+                              briefDescription: "DICOMweb WADO-RS, QIDO-RS, STOW-RS, and UPS-RS",
+                              dicomStandardRef: "PS3.18", hasSubcommands: true, requiresNetwork: true,
+                              networkToolGroup: .dicomweb),
         ]
+    }
+
+    /// Returns network operations tools grouped by DIMSE vs DICOMweb.
+    public static func groupedNetworkOperationsTools() -> [(group: NetworkToolGroup, tools: [CLIToolDefinition])] {
+        let tools = networkOperationsTools()
+        return NetworkToolGroup.allCases.compactMap { group in
+            let matching = tools.filter { $0.networkToolGroup == group }
+            return matching.isEmpty ? nil : (group: group, tools: matching)
+        }
     }
 
     /// Returns tools for the Automation tab.
@@ -228,6 +245,142 @@ public enum ToolCatalogHelpers: Sendable {
 
     /// Returns the total count of tools.
     public static var totalToolCount: Int { 29 }
+
+    /// Returns M16-style parameter definitions for a tool by ID.
+    public static func parameterDefinitions(for toolID: String) -> [CLIParameterDefinition] {
+        switch toolID {
+        case "dicom-echo":
+            return [
+                CLIParameterDefinition(
+                    id: "host", flag: "--host", displayName: "Hostname",
+                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
+                    helpText: "Remote DICOM server hostname or IP address",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "port", flag: "--port", displayName: "Port",
+                    parameterType: .integerField, placeholder: "11112",
+                    helpText: "Remote server port (default: 11112)",
+                    defaultValue: "11112", minValue: 1, maxValue: 65535
+                ),
+                CLIParameterDefinition(
+                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    parameterType: .textField, placeholder: "DICOMSTUDIO",
+                    helpText: "Local Application Entity title",
+                    defaultValue: "DICOMSTUDIO"
+                ),
+                CLIParameterDefinition(
+                    id: "called-aet", flag: "--called-aet", displayName: "Called AE Title",
+                    parameterType: .textField, placeholder: "ANY-SCP",
+                    helpText: "Remote server Application Entity title",
+                    defaultValue: "ANY-SCP"
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "30",
+                    helpText: "Connection timeout in seconds",
+                    defaultValue: "30",
+                    allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
+                ),
+            ]
+        case "dicom-query":
+            return [
+                CLIParameterDefinition(
+                    id: "host", flag: "--host", displayName: "Hostname",
+                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
+                    helpText: "Remote DICOM server hostname or IP address",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "port", flag: "--port", displayName: "Port",
+                    parameterType: .integerField, placeholder: "11112",
+                    helpText: "Remote server port (default: 11112)",
+                    defaultValue: "11112", minValue: 1, maxValue: 65535
+                ),
+                CLIParameterDefinition(
+                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    parameterType: .textField, placeholder: "DICOMSTUDIO",
+                    helpText: "Local Application Entity title",
+                    defaultValue: "DICOMSTUDIO"
+                ),
+                CLIParameterDefinition(
+                    id: "called-aet", flag: "--called-aet", displayName: "Called AE Title",
+                    parameterType: .textField, placeholder: "ANY-SCP",
+                    helpText: "Remote server Application Entity title",
+                    defaultValue: "ANY-SCP"
+                ),
+                CLIParameterDefinition(
+                    id: "level", flag: "--level", displayName: "Query Level",
+                    parameterType: .enumPicker, placeholder: "STUDY",
+                    helpText: "Query retrieve level (PS3.4 C.6)",
+                    defaultValue: "STUDY",
+                    allowedValues: ["PATIENT", "STUDY", "SERIES", "IMAGE"]
+                ),
+                CLIParameterDefinition(
+                    id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. PAT001",
+                    helpText: "Patient ID to search for (0010,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN or DOE*",
+                    helpText: "Patient name to search for — supports wildcards * and ? (0010,0010)"
+                ),
+                CLIParameterDefinition(
+                    id: "study-date", flag: "--study-date", displayName: "Study Date",
+                    parameterType: .textField, placeholder: "e.g. 20260101 or 20260101-20260310",
+                    helpText: "Study date or range in YYYYMMDD format (0008,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Imaging modality filter (0008,0060)",
+                    allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                ),
+                CLIParameterDefinition(
+                    id: "accession", flag: "--accession", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession number to search for (0008,0050)"
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Study Instance UID to filter by (0020,000D)"
+                ),
+                CLIParameterDefinition(
+                    id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Series Instance UID to filter by (0020,000E)"
+                ),
+                CLIParameterDefinition(
+                    id: "series-date", flag: "--series-date", displayName: "Series Date",
+                    parameterType: .textField, placeholder: "e.g. 20260101 or 20260101-20260310",
+                    helpText: "Series date or range in YYYYMMDD format (0008,0021)"
+                ),
+                CLIParameterDefinition(
+                    id: "instance-uid", flag: "--instance-uid", displayName: "SOP Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "SOP Instance UID to search for (0008,0018)"
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "30",
+                    helpText: "Connection timeout in seconds",
+                    defaultValue: "30",
+                    allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
+                ),
+                CLIParameterDefinition(
+                    id: "output-format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Output format for query results",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json", "csv"]
+                ),
+            ]
+        default:
+            return []
+        }
+    }
 }
 
 // MARK: - 16.3 Command Builder Helpers

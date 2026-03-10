@@ -439,7 +439,7 @@ public enum DICOMModalityWorklistService {
         if valueData.count % 2 != 0 {
             // Use space (0x20) padding for text VRs, null (0x00) for binary VRs
             // This is a DICOM-specific requirement to maintain alignment
-            let paddingChar: UInt8 = vr.isStringVR ? 0x20 : 0x00
+            let paddingChar: UInt8 = (vr == .UI) ? 0x00 : (vr.isStringVR ? 0x20 : 0x00)
             valueData.append(paddingChar)
         }
         

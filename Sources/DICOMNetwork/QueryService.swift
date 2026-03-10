@@ -339,7 +339,8 @@ public enum DICOMQueryService {
                 maxPDUSize: negotiated.maxPDUSize,
                 level: level,
                 queryKeys: queryKeys,
-                transferSyntax: acceptedTransferSyntax
+                transferSyntax: acceptedTransferSyntax,
+                sopClassUID: configuration.informationModel.findSOPClassUID
             )
             
             // Release association gracefully
@@ -361,17 +362,16 @@ public enum DICOMQueryService {
         maxPDUSize: UInt32,
         level: QueryLevel,
         queryKeys: QueryKeys,
-        transferSyntax: String
+        transferSyntax: String,
+        sopClassUID: String
     ) async throws -> [GenericQueryResult] {
         // Build the query identifier data set
         let identifierData = buildQueryIdentifier(level: level, queryKeys: queryKeys, transferSyntax: transferSyntax)
         
-        // Create C-FIND request
+        // Create C-FIND request using the correct SOP Class UID from the information model
         let request = CFindRequest(
             messageID: 1,
-            affectedSOPClassUID: association.configuration.calledAETitle.value.isEmpty 
-                ? studyRootQueryRetrieveFindSOPClassUID 
-                : studyRootQueryRetrieveFindSOPClassUID,
+            affectedSOPClassUID: sopClassUID,
             priority: .medium,
             presentationContextID: presentationContextID
         )
@@ -442,17 +442,11 @@ public enum DICOMQueryService {
         var data = Data()
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
         
-        // Add Query/Retrieve Level
-        data.append(encodeElement(
-            tag: .queryRetrieveLevel,
-            vr: .CS,
-            value: level.queryRetrieveLevel,
-            explicit: isExplicitVR
-        ))
-        
-        // Add all query keys, sorted by tag
-        let sortedKeys = queryKeys.keys.sorted { $0.tag < $1.tag }
-        for key in sortedKeys {
+        // Merge Query/Retrieve Level into the key set and sort everything
+        // by ascending tag order per DICOM PS3.5 Section 7.1.
+        let levelKey = QueryKey(tag: .queryRetrieveLevel, value: level.queryRetrieveLevel, vr: .CS)
+        let allKeys = (queryKeys.keys + [levelKey]).sorted { $0.tag < $1.tag }
+        for key in allKeys {
             data.append(encodeElement(
                 tag: key.tag,
                 vr: key.vr,
@@ -479,8 +473,8 @@ public enum DICOMQueryService {
         
         // Pad to even length per DICOM rules
         if valueData.count % 2 != 0 {
-            // Use space padding for text VRs, null for others
-            let paddingChar: UInt8 = vr.isStringVR ? 0x20 : 0x00
+            // UI VR uses null (0x00) padding per PS3.5 §6.2; other string VRs use space
+            let paddingChar: UInt8 = (vr == .UI) ? 0x00 : (vr.isStringVR ? 0x20 : 0x00)
             valueData.append(paddingChar)
         }
         

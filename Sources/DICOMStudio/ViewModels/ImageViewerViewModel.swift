@@ -94,6 +94,12 @@ public final class ImageViewerViewModel {
     /// Currently selected VOI LUT function.
     public var voiLUTFunction: String = "LINEAR"
 
+    /// Rescale slope from the DICOM header (default 1.0).
+    public var rescaleSlope: Double = 1.0
+
+    /// Rescale intercept from the DICOM header (default 0.0).
+    public var rescaleIntercept: Double = 0.0
+
     // MARK: - Multi-Frame / Cine State
 
     /// Current frame index (0-based).
@@ -130,6 +136,9 @@ public final class ImageViewerViewModel {
 
     /// Whether the performance overlay is visible.
     public var showPerformanceOverlay: Bool = false
+
+    /// Whether the file importer dialog is presented.
+    public var isFileImporterPresented: Bool = false
 
     // MARK: - Services
 
@@ -187,12 +196,32 @@ public final class ImageViewerViewModel {
                 numberOfFrames = descriptor.numberOfFrames
             }
 
+            // Extract rescale parameters for window correction
+            let slope = file.rescaleSlope()
+            let intercept = file.rescaleIntercept()
+            self.rescaleSlope = slope
+            self.rescaleIntercept = intercept
+
             // Extract window settings from header
             headerWindowSettings = file.allWindowSettings()
             if let firstWindow = headerWindowSettings.first {
-                windowCenter = firstWindow.center
-                windowWidth = firstWindow.width
+                // Header window settings are in output units (post-rescale).
+                // Convert to stored-value space since the renderer operates on raw stored values.
+                if slope != 0 {
+                    windowCenter = (firstWindow.center - intercept) / slope
+                    windowWidth = firstWindow.width / abs(slope)
+                } else {
+                    windowCenter = firstWindow.center
+                    windowWidth = firstWindow.width
+                }
                 voiLUTFunction = firstWindow.function.rawValue
+            } else {
+                // No header window settings — auto-calculate from actual pixel data range
+                if let pixData = file.pixelData(),
+                   let range = pixData.pixelRange(forFrame: 0) {
+                    windowCenter = Double(range.min + range.max) / 2.0
+                    windowWidth = max(1.0, Double(range.max - range.min))
+                }
             }
 
             // Load modality presets
@@ -227,15 +256,28 @@ public final class ImageViewerViewModel {
 
         let start = Date()
 
-        let image = renderingService.renderFrame(
+        // Try rendering with current window/level settings
+        var image = renderingService.renderFrame(
             from: file,
             frameIndex: currentFrameIndex,
             windowCenter: windowCenter,
             windowWidth: windowWidth
         )
 
+        // Fall back to auto-windowing if explicit windowing fails
+        if image == nil {
+            image = renderingService.renderFrame(
+                from: file,
+                frameIndex: currentFrameIndex
+            )
+        }
+
         lastRenderTime = Date().timeIntervalSince(start)
         currentImage = image
+
+        if image == nil && errorMessage == nil {
+            errorMessage = "Unable to render pixel data. The file may use an unsupported transfer syntax or contain no displayable image data."
+        }
         #endif
     }
 
@@ -243,19 +285,31 @@ public final class ImageViewerViewModel {
 
     /// Applies a window/level preset.
     ///
+    /// Preset values are in output units; they are converted to stored-value space.
     /// - Parameter preset: The preset to apply.
     public func applyPreset(_ preset: WindowLevelPreset) {
-        windowCenter = preset.center
-        windowWidth = preset.width
+        if rescaleSlope != 0 {
+            windowCenter = (preset.center - rescaleIntercept) / rescaleSlope
+            windowWidth = preset.width / abs(rescaleSlope)
+        } else {
+            windowCenter = preset.center
+            windowWidth = preset.width
+        }
         renderCurrentFrame()
     }
 
     /// Applies window settings from the DICOM header.
     ///
+    /// Header values are in output units; they are converted to stored-value space.
     /// - Parameter settings: The window settings to apply.
     public func applyWindowSettings(_ settings: WindowSettings) {
-        windowCenter = settings.center
-        windowWidth = settings.width
+        if rescaleSlope != 0 {
+            windowCenter = (settings.center - rescaleIntercept) / rescaleSlope
+            windowWidth = settings.width / abs(rescaleSlope)
+        } else {
+            windowCenter = settings.center
+            windowWidth = settings.width
+        }
         voiLUTFunction = settings.function.rawValue
         renderCurrentFrame()
     }

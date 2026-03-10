@@ -5,6 +5,11 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#elseif canImport(UIKit)
+import UIKit
+#endif
 
 /// CLI Workshop view providing an interactive GUI for all DICOMKit
 /// command-line tools with command builder, console, and educational features.
@@ -98,69 +103,70 @@ public struct CLIWorkshopView: View {
                     systemImage: "terminal",
                     description: Text("No CLI tools available for this category.")
                 )
+            } else if viewModel.activeTab == .networkOperations {
+                List(selection: $viewModel.selectedToolID) {
+                    ForEach(viewModel.groupedNetworkTools(), id: \.group) { section in
+                        Section {
+                            ForEach(section.tools) { tool in
+                                toolRow(tool)
+                            }
+                        } header: {
+                            Label(section.group.displayName, systemImage: section.group.sfSymbol)
+                        }
+                    }
+                }
+                .onChange(of: viewModel.selectedToolID) { _, newValue in
+                    viewModel.selectTool(id: newValue)
+                }
             } else {
                 List(tools, id: \.id, selection: $viewModel.selectedToolID) { tool in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Image(systemName: "terminal")
-                                .foregroundStyle(.green)
-                            Text(tool.name)
-                                .font(.body.monospaced())
-                        }
-                        Text(tool.briefDescription)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(2)
-                    }
-                    .padding(.vertical, 2)
-                    .accessibilityLabel(tool.name)
-                    .accessibilityHint(tool.briefDescription)
+                    toolRow(tool)
+                }
+                .onChange(of: viewModel.selectedToolID) { _, newValue in
+                    viewModel.selectTool(id: newValue)
                 }
             }
 
-            Divider()
-
-            if viewModel.selectedTool() != nil {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Parameters")
-                        .font(.subheadline.bold())
-
-                    let params = viewModel.visibleParameters()
-                    if params.isEmpty {
-                        Text("No configurable parameters")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 8) {
-                                ForEach(params, id: \.id) { param in
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(param.displayName)
-                                            .font(.caption.bold())
-                                        TextField(param.placeholder, text: parameterBinding(for: param.id))
-                                            .textFieldStyle(.roundedBorder)
-                                            .font(.caption)
-                                            .accessibilityLabel(param.displayName)
-                                        if !param.helpText.isEmpty {
-                                            Text(param.helpText)
-                                                .font(.system(size: 10))
-                                                .foregroundStyle(.secondary)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding()
-            }
         }
+    }
+
+    // MARK: - Tool Row
+
+    private func toolRow(_ tool: CLIToolDefinition) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Image(systemName: "terminal")
+                    .foregroundStyle(.green)
+                Text(tool.name)
+                    .font(.body.monospaced())
+            }
+            Text(tool.briefDescription)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+        }
+        .padding(.vertical, 2)
+        .accessibilityLabel(tool.name)
+        .accessibilityHint(tool.briefDescription)
     }
 
     // MARK: - Command and Console Panel
 
     private var commandAndConsolePanel: some View {
         VStack(spacing: 0) {
+            // Parameter input fields above the command preview
+            if viewModel.selectedTool() != nil {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Parameters")
+                        .font(.subheadline.bold())
+
+                    manualParameterFields
+                }
+                .padding()
+
+                Divider()
+            }
+
             GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -172,6 +178,15 @@ public struct CLIWorkshopView: View {
                                 .foregroundStyle(.green)
                                 .font(.caption)
                         }
+                        Button {
+                            Task { await viewModel.executeCommand() }
+                        } label: {
+                            Label("Run", systemImage: "play.fill")
+                                .font(.caption)
+                        }
+                        .disabled(!viewModel.isCommandValid || viewModel.consoleStatus == .running)
+                        .accessibilityLabel("Run command")
+                        .accessibilityHint("Executes the constructed DICOM command")
                     }
 
                     HStack {
@@ -183,6 +198,17 @@ public struct CLIWorkshopView: View {
                             .foregroundStyle(viewModel.commandPreview.isEmpty ? .secondary : .primary)
                             .textSelection(.enabled)
                         Spacer()
+                        if !viewModel.commandPreview.isEmpty {
+                            Button {
+                                copyCommandToClipboard()
+                            } label: {
+                                Image(systemName: "doc.on.doc")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("Copy command")
+                            .accessibilityHint("Copies the command to the clipboard")
+                        }
                     }
                     .padding(8)
                     .background(.black.opacity(0.6))
@@ -200,6 +226,18 @@ public struct CLIWorkshopView: View {
                     Spacer()
 
                     consoleStatusBadge
+
+                    if !viewModel.consoleOutput.isEmpty {
+                        Button {
+                            copyConsoleToClipboard()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.borderless)
+                        .accessibilityLabel("Copy console output")
+                        .accessibilityHint("Copies the console output to the clipboard")
+                    }
 
                     Button("Clear") {
                         viewModel.clearConsoleOutput()
@@ -268,6 +306,142 @@ public struct CLIWorkshopView: View {
         }
     }
 
+    // MARK: - Parameter Input Views
+
+    /// Manual parameter entry fields for the selected tool.
+    private var manualParameterFields: some View {
+        let params = viewModel.visibleParameters()
+        let columns = [
+            GridItem(.flexible(), spacing: 12),
+            GridItem(.flexible(), spacing: 12),
+        ]
+        return Group {
+            if params.isEmpty {
+                Text("No configurable parameters")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView {
+                    LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
+                        ForEach(params, id: \.id) { param in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(param.displayName)
+                                    .font(.caption.bold())
+                                if param.parameterType == .enumPicker && !param.allowedValues.isEmpty {
+                                    enumPickerField(param: param)
+                                } else {
+                                    TextField(param.placeholder, text: parameterBinding(for: param.id))
+                                        .textFieldStyle(.roundedBorder)
+                                        .font(.caption)
+                                        .accessibilityLabel(param.displayName)
+                                }
+                                if !param.helpText.isEmpty {
+                                    Text(param.helpText)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A picker that offers preset values plus a custom text entry option.
+    private func enumPickerField(param: CLIParameterDefinition) -> some View {
+        let currentValue = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? ""
+        let isCustom = !currentValue.isEmpty && !param.allowedValues.contains(currentValue)
+        return VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 6) {
+                Picker("", selection: pickerBinding(for: param)) {
+                    ForEach(param.allowedValues, id: \.self) { value in
+                        Text(value).tag(value)
+                    }
+                    Text("Custom…").tag("__custom__")
+                }
+                .labelsHidden()
+                .font(.caption)
+                .accessibilityLabel(param.displayName)
+            }
+            if isCustom {
+                TextField(param.placeholder, text: parameterBinding(for: param.id))
+                    .textFieldStyle(.roundedBorder)
+                    .font(.caption)
+                    .accessibilityLabel("Custom \(param.displayName)")
+            }
+        }
+    }
+
+    /// Picker for choosing from saved Networking server profiles.
+    private var savedServerPicker: some View {
+        Group {
+            if viewModel.savedServerProfiles.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "server.rack")
+                        .font(.title3)
+                        .foregroundStyle(.secondary)
+                    Text("No saved servers")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text("Add servers in the Networking tab first.")
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+            } else {
+                ScrollView {
+                    VStack(spacing: 6) {
+                        ForEach(viewModel.savedServerProfiles) { server in
+                            Button {
+                                viewModel.applySavedServer(id: server.id)
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(server.name)
+                                            .font(.caption.bold())
+                                            .foregroundStyle(.primary)
+                                        Text("\(server.host):\(server.port)")
+                                            .font(.caption.monospaced())
+                                            .foregroundStyle(.secondary)
+                                        Text("AE: \(server.remoteAETitle)")
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    Spacer()
+                                    if viewModel.selectedSavedServerID == server.id {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .foregroundStyle(.green)
+                                    }
+                                }
+                                .padding(8)
+                                .background(
+                                    viewModel.selectedSavedServerID == server.id
+                                        ? Color.accentColor.opacity(0.1)
+                                        : Color.clear
+                                )
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .stroke(
+                                            viewModel.selectedSavedServerID == server.id
+                                                ? Color.accentColor.opacity(0.4)
+                                                : Color.secondary.opacity(0.2),
+                                            lineWidth: 1
+                                        )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Select server \(server.name)")
+                            .accessibilityHint("\(server.host) port \(server.port)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Helpers
 
     @ViewBuilder
@@ -298,6 +472,48 @@ public struct CLIWorkshopView: View {
             },
             set: { newValue in
                 viewModel.updateParameterValue(parameterID: paramID, value: newValue)
+            }
+        )
+    }
+
+    private func copyCommandToClipboard() {
+        copyToClipboard(viewModel.commandPreview)
+    }
+
+    private func copyConsoleToClipboard() {
+        copyToClipboard(viewModel.consoleOutput)
+    }
+
+    private func copyToClipboard(_ text: String) {
+        #if canImport(AppKit)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        #elseif canImport(UIKit)
+        UIPasteboard.general.string = text
+        #endif
+    }
+
+    /// Binding for the enum picker that maps "__custom__" to showing a text field.
+    private func pickerBinding(for param: CLIParameterDefinition) -> Binding<String> {
+        Binding(
+            get: {
+                let current = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? ""
+                if param.allowedValues.contains(current) {
+                    return current
+                }
+                return "__custom__"
+            },
+            set: { newValue in
+                if newValue == "__custom__" {
+                    // Keep existing value — user will type in the text field
+                    let current = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? ""
+                    if param.allowedValues.contains(current) {
+                        // Switching to custom: clear to let user type
+                        viewModel.updateParameterValue(parameterID: param.id, value: "")
+                    }
+                } else {
+                    viewModel.updateParameterValue(parameterID: param.id, value: newValue)
+                }
             }
         )
     }
