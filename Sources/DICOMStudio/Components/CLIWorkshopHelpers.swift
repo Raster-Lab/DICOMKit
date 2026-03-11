@@ -335,7 +335,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Imaging modality filter (0008,0060)",
-                    allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
                 ),
                 CLIParameterDefinition(
                     id: "accession", flag: "--accession", displayName: "Accession Number",
@@ -375,6 +375,272 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Output format for query results",
                     defaultValue: "text",
                     allowedValues: ["text", "json", "csv"]
+                ),
+            ]
+        case "dicom-send":
+            return [
+                CLIParameterDefinition(
+                    id: "host", flag: "--host", displayName: "Hostname",
+                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
+                    helpText: "Remote DICOM server hostname or IP address",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "port", flag: "--port", displayName: "Port",
+                    parameterType: .integerField, placeholder: "11112",
+                    helpText: "Remote server port (default: 11112)",
+                    defaultValue: "11112", minValue: 1, maxValue: 65535
+                ),
+                CLIParameterDefinition(
+                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    parameterType: .textField, placeholder: "DICOMSTUDIO",
+                    helpText: "Local Application Entity title (up to 16 characters)",
+                    defaultValue: "DICOMSTUDIO"
+                ),
+                CLIParameterDefinition(
+                    id: "called-aet", flag: "--called-aet", displayName: "Called AE Title",
+                    parameterType: .textField, placeholder: "ANY-SCP",
+                    helpText: "Remote server Application Entity title",
+                    defaultValue: "ANY-SCP"
+                ),
+                CLIParameterDefinition(
+                    id: "files", flag: "", displayName: "DICOM Files",
+                    parameterType: .filePath, placeholder: "Drag and drop DICOM files or directories",
+                    helpText: "DICOM files or directories to send (C-STORE)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive Scan",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Recursively scan directories for DICOM files",
+                    defaultValue: "false"
+                ),
+                CLIParameterDefinition(
+                    id: "verify", flag: "--verify", displayName: "Verify (C-ECHO)",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verify connection with C-ECHO before sending"
+                ),
+                CLIParameterDefinition(
+                    id: "priority", flag: "--priority", displayName: "Priority",
+                    parameterType: .enumPicker, placeholder: "medium",
+                    helpText: "DIMSE operation priority level",
+                    defaultValue: "medium",
+                    allowedValues: ["low", "medium", "high"]
+                ),
+                CLIParameterDefinition(
+                    id: "retry", flag: "--retry", displayName: "Retry Attempts",
+                    parameterType: .integerField, placeholder: "0",
+                    helpText: "Number of retry attempts on failure (exponential backoff)",
+                    isAdvanced: true,
+                    defaultValue: "0", minValue: 0, maxValue: 10
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "60",
+                    helpText: "Connection timeout in seconds",
+                    defaultValue: "60",
+                    allowedValues: ["10", "30", "60", "120", "300"]
+                ),
+                CLIParameterDefinition(
+                    id: "dry-run", flag: "--dry-run", displayName: "Dry Run",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show what would be sent without actually sending",
+                    isAdvanced: true
+                ),
+            ]
+        case "dicom-retrieve":
+            return [
+                CLIParameterDefinition(
+                    id: "host", flag: "--host", displayName: "Hostname",
+                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
+                    helpText: "Remote DICOM server hostname or IP address",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "port", flag: "--port", displayName: "Port",
+                    parameterType: .integerField, placeholder: "11112",
+                    helpText: "Remote server port (default: 11112)",
+                    defaultValue: "11112", minValue: 1, maxValue: 65535
+                ),
+                CLIParameterDefinition(
+                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    parameterType: .textField, placeholder: "DICOMSTUDIO",
+                    helpText: "Local Application Entity title (up to 16 characters)",
+                    defaultValue: "DICOMSTUDIO"
+                ),
+                CLIParameterDefinition(
+                    id: "called-aet", flag: "--called-aet", displayName: "Called AE Title",
+                    parameterType: .textField, placeholder: "ANY-SCP",
+                    helpText: "Remote server Application Entity title",
+                    defaultValue: "ANY-SCP"
+                ),
+                CLIParameterDefinition(
+                    id: "method", flag: "--method", displayName: "Retrieval Method",
+                    parameterType: .enumPicker, placeholder: "c-move",
+                    helpText: "C-MOVE instructs the server to push files to a destination; C-GET pulls directly",
+                    defaultValue: "c-move",
+                    allowedValues: ["c-move", "c-get"]
+                ),
+                CLIParameterDefinition(
+                    id: "move-dest", flag: "--move-dest", displayName: "Move Destination AET",
+                    parameterType: .textField, placeholder: "e.g. MY_STORE_SCP",
+                    helpText: "Destination AE title to receive files (required for C-MOVE)"
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Study Instance UID to retrieve (0020,000D)"
+                ),
+                CLIParameterDefinition(
+                    id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Series Instance UID for series-level retrieval (0020,000E)"
+                ),
+                CLIParameterDefinition(
+                    id: "instance-uid", flag: "--instance-uid", displayName: "SOP Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "SOP Instance UID for instance-level retrieval (0008,0018)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output Directory",
+                    parameterType: .outputPath, placeholder: "e.g. ~/Downloads/studies",
+                    helpText: "Directory where retrieved files will be saved",
+                    defaultValue: "."
+                ),
+                CLIParameterDefinition(
+                    id: "hierarchical", flag: "--hierarchical", displayName: "Hierarchical Output",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Organize output as Patient/Study/Series directory tree"
+                ),
+                CLIParameterDefinition(
+                    id: "parallel", flag: "--parallel", displayName: "Parallel Operations",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: "Number of concurrent retrieval operations",
+                    isAdvanced: true,
+                    defaultValue: "1", minValue: 1, maxValue: 8
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "60",
+                    helpText: "Connection timeout in seconds",
+                    defaultValue: "60",
+                    allowedValues: ["10", "30", "60", "120", "300"]
+                ),
+            ]
+        case "dicom-qr":
+            return [
+                CLIParameterDefinition(
+                    id: "host", flag: "--host", displayName: "Hostname",
+                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
+                    helpText: "Remote DICOM server hostname or IP address",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "port", flag: "--port", displayName: "Port",
+                    parameterType: .integerField, placeholder: "11112",
+                    helpText: "Remote server port (default: 11112)",
+                    defaultValue: "11112", minValue: 1, maxValue: 65535
+                ),
+                CLIParameterDefinition(
+                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    parameterType: .textField, placeholder: "DICOMSTUDIO",
+                    helpText: "Local Application Entity title (up to 16 characters)",
+                    defaultValue: "DICOMSTUDIO"
+                ),
+                CLIParameterDefinition(
+                    id: "called-aet", flag: "--called-aet", displayName: "Called AE Title",
+                    parameterType: .textField, placeholder: "ANY-SCP",
+                    helpText: "Remote server Application Entity title",
+                    defaultValue: "ANY-SCP"
+                ),
+                CLIParameterDefinition(
+                    id: "mode", flag: "--mode", displayName: "Operation Mode",
+                    parameterType: .enumPicker, placeholder: "interactive",
+                    helpText: "Interactive: select studies; Automatic: retrieve all matches; Review: query only",
+                    defaultValue: "interactive",
+                    allowedValues: ["interactive", "automatic", "review"]
+                ),
+                CLIParameterDefinition(
+                    id: "method", flag: "--method", displayName: "Retrieval Method",
+                    parameterType: .enumPicker, placeholder: "c-move",
+                    helpText: "C-MOVE instructs the server to push files; C-GET pulls directly",
+                    defaultValue: "c-move",
+                    allowedValues: ["c-move", "c-get"]
+                ),
+                CLIParameterDefinition(
+                    id: "move-dest", flag: "--move-dest", displayName: "Move Destination AET",
+                    parameterType: .textField, placeholder: "e.g. MY_STORE_SCP",
+                    helpText: "Destination AE title to receive files (required for C-MOVE)"
+                ),
+                CLIParameterDefinition(
+                    id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN or DOE*",
+                    helpText: "Patient name filter — supports wildcards * and ? (0010,0010)"
+                ),
+                CLIParameterDefinition(
+                    id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. PAT001",
+                    helpText: "Patient ID to search for (0010,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "study-date", flag: "--study-date", displayName: "Study Date",
+                    parameterType: .textField, placeholder: "e.g. 20260101 or 20260101-20260310",
+                    helpText: "Study date or range in YYYYMMDD format (0008,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Imaging modality filter (0008,0060)",
+                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Study Instance UID to filter by (0020,000D)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "accession", flag: "--accession", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession number to search for (0008,0050)"
+                ),
+                CLIParameterDefinition(
+                    id: "study-description", flag: "--study-description", displayName: "Study Description",
+                    parameterType: .textField, placeholder: "e.g. CHEST* or *ABDOMEN*",
+                    helpText: "Study description filter — supports wildcards (0008,1030)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output Directory",
+                    parameterType: .outputPath, placeholder: "e.g. ~/Downloads/studies",
+                    helpText: "Directory where retrieved files will be saved",
+                    defaultValue: "."
+                ),
+                CLIParameterDefinition(
+                    id: "hierarchical", flag: "--hierarchical", displayName: "Hierarchical Output",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Organize output as Patient/Study/Series directory tree"
+                ),
+                CLIParameterDefinition(
+                    id: "validate", flag: "--validate", displayName: "Validate Files",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Validate retrieved files after download",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "parallel", flag: "--parallel", displayName: "Parallel Operations",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: "Maximum concurrent retrieval operations",
+                    isAdvanced: true,
+                    defaultValue: "1", minValue: 1, maxValue: 8
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "60",
+                    helpText: "Connection timeout in seconds",
+                    defaultValue: "60",
+                    allowedValues: ["10", "30", "60", "120", "300"]
                 ),
             ]
         default:

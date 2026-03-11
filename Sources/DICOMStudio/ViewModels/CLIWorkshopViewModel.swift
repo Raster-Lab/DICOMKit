@@ -13,6 +13,10 @@ import DICOMNetwork
 public final class CLIWorkshopViewModel {
     private let service: CLIWorkshopService
 
+    /// Callback to open a retrieved file in the Viewer tab.
+    /// Set by MainViewModel to wire navigation.
+    public var onOpenInViewer: ((String, URL?) -> Void)?
+
     public var activeTab: CLIWorkshopTab = .fileInspection
     public var isLoading: Bool = false
     public var errorMessage: String? = nil
@@ -35,6 +39,18 @@ public final class CLIWorkshopViewModel {
     public var outputPath: String = ""
     public var fileDropState: CLIFileDropState = .empty
 
+    /// Security-scoped URLs from file importers, keyed by parameter ID.
+    /// Used to gain sandbox access when reading user-selected files.
+    public var securityScopedURLs: [String: URL] = [:]
+
+    /// File paths of the most recently retrieved DICOM files (from dicom-retrieve or dicom-qr).
+    /// Used to enable "Open in Viewer" after retrieval.
+    public var lastRetrievedFiles: [String] = []
+
+    /// Security-scoped output URL used for the last file write batch.
+    /// Stored here so the viewer can access files written outside the sandbox container.
+    public var lastRetrievedOutputURL: URL? = nil
+
     // 16.5 Console
     public var consoleStatus: CLIConsoleStatus = .idle
     public var consoleOutput: String = ""
@@ -55,12 +71,52 @@ public final class CLIWorkshopViewModel {
     public var networkInputMode: NetworkInputMode = .manual
     /// The ID of the selected saved server profile.
     public var selectedSavedServerID: UUID? = nil
+    /// Whether the "Add Server" sheet is shown.
+    public var showAddServerSheet: Bool = false
+    /// Editable fields for adding a new server.
+    public var newServerName: String = ""
+    public var newServerHost: String = ""
+    public var newServerPort: String = "11112"
+    public var newServerCalledAET: String = ""
+    public var newServerCallingAET: String = "DICOMSTUDIO"
 
     /// Toggles between using a saved server profile and entering parameters manually.
     public enum NetworkInputMode: String, Sendable, CaseIterable, Identifiable {
         case savedServer = "Saved Server"
         case manual = "Manual"
         public var id: String { rawValue }
+    }
+
+    // MARK: - Persistent Default Server
+
+    /// UserDefaults keys for persistent default server values.
+    private enum DefaultServerKeys {
+        static let host = "studio.cli.defaultServerHost"
+        static let port = "studio.cli.defaultServerPort"
+        static let calledAET = "studio.cli.defaultCalledAET"
+        static let callingAET = "studio.cli.defaultCallingAET"
+    }
+
+    /// Saves the current server parameters as persistent defaults.
+    public func saveCurrentServerAsDefault() {
+        let host = paramValue("host")
+        let port = paramValue("port")
+        let calledAET = paramValue("called-aet")
+        let callingAET = paramValue("calling-aet")
+        if !host.isEmpty { UserDefaults.standard.set(host, forKey: DefaultServerKeys.host) }
+        if !port.isEmpty { UserDefaults.standard.set(port, forKey: DefaultServerKeys.port) }
+        if !calledAET.isEmpty { UserDefaults.standard.set(calledAET, forKey: DefaultServerKeys.calledAET) }
+        if !callingAET.isEmpty { UserDefaults.standard.set(callingAET, forKey: DefaultServerKeys.callingAET) }
+    }
+
+    /// Loads persistent default server values, returning non-nil values for each.
+    public func persistentDefaults() -> (host: String?, port: String?, calledAET: String?, callingAET: String?) {
+        return (
+            host: UserDefaults.standard.string(forKey: DefaultServerKeys.host),
+            port: UserDefaults.standard.string(forKey: DefaultServerKeys.port),
+            calledAET: UserDefaults.standard.string(forKey: DefaultServerKeys.calledAET),
+            callingAET: UserDefaults.standard.string(forKey: DefaultServerKeys.callingAET)
+        )
     }
 
     public init(service: CLIWorkshopService = CLIWorkshopService()) {
@@ -153,6 +209,8 @@ public final class CLIWorkshopViewModel {
         service.setConsoleOutput("")
         consoleStatus = .idle
         service.setConsoleStatus(.idle)
+        // Clear security-scoped URLs from previous tool
+        securityScopedURLs.removeAll()
         // Load parameter definitions and apply defaults for the selected tool
         if let toolID = id {
             let defs = ToolCatalogHelpers.parameterDefinitions(for: toolID)
@@ -162,6 +220,23 @@ public final class CLIWorkshopViewModel {
             for def in defs where !def.defaultValue.isEmpty {
                 let pv = CLIParameterValue(parameterID: def.id, stringValue: def.defaultValue)
                 parameterValues.append(pv)
+            }
+            // Override with persistent default server values for network tools
+            let defaults = persistentDefaults()
+            let hasHostParam = defs.contains(where: { $0.id == "host" })
+            if hasHostParam {
+                if let host = defaults.host, !host.isEmpty {
+                    updateParameterValueSilent(parameterID: "host", value: host)
+                }
+                if let port = defaults.port, !port.isEmpty {
+                    updateParameterValueSilent(parameterID: "port", value: port)
+                }
+                if let calledAET = defaults.calledAET, !calledAET.isEmpty {
+                    updateParameterValueSilent(parameterID: "called-aet", value: calledAET)
+                }
+                if let callingAET = defaults.callingAET, !callingAET.isEmpty {
+                    updateParameterValueSilent(parameterID: "calling-aet", value: callingAET)
+                }
             }
             service.setParameterValues(parameterValues)
             rebuildCommandPreview()
@@ -208,6 +283,57 @@ public final class CLIWorkshopViewModel {
         rebuildCommandPreview()
     }
 
+    /// Adds a new server profile from the CLI Workshop "Add Server" form and persists it.
+    public func addNewServerFromForm() {
+        let name = newServerName.trimmingCharacters(in: .whitespaces)
+        let host = newServerHost.trimmingCharacters(in: .whitespaces)
+        let port = UInt16(newServerPort) ?? 11112
+        let calledAET = newServerCalledAET.trimmingCharacters(in: .whitespaces)
+        let callingAET = newServerCallingAET.trimmingCharacters(in: .whitespaces)
+
+        guard !name.isEmpty, !host.isEmpty, !calledAET.isEmpty else { return }
+
+        let profile = PACSServerProfile(
+            name: name,
+            host: host,
+            port: port,
+            remoteAETitle: calledAET,
+            localAETitle: callingAET.isEmpty ? "DICOMSTUDIO" : callingAET
+        )
+        savedServerProfiles.append(profile)
+
+        // Also persist via ServerProfileStorageService
+        let storage = ServerProfileStorageService()
+        var all = storage.load()
+        all.append(profile)
+        try? storage.save(all)
+
+        // Reset form
+        newServerName = ""
+        newServerHost = ""
+        newServerPort = "11112"
+        newServerCalledAET = ""
+        newServerCallingAET = "DICOMSTUDIO"
+        showAddServerSheet = false
+
+        // Auto-select the newly added server
+        applySavedServer(id: profile.id)
+    }
+
+    /// Removes a saved server profile by ID.
+    public func removeSavedServer(id: UUID) {
+        savedServerProfiles.removeAll { $0.id == id }
+        if selectedSavedServerID == id {
+            selectedSavedServerID = nil
+        }
+
+        // Persist removal
+        let storage = ServerProfileStorageService()
+        var all = storage.load()
+        all.removeAll { $0.id == id }
+        try? storage.save(all)
+    }
+
     /// Resets network parameters to defaults when switching to manual mode.
     public func resetToManualInput() {
         selectedSavedServerID = nil
@@ -237,6 +363,104 @@ public final class CLIWorkshopViewModel {
         }
         service.setParameterValues(parameterValues)
         rebuildCommandPreview()
+    }
+
+    /// Silently updates a parameter value without rebuilding the command preview.
+    /// Used when batch-setting multiple defaults at tool selection time.
+    private func updateParameterValueSilent(parameterID: String, value: String) {
+        if let idx = parameterValues.firstIndex(where: { $0.parameterID == parameterID }) {
+            parameterValues[idx].stringValue = value
+        } else {
+            parameterValues.append(CLIParameterValue(parameterID: parameterID, stringValue: value))
+        }
+    }
+
+    /// Stores a security-scoped URL for the given parameter ID and updates the parameter value.
+    public func setSecurityScopedURL(_ url: URL, forParameterID parameterID: String) {
+        securityScopedURLs[parameterID] = url
+        updateParameterValue(parameterID: parameterID, value: url.path)
+    }
+
+    /// Reads file data from a path, handling security-scoped resource access if needed.
+    public func readFileData(at path: String, parameterID: String = "files") throws -> Data {
+        if let scopedURL = securityScopedURLs[parameterID] {
+            let accessing = scopedURL.startAccessingSecurityScopedResource()
+            defer {
+                if accessing { scopedURL.stopAccessingSecurityScopedResource() }
+            }
+            return try Data(contentsOf: scopedURL)
+        }
+        return try Data(contentsOf: URL(fileURLWithPath: path))
+    }
+
+    /// Resolves the output directory for retrieved files.
+    /// If the user hasn't set a path (or left the default "."),
+    /// falls back to ~/Downloads/DICOMStudio (entitlement-allowed).
+    private func resolvedOutputDir(_ rawOutput: String) -> String {
+        if rawOutput == "." || rawOutput.isEmpty {
+            if let scopedURL = securityScopedURLs["output"] {
+                return scopedURL.path
+            }
+            // Use ~/Downloads/DICOMStudio as the default (sandbox entitlement: downloads.read-write)
+            let downloads = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+                ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads")
+            let defaultDir = downloads.appendingPathComponent("DICOMStudio")
+            try? FileManager.default.createDirectory(at: defaultDir, withIntermediateDirectories: true)
+            return defaultDir.path
+        }
+        return rawOutput
+    }
+
+    /// Writes received DICOM data to disk in the specified output directory.
+    ///
+    /// - Parameters:
+    ///   - data: The raw DICOM file data.
+    ///   - sopInstanceUID: The SOP Instance UID (used as the filename).
+    ///   - studyUID: The Study Instance UID (for hierarchical organization).
+    ///   - seriesUID: Optional Series Instance UID (for hierarchical organization).
+    ///   - outputDir: The base output directory path.
+    ///   - hierarchical: If true, organizes as `<studyUID>/<seriesUID>/<sopInstanceUID>.dcm`.
+    /// - Returns: The full path where the file was written.
+    @discardableResult
+    public func writeReceivedDICOMFile(
+        data: Data,
+        sopInstanceUID: String,
+        studyUID: String,
+        seriesUID: String? = nil,
+        outputDir: String,
+        hierarchical: Bool
+    ) throws -> String {
+        let fm = FileManager.default
+
+        // Build destination directory
+        var dirURL: URL
+        var accessing = false
+        if let scopedURL = securityScopedURLs["output"] {
+            accessing = scopedURL.startAccessingSecurityScopedResource()
+            dirURL = scopedURL
+        } else {
+            dirURL = URL(fileURLWithPath: outputDir)
+        }
+        defer {
+            if accessing {
+                securityScopedURLs["output"]?.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        if hierarchical {
+            dirURL = dirURL.appendingPathComponent(studyUID)
+            if let series = seriesUID, !series.isEmpty {
+                dirURL = dirURL.appendingPathComponent(series)
+            }
+        }
+
+        try fm.createDirectory(at: dirURL, withIntermediateDirectories: true)
+
+        let filename = "\(sopInstanceUID).dcm"
+        let fileURL = dirURL.appendingPathComponent(filename)
+        try data.write(to: fileURL, options: .atomic)
+
+        return fileURL.path
     }
 
     /// Checks whether all required parameters are satisfied.
@@ -321,6 +545,12 @@ public final class CLIWorkshopViewModel {
         service.setConsoleStatus(.idle)
     }
 
+    /// Opens the first retrieved file from the last retrieve/QR operation in the viewer.
+    public func openRetrievedFileInViewer() {
+        guard let firstFile = lastRetrievedFiles.first else { return }
+        onOpenInViewer?(firstFile, lastRetrievedOutputURL)
+    }
+
     /// Executes the currently selected command.
     /// For dicom-echo, performs a real C-ECHO via DICOMVerificationService.
     public func executeCommand() async {
@@ -337,6 +567,12 @@ public final class CLIWorkshopViewModel {
             await executeDicomEcho()
         case "dicom-query":
             await executeDicomQuery()
+        case "dicom-send":
+            await executeDicomSend()
+        case "dicom-retrieve":
+            await executeDicomRetrieve()
+        case "dicom-qr":
+            await executeDicomQR()
         default:
             appendConsoleOutput("⚠ Command execution not yet supported for \(tool.name).\n")
             consoleStatus = .idle
@@ -490,14 +726,17 @@ public final class CLIWorkshopViewModel {
                 queryKeys = queryKeys.requestPatientID()
             }
             if !patientName.isEmpty {
-                queryKeys = queryKeys.patientName(patientName)
-                appendConsoleOutput("  Patient Name:     \(patientName)\n")
+                queryKeys = queryKeys.patientName(patientName.uppercased())
+                appendConsoleOutput("  Patient Name:     \(patientName) (uppercased for matching)\n")
             } else {
                 queryKeys = queryKeys.requestPatientName()
             }
             queryKeys = queryKeys
                 .requestPatientBirthDate()
                 .requestPatientSex()
+                .requestNumberOfPatientRelatedStudies()
+                .requestNumberOfPatientRelatedSeries()
+                .requestNumberOfPatientRelatedInstances()
 
         case .study:
             if !patientID.isEmpty {
@@ -507,8 +746,8 @@ public final class CLIWorkshopViewModel {
                 queryKeys = queryKeys.requestPatientID()
             }
             if !patientName.isEmpty {
-                queryKeys = queryKeys.patientName(patientName)
-                appendConsoleOutput("  Patient Name:     \(patientName)\n")
+                queryKeys = queryKeys.patientName(patientName.uppercased())
+                appendConsoleOutput("  Patient Name:     \(patientName) (uppercased for matching)\n")
             } else {
                 queryKeys = queryKeys.requestPatientName()
             }
@@ -571,6 +810,12 @@ public final class CLIWorkshopViewModel {
                 .requestSeriesNumber()
                 .requestSeriesDescription()
                 .requestNumberOfSeriesRelatedInstances()
+                // Parent-level return keys (dcm4chee5 style)
+                .requestPatientName()
+                .requestPatientID()
+                .requestStudyDate()
+                .requestStudyDescription()
+                .requestAccessionNumber()
 
             // Log parent-level criteria handled via 2-step
             if needsTwoStepQuery {
@@ -600,6 +845,19 @@ public final class CLIWorkshopViewModel {
             queryKeys = queryKeys
                 .requestSOPClassUID()
                 .requestInstanceNumber()
+                .requestContentDate()
+                .requestRows()
+                .requestColumns()
+                .requestNumberOfFrames()
+                // Parent-level return keys (dcm4chee5 style)
+                .requestPatientName()
+                .requestPatientID()
+                .requestStudyDate()
+                .requestStudyDescription()
+                .requestAccessionNumber()
+                .requestModality()
+                .requestSeriesNumber()
+                .requestSeriesDescription()
 
             if needsTwoStepQuery {
                 appendConsoleOutput("  (Patient/study filters will be resolved via study lookup)\n")
@@ -673,9 +931,30 @@ public final class CLIWorkshopViewModel {
             if allResults.isEmpty {
                 appendConsoleOutput("No results found.\n")
             } else {
+                // For SERIES/IMAGE levels, fetch parent study/patient info
+                // because servers often don't return parent-level attributes
+                // at child query levels (per PS3.4 C.6).
+                var parentLookup: [String: GenericQueryResult] = [:]
+                if level == .series || level == .image {
+                    let uniqueStudyUIDs = Set(
+                        allResults.compactMap { $0.toStudyResult().studyInstanceUID }
+                    ).sorted()
+                    if !uniqueStudyUIDs.isEmpty {
+                        appendConsoleOutput("Fetching parent study/patient info...\n")
+                        parentLookup = await fetchParentStudyInfo(
+                            host: host, port: port,
+                            callingAET: callingAET, calledAET: calledAET,
+                            timeout: timeout, studyUIDs: uniqueStudyUIDs
+                        )
+                    }
+                }
+
                 appendConsoleOutput("Found \(allResults.count) result(s):\n\n")
                 for (index, result) in allResults.enumerated() {
-                    appendConsoleOutput(formatQueryResult(result, index: index + 1, level: level))
+                    let parentInfo = (level == .series || level == .image)
+                        ? parentLookup[result.toStudyResult().studyInstanceUID ?? ""]
+                        : nil
+                    appendConsoleOutput(formatQueryResult(result, index: index + 1, level: level, parentStudyInfo: parentInfo))
                 }
             }
             consoleStatus = .success
@@ -691,6 +970,51 @@ public final class CLIWorkshopViewModel {
             addToHistory(toolName: "dicom-query", command: commandPreview, exitCode: 1,
                          output: errorDetail)
         }
+    }
+
+    /// Fetches parent study/patient info from the server for a set of Study UIDs.
+    /// Returns a lookup dictionary keyed by Study Instance UID.
+    private func fetchParentStudyInfo(
+        host: String, port: UInt16,
+        callingAET: String, calledAET: String,
+        timeout: TimeInterval,
+        studyUIDs: [String]
+    ) async -> [String: GenericQueryResult] {
+        var lookup: [String: GenericQueryResult] = [:]
+        for uid in studyUIDs {
+            do {
+                let keys = QueryKeys(level: .study)
+                    .studyInstanceUID(uid)
+                    .requestPatientName()
+                    .requestPatientID()
+                    .requestPatientBirthDate()
+                    .requestPatientSex()
+                    .requestStudyDate()
+                    .requestStudyTime()
+                    .requestStudyDescription()
+                    .requestAccessionNumber()
+                    .requestModalitiesInStudy()
+                    .requestNumberOfStudyRelatedSeries()
+                    .requestNumberOfStudyRelatedInstances()
+                let config = QueryConfiguration(
+                    callingAETitle: try AETitle(callingAET),
+                    calledAETitle: try AETitle(calledAET),
+                    timeout: timeout,
+                    informationModel: .studyRoot
+                )
+                let results = try await DICOMQueryService.find(
+                    host: host, port: port,
+                    configuration: config,
+                    queryKeys: keys
+                )
+                if let first = results.first {
+                    lookup[uid] = first
+                }
+            } catch {
+                // Parent info is supplementary — continue on failure
+            }
+        }
+        return lookup
     }
 
     /// Performs a concurrent two-step lookup for SERIES/IMAGE queries without Study UID.
@@ -713,7 +1037,7 @@ public final class CLIWorkshopViewModel {
         var studyQueryKeys = QueryKeys(level: .study)
             .requestStudyInstanceUID()
         if !patientID.isEmpty { studyQueryKeys = studyQueryKeys.patientID(patientID) }
-        if !patientName.isEmpty { studyQueryKeys = studyQueryKeys.patientName(patientName) }
+        if !patientName.isEmpty { studyQueryKeys = studyQueryKeys.patientName(patientName.uppercased()) }
         if !studyDate.isEmpty { studyQueryKeys = studyQueryKeys.studyDate(studyDate) }
         if !accession.isEmpty { studyQueryKeys = studyQueryKeys.accessionNumber(accession) }
         if !modality.isEmpty { studyQueryKeys = studyQueryKeys.modalitiesInStudy(modality) }
@@ -884,39 +1208,809 @@ public final class CLIWorkshopViewModel {
         return imageResults
     }
 
+    // MARK: - C-STORE Execution (dicom-send)
+
+    /// Performs a real C-STORE to send DICOM files to the configured server.
+    private func executeDicomSend() async {
+        let host = paramValue("host")
+        let portStr = paramValue("port")
+        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
+        let timeoutStr = paramValue("timeout")
+        let port = UInt16(portStr) ?? 11112
+        let timeout = TimeInterval(timeoutStr) ?? 60
+        let priorityStr = paramValue("priority").lowercased()
+        let verifyFirst = paramValue("verify") == "true"
+        let dryRun = paramValue("dry-run") == "true"
+        let retryCount = Int(paramValue("retry")) ?? 0
+
+        let priority: DIMSEPriority
+        switch priorityStr {
+        case "low": priority = .low
+        case "high": priority = .high
+        default: priority = .medium
+        }
+
+        guard !host.isEmpty else {
+            appendConsoleOutput("Error: Hostname is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            return
+        }
+
+        // Collect files from both the file drop zone and the text parameter
+        let filesParamPath = paramValue("files").trimmingCharacters(in: .whitespaces)
+        var fileEntries = inputFiles
+        if !filesParamPath.isEmpty && !fileEntries.contains(where: { $0.path == filesParamPath }) {
+            let url = URL(fileURLWithPath: filesParamPath)
+            let fileSize: Int64
+            if let attrs = try? FileManager.default.attributesOfItem(atPath: filesParamPath),
+               let size = attrs[.size] as? Int64 {
+                fileSize = size
+            } else {
+                fileSize = 0
+            }
+            fileEntries.append(CLIFileEntry(
+                path: filesParamPath,
+                filename: url.lastPathComponent,
+                fileSize: fileSize
+            ))
+        }
+
+        guard !fileEntries.isEmpty else {
+            appendConsoleOutput("Error: No DICOM files specified. Enter a file path or drag and drop files.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "No files selected")
+            return
+        }
+
+        appendConsoleOutput("DICOM Send (C-STORE)\n")
+        appendConsoleOutput("====================\n")
+        appendConsoleOutput("  Server:           \(host):\(port)\n")
+        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
+        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+        appendConsoleOutput("  Priority:         \(priorityStr)\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        if retryCount > 0 {
+            appendConsoleOutput("  Retry attempts:   \(retryCount)\n")
+        }
+        appendConsoleOutput("  Files:            \(fileEntries.count)\n")
+        if dryRun {
+            appendConsoleOutput("  Mode:             DRY RUN\n")
+        }
+        appendConsoleOutput("\n")
+
+        if dryRun {
+            for (index, file) in fileEntries.enumerated() {
+                appendConsoleOutput("  [\(index + 1)/\(fileEntries.count)] \(file.filename) (\(FileDropHelpers.formatFileSize(file.fileSize)))\n")
+            }
+            appendConsoleOutput("\nDry run complete. Disable 'Dry Run' to send files.\n")
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 0,
+                         output: "Dry run: \(fileEntries.count) file(s)")
+            return
+        }
+
+        // Verify connection first if requested
+        if verifyFirst {
+            appendConsoleOutput("Verifying connection with C-ECHO...\n")
+            do {
+                let echoResult = try await DICOMVerificationService.echo(
+                    host: host, port: port,
+                    callingAE: callingAET, calledAE: calledAET,
+                    timeout: timeout
+                )
+                if echoResult.success {
+                    appendConsoleOutput("  ✅ Connection verified\n\n")
+                } else {
+                    appendConsoleOutput("  ❌ C-ECHO failed — aborting send\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1,
+                                 output: "C-ECHO verification failed")
+                    return
+                }
+            } catch {
+                appendConsoleOutput("  ❌ C-ECHO failed: \(error.localizedDescription)\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1,
+                             output: "C-ECHO verification failed")
+                return
+            }
+        }
+
+        // Send each file
+        var successCount = 0
+        var failureCount = 0
+        let startTime = Date()
+
+        for (index, file) in fileEntries.enumerated() {
+            let fileNumber = index + 1
+            appendConsoleOutput("[\(fileNumber)/\(fileEntries.count)] Sending: \(file.filename) (\(FileDropHelpers.formatFileSize(file.fileSize)))...")
+
+            do {
+                let fileData = try readFileData(at: file.path, parameterID: "files")
+                var lastError: Error?
+                var sent = false
+
+                for attempt in 0...retryCount {
+                    do {
+                        let result = try await DICOMStorageService.store(
+                            fileData: fileData,
+                            to: host,
+                            port: port,
+                            callingAE: callingAET,
+                            calledAE: calledAET,
+                            priority: priority,
+                            timeout: timeout
+                        )
+                        successCount += 1
+                        let rtt = String(format: "%.1f", result.roundTripTime * 1000)
+                        appendConsoleOutput(" ✅ (\(rtt) ms)\n")
+                        sent = true
+                        break
+                    } catch {
+                        lastError = error
+                        if attempt < retryCount {
+                            appendConsoleOutput(" retry \(attempt + 1)/\(retryCount)...")
+                        }
+                    }
+                }
+
+                if !sent {
+                    failureCount += 1
+                    appendConsoleOutput(" ❌ \(lastError?.localizedDescription ?? "Unknown error")\n")
+                }
+            } catch {
+                failureCount += 1
+                appendConsoleOutput(" ❌ Cannot read file: \(error.localizedDescription)\n")
+            }
+        }
+
+        let elapsed = Date().timeIntervalSince(startTime)
+        appendConsoleOutput("\nTransfer Summary\n")
+        appendConsoleOutput("================\n")
+        appendConsoleOutput("  Total files:  \(fileEntries.count)\n")
+        appendConsoleOutput("  Succeeded:    \(successCount)\n")
+        appendConsoleOutput("  Failed:       \(failureCount)\n")
+        appendConsoleOutput("  Duration:     \(String(format: "%.1f", elapsed))s\n")
+
+        if failureCount == 0 {
+            appendConsoleOutput("\n✅ All files sent successfully\n")
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+        } else if successCount == 0 {
+            appendConsoleOutput("\n❌ All files failed to send\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+        } else {
+            appendConsoleOutput("\n⚠️ Partial success: \(successCount) succeeded, \(failureCount) failed\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+        }
+        addToHistory(toolName: "dicom-send", command: commandPreview,
+                     exitCode: failureCount == 0 ? 0 : 1,
+                     output: "\(successCount)/\(fileEntries.count) files sent in \(String(format: "%.1f", elapsed))s")
+    }
+
+    // MARK: - C-MOVE / C-GET Execution (dicom-retrieve)
+
+    /// Performs a C-MOVE or C-GET retrieval from the configured server.
+    private func executeDicomRetrieve() async {
+        let host = paramValue("host")
+        let portStr = paramValue("port")
+        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
+        let timeoutStr = paramValue("timeout")
+        let port = UInt16(portStr) ?? 11112
+        let timeout = TimeInterval(timeoutStr) ?? 60
+        let methodStr = paramValue("method").lowercased()
+        let moveDest = paramValue("move-dest")
+        let studyUID = paramValue("study-uid")
+        let seriesUID = paramValue("series-uid")
+        let instanceUID = paramValue("instance-uid")
+        let outputDir = resolvedOutputDir(paramValue("output"))
+        let hierarchical = paramValue("hierarchical") == "true"
+
+        // Clear previous retrieval state
+        lastRetrievedFiles.removeAll()
+        lastRetrievedOutputURL = securityScopedURLs["output"]
+
+        guard !host.isEmpty else {
+            appendConsoleOutput("Error: Hostname is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            return
+        }
+
+        guard !studyUID.isEmpty || !seriesUID.isEmpty || !instanceUID.isEmpty else {
+            appendConsoleOutput("Error: At least one UID is required (Study, Series, or Instance).\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1, output: "At least one UID required")
+            return
+        }
+
+        let isCMove = methodStr != "c-get"
+        if isCMove && moveDest.isEmpty {
+            appendConsoleOutput("Error: Move Destination AET is required for C-MOVE.\n")
+            appendConsoleOutput("  Tip: Switch to C-GET or provide a destination AE title.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1,
+                         output: "Move destination required for C-MOVE")
+            return
+        }
+
+        // If Study UID is missing, look it up from the server (dcm4chee5 style).
+        // Try direct child-level query first (empty Study UID = universal match per PS3.4 C.6).
+        // If the server rejects it, fall back to iterating studies.
+        var resolvedStudyUID = studyUID
+        if resolvedStudyUID.isEmpty {
+            appendConsoleOutput("Resolving Study UID from server...\n")
+            do {
+                let lookupConfig = QueryConfiguration(
+                    callingAETitle: try AETitle(callingAET),
+                    calledAETitle: try AETitle(calledAET),
+                    timeout: timeout,
+                    informationModel: .studyRoot
+                )
+
+                // Attempt 1: direct child-level query with empty Study UID
+                var resolved = false
+                do {
+                    let lookupLevel: QueryLevel = !seriesUID.isEmpty ? .series : .image
+                    var lookupKeys = QueryKeys(level: lookupLevel)
+                        .requestStudyInstanceUID()
+                    if !seriesUID.isEmpty { lookupKeys = lookupKeys.seriesInstanceUID(seriesUID) }
+                    if !instanceUID.isEmpty { lookupKeys = lookupKeys.sopInstanceUID(instanceUID) }
+                    let lookupResults = try await DICOMQueryService.find(
+                        host: host, port: port,
+                        configuration: lookupConfig,
+                        queryKeys: lookupKeys
+                    )
+                    if let first = lookupResults.first,
+                       let uid = first.toStudyResult().studyInstanceUID, !uid.isEmpty {
+                        resolvedStudyUID = uid
+                        resolved = true
+                        appendConsoleOutput("  Resolved Study UID: \(resolvedStudyUID)\n")
+                    }
+                } catch {
+                    // Direct query failed — fall through to study iteration
+                    appendConsoleOutput("  Direct lookup failed, searching studies...\n")
+                }
+
+                // Attempt 2: iterate studies to find the one containing the target series/instance
+                if !resolved {
+                    let studyKeys = QueryKeys(level: .study)
+                        .requestStudyInstanceUID()
+                    let studies = try await DICOMQueryService.find(
+                        host: host, port: port,
+                        configuration: lookupConfig,
+                        queryKeys: studyKeys
+                    )
+                    let studyUIDs = studies.compactMap { $0.toStudyResult().studyInstanceUID }
+                    appendConsoleOutput("  Searching \(studyUIDs.count) study(ies)...\n")
+
+                    for sUID in studyUIDs {
+                        var subKeys: QueryKeys
+                        if !seriesUID.isEmpty {
+                            subKeys = QueryKeys(level: .series)
+                                .studyInstanceUID(sUID)
+                                .seriesInstanceUID(seriesUID)
+                                .requestSeriesInstanceUID()
+                        } else {
+                            // Instance UID only — discover series first, then check
+                            subKeys = QueryKeys(level: .image)
+                                .studyInstanceUID(sUID)
+                                .sopInstanceUID(instanceUID)
+                                .requestSOPInstanceUID()
+                        }
+                        let subResults = try await DICOMQueryService.find(
+                            host: host, port: port,
+                            configuration: lookupConfig,
+                            queryKeys: subKeys
+                        )
+                        if !subResults.isEmpty {
+                            resolvedStudyUID = sUID
+                            resolved = true
+                            appendConsoleOutput("  Resolved Study UID: \(resolvedStudyUID)\n")
+                            break
+                        }
+                    }
+                }
+
+                if !resolved {
+                    appendConsoleOutput("Error: Could not resolve Study UID from server.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1,
+                                 output: "Study UID lookup failed")
+                    return
+                }
+            } catch {
+                appendConsoleOutput("Error: Study UID lookup failed — \(error.localizedDescription)\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1,
+                             output: "Study UID lookup failed: \(error.localizedDescription)")
+                return
+            }
+        }
+
+        // Determine retrieval level
+        let levelLabel: String
+        if !instanceUID.isEmpty { levelLabel = "Instance" }
+        else if !seriesUID.isEmpty { levelLabel = "Series" }
+        else { levelLabel = "Study" }
+
+        appendConsoleOutput("DICOM Retrieve (\(isCMove ? "C-MOVE" : "C-GET"))\n")
+        appendConsoleOutput("=================================\n")
+        appendConsoleOutput("  Server:           \(host):\(port)\n")
+        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
+        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+        appendConsoleOutput("  Method:           \(isCMove ? "C-MOVE" : "C-GET")\n")
+        if isCMove {
+            appendConsoleOutput("  Move Destination: \(moveDest)\n")
+        }
+        appendConsoleOutput("  Level:            \(levelLabel)\n")
+        appendConsoleOutput("  Study UID:        \(resolvedStudyUID)\n")
+        if !seriesUID.isEmpty {
+            appendConsoleOutput("  Series UID:       \(seriesUID)\n")
+        }
+        if !instanceUID.isEmpty {
+            appendConsoleOutput("  Instance UID:     \(instanceUID)\n")
+        }
+        appendConsoleOutput("  Output:           \(outputDir)\n")
+        appendConsoleOutput("  Organization:     \(hierarchical ? "Hierarchical" : "Flat")\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n\n")
+
+        appendConsoleOutput("Executing \(isCMove ? "C-MOVE" : "C-GET")...\n")
+
+        do {
+            if isCMove {
+                let onProgress: @Sendable (RetrieveProgress) -> Void = { _ in }
+
+                if !instanceUID.isEmpty && !seriesUID.isEmpty {
+                    let result = try await DICOMRetrieveService.moveInstance(
+                        host: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: resolvedStudyUID,
+                        seriesInstanceUID: seriesUID,
+                        sopInstanceUID: instanceUID,
+                        moveDestination: moveDest,
+                        onProgress: onProgress,
+                        timeout: timeout
+                    )
+                    appendConsoleOutput(formatRetrieveResult(result))
+                } else if !seriesUID.isEmpty {
+                    let result = try await DICOMRetrieveService.moveSeries(
+                        host: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: resolvedStudyUID,
+                        seriesInstanceUID: seriesUID,
+                        moveDestination: moveDest,
+                        onProgress: onProgress,
+                        timeout: timeout
+                    )
+                    appendConsoleOutput(formatRetrieveResult(result))
+                } else {
+                    let result = try await DICOMRetrieveService.moveStudy(
+                        host: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: resolvedStudyUID,
+                        moveDestination: moveDest,
+                        onProgress: onProgress,
+                        timeout: timeout
+                    )
+                    appendConsoleOutput(formatRetrieveResult(result))
+                }
+            } else {
+                // C-GET
+                let stream: AsyncStream<DICOMRetrieveService.GetEvent>
+                if !instanceUID.isEmpty && !seriesUID.isEmpty {
+                    stream = try await DICOMRetrieveService.getInstance(
+                        host: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: resolvedStudyUID,
+                        seriesInstanceUID: seriesUID,
+                        sopInstanceUID: instanceUID,
+                        timeout: timeout
+                    )
+                } else if !seriesUID.isEmpty {
+                    stream = try await DICOMRetrieveService.getSeries(
+                        host: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: resolvedStudyUID,
+                        seriesInstanceUID: seriesUID,
+                        timeout: timeout
+                    )
+                } else {
+                    stream = try await DICOMRetrieveService.getStudy(
+                        host: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: resolvedStudyUID,
+                        timeout: timeout
+                    )
+                }
+
+                var receivedCount = 0
+                for await event in stream {
+                    switch event {
+                    case .instance(let sopInstanceUID, let sopClassUID, let data):
+                        receivedCount += 1
+                        let sizeStr = FileDropHelpers.formatFileSize(Int64(data.count))
+                        appendConsoleOutput("  Received [\(receivedCount)]: \(sopInstanceUID) (\(sizeStr))")
+                        // Write the received data to disk
+                        do {
+                            let savedPath = try writeReceivedDICOMFile(
+                                data: data,
+                                sopInstanceUID: sopInstanceUID,
+                                studyUID: resolvedStudyUID,
+                                seriesUID: seriesUID.isEmpty ? nil : seriesUID,
+                                outputDir: outputDir,
+                                hierarchical: hierarchical
+                            )
+                            lastRetrievedFiles.append(savedPath)
+                            appendConsoleOutput(" → \(savedPath)\n")
+                        } catch {
+                            appendConsoleOutput(" ⚠️ Save failed: \(error.localizedDescription)\n")
+                        }
+                    case .progress(let progress):
+                        appendConsoleOutput("  Progress: \(progress.completed) completed, \(progress.remaining) remaining, \(progress.failed) failed\n")
+                    case .completed(let result):
+                        appendConsoleOutput("\n✅ C-GET completed — \(result.progress.completed) file(s) received\n")
+                        appendConsoleOutput("  Output directory: \(outputDir)\n")
+                    case .error(let error):
+                        appendConsoleOutput("\n❌ C-GET failed: \(error.localizedDescription)\n")
+                    }
+                }
+            }
+
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 0,
+                         output: "Retrieve completed")
+        } catch {
+            appendConsoleOutput("\n❌ Retrieval failed: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
+    /// Formats a C-MOVE RetrieveResult for console display.
+    private func formatRetrieveResult(_ result: RetrieveResult) -> String {
+        var lines: [String] = []
+        lines.append("\nC-MOVE Result:")
+        lines.append("  Status:    \(result.status)")
+        lines.append("  Completed: \(result.progress.completed)")
+        lines.append("  Failed:    \(result.progress.failed)")
+        lines.append("  Warnings:  \(result.progress.warning)")
+        if result.isSuccess {
+            lines.append("\n✅ Retrieval successful")
+        } else {
+            lines.append("\n❌ Retrieval returned non-success status")
+        }
+        lines.append("")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    // MARK: - Query-Retrieve Execution (dicom-qr)
+
+    /// Performs an integrated C-FIND query followed by C-MOVE/C-GET retrieval.
+    private func executeDicomQR() async {
+        let host = paramValue("host")
+        let portStr = paramValue("port")
+        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
+        let timeoutStr = paramValue("timeout")
+        let port = UInt16(portStr) ?? 11112
+        let timeout = TimeInterval(timeoutStr) ?? 60
+        let modeStr = paramValue("mode").lowercased()
+        let methodStr = paramValue("method").lowercased()
+        let moveDest = paramValue("move-dest")
+        let patientName = paramValue("patient-name")
+        let patientID = paramValue("patient-id")
+        let studyDate = paramValue("study-date")
+        let modality = paramValue("modality")
+        let studyUID = paramValue("study-uid")
+        let accession = paramValue("accession")
+        let studyDesc = paramValue("study-description")
+        let outputDir = resolvedOutputDir(paramValue("output"))
+        let hierarchical = paramValue("hierarchical") == "true"
+        let _ = paramValue("validate") == "true" // used for CLI command preview
+
+        // Clear previous retrieval state
+        lastRetrievedFiles.removeAll()
+        lastRetrievedOutputURL = securityScopedURLs["output"]
+
+        guard !host.isEmpty else {
+            appendConsoleOutput("Error: Hostname is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            return
+        }
+
+        let isCMove = methodStr != "c-get"
+        let isReviewOnly = modeStr == "review"
+
+        if !isReviewOnly && isCMove && moveDest.isEmpty {
+            appendConsoleOutput("Error: Move Destination AET is required for C-MOVE retrieval.\n")
+            appendConsoleOutput("  Tip: Switch to C-GET, use Review mode, or provide a destination AE title.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 1,
+                         output: "Move destination required for C-MOVE")
+            return
+        }
+
+        let modeLabel: String = {
+            switch modeStr {
+            case "automatic": return "Automatic"
+            case "review": return "Review"
+            default: return "Interactive"
+            }
+        }()
+
+        appendConsoleOutput("DICOM Query-Retrieve\n")
+        appendConsoleOutput("====================\n")
+        appendConsoleOutput("  Server:           \(host):\(port)\n")
+        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
+        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+        appendConsoleOutput("  Mode:             \(modeLabel)\n")
+        if !isReviewOnly {
+            appendConsoleOutput("  Method:           \(isCMove ? "C-MOVE" : "C-GET")\n")
+            if isCMove {
+                appendConsoleOutput("  Move Destination: \(moveDest)\n")
+            }
+        }
+        appendConsoleOutput("  Output:           \(outputDir)\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+
+        // Display active filters
+        var hasFilters = false
+        if !patientName.isEmpty { appendConsoleOutput("  Patient Name:     \(patientName)\n"); hasFilters = true }
+        if !patientID.isEmpty { appendConsoleOutput("  Patient ID:       \(patientID)\n"); hasFilters = true }
+        if !studyDate.isEmpty { appendConsoleOutput("  Study Date:       \(studyDate)\n"); hasFilters = true }
+        if !modality.isEmpty { appendConsoleOutput("  Modality:         \(modality)\n"); hasFilters = true }
+        if !studyUID.isEmpty { appendConsoleOutput("  Study UID:        \(studyUID)\n"); hasFilters = true }
+        if !accession.isEmpty { appendConsoleOutput("  Accession:        \(accession)\n"); hasFilters = true }
+        if !studyDesc.isEmpty { appendConsoleOutput("  Study Desc:       \(studyDesc)\n"); hasFilters = true }
+        if !hasFilters {
+            appendConsoleOutput("  Filters:          (none — returns all studies)\n")
+        }
+        appendConsoleOutput("\n")
+
+        // Step 1: Query
+        appendConsoleOutput("Phase 1: Querying studies...\n")
+
+        do {
+            var queryKeys = QueryKeys(level: .study)
+                .requestPatientName()
+                .requestPatientID()
+                .requestStudyInstanceUID()
+                .requestStudyDate()
+                .requestStudyDescription()
+                .requestAccessionNumber()
+                .requestModalitiesInStudy()
+                .requestNumberOfStudyRelatedSeries()
+                .requestNumberOfStudyRelatedInstances()
+
+            if !patientName.isEmpty { queryKeys = queryKeys.patientName(patientName.uppercased()) }
+            if !patientID.isEmpty { queryKeys = queryKeys.patientID(patientID) }
+            if !studyDate.isEmpty { queryKeys = queryKeys.studyDate(studyDate) }
+            if !modality.isEmpty { queryKeys = queryKeys.modalitiesInStudy(modality) }
+            if !studyUID.isEmpty { queryKeys = queryKeys.studyInstanceUID(studyUID) }
+            if !accession.isEmpty { queryKeys = queryKeys.accessionNumber(accession) }
+            if !studyDesc.isEmpty { queryKeys = queryKeys.studyDescription(studyDesc) }
+
+            let config = QueryConfiguration(
+                callingAETitle: try AETitle(callingAET),
+                calledAETitle: try AETitle(calledAET),
+                timeout: timeout,
+                informationModel: .studyRoot
+            )
+
+            let results = try await DICOMQueryService.find(
+                host: host, port: port,
+                configuration: config,
+                queryKeys: queryKeys
+            )
+
+            if results.isEmpty {
+                appendConsoleOutput("No studies found matching the query criteria.\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 0,
+                             output: "0 studies found")
+                return
+            }
+
+            appendConsoleOutput("Found \(results.count) study(ies):\n\n")
+            for (index, result) in results.enumerated() {
+                let s = result.toStudyResult()
+                appendConsoleOutput("  [\(index + 1)] \(s.patientName ?? "Unknown") (ID: \(s.patientID ?? "N/A"))\n")
+                appendConsoleOutput("      Study: \(s.studyDescription ?? "No description")\n")
+                appendConsoleOutput("      Date: \(s.studyDate ?? "N/A")  Modality: \(s.modalitiesInStudy ?? "N/A")\n")
+                if let uid = s.studyInstanceUID {
+                    appendConsoleOutput("      UID: \(uid)\n")
+                }
+                appendConsoleOutput("\n")
+            }
+
+            // Review mode — done
+            if isReviewOnly {
+                appendConsoleOutput("Review complete. \(results.count) study(ies) found.\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 0,
+                             output: "\(results.count) studies found (review only)")
+                return
+            }
+
+            // Phase 2: Retrieve
+            let studiesToRetrieve = results
+            appendConsoleOutput("Phase 2: Retrieving \(studiesToRetrieve.count) study(ies)...\n\n")
+
+            var successCount = 0
+            var failureCount = 0
+
+            for (index, result) in studiesToRetrieve.enumerated() {
+                let s = result.toStudyResult()
+                guard let uid = s.studyInstanceUID else {
+                    appendConsoleOutput("[\(index + 1)/\(studiesToRetrieve.count)] ⚠️ Missing Study UID\n")
+                    failureCount += 1
+                    continue
+                }
+
+                appendConsoleOutput("[\(index + 1)/\(studiesToRetrieve.count)] Retrieving: \(s.patientName ?? "Unknown") — \(uid)\n")
+
+                do {
+                    if isCMove {
+                        _ = try await DICOMRetrieveService.moveStudy(
+                            host: host, port: port,
+                            callingAE: callingAET, calledAE: calledAET,
+                            studyInstanceUID: uid,
+                            moveDestination: moveDest,
+                            timeout: timeout
+                        )
+                    } else {
+                        let stream = try await DICOMRetrieveService.getStudy(
+                            host: host, port: port,
+                            callingAE: callingAET, calledAE: calledAET,
+                            studyInstanceUID: uid,
+                            timeout: timeout
+                        )
+                        var fileCount = 0
+                        for await event in stream {
+                            switch event {
+                            case .instance(let sopInstanceUID, _, let data):
+                                fileCount += 1
+                                do {
+                                    let savedPath = try writeReceivedDICOMFile(
+                                        data: data,
+                                        sopInstanceUID: sopInstanceUID,
+                                        studyUID: uid,
+                                        outputDir: outputDir,
+                                        hierarchical: hierarchical
+                                    )
+                                    lastRetrievedFiles.append(savedPath)
+                                    appendConsoleOutput("    Saved: \(savedPath)\n")
+                                } catch {
+                                    appendConsoleOutput("    ⚠️ Save failed: \(error.localizedDescription)\n")
+                                }
+                            case .progress(let progress):
+                                appendConsoleOutput("    Progress: \(progress.completed)/\(progress.completed + progress.remaining)\n")
+                            case .completed(_):
+                                appendConsoleOutput("    \(fileCount) file(s) saved to \(outputDir)\n")
+                            case .error(let err):
+                                appendConsoleOutput("    ⚠️ \(err.localizedDescription)\n")
+                            }
+                        }
+                    }
+                    successCount += 1
+                    appendConsoleOutput("  ✅ Success\n\n")
+                } catch {
+                    failureCount += 1
+                    appendConsoleOutput("  ❌ Failed: \(error.localizedDescription)\n\n")
+                }
+            }
+
+            appendConsoleOutput("Retrieval Summary\n")
+            appendConsoleOutput("=================\n")
+            appendConsoleOutput("  Total:     \(studiesToRetrieve.count)\n")
+            appendConsoleOutput("  Succeeded: \(successCount)\n")
+            appendConsoleOutput("  Failed:    \(failureCount)\n")
+
+            if failureCount == 0 {
+                appendConsoleOutput("\n✅ All studies retrieved successfully\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+            } else if successCount == 0 {
+                appendConsoleOutput("\n❌ All retrievals failed\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+            } else {
+                appendConsoleOutput("\n⚠️ Partial success\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+            }
+
+            addToHistory(toolName: "dicom-qr", command: commandPreview,
+                         exitCode: failureCount == 0 ? 0 : 1,
+                         output: "\(successCount)/\(studiesToRetrieve.count) studies retrieved")
+        } catch {
+            appendConsoleOutput("❌ Query-Retrieve failed: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
     /// Formats a single generic query result for console display.
-    private func formatQueryResult(_ result: GenericQueryResult, index: Int, level: QueryLevel) -> String {
+    private func formatQueryResult(_ result: GenericQueryResult, index: Int, level: QueryLevel, parentStudyInfo: GenericQueryResult? = nil) -> String {
         var lines: [String] = ["--- Result \(index) ---"]
-        switch level {
-        case .patient:
-            let p = result.toPatientResult()
-            if let v = p.patientName    { lines.append("  Patient Name:  \(v)") }
-            if let v = p.patientID      { lines.append("  Patient ID:    \(v)") }
-            if let v = p.patientBirthDate { lines.append("  Birth Date:    \(v)") }
-            if let v = p.patientSex     { lines.append("  Sex:           \(v)") }
-        case .study:
-            let s = result.toStudyResult()
-            if let v = s.patientName    { lines.append("  Patient:       \(v)") }
-            if let v = s.patientID      { lines.append("  Patient ID:    \(v)") }
-            if let v = s.studyDate      { lines.append("  Study Date:    \(v)") }
-            if let v = s.studyDescription { lines.append("  Description:   \(v)") }
-            if let v = s.accessionNumber { lines.append("  Accession:     \(v)") }
-            if let v = s.modalitiesInStudy { lines.append("  Modalities:    \(v)") }
-            if let v = s.studyInstanceUID { lines.append("  Study UID:     \(v)") }
-        case .series:
+
+        // Display attributes from the queried (lower) level up to higher parent levels.
+
+        // Image-level attributes
+        if level == .image {
+            let i = result.toInstanceResult()
+            if let v = i.sopClassUID    { lines.append("  SOP Class:     \(v)") }
+            if let v = i.sopInstanceUID { lines.append("  SOP Instance:  \(v)") }
+            if let v = i.instanceNumber { lines.append("  Instance #:    \(v)") }
+            if let v = i.contentDate    { lines.append("  Content Date:  \(v)") }
+            if let v = i.rows, let c = i.columns { lines.append("  Dimensions:    \(c)x\(v)") }
+            if let v = i.numberOfFrames { lines.append("  Frames:        \(v)") }
+        }
+
+        // Series-level attributes
+        if level == .series || level == .image {
             let s = result.toSeriesResult()
-            if let v = s.seriesDescription { lines.append("  Description:   \(v)") }
+            if let v = s.seriesDescription { lines.append("  Series Desc:   \(v)") }
             if let v = s.modality       { lines.append("  Modality:      \(v)") }
             if let v = s.seriesNumber   { lines.append("  Series #:      \(v)") }
             if let v = s.seriesDate     { lines.append("  Series Date:   \(v)") }
             if let v = s.numberOfSeriesRelatedInstances { lines.append("  Instances:     \(v)") }
             if let v = s.seriesInstanceUID { lines.append("  Series UID:    \(v)") }
-        case .image:
-            let i = result.toInstanceResult()
-            if let v = i.sopClassUID    { lines.append("  SOP Class:     \(v)") }
-            if let v = i.sopInstanceUID { lines.append("  SOP Instance:  \(v)") }
-            if let v = i.instanceNumber { lines.append("  Instance #:    \(v)") }
         }
+
+        // Study-level attributes (with parent info fallback for series/image levels)
+        if level == .study || level == .series || level == .image {
+            let s = result.toStudyResult()
+            let ps = parentStudyInfo?.toStudyResult()
+            if let v = s.studyDate ?? ps?.studyDate { lines.append("  Study Date:    \(v)") }
+            if let v = s.studyTime ?? ps?.studyTime { lines.append("  Study Time:    \(v)") }
+            if let v = s.studyDescription ?? ps?.studyDescription { lines.append("  Study Desc:    \(v)") }
+            if let v = s.accessionNumber ?? ps?.accessionNumber { lines.append("  Accession:     \(v)") }
+            if let v = s.modalitiesInStudy ?? ps?.modalitiesInStudy { lines.append("  Modalities:    \(v)") }
+            if let v = s.numberOfStudyRelatedSeries ?? ps?.numberOfStudyRelatedSeries { lines.append("  Study Series:  \(v)") }
+            if let v = s.numberOfStudyRelatedInstances ?? ps?.numberOfStudyRelatedInstances { lines.append("  Study Images:  \(v)") }
+            if let v = s.studyInstanceUID ?? ps?.studyInstanceUID { lines.append("  Study UID:     \(v)") }
+        }
+
+        // Patient-level attributes (highest level — always shown, with parent info fallback)
+        let p = result.toPatientResult()
+        let pp = parentStudyInfo?.toPatientResult()
+        if let v = p.patientName ?? pp?.patientName { lines.append("  Patient Name:  \(v)") }
+        if let v = p.patientID ?? pp?.patientID { lines.append("  Patient ID:    \(v)") }
+        if let v = p.patientBirthDate ?? pp?.patientBirthDate { lines.append("  Birth Date:    \(v)") }
+        if let v = p.patientSex ?? pp?.patientSex { lines.append("  Sex:           \(v)") }
+        if level == .patient {
+            if let v = p.numberOfPatientRelatedStudies { lines.append("  Studies:       \(v)") }
+            if let v = p.numberOfPatientRelatedSeries  { lines.append("  Series:        \(v)") }
+            if let v = p.numberOfPatientRelatedInstances { lines.append("  Instances:     \(v)") }
+        }
+
         lines.append("")
         return lines.joined(separator: "\n") + "\n"
     }

@@ -20,11 +20,18 @@ public final class ImportService: Sendable {
     /// The file service used for parsing DICOM files.
     public let fileService: DICOMFileService
 
+    /// Optional directory to copy imported files into for persistent sandbox access.
+    public let copyDirectory: URL?
+
     /// Creates an import service with the given file service.
     ///
-    /// - Parameter fileService: The DICOM file parsing service.
-    public init(fileService: DICOMFileService = DICOMFileService()) {
+    /// - Parameters:
+    ///   - fileService: The DICOM file parsing service.
+    ///   - copyDirectory: If set, imported files are copied here so the
+    ///     app retains access after the security-scoped resource is released.
+    public init(fileService: DICOMFileService = DICOMFileService(), copyDirectory: URL? = nil) {
         self.fileService = fileService
+        self.copyDirectory = copyDirectory
     }
 
     /// Imports a single DICOM file, performing validation and metadata extraction.
@@ -89,6 +96,30 @@ public final class ImportService: Sendable {
         let study    = parsed.study
         let series   = parsed.series
 
+        // Copy the file into the app's managed storage so the Viewer
+        // can read it later without needing the original security scope.
+        var localInstance = instance
+        if let copyDir = copyDirectory {
+            let studyDir = copyDir.appendingPathComponent(study.studyInstanceUID, isDirectory: true)
+            let fm = FileManager.default
+            try? fm.createDirectory(at: studyDir, withIntermediateDirectories: true)
+            let safeName = instance.sopInstanceUID.isEmpty
+                ? url.lastPathComponent
+                : instance.sopInstanceUID + ".dcm"
+            let dest = studyDir.appendingPathComponent(safeName)
+            if !fm.fileExists(atPath: dest.path) {
+                do {
+                    try data.write(to: dest, options: .atomic)
+                    logger.info("importFile: Copied to \(dest.lastPathComponent)")
+                } catch {
+                    logger.warning("importFile: Copy failed — \(error.localizedDescription)")
+                }
+            }
+            if fm.fileExists(atPath: dest.path) {
+                localInstance.filePath = dest.path
+            }
+        }
+
         // Validate required tags
         let tagIssues = ImportValidation.validateRequiredTags(
             hasStudyInstanceUID: !study.studyInstanceUID.isEmpty,
@@ -114,7 +145,7 @@ public final class ImportService: Sendable {
         logger.info("importFile: OK \(url.lastPathComponent) — patient=\(study.patientName ?? "?"), modality=\(series.modality), duplicate=\(isDuplicate)")
         return ImportResult(
             sourceURL: url,
-            instance: instance,
+            instance: localInstance,
             study: study,
             series: series,
             validationIssues: allIssues,

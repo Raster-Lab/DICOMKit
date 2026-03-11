@@ -166,6 +166,28 @@ public final class ImageViewerViewModel {
 
     // MARK: - File Loading
 
+    /// Loads a DICOM file from a security-scoped URL.
+    ///
+    /// Use this overload when opening files from a file importer or drag-and-drop,
+    /// where the URL carries sandbox access rights.
+    ///
+    /// - Parameter url: A security-scoped URL to the DICOM file.
+    public func loadFile(from url: URL) {
+        let accessing = url.startAccessingSecurityScopedResource()
+        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+
+        isLoading = true
+        errorMessage = nil
+
+        do {
+            let data = try Data(contentsOf: url)
+            try loadDICOMData(data, path: url.path)
+        } catch {
+            errorMessage = "Failed to load file: \(error.localizedDescription)"
+            isLoading = false
+        }
+    }
+
     /// Loads a DICOM file for viewing.
     ///
     /// - Parameter path: File path to load.
@@ -176,75 +198,113 @@ public final class ImageViewerViewModel {
         do {
             let url = URL(fileURLWithPath: path)
             let data = try Data(contentsOf: url)
-            let file = try DICOMFile.read(from: data)
-
-            self.dicomFile = file
-            self.filePath = path
-            self.sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
-
-            // Extract pixel data descriptor
-            if let descriptor = file.pixelDataDescriptor() {
-                imageRows = descriptor.rows
-                imageColumns = descriptor.columns
-                bitsAllocated = descriptor.bitsAllocated
-                bitsStored = descriptor.bitsStored
-                highBit = descriptor.highBit
-                isSigned = descriptor.isSigned
-                samplesPerPixel = descriptor.samplesPerPixel
-                planarConfiguration = descriptor.planarConfiguration
-                photometricInterpretation = descriptor.photometricInterpretation.rawValue
-                numberOfFrames = descriptor.numberOfFrames
-            }
-
-            // Extract rescale parameters for window correction
-            let slope = file.rescaleSlope()
-            let intercept = file.rescaleIntercept()
-            self.rescaleSlope = slope
-            self.rescaleIntercept = intercept
-
-            // Extract window settings from header
-            headerWindowSettings = file.allWindowSettings()
-            if let firstWindow = headerWindowSettings.first {
-                // Header window settings are in output units (post-rescale).
-                // Convert to stored-value space since the renderer operates on raw stored values.
-                if slope != 0 {
-                    windowCenter = (firstWindow.center - intercept) / slope
-                    windowWidth = firstWindow.width / abs(slope)
-                } else {
-                    windowCenter = firstWindow.center
-                    windowWidth = firstWindow.width
-                }
-                voiLUTFunction = firstWindow.function.rawValue
-            } else {
-                // No header window settings — auto-calculate from actual pixel data range
-                if let pixData = file.pixelData(),
-                   let range = pixData.pixelRange(forFrame: 0) {
-                    windowCenter = Double(range.min + range.max) / 2.0
-                    windowWidth = max(1.0, Double(range.max - range.min))
-                }
-            }
-
-            // Load modality presets
-            let modality = file.dataSet.string(for: .modality) ?? ""
-            availablePresets = WindowLevelPresets.presets(for: modality)
-
-            // Reset viewer state
-            currentFrameIndex = 0
-            playbackState = .stopped
-            zoomLevel = 1.0
-            panOffsetX = 0.0
-            panOffsetY = 0.0
-            rotationAngle = 0.0
-            isInverted = false
-
-            // Render first frame
-            renderCurrentFrame()
-
-            isLoading = false
+            try loadDICOMData(data, path: path)
         } catch {
             errorMessage = "Failed to load file: \(error.localizedDescription)"
             isLoading = false
         }
+    }
+
+    /// Loads a DICOM file for viewing, using a security-scoped parent URL
+    /// for sandbox access if needed.
+    ///
+    /// - Parameters:
+    ///   - path: File path to load.
+    ///   - securityScopedParent: Optional parent URL with security-scoped access rights.
+    public func loadFile(at path: String, securityScopedParent: URL?) {
+        guard let scopedURL = securityScopedParent else {
+            loadFile(at: path)
+            return
+        }
+        isLoading = true
+        errorMessage = nil
+
+        let accessing = scopedURL.startAccessingSecurityScopedResource()
+        defer { if accessing { scopedURL.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let url = URL(fileURLWithPath: path)
+            let data = try Data(contentsOf: url)
+            try loadDICOMData(data, path: path)
+        } catch {
+            errorMessage = "Failed to load file: \(error.localizedDescription)"
+            isLoading = false
+        }
+    }
+
+    /// Shared implementation for loading parsed DICOM data.
+    private func loadDICOMData(_ data: Data, path: String) throws {
+        let file: DICOMFile
+        do {
+            file = try DICOMFile.read(from: data)
+        } catch {
+            // Retry with force=true for legacy DICOM files without Part 10 header
+            file = try DICOMFile.read(from: data, force: true)
+        }
+
+        self.dicomFile = file
+        self.filePath = path
+        self.sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
+
+        // Extract pixel data descriptor
+        if let descriptor = file.pixelDataDescriptor() {
+            imageRows = descriptor.rows
+            imageColumns = descriptor.columns
+            bitsAllocated = descriptor.bitsAllocated
+            bitsStored = descriptor.bitsStored
+            highBit = descriptor.highBit
+            isSigned = descriptor.isSigned
+            samplesPerPixel = descriptor.samplesPerPixel
+            planarConfiguration = descriptor.planarConfiguration
+            photometricInterpretation = descriptor.photometricInterpretation.rawValue
+            numberOfFrames = descriptor.numberOfFrames
+        }
+
+        // Extract rescale parameters for window correction
+        let slope = file.rescaleSlope()
+        let intercept = file.rescaleIntercept()
+        self.rescaleSlope = slope
+        self.rescaleIntercept = intercept
+
+        // Extract window settings from header
+        headerWindowSettings = file.allWindowSettings()
+        if let firstWindow = headerWindowSettings.first {
+            // Header window settings are in output units (post-rescale).
+            // Convert to stored-value space since the renderer operates on raw stored values.
+            if slope != 0 {
+                windowCenter = (firstWindow.center - intercept) / slope
+                windowWidth = firstWindow.width / abs(slope)
+            } else {
+                windowCenter = firstWindow.center
+                windowWidth = firstWindow.width
+            }
+            voiLUTFunction = firstWindow.function.rawValue
+        } else {
+            // No header window settings — auto-calculate from actual pixel data range
+            if let pixData = file.pixelData(),
+               let range = pixData.pixelRange(forFrame: 0) {
+                windowCenter = Double(range.min + range.max) / 2.0
+                windowWidth = max(1.0, Double(range.max - range.min))
+            }
+        }
+
+        // Load modality presets
+        let modality = file.dataSet.string(for: .modality) ?? ""
+        availablePresets = WindowLevelPresets.presets(for: modality)
+
+        // Reset viewer state
+        currentFrameIndex = 0
+        playbackState = .stopped
+        zoomLevel = 1.0
+        panOffsetX = 0.0
+        panOffsetY = 0.0
+        rotationAngle = 0.0
+        isInverted = false
+
+        // Render first frame
+        renderCurrentFrame()
+
+        isLoading = false
     }
 
     // MARK: - Rendering
