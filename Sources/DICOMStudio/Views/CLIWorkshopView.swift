@@ -16,6 +16,9 @@ import UIKit
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 public struct CLIWorkshopView: View {
     @Bindable var viewModel: CLIWorkshopViewModel
+    @State private var showFileImporter = false
+    @State private var fileImporterParamID: String = ""
+    @State private var fileImporterIsDirectory = false
 
     public init(viewModel: CLIWorkshopViewModel) {
         self.viewModel = viewModel
@@ -154,9 +157,15 @@ public struct CLIWorkshopView: View {
 
     private var commandAndConsolePanel: some View {
         VStack(spacing: 0) {
-            // Parameter input fields above the command preview
+            // Server list and parameter input fields above the command preview
             if viewModel.selectedTool() != nil {
                 VStack(alignment: .leading, spacing: 8) {
+                    // Server selection for network tools
+                    if viewModel.isNetworkToolSelected {
+                        serverSelectionSection
+                        Divider()
+                    }
+
                     Text("Parameters")
                         .font(.subheadline.bold())
 
@@ -237,6 +246,18 @@ public struct CLIWorkshopView: View {
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Copy console output")
                         .accessibilityHint("Copies the console output to the clipboard")
+                    }
+
+                    if !viewModel.lastRetrievedFiles.isEmpty {
+                        Button {
+                            viewModel.openRetrievedFileInViewer()
+                        } label: {
+                            Label("Open in Viewer", systemImage: "eye")
+                                .font(.caption)
+                        }
+                        .buttonStyle(.bordered)
+                        .accessibilityLabel("Open retrieved file in viewer")
+                        .accessibilityHint("Opens the first retrieved DICOM file in the image viewer")
                     }
 
                     Button("Clear") {
@@ -329,6 +350,10 @@ public struct CLIWorkshopView: View {
                                     .font(.caption.bold())
                                 if param.parameterType == .enumPicker && !param.allowedValues.isEmpty {
                                     enumPickerField(param: param)
+                                } else if param.parameterType == .filePath || param.parameterType == .outputPath {
+                                    filePathField(param: param)
+                                } else if param.parameterType == .booleanToggle {
+                                    booleanToggleField(param: param)
                                 } else {
                                     TextField(param.placeholder, text: parameterBinding(for: param.id))
                                         .textFieldStyle(.roundedBorder)
@@ -348,29 +373,248 @@ public struct CLIWorkshopView: View {
         }
     }
 
-    /// A picker that offers preset values plus a custom text entry option.
+    /// A file/directory path field with a Browse button and file importer.
+    private func filePathField(param: CLIParameterDefinition) -> some View {
+        HStack(spacing: 4) {
+            TextField(param.placeholder, text: parameterBinding(for: param.id))
+                .textFieldStyle(.roundedBorder)
+                .font(.caption)
+                .accessibilityLabel(param.displayName)
+            Button {
+                fileImporterParamID = param.id
+                fileImporterIsDirectory = (param.parameterType == .outputPath)
+                showFileImporter = true
+            } label: {
+                Label("Browse", systemImage: "folder")
+                    .font(.caption)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel("Browse for \(param.displayName)")
+            .accessibilityHint("Opens a file picker dialog")
+        }
+        .fileImporter(
+            isPresented: Binding(
+                get: { showFileImporter && fileImporterParamID == param.id },
+                set: { newValue in
+                    if !newValue { showFileImporter = false }
+                }
+            ),
+            allowedContentTypes: param.parameterType == .outputPath ? [.folder] : [.data, .folder],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                if let url = urls.first {
+                    // Store the security-scoped URL for later file access
+                    viewModel.setSecurityScopedURL(url, forParameterID: param.id)
+                }
+            case .failure:
+                break
+            }
+        }
+    }
+
+    /// A boolean toggle field rendered as a toggle switch.
+    private func booleanToggleField(param: CLIParameterDefinition) -> some View {
+        let isOn = Binding<Bool>(
+            get: {
+                let val = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? "false"
+                return val == "true"
+            },
+            set: { newValue in
+                viewModel.updateParameterValue(parameterID: param.id, value: newValue ? "true" : "false")
+            }
+        )
+        return Toggle(isOn: isOn) {
+            EmptyView()
+        }
+        .toggleStyle(.switch)
+        .accessibilityLabel(param.displayName)
+    }
+
+    /// A picker that offers preset values.
     private func enumPickerField(param: CLIParameterDefinition) -> some View {
-        let currentValue = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? ""
-        let isCustom = !currentValue.isEmpty && !param.allowedValues.contains(currentValue)
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 6) {
-                Picker("", selection: pickerBinding(for: param)) {
+                Picker("", selection: parameterBinding(for: param.id)) {
                     ForEach(param.allowedValues, id: \.self) { value in
-                        Text(value).tag(value)
+                        Text(value.isEmpty ? "Any" : value).tag(value)
                     }
-                    Text("Custom…").tag("__custom__")
                 }
                 .labelsHidden()
                 .font(.caption)
                 .accessibilityLabel(param.displayName)
             }
-            if isCustom {
-                TextField(param.placeholder, text: parameterBinding(for: param.id))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.caption)
-                    .accessibilityLabel("Custom \(param.displayName)")
+        }
+    }
+
+    // MARK: - Server Selection
+
+    /// Server selection section with saved servers list, add/save buttons.
+    private var serverSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("Server", systemImage: "server.rack")
+                    .font(.subheadline.bold())
+                Spacer()
+                Button {
+                    // Pre-fill from current parameters
+                    let host = viewModel.parameterValues.first(where: { $0.parameterID == "host" })?.stringValue ?? ""
+                    let port = viewModel.parameterValues.first(where: { $0.parameterID == "port" })?.stringValue ?? "11112"
+                    let calledAET = viewModel.parameterValues.first(where: { $0.parameterID == "called-aet" })?.stringValue ?? ""
+                    let callingAET = viewModel.parameterValues.first(where: { $0.parameterID == "calling-aet" })?.stringValue ?? "DICOMSTUDIO"
+                    viewModel.newServerHost = host
+                    viewModel.newServerPort = port
+                    viewModel.newServerCalledAET = calledAET
+                    viewModel.newServerCallingAET = callingAET
+                    viewModel.newServerName = host.isEmpty ? "" : "\(calledAET)@\(host)"
+                    viewModel.showAddServerSheet = true
+                } label: {
+                    Label("Add Server", systemImage: "plus")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Add new server")
+
+                Button {
+                    viewModel.saveCurrentServerAsDefault()
+                } label: {
+                    Label("Save as Default", systemImage: "star")
+                        .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Save current server as default")
+                .accessibilityHint("Persists hostname, port, and AE titles as defaults for all network tools")
+            }
+
+            if viewModel.savedServerProfiles.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                    Text("No saved servers. Enter parameters manually or add a server.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        // "Manual" chip to deselect any server
+                        Button {
+                            viewModel.selectedSavedServerID = nil
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard")
+                                    .font(.system(size: 9))
+                                Text("Manual")
+                                    .font(.caption2)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(viewModel.selectedSavedServerID == nil ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule().stroke(
+                                    viewModel.selectedSavedServerID == nil ? Color.accentColor.opacity(0.4) : Color.clear,
+                                    lineWidth: 1
+                                )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Use manual server entry")
+
+                        ForEach(viewModel.savedServerProfiles) { server in
+                            let isSelected = viewModel.selectedSavedServerID == server.id
+                            Button {
+                                viewModel.applySavedServer(id: server.id)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(server.name)
+                                            .font(.caption2.bold())
+                                        Text("\(server.host):\(server.port)")
+                                            .font(.system(size: 9, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 10))
+                                            .foregroundStyle(.green)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6).stroke(
+                                        isSelected ? Color.accentColor.opacity(0.4) : Color.clear,
+                                        lineWidth: 1
+                                    )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    viewModel.removeSavedServer(id: server.id)
+                                } label: {
+                                    Label("Remove", systemImage: "trash")
+                                }
+                            }
+                            .accessibilityLabel("Select server \(server.name)")
+                            .accessibilityHint("\(server.host) port \(server.port)")
+                        }
+                    }
+                }
             }
         }
+        .sheet(isPresented: $viewModel.showAddServerSheet) {
+            addServerSheet
+        }
+    }
+
+    /// Sheet for adding a new server profile.
+    private var addServerSheet: some View {
+        VStack(spacing: 16) {
+            Text("Add Server")
+                .font(.headline)
+
+            Form {
+                TextField("Server Name", text: $viewModel.newServerName)
+                    .accessibilityLabel("Server name")
+                TextField("Hostname / IP", text: $viewModel.newServerHost)
+                    .accessibilityLabel("Hostname")
+                TextField("Port", text: $viewModel.newServerPort)
+                    .accessibilityLabel("Port")
+                TextField("Called AE Title", text: $viewModel.newServerCalledAET)
+                    .accessibilityLabel("Called AE Title")
+                TextField("Calling AE Title", text: $viewModel.newServerCallingAET)
+                    .accessibilityLabel("Calling AE Title")
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Button("Cancel") {
+                    viewModel.showAddServerSheet = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button("Add") {
+                    viewModel.addNewServerFromForm()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    viewModel.newServerName.trimmingCharacters(in: .whitespaces).isEmpty ||
+                    viewModel.newServerHost.trimmingCharacters(in: .whitespaces).isEmpty ||
+                    viewModel.newServerCalledAET.trimmingCharacters(in: .whitespaces).isEmpty
+                )
+            }
+            .padding(.horizontal)
+        }
+        .padding()
+        .frame(minWidth: 380, idealWidth: 420, minHeight: 320)
     }
 
     /// Picker for choosing from saved Networking server profiles.
@@ -493,29 +737,5 @@ public struct CLIWorkshopView: View {
         #endif
     }
 
-    /// Binding for the enum picker that maps "__custom__" to showing a text field.
-    private func pickerBinding(for param: CLIParameterDefinition) -> Binding<String> {
-        Binding(
-            get: {
-                let current = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? ""
-                if param.allowedValues.contains(current) {
-                    return current
-                }
-                return "__custom__"
-            },
-            set: { newValue in
-                if newValue == "__custom__" {
-                    // Keep existing value — user will type in the text field
-                    let current = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? ""
-                    if param.allowedValues.contains(current) {
-                        // Switching to custom: clear to let user type
-                        viewModel.updateParameterValue(parameterID: param.id, value: "")
-                    }
-                } else {
-                    viewModel.updateParameterValue(parameterID: param.id, value: newValue)
-                }
-            }
-        )
-    }
 }
 #endif

@@ -97,7 +97,10 @@ public final class MainViewModel {
         // entire app session — switching tabs no longer destroys it.
         // The `library` computed property on MainViewModel delegates
         // to this ViewModel, keeping a single source of truth.
-        let importService = ImportService(fileService: fileService)
+        let importService = ImportService(
+            fileService: fileService,
+            copyDirectory: storageService.importDirectory
+        )
         self.studyBrowserViewModel = StudyBrowserViewModel(
             library: savedLibrary,
             importService: importService,
@@ -114,12 +117,29 @@ public final class MainViewModel {
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
 
+        // Wire the CLI workshop's "open in viewer" callback.
+        self.cliWorkshopViewModel.onOpenInViewer = { [weak self] filePath, scopedURL in
+            guard let self else { return }
+            self.imageViewerViewModel.loadFile(at: filePath, securityScopedParent: scopedURL)
+            self.selectedDestination = .viewer
+        }
+
         // Wire the study browser's "open in viewer" callback.
         self.studyBrowserViewModel.onOpenInViewer = { [weak self] filePath in
             guard let self else { return }
             self.imageViewerViewModel.loadFile(at: filePath)
             self.selectedDestination = .viewer
         }
+    }
+
+    /// Opens the first retrieved file from CLI Workshop in the viewer.
+    public func openLastRetrievedInViewer() {
+        guard let firstFile = cliWorkshopViewModel.lastRetrievedFiles.first else { return }
+        imageViewerViewModel.loadFile(
+            at: firstFile,
+            securityScopedParent: cliWorkshopViewModel.lastRetrievedOutputURL
+        )
+        selectedDestination = .viewer
     }
 
     /// Navigates to the specified destination.

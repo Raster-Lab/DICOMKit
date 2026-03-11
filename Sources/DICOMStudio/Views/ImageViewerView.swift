@@ -93,9 +93,7 @@ public struct ImageViewerView: View {
             switch result {
             case .success(let urls):
                 if let url = urls.first {
-                    let accessing = url.startAccessingSecurityScopedResource()
-                    defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-                    viewModel.loadFile(at: url.path)
+                    viewModel.loadFile(from: url)
                 }
             case .failure(let error):
                 viewModel.errorMessage = "Failed to open file: \(error.localizedDescription)"
