@@ -117,14 +117,36 @@ public final class MainViewModel {
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
 
-        // Wire the CLI workshop's "open in viewer" callback.
+        // Auto-start the local DICOM SCP so other applications can send C-ECHO/C-STORE
+        // to DICOMStudio immediately on launch without any manual configuration.
+        Task { [weak self] in
+            await self?.cliWorkshopViewModel.startLocalSCP()
+        }
+
+        // Wire the CLI workshop's "open in viewer" callbacks.
         self.cliWorkshopViewModel.onOpenInViewer = { [weak self] filePath, scopedURL in
             guard let self else { return }
             self.imageViewerViewModel.loadFile(at: filePath, securityScopedParent: scopedURL)
             self.selectedDestination = .viewer
         }
+        self.cliWorkshopViewModel.onOpenSeriesInViewer = { [weak self] files, startIdx, scopedURL in
+            guard let self else { return }
+            self.imageViewerViewModel.loadSeries(
+                files: files,
+                startIndex: startIdx,
+                securityScopedParent: scopedURL
+            )
+            self.selectedDestination = .viewer
+        }
 
-        // Wire the study browser's "open in viewer" callback.
+        // Wire the study browser's "open in viewer" callbacks.
+        // Series callback (preferred): loads all files in the series with navigation.
+        self.studyBrowserViewModel.onOpenSeriesInViewer = { [weak self] files, startIdx in
+            guard let self else { return }
+            self.imageViewerViewModel.loadSeries(files: files, startIndex: startIdx)
+            self.selectedDestination = .viewer
+        }
+        // Single-file fallback: kept for API consumers that only set onOpenInViewer.
         self.studyBrowserViewModel.onOpenInViewer = { [weak self] filePath in
             guard let self else { return }
             self.imageViewerViewModel.loadFile(at: filePath)

@@ -345,9 +345,9 @@ public struct RetrieveKeys: Sendable, Hashable {
 ///     switch event {
 ///     case .progress(let progress):
 ///         print("Progress: \(progress.completed)/\(progress.total)")
-///     case .instance(let sopInstanceUID, let data):
-///         print("Received instance: \(sopInstanceUID)")
-///         // Process the DICOM data
+///     case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
+///         print("Received instance: \(sopInstanceUID) (TS: \(transferSyntaxUID))")
+///         // Process the DICOM data — `data` is a raw dataset; wrap in Part 10 before saving
 ///     case .completed(let result):
 ///         print("Completed: \(result)")
 ///     }
@@ -507,7 +507,7 @@ public enum DICOMRetrieveService {
         case progress(RetrieveProgress)
         
         /// A DICOM instance has been received
-        case instance(sopInstanceUID: String, sopClassUID: String, data: Data)
+        case instance(sopInstanceUID: String, sopClassUID: String, transferSyntaxUID: String, data: Data)
         
         /// The operation has completed
         case completed(RetrieveResult)
@@ -535,6 +535,7 @@ public enum DICOMRetrieveService {
         calledAE: String,
         studyInstanceUID: String,
         storageSopClasses: [String]? = nil,
+        preferredTransferSyntaxUID: String? = nil,
         timeout: TimeInterval = 60
     ) async throws -> AsyncStream<GetEvent> {
         let callingAETitle = try AETitle(callingAE)
@@ -553,7 +554,8 @@ public enum DICOMRetrieveService {
             port: port,
             configuration: config,
             keys: keys,
-            storageSopClasses: storageSopClasses ?? commonStorageSOPClassUIDs
+            storageSopClasses: storageSopClasses ?? commonStorageSOPClassUIDs,
+            preferredTransferSyntaxUID: preferredTransferSyntaxUID
         )
     }
     
@@ -578,6 +580,7 @@ public enum DICOMRetrieveService {
         studyInstanceUID: String,
         seriesInstanceUID: String,
         storageSopClasses: [String]? = nil,
+        preferredTransferSyntaxUID: String? = nil,
         timeout: TimeInterval = 60
     ) async throws -> AsyncStream<GetEvent> {
         let callingAETitle = try AETitle(callingAE)
@@ -596,7 +599,8 @@ public enum DICOMRetrieveService {
             port: port,
             configuration: config,
             keys: keys,
-            storageSopClasses: storageSopClasses ?? commonStorageSOPClassUIDs
+            storageSopClasses: storageSopClasses ?? commonStorageSOPClassUIDs,
+            preferredTransferSyntaxUID: preferredTransferSyntaxUID
         )
     }
     
@@ -623,6 +627,7 @@ public enum DICOMRetrieveService {
         seriesInstanceUID: String,
         sopInstanceUID: String,
         storageSopClasses: [String]? = nil,
+        preferredTransferSyntaxUID: String? = nil,
         timeout: TimeInterval = 60
     ) async throws -> AsyncStream<GetEvent> {
         let callingAETitle = try AETitle(callingAE)
@@ -645,7 +650,8 @@ public enum DICOMRetrieveService {
             port: port,
             configuration: config,
             keys: keys,
-            storageSopClasses: storageSopClasses ?? commonStorageSOPClassUIDs
+            storageSopClasses: storageSopClasses ?? commonStorageSOPClassUIDs,
+            preferredTransferSyntaxUID: preferredTransferSyntaxUID
         )
     }
     
@@ -818,7 +824,8 @@ public enum DICOMRetrieveService {
         port: UInt16,
         configuration: RetrieveConfiguration,
         keys: RetrieveKeys,
-        storageSopClasses: [String]
+        storageSopClasses: [String],
+        preferredTransferSyntaxUID: String? = nil
     ) -> AsyncStream<GetEvent> {
         AsyncStream { continuation in
             Task {
@@ -867,15 +874,21 @@ public enum DICOMRetrieveService {
                     contextID += 2
                     
                     // Storage SOP Class presentation contexts
+                    // Build the accepted TS list: preferred first (if provided), then standard fallbacks
+                    var storageTransferSyntaxes: [String] = []
+                    if let preferred = preferredTransferSyntaxUID, !preferred.isEmpty {
+                        storageTransferSyntaxes.append(preferred)
+                    }
+                    for ts in [explicitVRLittleEndianTransferSyntaxUID, implicitVRLittleEndianTransferSyntaxUID]
+                        where !storageTransferSyntaxes.contains(ts) {
+                        storageTransferSyntaxes.append(ts)
+                    }
                     for sopClassUID in storageSopClasses {
                         if contextID > 255 { break }
                         let storageContext = try PresentationContext(
                             id: contextID,
                             abstractSyntax: sopClassUID,
-                            transferSyntaxes: [
-                                explicitVRLittleEndianTransferSyntaxUID,
-                                implicitVRLittleEndianTransferSyntaxUID
-                            ]
+                            transferSyntaxes: storageTransferSyntaxes
                         )
                         presentationContexts.append(storageContext)
                         contextID += 2
@@ -1002,11 +1015,17 @@ public enum DICOMRetrieveService {
                     let sopInstanceUID = storeRequest.affectedSOPInstanceUID
                     let sopClassUID = storeRequest.affectedSOPClassUID
                     
+                    // Resolve the transfer syntax from the negotiated presentation contexts
+                    let instanceTS = negotiated.acceptedTransferSyntax(
+                        forContextID: message.presentationContextID
+                    ) ?? implicitVRLittleEndianTransferSyntaxUID
+                    
                     // Yield the instance data
                     if let dataSetData = message.dataSet {
                         continuation.yield(.instance(
                             sopInstanceUID: sopInstanceUID,
                             sopClassUID: sopClassUID,
+                            transferSyntaxUID: instanceTS,
                             data: dataSetData
                         ))
                     }

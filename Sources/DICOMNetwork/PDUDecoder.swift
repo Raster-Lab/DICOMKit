@@ -351,17 +351,16 @@ public enum PDUDecoder {
         offset += 2
         
         // Called AE Title (16 bytes)
+        // Per PS3.8 §9.3.3 these fixed fields are "Reserved" in A-ASSOCIATE-AC and NOT significant.
+        // Many SCPs (including older dcm4chee variants) send all-spaces here, so we use a lenient
+        // fallback instead of throwing a hard decode error.
         let calledAEData = Data(data[offset ..< offset + 16])
-        guard let calledAETitle = AETitle.from(data: calledAEData) else {
-            throw DICOMNetworkError.decodingFailed("Invalid Called AE Title")
-        }
+        let calledAETitle = AETitle.from(data: calledAEData) ?? AETitle(stringLiteral: "UNKNOWN")
         offset += 16
         
-        // Calling AE Title (16 bytes)
+        // Calling AE Title (16 bytes) — also reserved/not significant in A-ASSOCIATE-AC
         let callingAEData = Data(data[offset ..< offset + 16])
-        guard let callingAETitle = AETitle.from(data: callingAEData) else {
-            throw DICOMNetworkError.decodingFailed("Invalid Calling AE Title")
-        }
+        let callingAETitle = AETitle.from(data: callingAEData) ?? AETitle(stringLiteral: "UNKNOWN")
         offset += 16
         
         // Reserved (32 bytes)

@@ -133,7 +133,10 @@ extension DICOMQR {
         
         @Flag(name: .long, help: "Validate retrieved files")
         var validate: Bool = false
-        
+
+        @Option(name: .long, help: "Requested transfer syntax for retrieved files (e.g. explicit-vr-le, jpeg-baseline, jpeg2000, rle-lossless, implicit-vr-le)")
+        var transferSyntax: String?
+
         @Flag(name: .long, help: "Show verbose output")
         var verbose: Bool = false
         
@@ -176,6 +179,9 @@ extension DICOMQR {
                 }
                 print("  Output: \(output)")
                 print("  Mode: \(interactive ? "Interactive" : auto ? "Automatic" : "Review")")
+                if let ts = transferSyntax {
+                    print("  Transfer Syntax: \(ts) (requested)")
+                }
                 print("")
             }
             

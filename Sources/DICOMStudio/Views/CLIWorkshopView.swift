@@ -29,10 +29,15 @@ public struct CLIWorkshopView: View {
             tabPicker
             Divider()
 
-            HSplitView {
-                toolSelectionPanel
-                    .frame(minWidth: 250, idealWidth: 300, maxWidth: 350)
-                commandAndConsolePanel
+            if viewModel.activeTab == .listener {
+                // Listener tab: full-width panel, no command/console area
+                LocalListenerView(viewModel: viewModel)
+            } else {
+                HSplitView {
+                    toolSelectionPanel
+                        .frame(minWidth: 250, idealWidth: 300, maxWidth: 350)
+                    commandAndConsolePanel
+                }
             }
         }
         .overlay {
@@ -129,7 +134,6 @@ public struct CLIWorkshopView: View {
                     viewModel.selectTool(id: newValue)
                 }
             }
-
         }
     }
 

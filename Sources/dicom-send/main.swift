@@ -57,7 +57,10 @@ struct DICOMSend: AsyncParsableCommand {
     
     @Option(name: .long, help: "Operation priority: low, medium, high (default: medium)")
     var priority: PriorityOption = .medium
-    
+
+    @Option(name: .long, help: "Preferred transfer syntax for C-STORE presentation context negotiation (e.g. explicit-vr-le, jpeg-baseline, jpeg2000, rle-lossless, implicit-vr-le)")
+    var transferSyntax: String?
+
     mutating func run() async throws {
         #if canImport(Network)
         // Parse URL
@@ -75,6 +78,9 @@ struct DICOMSend: AsyncParsableCommand {
             fprintln("Called AE: \(calledAet)")
             fprintln("Priority: \(priority)")
             fprintln("Timeout: \(timeout)s")
+            if let ts = transferSyntax {
+                fprintln("Transfer Syntax: \(ts) (proposed in presentation context)")
+            }
             if retry > 0 {
                 fprintln("Retry attempts: \(retry)")
             }

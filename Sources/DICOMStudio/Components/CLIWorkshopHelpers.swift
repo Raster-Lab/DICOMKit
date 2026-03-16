@@ -374,7 +374,7 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .enumPicker, placeholder: "text",
                     helpText: "Output format for query results",
                     defaultValue: "text",
-                    allowedValues: ["text", "json", "csv"]
+                    allowedValues: ["text", "json", "csv", "xml", "hl7"]
                 ),
             ]
         case "dicom-send":
@@ -446,6 +446,12 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .booleanToggle, placeholder: "",
                     helpText: "Show what would be sent without actually sending",
                     isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
+                    parameterType: .enumPicker, placeholder: "Any (negotiate)",
+                    helpText: "Preferred transfer syntax proposed during C-STORE presentation context negotiation (PS3.8 §9.3.2)",
+                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless", "deflate"]
                 ),
             ]
         case "dicom-retrieve":
@@ -526,6 +532,12 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Connection timeout in seconds",
                     defaultValue: "60",
                     allowedValues: ["10", "30", "60", "120", "300"]
+                ),
+                CLIParameterDefinition(
+                    id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
+                    parameterType: .enumPicker, placeholder: "Any (negotiate)",
+                    helpText: "Requested transfer syntax for retrieved files — negotiated during association setup (PS3.8 §9.3.2)",
+                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless"]
                 ),
             ]
         case "dicom-qr":
@@ -642,6 +654,158 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "60",
                     allowedValues: ["10", "30", "60", "120", "300"]
                 ),
+                CLIParameterDefinition(
+                    id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
+                    parameterType: .enumPicker, placeholder: "Any (negotiate)",
+                    helpText: "Requested transfer syntax for retrieved files — negotiated during association setup (PS3.8 §9.3.2)",
+                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless"]
+                ),
+            ]
+        case "dicom-mwl":
+            return [
+                CLIParameterDefinition(
+                    id: "subcommand", flag: "", displayName: "Operation",
+                    parameterType: .subcommand, placeholder: "query",
+                    helpText: "Modality Worklist operation (query scheduled procedure steps)",
+                    defaultValue: "query"
+                ),
+                CLIParameterDefinition(
+                    id: "host", flag: "--host", displayName: "Hostname",
+                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
+                    helpText: "Worklist SCP hostname or IP address (PS3.4 Annex K)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "port", flag: "--port", displayName: "Port",
+                    parameterType: .integerField, placeholder: "11112",
+                    helpText: "Worklist SCP port (default: 11112)",
+                    defaultValue: "11112", minValue: 1, maxValue: 65535
+                ),
+                CLIParameterDefinition(
+                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    parameterType: .textField, placeholder: "MODALITY",
+                    helpText: "Local AE title identifying this modality (up to 16 characters)",
+                    defaultValue: "DICOMSTUDIO"
+                ),
+                CLIParameterDefinition(
+                    id: "called-aet", flag: "--called-aet", displayName: "Called AE Title",
+                    parameterType: .textField, placeholder: "ANY-SCP",
+                    helpText: "Remote Worklist SCP Application Entity title",
+                    defaultValue: "ANY-SCP"
+                ),
+                CLIParameterDefinition(
+                    id: "date", flag: "--date", displayName: "Scheduled Date",
+                    parameterType: .textField, placeholder: "today / tomorrow / YYYYMMDD",
+                    helpText: "Filter by scheduled procedure step date — use 'today', 'tomorrow', or YYYYMMDD format (0040,0001)"
+                ),
+                CLIParameterDefinition(
+                    id: "station", flag: "--station", displayName: "Station AE Title",
+                    parameterType: .textField, placeholder: "e.g. CT1",
+                    helpText: "Filter by Scheduled Station AE Title (0040,0001)"
+                ),
+                CLIParameterDefinition(
+                    id: "patient", flag: "--patient", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN or DOE*",
+                    helpText: "Filter by patient name — supports wildcards * and ? (0010,0010)"
+                ),
+                CLIParameterDefinition(
+                    id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. PAT001",
+                    helpText: "Filter by patient ID (0010,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Filter by scheduled imaging modality (0040,0001)",
+                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                ),
+                CLIParameterDefinition(
+                    id: "sps-status", flag: "--sps-status", displayName: "SPS Status",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Filter by Scheduled Procedure Step Status (0040,0004)",
+                    allowedValues: ["", "SCHEDULED", "IN PROGRESS", "DISCONTINUED", "COMPLETED"]
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "60",
+                    helpText: "Connection timeout in seconds",
+                    defaultValue: "60",
+                    allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
+                ),
+                CLIParameterDefinition(
+                    id: "json", flag: "--json", displayName: "JSON Output",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Output results in JSON format"
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show detailed connection and query information"
+                ),
+            ]
+        case "dicom-mpps":
+            return [
+                CLIParameterDefinition(
+                    id: "operation", flag: "", displayName: "Operation",
+                    parameterType: .subcommand, placeholder: "create",
+                    helpText: "MPPS operation: create a new procedure step (N-CREATE) or update an existing one (N-SET)",
+                    isRequired: true,
+                    defaultValue: "create",
+                    allowedValues: ["create", "update"]
+                ),
+                CLIParameterDefinition(
+                    id: "host", flag: "--host", displayName: "Hostname",
+                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
+                    helpText: "MPPS SCP hostname or IP address (PS3.4 Annex F)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "port", flag: "--port", displayName: "Port",
+                    parameterType: .integerField, placeholder: "11112",
+                    helpText: "MPPS SCP port (default: 11112)",
+                    defaultValue: "11112", minValue: 1, maxValue: 65535
+                ),
+                CLIParameterDefinition(
+                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    parameterType: .textField, placeholder: "MODALITY",
+                    helpText: "Local AE title identifying the modality sending MPPS notifications",
+                    defaultValue: "DICOMSTUDIO"
+                ),
+                CLIParameterDefinition(
+                    id: "called-aet", flag: "--called-aet", displayName: "Called AE Title",
+                    parameterType: .textField, placeholder: "ANY-SCP",
+                    helpText: "Remote MPPS SCP Application Entity title",
+                    defaultValue: "ANY-SCP"
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Study Instance UID for the procedure step (required for create) (0020,000D)"
+                ),
+                CLIParameterDefinition(
+                    id: "mpps-uid", flag: "--mpps-uid", displayName: "MPPS Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "MPPS SOP Instance UID to update — provided from a previous create operation (required for update)"
+                ),
+                CLIParameterDefinition(
+                    id: "status", flag: "--status", displayName: "Status",
+                    parameterType: .enumPicker, placeholder: "IN PROGRESS",
+                    helpText: "Performed Procedure Step Status (0040,0252) — IN PROGRESS for create; COMPLETED or DISCONTINUED for update",
+                    defaultValue: "IN PROGRESS",
+                    allowedValues: ["IN PROGRESS", "COMPLETED", "DISCONTINUED"]
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "60",
+                    helpText: "Connection timeout in seconds",
+                    defaultValue: "60",
+                    allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show detailed connection and operation information"
+                ),
             ]
         default:
             return []
@@ -679,6 +843,11 @@ public enum CommandBuilderHelpers: Sendable {
                 } else {
                     parts.append(def.flag)
                     parts.append(shellEscape(value.stringValue))
+                }
+            case .subcommand:
+                // Subcommands are positional — insert right after the tool name (index 1)
+                if !value.stringValue.isEmpty {
+                    parts.insert(value.stringValue, at: 1)
                 }
             default:
                 parts.append(def.flag)

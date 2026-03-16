@@ -7,6 +7,105 @@ import Foundation
 import Observation
 import DICOMNetwork
 
+// MARK: - DICOM Part 10 File Format helpers (file-private, context-free)
+
+/// Encodes a 16-bit unsigned integer in little-endian byte order.
+private func le16(_ v: UInt16) -> Data {
+    Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)])
+}
+
+/// Encodes a 32-bit unsigned integer in little-endian byte order.
+private func le32(_ v: UInt32) -> Data {
+    Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF),
+          UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)])
+}
+
+/// Encodes a File Meta Information element with VR "UL" (4-byte unsigned long).
+private func fmiUL(_ group: UInt16, _ element: UInt16, _ value: UInt32) -> Data {
+    le16(group) + le16(element)
+    + Data([0x55, 0x4C])  // "UL"
+    + le16(4)             // value length
+    + le32(value)
+}
+
+/// Encodes a File Meta Information element with VR "OB" (uses 4-byte length field).
+private func fmiOB(_ group: UInt16, _ element: UInt16, _ value: Data) -> Data {
+    le16(group) + le16(element)
+    + Data([0x4F, 0x42])  // "OB"
+    + Data([0x00, 0x00])  // reserved
+    + le32(UInt32(value.count))
+    + value
+}
+
+/// Encodes a File Meta Information element with VR "UI".
+/// UI values are null-padded to even byte length per PS3.5 §6.2.
+private func fmiUI(_ group: UInt16, _ element: UInt16, _ value: String) -> Data {
+    var bytes = value.data(using: .ascii) ?? Data()
+    if bytes.count % 2 != 0 { bytes.append(0x00) }  // null padding for UI
+    return le16(group) + le16(element)
+        + Data([0x55, 0x49])      // "UI"
+        + le16(UInt16(bytes.count))
+        + bytes
+}
+
+/// Wraps raw DICOM C-STORE dataset bytes in a DICOM Part 10 file container.
+///
+/// C-STORE transfers deliver raw dataset bytes without the 128-byte preamble,
+/// DICM magic bytes, or File Meta Information group (0002,xxxx).  This function
+/// reconstructs the proper Part 10 layout required by every conformant DICOM
+/// reader, following PS3.10 §7.1.
+///
+/// - Parameters:
+///   - dataset:          Raw dataset bytes as delivered by C-STORE / C-GET.
+///   - sopClassUID:      SOP Class UID for (0002,0002) and (0002,0003).
+///   - sopInstanceUID:   SOP Instance UID for (0002,0003).
+///   - transferSyntaxUID: Transfer Syntax UID for (0002,0010).
+/// - Returns: A complete Part 10 DICOM file object (Data).
+func part10Wrap(dataset: Data, sopClassUID: String,
+                sopInstanceUID: String,
+                transferSyntaxUID: String) -> Data {
+    // Build the File Meta Information elements (all Explicit VR LE)
+    var meta = Data()
+    meta += fmiOB(0x0002, 0x0001, Data([0x00, 0x01]))       // FileMetaInformationVersion
+    meta += fmiUI(0x0002, 0x0002, sopClassUID)               // MediaStorageSOPClassUID
+    meta += fmiUI(0x0002, 0x0003, sopInstanceUID)            // MediaStorageSOPInstanceUID
+    meta += fmiUI(0x0002, 0x0010, transferSyntaxUID)         // TransferSyntaxUID
+    meta += fmiUI(0x0002, 0x0012, "1.2.826.0.1.3680043.9.7433.1.1")  // ImplementationClassUID
+
+    var file = Data()
+    file += Data(repeating: 0, count: 128)                  // 128-byte preamble
+    file += Data([0x44, 0x49, 0x43, 0x4D])                  // "DICM" magic
+    file += fmiUL(0x0002, 0x0000, UInt32(meta.count))       // FileMetaInformationGroupLength
+    file += meta
+    file += dataset
+    return file
+}
+
+// MARK: - SCP Storage Delegate
+
+/// StorageDelegate that saves received C-STORE instances as proper Part 10
+/// DICOM files (with preamble, DICM magic, and File Meta Information).
+private actor DICOMStudioSCPDelegate: StorageDelegate {
+    private let storageDir: URL
+
+    init(storageDir: URL) {
+        self.storageDir = storageDir
+    }
+
+    func didReceive(file: ReceivedFile) async throws {
+        let wrapped = part10Wrap(
+            dataset: file.dataSetData,
+            sopClassUID: file.sopClassUID,
+            sopInstanceUID: file.sopInstanceUID,
+            transferSyntaxUID: file.transferSyntaxUID
+        )
+        try FileManager.default.createDirectory(
+            at: storageDir, withIntermediateDirectories: true)
+        let dst = storageDir.appendingPathComponent("\(file.sopInstanceUID).dcm")
+        try wrapped.write(to: dst, options: .atomic)
+    }
+}
+
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 @MainActor
 @Observable
@@ -16,6 +115,11 @@ public final class CLIWorkshopViewModel {
     /// Callback to open a retrieved file in the Viewer tab.
     /// Set by MainViewModel to wire navigation.
     public var onOpenInViewer: ((String, URL?) -> Void)?
+
+    /// Callback to open a set of retrieved files as a navigable series in the Viewer tab.
+    /// Parameters: ordered file paths, start index, optional security-scoped parent URL.
+    /// When set, `openRetrievedFileInViewer()` uses this instead of `onOpenInViewer`.
+    public var onOpenSeriesInViewer: (([String], Int, URL?) -> Void)?
 
     public var activeTab: CLIWorkshopTab = .fileInspection
     public var isLoading: Bool = false
@@ -50,6 +154,29 @@ public final class CLIWorkshopViewModel {
     /// Security-scoped output URL used for the last file write batch.
     /// Stored here so the viewer can access files written outside the sandbox container.
     public var lastRetrievedOutputURL: URL? = nil
+
+    // MARK: - Local SCP Listener
+
+    /// Whether the local DICOM SCP listener is currently running.
+    public var scpIsRunning: Bool = false
+    /// Port the local SCP listens on.
+    public var scpPort: String = "11112"
+    /// AE Title used by the local SCP.
+    public var scpAETitle: String = "DICOMSTUDIO"
+    /// Output directory where the SCP writes received DICOM files.
+    public var scpOutputDir: String = {
+        NSSearchPathForDirectoriesInDomains(.downloadsDirectory, .userDomainMask, true).first
+            ?? NSTemporaryDirectory()
+    }()
+    /// Human-readable status message for the local SCP.
+    public var scpStatusMessage: String = "SCP not started"
+    /// Files received through the local SCP listener (most recent first).
+    public var scpReceivedFiles: [String] = []
+    /// Structured event log for the local SCP listener.
+    public var appLog: [SCPLogEntry] = []
+
+    private var storageSCP: DICOMStorageServer?
+    private var scpEventTask: Task<Void, Never>?
 
     // 16.5 Console
     public var consoleStatus: CLIConsoleStatus = .idle
@@ -413,18 +540,27 @@ public final class CLIWorkshopViewModel {
 
     /// Writes received DICOM data to disk in the specified output directory.
     ///
+    /// The raw dataset bytes delivered by C-STORE / C-GET sub-operations lack the
+    /// Part 10 header (128-byte preamble + "DICM" magic + File Meta Information).
+    /// This function wraps them in a proper Part 10 container before saving so that
+    /// all conformant DICOM readers can open the resulting file directly.
+    ///
     /// - Parameters:
-    ///   - data: The raw DICOM file data.
+    ///   - data: The raw DICOM dataset bytes (no Part 10 header).
     ///   - sopInstanceUID: The SOP Instance UID (used as the filename).
-    ///   - studyUID: The Study Instance UID (for hierarchical organization).
-    ///   - seriesUID: Optional Series Instance UID (for hierarchical organization).
+    ///   - sopClassUID: The SOP Class UID for the File Meta Information.
+    ///   - transferSyntaxUID: The transfer syntax the dataset is encoded in.
+    ///   - studyUID: The Study Instance UID (for hierarchical organisation).
+    ///   - seriesUID: Optional Series Instance UID (for hierarchical organisation).
     ///   - outputDir: The base output directory path.
-    ///   - hierarchical: If true, organizes as `<studyUID>/<seriesUID>/<sopInstanceUID>.dcm`.
+    ///   - hierarchical: If true, organises as `<studyUID>/<seriesUID>/<sopInstanceUID>.dcm`.
     /// - Returns: The full path where the file was written.
     @discardableResult
     public func writeReceivedDICOMFile(
         data: Data,
         sopInstanceUID: String,
+        sopClassUID: String = "1.2.840.10008.5.1.4.1.1.7",
+        transferSyntaxUID: String = "1.2.840.10008.1.2.1",
         studyUID: String,
         seriesUID: String? = nil,
         outputDir: String,
@@ -458,7 +594,15 @@ public final class CLIWorkshopViewModel {
 
         let filename = "\(sopInstanceUID).dcm"
         let fileURL = dirURL.appendingPathComponent(filename)
-        try data.write(to: fileURL, options: .atomic)
+
+        // Wrap raw dataset in a Part 10 container so readers see the DICM magic.
+        let part10Data = part10Wrap(
+            dataset: data,
+            sopClassUID: sopClassUID,
+            sopInstanceUID: sopInstanceUID,
+            transferSyntaxUID: transferSyntaxUID
+        )
+        try part10Data.write(to: fileURL, options: .atomic)
 
         return fileURL.path
     }
@@ -545,10 +689,18 @@ public final class CLIWorkshopViewModel {
         service.setConsoleStatus(.idle)
     }
 
-    /// Opens the first retrieved file from the last retrieve/QR operation in the viewer.
+    /// Opens retrieved files from the last retrieve/QR operation in the viewer.
+    ///
+    /// If multiple files were retrieved, loads them as a navigable series via
+    /// `onOpenSeriesInViewer`. Falls back to opening just the first file via
+    /// `onOpenInViewer` when the series callback is not set.
     public func openRetrievedFileInViewer() {
-        guard let firstFile = lastRetrievedFiles.first else { return }
-        onOpenInViewer?(firstFile, lastRetrievedOutputURL)
+        guard !lastRetrievedFiles.isEmpty else { return }
+        if let seriesCallback = onOpenSeriesInViewer, lastRetrievedFiles.count > 1 {
+            seriesCallback(lastRetrievedFiles, 0, lastRetrievedOutputURL)
+        } else {
+            onOpenInViewer?(lastRetrievedFiles[0], lastRetrievedOutputURL)
+        }
     }
 
     /// Executes the currently selected command.
@@ -573,11 +725,126 @@ public final class CLIWorkshopViewModel {
             await executeDicomRetrieve()
         case "dicom-qr":
             await executeDicomQR()
+        case "dicom-mwl":
+            await executeDicomMWL()
+        case "dicom-mpps":
+            await executeDicomMPPS()
         default:
             appendConsoleOutput("⚠ Command execution not yet supported for \(tool.name).\n")
             consoleStatus = .idle
             service.setConsoleStatus(.idle)
         }
+    }
+
+    // MARK: - Local SCP Listener Management
+
+    /// Starts the local DICOM SCP listener so other applications can connect,
+    /// send C-ECHO (verification), and C-STORE (push files) to DICOMStudio.
+    ///
+    /// The SCP uses ``DICOMStorageServer`` which already accepts all common
+    /// storage SOP classes as well as the Verification SOP Class, so incoming
+    /// C-ECHO requests are handled automatically alongside C-STORE sub-operations.
+    public func startLocalSCP() async {
+        guard !scpIsRunning else { return }
+        let portNum = UInt16(scpPort) ?? 11112
+        let aetStr = scpAETitle.isEmpty ? "DICOMSTUDIO" : scpAETitle
+        let outputURL = URL(fileURLWithPath:
+            scpOutputDir.isEmpty
+                ? (NSSearchPathForDirectoriesInDomains(.downloadsDirectory, .userDomainMask, true).first
+                    ?? NSTemporaryDirectory())
+                : scpOutputDir
+        )
+
+        do {
+            let aeTitle = try AETitle(aetStr)
+            let config = StorageSCPConfiguration(aeTitle: aeTitle, port: portNum)
+            let delegate = DICOMStudioSCPDelegate(storageDir: outputURL)
+            let scp = DICOMStorageServer(configuration: config, delegate: delegate)
+            try await scp.start()
+            storageSCP = scp
+            scpIsRunning = true
+            scpStatusMessage = "Listening on port \(portNum) as \(aetStr)"
+            appendConsoleOutput("\n🔌 Local SCP started — port \(portNum), AE Title: \(aetStr)\n")
+            appendConsoleOutput("   Files will be written to: \(outputURL.path)\n\n")
+            appLog.insert(SCPLogEntry(
+                level: .info,
+                message: "Local SCP started on port \(portNum) as \(aetStr)"
+            ), at: 0)
+
+            // Consume the event stream and relay updates to main-actor state
+            scpEventTask = Task { [weak self] in
+                guard let self else { return }
+                let eventStream = await scp.events
+                for await event in eventStream {
+                    await MainActor.run { self.handleSCPEvent(event) }
+                }
+            }
+        } catch {
+            scpStatusMessage = "Failed to start: \(error.localizedDescription)"
+            appendConsoleOutput("\n❌ Failed to start local SCP: \(error.localizedDescription)\n")
+            appLog.insert(SCPLogEntry(
+                level: .error,
+                message: "Failed to start SCP: \(error.localizedDescription)"
+            ), at: 0)
+        }
+    }
+
+    /// Stops the local DICOM SCP listener.
+    public func stopLocalSCP() async {
+        guard scpIsRunning, let scp = storageSCP else { return }
+        await scp.stop()
+        scpEventTask?.cancel()
+        scpEventTask = nil
+        storageSCP = nil
+        scpIsRunning = false
+        scpStatusMessage = "SCP stopped"
+        appendConsoleOutput("\n🔌 Local SCP stopped\n")
+        appLog.insert(SCPLogEntry(level: .info, message: "Local SCP stopped"), at: 0)
+    }
+
+    private func handleSCPEvent(_ event: StorageServerEvent) {
+        switch event {
+        case .fileReceived(let file):
+            let path = scpOutputDir + "/" + file.sopInstanceUID + ".dcm"
+            scpReceivedFiles.insert(path, at: 0)
+            appendConsoleOutput("  📥 Received: \(file.sopInstanceUID)"
+                + " from \(file.callingAETitle) → \(path)\n")
+            appLog.insert(SCPLogEntry(
+                level: .fileReceived,
+                message: "Received \(file.sopInstanceUID).dcm",
+                remoteAETitle: file.callingAETitle
+            ), at: 0)
+        case .associationEstablished(let info):
+            appendConsoleOutput("  🔗 Association from \(info.callingAETitle)"
+                + " (\(info.remoteHost):\(info.remotePort))\n")
+            appLog.insert(SCPLogEntry(
+                level: .connection,
+                message: "Association established from \(info.callingAETitle)",
+                remoteAETitle: info.callingAETitle,
+                remoteHost: "\(info.remoteHost):\(info.remotePort)"
+            ), at: 0)
+        case .associationRejected(let ae, let reason):
+            appendConsoleOutput("  ⛔ Rejected association from \(ae): \(reason)\n")
+            appLog.insert(SCPLogEntry(
+                level: .warning,
+                message: "Association rejected from \(ae): \(reason)",
+                remoteAETitle: ae
+            ), at: 0)
+        case .error(let error):
+            appendConsoleOutput("  ❌ SCP error: \(error.localizedDescription)\n")
+            scpStatusMessage = "SCP error: \(error.localizedDescription)"
+            appLog.insert(SCPLogEntry(
+                level: .error,
+                message: "SCP error: \(error.localizedDescription)"
+            ), at: 0)
+        default:
+            break
+        }
+    }
+
+    /// Clears the application event log.
+    public func clearAppLog() {
+        appLog.removeAll()
     }
 
     /// Performs a real C-ECHO against the server configured in the parameter fields.
@@ -629,6 +896,56 @@ public final class CLIWorkshopViewModel {
                 addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1,
                              output: "C-ECHO failed")
             }
+        } catch let netErr as DICOMNetworkError {
+            appendConsoleOutput("❌ C-ECHO failed\n")
+            switch netErr {
+            case .associationRejected(let result, let source, let reason):
+                appendConsoleOutput("  Reason: Association rejected (\(result))\n")
+                appendConsoleOutput("  Source: \(source)\n")
+                let reasonDesc = Self.associateRejectReasonDescription(source: source, reason: reason)
+                appendConsoleOutput("  Code  : \(reason) — \(reasonDesc)\n")
+                appendConsoleOutput("\n")
+                // Actionable hints for the most common dcm4chee2 / legacy-PACS rejection reasons
+                switch (source, reason) {
+                case (.serviceUser, 3):
+                    appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Called AE Title\n")
+                    appendConsoleOutput("           (\"\(calledAET)\"). Register it in the remote AE Manager\n")
+                    appendConsoleOutput("           (e.g. dcm4chee AE Management → Add AE Title) or change the\n")
+                    appendConsoleOutput("           Called AE Title field above to match the server's configured AE.\n")
+                case (.serviceUser, 7):
+                    appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Calling AE Title\n")
+                    appendConsoleOutput("           (\"\(callingAET)\"). Add it to the remote server's list of\n")
+                    appendConsoleOutput("           permitted calling AE titles, or change Calling AE Title above.\n")
+                case (.serviceUser, 2):
+                    appendConsoleOutput("  💡 Hint: The remote SCP reports the application context is not supported.\n")
+                    appendConsoleOutput("           Make sure the server has DICOM networking enabled.\n")
+                case (.serviceProviderACSE, 2):
+                    appendConsoleOutput("  💡 Hint: Protocol version mismatch. Try switching to Implicit VR transfer\n")
+                    appendConsoleOutput("           syntax for legacy server compatibility.\n")
+                case (.serviceProviderPresentation, 1):
+                    appendConsoleOutput("  💡 Hint: Server temporarily busy. Wait a moment and retry.\n")
+                default:
+                    appendConsoleOutput("  💡 Hint: Verify the host, port, and AE titles. For dcm4chee2, ensure\n")
+                    appendConsoleOutput("           both the Calling and Called AE Titles are registered in the\n")
+                    appendConsoleOutput("           server's AE Management console.\n")
+                }
+            case .connectionFailed(let msg):
+                appendConsoleOutput("  Error: \(msg)\n")
+                appendConsoleOutput("  💡 Hint: Check host (\(host)), port (\(port)), and that the DICOM server is running.\n")
+            case .timeout, .artimTimerExpired:
+                appendConsoleOutput("  Error: Connection timed out after \(Int(timeout))s\n")
+                appendConsoleOutput("  💡 Hint: Verify host/port are reachable. Try increasing the Timeout value.\n")
+            case .connectionClosed:
+                appendConsoleOutput("  Error: Connection closed unexpectedly by remote peer\n")
+                appendConsoleOutput("  💡 Hint: The server may have rejected the connection silently.\n")
+                appendConsoleOutput("           Check that the Called AE Title is registered on the server.\n")
+            default:
+                appendConsoleOutput("  Error: \(netErr.description)\n")
+            }
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1,
+                         output: netErr.description)
         } catch {
             appendConsoleOutput("❌ C-ECHO failed\n")
             appendConsoleOutput("  Error: \(error.localizedDescription)\n")
@@ -636,6 +953,35 @@ public final class CLIWorkshopViewModel {
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1,
                          output: error.localizedDescription)
+        }
+    }
+
+    /// Translates an A-ASSOCIATE-RJ reason byte into a human-readable string.
+    ///
+    /// Reference: PS3.8 Tables 9-20, 9-21, 9-22
+    private static func associateRejectReasonDescription(source: AssociateRejectSource, reason: UInt8) -> String {
+        switch source {
+        case .serviceUser:
+            switch reason {
+            case 1: return "No reason given"
+            case 2: return "Application context name not supported"
+            case 3: return "Called AE Title not recognised"
+            case 7: return "Calling AE Title not recognised"
+            default: return "Unknown reason"
+            }
+        case .serviceProviderACSE:
+            switch reason {
+            case 1: return "No reason given"
+            case 2: return "Protocol version not supported"
+            default: return "Unknown reason"
+            }
+        case .serviceProviderPresentation:
+            switch reason {
+            case 0: return "No reason given"
+            case 1: return "Temporary congestion"
+            case 2: return "Local limit exceeded"
+            default: return "Unknown reason"
+            }
         }
     }
 
@@ -654,6 +1000,7 @@ public final class CLIWorkshopViewModel {
         let port = UInt16(portStr) ?? 11112
         let timeout = TimeInterval(timeoutStr) ?? 30
         let levelStr = paramValue("level")
+        let outputFormat = paramValue("output-format").lowercased()
 
         guard !host.isEmpty else {
             appendConsoleOutput("Error: Hostname is required.\n")
@@ -950,11 +1297,25 @@ public final class CLIWorkshopViewModel {
                 }
 
                 appendConsoleOutput("Found \(allResults.count) result(s):\n\n")
-                for (index, result) in allResults.enumerated() {
-                    let parentInfo = (level == .series || level == .image)
+                let collected: [(result: GenericQueryResult, parent: GenericQueryResult?)] = allResults.enumerated().map { (index, result) in
+                    let parent = (level == .series || level == .image)
                         ? parentLookup[result.toStudyResult().studyInstanceUID ?? ""]
                         : nil
-                    appendConsoleOutput(formatQueryResult(result, index: index + 1, level: level, parentStudyInfo: parentInfo))
+                    return (result: result, parent: parent)
+                }
+                switch outputFormat {
+                case "json":
+                    appendConsoleOutput(formatQueryResultsJSON(collected, level: level))
+                case "csv":
+                    appendConsoleOutput(formatQueryResultsCSV(collected, level: level))
+                case "xml":
+                    appendConsoleOutput(formatQueryResultsXML(collected, level: level))
+                case "hl7":
+                    appendConsoleOutput(formatQueryResultsHL7(collected, level: level))
+                default:
+                    for (index, pair) in collected.enumerated() {
+                        appendConsoleOutput(formatQueryResult(pair.result, index: index + 1, level: level, parentStudyInfo: pair.parent))
+                    }
                 }
             }
             consoleStatus = .success
@@ -1273,6 +1634,10 @@ public final class CLIWorkshopViewModel {
         appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
         appendConsoleOutput("  Priority:         \(priorityStr)\n")
         appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        let transferSyntaxSend = paramValue("transfer-syntax")
+        if !transferSyntaxSend.isEmpty {
+            appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxSend) (proposed TS)\n")
+        }
         if retryCount > 0 {
             appendConsoleOutput("  Retry attempts:   \(retryCount)\n")
         }
@@ -1339,15 +1704,30 @@ public final class CLIWorkshopViewModel {
 
                 for attempt in 0...retryCount {
                     do {
-                        let result = try await DICOMStorageService.store(
-                            fileData: fileData,
-                            to: host,
-                            port: port,
-                            callingAE: callingAET,
-                            calledAE: calledAET,
-                            priority: priority,
-                            timeout: timeout
-                        )
+                        // Use preferred TS if the user selected one; otherwise let the service use the file's own TS
+                        let result: StoreResult
+                        if let tsUID = transferSyntaxUID(for: transferSyntaxSend) {
+                            result = try await DICOMStorageService.store(
+                                fileData: fileData,
+                                preferredTransferSyntaxUID: tsUID,
+                                to: host,
+                                port: port,
+                                callingAE: callingAET,
+                                calledAE: calledAET,
+                                priority: priority,
+                                timeout: timeout
+                            )
+                        } else {
+                            result = try await DICOMStorageService.store(
+                                fileData: fileData,
+                                to: host,
+                                port: port,
+                                callingAE: callingAET,
+                                calledAE: calledAET,
+                                priority: priority,
+                                timeout: timeout
+                            )
+                        }
                         successCount += 1
                         let rtt = String(format: "%.1f", result.roundTripTime * 1000)
                         appendConsoleOutput(" ✅ (\(rtt) ms)\n")
@@ -1568,7 +1948,17 @@ public final class CLIWorkshopViewModel {
         }
         appendConsoleOutput("  Output:           \(outputDir)\n")
         appendConsoleOutput("  Organization:     \(hierarchical ? "Hierarchical" : "Flat")\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        let transferSyntaxRetrieve = paramValue("transfer-syntax")
+        let preferredTSRetrieve = transferSyntaxUID(for: transferSyntaxRetrieve)
+        if !transferSyntaxRetrieve.isEmpty {
+            if isCMove {
+                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxRetrieve) (advisory — negotiated by destination AE)\n")
+            } else {
+                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxRetrieve) → \(preferredTSRetrieve ?? "unrecognised, using default") (proposed for C-STORE sub-ops)\n")
+            }
+        }
+        appendConsoleOutput("\n")
 
         appendConsoleOutput("Executing \(isCMove ? "C-MOVE" : "C-GET")...\n")
 
@@ -1611,7 +2001,7 @@ public final class CLIWorkshopViewModel {
                     appendConsoleOutput(formatRetrieveResult(result))
                 }
             } else {
-                // C-GET
+                // C-GET — pass preferred TS so the SCP sends back in that encoding
                 let stream: AsyncStream<DICOMRetrieveService.GetEvent>
                 if !instanceUID.isEmpty && !seriesUID.isEmpty {
                     stream = try await DICOMRetrieveService.getInstance(
@@ -1620,6 +2010,7 @@ public final class CLIWorkshopViewModel {
                         studyInstanceUID: resolvedStudyUID,
                         seriesInstanceUID: seriesUID,
                         sopInstanceUID: instanceUID,
+                        preferredTransferSyntaxUID: preferredTSRetrieve,
                         timeout: timeout
                     )
                 } else if !seriesUID.isEmpty {
@@ -1628,6 +2019,7 @@ public final class CLIWorkshopViewModel {
                         callingAE: callingAET, calledAE: calledAET,
                         studyInstanceUID: resolvedStudyUID,
                         seriesInstanceUID: seriesUID,
+                        preferredTransferSyntaxUID: preferredTSRetrieve,
                         timeout: timeout
                     )
                 } else {
@@ -1635,6 +2027,7 @@ public final class CLIWorkshopViewModel {
                         host: host, port: port,
                         callingAE: callingAET, calledAE: calledAET,
                         studyInstanceUID: resolvedStudyUID,
+                        preferredTransferSyntaxUID: preferredTSRetrieve,
                         timeout: timeout
                     )
                 }
@@ -1642,15 +2035,17 @@ public final class CLIWorkshopViewModel {
                 var receivedCount = 0
                 for await event in stream {
                     switch event {
-                    case .instance(let sopInstanceUID, let sopClassUID, let data):
+                    case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
                         receivedCount += 1
                         let sizeStr = FileDropHelpers.formatFileSize(Int64(data.count))
                         appendConsoleOutput("  Received [\(receivedCount)]: \(sopInstanceUID) (\(sizeStr))")
-                        // Write the received data to disk
+                        // Write the received data to disk wrapped in a Part 10 container
                         do {
                             let savedPath = try writeReceivedDICOMFile(
                                 data: data,
                                 sopInstanceUID: sopInstanceUID,
+                                sopClassUID: sopClassUID,
+                                transferSyntaxUID: transferSyntaxUID,
                                 studyUID: resolvedStudyUID,
                                 seriesUID: seriesUID.isEmpty ? nil : seriesUID,
                                 outputDir: outputDir,
@@ -1774,6 +2169,15 @@ public final class CLIWorkshopViewModel {
         }
         appendConsoleOutput("  Output:           \(outputDir)\n")
         appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        let transferSyntaxQR = paramValue("transfer-syntax")
+        let preferredTSQR = transferSyntaxUID(for: transferSyntaxQR)
+        if !transferSyntaxQR.isEmpty {
+            if isCMove {
+                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxQR) (advisory — negotiated by destination AE)\n")
+            } else {
+                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxQR) → \(preferredTSQR ?? "unrecognised, using default") (proposed for C-STORE sub-ops)\n")
+            }
+        }
 
         // Display active filters
         var hasFilters = false
@@ -1887,17 +2291,20 @@ public final class CLIWorkshopViewModel {
                             host: host, port: port,
                             callingAE: callingAET, calledAE: calledAET,
                             studyInstanceUID: uid,
+                            preferredTransferSyntaxUID: preferredTSQR,
                             timeout: timeout
                         )
                         var fileCount = 0
                         for await event in stream {
                             switch event {
-                            case .instance(let sopInstanceUID, _, let data):
+                            case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
                                 fileCount += 1
                                 do {
                                     let savedPath = try writeReceivedDICOMFile(
                                         data: data,
                                         sopInstanceUID: sopInstanceUID,
+                                        sopClassUID: sopClassUID,
+                                        transferSyntaxUID: transferSyntaxUID,
                                         studyUID: uid,
                                         outputDir: outputDir,
                                         hierarchical: hierarchical
@@ -1956,7 +2363,531 @@ public final class CLIWorkshopViewModel {
         }
     }
 
+    // MARK: - MWL Execution (dicom-mwl)
+
+    /// Performs a Modality Worklist C-FIND query.
+    private func executeDicomMWL() async {
+        let host = paramValue("host")
+        let portStr = paramValue("port")
+        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
+        let timeoutStr = paramValue("timeout")
+        let port = UInt16(portStr) ?? 11112
+        let timeout = TimeInterval(timeoutStr) ?? 60
+        let date = paramValue("date")
+        let station = paramValue("station")
+        let patient = paramValue("patient")
+        let patientID = paramValue("patient-id")
+        let modality = paramValue("modality")
+        let spsStatus = paramValue("sps-status")
+        let jsonOutput = paramValue("json") == "true"
+
+        guard !host.isEmpty else {
+            appendConsoleOutput("Error: Hostname is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            return
+        }
+
+        appendConsoleOutput("DICOM Modality Worklist (C-FIND)\n")
+        appendConsoleOutput("================================\n")
+        appendConsoleOutput("  Server:           \(host):\(port)\n")
+        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
+        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        if !date.isEmpty      { appendConsoleOutput("  Date:             \(date)\n") }
+        if !station.isEmpty   { appendConsoleOutput("  Station AET:      \(station)\n") }
+        if !patient.isEmpty   { appendConsoleOutput("  Patient Name:     \(patient)\n") }
+        if !patientID.isEmpty { appendConsoleOutput("  Patient ID:       \(patientID)\n") }
+        if !modality.isEmpty  { appendConsoleOutput("  Modality:         \(modality)\n") }
+        if !spsStatus.isEmpty { appendConsoleOutput("  SPS Status:       \(spsStatus)\n") }
+        appendConsoleOutput("\nQuerying Modality Worklist...\n\n")
+
+        do {
+            var queryKeys = WorklistQueryKeys.default()
+            if !date.isEmpty {
+                let resolvedDate = resolvedWorklistDate(date)
+                queryKeys = queryKeys.scheduledDate(resolvedDate)
+            }
+            if !station.isEmpty   { queryKeys = queryKeys.scheduledStationAET(station) }
+            if !patient.isEmpty   { queryKeys = queryKeys.patientName(patient) }
+            if !patientID.isEmpty { queryKeys = queryKeys.patientID(patientID) }
+            if !modality.isEmpty  { queryKeys = queryKeys.modality(modality) }
+            if !spsStatus.isEmpty { queryKeys = queryKeys.scheduledProcedureStepStatus(spsStatus) }
+
+            let items = try await DICOMModalityWorklistService.find(
+                host: host,
+                port: port,
+                callingAE: callingAET,
+                calledAE: calledAET,
+                matching: queryKeys,
+                timeout: timeout
+            )
+
+            if items.isEmpty {
+                appendConsoleOutput("No worklist items found matching the specified criteria.\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0, output: "0 worklist items found")
+                return
+            }
+
+            appendConsoleOutput("Found \(items.count) worklist item(s):\n\n")
+
+            if jsonOutput {
+                appendConsoleOutput("[\n")
+                for (index, item) in items.enumerated() {
+                    appendConsoleOutput("  {\n")
+                    if let v = item.patientName                      { appendConsoleOutput("    \"PatientName\": \"\(v)\",\n") }
+                    if let v = item.patientID                        { appendConsoleOutput("    \"PatientID\": \"\(v)\",\n") }
+                    if let v = item.patientBirthDate                 { appendConsoleOutput("    \"PatientBirthDate\": \"\(v)\",\n") }
+                    if let v = item.patientSex                       { appendConsoleOutput("    \"PatientSex\": \"\(v)\",\n") }
+                    if let v = item.accessionNumber                  { appendConsoleOutput("    \"AccessionNumber\": \"\(v)\",\n") }
+                    if let v = item.studyInstanceUID                 { appendConsoleOutput("    \"StudyInstanceUID\": \"\(v)\",\n") }
+                    if let v = item.referringPhysicianName           { appendConsoleOutput("    \"ReferringPhysicianName\": \"\(v)\",\n") }
+                    if let v = item.requestedProcedureID             { appendConsoleOutput("    \"RequestedProcedureID\": \"\(v)\",\n") }
+                    if let v = item.requestedProcedureDescription    { appendConsoleOutput("    \"RequestedProcedureDescription\": \"\(v)\",\n") }
+                    if let v = item.modality                         { appendConsoleOutput("    \"Modality\": \"\(v)\",\n") }
+                    if let v = item.scheduledStationAETitle          { appendConsoleOutput("    \"ScheduledStationAETitle\": \"\(v)\",\n") }
+                    if let v = item.scheduledStationName             { appendConsoleOutput("    \"ScheduledStationName\": \"\(v)\",\n") }
+                    if let v = item.scheduledProcedureStepStartDate  { appendConsoleOutput("    \"SPSStartDate\": \"\(v)\",\n") }
+                    if let v = item.scheduledProcedureStepStartTime  { appendConsoleOutput("    \"SPSStartTime\": \"\(v)\",\n") }
+                    if let v = item.scheduledProcedureStepStatus     { appendConsoleOutput("    \"SPSStatus\": \"\(v)\",\n") }
+                    if let v = item.scheduledProcedureStepID         { appendConsoleOutput("    \"SPSID\": \"\(v)\",\n") }
+                    if let v = item.scheduledProcedureStepDescription{ appendConsoleOutput("    \"SPSDescription\": \"\(v)\",\n") }
+                    if let v = item.scheduledPerformingPhysicianName { appendConsoleOutput("    \"ScheduledPhysician\": \"\(v)\"\n") }
+                    appendConsoleOutput("  }\(index < items.count - 1 ? "," : "")\n")
+                }
+                appendConsoleOutput("]\n")
+            } else {
+                let sep = String(repeating: "─", count: 60)
+                for (index, item) in items.enumerated() {
+                    appendConsoleOutput("[\(index + 1)] Worklist Item\n")
+                    appendConsoleOutput("\(sep)\n")
+                    // Patient
+                    if let v = item.patientName    { appendConsoleOutput("  Patient Name:          \(v)\n") }
+                    if let v = item.patientID      { appendConsoleOutput("  Patient ID:            \(v)\n") }
+                    if let v = item.patientBirthDate { appendConsoleOutput("  Date of Birth:         \(v)\n") }
+                    if let v = item.patientSex     { appendConsoleOutput("  Sex:                   \(v)\n") }
+                    // Study
+                    if let v = item.accessionNumber { appendConsoleOutput("  Accession Number:      \(v)\n") }
+                    if let v = item.referringPhysicianName { appendConsoleOutput("  Referring Physician:   \(v)\n") }
+                    if let v = item.requestedProcedureID  { appendConsoleOutput("  Requested Proc. ID:    \(v)\n") }
+                    if let v = item.requestedProcedureDescription { appendConsoleOutput("  Requested Proc. Desc:  \(v)\n") }
+                    if let v = item.studyInstanceUID { appendConsoleOutput("  Study UID:             \(v)\n") }
+                    // SPS
+                    if let v = item.modality       { appendConsoleOutput("  Modality:              \(v)\n") }
+                    if let v = item.scheduledProcedureStepStartDate {
+                        var dateTime = v
+                        if let t = item.scheduledProcedureStepStartTime { dateTime += "  \(t)" }
+                        appendConsoleOutput("  Scheduled Date/Time:   \(dateTime)\n")
+                    }
+                    if let v = item.scheduledProcedureStepStatus    { appendConsoleOutput("  SPS Status:            \(v)\n") }
+                    if let v = item.scheduledProcedureStepID        { appendConsoleOutput("  SPS ID:                \(v)\n") }
+                    if let v = item.scheduledProcedureStepDescription { appendConsoleOutput("  SPS Description:       \(v)\n") }
+                    if let v = item.scheduledStationAETitle         { appendConsoleOutput("  Station AE Title:      \(v)\n") }
+                    if let v = item.scheduledStationName            { appendConsoleOutput("  Station Name:          \(v)\n") }
+                    if let v = item.scheduledPerformingPhysicianName { appendConsoleOutput("  Performing Physician:  \(v)\n") }
+                    appendConsoleOutput("\n")
+                }
+            }
+
+            appendConsoleOutput("✅ Worklist query completed — \(items.count) item(s) returned\n")
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0,
+                         output: "\(items.count) worklist item(s) found")
+        } catch {
+            appendConsoleOutput("❌ Worklist query failed: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
+    /// Resolves a date filter string for MWL queries.
+    /// Accepts "today", "tomorrow", or YYYYMMDD format.
+    private func resolvedWorklistDate(_ filter: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        switch filter.lowercased() {
+        case "today":
+            return formatter.string(from: Date())
+        case "tomorrow":
+            let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) ?? Date()
+            return formatter.string(from: tomorrow)
+        default:
+            return filter
+        }
+    }
+
+    /// Maps user-friendly transfer syntax names to DICOM UIDs.
+    private func transferSyntaxUID(for name: String) -> String? {
+        let n = name.lowercased().trimmingCharacters(in: .whitespaces)
+        guard !n.isEmpty else { return nil }
+        // If already a UID (starts with digit), pass through
+        if n.first?.isNumber == true { return name }
+        switch n {
+        case "explicit-vr-le":    return "1.2.840.10008.1.2.1"
+        case "implicit-vr-le":    return "1.2.840.10008.1.2"
+        case "jpeg-baseline":     return "1.2.840.10008.1.2.4.50"
+        case "jpeg-lossless":     return "1.2.840.10008.1.2.4.70"
+        case "jpeg2000-lossless": return "1.2.840.10008.1.2.4.90"
+        case "jpeg2000":          return "1.2.840.10008.1.2.4.91"
+        case "rle-lossless":      return "1.2.840.10008.1.2.5"
+        case "deflate":           return "1.2.840.10008.1.2.1.99"
+        default:                  return nil
+        }
+    }
+
+    // MARK: - MPPS Execution (dicom-mpps)
+
+    /// Performs an MPPS N-CREATE or N-SET operation.
+    private func executeDicomMPPS() async {
+        let host = paramValue("host")
+        let portStr = paramValue("port")
+        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
+        let timeoutStr = paramValue("timeout")
+        let port = UInt16(portStr) ?? 11112
+        let timeout = TimeInterval(timeoutStr) ?? 60
+        let operation = paramValue("operation").lowercased()
+        let studyUID = paramValue("study-uid")
+        let mppsUID = paramValue("mpps-uid")
+        let statusStr = paramValue("status")
+
+        guard !host.isEmpty else {
+            appendConsoleOutput("Error: Hostname is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            return
+        }
+
+        let isCreate = operation != "update"
+
+        if isCreate && studyUID.isEmpty {
+            appendConsoleOutput("Error: Study Instance UID is required for create operation.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: "Study UID required for create")
+            return
+        }
+
+        if !isCreate && mppsUID.isEmpty {
+            appendConsoleOutput("Error: MPPS Instance UID is required for update operation.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: "MPPS UID required for update")
+            return
+        }
+
+        let mppsStatus: DICOMNetwork.MPPSStatus
+        switch statusStr.uppercased().replacingOccurrences(of: " ", with: "") {
+        case "INPROGRESS":
+            mppsStatus = DICOMNetwork.MPPSStatus.inProgress
+        case "COMPLETED":
+            mppsStatus = DICOMNetwork.MPPSStatus.completed
+        case "DISCONTINUED":
+            mppsStatus = DICOMNetwork.MPPSStatus.discontinued
+        default:
+            mppsStatus = isCreate ? DICOMNetwork.MPPSStatus.inProgress : DICOMNetwork.MPPSStatus.completed
+        }
+
+        appendConsoleOutput("DICOM MPPS (\(isCreate ? "N-CREATE" : "N-SET"))\n")
+        appendConsoleOutput("=====================================\n")
+        appendConsoleOutput("  Operation:        \(isCreate ? "Create (N-CREATE)" : "Update (N-SET)")\n")
+        appendConsoleOutput("  Server:           \(host):\(port)\n")
+        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
+        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+        appendConsoleOutput("  Status:           \(mppsStatus.rawValue)\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        if isCreate && !studyUID.isEmpty { appendConsoleOutput("  Study UID:        \(studyUID)\n") }
+        if !isCreate && !mppsUID.isEmpty { appendConsoleOutput("  MPPS UID:         \(mppsUID)\n") }
+        appendConsoleOutput("\n")
+
+        do {
+            if isCreate {
+                appendConsoleOutput("Creating MPPS instance (N-CREATE)...\n")
+                let createdUID = try await DICOMMPPSService.create(
+                    host: host,
+                    port: port,
+                    callingAE: callingAET,
+                    calledAE: calledAET,
+                    studyInstanceUID: studyUID,
+                    status: mppsStatus,
+                    timeout: timeout
+                )
+                appendConsoleOutput("✅ MPPS instance created\n")
+                appendConsoleOutput("  MPPS Instance UID: \(createdUID)\n\n")
+                appendConsoleOutput("To update this procedure step when it completes:\n")
+                appendConsoleOutput("  dicom-mpps update --host \(host) --port \(port)\n")
+                appendConsoleOutput("    --calling-aet \(callingAET) --called-aet \(calledAET)\n")
+                appendConsoleOutput("    --mpps-uid \(createdUID) --status COMPLETED\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 0,
+                             output: "Created MPPS: \(createdUID)")
+            } else {
+                appendConsoleOutput("Updating MPPS instance (N-SET) to \(mppsStatus.rawValue)...\n")
+                try await DICOMMPPSService.update(
+                    host: host,
+                    port: port,
+                    callingAE: callingAET,
+                    calledAE: calledAET,
+                    mppsInstanceUID: mppsUID,
+                    status: mppsStatus,
+                    timeout: timeout
+                )
+                appendConsoleOutput("✅ MPPS instance updated to \(mppsStatus.rawValue)\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 0,
+                             output: "Updated MPPS \(mppsUID) to \(mppsStatus.rawValue)")
+            }
+        } catch {
+            appendConsoleOutput("❌ MPPS operation failed: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
     /// Formats a single generic query result for console display.
+    // MARK: - Query Result Formatters
+
+    /// Renders all results as a JSON array string.
+    private func formatQueryResultsJSON(_ pairs: [(result: GenericQueryResult, parent: GenericQueryResult?)], level: QueryLevel) -> String {
+        var entries: [String] = []
+        for pair in pairs {
+            var fields: [String] = []
+            let r = pair.result
+            let ps = pair.parent?.toStudyResult()
+            let pp = pair.parent?.toPatientResult()
+            if level == .image {
+                let i = r.toInstanceResult()
+                if let v = i.sopClassUID    { fields.append("    \"sopClassUID\": \"\(jsonEscape(v))\"") }
+                if let v = i.sopInstanceUID { fields.append("    \"sopInstanceUID\": \"\(jsonEscape(v))\"") }
+                if let v = i.instanceNumber { fields.append("    \"instanceNumber\": \(v)") }
+                if let v = i.contentDate    { fields.append("    \"contentDate\": \"\(jsonEscape(v))\"") }
+                if let r = i.rows, let c = i.columns { fields.append("    \"dimensions\": \"\(c)x\(r)\"") }
+                if let v = i.numberOfFrames { fields.append("    \"numberOfFrames\": \(v)") }
+            }
+            if level == .series || level == .image {
+                let s = r.toSeriesResult()
+                if let v = s.seriesDescription { fields.append("    \"seriesDescription\": \"\(jsonEscape(v))\"") }
+                if let v = s.modality          { fields.append("    \"modality\": \"\(jsonEscape(v))\"") }
+                if let v = s.seriesNumber      { fields.append("    \"seriesNumber\": \(v)") }
+                if let v = s.seriesDate        { fields.append("    \"seriesDate\": \"\(jsonEscape(v))\"") }
+                if let v = s.numberOfSeriesRelatedInstances { fields.append("    \"instances\": \(v)") }
+                if let v = s.seriesInstanceUID { fields.append("    \"seriesInstanceUID\": \"\(jsonEscape(v))\"") }
+            }
+            if level == .study || level == .series || level == .image {
+                let s = r.toStudyResult()
+                if let v = s.studyDate ?? ps?.studyDate                           { fields.append("    \"studyDate\": \"\(jsonEscape(v))\"") }
+                if let v = s.studyTime ?? ps?.studyTime                           { fields.append("    \"studyTime\": \"\(jsonEscape(v))\"") }
+                if let v = s.studyDescription ?? ps?.studyDescription             { fields.append("    \"studyDescription\": \"\(jsonEscape(v))\"") }
+                if let v = s.accessionNumber ?? ps?.accessionNumber               { fields.append("    \"accessionNumber\": \"\(jsonEscape(v))\"") }
+                if let v = s.modalitiesInStudy ?? ps?.modalitiesInStudy           { fields.append("    \"modalitiesInStudy\": \"\(jsonEscape(v))\"") }
+                if let v = s.numberOfStudyRelatedSeries ?? ps?.numberOfStudyRelatedSeries         { fields.append("    \"studySeries\": \(v)") }
+                if let v = s.numberOfStudyRelatedInstances ?? ps?.numberOfStudyRelatedInstances   { fields.append("    \"studyImages\": \(v)") }
+                if let v = s.studyInstanceUID ?? ps?.studyInstanceUID             { fields.append("    \"studyInstanceUID\": \"\(jsonEscape(v))\"") }
+            }
+            let p = r.toPatientResult()
+            if let v = p.patientName ?? pp?.patientName         { fields.append("    \"patientName\": \"\(jsonEscape(v))\"") }
+            if let v = p.patientID ?? pp?.patientID             { fields.append("    \"patientID\": \"\(jsonEscape(v))\"") }
+            if let v = p.patientBirthDate ?? pp?.patientBirthDate { fields.append("    \"patientBirthDate\": \"\(jsonEscape(v))\"") }
+            if let v = p.patientSex ?? pp?.patientSex           { fields.append("    \"patientSex\": \"\(jsonEscape(v))\"") }
+            if level == .patient {
+                if let v = p.numberOfPatientRelatedStudies   { fields.append("    \"studies\": \(v)") }
+                if let v = p.numberOfPatientRelatedSeries    { fields.append("    \"series\": \(v)") }
+                if let v = p.numberOfPatientRelatedInstances { fields.append("    \"instances\": \(v)") }
+            }
+            entries.append("  {\n" + fields.joined(separator: ",\n") + "\n  }")
+        }
+        return "[\n" + entries.joined(separator: ",\n") + "\n]\n"
+    }
+
+    /// Renders all results as a CSV table.
+    private func formatQueryResultsCSV(_ pairs: [(result: GenericQueryResult, parent: GenericQueryResult?)], level: QueryLevel) -> String {
+        var header: [String] = []
+        if level == .image { header += ["SOPClassUID", "SOPInstanceUID", "InstanceNumber", "ContentDate", "Dimensions", "Frames"] }
+        if level == .series || level == .image { header += ["SeriesDescription", "Modality", "SeriesNumber", "SeriesDate", "Instances", "SeriesInstanceUID"] }
+        if level == .study || level == .series || level == .image { header += ["StudyDate", "StudyTime", "StudyDescription", "AccessionNumber", "ModalitiesInStudy", "StudySeries", "StudyImages", "StudyInstanceUID"] }
+        header += ["PatientName", "PatientID", "PatientBirthDate", "PatientSex"]
+        if level == .patient { header += ["Studies", "Series", "Instances"] }
+
+        var lines: [String] = [header.map { csvQuote($0) }.joined(separator: ",")]
+        for pair in pairs {
+            var row: [String] = []
+            let r = pair.result
+            let ps = pair.parent?.toStudyResult()
+            let pp = pair.parent?.toPatientResult()
+            if level == .image {
+                let i = r.toInstanceResult()
+                row += [csvQuote(i.sopClassUID ?? ""),
+                        csvQuote(i.sopInstanceUID ?? ""),
+                        csvQuote(i.instanceNumber.map(String.init) ?? ""),
+                        csvQuote(i.contentDate ?? ""),
+                        csvQuote((i.rows != nil && i.columns != nil) ? "\(i.columns!)x\(i.rows!)" : ""),
+                        csvQuote(i.numberOfFrames.map(String.init) ?? "")]
+            }
+            if level == .series || level == .image {
+                let s = r.toSeriesResult()
+                row += [csvQuote(s.seriesDescription ?? ""),
+                        csvQuote(s.modality ?? ""),
+                        csvQuote(s.seriesNumber.map(String.init) ?? ""),
+                        csvQuote(s.seriesDate ?? ""),
+                        csvQuote(s.numberOfSeriesRelatedInstances.map(String.init) ?? ""),
+                        csvQuote(s.seriesInstanceUID ?? "")]
+            }
+            if level == .study || level == .series || level == .image {
+                let s = r.toStudyResult()
+                let nSeries = (s.numberOfStudyRelatedSeries ?? ps?.numberOfStudyRelatedSeries).map(String.init) ?? ""
+                let nImages = (s.numberOfStudyRelatedInstances ?? ps?.numberOfStudyRelatedInstances).map(String.init) ?? ""
+                row += [csvQuote(s.studyDate ?? ps?.studyDate ?? ""),
+                        csvQuote(s.studyTime ?? ps?.studyTime ?? ""),
+                        csvQuote(s.studyDescription ?? ps?.studyDescription ?? ""),
+                        csvQuote(s.accessionNumber ?? ps?.accessionNumber ?? ""),
+                        csvQuote(s.modalitiesInStudy ?? ps?.modalitiesInStudy ?? ""),
+                        csvQuote(nSeries), csvQuote(nImages),
+                        csvQuote(s.studyInstanceUID ?? ps?.studyInstanceUID ?? "")]
+            }
+            let p = r.toPatientResult()
+            row += [csvQuote(p.patientName ?? pp?.patientName ?? ""),
+                    csvQuote(p.patientID ?? pp?.patientID ?? ""),
+                    csvQuote(p.patientBirthDate ?? pp?.patientBirthDate ?? ""),
+                    csvQuote(p.patientSex ?? pp?.patientSex ?? "")]
+            if level == .patient {
+                row += [csvQuote(p.numberOfPatientRelatedStudies.map(String.init) ?? ""),
+                        csvQuote(p.numberOfPatientRelatedSeries.map(String.init) ?? ""),
+                        csvQuote(p.numberOfPatientRelatedInstances.map(String.init) ?? "")]
+            }
+            lines.append(row.joined(separator: ","))
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Renders all results as an XML document.
+    private func formatQueryResultsXML(_ pairs: [(result: GenericQueryResult, parent: GenericQueryResult?)], level: QueryLevel) -> String {
+        var lines: [String] = ["<?xml version=\"1.0\" encoding=\"UTF-8\"?>", "<QueryResults level=\"\(level)\">"]
+        for pair in pairs {
+            lines.append("  <Result>")
+            let r = pair.result
+            let ps = pair.parent?.toStudyResult()
+            let pp = pair.parent?.toPatientResult()
+            if level == .image {
+                let i = r.toInstanceResult()
+                if let v = i.sopClassUID    { lines.append("    <SOPClassUID>\(xmlEscape(v))</SOPClassUID>") }
+                if let v = i.sopInstanceUID { lines.append("    <SOPInstanceUID>\(xmlEscape(v))</SOPInstanceUID>") }
+                if let v = i.instanceNumber { lines.append("    <InstanceNumber>\(v)</InstanceNumber>") }
+                if let v = i.contentDate    { lines.append("    <ContentDate>\(xmlEscape(v))</ContentDate>") }
+                if let rr = i.rows, let c = i.columns { lines.append("    <Dimensions>\(c)x\(rr)</Dimensions>") }
+                if let v = i.numberOfFrames { lines.append("    <NumberOfFrames>\(v)</NumberOfFrames>") }
+            }
+            if level == .series || level == .image {
+                let s = r.toSeriesResult()
+                if let v = s.seriesDescription { lines.append("    <SeriesDescription>\(xmlEscape(v))</SeriesDescription>") }
+                if let v = s.modality          { lines.append("    <Modality>\(xmlEscape(v))</Modality>") }
+                if let v = s.seriesNumber      { lines.append("    <SeriesNumber>\(v)</SeriesNumber>") }
+                if let v = s.seriesDate        { lines.append("    <SeriesDate>\(xmlEscape(v))</SeriesDate>") }
+                if let v = s.numberOfSeriesRelatedInstances { lines.append("    <Instances>\(v)</Instances>") }
+                if let v = s.seriesInstanceUID { lines.append("    <SeriesInstanceUID>\(xmlEscape(v))</SeriesInstanceUID>") }
+            }
+            if level == .study || level == .series || level == .image {
+                let s = r.toStudyResult()
+                if let v = s.studyDate ?? ps?.studyDate             { lines.append("    <StudyDate>\(xmlEscape(v))</StudyDate>") }
+                if let v = s.studyTime ?? ps?.studyTime             { lines.append("    <StudyTime>\(xmlEscape(v))</StudyTime>") }
+                if let v = s.studyDescription ?? ps?.studyDescription { lines.append("    <StudyDescription>\(xmlEscape(v))</StudyDescription>") }
+                if let v = s.accessionNumber ?? ps?.accessionNumber { lines.append("    <AccessionNumber>\(xmlEscape(v))</AccessionNumber>") }
+                if let v = s.modalitiesInStudy ?? ps?.modalitiesInStudy { lines.append("    <ModalitiesInStudy>\(xmlEscape(v))</ModalitiesInStudy>") }
+                if let v = s.numberOfStudyRelatedSeries ?? ps?.numberOfStudyRelatedSeries         { lines.append("    <StudySeries>\(v)</StudySeries>") }
+                if let v = s.numberOfStudyRelatedInstances ?? ps?.numberOfStudyRelatedInstances   { lines.append("    <StudyImages>\(v)</StudyImages>") }
+                if let v = s.studyInstanceUID ?? ps?.studyInstanceUID { lines.append("    <StudyInstanceUID>\(xmlEscape(v))</StudyInstanceUID>") }
+            }
+            let p = r.toPatientResult()
+            if let v = p.patientName ?? pp?.patientName           { lines.append("    <PatientName>\(xmlEscape(v))</PatientName>") }
+            if let v = p.patientID ?? pp?.patientID               { lines.append("    <PatientID>\(xmlEscape(v))</PatientID>") }
+            if let v = p.patientBirthDate ?? pp?.patientBirthDate { lines.append("    <PatientBirthDate>\(xmlEscape(v))</PatientBirthDate>") }
+            if let v = p.patientSex ?? pp?.patientSex             { lines.append("    <PatientSex>\(xmlEscape(v))</PatientSex>") }
+            if level == .patient {
+                if let v = p.numberOfPatientRelatedStudies   { lines.append("    <Studies>\(v)</Studies>") }
+                if let v = p.numberOfPatientRelatedSeries    { lines.append("    <Series>\(v)</Series>") }
+                if let v = p.numberOfPatientRelatedInstances { lines.append("    <Instances>\(v)</Instances>") }
+            }
+            lines.append("  </Result>")
+        }
+        lines.append("</QueryResults>")
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    /// Renders results as HL7 v2.x ADT^A28 / ZDS segment messages (one per result).
+    private func formatQueryResultsHL7(_ pairs: [(result: GenericQueryResult, parent: GenericQueryResult?)], level: QueryLevel) -> String {
+        let now = Date()
+        let dtFormatter = DateFormatter()
+        dtFormatter.dateFormat = "yyyyMMddHHmmss"
+        let msgDateTime = dtFormatter.string(from: now)
+        var messages: [String] = []
+        for (idx, pair) in pairs.enumerated() {
+            let r = pair.result
+            let ps = pair.parent?.toStudyResult()
+            let pp = pair.parent?.toPatientResult()
+            let p  = r.toPatientResult()
+            let s  = r.toStudyResult()
+            let patName   = p.patientName ?? pp?.patientName ?? "UNKNOWN"
+            let patID     = p.patientID ?? pp?.patientID ?? ""
+            let patDOB    = p.patientBirthDate ?? pp?.patientBirthDate ?? ""
+            let patSex    = p.patientSex ?? pp?.patientSex ?? ""
+            let studyUID  = s.studyInstanceUID ?? ps?.studyInstanceUID ?? ""
+            let studyDate = s.studyDate ?? ps?.studyDate ?? ""
+            let accession = s.accessionNumber ?? ps?.accessionNumber ?? ""
+            let modalities = s.modalitiesInStudy ?? ps?.modalitiesInStudy ?? ""
+            let studyDesc  = s.studyDescription ?? ps?.studyDescription ?? ""
+            let msgID = String(format: "DICOMSTUDIO%07d", idx + 1)
+            var segs: [String] = []
+            segs.append("MSH|^~\\&|DICOMSTUDIO||DICOMSERVER||\(msgDateTime)||ADT^A28|\(msgID)|P|2.5")
+            segs.append("PID|1||\(hl7Escape(patID))|||\(hl7Escape(patName))||\(hl7Escape(patDOB))|\(hl7Escape(patSex))")
+            // ZDS: study information (HL7 Z-segment for DICOM)
+            segs.append("ZDS|\(hl7Escape(studyUID))|\(hl7Escape(accession))|\(hl7Escape(studyDate))|\(hl7Escape(modalities))|\(hl7Escape(studyDesc))")
+            if level == .series || level == .image {
+                let sr = r.toSeriesResult()
+                let serUID  = sr.seriesInstanceUID ?? ""
+                let serMod  = sr.modality ?? ""
+                let serDesc = sr.seriesDescription ?? ""
+                let serNum  = sr.seriesNumber.map(String.init) ?? ""
+                segs.append("ZSE|\(hl7Escape(serUID))|\(hl7Escape(serNum))|\(hl7Escape(serMod))|\(hl7Escape(serDesc))")
+            }
+            if level == .image {
+                let ir = r.toInstanceResult()
+                segs.append("ZIM|\(hl7Escape(ir.sopInstanceUID ?? ""))|\(hl7Escape(ir.sopClassUID ?? ""))|\(ir.instanceNumber ?? 0)")
+            }
+            messages.append(segs.joined(separator: "\n"))
+        }
+        return messages.joined(separator: "\n---\n") + "\n"
+    }
+
+    private func jsonEscape(_ s: String) -> String {
+        s.replacingOccurrences(of: "\\\\", with: "\\\\\\\\").replacingOccurrences(of: "\"", with: "\\\\\"")
+    }
+    private func csvQuote(_ s: String) -> String {
+        if s.contains(",") || s.contains("\"") || s.contains("\n") {
+            return "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        return s
+    }
+    private func xmlEscape(_ s: String) -> String {
+        s.replacingOccurrences(of: "&", with: "&amp;")
+         .replacingOccurrences(of: "<", with: "&lt;")
+         .replacingOccurrences(of: ">", with: "&gt;")
+         .replacingOccurrences(of: "\"", with: "&quot;")
+    }
+    private func hl7Escape(_ s: String) -> String {
+        s.replacingOccurrences(of: "|", with: "\\F\\").replacingOccurrences(of: "^", with: "\\S\\")
+    }
+
     private func formatQueryResult(_ result: GenericQueryResult, index: Int, level: QueryLevel, parentStudyInfo: GenericQueryResult? = nil) -> String {
         var lines: [String] = ["--- Result \(index) ---"]
 

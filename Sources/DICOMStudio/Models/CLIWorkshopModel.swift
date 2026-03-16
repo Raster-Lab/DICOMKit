@@ -15,6 +15,7 @@ public enum CLIWorkshopTab: String, Sendable, Equatable, Hashable, CaseIterable,
     case dataExport        = "DATA_EXPORT"
     case networkOperations = "NETWORK_OPERATIONS"
     case automation        = "AUTOMATION"
+    case listener          = "LISTENER"
 
     public var id: String { rawValue }
 
@@ -27,6 +28,7 @@ public enum CLIWorkshopTab: String, Sendable, Equatable, Hashable, CaseIterable,
         case .dataExport:        return "Data Export"
         case .networkOperations: return "Network Operations"
         case .automation:        return "Automation"
+        case .listener:          return "Listener & Log"
         }
     }
 
@@ -39,6 +41,7 @@ public enum CLIWorkshopTab: String, Sendable, Equatable, Hashable, CaseIterable,
         case .dataExport:        return "square.and.arrow.up"
         case .networkOperations: return "network"
         case .automation:        return "terminal"
+        case .listener:          return "antenna.radiowaves.left.and.right"
         }
     }
 
@@ -51,6 +54,7 @@ public enum CLIWorkshopTab: String, Sendable, Equatable, Hashable, CaseIterable,
         case .dataExport:        return "Export to JSON, XML, PDF, images, and pixel editing"
         case .networkOperations: return "Echo, query, send, retrieve, and DICOMweb operations"
         case .automation:        return "Study workflows, UID tools, and scripting"
+        case .listener:          return "Local SCP listener status and event log"
         }
     }
 }
@@ -544,3 +548,65 @@ public struct CLIExamplePreset: Sendable, Identifiable, Hashable {
         self.commandString = commandString
     }
 }
+
+// MARK: - Listener & Log models
+
+/// Severity level of a local SCP log event.
+public enum SCPLogLevel: String, Sendable, Equatable, Hashable, CaseIterable {
+    case info         = "INFO"
+    case connection   = "CONNECTION"
+    case fileReceived = "FILE_RECEIVED"
+    case warning      = "WARNING"
+    case error        = "ERROR"
+
+    /// SF Symbol for this level.
+    public var sfSymbol: String {
+        switch self {
+        case .info:         return "info.circle"
+        case .connection:   return "link.circle"
+        case .fileReceived: return "tray.and.arrow.down"
+        case .warning:      return "exclamationmark.triangle"
+        case .error:        return "xmark.circle"
+        }
+    }
+
+    /// Foreground color name usable in SwiftUI `.foregroundStyle(Color(<name>))`.
+    public var colorName: String {
+        switch self {
+        case .info:         return "secondary"
+        case .connection:   return "blue"
+        case .fileReceived: return "green"
+        case .warning:      return "orange"
+        case .error:        return "red"
+        }
+    }
+}
+
+/// A single structured event entry in the local SCP event log.
+public struct SCPLogEntry: Sendable, Identifiable {
+    public let id: UUID
+    public let timestamp: Date
+    public let level: SCPLogLevel
+    public let message: String
+    /// Calling AE title of the remote peer, if applicable.
+    public let remoteAETitle: String?
+    /// IP address or hostname of the remote peer, if applicable.
+    public let remoteHost: String?
+
+    public init(
+        id: UUID = UUID(),
+        timestamp: Date = Date(),
+        level: SCPLogLevel,
+        message: String,
+        remoteAETitle: String? = nil,
+        remoteHost: String? = nil
+    ) {
+        self.id = id
+        self.timestamp = timestamp
+        self.level = level
+        self.message = message
+        self.remoteAETitle = remoteAETitle
+        self.remoteHost = remoteHost
+    }
+}
+

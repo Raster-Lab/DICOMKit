@@ -228,11 +228,12 @@ struct RetrieveExecutor {
                     fprintln("  Progress: \(progress.completed)/\(progress.total) completed, \(progress.failed) failed, \(progress.remaining) remaining")
                 }
                 
-            case .instance(let sopInstanceUID, let sopClassUID, let data):
-                // Save received instance to disk
+            case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
+                // Save received instance to disk as a proper Part 10 file
                 try saveInstance(
                     sopInstanceUID: sopInstanceUID,
                     sopClassUID: sopClassUID,
+                    transferSyntaxUID: transferSyntaxUID,
                     data: data,
                     studyUID: studyUID,
                     seriesUID: seriesUID
@@ -270,6 +271,7 @@ struct RetrieveExecutor {
     private func saveInstance(
         sopInstanceUID: String,
         sopClassUID: String,
+        transferSyntaxUID: String,
         data: Data,
         studyUID: String,
         seriesUID: String?
@@ -294,8 +296,11 @@ struct RetrieveExecutor {
             filepath = (outputPath as NSString).appendingPathComponent(filename)
         }
         
-        // Write file
-        try data.write(to: URL(fileURLWithPath: filepath))
+        // Wrap raw dataset in Part 10 container (preamble + DICM magic + File Meta)
+        let part10 = buildPart10(dataset: data, sopClassUID: sopClassUID,
+                                  sopInstanceUID: sopInstanceUID,
+                                  transferSyntaxUID: transferSyntaxUID)
+        try part10.write(to: URL(fileURLWithPath: filepath))
     }
     
     private func formatBytes(_ bytes: Int) -> String {
@@ -309,6 +314,43 @@ struct RetrieveExecutor {
         }
         let gb = mb / 1024.0
         return String(format: "%.1f GB", gb)
+    }
+
+    // MARK: - Part 10 file wrapper
+
+    /// Wraps raw C-GET/C-STORE dataset bytes in a DICOM Part 10 container.
+    private func buildPart10(dataset: Data,
+                              sopClassUID: String,
+                              sopInstanceUID: String,
+                              transferSyntaxUID: String) -> Data {
+        func le16(_ v: UInt16) -> Data { Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)]) }
+        func le32(_ v: UInt32) -> Data { Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF),
+                                               UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]) }
+        func ulElem(_ g: UInt16, _ e: UInt16, _ val: UInt32) -> Data {
+            le16(g) + le16(e) + Data([0x55, 0x4C]) + le16(4) + le32(val)
+        }
+        func obElem(_ g: UInt16, _ e: UInt16, _ val: Data) -> Data {
+            le16(g) + le16(e) + Data([0x4F, 0x42, 0x00, 0x00]) + le32(UInt32(val.count)) + val
+        }
+        func uiElem(_ g: UInt16, _ e: UInt16, _ val: String) -> Data {
+            var b = val.data(using: .ascii) ?? Data()
+            if b.count % 2 != 0 { b.append(0x00) }
+            return le16(g) + le16(e) + Data([0x55, 0x49]) + le16(UInt16(b.count)) + b
+        }
+
+        var meta = Data()
+        meta += obElem(0x0002, 0x0001, Data([0x00, 0x01]))
+        meta += uiElem(0x0002, 0x0002, sopClassUID)
+        meta += uiElem(0x0002, 0x0003, sopInstanceUID)
+        meta += uiElem(0x0002, 0x0010, transferSyntaxUID)
+        meta += uiElem(0x0002, 0x0012, "1.2.826.0.1.3680043.9.7433.1.1")
+
+        var file = Data(repeating: 0, count: 128)            // preamble
+        file += Data([0x44, 0x49, 0x43, 0x4D])               // DICM
+        file += ulElem(0x0002, 0x0000, UInt32(meta.count))   // group length
+        file += meta
+        file += dataset
+        return file
     }
 }
 

@@ -87,7 +87,10 @@ struct DICOMRetrieve: AsyncParsableCommand {
     
     @Option(name: .long, help: "Number of parallel retrieval operations (default: 1)")
     var parallel: Int = 1
-    
+
+    @Option(name: .long, help: "Requested transfer syntax for retrieved files (e.g. explicit-vr-le, jpeg-baseline, jpeg2000, rle-lossless, implicit-vr-le)")
+    var transferSyntax: String?
+
     @Flag(name: .shortAndLong, help: "Show verbose output including progress")
     var verbose: Bool = false
     
@@ -132,6 +135,9 @@ struct DICOMRetrieve: AsyncParsableCommand {
             fprintln("Organization: \(hierarchical ? "Hierarchical" : "Flat")")
             fprintln("Timeout: \(timeout)s")
             fprintln("Parallel: \(parallel)")
+            if let ts = transferSyntax {
+                fprintln("Transfer Syntax: \(ts) (requested)")
+            }
             fprintln("")
         }
         
