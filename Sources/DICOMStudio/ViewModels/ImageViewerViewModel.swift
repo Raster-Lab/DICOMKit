@@ -137,8 +137,31 @@ public final class ImageViewerViewModel {
     /// Whether the performance overlay is visible.
     public var showPerformanceOverlay: Bool = false
 
+    /// Whether the DICOM tag inspector sheet is visible.
+    public var showDICOMInspector: Bool = false
+
     /// Whether the file importer dialog is presented.
     public var isFileImporterPresented: Bool = false
+
+    // MARK: - Series / Multi-File Navigation
+
+    /// All file paths in the current series (empty when viewing a standalone file).
+    public var seriesFiles: [String] = []
+
+    /// Index of the currently displayed file within `seriesFiles`.
+    public var currentFileIndex: Int = 0
+
+    /// Security-scoped parent URL shared by all files in the current series.
+    public var seriesSecurityScopedParent: URL? = nil
+
+    /// Whether the viewer is navigating a multi-file series.
+    public var isInSeries: Bool { seriesFiles.count > 1 }
+
+    /// Whether there is a previous file to navigate to.
+    public var canGoPreviousFile: Bool { currentFileIndex > 0 }
+
+    /// Whether there is a next file to navigate to.
+    public var canGoNextFile: Bool { currentFileIndex < seriesFiles.count - 1 }
 
     // MARK: - Services
 
@@ -173,6 +196,7 @@ public final class ImageViewerViewModel {
     ///
     /// - Parameter url: A security-scoped URL to the DICOM file.
     public func loadFile(from url: URL) {
+        clearSeriesState()
         let accessing = url.startAccessingSecurityScopedResource()
         defer { if accessing { url.stopAccessingSecurityScopedResource() } }
 
@@ -192,17 +216,8 @@ public final class ImageViewerViewModel {
     ///
     /// - Parameter path: File path to load.
     public func loadFile(at path: String) {
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let url = URL(fileURLWithPath: path)
-            let data = try Data(contentsOf: url)
-            try loadDICOMData(data, path: path)
-        } catch {
-            errorMessage = "Failed to load file: \(error.localizedDescription)"
-            isLoading = false
-        }
+        clearSeriesState()
+        loadFileInternal(at: path, securityScopedParent: nil)
     }
 
     /// Loads a DICOM file for viewing, using a security-scoped parent URL
@@ -212,23 +227,78 @@ public final class ImageViewerViewModel {
     ///   - path: File path to load.
     ///   - securityScopedParent: Optional parent URL with security-scoped access rights.
     public func loadFile(at path: String, securityScopedParent: URL?) {
-        guard let scopedURL = securityScopedParent else {
-            loadFile(at: path)
-            return
-        }
-        isLoading = true
-        errorMessage = nil
+        clearSeriesState()
+        loadFileInternal(at: path, securityScopedParent: securityScopedParent)
+    }
 
-        let accessing = scopedURL.startAccessingSecurityScopedResource()
-        defer { if accessing { scopedURL.stopAccessingSecurityScopedResource() } }
+    // MARK: - Series Navigation
 
-        do {
-            let url = URL(fileURLWithPath: path)
-            let data = try Data(contentsOf: url)
-            try loadDICOMData(data, path: path)
-        } catch {
-            errorMessage = "Failed to load file: \(error.localizedDescription)"
-            isLoading = false
+    /// Loads a set of DICOM files as a navigable series and displays the file at `startIndex`.
+    ///
+    /// - Parameters:
+    ///   - files: Ordered list of file paths belonging to the series.
+    ///   - startIndex: Index of the file to display first (clamped to valid range).
+    ///   - securityScopedParent: Optional security-scoped parent URL covering all files.
+    public func loadSeries(files: [String], startIndex: Int = 0, securityScopedParent: URL? = nil) {
+        guard !files.isEmpty else { return }
+        let idx = max(0, min(startIndex, files.count - 1))
+        seriesFiles = files
+        currentFileIndex = idx
+        seriesSecurityScopedParent = securityScopedParent
+        loadFileInternal(at: files[idx], securityScopedParent: securityScopedParent)
+    }
+
+    /// Navigates to the previous file in the series.
+    public func navigateToPreviousFile() {
+        guard canGoPreviousFile else { return }
+        currentFileIndex -= 1
+        loadFileInternal(at: seriesFiles[currentFileIndex], securityScopedParent: seriesSecurityScopedParent)
+    }
+
+    /// Navigates to the next file in the series.
+    public func navigateToNextFile() {
+        guard canGoNextFile else { return }
+        currentFileIndex += 1
+        loadFileInternal(at: seriesFiles[currentFileIndex], securityScopedParent: seriesSecurityScopedParent)
+    }
+
+    // MARK: - Internal Helpers
+
+    /// Clears series navigation state. Called when a standalone file is opened directly.
+    private func clearSeriesState() {
+        seriesFiles = []
+        currentFileIndex = 0
+        seriesSecurityScopedParent = nil
+    }
+
+    /// Internal file loader that does NOT reset series state.
+    /// Used by both the public loadFile methods (after they clear series state)
+    /// and by series navigation methods.
+    private func loadFileInternal(at path: String, securityScopedParent: URL?) {
+        if let scopedURL = securityScopedParent {
+            isLoading = true
+            errorMessage = nil
+            let accessing = scopedURL.startAccessingSecurityScopedResource()
+            defer { if accessing { scopedURL.stopAccessingSecurityScopedResource() } }
+            do {
+                let url = URL(fileURLWithPath: path)
+                let data = try Data(contentsOf: url)
+                try loadDICOMData(data, path: path)
+            } catch {
+                errorMessage = "Failed to load file: \(error.localizedDescription)"
+                isLoading = false
+            }
+        } else {
+            isLoading = true
+            errorMessage = nil
+            do {
+                let url = URL(fileURLWithPath: path)
+                let data = try Data(contentsOf: url)
+                try loadDICOMData(data, path: path)
+            } catch {
+                errorMessage = "Failed to load file: \(error.localizedDescription)"
+                isLoading = false
+            }
         }
     }
 
@@ -310,33 +380,42 @@ public final class ImageViewerViewModel {
     // MARK: - Rendering
 
     /// Renders the current frame with the current window/level settings.
+    /// Uses throwing rendering variants so detailed PixelDataError descriptions are
+    /// surfaced in the UI instead of a generic fallback message.
     public func renderCurrentFrame() {
         #if canImport(CoreGraphics)
         guard let file = dicomFile else { return }
 
         let start = Date()
+        var image: CGImage?
+        var detailedError: String?
 
-        // Try rendering with current window/level settings
-        var image = renderingService.renderFrame(
-            from: file,
-            frameIndex: currentFrameIndex,
-            windowCenter: windowCenter,
-            windowWidth: windowWidth
-        )
+        do {
+            let window = WindowSettings(center: windowCenter, width: windowWidth)
+            image = try file.tryRenderFrame(currentFrameIndex, window: window)
+        } catch let e as PixelDataError {
+            detailedError = e.description
+        } catch {
+            detailedError = error.localizedDescription
+        }
 
         // Fall back to auto-windowing if explicit windowing fails
         if image == nil {
-            image = renderingService.renderFrame(
-                from: file,
-                frameIndex: currentFrameIndex
-            )
+            do {
+                image = try file.tryRenderFrameWithStoredWindow(currentFrameIndex)
+                detailedError = nil   // auto-windowing succeeded – clear any earlier error
+            } catch let e as PixelDataError {
+                if detailedError == nil { detailedError = e.description }
+            } catch {
+                if detailedError == nil { detailedError = error.localizedDescription }
+            }
         }
 
         lastRenderTime = Date().timeIntervalSince(start)
         currentImage = image
 
         if image == nil && errorMessage == nil {
-            errorMessage = "Unable to render pixel data. The file may use an unsupported transfer syntax or contain no displayable image data."
+            errorMessage = detailedError ?? "Unable to render pixel data. The file may use an unsupported transfer syntax or contain no displayable image data."
         }
         #endif
     }
@@ -573,5 +652,11 @@ public final class ImageViewerViewModel {
     public var isMonochrome: Bool {
         let pi = photometricInterpretation.uppercased()
         return pi == "MONOCHROME1" || pi == "MONOCHROME2"
+    }
+
+    /// Human-readable series position text, e.g. "3 / 12".
+    public var seriesPositionText: String {
+        guard isInSeries else { return "" }
+        return "\(currentFileIndex + 1) / \(seriesFiles.count)"
     }
 }

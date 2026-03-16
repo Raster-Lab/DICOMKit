@@ -65,97 +65,193 @@ public struct ModalityWorklistConfiguration: Sendable, Hashable {
 }
 
 /// Modality Worklist query keys
+///
+/// Top-level patient / study attributes are encoded directly in the query
+/// identifier.  Attributes that belong to the Scheduled Procedure Step (SPS)
+/// are encoded inside a `(0040,0100)` Sequence item per DICOM PS3.4 Table K.6-1.
 public struct WorklistQueryKeys: Sendable {
+    /// Top-level query attributes (patient, study level).
     private var keys: [Tag: String] = [:]
-    
+    /// Attributes that go inside the `(0040,0100)` SPS Sequence item.
+    private var spsKeys: [Tag: String] = [:]
+
     public init() {}
-    
+
     // MARK: - Patient Demographics
-    
+
     /// Patient's Name
     public func patientName(_ value: String) -> WorklistQueryKeys {
         var copy = self
         copy.keys[.patientName] = value
         return copy
     }
-    
+
     /// Patient ID
     public func patientID(_ value: String) -> WorklistQueryKeys {
         var copy = self
         copy.keys[.patientID] = value
         return copy
     }
-    
-    // MARK: - Scheduled Procedure Step
-    
-    /// Scheduled Procedure Step Start Date (YYYYMMDD)
+
+    /// Accession Number (SH) — top-level matching key.
+    public func accessionNumber(_ value: String) -> WorklistQueryKeys {
+        var copy = self
+        copy.keys[.accessionNumber] = value
+        return copy
+    }
+
+    // MARK: - Scheduled Procedure Step (SPS) attributes (inside (0040,0100) sequence)
+
+    /// Scheduled Procedure Step Start Date (DA) — encoded inside the SPS sequence.
+    /// - Parameter value: Date in YYYYMMDD format, or a DICOM date range such as
+    ///   "20240101-20240131".  Pass "" to request all dates.
     public func scheduledDate(_ value: String) -> WorklistQueryKeys {
         var copy = self
-        copy.keys[Tag(group: 0x0040, element: 0x0100)] = value // Scheduled Procedure Step Sequence
+        // (0040,0002) Scheduled Procedure Step Start Date — inside (0040,0100) SPS Sequence
+        copy.spsKeys[Tag(group: 0x0040, element: 0x0002)] = value
         return copy
     }
-    
-    /// Scheduled Station AE Title
+
+    /// Scheduled Station AE Title (AE) — encoded inside the SPS sequence.
     public func scheduledStationAET(_ value: String) -> WorklistQueryKeys {
         var copy = self
-        copy.keys[Tag(group: 0x0040, element: 0x0001)] = value
+        // (0040,0001) Scheduled Station AE Title — inside (0040,0100) SPS Sequence
+        copy.spsKeys[Tag(group: 0x0040, element: 0x0001)] = value
         return copy
     }
-    
-    /// Modality
+
+    /// Modality (CS) — encoded inside the SPS sequence per PS3.4 Table K.6-1.
     public func modality(_ value: String) -> WorklistQueryKeys {
         var copy = self
-        copy.keys[.modality] = value
+        // (0008,0060) Modality — inside (0040,0100) SPS Sequence
+        copy.spsKeys[Tag(group: 0x0008, element: 0x0060)] = value
         return copy
     }
-    
-    /// Returns all keys
+
+    // MARK: - SPS status filter
+
+    /// Scheduled Procedure Step Status (CS) — encoded inside the SPS sequence.
+    /// Common values: "SCHEDULED", "IN PROGRESS", "DISCONTINUED", "COMPLETED".
+    /// Pass "" to request items regardless of status.
+    public func scheduledProcedureStepStatus(_ value: String) -> WorklistQueryKeys {
+        var copy = self
+        // (0040,0020) Scheduled Procedure Step Status — inside (0040,0100) SPS Sequence
+        copy.spsKeys[Tag(group: 0x0040, element: 0x0020)] = value
+        return copy
+    }
+
+    /// Returns top-level query attributes.
     internal var allKeys: [Tag: String] { keys }
-    
-    /// Default worklist query keys (returns all attributes)
+    /// Returns SPS-level attributes that go inside `(0040,0100)` sequence item.
+    internal var allSPSKeys: [Tag: String] { spsKeys }
+
+    /// Default worklist query keys requesting all common return attributes.
     public static func `default`() -> WorklistQueryKeys {
-        var keys = WorklistQueryKeys()
-        // Request common return attributes
-        keys.keys[.patientName] = ""
-        keys.keys[.patientID] = ""
-        keys.keys[Tag(group: 0x0040, element: 0x0100)] = "" // Scheduled Procedure Step Sequence
-        keys.keys[.studyInstanceUID] = ""
-        keys.keys[.accessionNumber] = ""
-        return keys
+        var wlk = WorklistQueryKeys()
+        // Top-level return attributes
+        wlk.keys[.patientName]                            = ""
+        wlk.keys[.patientID]                             = ""
+        wlk.keys[.studyInstanceUID]                      = ""
+        wlk.keys[.accessionNumber]                       = ""
+        wlk.keys[Tag(group: 0x0010, element: 0x0030)]    = ""  // Patient's Birth Date
+        wlk.keys[Tag(group: 0x0010, element: 0x0040)]    = ""  // Patient's Sex
+        wlk.keys[Tag(group: 0x0008, element: 0x0090)]    = ""  // Referring Physician's Name
+        wlk.keys[Tag(group: 0x0040, element: 0x1001)]    = ""  // Requested Procedure ID
+        wlk.keys[Tag(group: 0x0032, element: 0x1070)]    = ""  // Requested Procedure Description
+        // SPS return attributes (encoded inside (0040,0100) sequence)
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0001)] = ""  // Scheduled Station AE Title
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0002)] = ""  // Scheduled Procedure Step Start Date
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0003)] = ""  // Scheduled Procedure Step Start Time
+        wlk.spsKeys[Tag(group: 0x0008, element: 0x0060)] = ""  // Modality
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0009)] = ""  // Scheduled Procedure Step ID
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0007)] = ""  // Scheduled Procedure Step Description
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0020)] = ""  // Scheduled Procedure Step Status (CS)
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0006)] = ""  // Scheduled Performing Physician's Name
+        wlk.spsKeys[Tag(group: 0x0040, element: 0x0010)] = ""  // Scheduled Station Name
+        return wlk
     }
 }
 
-/// Modality Worklist item result
+/// Modality Worklist item result.
+///
+/// Attributes from the top-level dataset and from the nested SPS sequence
+/// `(0040,0100)` are stored in the same flat dictionary — their tag numbers
+/// never collide, so direct lookup works without a second container.
 public struct WorklistItem: Sendable {
     public let attributes: [Tag: Data]
-    
+
     public init(attributes: [Tag: Data]) {
         self.attributes = attributes
     }
-    
-    /// Get patient name
-    public var patientName: String? {
-        guard let data = attributes[.patientName] else { return nil }
-        return String(data: data, encoding: .ascii)?.trimmingCharacters(in: .whitespaces)
+
+    // MARK: - Private helper
+
+    private func stringValue(group: UInt16, element: UInt16) -> String? {
+        let tag = Tag(group: group, element: element)
+        guard let data = attributes[tag] else { return nil }
+        let s = String(data: data, encoding: .ascii)?.trimmingCharacters(in: .whitespaces)
+        return s.flatMap { $0.isEmpty ? nil : $0 }
     }
-    
-    /// Get patient ID
-    public var patientID: String? {
-        guard let data = attributes[.patientID] else { return nil }
-        return String(data: data, encoding: .ascii)?.trimmingCharacters(in: .whitespaces)
-    }
-    
-    /// Get study instance UID
-    public var studyInstanceUID: String? {
-        guard let data = attributes[.studyInstanceUID] else { return nil }
-        return String(data: data, encoding: .ascii)?.trimmingCharacters(in: .whitespaces)
-    }
-    
-    /// Get accession number
-    public var accessionNumber: String? {
-        guard let data = attributes[.accessionNumber] else { return nil }
-        return String(data: data, encoding: .ascii)?.trimmingCharacters(in: .whitespaces)
-    }
+
+    // MARK: - Patient Demographics
+
+    /// Patient's Name (0010,0010)
+    public var patientName: String? { stringValue(group: 0x0010, element: 0x0010) }
+
+    /// Patient ID (0010,0020)
+    public var patientID: String? { stringValue(group: 0x0010, element: 0x0020) }
+
+    /// Patient's Birth Date (0010,0030) in YYYYMMDD format.
+    public var patientBirthDate: String? { stringValue(group: 0x0010, element: 0x0030) }
+
+    /// Patient's Sex (0010,0040) — "M", "F", or "O".
+    public var patientSex: String? { stringValue(group: 0x0010, element: 0x0040) }
+
+    // MARK: - Study Level
+
+    /// Study Instance UID (0020,000D)
+    public var studyInstanceUID: String? { stringValue(group: 0x0020, element: 0x000D) }
+
+    /// Accession Number (0008,0050)
+    public var accessionNumber: String? { stringValue(group: 0x0008, element: 0x0050) }
+
+    /// Referring Physician's Name (0008,0090)
+    public var referringPhysicianName: String? { stringValue(group: 0x0008, element: 0x0090) }
+
+    /// Requested Procedure ID (0040,1001)
+    public var requestedProcedureID: String? { stringValue(group: 0x0040, element: 0x1001) }
+
+    /// Requested Procedure Description (0032,1070)
+    public var requestedProcedureDescription: String? { stringValue(group: 0x0032, element: 0x1070) }
+
+    // MARK: - Scheduled Procedure Step (SPS) attributes — from (0040,0100) sequence
+
+    /// Scheduled Station AE Title (0040,0001)
+    public var scheduledStationAETitle: String? { stringValue(group: 0x0040, element: 0x0001) }
+
+    /// Scheduled Procedure Step Start Date (0040,0002) in YYYYMMDD format.
+    public var scheduledProcedureStepStartDate: String? { stringValue(group: 0x0040, element: 0x0002) }
+
+    /// Scheduled Procedure Step Start Time (0040,0003) in HHMMSS.FFFFFF format.
+    public var scheduledProcedureStepStartTime: String? { stringValue(group: 0x0040, element: 0x0003) }
+
+    /// Scheduled Procedure Step Status (0040,0020) — e.g. "SCHEDULED", "IN PROGRESS", "COMPLETED".
+    public var scheduledProcedureStepStatus: String? { stringValue(group: 0x0040, element: 0x0020) }
+
+    /// Scheduled Performing Physician's Name (0040,0006)
+    public var scheduledPerformingPhysicianName: String? { stringValue(group: 0x0040, element: 0x0006) }
+
+    /// Scheduled Procedure Step Description (0040,0007)
+    public var scheduledProcedureStepDescription: String? { stringValue(group: 0x0040, element: 0x0007) }
+
+    /// Scheduled Procedure Step ID (0040,0009)
+    public var scheduledProcedureStepID: String? { stringValue(group: 0x0040, element: 0x0009) }
+
+    /// Scheduled Station Name (0040,0010)
+    public var scheduledStationName: String? { stringValue(group: 0x0040, element: 0x0010) }
+
+    /// Modality (0008,0060) — e.g. "CT", "MR", "US".
+    public var modality: String? { stringValue(group: 0x0008, element: 0x0060) }
 }
 
 #if canImport(Network)
@@ -377,47 +473,119 @@ public enum DICOMModalityWorklistService {
     ) -> Data {
         var data = Data()
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
-        
-        // Add all query keys, sorted by tag
-        let sortedKeys = queryKeys.allKeys.sorted { $0.key < $1.key }
-        for (tag, value) in sortedKeys {
-            // Determine VR for the tag (simplified - in production use a dictionary)
-            let vr: VR = determineVR(for: tag)
-            
-            data.append(encodeElement(
-                tag: tag,
-                vr: vr,
-                value: value,
-                explicit: isExplicitVR
-            ))
+
+        // Determine which tags go at the top level and which go in the SPS sequence.
+        // The SPS sequence tag (0040,0100) must appear in tag-number order relative to
+        // the surrounding top-level attributes.
+        let topSorted   = queryKeys.allKeys.sorted   { $0.key < $1.key }
+        let spsSorted   = queryKeys.allSPSKeys.sorted { $0.key < $1.key }
+        let spsSeqTag   = Tag(group: 0x0040, element: 0x0100)
+
+        // Merge: emit top-level tags before (0040,0100), then the SPS sequence, then the rest.
+        for (tag, value) in topSorted where tag < spsSeqTag {
+            data.append(encodeElement(tag: tag, vr: determineVR(for: tag),
+                                      value: value, explicit: isExplicitVR))
         }
-        
+
+        // Encode the SPS Sequence (0040,0100) with one item containing all SPS attributes.
+        // Each PACS (including dcm4chee2) expects the SPS attributes nested here per PS3.4 Annex K.
+        if !spsSorted.isEmpty {
+            data.append(encodeSPSSequence(spsKeys: spsSorted, explicit: isExplicitVR))
+        }
+
+        // Remaining top-level tags after (0040,0100)
+        for (tag, value) in topSorted where tag > spsSeqTag {
+            data.append(encodeElement(tag: tag, vr: determineVR(for: tag),
+                                      value: value, explicit: isExplicitVR))
+        }
+
         return data
     }
-    
-    /// Determines the VR for a given tag
-    /// 
-    /// Uses DICOMDictionary for comprehensive VR lookup with fallback for unknown tags.
+
+    /// Encodes the Scheduled Procedure Step Sequence (0040,0100) with a single item.
+    ///
+    /// Uses undefined-length encoding for both the sequence and its item, terminated
+    /// by explicit delimiter tags per PS3.5 §7.5.  This is the most widely supported
+    /// format across PACS vendors including dcm4chee2.
+    private static func encodeSPSSequence(spsKeys: [(key: Tag, value: String)],
+                                           explicit: Bool) -> Data {
+        // Build the item's attribute bytes first
+        var itemData = Data()
+        for (tag, value) in spsKeys {
+            itemData.append(encodeElement(
+                tag: tag,
+                vr: determineSPSVR(for: tag),
+                value: value,
+                explicit: explicit
+            ))
+        }
+
+        var data = Data()
+        // (0040,0100) Scheduled Procedure Step Sequence — SQ
+        data.append(le16mwl(0x0040)); data.append(le16mwl(0x0100))
+        if explicit {
+            data.append(contentsOf: [0x53, 0x51])   // "SQ"
+            data.append(contentsOf: [0x00, 0x00])   // reserved
+        }
+        data.append(le32mwl(0xFFFFFFFF))             // undefined sequence length
+
+        // Item (FFFE,E000) with undefined length
+        data.append(contentsOf: [0xFE, 0xFF, 0x00, 0xE0])  // item tag LE
+        data.append(le32mwl(0xFFFFFFFF))
+        data.append(itemData)
+        // Item delimiter (FFFE,E00D)
+        data.append(contentsOf: [0xFE, 0xFF, 0x0D, 0xE0])
+        data.append(le32mwl(0x00000000))
+
+        // Sequence delimiter (FFFE,E0DD)
+        data.append(contentsOf: [0xFE, 0xFF, 0xDD, 0xE0])
+        data.append(le32mwl(0x00000000))
+
+        return data
+    }
+
+    // MARK: - MWL little-endian helpers (file-private to avoid name collision)
+
+    private static func le16mwl(_ v: UInt16) -> Data {
+        Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)])
+    }
+    private static func le32mwl(_ v: UInt32) -> Data {
+        Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF),
+              UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)])
+    }
+
+    /// Determines the VR for a top-level MWL query tag.
     private static func determineVR(for tag: Tag) -> VR {
         // First, try to look up the tag in the DICOM Dictionary
         if let entry = DataElementDictionary.lookup(tag: tag) {
-            // Use the first VR if multiple VRs are defined for the tag
             return entry.vr.first ?? .UN
         }
-        
         // Fallback for common MWL tags not yet in dictionary
         switch tag {
-        case .patientName: return .PN
-        case .patientID: return .LO
+        case .patientName:     return .PN
+        case .patientID:       return .LO
         case .studyInstanceUID: return .UI
         case .accessionNumber: return .SH
-        case .modality: return .CS
-        default:
-            // Common defaults for worklist tags
-            if tag.group == 0x0040 {
-                return .SQ // Most 0x0040 tags in MWL are sequences or strings
-            }
-            return .LO
+        default:               return .LO
+        }
+    }
+
+    /// Determines the VR for an attribute inside the SPS Sequence item.
+    private static func determineSPSVR(for tag: Tag) -> VR {
+        if let entry = DataElementDictionary.lookup(tag: tag) {
+            return entry.vr.first ?? .UN
+        }
+        switch (tag.group, tag.element) {
+        case (0x0008, 0x0060): return .CS  // Modality
+        case (0x0040, 0x0001): return .AE  // Scheduled Station AE Title
+        case (0x0040, 0x0002): return .DA  // Scheduled Procedure Step Start Date
+        case (0x0040, 0x0003): return .TM  // Scheduled Procedure Step Start Time
+        case (0x0040, 0x0006): return .PN  // Scheduled Performing Physician Name
+        case (0x0040, 0x0007): return .LO  // Scheduled Procedure Step Description
+        case (0x0040, 0x0009): return .SH  // Scheduled Procedure Step ID
+        case (0x0040, 0x0010): return .SH  // Scheduled Station Name
+        case (0x0040, 0x0020): return .CS  // Scheduled Procedure Step Status
+        default:               return .LO
         }
     }
     
@@ -477,79 +645,135 @@ public enum DICOMModalityWorklistService {
         return data
     }
     
-    /// Parses the query response data set into attributes
+    /// Parses the query response dataset — including nested SPS sequence items — into a flat
+    /// attribute map.  SPS-level attributes (from the `(0040,0100)` sequence) are merged directly
+    /// into the result because their tag numbers do not collide with top-level MWL attributes.
     private static func parseQueryResponse(data: Data, transferSyntax: String) -> [Tag: Data] {
         var attributes: [Tag: Data] = [:]
         var offset = 0
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
-        
-        while offset + 4 <= data.count {
-            // Read tag
-            let group = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+        parseMWLDataSet(data: data, offset: &offset, end: data.count,
+                        isExplicitVR: isExplicitVR, into: &attributes)
+        return attributes
+    }
+
+    /// Recursively parses DICOM tags from `data[offset..<end]`, merging every encountered
+    /// attribute (including items within SPS sequences) into `out`.
+    /// Returns early when a delimiter tag `(FFFE,E00D)` or `(FFFE,E0DD)` is encountered.
+    private static func parseMWLDataSet(
+        data: Data,
+        offset: inout Int,
+        end: Int,
+        isExplicitVR: Bool,
+        into out: inout [Tag: Data]
+    ) {
+        while offset + 4 <= end {
+            let group   = UInt16(data[offset])     | (UInt16(data[offset + 1]) << 8)
             let element = UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
             let tag = Tag(group: group, element: element)
             offset += 4
-            
-            // Check for sequence delimiter or item tags
+
+            // Delimiter tags (sequence/item): 4-byte length field (always 0x00000000).
             if group == 0xFFFE {
-                // Skip sequence/item delimiters
-                if offset + 4 <= data.count {
-                    offset += 4 // Skip length
-                }
+                if offset + 4 <= data.count { offset += 4 }
+                if element == 0xE00D || element == 0xE0DD { return }  // bubble up
                 continue
             }
-            
-            var valueLength: UInt32 = 0
-            
+
+            var valueLength: UInt32
+            var isSequence = false
+
             if isExplicitVR {
-                // Read VR (2 bytes)
-                guard offset + 2 <= data.count else { break }
-                let vrBytes = Data(data[offset..<(offset + 2)])
-                let vrString = String(data: vrBytes, encoding: .ascii) ?? "UN"
-                let vr = VR(rawValue: vrString) ?? .UN
+                guard offset + 2 <= data.count else { return }
+                let vr = VR(rawValue: String(bytes: [data[offset], data[offset + 1]],
+                                             encoding: .ascii) ?? "UN") ?? .UN
+                isSequence = (vr == .SQ)
                 offset += 2
-                
-                // Read length based on VR
                 if vr.uses4ByteLength {
-                    // Skip reserved 2 bytes, read 4-byte length
-                    guard offset + 6 <= data.count else { break }
-                    offset += 2
-                    valueLength = UInt32(data[offset]) |
-                                  (UInt32(data[offset + 1]) << 8) |
-                                  (UInt32(data[offset + 2]) << 16) |
-                                  (UInt32(data[offset + 3]) << 24)
+                    guard offset + 6 <= data.count else { return }
+                    offset += 2  // skip reserved 2 bytes
+                    valueLength = UInt32(data[offset])     | (UInt32(data[offset + 1]) << 8)
+                                | (UInt32(data[offset + 2]) << 16) | (UInt32(data[offset + 3]) << 24)
                     offset += 4
                 } else {
-                    // Read 2-byte length
-                    guard offset + 2 <= data.count else { break }
+                    guard offset + 2 <= data.count else { return }
                     valueLength = UInt32(UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8))
                     offset += 2
                 }
             } else {
-                // Implicit VR - 4-byte length
-                guard offset + 4 <= data.count else { break }
-                valueLength = UInt32(data[offset]) |
-                              (UInt32(data[offset + 1]) << 8) |
-                              (UInt32(data[offset + 2]) << 16) |
-                              (UInt32(data[offset + 3]) << 24)
+                guard offset + 4 <= data.count else { return }
+                valueLength = UInt32(data[offset])     | (UInt32(data[offset + 1]) << 8)
+                            | (UInt32(data[offset + 2]) << 16) | (UInt32(data[offset + 3]) << 24)
                 offset += 4
+                // In implicit VR, (0040,0100) is the MWL Scheduled Procedure Step Sequence
+                isSequence = (group == 0x0040 && element == 0x0100)
             }
-            
-            // Handle undefined length
+
             if valueLength == 0xFFFFFFFF {
-                // Skip sequences with undefined length for now
-                continue
+                if isSequence {
+                    // Undefined-length SQ: parse items until (FFFE,E0DD) sequence delimiter
+                    parseMWLSequenceItems(data: data, offset: &offset,
+                                         isExplicitVR: isExplicitVR, into: &out)
+                } else {
+                    // Non-sequence undefined-length item: scan forward to next delimiter pair
+                    skipMWLUndefinedItem(data: data, offset: &offset)
+                }
+            } else if isSequence {
+                // Defined-length SQ: items are bounded by valueLength bytes
+                let seqEnd = min(offset + Int(valueLength), data.count)
+                parseMWLSequenceItems(data: data, offset: &offset,
+                                      isExplicitVR: isExplicitVR, into: &out,
+                                      boundedEnd: seqEnd)
+                offset = seqEnd
+            } else {
+                guard offset + Int(valueLength) <= data.count else { return }
+                out[tag] = data.subdata(in: offset ..< (offset + Int(valueLength)))
+                offset += Int(valueLength)
             }
-            
-            // Read value
-            guard offset + Int(valueLength) <= data.count else { break }
-            let value = data.subdata(in: offset..<(offset + Int(valueLength)))
-            offset += Int(valueLength)
-            
-            attributes[tag] = value
         }
-        
-        return attributes
+    }
+
+    /// Parses items within a sequence, recursing into each item's dataset and merging tags into `out`.
+    /// Stops at `(FFFE,E0DD)` (sequence delimiter) or when `boundedEnd` is reached.
+    private static func parseMWLSequenceItems(
+        data: Data,
+        offset: inout Int,
+        isExplicitVR: Bool,
+        into out: inout [Tag: Data],
+        boundedEnd: Int? = nil
+    ) {
+        let limit = boundedEnd ?? data.count
+        while offset + 8 <= limit {
+            let group      = UInt16(data[offset])     | (UInt16(data[offset + 1]) << 8)
+            let element    = UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
+            let itemLength = UInt32(data[offset + 4]) | (UInt32(data[offset + 5]) << 8)
+                           | (UInt32(data[offset + 6]) << 16) | (UInt32(data[offset + 7]) << 24)
+            offset += 8
+
+            guard group == 0xFFFE else { continue }
+            if element == 0xE0DD { return }                            // sequence delimiter
+            guard element == 0xE000 else { continue }                  // item tag
+            if itemLength == 0xFFFFFFFF {
+                // Undefined-length item — parse until (FFFE,E00D)
+                parseMWLDataSet(data: data, offset: &offset, end: data.count,
+                                isExplicitVR: isExplicitVR, into: &out)
+            } else {
+                let itemEnd = min(offset + Int(itemLength), data.count)
+                parseMWLDataSet(data: data, offset: &offset, end: itemEnd,
+                                isExplicitVR: isExplicitVR, into: &out)
+                offset = itemEnd
+            }
+        }
+    }
+
+    /// Scans forward over an undefined-length non-sequence item to safely skip it.
+    private static func skipMWLUndefinedItem(data: Data, offset: inout Int) {
+        while offset + 8 <= data.count {
+            let group   = UInt16(data[offset])     | (UInt16(data[offset + 1]) << 8)
+            let element = UInt16(data[offset + 2]) | (UInt16(data[offset + 3]) << 8)
+            offset += 8  // consume tag (4) + length (4)
+            if group == 0xFFFE && (element == 0xE00D || element == 0xE0DD) { return }
+        }
     }
 }
 

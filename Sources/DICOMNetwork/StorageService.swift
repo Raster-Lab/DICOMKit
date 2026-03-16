@@ -533,6 +533,65 @@ public enum DICOMStorageService {
             dataSetData: fileInfo.dataSetData
         )
     }
+
+    /// Stores a DICOM file to a remote SCP, proposing a specific transfer syntax as the preferred
+    /// transfer syntax in the presentation context negotiation. The file's own transfer syntax and
+    /// Explicit/Implicit VR Little Endian are also proposed as fallbacks.
+    ///
+    /// - Parameters:
+    ///   - data: The raw DICOM file data (including the 128-byte preamble and DICM prefix)
+    ///   - preferredTransferSyntaxUID: The transfer syntax UID to propose as first choice
+    ///   - host: The remote host address (IP or hostname)
+    ///   - port: The remote port number (default: 104)
+    ///   - callingAE: The local Application Entity title
+    ///   - calledAE: The remote Application Entity title
+    ///   - priority: Operation priority (default: medium)
+    ///   - timeout: Connection timeout in seconds (default: 60)
+    /// - Returns: A `StoreResult` with detailed information
+    /// - Throws: `DICOMNetworkError` for connection or protocol errors
+    /// - Throws: `DICOMError` if the file cannot be parsed or is missing required attributes
+    public static func store(
+        fileData data: Data,
+        preferredTransferSyntaxUID: String,
+        to host: String,
+        port: UInt16 = dicomDefaultPort,
+        callingAE: String,
+        calledAE: String,
+        priority: DIMSEPriority = .medium,
+        timeout: TimeInterval = 60
+    ) async throws -> StoreResult {
+        let callingAETitle = try AETitle(callingAE)
+        let calledAETitle = try AETitle(calledAE)
+
+        let parser = DICOMFileParser(data: data)
+        let fileInfo = try parser.parseForStorage()
+
+        let config = StorageConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            priority: priority
+        )
+
+        // Build deduplicated TS list: preferred first, then file's own TS, then standard fallbacks
+        var transferSyntaxes: [String] = [preferredTransferSyntaxUID]
+        for ts in [fileInfo.transferSyntaxUID,
+                   explicitVRLittleEndianTransferSyntaxUID,
+                   implicitVRLittleEndianTransferSyntaxUID]
+            where !transferSyntaxes.contains(ts) {
+            transferSyntaxes.append(ts)
+        }
+
+        return try await performStoreWithSyntaxList(
+            host: host,
+            port: port,
+            configuration: config,
+            sopClassUID: fileInfo.sopClassUID,
+            sopInstanceUID: fileInfo.sopInstanceUID,
+            transferSyntaxes: transferSyntaxes,
+            dataSetData: fileInfo.dataSetData
+        )
+    }
     
     // MARK: - Store Data Set
     
@@ -761,8 +820,103 @@ public enum DICOMStorageService {
             throw error
         }
     }
-    
-    /// Performs the C-STORE request/response exchange
+
+    /// Performs a C-STORE with a pre-built list of proposed transfer syntaxes.
+    /// `dataTransferSyntaxUID` is the actual encoding of `dataSetData`, used for transcoding decisions.
+    private static func performStoreWithSyntaxList(
+        host: String,
+        port: UInt16,
+        configuration: StorageConfiguration,
+        sopClassUID: String,
+        sopInstanceUID: String,
+        transferSyntaxes: [String],
+        dataSetData: Data
+    ) async throws -> StoreResult {
+        let startTime = Date()
+        let dataTransferSyntaxUID = transferSyntaxes.last ?? explicitVRLittleEndianTransferSyntaxUID
+
+        let associationConfig = AssociationConfiguration(
+            callingAETitle: configuration.callingAETitle,
+            calledAETitle: configuration.calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: configuration.maxPDUSize,
+            implementationClassUID: configuration.implementationClassUID,
+            implementationVersionName: configuration.implementationVersionName,
+            timeout: configuration.timeout,
+            userIdentity: configuration.userIdentity
+        )
+
+        let association = Association(configuration: associationConfig)
+
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: sopClassUID,
+            transferSyntaxes: transferSyntaxes
+        )
+
+        do {
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+
+            let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1)
+                ?? implicitVRLittleEndianTransferSyntaxUID
+
+            let finalDataSetData: Data
+            if acceptedTransferSyntax != dataTransferSyntaxUID {
+                if let transcodingConfig = configuration.transcodingConfiguration,
+                   let sourceTS = TransferSyntax.from(uid: dataTransferSyntaxUID),
+                   let targetTS = TransferSyntax.from(uid: acceptedTransferSyntax) {
+                    let converter = TransferSyntaxConverter(configuration: transcodingConfig)
+                    if converter.canTranscode(from: sourceTS, to: targetTS) {
+                        let result = try converter.transcode(dataSetData: dataSetData, from: sourceTS, to: targetTS)
+                        finalDataSetData = result.data
+                    } else {
+                        try await association.abort()
+                        throw DICOMNetworkError.invalidState("Cannot transcode from \(dataTransferSyntaxUID) to \(acceptedTransferSyntax)")
+                    }
+                } else if acceptedTransferSyntax == explicitVRLittleEndianTransferSyntaxUID ||
+                          acceptedTransferSyntax == implicitVRLittleEndianTransferSyntaxUID {
+                    finalDataSetData = dataSetData
+                } else {
+                    try await association.abort()
+                    throw DICOMNetworkError.invalidState(
+                        "Cannot transcode from \(dataTransferSyntaxUID) to \(acceptedTransferSyntax). Enable transcoding by providing a transcodingConfiguration.")
+                }
+            } else {
+                finalDataSetData = dataSetData
+            }
+
+            let response = try await performCStore(
+                association: association,
+                presentationContextID: 1,
+                maxPDUSize: negotiated.maxPDUSize,
+                sopClassUID: sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                priority: configuration.priority,
+                dataSetData: finalDataSetData
+            )
+
+            try await association.release()
+
+            let roundTripTime = Date().timeIntervalSince(startTime)
+            return StoreResult(
+                success: response.status.isSuccess,
+                status: response.status,
+                affectedSOPClassUID: response.affectedSOPClassUID,
+                affectedSOPInstanceUID: response.affectedSOPInstanceUID,
+                roundTripTime: roundTripTime,
+                remoteAETitle: configuration.calledAETitle.value
+            )
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
     ///
     /// - Parameters:
     ///   - association: The established association
@@ -1326,9 +1480,12 @@ struct DICOMFileParser {
             }
         }
         
-        // If we have File Meta Info Group Length, use it to find exact data set start
+        // If we have File Meta Info Group Length, use it to find exact data set start.
+        // The (0002,0000) element itself is 12 bytes (tag 4 + VR "UL" 2 + len 2 + value 4)
+        // and is NOT included in fmiLength.  Dataset starts at:
+        //   preamble(128) + "DICM"(4) + (0002,0000)(12) + fmiLength = 144 + fmiLength
         if let fmiLength = fileMetaInfoLength {
-            offset = 132 + Int(fmiLength)
+            offset = 144 + Int(fmiLength)
         }
         
         // Validate required fields

@@ -60,6 +60,11 @@ public final class StudyBrowserViewModel {
     /// The parameter is the file path of the instance to view.
     public var onOpenInViewer: ((String) -> Void)?
 
+    /// Callback invoked when the user requests to open a series in the viewer.
+    /// Parameters: ordered file paths, index of the file to show first.
+    /// When set, this takes priority over `onOpenInViewer` for study/series opens.
+    public var onOpenSeriesInViewer: (([String], Int) -> Void)?
+
     /// Creates a study browser ViewModel.
     public init(
         library: LibraryModel = LibraryModel(),
@@ -80,6 +85,7 @@ public final class StudyBrowserViewModel {
         self.lastError = nil
         self.isFileImporterPresented = false
         self.onOpenInViewer = nil
+        self.onOpenSeriesInViewer = nil
     }
 
     /// Returns the filtered and sorted studies for display.
@@ -240,17 +246,40 @@ public final class StudyBrowserViewModel {
         isFileImporterPresented = true
     }
 
-    /// Opens the selected study's first instance in the image viewer.
+    /// Opens all instances of a study in the image viewer as a navigable series.
     ///
+    /// Instances are gathered across all series in the study and presented to
+    /// `onOpenSeriesInViewer` (preferred) or `onOpenInViewer` (fallback).
     /// - Parameter studyUID: The Study Instance UID to open.
     public func openStudyInViewer(_ studyUID: String) {
         let seriesList = library.seriesForStudy(studyUID)
+        var allPaths: [String] = []
         for series in seriesList {
             let instances = library.instancesForSeries(series.seriesInstanceUID)
-            if let first = instances.first {
-                onOpenInViewer?(first.filePath)
-                return
-            }
+            allPaths.append(contentsOf: instances.map(\.filePath))
+        }
+        guard !allPaths.isEmpty else { return }
+        if let callback = onOpenSeriesInViewer {
+            callback(allPaths, 0)
+        } else {
+            onOpenInViewer?(allPaths[0])
+        }
+    }
+
+    /// Opens all instances of a specific series in the image viewer.
+    ///
+    /// - Parameters:
+    ///   - seriesUID: The Series Instance UID to open.
+    ///   - startIndex: Index of the instance to show first (default 0).
+    public func openSeriesInViewer(_ seriesUID: String, startIndex: Int = 0) {
+        let instances = library.instancesForSeries(seriesUID)
+        let paths = instances.map(\.filePath)
+        guard !paths.isEmpty else { return }
+        let idx = max(0, min(startIndex, paths.count - 1))
+        if let callback = onOpenSeriesInViewer {
+            callback(paths, idx)
+        } else {
+            onOpenInViewer?(paths[idx])
         }
     }
 

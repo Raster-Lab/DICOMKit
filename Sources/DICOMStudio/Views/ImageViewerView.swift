@@ -85,6 +85,11 @@ public struct ImageViewerView: View {
         .toolbar {
             viewerToolbar
         }
+        .sheet(isPresented: $viewModel.showDICOMInspector) {
+            if let file = viewModel.dicomFile {
+                DICOMInspectorView(dicomFile: file)
+            }
+        }
         .fileImporter(
             isPresented: $viewModel.isFileImporterPresented,
             allowedContentTypes: [.data],
@@ -185,6 +190,35 @@ public struct ImageViewerView: View {
 
             Divider()
 
+            // Series navigation — only visible when viewing a multi-file series
+            if viewModel.isInSeries {
+                Button {
+                    viewModel.navigateToPreviousFile()
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+                .disabled(!viewModel.canGoPreviousFile)
+                .accessibilityLabel("Previous file in series")
+                .help("Previous file in series")
+
+                Text(viewModel.seriesPositionText)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("File \(viewModel.currentFileIndex + 1) of \(viewModel.seriesFiles.count)")
+
+                Button {
+                    viewModel.navigateToNextFile()
+                } label: {
+                    Image(systemName: "chevron.right")
+                }
+                .disabled(!viewModel.canGoNextFile)
+                .accessibilityLabel("Next file in series")
+                .help("Next file in series")
+
+                Divider()
+            }
+
             Button {
                 viewModel.zoomIn()
             } label: {
@@ -242,6 +276,13 @@ public struct ImageViewerView: View {
             }
             .accessibilityLabel("Toggle performance overlay")
             .help("Show/hide performance metrics")
+
+            Toggle(isOn: Bindable(viewModel).showDICOMInspector) {
+                Image(systemName: "list.bullet.rectangle")
+            }
+            .disabled(viewModel.dicomFile == nil)
+            .accessibilityLabel("Toggle DICOM tag inspector")
+            .help("Show/hide DICOM tag inspector")
         }
     }
 }

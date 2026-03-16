@@ -20,13 +20,27 @@ struct DICOMMWLCommand: AsyncParsableCommand {
               # Query worklist for today
               dicom-mwl query pacs://server:11112 --aet MODALITY --date today
               
-              # Query worklist with filters
+              # Query with filters
               dicom-mwl query pacs://server:11112 --aet MODALITY \\
                 --date 20240315 --station CT1 --patient "DOE^JOHN"
               
-              # Query with verbose output
+              # Filter to only SCHEDULED items
+              dicom-mwl query pacs://server:11112 --aet MODALITY \\
+                --sps-status SCHEDULED
+              
+              # Filter by modality and date with JSON output
+              dicom-mwl query pacs://server:11112 --aet MODALITY \\
+                --modality CT --date today --json
+              
+              # Verbose output showing all attributes
               dicom-mwl query pacs://server:11112 --aet MODALITY \\
                 --date today --verbose
+            
+            SPS Status values: SCHEDULED, IN PROGRESS, DISCONTINUED, COMPLETED
+            
+            Note: If the server returns a limited number of results, adjust the
+            server-side maximum results configuration (e.g., MaximumResults in
+            Orthanc, or max_worklist_results in dcm4chee).
             
             Reference: PS3.4 Annex K - Modality Worklist Information Model
             """,
@@ -68,6 +82,12 @@ extension DICOMMWLCommand {
         @Option(name: .long, help: "Modality filter (e.g., CT, MR, US)")
         var modality: String?
         
+        @Option(name: .long, help: "SPS Status filter (SCHEDULED, IN PROGRESS, DISCONTINUED, COMPLETED)")
+        var spsStatus: String?
+        
+        @Option(name: .long, help: "Accession number filter")
+        var accessionNumber: String?
+        
         @Option(name: .long, help: "Connection timeout in seconds (default: 60)")
         var timeout: Int = 60
         
@@ -93,6 +113,13 @@ extension DICOMMWLCommand {
                 fprintln("Calling AE: \(aet)")
                 fprintln("Called AE: \(calledAet)")
                 fprintln("Timeout: \(timeout)s")
+                if let date = date          { fprintln("Date filter:       \(date)") }
+                if let s = station          { fprintln("Station AE filter: \(s)") }
+                if let p = patient          { fprintln("Patient filter:    \(p)") }
+                if let pid = patientId      { fprintln("Patient ID filter: \(pid)") }
+                if let mod = modality       { fprintln("Modality filter:   \(mod)") }
+                if let st = spsStatus       { fprintln("SPS Status filter: \(st)") }
+                if let acc = accessionNumber { fprintln("Accession filter:  \(acc)") }
                 fprintln("")
             }
             
@@ -128,6 +155,14 @@ extension DICOMMWLCommand {
             
             if let modality = modality {
                 queryKeys = queryKeys.modality(modality)
+            }
+            
+            if let spsStatus = spsStatus {
+                queryKeys = queryKeys.scheduledProcedureStepStatus(spsStatus)
+            }
+            
+            if let accessionNumber = accessionNumber {
+                queryKeys = queryKeys.accessionNumber(accessionNumber)
             }
             
             if verbose && !json {
@@ -187,34 +222,48 @@ extension DICOMMWLCommand {
             fprintln("Found \(items.count) worklist item(s):")
             fprintln("")
             
+            let sep = String(repeating: "─", count: 60)
+            
             for (index, item) in items.enumerated() {
-                fprintln("[\(index + 1)] Worklist Item:")
-                
-                if let patientName = item.patientName {
-                    fprintln("  Patient Name: \(patientName)")
+                fprintln("[\(index + 1)] Worklist Item")
+                fprintln(sep)
+                // Patient
+                if let v = item.patientName       { fprintln("  Patient Name:          \(v)") }
+                if let v = item.patientID         { fprintln("  Patient ID:            \(v)") }
+                if let v = item.patientBirthDate  { fprintln("  Date of Birth:         \(v)") }
+                if let v = item.patientSex        { fprintln("  Sex:                   \(v)") }
+                // Study / order
+                if let v = item.accessionNumber   { fprintln("  Accession Number:      \(v)") }
+                if let v = item.referringPhysicianName     { fprintln("  Referring Physician:   \(v)") }
+                if let v = item.requestedProcedureID       { fprintln("  Requested Proc. ID:    \(v)") }
+                if let v = item.requestedProcedureDescription { fprintln("  Requested Proc. Desc:  \(v)") }
+                if let v = item.studyInstanceUID  { fprintln("  Study UID:             \(v)") }
+                // Scheduled Procedure Step
+                if let v = item.modality          { fprintln("  Modality:              \(v)") }
+                if let date = item.scheduledProcedureStepStartDate {
+                    let dateTime: String
+                    if let t = item.scheduledProcedureStepStartTime {
+                        dateTime = "\(date)  \(t)"
+                    } else {
+                        dateTime = date
+                    }
+                    fprintln("  Scheduled Date/Time:   \(dateTime)")
                 }
-                
-                if let patientID = item.patientID {
-                    fprintln("  Patient ID: \(patientID)")
-                }
-                
-                if let studyUID = item.studyInstanceUID {
-                    fprintln("  Study UID: \(studyUID)")
-                }
-                
-                if let accessionNumber = item.accessionNumber {
-                    fprintln("  Accession #: \(accessionNumber)")
-                }
-                
-                // Display additional attributes if verbose
+                if let v = item.scheduledProcedureStepStatus      { fprintln("  SPS Status:            \(v)") }
+                if let v = item.scheduledProcedureStepID          { fprintln("  SPS ID:                \(v)") }
+                if let v = item.scheduledProcedureStepDescription { fprintln("  SPS Description:       \(v)") }
+                if let v = item.scheduledStationAETitle           { fprintln("  Station AE Title:      \(v)") }
+                if let v = item.scheduledStationName              { fprintln("  Station Name:          \(v)") }
+                if let v = item.scheduledPerformingPhysicianName  { fprintln("  Performing Physician:  \(v)") }
+                // Verbose: all raw attributes
                 if verbose {
-                    fprintln("  Attributes:")
+                    fprintln("  Raw Attributes:")
                     for (tag, data) in item.attributes.sorted(by: { $0.key < $1.key }) {
-                        let value = String(data: data, encoding: .ascii) ?? "<binary>"
-                        fprintln("    \(tag): \(value)")
+                        let value = String(data: data, encoding: .ascii) ??
+                            data.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " ")
+                        fprintln("    (\(String(format: "%04X", tag.group)),\(String(format: "%04X", tag.element))): \(value)")
                     }
                 }
-                
                 fprintln("")
             }
         }
@@ -224,16 +273,28 @@ extension DICOMMWLCommand {
             
             for item in items {
                 var jsonItem: [String: Any] = [:]
-                
-                for (tag, data) in item.attributes {
-                    let value = String(data: data, encoding: .ascii) ?? ""
-                    jsonItem["\(tag.group)_\(tag.element)"] = value
-                }
-                
+                if let v = item.patientName                       { jsonItem["PatientName"] = v }
+                if let v = item.patientID                         { jsonItem["PatientID"] = v }
+                if let v = item.patientBirthDate                  { jsonItem["PatientBirthDate"] = v }
+                if let v = item.patientSex                        { jsonItem["PatientSex"] = v }
+                if let v = item.accessionNumber                   { jsonItem["AccessionNumber"] = v }
+                if let v = item.studyInstanceUID                  { jsonItem["StudyInstanceUID"] = v }
+                if let v = item.referringPhysicianName            { jsonItem["ReferringPhysicianName"] = v }
+                if let v = item.requestedProcedureID              { jsonItem["RequestedProcedureID"] = v }
+                if let v = item.requestedProcedureDescription     { jsonItem["RequestedProcedureDescription"] = v }
+                if let v = item.modality                          { jsonItem["Modality"] = v }
+                if let v = item.scheduledStationAETitle           { jsonItem["ScheduledStationAETitle"] = v }
+                if let v = item.scheduledStationName              { jsonItem["ScheduledStationName"] = v }
+                if let v = item.scheduledProcedureStepStartDate   { jsonItem["SPSStartDate"] = v }
+                if let v = item.scheduledProcedureStepStartTime   { jsonItem["SPSStartTime"] = v }
+                if let v = item.scheduledProcedureStepStatus      { jsonItem["SPSStatus"] = v }
+                if let v = item.scheduledProcedureStepID          { jsonItem["SPSID"] = v }
+                if let v = item.scheduledProcedureStepDescription { jsonItem["SPSDescription"] = v }
+                if let v = item.scheduledPerformingPhysicianName  { jsonItem["ScheduledPerformingPhysician"] = v }
                 jsonItems.append(jsonItem)
             }
             
-            let jsonData = (try? JSONSerialization.data(withJSONObject: jsonItems, options: [.prettyPrinted])) ?? Data()
+            let jsonData = (try? JSONSerialization.data(withJSONObject: jsonItems, options: [.prettyPrinted, .sortedKeys])) ?? Data()
             if let jsonString = String(data: jsonData, encoding: .utf8) {
                 print(jsonString)
             }
