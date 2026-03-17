@@ -365,6 +365,17 @@ public final class CLIWorkshopViewModel {
                     updateParameterValueSilent(parameterID: "calling-aet", value: callingAET)
                 }
             }
+            // If a saved server is selected, override with its values;
+            // otherwise the persistent defaults (applied above) remain.
+            if let serverID = selectedSavedServerID,
+               let server = savedServerProfiles.first(where: { $0.id == serverID }),
+               hasHostParam {
+                updateParameterValueSilent(parameterID: "host", value: server.host)
+                updateParameterValueSilent(parameterID: "port", value: String(server.port))
+                updateParameterValueSilent(parameterID: "calling-aet", value: server.localAETitle)
+                updateParameterValueSilent(parameterID: "called-aet", value: server.remoteAETitle)
+                updateParameterValueSilent(parameterID: "timeout", value: String(Int(server.timeoutSeconds)))
+            }
             service.setParameterValues(parameterValues)
             rebuildCommandPreview()
         } else {
@@ -615,13 +626,22 @@ public final class CLIWorkshopViewModel {
         )
     }
 
-    /// Returns visible parameters based on experience mode.
+    /// Returns visible parameters based on experience mode and conditional visibility rules.
     public func visibleParameters() -> [CLIParameterDefinition] {
+        let base: [CLIParameterDefinition]
         switch experienceMode {
         case .beginner:
-            return parameterDefinitions.filter { !$0.isAdvanced }
+            base = parameterDefinitions.filter { !$0.isAdvanced }
         case .advanced:
-            return parameterDefinitions
+            base = parameterDefinitions
+        }
+        return base.filter { param in
+            guard let condition = param.visibleWhen else { return true }
+            let currentValue = paramValue(condition.parameterId)
+            let effectiveValue = currentValue.isEmpty
+                ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
+                : currentValue
+            return condition.values.contains(effectiveValue)
         }
     }
 
@@ -1025,7 +1045,8 @@ public final class CLIWorkshopViewModel {
 
         // Collect all user-provided filter values
         let patientID = paramValue("patient-id")
-        let patientName = paramValue("patient-name")
+        let rawPatientName = paramValue("patient-name")
+        let patientName = rawPatientName.isEmpty ? "" : (rawPatientName.hasSuffix("*") ? rawPatientName : rawPatientName + "*")
         let studyDate = paramValue("study-date")
         let modality = paramValue("modality")
         let accession = paramValue("accession")
@@ -1320,6 +1341,12 @@ public final class CLIWorkshopViewModel {
             }
             consoleStatus = .success
             service.setConsoleStatus(.success)
+            // Warn about likely server-side result limit
+            if isLikelyServerLimit(allResults.count) {
+                appendConsoleOutput("⚠️  The result count (\(allResults.count)) may be capped by a server-side limit.\n")
+                appendConsoleOutput("    Check your PACS server configuration (e.g., LimitFindResults in Orthanc,\n")
+                appendConsoleOutput("    or LimitFindResults in dcm4chee) to increase or remove the limit.\n")
+            }
             addToHistory(toolName: "dicom-query", command: commandPreview, exitCode: 0,
                          output: "\(allResults.count) result(s) found")
         } catch {
@@ -2374,7 +2401,8 @@ public final class CLIWorkshopViewModel {
         let timeoutStr = paramValue("timeout")
         let port = UInt16(portStr) ?? 11112
         let timeout = TimeInterval(timeoutStr) ?? 60
-        let date = paramValue("date")
+        let dateFrom = paramValue("date-from")
+        let dateTo = paramValue("date-to")
         let station = paramValue("station")
         let patient = paramValue("patient")
         let patientID = paramValue("patient-id")
@@ -2396,7 +2424,11 @@ public final class CLIWorkshopViewModel {
         appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
         appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
         appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
-        if !date.isEmpty      { appendConsoleOutput("  Date:             \(date)\n") }
+        if !dateFrom.isEmpty || !dateTo.isEmpty {
+            let fromDisplay = dateFrom.isEmpty ? "(open)" : dateFrom
+            let toDisplay = dateTo.isEmpty ? "(open)" : dateTo
+            appendConsoleOutput("  Date Range:       \(fromDisplay) — \(toDisplay)\n")
+        }
         if !station.isEmpty   { appendConsoleOutput("  Station AET:      \(station)\n") }
         if !patient.isEmpty   { appendConsoleOutput("  Patient Name:     \(patient)\n") }
         if !patientID.isEmpty { appendConsoleOutput("  Patient ID:       \(patientID)\n") }
@@ -2406,12 +2438,28 @@ public final class CLIWorkshopViewModel {
 
         do {
             var queryKeys = WorklistQueryKeys.default()
-            if !date.isEmpty {
-                let resolvedDate = resolvedWorklistDate(date)
-                queryKeys = queryKeys.scheduledDate(resolvedDate)
+            // Build DICOM date or date range: "YYYYMMDD", "YYYYMMDD-YYYYMMDD",
+            // "YYYYMMDD-" (from only), or "-YYYYMMDD" (to only).
+            let resolvedFrom = dateFrom.isEmpty ? "" : resolvedWorklistDate(dateFrom)
+            let resolvedTo   = dateTo.isEmpty   ? "" : resolvedWorklistDate(dateTo)
+            if !resolvedFrom.isEmpty || !resolvedTo.isEmpty {
+                let dateQuery: String
+                if !resolvedFrom.isEmpty && resolvedTo.isEmpty {
+                    dateQuery = "\(resolvedFrom)-"          // from onwards
+                } else if resolvedFrom.isEmpty && !resolvedTo.isEmpty {
+                    dateQuery = "-\(resolvedTo)"            // up to
+                } else if resolvedFrom == resolvedTo {
+                    dateQuery = resolvedFrom                // single day
+                } else {
+                    dateQuery = "\(resolvedFrom)-\(resolvedTo)"  // range
+                }
+                queryKeys = queryKeys.scheduledDate(dateQuery)
             }
             if !station.isEmpty   { queryKeys = queryKeys.scheduledStationAET(station) }
-            if !patient.isEmpty   { queryKeys = queryKeys.patientName(patient) }
+            if !patient.isEmpty {
+                let wildcardPatient = patient.hasSuffix("*") ? patient : patient + "*"
+                queryKeys = queryKeys.patientName(wildcardPatient)
+            }
             if !patientID.isEmpty { queryKeys = queryKeys.patientID(patientID) }
             if !modality.isEmpty  { queryKeys = queryKeys.modality(modality) }
             if !spsStatus.isEmpty { queryKeys = queryKeys.scheduledProcedureStepStatus(spsStatus) }
@@ -2494,6 +2542,12 @@ public final class CLIWorkshopViewModel {
             }
 
             appendConsoleOutput("✅ Worklist query completed — \(items.count) item(s) returned\n")
+            // Warn about likely server-side result limit
+            if isLikelyServerLimit(items.count) {
+                appendConsoleOutput("⚠️  The result count (\(items.count)) may be capped by a server-side limit.\n")
+                appendConsoleOutput("    Check your PACS server configuration (e.g., LimitFindResults in Orthanc,\n")
+                appendConsoleOutput("    or max_worklist_results in dcm4chee) to increase or remove the limit.\n")
+            }
             consoleStatus = .success
             service.setConsoleStatus(.success)
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0,
@@ -2505,6 +2559,13 @@ public final class CLIWorkshopViewModel {
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,
                          output: error.localizedDescription)
         }
+    }
+
+    /// Returns `true` when the result count looks like a server-side cap
+    /// (common defaults: 50, 100, 200, 250, 500, 1000).
+    private func isLikelyServerLimit(_ count: Int) -> Bool {
+        let commonLimits: Set<Int> = [50, 100, 200, 250, 500, 1000, 2000, 5000]
+        return commonLimits.contains(count)
     }
 
     /// Resolves a date filter string for MWL queries.
@@ -2557,6 +2618,19 @@ public final class CLIWorkshopViewModel {
         let studyUID = paramValue("study-uid")
         let mppsUID = paramValue("mpps-uid")
         let statusStr = paramValue("status")
+        // N-CREATE attributes
+        let patientName = paramValue("patient-name")
+        let patientID = paramValue("patient-id")
+        let modality = paramValue("modality")
+        let procedureID = paramValue("procedure-id")
+        let procedureDesc = paramValue("procedure-desc")
+        let accessionNumber = paramValue("accession-number")
+        let performingPhysician = paramValue("performing-physician")
+        let stationName = paramValue("station-name")
+        // N-SET attributes
+        let seriesUID = paramValue("series-uid")
+        let imageUIDsRaw = paramValue("image-uids")
+        let discontinueReason = paramValue("discontinue-reason")
 
         guard !host.isEmpty else {
             appendConsoleOutput("Error: Hostname is required.\n")
@@ -2604,8 +2678,24 @@ public final class CLIWorkshopViewModel {
         appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
         appendConsoleOutput("  Status:           \(mppsStatus.rawValue)\n")
         appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
-        if isCreate && !studyUID.isEmpty { appendConsoleOutput("  Study UID:        \(studyUID)\n") }
-        if !isCreate && !mppsUID.isEmpty { appendConsoleOutput("  MPPS UID:         \(mppsUID)\n") }
+        if isCreate {
+            if !studyUID.isEmpty        { appendConsoleOutput("  Study UID:        \(studyUID)\n") }
+            if !patientName.isEmpty     { appendConsoleOutput("  Patient Name:     \(patientName)\n") }
+            if !patientID.isEmpty       { appendConsoleOutput("  Patient ID:       \(patientID)\n") }
+            if !modality.isEmpty        { appendConsoleOutput("  Modality:         \(modality)\n") }
+            if !procedureID.isEmpty     { appendConsoleOutput("  Procedure ID:     \(procedureID)\n") }
+            if !procedureDesc.isEmpty   { appendConsoleOutput("  Procedure Desc:   \(procedureDesc)\n") }
+            if !accessionNumber.isEmpty { appendConsoleOutput("  Accession Number: \(accessionNumber)\n") }
+            if !performingPhysician.isEmpty { appendConsoleOutput("  Physician:        \(performingPhysician)\n") }
+            if !stationName.isEmpty     { appendConsoleOutput("  Station Name:     \(stationName)\n") }
+        } else {
+            if !mppsUID.isEmpty         { appendConsoleOutput("  MPPS UID:         \(mppsUID)\n") }
+            if !seriesUID.isEmpty       { appendConsoleOutput("  Series UID:       \(seriesUID)\n") }
+            if !imageUIDsRaw.isEmpty    { appendConsoleOutput("  Image UIDs:       \(imageUIDsRaw)\n") }
+            if mppsStatus == .discontinued && !discontinueReason.isEmpty {
+                appendConsoleOutput("  Discontinue Reason: \(discontinueReason)\n")
+            }
+        }
         appendConsoleOutput("\n")
 
         do {
@@ -2618,20 +2708,36 @@ public final class CLIWorkshopViewModel {
                     calledAE: calledAET,
                     studyInstanceUID: studyUID,
                     status: mppsStatus,
-                    timeout: timeout
+                    timeout: timeout,
+                    patientName: patientName.isEmpty ? nil : patientName,
+                    patientID: patientID.isEmpty ? nil : patientID,
+                    modality: modality.isEmpty ? nil : modality,
+                    procedureStepID: procedureID.isEmpty ? nil : procedureID,
+                    procedureStepDescription: procedureDesc.isEmpty ? nil : procedureDesc,
+                    performingPhysicianName: performingPhysician.isEmpty ? nil : performingPhysician,
+                    performedStationName: stationName.isEmpty ? nil : stationName,
+                    accessionNumber: accessionNumber.isEmpty ? nil : accessionNumber
                 )
                 appendConsoleOutput("✅ MPPS instance created\n")
                 appendConsoleOutput("  MPPS Instance UID: \(createdUID)\n\n")
-                appendConsoleOutput("To update this procedure step when it completes:\n")
-                appendConsoleOutput("  dicom-mpps update --host \(host) --port \(port)\n")
-                appendConsoleOutput("    --calling-aet \(callingAET) --called-aet \(calledAET)\n")
-                appendConsoleOutput("    --mpps-uid \(createdUID) --status COMPLETED\n")
+                appendConsoleOutput("To complete or discontinue this procedure step:\n")
+                appendConsoleOutput("  Set Operation to 'update', paste the MPPS UID above,\n")
+                appendConsoleOutput("  and set Status to COMPLETED or DISCONTINUED.\n")
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 0,
                              output: "Created MPPS: \(createdUID)")
             } else {
                 appendConsoleOutput("Updating MPPS instance (N-SET) to \(mppsStatus.rawValue)...\n")
+                // Build referenced SOPs for the update
+                var referencedSOPs: [(studyUID: String, seriesUID: String, sopInstanceUID: String)] = []
+                if !seriesUID.isEmpty && !imageUIDsRaw.isEmpty {
+                    let imageUIDs = imageUIDsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+                    let refStudyUID = studyUID.isEmpty ? mppsUID : studyUID
+                    for uid in imageUIDs where !uid.isEmpty {
+                        referencedSOPs.append((studyUID: refStudyUID, seriesUID: seriesUID, sopInstanceUID: uid))
+                    }
+                }
                 try await DICOMMPPSService.update(
                     host: host,
                     port: port,
@@ -2639,20 +2745,33 @@ public final class CLIWorkshopViewModel {
                     calledAE: calledAET,
                     mppsInstanceUID: mppsUID,
                     status: mppsStatus,
+                    referencedSOPs: referencedSOPs,
                     timeout: timeout
                 )
                 appendConsoleOutput("✅ MPPS instance updated to \(mppsStatus.rawValue)\n")
+                if !referencedSOPs.isEmpty {
+                    appendConsoleOutput("  Referenced Images: \(referencedSOPs.count)\n")
+                }
+                if mppsStatus == .discontinued && !discontinueReason.isEmpty {
+                    appendConsoleOutput("  Discontinuation Reason: \(discontinueReason)\n")
+                }
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 0,
                              output: "Updated MPPS \(mppsUID) to \(mppsStatus.rawValue)")
             }
         } catch {
-            appendConsoleOutput("❌ MPPS operation failed: \(error.localizedDescription)\n")
+            let errorMessage: String
+            if let networkError = error as? DICOMNetworkError {
+                errorMessage = networkError.description
+            } else {
+                errorMessage = error.localizedDescription
+            }
+            appendConsoleOutput("❌ MPPS operation failed: \(errorMessage)\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1,
-                         output: error.localizedDescription)
+                         output: errorMessage)
         }
     }
 

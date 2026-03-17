@@ -64,7 +64,30 @@ extension DICOMFile {
             }
         }
         
-        return PixelData(data: decompressedData, descriptor: descriptor)
+        // ImageIO-based codecs (JPEG, JPEG 2000) automatically convert YCbCr to RGB
+        // during decompression via CGContext.draw with CGColorSpaceCreateDeviceRGB.
+        // Update the descriptor's photometric interpretation to reflect the actual
+        // output color space so the renderer does not apply YBR→RGB conversion again.
+        // Reference: DICOM PS3.3 C.7.6.3.1.2
+        let outputDescriptor: PixelDataDescriptor
+        if descriptor.photometricInterpretation.isYBR && Self.isImageIODecodedTransferSyntax(tsUID) {
+            outputDescriptor = PixelDataDescriptor(
+                rows: descriptor.rows,
+                columns: descriptor.columns,
+                numberOfFrames: descriptor.numberOfFrames,
+                bitsAllocated: descriptor.bitsAllocated,
+                bitsStored: descriptor.bitsStored,
+                highBit: descriptor.highBit,
+                isSigned: descriptor.isSigned,
+                samplesPerPixel: descriptor.samplesPerPixel,
+                photometricInterpretation: .rgb,
+                planarConfiguration: descriptor.planarConfiguration
+            )
+        } else {
+            outputDescriptor = descriptor
+        }
+        
+        return PixelData(data: decompressedData, descriptor: outputDescriptor)
     }
     
     /// Extracts pixel data from the DICOM file, throwing detailed errors on failure
@@ -160,7 +183,27 @@ extension DICOMFile {
             }
         }
         
-        return PixelData(data: decompressedData, descriptor: descriptor)
+        // ImageIO-based codecs (JPEG, JPEG 2000) automatically convert YCbCr to RGB
+        // during decompression. Update photometric interpretation accordingly.
+        let outputDescriptor: PixelDataDescriptor
+        if descriptor.photometricInterpretation.isYBR && Self.isImageIODecodedTransferSyntax(tsUID) {
+            outputDescriptor = PixelDataDescriptor(
+                rows: descriptor.rows,
+                columns: descriptor.columns,
+                numberOfFrames: descriptor.numberOfFrames,
+                bitsAllocated: descriptor.bitsAllocated,
+                bitsStored: descriptor.bitsStored,
+                highBit: descriptor.highBit,
+                isSigned: descriptor.isSigned,
+                samplesPerPixel: descriptor.samplesPerPixel,
+                photometricInterpretation: .rgb,
+                planarConfiguration: descriptor.planarConfiguration
+            )
+        } else {
+            outputDescriptor = descriptor
+        }
+        
+        return PixelData(data: decompressedData, descriptor: outputDescriptor)
     }
     
     /// Creates a PixelDataDescriptor from the file's image pixel attributes
@@ -518,5 +561,25 @@ extension DICOMFile {
     /// - Returns: true if the SOP class is known to be a non-image type
     private static func isNonImageSOPClass(_ sopClassUID: String) -> Bool {
         return nonImageSOPClasses.contains(sopClassUID)
+    }
+    
+    // MARK: - ImageIO Codec Detection
+    
+    /// Transfer syntaxes decoded by Apple's ImageIO framework (via NativeJPEGCodec / NativeJPEG2000Codec).
+    /// These codecs use CGContext.draw with CGColorSpaceCreateDeviceRGB which automatically
+    /// converts YCbCr colour data to RGB during decompression.
+    private static let imageIODecodedTransferSyntaxes: Set<String> = [
+        TransferSyntax.jpegBaseline.uid,      // 1.2.840.10008.1.2.4.50
+        TransferSyntax.jpegExtended.uid,      // 1.2.840.10008.1.2.4.51
+        TransferSyntax.jpegLossless.uid,      // 1.2.840.10008.1.2.4.57
+        TransferSyntax.jpegLosslessSV1.uid,   // 1.2.840.10008.1.2.4.70
+        TransferSyntax.jpeg2000Lossless.uid,  // 1.2.840.10008.1.2.4.90
+        TransferSyntax.jpeg2000.uid,          // 1.2.840.10008.1.2.4.91
+    ]
+    
+    /// Whether the given transfer syntax UID is decoded by an ImageIO-based codec
+    /// that automatically converts YCbCr to RGB during decompression.
+    private static func isImageIODecodedTransferSyntax(_ uid: String) -> Bool {
+        return imageIODecodedTransferSyntaxes.contains(uid)
     }
 }

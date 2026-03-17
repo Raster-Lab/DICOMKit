@@ -58,8 +58,27 @@ public enum DICOMInspectorHelpers: Sendable {
     }
 
     /// Returns the tag name from the DICOM dictionary, or a fallback.
-    public static func tagName(_ tag: Tag) -> String {
-        DataElementDictionary.lookup(tag: tag)?.name ?? "Private / Unknown"
+    /// For private tags, resolves the Private Creator element from the dataset.
+    public static func tagName(_ tag: Tag, dataSet: DataSet? = nil) -> String {
+        if let entry = DataElementDictionary.lookup(tag: tag) {
+            return entry.name
+        }
+        // Private tags have odd group numbers
+        if tag.group % 2 == 1 {
+            if tag.element >= 0x0010 && tag.element <= 0x00FF {
+                return "Private Creator"
+            }
+            // Look up private creator for this block
+            let block = UInt16((tag.element >> 8) & 0xFF)
+            if block >= 0x10, let ds = dataSet {
+                let creatorTag = Tag(group: tag.group, element: block)
+                if let creator = ds[creatorTag]?.stringValue {
+                    return creator
+                }
+            }
+            return String(format: "Private (%04X,%04X)", tag.group, tag.element)
+        }
+        return String(format: "Tag (%04X,%04X)", tag.group, tag.element)
     }
 }
 
@@ -77,11 +96,13 @@ public struct DICOMInspectorView: View {
         self.dicomFile = dicomFile
     }
 
-    // Flattened list of rows to display
+    // Flattened list of rows to display, including sequence children
     private var rows: [InspectorRow] {
         let query = searchText.lowercased()
 
         var result: [InspectorRow] = []
+
+        let ds = dicomFile.dataSet
 
         // File Meta Information
         let fmiElements = dicomFile.fileMetaInformation.allElements
@@ -89,27 +110,44 @@ public struct DICOMInspectorView: View {
         if !fmiElements.isEmpty {
             result.append(.sectionHeader("File Meta Information (\(fmiElements.count) elements)"))
             if showFMI {
-                result += fmiElements.compactMap { elem in
-                    let row = InspectorRow.element(from: elem)
-                    if query.isEmpty { return row }
-                    let text = "\(row.tagString) \(row.name) \(row.value)".lowercased()
-                    return text.contains(query) ? row : nil
+                for elem in fmiElements {
+                    Self.flattenElement(elem, depth: 0, query: query, dataSet: ds, into: &result)
                 }
             }
         }
 
         // Dataset
-        let dsElements = dicomFile.dataSet.allElements
+        let dsElements = ds.allElements
             .sorted { $0.tag < $1.tag }
         result.append(.sectionHeader("Dataset (\(dsElements.count) elements)"))
-        result += dsElements.compactMap { elem in
-            let row = InspectorRow.element(from: elem)
-            if query.isEmpty { return row }
-            let text = "\(row.tagString) \(row.name) \(row.value)".lowercased()
-            return text.contains(query) ? row : nil
+        for elem in dsElements {
+            Self.flattenElement(elem, depth: 0, query: query, dataSet: ds, into: &result)
         }
 
         return result
+    }
+
+    /// Recursively flattens a data element and its sequence children into rows.
+    private static func flattenElement(_ element: DataElement, depth: Int, query: String, dataSet: DataSet, into rows: inout [InspectorRow]) {
+        let row = InspectorRow.element(from: element, depth: depth, dataSet: dataSet)
+        let matchesQuery = query.isEmpty || "\(row.tagString) \(row.name) \(row.value)".lowercased().contains(query)
+
+        if matchesQuery {
+            rows.append(row)
+        }
+
+        // Recurse into sequence items
+        if element.vr == .SQ, let items = element.sequenceItems {
+            for (index, item) in items.enumerated() {
+                let itemRow = InspectorRow.sequenceItem(index: index, itemCount: item.elements.count, depth: depth + 1)
+                if query.isEmpty || matchesQuery {
+                    rows.append(itemRow)
+                }
+                for child in item.elements.values.sorted(by: { $0.tag < $1.tag }) {
+                    flattenElement(child, depth: depth + 2, query: query, dataSet: dataSet, into: &rows)
+                }
+            }
+        }
     }
 
     public var body: some View {
@@ -158,8 +196,9 @@ public struct DICOMInspectorView: View {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .listRowBackground(Color.secondary.opacity(0.12))
-                case .element:
+                case .element, .sequenceItem:
                     InspectorElementRow(row: row)
+                        .padding(.leading, CGFloat(row.depth) * 16)
                 }
             }
             .listStyle(.plain)
@@ -178,28 +217,43 @@ struct InspectorRow: Identifiable {
     let vr: String
     let name: String
     let value: String
+    let depth: Int
     let kind: Kind
 
     enum Kind {
         case sectionHeader(String)
         case element
+        case sequenceItem
     }
 
     static func sectionHeader(_ text: String) -> InspectorRow {
-        InspectorRow(id: "header:\(text)", tagString: "", vr: "", name: text, value: "", kind: .sectionHeader(text))
+        InspectorRow(id: "header:\(text)", tagString: "", vr: "", name: text, value: "", depth: 0, kind: .sectionHeader(text))
     }
 
-    static func element(from element: DataElement) -> InspectorRow {
+    static func element(from element: DataElement, depth: Int = 0, dataSet: DataSet? = nil) -> InspectorRow {
         let tagStr = DICOMInspectorHelpers.tagString(element.tag)
-        let name = DICOMInspectorHelpers.tagName(element.tag)
+        let name = DICOMInspectorHelpers.tagName(element.tag, dataSet: dataSet)
         let value = DICOMInspectorHelpers.displayValue(for: element)
         return InspectorRow(
-            id: tagStr,
+            id: "\(tagStr)_d\(depth)_\(UUID().uuidString.prefix(8))",
             tagString: tagStr,
             vr: element.vr.rawValue,
             name: name,
             value: value,
+            depth: depth,
             kind: .element
+        )
+    }
+
+    static func sequenceItem(index: Int, itemCount: Int, depth: Int) -> InspectorRow {
+        InspectorRow(
+            id: "item_\(index)_d\(depth)_\(UUID().uuidString.prefix(8))",
+            tagString: "(FFFE,E000)",
+            vr: "--",
+            name: "Item #\(index + 1)",
+            value: "\(itemCount) element\(itemCount == 1 ? "" : "s")",
+            depth: depth,
+            kind: .sequenceItem
         )
     }
 }
