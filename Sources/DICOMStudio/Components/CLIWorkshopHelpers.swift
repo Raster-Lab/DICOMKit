@@ -694,9 +694,14 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "ANY-SCP"
                 ),
                 CLIParameterDefinition(
-                    id: "date", flag: "--date", displayName: "Scheduled Date",
-                    parameterType: .textField, placeholder: "today / tomorrow / YYYYMMDD",
-                    helpText: "Filter by scheduled procedure step date — use 'today', 'tomorrow', or YYYYMMDD format (0040,0001)"
+                    id: "date-from", flag: "--date-from", displayName: "Date From",
+                    parameterType: .textField, placeholder: "today / YYYYMMDD",
+                    helpText: "Start of scheduled date range — use 'today', 'tomorrow', or YYYYMMDD format (0040,0002)"
+                ),
+                CLIParameterDefinition(
+                    id: "date-to", flag: "--date-to", displayName: "Date To",
+                    parameterType: .textField, placeholder: "tomorrow / YYYYMMDD",
+                    helpText: "End of scheduled date range (inclusive) — leave empty for single-day query (0040,0002)"
                 ),
                 CLIParameterDefinition(
                     id: "station", flag: "--station", displayName: "Station AE Title",
@@ -747,7 +752,7 @@ public enum ToolCatalogHelpers: Sendable {
             return [
                 CLIParameterDefinition(
                     id: "operation", flag: "", displayName: "Operation",
-                    parameterType: .subcommand, placeholder: "create",
+                    parameterType: .enumPicker, placeholder: "create",
                     helpText: "MPPS operation: create a new procedure step (N-CREATE) or update an existing one (N-SET)",
                     isRequired: true,
                     defaultValue: "create",
@@ -777,15 +782,69 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Remote MPPS SCP Application Entity title",
                     defaultValue: "ANY-SCP"
                 ),
+                // ----- N-CREATE parameters (PS3.4 Table F.7.2-1) -----
+                CLIParameterDefinition(
+                    id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN",
+                    helpText: "Patient's Name (0010,0010) — required for N-CREATE",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. PAT001",
+                    helpText: "Patient ID (0010,0020) — required for N-CREATE",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "Study Instance UID for the procedure step (required for create) (0020,000D)"
+                    helpText: "Study Instance UID for the procedure step (0020,000D) — required for N-CREATE",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .enumPicker, placeholder: "CT",
+                    helpText: "Modality being performed (0008,0060) — required for N-CREATE",
+                    defaultValue: "CT",
+                    allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "procedure-id", flag: "--procedure-id", displayName: "Procedure Step ID",
+                    parameterType: .textField, placeholder: "e.g. SPS001",
+                    helpText: "Performed Procedure Step ID (0040,0253)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
+                    parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
+                    helpText: "Performed Procedure Step Description (0040,0254)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "accession-number", flag: "--accession-number", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession Number (0008,0050) — links MPPS to the order",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "performing-physician", flag: "--physician", displayName: "Performing Physician",
+                    parameterType: .textField, placeholder: "e.g. SMITH^JANE",
+                    helpText: "Name of performing physician (0008,1050)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "station-name", flag: "--station-name", displayName: "Station Name",
+                    parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
+                    helpText: "Performing Station Name (0008,1010)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                // ----- N-SET parameters -----
                 CLIParameterDefinition(
                     id: "mpps-uid", flag: "--mpps-uid", displayName: "MPPS Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "MPPS SOP Instance UID to update — provided from a previous create operation (required for update)"
+                    helpText: "MPPS SOP Instance UID from a previous create — required for update (N-SET)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
                     id: "status", flag: "--status", displayName: "Status",
@@ -793,6 +852,24 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Performed Procedure Step Status (0040,0252) — IN PROGRESS for create; COMPLETED or DISCONTINUED for update",
                     defaultValue: "IN PROGRESS",
                     allowedValues: ["IN PROGRESS", "COMPLETED", "DISCONTINUED"]
+                ),
+                CLIParameterDefinition(
+                    id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Series Instance UID of the acquired images — used in N-SET for Performed Series Sequence (0008,1115)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "image-uids", flag: "--image-uids", displayName: "Image SOP Instance UIDs",
+                    parameterType: .textField, placeholder: "UID1,UID2,...",
+                    helpText: "Comma-separated SOP Instance UIDs of acquired images — used in N-SET Referenced Image Sequence",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "discontinue-reason", flag: "--discontinue-reason", displayName: "Discontinuation Reason",
+                    parameterType: .textField, placeholder: "e.g. Patient refused",
+                    helpText: "Reason for discontinuation (0040,0281) — used when status is DISCONTINUED",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
                     id: "timeout", flag: "--timeout", displayName: "Timeout (s)",

@@ -92,6 +92,38 @@ public struct MPPSProcedureStep: Sendable {
     
     /// Additional attributes
     public let attributes: [Tag: Data]
+
+    // MARK: - N-CREATE specific attributes (PS3.4 Table F.7.2-1)
+
+    /// Patient's Name (0010,0010) — Type 1
+    public let patientName: String?
+
+    /// Patient ID (0010,0020) — Type 1
+    public let patientID: String?
+
+    /// Modality (0008,0060) — Type 1
+    public let modality: String?
+
+    /// Performed Procedure Step ID (0040,0253) — Type 1
+    public let procedureStepID: String?
+
+    /// Performed Procedure Step Description (0040,0254) — Type 2
+    public let procedureStepDescription: String?
+
+    /// Performed Station AE Title (0040,0241) — Type 1
+    public let performedStationAETitle: String?
+
+    /// Performing Physician's Name (0008,1050) — Type 2
+    public let performingPhysicianName: String?
+
+    /// Performed Station Name (0040,0242) — Type 2
+    public let performedStationName: String?
+
+    /// Accession Number (0008,0050) — Type 2
+    public let accessionNumber: String?
+
+    /// Scheduled Procedure Step ID for the Scheduled Step Attributes Sequence (0040,0009)
+    public let scheduledProcedureStepID: String?
     
     public init(
         sopInstanceUID: String,
@@ -100,7 +132,17 @@ public struct MPPSProcedureStep: Sendable {
         startDateTime: Date? = nil,
         endDateTime: Date? = nil,
         referencedSOPs: [(studyUID: String, seriesUID: String, sopInstanceUID: String)] = [],
-        attributes: [Tag: Data] = [:]
+        attributes: [Tag: Data] = [:],
+        patientName: String? = nil,
+        patientID: String? = nil,
+        modality: String? = nil,
+        procedureStepID: String? = nil,
+        procedureStepDescription: String? = nil,
+        performedStationAETitle: String? = nil,
+        performingPhysicianName: String? = nil,
+        performedStationName: String? = nil,
+        accessionNumber: String? = nil,
+        scheduledProcedureStepID: String? = nil
     ) {
         self.sopInstanceUID = sopInstanceUID
         self.status = status
@@ -109,6 +151,16 @@ public struct MPPSProcedureStep: Sendable {
         self.endDateTime = endDateTime
         self.referencedSOPs = referencedSOPs
         self.attributes = attributes
+        self.patientName = patientName
+        self.patientID = patientID
+        self.modality = modality
+        self.procedureStepID = procedureStepID
+        self.procedureStepDescription = procedureStepDescription
+        self.performedStationAETitle = performedStationAETitle
+        self.performingPhysicianName = performingPhysicianName
+        self.performedStationName = performedStationName
+        self.accessionNumber = accessionNumber
+        self.scheduledProcedureStepID = scheduledProcedureStepID
     }
 }
 
@@ -158,6 +210,15 @@ public enum DICOMMPPSService {
     ///   - studyInstanceUID: The Study Instance UID for the procedure
     ///   - status: The initial status (typically .inProgress)
     ///   - timeout: Connection timeout in seconds (default: 60)
+    ///   - patientName: Patient's Name (0010,0010)
+    ///   - patientID: Patient ID (0010,0020)
+    ///   - modality: Modality (0008,0060)
+    ///   - procedureStepID: Performed Procedure Step ID (0040,0253)
+    ///   - procedureStepDescription: Performed Procedure Step Description (0040,0254)
+    ///   - performingPhysicianName: Performing Physician's Name (0008,1050)
+    ///   - performedStationName: Performed Station Name (0040,0242)
+    ///   - accessionNumber: Accession Number (0008,0050)
+    ///   - scheduledProcedureStepID: Scheduled Procedure Step ID (0040,0009) for the Scheduled Step Attributes Sequence
     /// - Returns: The created MPPS SOP Instance UID
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
     public static func create(
@@ -167,7 +228,16 @@ public enum DICOMMPPSService {
         calledAE: String,
         studyInstanceUID: String,
         status: MPPSStatus = .inProgress,
-        timeout: TimeInterval = 60
+        timeout: TimeInterval = 60,
+        patientName: String? = nil,
+        patientID: String? = nil,
+        modality: String? = nil,
+        procedureStepID: String? = nil,
+        procedureStepDescription: String? = nil,
+        performingPhysicianName: String? = nil,
+        performedStationName: String? = nil,
+        accessionNumber: String? = nil,
+        scheduledProcedureStepID: String? = nil
     ) async throws -> String {
         let callingAETitle = try AETitle(callingAE)
         let calledAETitle = try AETitle(calledAE)
@@ -185,7 +255,17 @@ public enum DICOMMPPSService {
             sopInstanceUID: mppsInstanceUID,
             status: status,
             studyInstanceUID: studyInstanceUID,
-            startDateTime: Date()
+            startDateTime: Date(),
+            patientName: patientName,
+            patientID: patientID,
+            modality: modality,
+            procedureStepID: procedureStepID,
+            procedureStepDescription: procedureStepDescription,
+            performedStationAETitle: callingAE,
+            performingPhysicianName: performingPhysicianName,
+            performedStationName: performedStationName,
+            accessionNumber: accessionNumber,
+            scheduledProcedureStepID: scheduledProcedureStepID
         )
         
         try await performNCreate(
@@ -436,8 +516,8 @@ public enum DICOMMPPSService {
         procedureStep: MPPSProcedureStep,
         transferSyntax: String
     ) async throws {
-        // Build the modification list
-        let modificationData = buildMPPSAttributes(procedureStep: procedureStep, transferSyntax: transferSyntax)
+        // Build the N-SET modification list (only update-allowed attributes)
+        let modificationData = buildNSetAttributes(procedureStep: procedureStep, transferSyntax: transferSyntax)
         
         // Create N-SET request command set
         var commandData = Data()
@@ -476,23 +556,65 @@ public enum DICOMMPPSService {
         }
     }
     
-    /// Builds the MPPS attributes data set
+    /// Builds the MPPS attributes data set per PS3.4 Annex F, Table F.7.2-1.
+    ///
+    /// For N-CREATE: encodes all required Type 1/2 attributes including the
+    /// mandatory Scheduled Step Attributes Sequence (0040,0270) and Performed
+    /// Series Sequence (0040,0340).
     private static func buildMPPSAttributes(
         procedureStep: MPPSProcedureStep,
         transferSyntax: String
     ) -> Data {
         var data = Data()
         let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
-        
-        // Performed Procedure Step Status
+
+        // ---- Common attributes (sorted by tag ascending for DICOM conformance) ----
+
+        // Specific Character Set (0008,0005) — Type 1C
         data.append(encodeElement(
-            tag: Tag(group: 0x0040, element: 0x0252),
+            tag: Tag(group: 0x0008, element: 0x0005),
             vr: .CS,
-            value: procedureStep.status.rawValue,
+            value: "ISO_IR 100",
             explicit: isExplicitVR
         ))
-        
-        // Study Instance UID (if available)
+
+        // Modality (0008,0060) — Type 1
+        if let modality = procedureStep.modality, !modality.isEmpty {
+            data.append(encodeElement(
+                tag: Tag(group: 0x0008, element: 0x0060),
+                vr: .CS,
+                value: modality,
+                explicit: isExplicitVR
+            ))
+        }
+
+        // Performing Physician's Name (0008,1050) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0008, element: 0x1050),
+            vr: .PN,
+            value: procedureStep.performingPhysicianName ?? "",
+            explicit: isExplicitVR
+        ))
+
+        // Patient's Name (0010,0010) — Type 1
+        if let patientName = procedureStep.patientName, !patientName.isEmpty {
+            data.append(encodeElement(
+                tag: Tag(group: 0x0010, element: 0x0010),
+                vr: .PN,
+                value: patientName,
+                explicit: isExplicitVR
+            ))
+        }
+
+        // Patient ID (0010,0020) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0010, element: 0x0020),
+            vr: .LO,
+            value: procedureStep.patientID ?? "",
+            explicit: isExplicitVR
+        ))
+
+        // Study Instance UID (0020,000D) — used in Scheduled Step Attributes Sequence
         if let studyUID = procedureStep.studyInstanceUID {
             data.append(encodeElement(
                 tag: .studyInstanceUID,
@@ -501,22 +623,429 @@ public enum DICOMMPPSService {
                 explicit: isExplicitVR
             ))
         }
-        
-        // End Date/Time (for completed/discontinued)
-        if let endDateTime = procedureStep.endDateTime {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyyMMddHHmmss"
-            let dateTimeString = formatter.string(from: endDateTime)
-            
+
+        // Performed Station AE Title (0040,0241) — Type 1
+        data.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0241),
+            vr: .AE,
+            value: procedureStep.performedStationAETitle ?? "",
+            explicit: isExplicitVR
+        ))
+
+        // Performed Station Name (0040,0242) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0242),
+            vr: .SH,
+            value: procedureStep.performedStationName ?? "",
+            explicit: isExplicitVR
+        ))
+
+        // Performed Procedure Step Start Date (0040,0244) — Type 1
+        // Performed Procedure Step Start Time (0040,0245) — Type 1
+        if let startDate = procedureStep.startDateTime {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyyMMdd"
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            let timeFormatter = DateFormatter()
+            timeFormatter.dateFormat = "HHmmss"
+            timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+
             data.append(encodeElement(
-                tag: Tag(group: 0x0040, element: 0x0250),
-                vr: .DT,
-                value: dateTimeString,
+                tag: Tag(group: 0x0040, element: 0x0244),
+                vr: .DA,
+                value: dateFormatter.string(from: startDate),
+                explicit: isExplicitVR
+            ))
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0245),
+                vr: .TM,
+                value: timeFormatter.string(from: startDate),
                 explicit: isExplicitVR
             ))
         }
-        
+
+        // Performed Procedure Step End Date (0040,0250) — Type 2
+        // Performed Procedure Step End Time (0040,0251) — Type 2
+        if let endDateTime = procedureStep.endDateTime {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyyMMdd"
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            let timeFormatter = DateFormatter()
+            timeFormatter.dateFormat = "HHmmss"
+            timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0250),
+                vr: .DA,
+                value: dateFormatter.string(from: endDateTime),
+                explicit: isExplicitVR
+            ))
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0251),
+                vr: .TM,
+                value: timeFormatter.string(from: endDateTime),
+                explicit: isExplicitVR
+            ))
+        } else {
+            // Type 2: must be present (empty for IN PROGRESS in N-CREATE)
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0250),
+                vr: .DA,
+                value: "",
+                explicit: isExplicitVR
+            ))
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0251),
+                vr: .TM,
+                value: "",
+                explicit: isExplicitVR
+            ))
+        }
+
+        // Performed Procedure Step Status (0040,0252) — Type 1
+        data.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0252),
+            vr: .CS,
+            value: procedureStep.status.rawValue,
+            explicit: isExplicitVR
+        ))
+
+        // Performed Procedure Step ID (0040,0253) — Type 1
+        data.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0253),
+            vr: .SH,
+            value: procedureStep.procedureStepID ?? "1",
+            explicit: isExplicitVR
+        ))
+
+        // Performed Procedure Step Description (0040,0254) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0254),
+            vr: .LO,
+            value: procedureStep.procedureStepDescription ?? "",
+            explicit: isExplicitVR
+        ))
+
+        // ---- Scheduled Step Attributes Sequence (0040,0270) — Type 1 ----
+        // This is the attribute that was causing status 0x0121 errors.
+        // Must contain at minimum: Accession Number (0008,0050),
+        // Study Instance UID (0020,000D), Referenced Study Sequence (0008,1110),
+        // Requested Procedure ID (0040,1001), Scheduled Procedure Step ID (0040,0009),
+        // Scheduled Procedure Step Description (0040,0007).
+        data.append(buildScheduledStepAttributesSequence(
+            procedureStep: procedureStep,
+            explicit: isExplicitVR
+        ))
+
+        // ---- Performed Series Sequence (0040,0340) — Type 1 ----
+        // Required but can be empty for IN PROGRESS; populated for COMPLETED.
+        data.append(buildPerformedSeriesSequence(
+            procedureStep: procedureStep,
+            explicit: isExplicitVR
+        ))
+
         return data
+    }
+
+    /// Builds the N-SET modification attribute list per PS3.4 Annex F, Table F.7.2-2.
+    ///
+    /// N-SET only sends attributes being modified:
+    /// - Performed Procedure Step End Date (0040,0250)
+    /// - Performed Procedure Step End Time (0040,0251)
+    /// - Performed Procedure Step Status (0040,0252)
+    /// - Performed Procedure Step Description (0040,0254) — optional
+    /// - Performed Series Sequence (0040,0340) — with referenced SOPs
+    private static func buildNSetAttributes(
+        procedureStep: MPPSProcedureStep,
+        transferSyntax: String
+    ) -> Data {
+        var data = Data()
+        let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
+
+        // Performed Procedure Step End Date (0040,0250) — Type 1 for COMPLETED
+        // Performed Procedure Step End Time (0040,0251) — Type 1 for COMPLETED
+        if let endDateTime = procedureStep.endDateTime {
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyyMMdd"
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            let timeFormatter = DateFormatter()
+            timeFormatter.dateFormat = "HHmmss"
+            timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0250),
+                vr: .DA,
+                value: dateFormatter.string(from: endDateTime),
+                explicit: isExplicitVR
+            ))
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0251),
+                vr: .TM,
+                value: timeFormatter.string(from: endDateTime),
+                explicit: isExplicitVR
+            ))
+        } else {
+            // Current time as end date/time for completed/discontinued
+            let now = Date()
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateFormat = "yyyyMMdd"
+            dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+            let timeFormatter = DateFormatter()
+            timeFormatter.dateFormat = "HHmmss"
+            timeFormatter.locale = Locale(identifier: "en_US_POSIX")
+
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0250),
+                vr: .DA,
+                value: dateFormatter.string(from: now),
+                explicit: isExplicitVR
+            ))
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0251),
+                vr: .TM,
+                value: timeFormatter.string(from: now),
+                explicit: isExplicitVR
+            ))
+        }
+
+        // Performed Procedure Step Status (0040,0252) — Type 1
+        data.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0252),
+            vr: .CS,
+            value: procedureStep.status.rawValue,
+            explicit: isExplicitVR
+        ))
+
+        // Performed Procedure Step Description (0040,0254) — Type 2
+        if let desc = procedureStep.procedureStepDescription, !desc.isEmpty {
+            data.append(encodeElement(
+                tag: Tag(group: 0x0040, element: 0x0254),
+                vr: .LO,
+                value: desc,
+                explicit: isExplicitVR
+            ))
+        }
+
+        // ---- Performed Series Sequence (0040,0340) — Type 1 ----
+        data.append(buildPerformedSeriesSequence(
+            procedureStep: procedureStep,
+            explicit: isExplicitVR
+        ))
+
+        return data
+    }
+
+    // MARK: - Sequence builders
+
+    /// Builds the Scheduled Step Attributes Sequence (0040,0270) — Type 1.
+    /// Per PS3.4 Table F.7.2-1, this must be present in N-CREATE.
+    private static func buildScheduledStepAttributesSequence(
+        procedureStep: MPPSProcedureStep,
+        explicit: Bool
+    ) -> Data {
+        // Build item attributes
+        var itemData = Data()
+
+        // Accession Number (0008,0050) — Type 2
+        itemData.append(encodeElement(
+            tag: Tag(group: 0x0008, element: 0x0050),
+            vr: .SH,
+            value: procedureStep.accessionNumber ?? "",
+            explicit: explicit
+        ))
+
+        // Referenced Study Sequence (0008,1110) — Type 2 (empty sequence)
+        itemData.append(encodeEmptySequence(
+            tag: Tag(group: 0x0008, element: 0x1110),
+            explicit: explicit
+        ))
+
+        // Study Instance UID (0020,000D) — Type 1
+        itemData.append(encodeElement(
+            tag: Tag(group: 0x0020, element: 0x000D),
+            vr: .UI,
+            value: procedureStep.studyInstanceUID ?? "",
+            explicit: explicit
+        ))
+
+        // Scheduled Procedure Step Description (0040,0007) — Type 2
+        itemData.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0007),
+            vr: .LO,
+            value: procedureStep.procedureStepDescription ?? "",
+            explicit: explicit
+        ))
+
+        // Scheduled Procedure Step ID (0040,0009) — Type 1
+        itemData.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x0009),
+            vr: .SH,
+            value: procedureStep.scheduledProcedureStepID ?? procedureStep.procedureStepID ?? "1",
+            explicit: explicit
+        ))
+
+        // Requested Procedure ID (0040,1001) — Type 2
+        itemData.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x1001),
+            vr: .SH,
+            value: procedureStep.procedureStepID ?? "",
+            explicit: explicit
+        ))
+
+        return encodeSequenceWithItem(
+            tag: Tag(group: 0x0040, element: 0x0270),
+            itemData: itemData,
+            explicit: explicit
+        )
+    }
+
+    /// Builds the Performed Series Sequence (0040,0340) — Type 1.
+    /// Empty for IN PROGRESS; populated with referenced SOPs for COMPLETED.
+    private static func buildPerformedSeriesSequence(
+        procedureStep: MPPSProcedureStep,
+        explicit: Bool
+    ) -> Data {
+        if procedureStep.referencedSOPs.isEmpty {
+            // Empty sequence (no items) — still required as Type 1
+            return encodeEmptySequence(
+                tag: Tag(group: 0x0040, element: 0x0340),
+                explicit: explicit
+            )
+        }
+
+        // Group references by series UID
+        var seriesMap: [String: [(studyUID: String, sopInstanceUID: String)]] = [:]
+        for ref in procedureStep.referencedSOPs {
+            seriesMap[ref.seriesUID, default: []].append((studyUID: ref.studyUID, sopInstanceUID: ref.sopInstanceUID))
+        }
+
+        var allItemsData = Data()
+        for (seriesUID, refs) in seriesMap {
+            var itemData = Data()
+
+            // Performing Physician's Name (0008,1050) — Type 2
+            itemData.append(encodeElement(
+                tag: Tag(group: 0x0008, element: 0x1050),
+                vr: .PN,
+                value: procedureStep.performingPhysicianName ?? "",
+                explicit: explicit
+            ))
+
+            // Series Instance UID (0020,000E) — Type 1
+            itemData.append(encodeElement(
+                tag: Tag(group: 0x0020, element: 0x000E),
+                vr: .UI,
+                value: seriesUID,
+                explicit: explicit
+            ))
+
+            // Series Description (0008,103E) — Type 2
+            itemData.append(encodeElement(
+                tag: Tag(group: 0x0008, element: 0x103E),
+                vr: .LO,
+                value: "",
+                explicit: explicit
+            ))
+
+            // Referenced Image Sequence (0008,1140) — Type 2
+            var refImgData = Data()
+            for ref in refs {
+                var refItemData = Data()
+                // Referenced SOP Class UID (0008,1150) — use a generic secondary capture
+                refItemData.append(encodeElement(
+                    tag: Tag(group: 0x0008, element: 0x1150),
+                    vr: .UI,
+                    value: "1.2.840.10008.5.1.4.1.1.7",
+                    explicit: explicit
+                ))
+                // Referenced SOP Instance UID (0008,1155)
+                refItemData.append(encodeElement(
+                    tag: Tag(group: 0x0008, element: 0x1155),
+                    vr: .UI,
+                    value: ref.sopInstanceUID,
+                    explicit: explicit
+                ))
+                refImgData.append(encodeSequenceItem(itemData: refItemData))
+            }
+            itemData.append(encodeSequenceTag(
+                tag: Tag(group: 0x0008, element: 0x1140),
+                explicit: explicit
+            ))
+            itemData.append(refImgData)
+            itemData.append(sequenceDelimiter())
+
+            allItemsData.append(encodeSequenceItem(itemData: itemData))
+        }
+
+        var data = Data()
+        data.append(encodeSequenceTag(
+            tag: Tag(group: 0x0040, element: 0x0340),
+            explicit: explicit
+        ))
+        data.append(allItemsData)
+        data.append(sequenceDelimiter())
+        return data
+    }
+
+    // MARK: - Sequence encoding helpers
+
+    /// Encodes a complete sequence with a single item.
+    private static func encodeSequenceWithItem(tag: Tag, itemData: Data, explicit: Bool) -> Data {
+        var data = Data()
+        data.append(encodeSequenceTag(tag: tag, explicit: explicit))
+        data.append(encodeSequenceItem(itemData: itemData))
+        data.append(sequenceDelimiter())
+        return data
+    }
+
+    /// Encodes an empty sequence (no items).
+    private static func encodeEmptySequence(tag: Tag, explicit: Bool) -> Data {
+        var data = Data()
+        data.append(encodeSequenceTag(tag: tag, explicit: explicit))
+        data.append(sequenceDelimiter())
+        return data
+    }
+
+    /// Encodes a sequence tag with undefined length.
+    private static func encodeSequenceTag(tag: Tag, explicit: Bool) -> Data {
+        var data = Data()
+        var group = tag.group.littleEndian
+        var element = tag.element.littleEndian
+        data.append(Data(bytes: &group, count: 2))
+        data.append(Data(bytes: &element, count: 2))
+        if explicit {
+            data.append(contentsOf: [0x53, 0x51])   // "SQ"
+            data.append(contentsOf: [0x00, 0x00])   // reserved
+        }
+        data.append(le32(0xFFFFFFFF))                // undefined length
+        return data
+    }
+
+    /// Encodes a sequence item with undefined length.
+    private static func encodeSequenceItem(itemData: Data) -> Data {
+        var data = Data()
+        // Item tag (FFFE,E000)
+        data.append(contentsOf: [0xFE, 0xFF, 0x00, 0xE0])
+        data.append(le32(0xFFFFFFFF))   // undefined length
+        data.append(itemData)
+        // Item delimiter (FFFE,E00D)
+        data.append(contentsOf: [0xFE, 0xFF, 0x0D, 0xE0])
+        data.append(le32(0x00000000))
+        return data
+    }
+
+    /// Encodes a sequence delimiter (FFFE,E0DD).
+    private static func sequenceDelimiter() -> Data {
+        var data = Data()
+        data.append(contentsOf: [0xFE, 0xFF, 0xDD, 0xE0])
+        data.append(le32(0x00000000))
+        return data
+    }
+
+    /// Little-endian 32-bit helper.
+    private static func le32(_ v: UInt32) -> Data {
+        Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF),
+              UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)])
     }
     
     /// Encodes a simple data element (helper for command set)

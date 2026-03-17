@@ -186,6 +186,13 @@ extension DICOMMWLCommand {
             } else {
                 printFormatted(items: items)
             }
+            // Warn about likely server-side result limit
+            let commonLimits: Set<Int> = [50, 100, 200, 250, 500, 1000, 2000, 5000]
+            if commonLimits.contains(items.count) {
+                fprintln("Warning: The result count (\(items.count)) may be capped by a server-side limit.")
+                fprintln("  Check your PACS server configuration (e.g., LimitFindResults in Orthanc,")
+                fprintln("  or max_worklist_results in dcm4chee) to increase or remove the limit.")
+            }
         }
         
         func parseDateFilter(_ filter: String) throws -> String {

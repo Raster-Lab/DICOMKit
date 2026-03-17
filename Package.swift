@@ -202,7 +202,8 @@ let package = Package(
         ),
         .target(
             name: "DICOMDictionary",
-            dependencies: ["DICOMCore"]
+            dependencies: ["DICOMCore"],
+            resources: [.process("Resources")]
         ),
         .target(
             name: "DICOMNetwork",

@@ -61,6 +61,16 @@ public enum PhotometricInterpretation: String, Sendable, Equatable, Hashable {
         !isMonochrome
     }
     
+    /// Whether this photometric interpretation is a YBR variant
+    public var isYBR: Bool {
+        switch self {
+        case .ybrFull, .ybrFull422, .ybrPartial422, .ybrPartial420, .ybrICT, .ybrRCT:
+            return true
+        default:
+            return false
+        }
+    }
+    
     /// Whether this photometric interpretation uses a palette lookup table
     public var isPaletteColor: Bool {
         self == .paletteColor

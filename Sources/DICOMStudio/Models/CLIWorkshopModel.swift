@@ -239,6 +239,17 @@ public enum CLIParameterType: String, Sendable, Equatable, Hashable, CaseIterabl
 }
 
 /// A single CLI parameter definition.
+/// A condition that controls when a parameter is visible based on another parameter's value.
+public struct CLIParameterVisibilityCondition: Sendable, Hashable {
+    public let parameterId: String
+    public let values: [String]
+
+    public init(parameterId: String, values: [String]) {
+        self.parameterId = parameterId
+        self.values = values
+    }
+}
+
 public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     public let id: String
     public var flag: String
@@ -252,6 +263,9 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     public var allowedValues: [String]
     public var minValue: Int?
     public var maxValue: Int?
+    /// When set, this parameter is only visible if the referenced parameter
+    /// currently has one of the specified values.
+    public var visibleWhen: CLIParameterVisibilityCondition?
 
     public init(
         id: String,
@@ -265,7 +279,8 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         defaultValue: String = "",
         allowedValues: [String] = [],
         minValue: Int? = nil,
-        maxValue: Int? = nil
+        maxValue: Int? = nil,
+        visibleWhen: CLIParameterVisibilityCondition? = nil
     ) {
         self.id = id
         self.flag = flag
@@ -279,6 +294,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         self.allowedValues = allowedValues
         self.minValue = minValue
         self.maxValue = maxValue
+        self.visibleWhen = visibleWhen
     }
 }
 
