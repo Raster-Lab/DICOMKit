@@ -66,6 +66,9 @@ public final class MainViewModel {
     /// Persistent networking ViewModel — survives tab switches.
     public var networkingViewModel: NetworkingViewModel
 
+    /// Persistent DICOMweb ViewModel — survives tab switches.
+    public var dicomWebViewModel: DICOMwebViewModel
+
     /// Persistent CLI Workshop ViewModel — survives tab switches.
     public var cliWorkshopViewModel: CLIWorkshopViewModel
 
@@ -112,6 +115,8 @@ public final class MainViewModel {
         let profileStorage = ServerProfileStorageService(storageService: storageService)
         let networkingService = NetworkingService(profileStorage: profileStorage)
         self.networkingViewModel = NetworkingViewModel(service: networkingService)
+
+        self.dicomWebViewModel = DICOMwebViewModel()
 
         self.cliWorkshopViewModel = CLIWorkshopViewModel()
         // Share saved server profiles so CLI Workshop can pick from them.

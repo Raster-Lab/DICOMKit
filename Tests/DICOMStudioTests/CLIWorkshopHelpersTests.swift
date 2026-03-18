@@ -98,14 +98,14 @@ struct CLIWorkshopHelpersTests {
 
     // MARK: - ToolCatalogHelpers
 
-    @Test("allTools returns exactly 29 tools")
+    @Test("allTools returns exactly 32 tools")
     func testAllToolsCount() {
-        #expect(ToolCatalogHelpers.allTools().count == 29)
+        #expect(ToolCatalogHelpers.allTools().count == 32)
     }
 
-    @Test("totalToolCount is 29")
+    @Test("totalToolCount is 32")
     func testTotalToolCount() {
-        #expect(ToolCatalogHelpers.totalToolCount == 29)
+        #expect(ToolCatalogHelpers.totalToolCount == 32)
     }
 
     @Test("fileInspectionTools returns 4 tools")
@@ -128,9 +128,9 @@ struct CLIWorkshopHelpersTests {
         #expect(ToolCatalogHelpers.dataExportTools().count == 6)
     }
 
-    @Test("networkOperationsTools returns 8 tools")
+    @Test("networkOperationsTools returns 11 tools")
     func testNetworkOperationsToolsCount() {
-        #expect(ToolCatalogHelpers.networkOperationsTools().count == 8)
+        #expect(ToolCatalogHelpers.networkOperationsTools().count == 11)
     }
 
     @Test("automationTools returns 3 tools")
@@ -196,13 +196,17 @@ struct CLIWorkshopHelpersTests {
         #expect(dimse?.tools.count == 7)
     }
 
-    @Test("DICOMweb group contains 1 tool")
+    @Test("DICOMweb group contains 4 tools")
     func testDICOMwebGroupCount() {
         let grouped = ToolCatalogHelpers.groupedNetworkOperationsTools()
         let web = grouped.first { $0.group == .dicomweb }
         #expect(web != nil)
-        #expect(web?.tools.count == 1)
-        #expect(web?.tools.first?.id == "dicom-wado")
+        #expect(web?.tools.count == 4)
+        let ids = Set(web?.tools.map { $0.id } ?? [])
+        #expect(ids.contains("dicom-qido"))
+        #expect(ids.contains("dicom-wado"))
+        #expect(ids.contains("dicom-stow"))
+        #expect(ids.contains("dicom-ups"))
     }
 
     @Test("NetworkToolGroup has correct display names")

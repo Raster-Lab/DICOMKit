@@ -145,9 +145,23 @@ public struct WorklistQueryKeys: Sendable {
     /// Returns SPS-level attributes that go inside `(0040,0100)` sequence item.
     internal var allSPSKeys: [Tag: String] { spsKeys }
 
+    /// Specific Character Set (CS) — declares the character set used in the query
+    /// identifier so the SCP can properly encode response strings.
+    /// Common values: "ISO_IR 100" (Latin-1), "ISO_IR 192" (UTF-8).
+    /// Reference: PS3.3 C.12.1.1.2
+    public func specificCharacterSet(_ value: String) -> WorklistQueryKeys {
+        var copy = self
+        copy.keys[.specificCharacterSet] = value
+        return copy
+    }
+
     /// Default worklist query keys requesting all common return attributes.
     public static func `default`() -> WorklistQueryKeys {
         var wlk = WorklistQueryKeys()
+        // Specific Character Set — required by many RIS/PACS servers to avoid
+        // null-tag errors.  Default to ISO_IR 100 (Latin-1) which is the most
+        // widely supported single-byte character set per PS3.3 C.12.1.1.2.
+        wlk.keys[.specificCharacterSet]                   = "ISO_IR 100"
         // Top-level return attributes
         wlk.keys[.patientName]                            = ""
         wlk.keys[.patientID]                             = ""

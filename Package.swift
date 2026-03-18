@@ -664,7 +664,8 @@ let package = Package(
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMDictionary",
-                "DICOMNetwork"
+                "DICOMNetwork",
+                "DICOMWeb"
             ],
             path: "Sources/DICOMStudio",
             exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]

@@ -23,7 +23,7 @@ struct CLIWorkshopViewModelTests {
         #expect(vm.networkProfiles.count == 1)
         #expect(vm.activeProfileID == nil)
         #expect(vm.connectionTestStatus == .untested)
-        #expect(vm.tools.count == 29)
+        #expect(vm.tools.count == 32)
         #expect(vm.selectedToolID == nil)
         #expect(vm.parameterDefinitions.isEmpty)
         #expect(vm.parameterValues.isEmpty)

@@ -454,20 +454,54 @@ public struct TransferSyntaxConverter: Sendable {
         
         // Find pixel data element and compress if present
         var outputElements: [DataElement] = []
+        // Track whether bit-depth reduction was applied so we can rewrite metadata tags
+        var reducedTo8Bit = false
         
         for element in elements {
             if element.tag == .pixelData && !element.isEncapsulated {
                 // Get pixel data descriptor from surrounding elements
-                let descriptor = try extractPixelDataDescriptor(from: elements)
+                var descriptor = try extractPixelDataDescriptor(from: elements)
+                var pixelBytes = element.valueData
                 
-                // Validate encoder can handle this configuration
-                guard encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) else {
-                    throw TranscodingError.encodingFailed("Encoder does not support the given pixel data configuration")
+                // If encoder rejects the native configuration, try bit-depth reduction
+                if !encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) {
+                    // Attempt 16→8 bit reduction for encoders that only support 8-bit
+                    if descriptor.bitsAllocated == 16 && descriptor.samplesPerPixel <= 3 {
+                        let test8Descriptor = PixelDataDescriptor(
+                            rows: descriptor.rows,
+                            columns: descriptor.columns,
+                            numberOfFrames: descriptor.numberOfFrames,
+                            bitsAllocated: 8,
+                            bitsStored: 8,
+                            highBit: 7,
+                            isSigned: false,
+                            samplesPerPixel: descriptor.samplesPerPixel,
+                            photometricInterpretation: descriptor.photometricInterpretation,
+                            planarConfiguration: descriptor.planarConfiguration
+                        )
+                        if encoder.canEncode(with: compressionConfiguration, descriptor: test8Descriptor) {
+                            pixelBytes = rescalePixelData16To8(
+                                pixelBytes,
+                                descriptor: descriptor,
+                                elements: elements
+                            )
+                            descriptor = test8Descriptor
+                            reducedTo8Bit = true
+                        }
+                    }
+                    // Still can't encode after reduction attempt
+                    if !encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) {
+                        throw TranscodingError.encodingFailed(
+                            "Encoder does not support the given pixel data configuration "
+                            + "(bitsAllocated=\(descriptor.bitsAllocated), "
+                            + "samplesPerPixel=\(descriptor.samplesPerPixel))"
+                        )
+                    }
                 }
                 
                 // Compress the pixel data
                 let compressedFrames = try encoder.encode(
-                    element.valueData,
+                    pixelBytes,
                     descriptor: descriptor,
                     configuration: compressionConfiguration
                 )
@@ -482,6 +516,21 @@ public struct TransferSyntaxConverter: Sendable {
                     encapsulatedOffsetTable: buildOffsetTable(for: compressedFrames)
                 )
                 outputElements.append(newElement)
+            } else if reducedTo8Bit && (element.tag == .bitsAllocated || element.tag == .bitsStored
+                                        || element.tag == .highBit || element.tag == .pixelRepresentation) {
+                // Rewrite pixel attribute tags to reflect 8-bit encoding
+                let newValue: UInt16
+                switch element.tag {
+                case .bitsAllocated:          newValue = 8
+                case .bitsStored:             newValue = 8
+                case .highBit:                newValue = 7
+                case .pixelRepresentation:    newValue = 0  // unsigned
+                default:                      newValue = 0
+                }
+                var leBytes = newValue.littleEndian
+                let valData = Data(bytes: &leBytes, count: 2)
+                outputElements.append(DataElement(tag: element.tag, vr: element.vr,
+                                                  length: UInt32(valData.count), valueData: valData))
             } else {
                 outputElements.append(element)
             }
@@ -501,6 +550,93 @@ public struct TransferSyntaxConverter: Sendable {
         }
         
         return outputData
+    }
+    
+    /// Rescales 16-bit pixel data to 8-bit using window/level from the dataset.
+    ///
+    /// Applies the Rescale Slope/Intercept and Window Center/Width from the dataset
+    /// to map the 16-bit dynamic range into 0–255.  Falls back to min/max mapping
+    /// when no window information is present.
+    private func rescalePixelData16To8(
+        _ data: Data,
+        descriptor: PixelDataDescriptor,
+        elements: [DataElement]
+    ) -> Data {
+        // Extract optional window/level and rescale values from the dataset
+        var windowCenter: Double?
+        var windowWidth: Double?
+        var rescaleSlope: Double = 1.0
+        var rescaleIntercept: Double = 0.0
+
+        for element in elements {
+            switch element.tag {
+            case Tag(group: 0x0028, element: 0x1050):   // Window Center
+                if let s = element.stringValue, let v = Double(s.trimmingCharacters(in: .whitespaces).split(separator: "\\").first ?? "") {
+                    windowCenter = v
+                }
+            case Tag(group: 0x0028, element: 0x1051):   // Window Width
+                if let s = element.stringValue, let v = Double(s.trimmingCharacters(in: .whitespaces).split(separator: "\\").first ?? "") {
+                    windowWidth = v
+                }
+            case Tag(group: 0x0028, element: 0x1052):   // Rescale Intercept
+                if let s = element.stringValue, let v = Double(s.trimmingCharacters(in: .whitespaces)) {
+                    rescaleIntercept = v
+                }
+            case Tag(group: 0x0028, element: 0x1053):   // Rescale Slope
+                if let s = element.stringValue, let v = Double(s.trimmingCharacters(in: .whitespaces)) {
+                    rescaleSlope = v
+                }
+            default: break
+            }
+        }
+
+        let pixelCount = descriptor.rows * descriptor.columns * descriptor.samplesPerPixel * descriptor.numberOfFrames
+        let isSigned = descriptor.isSigned
+        let mask = (1 << descriptor.bitsStored) - 1
+
+        // Read all 16-bit samples
+        var rawValues = [Int](repeating: 0, count: pixelCount)
+        data.withUnsafeBytes { buf in
+            guard let ptr = buf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            for i in 0..<min(pixelCount, data.count / 2) {
+                let lo = Int(ptr[i * 2])
+                let hi = Int(ptr[i * 2 + 1])
+                var val = lo | (hi << 8)
+                val &= mask
+                if isSigned && (val & (1 << (descriptor.bitsStored - 1))) != 0 {
+                    val -= (1 << descriptor.bitsStored)
+                }
+                rawValues[i] = val
+            }
+        }
+
+        // Determine 8-bit mapping range
+        let lower: Double
+        let upper: Double
+
+        if let wc = windowCenter, let ww = windowWidth, ww > 0 {
+            // Apply rescale then window
+            lower = (wc - ww / 2.0 - rescaleIntercept) / rescaleSlope
+            upper = (wc + ww / 2.0 - rescaleIntercept) / rescaleSlope
+        } else {
+            // Fallback: use actual pixel min/max
+            let minVal = rawValues.min() ?? 0
+            let maxVal = rawValues.max() ?? 1
+            lower = Double(minVal)
+            upper = Double(max(maxVal, minVal + 1))
+        }
+
+        let range = upper - lower
+        var output = Data(count: pixelCount)
+        output.withUnsafeMutableBytes { buf in
+            guard let ptr = buf.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            for i in 0..<pixelCount {
+                let normalized = (Double(rawValues[i]) - lower) / range
+                let clamped = Swift.max(0.0, Swift.min(1.0, normalized))
+                ptr[i] = UInt8(clamped * 255.0)
+            }
+        }
+        return output
     }
     
     /// Builds the Basic Offset Table for encapsulated pixel data

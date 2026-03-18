@@ -34,6 +34,10 @@ public struct ImageMetadataOverlayView: View {
                 value: viewModel.photometricLabel
             )
             metadataRow(
+                label: "Transfer Syntax",
+                value: viewModel.transferSyntaxLabel
+            )
+            metadataRow(
                 label: "Samples/Pixel",
                 value: ImageMetadataHelpers.samplesText(
                     samplesPerPixel: viewModel.samplesPerPixel,

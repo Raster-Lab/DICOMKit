@@ -5,7 +5,10 @@
 
 import Foundation
 import Observation
+import DICOMCore
+import DICOMKit
 import DICOMNetwork
+import DICOMWeb
 
 // MARK: - DICOM Part 10 File Format helpers (file-private, context-free)
 
@@ -207,6 +210,24 @@ public final class CLIWorkshopViewModel {
     public var newServerCalledAET: String = ""
     public var newServerCallingAET: String = "DICOMSTUDIO"
 
+    // DICOMweb server selection
+    /// Saved DICOMweb server profiles.
+    public var savedDICOMwebProfiles: [DICOMwebServerProfile] = []
+    /// The ID of the selected DICOMweb server profile.
+    public var selectedDICOMwebServerID: UUID? = nil
+    /// Whether the "Add DICOMweb Server" sheet is shown.
+    public var showAddDICOMwebServerSheet: Bool = false
+    /// Whether the "Edit DICOMweb Server" sheet is shown.
+    public var showEditDICOMwebServerSheet: Bool = false
+    /// The ID of the DICOMweb server being edited (nil when adding).
+    public var editingDICOMwebServerID: UUID? = nil
+    /// Editable fields for adding/editing a DICOMweb server.
+    public var newDICOMwebServerName: String = ""
+    public var newDICOMwebServerURL: String = ""
+    public var newDICOMwebAuthMethod: String = "none"
+    public var newDICOMwebUsername: String = ""
+    public var newDICOMwebToken: String = ""
+
     /// Toggles between using a saved server profile and entering parameters manually.
     public enum NetworkInputMode: String, Sendable, CaseIterable, Identifiable {
         case savedServer = "Saved Server"
@@ -249,6 +270,10 @@ public final class CLIWorkshopViewModel {
     public init(service: CLIWorkshopService = CLIWorkshopService()) {
         self.service = service
         loadFromService()
+
+        // Load persisted DICOMweb server profiles from disk.
+        let webStorage = DICOMwebServerProfileStorageService()
+        savedDICOMwebProfiles = webStorage.load()
     }
 
     /// Loads all state from the backing service into observable properties.
@@ -406,6 +431,12 @@ public final class CLIWorkshopViewModel {
         return tool.requiresNetwork
     }
 
+    /// Whether the currently selected tool is a DICOMweb tool (vs DIMSE).
+    public var isDICOMwebToolSelected: Bool {
+        guard let tool = selectedTool() else { return false }
+        return tool.networkToolGroup == .dicomweb
+    }
+
     /// Applies a saved PACS server profile's values to the current parameters.
     public func applySavedServer(id: UUID?) {
         selectedSavedServerID = id
@@ -419,6 +450,168 @@ public final class CLIWorkshopViewModel {
         updateParameterValue(parameterID: "called-aet", value: server.remoteAETitle)
         updateParameterValue(parameterID: "timeout", value: String(Int(server.timeoutSeconds)))
         rebuildCommandPreview()
+    }
+
+    /// Applies a saved DICOMweb server profile's values to the current parameters.
+    public func applySavedDICOMwebServer(id: UUID?) {
+        selectedDICOMwebServerID = id
+        guard let serverID = id,
+              let server = savedDICOMwebProfiles.first(where: { $0.id == serverID }) else {
+            return
+        }
+        updateParameterValue(parameterID: "url", value: server.baseURL)
+        switch server.authMethod {
+        case .none:
+            updateParameterValue(parameterID: "auth", value: "none")
+        case .basic:
+            updateParameterValue(parameterID: "auth", value: "basic")
+            updateParameterValue(parameterID: "username", value: server.username)
+            updateParameterValue(parameterID: "token", value: server.password)
+        case .bearer, .jwt:
+            updateParameterValue(parameterID: "auth", value: "bearer")
+            updateParameterValue(parameterID: "token", value: server.bearerToken)
+        case .oauth2PKCE:
+            updateParameterValue(parameterID: "auth", value: "bearer")
+            updateParameterValue(parameterID: "token", value: server.bearerToken)
+        }
+        rebuildCommandPreview()
+    }
+
+    /// Adds a new DICOMweb server profile from the "Add DICOMweb Server" form.
+    public func addNewDICOMwebServerFromForm() {
+        let name = newDICOMwebServerName.trimmingCharacters(in: .whitespaces)
+        let url = newDICOMwebServerURL.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !url.isEmpty else { return }
+
+        let authMethod: DICOMwebAuthMethod
+        switch newDICOMwebAuthMethod {
+        case "basic": authMethod = .basic
+        case "bearer": authMethod = .bearer
+        default: authMethod = .none
+        }
+
+        let profile = DICOMwebServerProfile(
+            name: name,
+            baseURL: url,
+            authMethod: authMethod,
+            bearerToken: authMethod == .bearer ? newDICOMwebToken : "",
+            username: authMethod == .basic ? newDICOMwebUsername : "",
+            password: authMethod == .basic ? newDICOMwebToken : ""
+        )
+        savedDICOMwebProfiles.append(profile)
+
+        // Persist via DICOMwebServerProfileStorageService
+        let storage = DICOMwebServerProfileStorageService()
+        try? storage.save(savedDICOMwebProfiles)
+
+        // Reset form
+        newDICOMwebServerName = ""
+        newDICOMwebServerURL = ""
+        newDICOMwebAuthMethod = "none"
+        newDICOMwebUsername = ""
+        newDICOMwebToken = ""
+        showAddDICOMwebServerSheet = false
+
+        // Auto-select the newly added server
+        applySavedDICOMwebServer(id: profile.id)
+    }
+
+    /// Removes a saved DICOMweb server profile by ID.
+    public func removeSavedDICOMwebServer(id: UUID) {
+        savedDICOMwebProfiles.removeAll { $0.id == id }
+        if selectedDICOMwebServerID == id {
+            selectedDICOMwebServerID = nil
+        }
+
+        // Persist removal
+        let storage = DICOMwebServerProfileStorageService()
+        try? storage.save(savedDICOMwebProfiles)
+    }
+
+    /// Populates the edit form with an existing DICOMweb server profile's data.
+    public func beginEditDICOMwebServer(id: UUID) {
+        guard let server = savedDICOMwebProfiles.first(where: { $0.id == id }) else { return }
+        editingDICOMwebServerID = server.id
+        newDICOMwebServerName = server.name
+        newDICOMwebServerURL = server.baseURL
+        switch server.authMethod {
+        case .basic:
+            newDICOMwebAuthMethod = "basic"
+            newDICOMwebUsername = server.username
+            newDICOMwebToken = server.password
+        case .bearer, .jwt:
+            newDICOMwebAuthMethod = "bearer"
+            newDICOMwebToken = server.bearerToken
+        case .oauth2PKCE:
+            newDICOMwebAuthMethod = "bearer"
+            newDICOMwebToken = server.bearerToken
+        case .none:
+            newDICOMwebAuthMethod = "none"
+        }
+        showEditDICOMwebServerSheet = true
+    }
+
+    /// Saves edits to an existing DICOMweb server profile.
+    public func saveEditedDICOMwebServer() {
+        guard let editID = editingDICOMwebServerID,
+              let idx = savedDICOMwebProfiles.firstIndex(where: { $0.id == editID }) else { return }
+        let name = newDICOMwebServerName.trimmingCharacters(in: .whitespaces)
+        let url = newDICOMwebServerURL.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !url.isEmpty else { return }
+
+        let authMethod: DICOMwebAuthMethod
+        switch newDICOMwebAuthMethod {
+        case "basic": authMethod = .basic
+        case "bearer": authMethod = .bearer
+        default: authMethod = .none
+        }
+
+        savedDICOMwebProfiles[idx] = DICOMwebServerProfile(
+            id: editID,
+            name: name,
+            baseURL: url,
+            authMethod: authMethod,
+            bearerToken: authMethod == .bearer ? newDICOMwebToken : "",
+            username: authMethod == .basic ? newDICOMwebUsername : "",
+            password: authMethod == .basic ? newDICOMwebToken : ""
+        )
+
+        let storage = DICOMwebServerProfileStorageService()
+        try? storage.save(savedDICOMwebProfiles)
+
+        // Reset form
+        editingDICOMwebServerID = nil
+        newDICOMwebServerName = ""
+        newDICOMwebServerURL = ""
+        newDICOMwebAuthMethod = "none"
+        newDICOMwebUsername = ""
+        newDICOMwebToken = ""
+        showEditDICOMwebServerSheet = false
+
+        // Re-apply if this was the selected server
+        if selectedDICOMwebServerID == editID {
+            applySavedDICOMwebServer(id: editID)
+        }
+    }
+
+    /// Saves the current DICOMweb server parameters as persistent defaults.
+    public func saveDICOMwebServerAsDefault() {
+        let url = paramValue("url")
+        let auth = paramValue("auth")
+        let user = paramValue("username")
+        let token = paramValue("token")
+        if !url.isEmpty { UserDefaults.standard.set(url, forKey: DICOMwebDefaultKeys.url) }
+        if !auth.isEmpty { UserDefaults.standard.set(auth, forKey: DICOMwebDefaultKeys.auth) }
+        if !user.isEmpty { UserDefaults.standard.set(user, forKey: DICOMwebDefaultKeys.username) }
+        if !token.isEmpty { UserDefaults.standard.set(token, forKey: DICOMwebDefaultKeys.token) }
+    }
+
+    /// UserDefaults keys for persistent default DICOMweb server values.
+    private enum DICOMwebDefaultKeys {
+        static let url = "studio.cli.defaultDICOMwebURL"
+        static let auth = "studio.cli.defaultDICOMwebAuth"
+        static let username = "studio.cli.defaultDICOMwebUsername"
+        static let token = "studio.cli.defaultDICOMwebToken"
     }
 
     /// Adds a new server profile from the CLI Workshop "Add Server" form and persists it.
@@ -749,6 +942,16 @@ public final class CLIWorkshopViewModel {
             await executeDicomMWL()
         case "dicom-mpps":
             await executeDicomMPPS()
+        case "dcm2dcm":
+            await executeDcm2Dcm()
+        case "dicom-qido":
+            await executeDicomQIDO()
+        case "dicom-wado":
+            await executeDicomWADO()
+        case "dicom-stow":
+            await executeDicomSTOW()
+        case "dicom-ups":
+            await executeDicomUPS()
         default:
             appendConsoleOutput("⚠ Command execution not yet supported for \(tool.name).\n")
             consoleStatus = .idle
@@ -1010,6 +1213,656 @@ public final class CLIWorkshopViewModel {
         parameterValues.first(where: { $0.parameterID == paramID })?.stringValue ?? ""
     }
 
+    // MARK: - DICOMweb Tool Execution
+
+    /// Creates a `DICOMwebServerProfile` from the current parameter values.
+    private func dicomwebProfileFromParams() -> DICOMwebServerProfile? {
+        let url = paramValue("url")
+        guard !url.isEmpty else { return nil }
+        let authStr = paramValue("auth")
+        let authMethod: DICOMwebAuthMethod
+        switch authStr {
+        case "basic": authMethod = .basic
+        case "bearer": authMethod = .bearer
+        default: authMethod = .none
+        }
+        return DICOMwebServerProfile(
+            name: "CLI",
+            baseURL: url,
+            authMethod: authMethod,
+            bearerToken: paramValue("token"),
+            username: paramValue("username"),
+            password: paramValue("token")
+        )
+    }
+
+    /// Executes a QIDO-RS query against a DICOMweb server.
+    private func executeDicomQIDO() async {
+        guard let profile = dicomwebProfileFromParams() else {
+            appendConsoleOutput("Error: Base URL is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 1, output: "Base URL is required")
+            return
+        }
+
+        let levelStr = paramValue("level").uppercased()
+        let limit = Int(paramValue("limit")) ?? 100
+        let offset = Int(paramValue("offset")) ?? 0
+        let outputFormat = paramValue("output-format").lowercased()
+
+        appendConsoleOutput("Querying \(profile.baseURL) ...\n")
+        appendConsoleOutput("  Level:   \(levelStr.isEmpty ? "STUDY" : levelStr)\n")
+        appendConsoleOutput("  Limit:   \(limit)\n")
+        appendConsoleOutput("  Offset:  \(offset)\n\n")
+
+        do {
+            let client = try DICOMwebClientFactory.makeClient(from: profile)
+
+            var query = QIDOQuery().limit(limit).offset(offset).includeAllFields()
+            let patientName = paramValue("patient-name")
+            let patientID = paramValue("patient-id")
+            let studyDate = paramValue("study-date")
+            let modality = paramValue("modality")
+            let studyUID = paramValue("study-uid")
+            let studyDesc = paramValue("study-description")
+
+            // Case-insensitive patient name with auto-wildcard suffix
+            if !patientName.isEmpty {
+                var nameQuery = patientName.uppercased()
+                if !nameQuery.contains("*") && !nameQuery.contains("?") {
+                    nameQuery += "*"
+                }
+                query = query.patientName(nameQuery)
+            }
+            if !patientID.isEmpty { query = query.patientID(patientID) }
+            if !studyDate.isEmpty { query = query.studyDate(studyDate) }
+            if !modality.isEmpty {
+                // Use the correct DICOM tag per query level:
+                // Study level: Modalities in Study (0008,0061)
+                // Series level: Modality (0008,0060)
+                if levelStr == "SERIES" {
+                    query = query.modality(modality)
+                } else {
+                    query = query.modalitiesInStudy(modality)
+                }
+            }
+            if !studyUID.isEmpty { query = query.studyInstanceUID(studyUID) }
+            if !studyDesc.isEmpty { query = query.studyDescription(studyDesc) }
+
+            switch levelStr {
+            case "SERIES":
+                let results = try await client.searchAllSeries(query: query)
+                let count = results.results.count
+                appendConsoleOutput("✅ QIDO-RS returned \(count) series\n\n")
+                formatQIDOSeriesOutput(results.results, format: outputFormat)
+                if count > 50 { appendConsoleOutput("... and \(count - 50) more (showing first 50)\n") }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 0,
+                             output: "\(count) series returned")
+
+            case "INSTANCE":
+                let results = try await client.searchAllInstances(query: query)
+                let count = results.results.count
+                appendConsoleOutput("✅ QIDO-RS returned \(count) instances\n\n")
+                formatQIDOInstanceOutput(results.results, format: outputFormat)
+                if count > 50 { appendConsoleOutput("... and \(count - 50) more (showing first 50)\n") }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 0,
+                             output: "\(count) instances returned")
+
+            default: // STUDY
+                let results = try await client.searchStudies(query: query)
+                let count = results.results.count
+                let total = results.totalCount.map { " (total: \($0))" } ?? ""
+                appendConsoleOutput("✅ QIDO-RS returned \(count) studies\(total)\n\n")
+                formatQIDOStudyOutput(results.results, format: outputFormat)
+                if count > 50 { appendConsoleOutput("... and \(count - 50) more (showing first 50)\n") }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 0,
+                             output: "\(count) studies returned\(total)")
+            }
+        } catch {
+            appendConsoleOutput("❌ QIDO-RS query failed\n")
+            appendConsoleOutput("  Error: \(error.localizedDescription)\n")
+            appendConsoleOutput("\n  💡 Hint: Verify the Base URL is correct and the DICOMweb server is reachable.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
+    // MARK: - QIDO-RS Output Formatters
+
+    /// Formats QIDO-RS study results as a detailed dataset in the requested output format.
+    private func formatQIDOStudyOutput(_ studies: [QIDOStudyResult], format: String) {
+        let items = studies.prefix(50)
+        switch format {
+        case "json":
+            appendConsoleOutput("[\n")
+            for (i, study) in items.enumerated() {
+                appendConsoleOutput("  {\n")
+                appendConsoleOutput("    \"StudyInstanceUID\": \"\(study.studyInstanceUID ?? "")\",\n")
+                appendConsoleOutput("    \"PatientName\": \"\(study.patientName ?? "")\",\n")
+                appendConsoleOutput("    \"PatientID\": \"\(study.patientID ?? "")\",\n")
+                appendConsoleOutput("    \"PatientBirthDate\": \"\(study.patientBirthDate ?? "")\",\n")
+                appendConsoleOutput("    \"PatientSex\": \"\(study.patientSex ?? "")\",\n")
+                appendConsoleOutput("    \"StudyDate\": \"\(study.studyDate ?? "")\",\n")
+                appendConsoleOutput("    \"StudyTime\": \"\(study.studyTime ?? "")\",\n")
+                appendConsoleOutput("    \"StudyDescription\": \"\(study.studyDescription ?? "")\",\n")
+                appendConsoleOutput("    \"AccessionNumber\": \"\(study.accessionNumber ?? "")\",\n")
+                appendConsoleOutput("    \"StudyID\": \"\(study.studyID ?? "")\",\n")
+                appendConsoleOutput("    \"ReferringPhysicianName\": \"\(study.referringPhysicianName ?? "")\",\n")
+                appendConsoleOutput("    \"ModalitiesInStudy\": [\(study.modalitiesInStudy.map { "\"\($0)\"" }.joined(separator: ", "))],\n")
+                appendConsoleOutput("    \"NumberOfStudyRelatedSeries\": \(study.numberOfStudyRelatedSeries.map(String.init) ?? "null"),\n")
+                appendConsoleOutput("    \"NumberOfStudyRelatedInstances\": \(study.numberOfStudyRelatedInstances.map(String.init) ?? "null")\n")
+                appendConsoleOutput("  }\(i < items.count - 1 ? "," : "")\n")
+            }
+            appendConsoleOutput("]\n")
+        case "csv":
+            appendConsoleOutput("StudyInstanceUID,PatientName,PatientID,PatientBirthDate,PatientSex,StudyDate,StudyTime,StudyDescription,AccessionNumber,StudyID,ReferringPhysicianName,ModalitiesInStudy,NumSeries,NumInstances\n")
+            for study in items {
+                let fields: [String] = [
+                    study.studyInstanceUID ?? "",
+                    csvQuote(study.patientName ?? ""),
+                    csvQuote(study.patientID ?? ""),
+                    study.patientBirthDate ?? "",
+                    study.patientSex ?? "",
+                    study.studyDate ?? "",
+                    study.studyTime ?? "",
+                    csvQuote(study.studyDescription ?? ""),
+                    csvQuote(study.accessionNumber ?? ""),
+                    study.studyID ?? "",
+                    csvQuote(study.referringPhysicianName ?? ""),
+                    csvQuote(study.modalitiesInStudy.joined(separator: "/")),
+                    study.numberOfStudyRelatedSeries.map(String.init) ?? "",
+                    study.numberOfStudyRelatedInstances.map(String.init) ?? ""
+                ]
+                appendConsoleOutput(fields.joined(separator: ",") + "\n")
+            }
+        case "xml":
+            appendConsoleOutput("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<QIDOResults level=\"STUDY\" count=\"\(items.count)\">\n")
+            for study in items {
+                appendConsoleOutput("  <Study>\n")
+                appendConsoleOutput("    <StudyInstanceUID>\(xmlEscape(study.studyInstanceUID ?? ""))</StudyInstanceUID>\n")
+                appendConsoleOutput("    <PatientName>\(xmlEscape(study.patientName ?? ""))</PatientName>\n")
+                appendConsoleOutput("    <PatientID>\(xmlEscape(study.patientID ?? ""))</PatientID>\n")
+                appendConsoleOutput("    <PatientBirthDate>\(study.patientBirthDate ?? "")</PatientBirthDate>\n")
+                appendConsoleOutput("    <PatientSex>\(study.patientSex ?? "")</PatientSex>\n")
+                appendConsoleOutput("    <StudyDate>\(study.studyDate ?? "")</StudyDate>\n")
+                appendConsoleOutput("    <StudyTime>\(study.studyTime ?? "")</StudyTime>\n")
+                appendConsoleOutput("    <StudyDescription>\(xmlEscape(study.studyDescription ?? ""))</StudyDescription>\n")
+                appendConsoleOutput("    <AccessionNumber>\(xmlEscape(study.accessionNumber ?? ""))</AccessionNumber>\n")
+                appendConsoleOutput("    <StudyID>\(study.studyID ?? "")</StudyID>\n")
+                appendConsoleOutput("    <ReferringPhysicianName>\(xmlEscape(study.referringPhysicianName ?? ""))</ReferringPhysicianName>\n")
+                appendConsoleOutput("    <ModalitiesInStudy>\(study.modalitiesInStudy.joined(separator: ","))</ModalitiesInStudy>\n")
+                appendConsoleOutput("    <NumberOfStudyRelatedSeries>\(study.numberOfStudyRelatedSeries.map(String.init) ?? "")</NumberOfStudyRelatedSeries>\n")
+                appendConsoleOutput("    <NumberOfStudyRelatedInstances>\(study.numberOfStudyRelatedInstances.map(String.init) ?? "")</NumberOfStudyRelatedInstances>\n")
+                appendConsoleOutput("  </Study>\n")
+            }
+            appendConsoleOutput("</QIDOResults>\n")
+        default: // text — detailed dataset
+            for (i, study) in items.enumerated() {
+                appendConsoleOutput("─── Study [\(i + 1)] ───────────────────────────────────────\n")
+                appendConsoleOutput("  Study Instance UID .... \(study.studyInstanceUID ?? "N/A")\n")
+                appendConsoleOutput("  Patient Name ......... \(study.patientName ?? "")\n")
+                appendConsoleOutput("  Patient ID ........... \(study.patientID ?? "")\n")
+                appendConsoleOutput("  Patient Birth Date ... \(study.patientBirthDate ?? "")\n")
+                appendConsoleOutput("  Patient Sex .......... \(study.patientSex ?? "")\n")
+                appendConsoleOutput("  Study Date ........... \(study.studyDate ?? "")\n")
+                appendConsoleOutput("  Study Time ........... \(study.studyTime ?? "")\n")
+                appendConsoleOutput("  Study Description .... \(study.studyDescription ?? "")\n")
+                appendConsoleOutput("  Accession Number ..... \(study.accessionNumber ?? "")\n")
+                appendConsoleOutput("  Study ID ............. \(study.studyID ?? "")\n")
+                appendConsoleOutput("  Referring Physician .. \(study.referringPhysicianName ?? "")\n")
+                let mods = study.modalitiesInStudy
+                appendConsoleOutput("  Modalities ........... \(mods.isEmpty ? "" : mods.joined(separator: ", "))\n")
+                appendConsoleOutput("  # Series ............. \(study.numberOfStudyRelatedSeries.map(String.init) ?? "—")\n")
+                appendConsoleOutput("  # Instances .......... \(study.numberOfStudyRelatedInstances.map(String.init) ?? "—")\n")
+                appendConsoleOutput("\n")
+            }
+        }
+    }
+
+    /// Formats QIDO-RS series results as a detailed dataset in the requested output format.
+    private func formatQIDOSeriesOutput(_ seriesList: [QIDOSeriesResult], format: String) {
+        let items = seriesList.prefix(50)
+        switch format {
+        case "json":
+            appendConsoleOutput("[\n")
+            for (i, s) in items.enumerated() {
+                appendConsoleOutput("  {\n")
+                appendConsoleOutput("    \"SeriesInstanceUID\": \"\(s.seriesInstanceUID ?? "")\",\n")
+                appendConsoleOutput("    \"StudyInstanceUID\": \"\(s.studyInstanceUID ?? "")\",\n")
+                appendConsoleOutput("    \"Modality\": \"\(s.modality ?? "")\",\n")
+                appendConsoleOutput("    \"SeriesNumber\": \(s.seriesNumber.map(String.init) ?? "null"),\n")
+                appendConsoleOutput("    \"SeriesDescription\": \"\(s.seriesDescription ?? "")\",\n")
+                appendConsoleOutput("    \"BodyPartExamined\": \"\(s.bodyPartExamined ?? "")\",\n")
+                appendConsoleOutput("    \"PerformedProcedureStepStartDate\": \"\(s.performedProcedureStepStartDate ?? "")\",\n")
+                appendConsoleOutput("    \"NumberOfSeriesRelatedInstances\": \(s.numberOfSeriesRelatedInstances.map(String.init) ?? "null")\n")
+                appendConsoleOutput("  }\(i < items.count - 1 ? "," : "")\n")
+            }
+            appendConsoleOutput("]\n")
+        case "csv":
+            appendConsoleOutput("SeriesInstanceUID,StudyInstanceUID,Modality,SeriesNumber,SeriesDescription,BodyPartExamined,ProcedureDate,NumInstances\n")
+            for s in items {
+                let fields: [String] = [
+                    s.seriesInstanceUID ?? "",
+                    s.studyInstanceUID ?? "",
+                    s.modality ?? "",
+                    s.seriesNumber.map(String.init) ?? "",
+                    csvQuote(s.seriesDescription ?? ""),
+                    s.bodyPartExamined ?? "",
+                    s.performedProcedureStepStartDate ?? "",
+                    s.numberOfSeriesRelatedInstances.map(String.init) ?? ""
+                ]
+                appendConsoleOutput(fields.joined(separator: ",") + "\n")
+            }
+        case "xml":
+            appendConsoleOutput("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<QIDOResults level=\"SERIES\" count=\"\(items.count)\">\n")
+            for s in items {
+                appendConsoleOutput("  <Series>\n")
+                appendConsoleOutput("    <SeriesInstanceUID>\(xmlEscape(s.seriesInstanceUID ?? ""))</SeriesInstanceUID>\n")
+                appendConsoleOutput("    <StudyInstanceUID>\(xmlEscape(s.studyInstanceUID ?? ""))</StudyInstanceUID>\n")
+                appendConsoleOutput("    <Modality>\(s.modality ?? "")</Modality>\n")
+                appendConsoleOutput("    <SeriesNumber>\(s.seriesNumber.map(String.init) ?? "")</SeriesNumber>\n")
+                appendConsoleOutput("    <SeriesDescription>\(xmlEscape(s.seriesDescription ?? ""))</SeriesDescription>\n")
+                appendConsoleOutput("    <BodyPartExamined>\(s.bodyPartExamined ?? "")</BodyPartExamined>\n")
+                appendConsoleOutput("    <PerformedProcedureStepStartDate>\(s.performedProcedureStepStartDate ?? "")</PerformedProcedureStepStartDate>\n")
+                appendConsoleOutput("    <NumberOfSeriesRelatedInstances>\(s.numberOfSeriesRelatedInstances.map(String.init) ?? "")</NumberOfSeriesRelatedInstances>\n")
+                appendConsoleOutput("  </Series>\n")
+            }
+            appendConsoleOutput("</QIDOResults>\n")
+        default: // text — detailed dataset
+            for (i, s) in items.enumerated() {
+                appendConsoleOutput("─── Series [\(i + 1)] ──────────────────────────────────────\n")
+                appendConsoleOutput("  Series Instance UID ... \(s.seriesInstanceUID ?? "N/A")\n")
+                appendConsoleOutput("  Study Instance UID ... \(s.studyInstanceUID ?? "")\n")
+                appendConsoleOutput("  Modality ............. \(s.modality ?? "")\n")
+                appendConsoleOutput("  Series Number ........ \(s.seriesNumber.map(String.init) ?? "—")\n")
+                appendConsoleOutput("  Series Description ... \(s.seriesDescription ?? "")\n")
+                appendConsoleOutput("  Body Part Examined ... \(s.bodyPartExamined ?? "")\n")
+                appendConsoleOutput("  Procedure Date ....... \(s.performedProcedureStepStartDate ?? "")\n")
+                appendConsoleOutput("  # Instances .......... \(s.numberOfSeriesRelatedInstances.map(String.init) ?? "—")\n")
+                appendConsoleOutput("\n")
+            }
+        }
+    }
+
+    /// Formats QIDO-RS instance results as a detailed dataset in the requested output format.
+    private func formatQIDOInstanceOutput(_ instances: [QIDOInstanceResult], format: String) {
+        let items = instances.prefix(50)
+        switch format {
+        case "json":
+            appendConsoleOutput("[\n")
+            for (i, inst) in items.enumerated() {
+                appendConsoleOutput("  {\n")
+                appendConsoleOutput("    \"SOPInstanceUID\": \"\(inst.sopInstanceUID ?? "")\",\n")
+                appendConsoleOutput("    \"SOPClassUID\": \"\(inst.sopClassUID ?? "")\",\n")
+                appendConsoleOutput("    \"SeriesInstanceUID\": \"\(inst.seriesInstanceUID ?? "")\",\n")
+                appendConsoleOutput("    \"StudyInstanceUID\": \"\(inst.studyInstanceUID ?? "")\",\n")
+                appendConsoleOutput("    \"InstanceNumber\": \(inst.instanceNumber.map(String.init) ?? "null"),\n")
+                appendConsoleOutput("    \"NumberOfFrames\": \(inst.numberOfFrames.map(String.init) ?? "null"),\n")
+                appendConsoleOutput("    \"Rows\": \(inst.rows.map(String.init) ?? "null"),\n")
+                appendConsoleOutput("    \"Columns\": \(inst.columns.map(String.init) ?? "null")\n")
+                appendConsoleOutput("  }\(i < items.count - 1 ? "," : "")\n")
+            }
+            appendConsoleOutput("]\n")
+        case "csv":
+            appendConsoleOutput("SOPInstanceUID,SOPClassUID,SeriesInstanceUID,StudyInstanceUID,InstanceNumber,NumberOfFrames,Rows,Columns\n")
+            for inst in items {
+                let fields: [String] = [
+                    inst.sopInstanceUID ?? "",
+                    inst.sopClassUID ?? "",
+                    inst.seriesInstanceUID ?? "",
+                    inst.studyInstanceUID ?? "",
+                    inst.instanceNumber.map(String.init) ?? "",
+                    inst.numberOfFrames.map(String.init) ?? "",
+                    inst.rows.map(String.init) ?? "",
+                    inst.columns.map(String.init) ?? ""
+                ]
+                appendConsoleOutput(fields.joined(separator: ",") + "\n")
+            }
+        case "xml":
+            appendConsoleOutput("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<QIDOResults level=\"INSTANCE\" count=\"\(items.count)\">\n")
+            for inst in items {
+                appendConsoleOutput("  <Instance>\n")
+                appendConsoleOutput("    <SOPInstanceUID>\(xmlEscape(inst.sopInstanceUID ?? ""))</SOPInstanceUID>\n")
+                appendConsoleOutput("    <SOPClassUID>\(inst.sopClassUID ?? "")</SOPClassUID>\n")
+                appendConsoleOutput("    <SeriesInstanceUID>\(xmlEscape(inst.seriesInstanceUID ?? ""))</SeriesInstanceUID>\n")
+                appendConsoleOutput("    <StudyInstanceUID>\(xmlEscape(inst.studyInstanceUID ?? ""))</StudyInstanceUID>\n")
+                appendConsoleOutput("    <InstanceNumber>\(inst.instanceNumber.map(String.init) ?? "")</InstanceNumber>\n")
+                appendConsoleOutput("    <NumberOfFrames>\(inst.numberOfFrames.map(String.init) ?? "")</NumberOfFrames>\n")
+                appendConsoleOutput("    <Rows>\(inst.rows.map(String.init) ?? "")</Rows>\n")
+                appendConsoleOutput("    <Columns>\(inst.columns.map(String.init) ?? "")</Columns>\n")
+                appendConsoleOutput("  </Instance>\n")
+            }
+            appendConsoleOutput("</QIDOResults>\n")
+        default: // text — detailed dataset
+            for (i, inst) in items.enumerated() {
+                appendConsoleOutput("─── Instance [\(i + 1)] ────────────────────────────────────\n")
+                appendConsoleOutput("  SOP Instance UID ..... \(inst.sopInstanceUID ?? "N/A")\n")
+                appendConsoleOutput("  SOP Class UID ........ \(inst.sopClassUID ?? "")\n")
+                appendConsoleOutput("  Series Instance UID .. \(inst.seriesInstanceUID ?? "")\n")
+                appendConsoleOutput("  Study Instance UID ... \(inst.studyInstanceUID ?? "")\n")
+                appendConsoleOutput("  Instance Number ...... \(inst.instanceNumber.map(String.init) ?? "—")\n")
+                appendConsoleOutput("  # Frames ............. \(inst.numberOfFrames.map(String.init) ?? "—")\n")
+                appendConsoleOutput("  Rows ................. \(inst.rows.map(String.init) ?? "—")\n")
+                appendConsoleOutput("  Columns .............. \(inst.columns.map(String.init) ?? "—")\n")
+                appendConsoleOutput("\n")
+            }
+        }
+    }
+
+    /// Executes a WADO-RS retrieve against a DICOMweb server.
+    private func executeDicomWADO() async {
+        guard let profile = dicomwebProfileFromParams() else {
+            appendConsoleOutput("Error: Base URL is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1, output: "Base URL is required")
+            return
+        }
+
+        let studyUID = paramValue("study-uid")
+        let seriesUID = paramValue("series-uid")
+        let instanceUID = paramValue("instance-uid")
+        let mode = paramValue("mode").lowercased()
+
+        guard !studyUID.isEmpty else {
+            appendConsoleOutput("Error: Study Instance UID is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1, output: "Study UID is required")
+            return
+        }
+
+        appendConsoleOutput("Retrieving from \(profile.baseURL) ...\n")
+        appendConsoleOutput("  Mode:       \(mode.isEmpty ? "study" : mode)\n")
+        appendConsoleOutput("  Study UID:  \(studyUID)\n")
+        if !seriesUID.isEmpty { appendConsoleOutput("  Series UID: \(seriesUID)\n") }
+        if !instanceUID.isEmpty { appendConsoleOutput("  Instance UID: \(instanceUID)\n") }
+        appendConsoleOutput("\n")
+
+        do {
+            let client = try DICOMwebClientFactory.makeClient(from: profile)
+            let transferSyntax = paramValue("transfer-syntax").isEmpty ? nil : paramValue("transfer-syntax")
+
+            switch mode {
+            case "instance":
+                guard !seriesUID.isEmpty, !instanceUID.isEmpty else {
+                    appendConsoleOutput("Error: Series UID and Instance UID are required for instance-level retrieve.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    return
+                }
+                let data = try await client.retrieveInstance(
+                    studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID,
+                    transferSyntax: transferSyntax
+                )
+                appendConsoleOutput("✅ Retrieved 1 instance (\(data.count) bytes)\n")
+                let output = paramValue("output")
+                if !output.isEmpty {
+                    try data.write(to: URL(fileURLWithPath: output))
+                    appendConsoleOutput("  Saved to: \(output)\n")
+                }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                             output: "1 instance, \(data.count) bytes")
+
+            case "series":
+                guard !seriesUID.isEmpty else {
+                    appendConsoleOutput("Error: Series UID is required for series-level retrieve.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    return
+                }
+                let result = try await client.retrieveSeries(
+                    studyUID: studyUID, seriesUID: seriesUID, transferSyntax: transferSyntax
+                )
+                let count = result.instances.count
+                let totalBytes = result.instances.reduce(0) { $0 + $1.count }
+                appendConsoleOutput("✅ Retrieved \(count) instances (\(totalBytes) bytes total)\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                             output: "\(count) instances, \(totalBytes) bytes")
+
+            case "rendered":
+                guard !seriesUID.isEmpty, !instanceUID.isEmpty else {
+                    appendConsoleOutput("Error: Series UID and Instance UID are required for rendered retrieve.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    return
+                }
+                let data = try await client.retrieveRenderedInstance(
+                    studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID,
+                    options: DICOMwebClient.RenderOptions()
+                )
+                appendConsoleOutput("✅ Retrieved rendered image (\(data.count) bytes)\n")
+                let output = paramValue("output")
+                if !output.isEmpty {
+                    try data.write(to: URL(fileURLWithPath: output))
+                    appendConsoleOutput("  Saved to: \(output)\n")
+                }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                             output: "Rendered image, \(data.count) bytes")
+
+            default: // study-level
+                let result = try await client.retrieveStudy(
+                    studyUID: studyUID, transferSyntax: transferSyntax
+                )
+                let count = result.instances.count
+                let totalBytes = result.instances.reduce(0) { $0 + $1.count }
+                appendConsoleOutput("✅ Retrieved \(count) instances (\(totalBytes) bytes total)\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                             output: "\(count) instances, \(totalBytes) bytes")
+            }
+        } catch {
+            appendConsoleOutput("❌ WADO-RS retrieve failed\n")
+            appendConsoleOutput("  Error: \(error.localizedDescription)\n")
+            appendConsoleOutput("\n  💡 Hint: Verify the Study UID exists on the server and the Base URL is correct.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
+    /// Executes a STOW-RS upload against a DICOMweb server.
+    private func executeDicomSTOW() async {
+        guard let profile = dicomwebProfileFromParams() else {
+            appendConsoleOutput("Error: Base URL is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1, output: "Base URL is required")
+            return
+        }
+
+        let filesPath = paramValue("files")
+        guard !filesPath.isEmpty else {
+            appendConsoleOutput("Error: At least one file path is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1, output: "Files required")
+            return
+        }
+
+        let studyUID = paramValue("study-uid").isEmpty ? nil : paramValue("study-uid")
+        let dryRun = paramValue("dry-run") == "true"
+        let validateFlag = paramValue("validate") == "true"
+        let batchSize = Int(paramValue("batch-size")) ?? 10
+
+        // Resolve file paths (comma-separated or single path)
+        let paths = filesPath.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+
+        appendConsoleOutput("Uploading to \(profile.baseURL) ...\n")
+        appendConsoleOutput("  Files:      \(paths.count)\n")
+        if let uid = studyUID { appendConsoleOutput("  Study UID:  \(uid)\n") }
+        if dryRun { appendConsoleOutput("  Mode:       DRY RUN (no actual upload)\n") }
+        appendConsoleOutput("  Batch size: \(batchSize)\n")
+        if validateFlag { appendConsoleOutput("  Validate:   yes\n") }
+        appendConsoleOutput("\n")
+
+        if dryRun {
+            appendConsoleOutput("✅ Dry run complete — \(paths.count) files would be uploaded.\n")
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 0,
+                         output: "Dry run: \(paths.count) files")
+            return
+        }
+
+        do {
+            let client = try DICOMwebClientFactory.makeClient(from: profile)
+            var allInstances: [Data] = []
+            for path in paths {
+                let url = URL(fileURLWithPath: path)
+                let data = try Data(contentsOf: url)
+                allInstances.append(data)
+            }
+
+            let response = try await client.storeInstances(instances: allInstances, studyUID: studyUID)
+            let stored = response.storedInstances.count
+            let failed = response.failedInstances.count
+            appendConsoleOutput("✅ STOW-RS complete\n")
+            appendConsoleOutput("  Stored:  \(stored)\n")
+            if failed > 0 {
+                appendConsoleOutput("  Failed:  \(failed)\n")
+                for failure in response.failedInstances {
+                    let reason = failure.failureDescription ?? (failure.failureReason.map { "code \($0)" } ?? "unknown reason")
+                    appendConsoleOutput("    ❌ \(failure.sopInstanceUID ?? "unknown"): \(reason)\n")
+                }
+            }
+            if let url = response.retrieveURL {
+                appendConsoleOutput("  Retrieve URL: \(url)\n")
+            }
+            consoleStatus = failed > 0 ? .error : .success
+            service.setConsoleStatus(failed > 0 ? .error : .success)
+            addToHistory(toolName: "dicom-stow", command: commandPreview,
+                         exitCode: failed > 0 ? 1 : 0,
+                         output: "\(stored) stored, \(failed) failed")
+        } catch {
+            appendConsoleOutput("❌ STOW-RS upload failed\n")
+            appendConsoleOutput("  Error: \(error.localizedDescription)\n")
+            appendConsoleOutput("\n  💡 Hint: Verify the file paths are valid DICOM files and the Base URL is correct.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
+    /// Executes a UPS-RS operation against a DICOMweb server.
+    private func executeDicomUPS() async {
+        guard let profile = dicomwebProfileFromParams() else {
+            appendConsoleOutput("Error: Base URL is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 1, output: "Base URL is required")
+            return
+        }
+
+        let operation = paramValue("operation").lowercased()
+        let workitemUID = paramValue("workitem-uid")
+
+        appendConsoleOutput("UPS-RS \(operation.isEmpty ? "search" : operation) on \(profile.baseURL) ...\n\n")
+
+        do {
+            let client = try DICOMwebClientFactory.makeClient(from: profile)
+
+            switch operation {
+            case "get":
+                guard !workitemUID.isEmpty else {
+                    appendConsoleOutput("Error: Workitem UID is required for get operation.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    return
+                }
+                let workitem = try await client.retrieveWorkitem(uid: workitemUID)
+                appendConsoleOutput("✅ Retrieved workitem \(workitemUID)\n")
+                appendConsoleOutput("  Attributes: \(workitem.count)\n")
+                for (key, value) in workitem.prefix(20) {
+                    appendConsoleOutput("  \(key): \(value)\n")
+                }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
+                             output: "Workitem retrieved")
+
+            case "change-state":
+                guard !workitemUID.isEmpty else {
+                    appendConsoleOutput("Error: Workitem UID is required for change-state operation.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    return
+                }
+                let state = paramValue("state")
+                appendConsoleOutput("Changing state of \(workitemUID) to \(state.isEmpty ? "IN PROGRESS" : state) ...\n")
+                let statePayload: [String: Any] = [
+                    "00741000": ["vr": "CS", "Value": [state.isEmpty ? "IN PROGRESS" : state.uppercased()]]
+                ]
+                _ = try await client.updateWorkitem(uid: workitemUID, updates: statePayload)
+                appendConsoleOutput("✅ State changed successfully\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
+                             output: "State changed to \(state)")
+
+            case "subscribe":
+                guard !workitemUID.isEmpty else {
+                    appendConsoleOutput("Error: Workitem UID is required for subscribe operation.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    return
+                }
+                appendConsoleOutput("Subscribing to workitem \(workitemUID) ...\n")
+                try await client.subscribeToWorkitem(
+                    workitemUID: workitemUID,
+                    aeTitle: "DICOM_STUDIO"
+                )
+                appendConsoleOutput("✅ Subscription created\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
+                             output: "Subscribed to \(workitemUID)")
+
+            default: // search
+                let results = try await client.searchWorkitems(query: UPSQuery())
+                let count = results.workitems.count
+                appendConsoleOutput("✅ UPS-RS returned \(count) workitems\n\n")
+                for (i, item) in results.workitems.prefix(50).enumerated() {
+                    appendConsoleOutput("[\(i + 1)] \(item.workitemUID)\n")
+                    if let step = item.procedureStepLabel {
+                        appendConsoleOutput("    Step: \(step)\n")
+                    }
+                }
+                if count > 50 { appendConsoleOutput("... and \(count - 50) more\n") }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
+                             output: "\(count) workitems returned")
+            }
+        } catch {
+            appendConsoleOutput("❌ UPS-RS \(operation) failed\n")
+            appendConsoleOutput("  Error: \(error.localizedDescription)\n")
+            appendConsoleOutput("\n  💡 Hint: Verify the Base URL is correct and the server supports UPS-RS.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
     /// Performs a C-FIND query against the server configured in the parameter fields.
     private func executeDicomQuery() async {
         let host = paramValue("host")
@@ -1049,7 +1902,6 @@ public final class CLIWorkshopViewModel {
         let patientName = rawPatientName.isEmpty ? "" : (rawPatientName.hasSuffix("*") ? rawPatientName : rawPatientName + "*")
         let studyDate = paramValue("study-date")
         let modality = paramValue("modality")
-        let accession = paramValue("accession")
         let studyUID = paramValue("study-uid")
         let seriesUID = paramValue("series-uid")
         let seriesDate = paramValue("series-date")
@@ -1138,13 +1990,8 @@ public final class CLIWorkshopViewModel {
             } else {
                 queryKeys = queryKeys.requestModalitiesInStudy()
             }
-            if !accession.isEmpty {
-                queryKeys = queryKeys.accessionNumber(accession)
-                appendConsoleOutput("  Accession:        \(accession)\n")
-            } else {
-                queryKeys = queryKeys.requestAccessionNumber()
-            }
             queryKeys = queryKeys
+                .requestAccessionNumber()
                 .requestStudyDescription()
                 .requestStudyTime()
                 .requestNumberOfStudyRelatedSeries()
@@ -1266,7 +2113,7 @@ public final class CLIWorkshopViewModel {
                             host: host, port: port, config: config,
                             level: level,
                             patientID: patientID, patientName: patientName,
-                            studyDate: studyDate, accession: accession,
+                            studyDate: studyDate,
                             modality: modality, seriesUID: seriesUID,
                             seriesDate: seriesDate, instanceUID: instanceUID,
                             callingAET: callingAET, calledAET: calledAET,
@@ -1281,7 +2128,7 @@ public final class CLIWorkshopViewModel {
                     host: host, port: port, config: config,
                     level: level,
                     patientID: patientID, patientName: patientName,
-                    studyDate: studyDate, accession: accession,
+                    studyDate: studyDate,
                     modality: modality, seriesUID: seriesUID,
                     seriesDate: seriesDate, instanceUID: instanceUID,
                     callingAET: callingAET, calledAET: calledAET,
@@ -1414,7 +2261,7 @@ public final class CLIWorkshopViewModel {
         host: String, port: UInt16, config: QueryConfiguration,
         level: QueryLevel,
         patientID: String, patientName: String,
-        studyDate: String, accession: String,
+        studyDate: String,
         modality: String, seriesUID: String,
         seriesDate: String, instanceUID: String,
         callingAET: String, calledAET: String,
@@ -1427,7 +2274,6 @@ public final class CLIWorkshopViewModel {
         if !patientID.isEmpty { studyQueryKeys = studyQueryKeys.patientID(patientID) }
         if !patientName.isEmpty { studyQueryKeys = studyQueryKeys.patientName(patientName.uppercased()) }
         if !studyDate.isEmpty { studyQueryKeys = studyQueryKeys.studyDate(studyDate) }
-        if !accession.isEmpty { studyQueryKeys = studyQueryKeys.accessionNumber(accession) }
         if !modality.isEmpty { studyQueryKeys = studyQueryKeys.modalitiesInStudy(modality) }
 
         let studyConfig = QueryConfiguration(
@@ -2746,6 +3592,10 @@ public final class CLIWorkshopViewModel {
                     mppsInstanceUID: mppsUID,
                     status: mppsStatus,
                     referencedSOPs: referencedSOPs,
+                    studyInstanceUID: studyUID.isEmpty ? nil : studyUID,
+                    accessionNumber: accessionNumber.isEmpty ? nil : accessionNumber,
+                    scheduledProcedureStepID: procedureID.isEmpty ? nil : procedureID,
+                    procedureStepID: procedureID.isEmpty ? nil : procedureID,
                     timeout: timeout
                 )
                 appendConsoleOutput("✅ MPPS instance updated to \(mppsStatus.rawValue)\n")
@@ -2772,6 +3622,226 @@ public final class CLIWorkshopViewModel {
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1,
                          output: errorMessage)
+        }
+    }
+
+    // MARK: - DCM2DCM Execution (Transfer Syntax Conversion)
+
+    /// Maps user-facing transfer syntax names to DICOM Transfer Syntax UIDs.
+    private static let transferSyntaxNameToUID: [String: String] = [
+        "Explicit VR Little Endian":  "1.2.840.10008.1.2.1",
+        "Implicit VR Little Endian":  "1.2.840.10008.1.2",
+        "Explicit VR Big Endian":     "1.2.840.10008.1.2.2",
+        "JPEG Baseline":              "1.2.840.10008.1.2.4.50",
+        "JPEG Extended":              "1.2.840.10008.1.2.4.51",
+        "JPEG Lossless":              "1.2.840.10008.1.2.4.57",
+        "JPEG Lossless SV1":          "1.2.840.10008.1.2.4.70",
+        "JPEG 2000 Lossless":         "1.2.840.10008.1.2.4.90",
+        "JPEG 2000":                  "1.2.840.10008.1.2.4.91",
+        "JPEG-LS Lossless":           "1.2.840.10008.1.2.4.80",
+        "JPEG-LS Near-Lossless":      "1.2.840.10008.1.2.4.81",
+        "RLE Lossless":               "1.2.840.10008.1.2.5",
+    ]
+
+    /// Performs DCM2DCM transfer syntax conversion.
+    private func executeDcm2Dcm() async {
+        let inputPath = paramValue("input-file")
+        let targetSyntaxName = paramValue("target-syntax")
+        let outputParam = paramValue("output-file")
+        let openInViewer = paramValue("open-in-viewer").lowercased() != "false"
+
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("❌ No input DICOM file specified.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            return
+        }
+
+        guard !targetSyntaxName.isEmpty else {
+            appendConsoleOutput("❌ No target transfer syntax selected.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            return
+        }
+
+        guard let targetUID = Self.transferSyntaxNameToUID[targetSyntaxName],
+              let targetTS = TransferSyntax.from(uid: targetUID) else {
+            appendConsoleOutput("❌ Unknown transfer syntax: \(targetSyntaxName)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            return
+        }
+
+        appendConsoleOutput("📁 Reading input file…\n")
+
+        // Read input file with security-scoped access if available
+        let data: Data
+        let scopedURL = securityScopedURLs["input-file"]
+        let accessing = scopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessing { scopedURL?.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let inputURL = URL(fileURLWithPath: inputPath)
+            data = try Data(contentsOf: inputURL)
+        } catch {
+            appendConsoleOutput("❌ Failed to read input file: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+            return
+        }
+
+        do {
+            let file = try DICOMFile.read(from: data)
+            let sourceUID = file.transferSyntaxUID ?? "1.2.840.10008.1.2.1"
+            let sourceName = ImageMetadataHelpers.transferSyntaxLabel(for: sourceUID)
+
+            appendConsoleOutput("  Source transfer syntax: \(sourceName)\n")
+            appendConsoleOutput("  Target transfer syntax: \(targetSyntaxName)\n\n")
+
+            if sourceUID == targetUID {
+                appendConsoleOutput("ℹ️ Source and target transfer syntaxes are identical — no conversion needed.\n")
+                consoleStatus = .idle
+                service.setConsoleStatus(.idle)
+                addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 0,
+                             output: "No conversion needed (same transfer syntax)")
+                return
+            }
+
+            guard let sourceTS = TransferSyntax.from(uid: sourceUID) else {
+                appendConsoleOutput("❌ Unknown source transfer syntax: \(sourceUID)\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                return
+            }
+
+            // Check if conversion is supported
+            let converter = DICOMCore.TransferSyntaxConverter(
+                configuration: TranscodingConfiguration(
+                    preferredSyntaxes: [targetTS],
+                    allowLossyCompression: !targetTS.isLossless,
+                    preservePixelDataFidelity: targetTS.isLossless
+                )
+            )
+
+            guard converter.canTranscode(from: sourceTS, to: targetTS) else {
+                appendConsoleOutput("❌ Conversion from \(sourceName) to \(targetSyntaxName) is not supported.\n")
+                appendConsoleOutput("   Hint: Ensure the required codec is available for both source and target syntaxes.\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 1,
+                             output: "Unsupported conversion path")
+                return
+            }
+
+            appendConsoleOutput("🔄 Converting…\n")
+
+            // Serialize the data set to bytes using the source transfer syntax encoding
+            let sourceWriter = DICOMWriter(
+                byteOrder: sourceTS.byteOrder,
+                explicitVR: sourceTS.isExplicitVR
+            )
+            let dataSetBytes = file.dataSet.write(using: sourceWriter)
+
+            let result = try converter.transcode(
+                dataSetData: dataSetBytes,
+                from: sourceTS,
+                to: targetTS
+            )
+
+            // Build the output Part 10 DICOM file using the existing file-level helper
+            let sopClassUID = file.dataSet.string(for: .sopClassUID)
+                ?? file.fileMetaInformation.string(for: .mediaStorageSOPClassUID)
+                ?? "1.2.840.10008.5.1.4.1.1.7"
+            let sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
+                ?? file.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID)
+                ?? ""
+            let outputData = part10Wrap(
+                dataset: result.data,
+                sopClassUID: sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                transferSyntaxUID: targetUID
+            )
+
+            // Determine output URL, preferring security-scoped access for sandbox compliance.
+            // The Browse button for output picks a *folder*; the text field holds the full file path.
+            // We start security-scoped access on the folder URL so that writing to the child path succeeds.
+            let outputScopedURL = securityScopedURLs["output-file"]
+            let accessingOutput = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
+            defer { if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() } }
+
+            let outputURL: URL
+            if !outputParam.isEmpty {
+                outputURL = URL(fileURLWithPath: outputParam)
+            } else {
+                // Fallback: derive from input filename
+                let inputPathURL = URL(fileURLWithPath: inputPath)
+                let stem = inputPathURL.deletingPathExtension().lastPathComponent
+                let ext = inputPathURL.pathExtension.isEmpty ? "dcm" : inputPathURL.pathExtension
+
+                if let scopedDir = outputScopedURL {
+                    // User browsed to a folder but didn't type a filename — save next to input name
+                    outputURL = scopedDir.appendingPathComponent("\(stem)_converted.\(ext)")
+                } else {
+                    // No browse, no output param — place next to input file
+                    outputURL = inputPathURL
+                        .deletingLastPathComponent()
+                        .appendingPathComponent("\(stem)_converted.\(ext)")
+                }
+            }
+            let outputPath = outputURL.path
+
+            // Ensure the output directory exists
+            let outputDir = outputURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+
+            // Write converted file
+            try outputData.write(to: outputURL)
+
+            let savedSize = ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)
+            let originalSize = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+
+            appendConsoleOutput("\n✅ Conversion complete!\n")
+            appendConsoleOutput("   Output:   \(outputPath)\n")
+            appendConsoleOutput("   Original: \(originalSize) → Converted: \(savedSize)\n")
+            if result.isLossless {
+                appendConsoleOutput("   Quality:  Lossless\n")
+            } else {
+                appendConsoleOutput("   Quality:  Lossy\n")
+            }
+
+            lastRetrievedFiles = [outputPath]
+            lastRetrievedOutputURL = nil
+
+            consoleStatus = .idle
+            service.setConsoleStatus(.idle)
+            addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 0,
+                         output: "Converted \(sourceName) → \(targetSyntaxName)")
+
+            // Open in viewer if requested
+            if openInViewer {
+                appendConsoleOutput("\n📺 Opening converted file in Viewer…\n")
+                onOpenInViewer?(outputPath, nil)
+            }
+
+        } catch {
+            let desc = error.localizedDescription
+            appendConsoleOutput("❌ Conversion failed: \(desc)\n")
+
+            if let transErr = error as? TranscodingError {
+                appendConsoleOutput("   Detail: \(transErr.description)\n")
+            }
+
+            // Provide a hint when the failure is a sandbox permission issue
+            if desc.contains("permission") || desc.contains("not permitted") {
+                appendConsoleOutput("   Hint: Use the Browse button to select the output folder so the app can write there.\n")
+            }
+
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 1,
+                         output: desc)
         }
     }
 

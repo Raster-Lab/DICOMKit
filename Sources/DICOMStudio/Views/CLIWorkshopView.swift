@@ -60,9 +60,9 @@ public struct CLIWorkshopView: View {
                     } label: {
                         VStack(spacing: 2) {
                             Label(tab.displayName, systemImage: tab.sfSymbol)
-                                .font(.caption)
+                                .font(.body)
                             Text(tab.tabDescription)
-                                .font(.system(size: 9))
+                                .font(.caption)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
@@ -96,7 +96,7 @@ public struct CLIWorkshopView: View {
                         viewModel.experienceMode == .beginner ? "Beginner" : "Advanced",
                         systemImage: viewModel.experienceMode == .beginner ? "graduationcap" : "wrench.and.screwdriver"
                     )
-                    .font(.caption)
+                    .font(.callout)
                 }
                 .accessibilityLabel("Toggle experience mode")
             }
@@ -148,7 +148,7 @@ public struct CLIWorkshopView: View {
                     .font(.body.monospaced())
             }
             Text(tool.briefDescription)
-                .font(.caption)
+                .font(.callout)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)
         }
@@ -166,12 +166,16 @@ public struct CLIWorkshopView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     // Server selection for network tools
                     if viewModel.isNetworkToolSelected {
-                        serverSelectionSection
+                        if viewModel.isDICOMwebToolSelected {
+                            dicomwebServerSelectionSection
+                        } else {
+                            serverSelectionSection
+                        }
                         Divider()
                     }
 
                     Text("Parameters")
-                        .font(.subheadline.bold())
+                        .font(.headline.bold())
 
                     manualParameterFields
                 }
@@ -184,18 +188,18 @@ public struct CLIWorkshopView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
                         Text("Command Preview")
-                            .font(.caption.bold())
+                            .font(.headline.bold())
                         Spacer()
                         if viewModel.isCommandValid {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
-                                .font(.caption)
+                                .font(.body)
                         }
                         Button {
                             Task { await viewModel.executeCommand() }
-                        } label: {
+                        } label:{
                             Label("Run", systemImage: "play.fill")
-                                .font(.caption)
+                                .font(.body)
                         }
                         .disabled(!viewModel.isCommandValid || viewModel.consoleStatus == .running)
                         .accessibilityLabel("Run command")
@@ -204,11 +208,11 @@ public struct CLIWorkshopView: View {
 
                     HStack {
                         Text("$")
-                            .font(.system(.body, design: .monospaced))
-                            .foregroundStyle(.green)
+                            .font(.system(.title3, design: .monospaced).bold())
+                            .foregroundStyle(Color(red: 0.0, green: 0.9, blue: 0.0))
                         Text(viewModel.commandPreview.isEmpty ? "Select a tool to build a command" : viewModel.commandPreview)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(viewModel.commandPreview.isEmpty ? .secondary : .primary)
+                            .font(.system(.body, design: .monospaced))
+                            .foregroundStyle(viewModel.commandPreview.isEmpty ? Color(white: 0.5) : Color(white: 0.9))
                             .textSelection(.enabled)
                         Spacer()
                         if !viewModel.commandPreview.isEmpty {
@@ -216,16 +220,17 @@ public struct CLIWorkshopView: View {
                                 copyCommandToClipboard()
                             } label: {
                                 Image(systemName: "doc.on.doc")
-                                    .font(.caption)
+                                    .font(.body)
+                                    .foregroundStyle(Color(white: 0.6))
                             }
                             .buttonStyle(.borderless)
                             .accessibilityLabel("Copy command")
                             .accessibilityHint("Copies the command to the clipboard")
                         }
                     }
-                    .padding(8)
-                    .background(.black.opacity(0.6))
-                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .padding(12)
+                    .background(Color(red: 0.14, green: 0.14, blue: 0.16))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
             .padding()
@@ -235,7 +240,7 @@ public struct CLIWorkshopView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
                     Label("Console", systemImage: "terminal")
-                        .font(.caption.bold())
+                        .font(.headline.bold())
                     Spacer()
 
                     consoleStatusBadge
@@ -245,7 +250,7 @@ public struct CLIWorkshopView: View {
                             copyConsoleToClipboard()
                         } label: {
                             Image(systemName: "doc.on.doc")
-                                .font(.caption)
+                                .font(.body)
                         }
                         .buttonStyle(.borderless)
                         .accessibilityLabel("Copy console output")
@@ -257,7 +262,7 @@ public struct CLIWorkshopView: View {
                             viewModel.openRetrievedFileInViewer()
                         } label: {
                             Label("Open in Viewer", systemImage: "eye")
-                                .font(.caption)
+                                .font(.body)
                         }
                         .buttonStyle(.bordered)
                         .accessibilityLabel("Open retrieved file in viewer")
@@ -267,7 +272,7 @@ public struct CLIWorkshopView: View {
                     Button("Clear") {
                         viewModel.clearConsoleOutput()
                     }
-                    .font(.caption)
+                    .font(.body)
                     .disabled(viewModel.consoleOutput.isEmpty)
                     .accessibilityLabel("Clear console output")
                 }
@@ -279,20 +284,20 @@ public struct CLIWorkshopView: View {
                 if viewModel.consoleOutput.isEmpty {
                     VStack(spacing: 8) {
                         Image(systemName: "terminal")
-                            .font(.system(size: 32))
+                            .font(.system(size: 44))
                             .foregroundStyle(.secondary)
                         Text("Console output will appear here")
-                            .font(.caption)
+                            .font(.body)
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
                         Text(viewModel.consoleOutput)
-                            .font(.system(.caption, design: .monospaced))
+                            .font(.system(.body, design: .monospaced))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(8)
+                            .padding(10)
                     }
                     .background(.black.opacity(0.05))
                 }
@@ -304,10 +309,10 @@ public struct CLIWorkshopView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("History")
-                            .font(.caption.bold())
+                            .font(.body.bold())
                         Spacer()
                         Button("Clear") { viewModel.clearHistory() }
-                            .font(.caption)
+                            .font(.body)
                     }
                     .padding(.horizontal)
                     .padding(.top, 6)
@@ -316,7 +321,7 @@ public struct CLIWorkshopView: View {
                         HStack(spacing: 6) {
                             ForEach(viewModel.commandHistory.suffix(10), id: \.id) { entry in
                                 Text(entry.toolName)
-                                    .font(.caption2.monospaced())
+                                    .font(.callout.monospaced())
                                     .padding(.horizontal, 8)
                                     .padding(.vertical, 3)
                                     .background(entry.exitCode == 0 ? Color.green.opacity(0.1) : Color.red.opacity(0.1))
@@ -343,7 +348,7 @@ public struct CLIWorkshopView: View {
         return Group {
             if params.isEmpty {
                 Text("No configurable parameters")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
                 ScrollView {
@@ -351,7 +356,7 @@ public struct CLIWorkshopView: View {
                         ForEach(params, id: \.id) { param in
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(param.displayName)
-                                    .font(.caption.bold())
+                                    .font(.callout.bold())
                                 if param.parameterType == .enumPicker && !param.allowedValues.isEmpty {
                                     enumPickerField(param: param)
                                 } else if param.parameterType == .filePath || param.parameterType == .outputPath {
@@ -361,12 +366,12 @@ public struct CLIWorkshopView: View {
                                 } else {
                                     TextField(param.placeholder, text: parameterBinding(for: param.id))
                                         .textFieldStyle(.roundedBorder)
-                                        .font(.caption)
+                                        .font(.callout)
                                         .accessibilityLabel(param.displayName)
                                 }
                                 if !param.helpText.isEmpty {
                                     Text(param.helpText)
-                                        .font(.system(size: 10))
+                                        .font(.caption)
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -382,7 +387,7 @@ public struct CLIWorkshopView: View {
         HStack(spacing: 4) {
             TextField(param.placeholder, text: parameterBinding(for: param.id))
                 .textFieldStyle(.roundedBorder)
-                .font(.caption)
+                .font(.callout)
                 .accessibilityLabel(param.displayName)
             Button {
                 fileImporterParamID = param.id
@@ -390,7 +395,7 @@ public struct CLIWorkshopView: View {
                 showFileImporter = true
             } label: {
                 Label("Browse", systemImage: "folder")
-                    .font(.caption)
+                    .font(.callout)
             }
             .buttonStyle(.bordered)
             .accessibilityLabel("Browse for \(param.displayName)")
@@ -446,7 +451,7 @@ public struct CLIWorkshopView: View {
                     }
                 }
                 .labelsHidden()
-                .font(.caption)
+                .font(.callout)
                 .accessibilityLabel(param.displayName)
             }
         }
@@ -459,7 +464,7 @@ public struct CLIWorkshopView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Label("Server", systemImage: "server.rack")
-                    .font(.subheadline.bold())
+                    .font(.headline.bold())
                 Spacer()
                 Button {
                     // Pre-fill from current parameters
@@ -475,7 +480,7 @@ public struct CLIWorkshopView: View {
                     viewModel.showAddServerSheet = true
                 } label: {
                     Label("Add Server", systemImage: "plus")
-                        .font(.caption)
+                        .font(.callout)
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Add new server")
@@ -484,7 +489,7 @@ public struct CLIWorkshopView: View {
                     viewModel.saveCurrentServerAsDefault()
                 } label: {
                     Label("Save as Default", systemImage: "star")
-                        .font(.caption)
+                        .font(.callout)
                 }
                 .buttonStyle(.bordered)
                 .accessibilityLabel("Save current server as default")
@@ -496,7 +501,7 @@ public struct CLIWorkshopView: View {
                     Image(systemName: "info.circle")
                         .foregroundStyle(.secondary)
                     Text("No saved servers. Enter parameters manually or add a server.")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 }
                 .padding(.vertical, 4)
@@ -509,9 +514,9 @@ public struct CLIWorkshopView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Image(systemName: "keyboard")
-                                    .font(.system(size: 9))
+                                    .font(.system(size: 11))
                                 Text("Manual")
-                                    .font(.caption2)
+                                    .font(.caption)
                             }
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
@@ -535,14 +540,14 @@ public struct CLIWorkshopView: View {
                                 HStack(spacing: 4) {
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(server.name)
-                                            .font(.caption2.bold())
+                                            .font(.caption.bold())
                                         Text("\(server.host):\(server.port)")
-                                            .font(.system(size: 9, design: .monospaced))
+                                            .font(.system(size: 11, design: .monospaced))
                                             .foregroundStyle(.secondary)
                                     }
                                     if isSelected {
                                         Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 10))
+                                            .font(.system(size: 12))
                                             .foregroundStyle(.green)
                                     }
                                 }
@@ -613,6 +618,195 @@ public struct CLIWorkshopView: View {
                     viewModel.newServerName.trimmingCharacters(in: .whitespaces).isEmpty ||
                     viewModel.newServerHost.trimmingCharacters(in: .whitespaces).isEmpty ||
                     viewModel.newServerCalledAET.trimmingCharacters(in: .whitespaces).isEmpty
+                )
+            }
+            .padding(.horizontal)
+        }
+        .padding()
+        .frame(minWidth: 380, idealWidth: 420, minHeight: 320)
+    }
+
+    // MARK: - DICOMweb Server Selection
+
+    /// Server selection header and profile chips for DICOMweb tools.
+    private var dicomwebServerSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Label("DICOMweb Server", systemImage: "globe")
+                    .font(.headline.bold())
+                Spacer()
+                Button {
+                    let url = viewModel.parameterValues.first(where: { $0.parameterID == "url" })?.stringValue ?? ""
+                    viewModel.newDICOMwebServerName = url.isEmpty ? "" : (URL(string: url)?.host ?? url)
+                    viewModel.newDICOMwebServerURL = url
+                    viewModel.showAddDICOMwebServerSheet = true
+                } label: {
+                    Label("Add Server", systemImage: "plus")
+                        .font(.callout)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Add new DICOMweb server")
+
+                Button {
+                    viewModel.saveDICOMwebServerAsDefault()
+                } label: {
+                    Label("Save as Default", systemImage: "star")
+                        .font(.callout)
+                }
+                .buttonStyle(.bordered)
+                .accessibilityLabel("Save current DICOMweb server as default")
+                .accessibilityHint("Persists base URL and authentication as defaults for all DICOMweb tools")
+            }
+
+            if viewModel.savedDICOMwebProfiles.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle")
+                        .foregroundStyle(.secondary)
+                    Text("No saved DICOMweb servers. Enter the base URL manually or add a server.")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.vertical, 4)
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        // "Manual" chip to deselect any server
+                        Button {
+                            viewModel.selectedDICOMwebServerID = nil
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "keyboard")
+                                    .font(.system(size: 11))
+                                Text("Manual")
+                                    .font(.caption)
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(viewModel.selectedDICOMwebServerID == nil ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
+                            .clipShape(Capsule())
+                            .overlay(
+                                Capsule().stroke(
+                                    viewModel.selectedDICOMwebServerID == nil ? Color.accentColor.opacity(0.4) : Color.clear,
+                                    lineWidth: 1
+                                )
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Use manual DICOMweb server entry")
+
+                        ForEach(viewModel.savedDICOMwebProfiles) { server in
+                            let isSelected = viewModel.selectedDICOMwebServerID == server.id
+                            Button {
+                                viewModel.applySavedDICOMwebServer(id: server.id)
+                            } label: {
+                                HStack(spacing: 4) {
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(server.name)
+                                            .font(.caption.bold())
+                                        Text(server.baseURL)
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 12))
+                                            .foregroundStyle(.green)
+                                    }
+                                }
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(isSelected ? Color.accentColor.opacity(0.15) : Color.secondary.opacity(0.08))
+                                .clipShape(RoundedRectangle(cornerRadius: 6))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 6).stroke(
+                                        isSelected ? Color.accentColor.opacity(0.4) : Color.clear,
+                                        lineWidth: 1
+                                    )
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    viewModel.beginEditDICOMwebServer(id: server.id)
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                Button(role: .destructive) {
+                                    viewModel.removeSavedDICOMwebServer(id: server.id)
+                                } label: {
+                                    Label("Remove", systemImage: "trash")
+                                }
+                            }
+                            .accessibilityLabel("Select DICOMweb server \(server.name)")
+                            .accessibilityHint(server.baseURL)
+                        }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $viewModel.showAddDICOMwebServerSheet) {
+            dicomwebServerFormSheet(isEditing: false)
+        }
+        .sheet(isPresented: $viewModel.showEditDICOMwebServerSheet) {
+            dicomwebServerFormSheet(isEditing: true)
+        }
+    }
+
+    /// Sheet for adding or editing a DICOMweb server profile.
+    private func dicomwebServerFormSheet(isEditing: Bool) -> some View {
+        VStack(spacing: 16) {
+            Text(isEditing ? "Edit DICOMweb Server" : "Add DICOMweb Server")
+                .font(.headline)
+
+            Form {
+                TextField("Server Name", text: $viewModel.newDICOMwebServerName)
+                    .accessibilityLabel("Server name")
+                TextField("Base URL", text: $viewModel.newDICOMwebServerURL)
+                    .accessibilityLabel("Base URL")
+                    .accessibilityHint("Full DICOMweb base URL including protocol, e.g. https://pacs.hospital.com/dicom-web")
+                Picker("Authentication", selection: $viewModel.newDICOMwebAuthMethod) {
+                    Text("None").tag("none")
+                    Text("Basic").tag("basic")
+                    Text("Bearer Token").tag("bearer")
+                }
+                .accessibilityLabel("Authentication method")
+                if viewModel.newDICOMwebAuthMethod == "basic" {
+                    TextField("Username", text: $viewModel.newDICOMwebUsername)
+                        .accessibilityLabel("Username")
+                    SecureField("Password", text: $viewModel.newDICOMwebToken)
+                        .accessibilityLabel("Password")
+                } else if viewModel.newDICOMwebAuthMethod == "bearer" {
+                    SecureField("Bearer Token", text: $viewModel.newDICOMwebToken)
+                        .accessibilityLabel("Bearer token")
+                }
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Button("Cancel") {
+                    if isEditing {
+                        viewModel.showEditDICOMwebServerSheet = false
+                        viewModel.editingDICOMwebServerID = nil
+                    } else {
+                        viewModel.showAddDICOMwebServerSheet = false
+                    }
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Spacer()
+
+                Button(isEditing ? "Save" : "Add") {
+                    if isEditing {
+                        viewModel.saveEditedDICOMwebServer()
+                    } else {
+                        viewModel.addNewDICOMwebServerFromForm()
+                    }
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(
+                    viewModel.newDICOMwebServerName.trimmingCharacters(in: .whitespaces).isEmpty ||
+                    viewModel.newDICOMwebServerURL.trimmingCharacters(in: .whitespaces).isEmpty
                 )
             }
             .padding(.horizontal)

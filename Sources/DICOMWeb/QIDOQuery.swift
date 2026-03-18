@@ -183,12 +183,25 @@ public struct QIDOQuery: Sendable, Equatable {
     
     /// Filter by Modality (0008,0060)
     ///
+    /// Use this for series-level queries. For study-level queries, prefer ``modalitiesInStudy(_:)``.
+    ///
     /// - Parameter value: Modality code (e.g., CT, MR, US)
     /// - Returns: Updated query
     public func modality(_ value: String) -> QIDOQuery {
         return with(parameter: QIDOQueryAttribute.modality, value: value)
     }
-    
+
+    /// Filter by Modalities in Study (0008,0061)
+    ///
+    /// Use this for study-level QIDO-RS queries per PS3.18 Section 10.6.
+    /// Tag 0008,0061 is the correct matching attribute at the study level.
+    ///
+    /// - Parameter value: Modality code (e.g., CT, MR, US)
+    /// - Returns: Updated query
+    public func modalitiesInStudy(_ value: String) -> QIDOQuery {
+        return with(parameter: QIDOQueryAttribute.modalitiesInStudy, value: value)
+    }
+
     /// Filter by Series Number (0020,0011)
     ///
     /// - Parameter value: Series number
@@ -416,9 +429,12 @@ public enum QIDOQueryAttribute {
     /// Accession Number (0008,0050)
     public static let accessionNumber = "00080050"
     
-    /// Modality (0008,0060)
+    /// Modality (0008,0060) — series-level attribute
     public static let modality = "00080060"
-    
+
+    /// Modalities in Study (0008,0061) — study-level attribute
+    public static let modalitiesInStudy = "00080061"
+
     /// Referring Physician's Name (0008,0090)
     public static let referringPhysicianName = "00080090"
     
