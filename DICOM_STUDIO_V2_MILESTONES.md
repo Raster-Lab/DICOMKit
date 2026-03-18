@@ -646,14 +646,15 @@ real time.
 
 #### 21.2 Tool Parameter Catalog
 
-- [x] Define parameter schemas for all 38 CLI tools
+- [x] Define parameter schemas for all 39 CLI tools
   - [x] **File Inspection** (4 tools):
     - `dicom-info`: input file, output format (text/json/xml), tag filter, verbose
     - `dicom-dump`: input file, offset, length, show-vr, hex-only
     - `dicom-tags`: search query, group filter, VR filter, output format
     - `dicom-diff`: file A, file B, ignore-private, ignore-pixel-data, output format
-  - [x] **File Processing** (4 tools):
+  - [x] **File Processing** (5 tools):
     - `dicom-convert`: input file, output file, transfer syntax picker (20+ options), force
+    - `dcm2dcm`: input file, target transfer syntax (12 options), output file, open-in-viewer toggle
     - `dicom-validate`: input file(s), IOD type, strict mode, report format
     - `dicom-anon`: input file, output file, anonymization profile (basic/standard/full),
       retain-dates, retain-device-id, custom rules
@@ -1081,7 +1082,7 @@ optimization, and final UI polish to bring DICOM Studio v2.0 to release quality.
 | **18** | Browser Navigation & Category Sidebar | v2.0.0-alpha.2 | ✅ Completed | 2 weeks | 9-category sidebar, tabbed content, main window layout |
 | **19** | Server Configuration Management | v2.0.0-alpha.3 | ✅ Completed | 2 weeks | Server CRUD, persistence, status bar, auto-populate network params |
 | **20** | Integrated Terminal & Command Execution | v2.0.0-alpha.4 | ✅ Completed | 3 weeks | Terminal view, command preview, execution engine, history (170 tests) |
-| **21** | Dynamic GUI Controls & Parameter Builder | v2.0.0-beta.1 | ✅ Completed | 4 weeks | 300+ parameter definitions, dynamic form renderer, 38 tool configs (135 tests) |
+| **21** | Dynamic GUI Controls & Parameter Builder | v2.0.0-beta.1 | ✅ Completed | 4 weeks | 300+ parameter definitions, dynamic form renderer, 39 tool configs (135 tests) |
 | **22** | File Operations & Drag-and-Drop | v2.0.0-beta.2 | ✅ Completed | 2 weeks | File picker, drag-and-drop, output path management, validation (120+ tests) |
 | **23** | Integration Testing, Accessibility & Polish | v2.0.0-rc.1 | ✅ Completed | 3 weeks | E2E tests, accessibility compliance, performance optimization, documentation (138 tests) |
 | | **Total** | | | **19 weeks** | |

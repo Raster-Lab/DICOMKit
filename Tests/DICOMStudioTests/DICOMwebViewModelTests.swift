@@ -6,6 +6,7 @@ import Testing
 import Foundation
 
 @Suite("DICOMweb ViewModel Tests")
+@MainActor
 struct DICOMwebViewModelTests {
 
     // MARK: - Navigation
@@ -100,35 +101,35 @@ struct DICOMwebViewModelTests {
 
     @Test("testConnection for unconfigured profile sets offline")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testConnectionUnconfiguredSetsOffline() {
+    func testConnectionUnconfiguredSetsOffline() async {
         let vm = DICOMwebViewModel()
         let profile = DICOMwebServerProfile(name: "NoURL", baseURL: "")
         vm.addServerProfile(profile)
-        vm.testConnection(profileID: profile.id)
+        await vm.testConnection(profileID: profile.id)
         #expect(vm.serverProfiles.first?.connectionStatus == .offline)
     }
 
-    @Test("testConnection for configured profile sets online")
+    @Test("testConnection for unreachable profile sets error")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testConnectionConfiguredSetsOnline() {
+    func testConnectionUnreachableSetsError() async {
         let vm = DICOMwebViewModel()
         let profile = DICOMwebServerProfile(name: "WithURL", baseURL: "https://pacs.example.com")
         vm.addServerProfile(profile)
-        vm.testConnection(profileID: profile.id)
-        #expect(vm.serverProfiles.first?.connectionStatus == .online)
+        await vm.testConnection(profileID: profile.id)
+        #expect(vm.serverProfiles.first?.connectionStatus == .error)
     }
 
     // MARK: - QIDO-RS
 
     @Test("runQIDOQuery clears previous results")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testRunQIDOQueryClearsPreviousResults() {
+    func testRunQIDOQueryClearsPreviousResults() async {
         let vm = DICOMwebViewModel()
         // Seed the service directly to simulate pre-existing results
         let service = DICOMwebService()
         service.setQIDOResults([QIDOResultItem(studyInstanceUID: "1.2.3")])
         let vm2 = DICOMwebViewModel(service: service)
-        vm2.runQIDOQuery()
+        await vm2.runQIDOQuery()
         #expect(vm2.qidoResults.isEmpty)
     }
 
@@ -194,19 +195,19 @@ struct DICOMwebViewModelTests {
 
     @Test("enqueueWADOJob with empty study UID sets errorMessage")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testEnqueueWADOJobEmptyUIDSetsError() {
+    func testEnqueueWADOJobEmptyUIDSetsError() async {
         let vm = DICOMwebViewModel()
         vm.wadoNewJobStudyUID = ""
-        vm.enqueueWADOJob()
+        await vm.enqueueWADOJob()
         #expect(vm.errorMessage != nil)
     }
 
     @Test("enqueueWADOJob with valid study UID adds job")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testEnqueueWADOJobValidUIDAddsJob() {
+    func testEnqueueWADOJobValidUIDAddsJob() async {
         let vm = DICOMwebViewModel()
         vm.wadoNewJobStudyUID = "1.2.840.10008.5.1.4.1.2.2.1"
-        vm.enqueueWADOJob()
+        await vm.enqueueWADOJob()
         #expect(vm.wadoJobs.count == 1)
     }
 
@@ -235,19 +236,19 @@ struct DICOMwebViewModelTests {
 
     @Test("enqueueSTOWUpload with no files sets errorMessage")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testEnqueueSTOWUploadNoFilesSetsError() {
+    func testEnqueueSTOWUploadNoFilesSetsError() async {
         let vm = DICOMwebViewModel()
         vm.stowNewFilePaths = []
-        vm.enqueueSTOWUpload()
+        await vm.enqueueSTOWUpload()
         #expect(vm.errorMessage != nil)
     }
 
     @Test("enqueueSTOWUpload with file paths adds job")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testEnqueueSTOWUploadWithFilesAddsJob() {
+    func testEnqueueSTOWUploadWithFilesAddsJob() async {
         let vm = DICOMwebViewModel()
         vm.stowNewFilePaths = ["/tmp/image1.dcm", "/tmp/image2.dcm"]
-        vm.enqueueSTOWUpload()
+        await vm.enqueueSTOWUpload()
         #expect(vm.stowJobs.count == 1)
         #expect(vm.stowJobs.first?.totalFiles == 2)
     }

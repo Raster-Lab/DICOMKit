@@ -288,6 +288,10 @@ public enum DICOMMPPSService {
     ///   - mppsInstanceUID: The MPPS SOP Instance UID to update
     ///   - status: The new status (.completed or .discontinued)
     ///   - referencedSOPs: Referenced image SOPs (for completed procedures)
+    ///   - studyInstanceUID: Study Instance UID for the Scheduled Step Attributes Sequence
+    ///   - accessionNumber: Accession Number for the Scheduled Step Attributes Sequence
+    ///   - scheduledProcedureStepID: Scheduled Procedure Step ID (0040,0009)
+    ///   - procedureStepID: Requested Procedure ID (0040,1001)
     ///   - timeout: Connection timeout in seconds (default: 60)
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
     public static func update(
@@ -298,6 +302,10 @@ public enum DICOMMPPSService {
         mppsInstanceUID: String,
         status: MPPSStatus,
         referencedSOPs: [(studyUID: String, seriesUID: String, sopInstanceUID: String)] = [],
+        studyInstanceUID: String? = nil,
+        accessionNumber: String? = nil,
+        scheduledProcedureStepID: String? = nil,
+        procedureStepID: String? = nil,
         timeout: TimeInterval = 60
     ) async throws {
         let callingAETitle = try AETitle(callingAE)
@@ -312,8 +320,12 @@ public enum DICOMMPPSService {
         let procedureStep = MPPSProcedureStep(
             sopInstanceUID: mppsInstanceUID,
             status: status,
+            studyInstanceUID: studyInstanceUID,
             endDateTime: Date(),
-            referencedSOPs: referencedSOPs
+            referencedSOPs: referencedSOPs,
+            procedureStepID: procedureStepID,
+            accessionNumber: accessionNumber,
+            scheduledProcedureStepID: scheduledProcedureStepID
         )
         
         try await performNSet(
@@ -825,6 +837,16 @@ public enum DICOMMPPSService {
                 explicit: isExplicitVR
             ))
         }
+
+        // ---- Scheduled Step Attributes Sequence (0040,0270) — Type 1 ----
+        // Many DICOM servers require this sequence in N-SET to validate
+        // the COMPLETED/DISCONTINUED status transition. Per PS3.4 Annex F,
+        // while technically only N-CREATE mandates it, servers like Orthanc
+        // validate its presence on N-SET.
+        data.append(buildScheduledStepAttributesSequence(
+            procedureStep: procedureStep,
+            explicit: isExplicitVR
+        ))
 
         // ---- Performed Series Sequence (0040,0340) — Type 1 ----
         data.append(buildPerformedSeriesSequence(

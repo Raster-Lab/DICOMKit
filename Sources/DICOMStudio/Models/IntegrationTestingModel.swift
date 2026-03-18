@@ -76,7 +76,7 @@ public enum IntegrationTestToolCategory: String, Sendable, CaseIterable, Identif
         case .fileProcessing:   return 4
         case .fileOrganization: return 4
         case .dataExchange:     return 5
-        case .networking:       return 11
+        case .networking:       return 14
         case .viewer:           return 3
         case .clinical:         return 3
         case .utilities:        return 2
@@ -91,7 +91,7 @@ public enum IntegrationTestToolCategory: String, Sendable, CaseIterable, Identif
         case .fileProcessing:   return ["dicom-convert", "dicom-validate", "dicom-anon", "dicom-compress"]
         case .fileOrganization: return ["dicom-split", "dicom-merge", "dicom-dcmdir", "dicom-archive"]
         case .dataExchange:     return ["dicom-json", "dicom-xml", "dicom-pdf", "dicom-export", "dicom-pixedit"]
-        case .networking:       return ["dicom-echo", "dicom-query", "dicom-send", "dicom-retrieve", "dicom-qr", "dicom-wado", "dicom-mwl", "dicom-mpps", "dicom-print", "dicom-gateway", "dicom-server"]
+        case .networking:       return ["dicom-echo", "dicom-query", "dicom-send", "dicom-retrieve", "dicom-qr", "dicom-wado", "dicom-qido", "dicom-stow", "dicom-ups", "dicom-mwl", "dicom-mpps", "dicom-print", "dicom-gateway", "dicom-server"]
         case .viewer:           return ["dicom-viewer", "dicom-image", "dicom-3d"]
         case .clinical:         return ["dicom-report", "dicom-measure", "dicom-study"]
         case .utilities:        return ["dicom-uid", "dicom-script"]

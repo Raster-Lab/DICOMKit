@@ -104,6 +104,10 @@ public enum ToolCatalogHelpers: Sendable {
                               category: .fileProcessing, sfSymbol: "arrow.triangle.2.circlepath",
                               briefDescription: "Transfer syntax conversion and image export",
                               dicomStandardRef: "PS3.5"),
+            CLIToolDefinition(id: "dcm2dcm", name: "dcm2dcm", displayName: "DCM2DCM",
+                              category: .fileProcessing, sfSymbol: "arrow.right.arrow.left.square",
+                              briefDescription: "Convert DICOM transfer syntax (re-encode pixel data)",
+                              dicomStandardRef: "PS3.5"),
             CLIToolDefinition(id: "dicom-validate", name: "dicom-validate", displayName: "DICOM Validate",
                               category: .fileProcessing, sfSymbol: "checkmark.shield",
                               briefDescription: "DICOM conformance validation against IODs",
@@ -203,9 +207,24 @@ public enum ToolCatalogHelpers: Sendable {
                               briefDescription: "Modality Performed Procedure Step management",
                               dicomStandardRef: "PS3.4", hasSubcommands: true, requiresNetwork: true,
                               networkToolGroup: .dimse),
-            CLIToolDefinition(id: "dicom-wado", name: "dicom-wado", displayName: "DICOMweb",
-                              category: .networkOperations, sfSymbol: "globe",
-                              briefDescription: "DICOMweb WADO-RS, QIDO-RS, STOW-RS, and UPS-RS",
+            CLIToolDefinition(id: "dicom-qido", name: "dicom-qido", displayName: "QIDO-RS Query",
+                              category: .networkOperations, sfSymbol: "magnifyingglass.circle",
+                              briefDescription: "Query DICOMweb servers with QIDO-RS",
+                              dicomStandardRef: "PS3.18", requiresNetwork: true,
+                              networkToolGroup: .dicomweb),
+            CLIToolDefinition(id: "dicom-wado", name: "dicom-wado", displayName: "WADO-RS Retrieve",
+                              category: .networkOperations, sfSymbol: "arrow.down.circle",
+                              briefDescription: "Retrieve DICOM objects via WADO-RS",
+                              dicomStandardRef: "PS3.18", requiresNetwork: true,
+                              networkToolGroup: .dicomweb),
+            CLIToolDefinition(id: "dicom-stow", name: "dicom-stow", displayName: "STOW-RS Store",
+                              category: .networkOperations, sfSymbol: "arrow.up.circle",
+                              briefDescription: "Upload DICOM files via STOW-RS",
+                              dicomStandardRef: "PS3.18", requiresNetwork: true,
+                              networkToolGroup: .dicomweb),
+            CLIToolDefinition(id: "dicom-ups", name: "dicom-ups", displayName: "UPS-RS Worklist",
+                              category: .networkOperations, sfSymbol: "list.bullet.clipboard",
+                              briefDescription: "Manage Unified Procedure Steps via UPS-RS",
                               dicomStandardRef: "PS3.18", hasSubcommands: true, requiresNetwork: true,
                               networkToolGroup: .dicomweb),
         ]
@@ -244,7 +263,7 @@ public enum ToolCatalogHelpers: Sendable {
     }
 
     /// Returns the total count of tools.
-    public static var totalToolCount: Int { 29 }
+    public static var totalToolCount: Int { 33 }
 
     /// Returns M16-style parameter definitions for a tool by ID.
     public static func parameterDefinitions(for toolID: String) -> [CLIParameterDefinition] {
@@ -336,11 +355,6 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Imaging modality filter (0008,0060)",
                     allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
-                ),
-                CLIParameterDefinition(
-                    id: "accession", flag: "--accession", displayName: "Accession Number",
-                    parameterType: .textField, placeholder: "e.g. ACC12345",
-                    helpText: "Accession number to search for (0008,0050)"
                 ),
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
@@ -613,11 +627,6 @@ public enum ToolCatalogHelpers: Sendable {
                     isAdvanced: true
                 ),
                 CLIParameterDefinition(
-                    id: "accession", flag: "--accession", displayName: "Accession Number",
-                    parameterType: .textField, placeholder: "e.g. ACC12345",
-                    helpText: "Accession number to search for (0008,0050)"
-                ),
-                CLIParameterDefinition(
                     id: "study-description", flag: "--study-description", displayName: "Study Description",
                     parameterType: .textField, placeholder: "e.g. CHEST* or *ABDOMEN*",
                     helpText: "Study description filter — supports wildcards (0008,1030)",
@@ -882,6 +891,424 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "verbose", flag: "--verbose", displayName: "Verbose",
                     parameterType: .booleanToggle, placeholder: "",
                     helpText: "Show detailed connection and operation information"
+                ),
+            ]
+        case "dicom-qido":
+            return [
+                CLIParameterDefinition(
+                    id: "url", flag: "--url", displayName: "Base URL",
+                    parameterType: .textField, placeholder: "e.g. https://pacs.hospital.com/dicom-web",
+                    helpText: "DICOMweb server base URL (PS3.18 §6.5)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "level", flag: "--level", displayName: "Query Level",
+                    parameterType: .enumPicker, placeholder: "STUDY",
+                    helpText: "QIDO-RS query level — determines which resource is searched (PS3.18 §10.6)",
+                    defaultValue: "STUDY",
+                    allowedValues: ["STUDY", "SERIES", "INSTANCE"]
+                ),
+                CLIParameterDefinition(
+                    id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN or DOE*",
+                    helpText: "Patient name filter — supports wildcards * and ? (0010,0010)"
+                ),
+                CLIParameterDefinition(
+                    id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. PAT001",
+                    helpText: "Patient ID to search for (0010,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "study-date", flag: "--study-date", displayName: "Study Date",
+                    parameterType: .textField, placeholder: "e.g. 20260101 or 20260101-20260310",
+                    helpText: "Study date or range in YYYYMMDD format (0008,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Modalities in Study filter (0008,0061)",
+                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Study Instance UID to filter results (0020,000D)"
+                ),
+                CLIParameterDefinition(
+                    id: "study-description", flag: "--study-description", displayName: "Study Description",
+                    parameterType: .textField, placeholder: "e.g. Chest CT or CHEST*",
+                    helpText: "Study description filter — supports wildcards (0008,1030)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "limit", flag: "--limit", displayName: "Result Limit",
+                    parameterType: .integerField, placeholder: "100",
+                    helpText: "Maximum number of results to return",
+                    defaultValue: "100", minValue: 1, maxValue: 10000
+                ),
+                CLIParameterDefinition(
+                    id: "offset", flag: "--offset", displayName: "Offset",
+                    parameterType: .integerField, placeholder: "0",
+                    helpText: "Number of results to skip for pagination",
+                    isAdvanced: true, defaultValue: "0", minValue: 0, maxValue: 100000
+                ),
+                CLIParameterDefinition(
+                    id: "auth", flag: "--auth", displayName: "Authentication",
+                    parameterType: .enumPicker, placeholder: "none",
+                    helpText: "Authentication method for the DICOMweb server",
+                    defaultValue: "none",
+                    allowedValues: ["none", "basic", "bearer"]
+                ),
+                CLIParameterDefinition(
+                    id: "token", flag: "--token", displayName: "Token / Password",
+                    parameterType: .secureField, placeholder: "Bearer token or password",
+                    helpText: "Authentication token (bearer) or password (basic auth)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                ),
+                CLIParameterDefinition(
+                    id: "username", flag: "--username", displayName: "Username",
+                    parameterType: .textField, placeholder: "e.g. admin",
+                    helpText: "Username for basic authentication",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "output-format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Output format for query results",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json", "csv", "xml"]
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "30",
+                    helpText: "HTTP request timeout in seconds",
+                    defaultValue: "30",
+                    allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
+                ),
+            ]
+        case "dicom-wado":
+            return [
+                CLIParameterDefinition(
+                    id: "url", flag: "--url", displayName: "Base URL",
+                    parameterType: .textField, placeholder: "e.g. https://pacs.hospital.com/dicom-web",
+                    helpText: "DICOMweb server base URL (PS3.18 §6.5)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "mode", flag: "--mode", displayName: "Retrieve Mode",
+                    parameterType: .enumPicker, placeholder: "study",
+                    helpText: "Retrieval scope — study, series, instance, or rendered image",
+                    defaultValue: "study",
+                    allowedValues: ["study", "series", "instance", "rendered"]
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Study Instance UID to retrieve (0020,000D)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Series Instance UID for series/instance retrieval (0020,000E)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "mode", values: ["series", "instance", "rendered"])
+                ),
+                CLIParameterDefinition(
+                    id: "instance-uid", flag: "--instance-uid", displayName: "SOP Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "SOP Instance UID for instance-level retrieval (0008,0018)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "mode", values: ["instance", "rendered"])
+                ),
+                CLIParameterDefinition(
+                    id: "frame", flag: "--frame", displayName: "Frame Number",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: "Frame number for multi-frame instances (1-based)",
+                    isAdvanced: true, minValue: 1, maxValue: 99999
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output Directory",
+                    parameterType: .outputPath, placeholder: "e.g. ~/Downloads/studies",
+                    helpText: "Directory where retrieved files will be saved",
+                    defaultValue: "."
+                ),
+                CLIParameterDefinition(
+                    id: "accept", flag: "--accept", displayName: "Accept Media Type",
+                    parameterType: .enumPicker, placeholder: "application/dicom",
+                    helpText: "Requested media type for the response (PS3.18 §10.4)",
+                    defaultValue: "application/dicom",
+                    allowedValues: ["application/dicom", "application/octet-stream", "image/jpeg", "image/png", "image/gif"]
+                ),
+                CLIParameterDefinition(
+                    id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Requested transfer syntax for DICOM objects (PS3.18 §10.4.1)",
+                    allowedValues: ["", "1.2.840.10008.1.2.1", "1.2.840.10008.1.2", "1.2.840.10008.1.2.4.50", "1.2.840.10008.1.2.4.70", "1.2.840.10008.1.2.4.90", "1.2.840.10008.1.2.4.91"]
+                ),
+                CLIParameterDefinition(
+                    id: "parallel", flag: "--parallel", displayName: "Parallel Downloads",
+                    parameterType: .integerField, placeholder: "4",
+                    helpText: "Maximum concurrent retrieval requests",
+                    isAdvanced: true,
+                    defaultValue: "4", minValue: 1, maxValue: 16
+                ),
+                CLIParameterDefinition(
+                    id: "auth", flag: "--auth", displayName: "Authentication",
+                    parameterType: .enumPicker, placeholder: "none",
+                    helpText: "Authentication method for the DICOMweb server",
+                    defaultValue: "none",
+                    allowedValues: ["none", "basic", "bearer"]
+                ),
+                CLIParameterDefinition(
+                    id: "token", flag: "--token", displayName: "Token / Password",
+                    parameterType: .secureField, placeholder: "Bearer token or password",
+                    helpText: "Authentication token (bearer) or password (basic auth)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                ),
+                CLIParameterDefinition(
+                    id: "username", flag: "--username", displayName: "Username",
+                    parameterType: .textField, placeholder: "e.g. admin",
+                    helpText: "Username for basic authentication",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "hierarchical", flag: "--hierarchical", displayName: "Hierarchical Output",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Organize output as Patient/Study/Series directory tree"
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "60",
+                    helpText: "HTTP request timeout in seconds",
+                    defaultValue: "60",
+                    allowedValues: ["10", "30", "60", "120", "300"]
+                ),
+            ]
+        case "dicom-stow":
+            return [
+                CLIParameterDefinition(
+                    id: "url", flag: "--url", displayName: "Base URL",
+                    parameterType: .textField, placeholder: "e.g. https://pacs.hospital.com/dicom-web",
+                    helpText: "DICOMweb server base URL (PS3.18 §6.5)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "files", flag: "", displayName: "DICOM Files",
+                    parameterType: .filePath, placeholder: "Drag and drop DICOM files or directories",
+                    helpText: "DICOM files or directories to upload via STOW-RS (PS3.18 §10.5)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Target Study UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Optional Study Instance UID — stores all instances under this study (0020,000D)"
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive Scan",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Recursively scan directories for DICOM files",
+                    defaultValue: "false"
+                ),
+                CLIParameterDefinition(
+                    id: "batch-size", flag: "--batch-size", displayName: "Batch Size",
+                    parameterType: .integerField, placeholder: "10",
+                    helpText: "Number of instances per STOW-RS request",
+                    defaultValue: "10", minValue: 1, maxValue: 100
+                ),
+                CLIParameterDefinition(
+                    id: "duplicate", flag: "--duplicate", displayName: "Duplicate Handling",
+                    parameterType: .enumPicker, placeholder: "reject",
+                    helpText: "How to handle duplicate instances already on the server",
+                    defaultValue: "reject",
+                    allowedValues: ["reject", "overwrite", "skip"]
+                ),
+                CLIParameterDefinition(
+                    id: "validate", flag: "--validate", displayName: "Validate Before Upload",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Validate DICOM files before uploading",
+                    defaultValue: "true"
+                ),
+                CLIParameterDefinition(
+                    id: "continue-on-error", flag: "--continue-on-error", displayName: "Continue on Error",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Continue uploading remaining files if one fails",
+                    defaultValue: "true"
+                ),
+                CLIParameterDefinition(
+                    id: "auth", flag: "--auth", displayName: "Authentication",
+                    parameterType: .enumPicker, placeholder: "none",
+                    helpText: "Authentication method for the DICOMweb server",
+                    defaultValue: "none",
+                    allowedValues: ["none", "basic", "bearer"]
+                ),
+                CLIParameterDefinition(
+                    id: "token", flag: "--token", displayName: "Token / Password",
+                    parameterType: .secureField, placeholder: "Bearer token or password",
+                    helpText: "Authentication token (bearer) or password (basic auth)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                ),
+                CLIParameterDefinition(
+                    id: "username", flag: "--username", displayName: "Username",
+                    parameterType: .textField, placeholder: "e.g. admin",
+                    helpText: "Username for basic authentication",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "120",
+                    helpText: "HTTP request timeout in seconds",
+                    defaultValue: "120",
+                    allowedValues: ["30", "60", "120", "300", "600"]
+                ),
+                CLIParameterDefinition(
+                    id: "dry-run", flag: "--dry-run", displayName: "Dry Run",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show what would be uploaded without actually sending",
+                    isAdvanced: true
+                ),
+            ]
+        case "dicom-ups":
+            return [
+                CLIParameterDefinition(
+                    id: "operation", flag: "", displayName: "Operation",
+                    parameterType: .enumPicker, placeholder: "search",
+                    helpText: "UPS-RS operation: search workitems, get details, change state, or subscribe to events",
+                    isRequired: true,
+                    defaultValue: "search",
+                    allowedValues: ["search", "get", "change-state", "subscribe"]
+                ),
+                CLIParameterDefinition(
+                    id: "url", flag: "--url", displayName: "Base URL",
+                    parameterType: .textField, placeholder: "e.g. https://pacs.hospital.com/dicom-web",
+                    helpText: "DICOMweb server base URL (PS3.18 §6.5)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "workitem-uid", flag: "--workitem-uid", displayName: "Workitem UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "UPS Workitem SOP Instance UID — required for get, change-state, subscribe",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["get", "change-state", "subscribe"])
+                ),
+                CLIParameterDefinition(
+                    id: "state", flag: "--state", displayName: "Target State",
+                    parameterType: .enumPicker, placeholder: "IN PROGRESS",
+                    helpText: "Desired UPS state for state change request (PS3.18 §11.7)",
+                    defaultValue: "IN PROGRESS",
+                    allowedValues: ["SCHEDULED", "IN PROGRESS", "COMPLETED", "CANCELED"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["change-state"])
+                ),
+                CLIParameterDefinition(
+                    id: "scheduled-station", flag: "--station", displayName: "Scheduled Station",
+                    parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
+                    helpText: "Filter by Scheduled Station AE Title (0040,4025)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search"])
+                ),
+                CLIParameterDefinition(
+                    id: "procedure-step-state", flag: "--step-state", displayName: "Step State Filter",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Filter by Procedure Step State (0074,1000)",
+                    allowedValues: ["", "SCHEDULED", "IN PROGRESS", "COMPLETED", "CANCELED"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search"])
+                ),
+                CLIParameterDefinition(
+                    id: "priority", flag: "--priority", displayName: "Priority Filter",
+                    parameterType: .enumPicker, placeholder: "Any",
+                    helpText: "Filter by Scheduled Procedure Step Priority (0074,1200)",
+                    allowedValues: ["", "HIGH", "MEDIUM", "LOW"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN or DOE*",
+                    helpText: "Filter by patient name (0010,0010)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search"])
+                ),
+                CLIParameterDefinition(
+                    id: "limit", flag: "--limit", displayName: "Result Limit",
+                    parameterType: .integerField, placeholder: "50",
+                    helpText: "Maximum number of workitems to return",
+                    defaultValue: "50", minValue: 1, maxValue: 1000,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search"])
+                ),
+                CLIParameterDefinition(
+                    id: "event-type", flag: "--event-type", displayName: "Event Type",
+                    parameterType: .enumPicker, placeholder: "state-change",
+                    helpText: "Event type to subscribe to (PS3.18 §11.9)",
+                    defaultValue: "state-change",
+                    allowedValues: ["state-change", "progress", "cancel-requested"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["subscribe"])
+                ),
+                CLIParameterDefinition(
+                    id: "auth", flag: "--auth", displayName: "Authentication",
+                    parameterType: .enumPicker, placeholder: "none",
+                    helpText: "Authentication method for the DICOMweb server",
+                    defaultValue: "none",
+                    allowedValues: ["none", "basic", "bearer"]
+                ),
+                CLIParameterDefinition(
+                    id: "token", flag: "--token", displayName: "Token / Password",
+                    parameterType: .secureField, placeholder: "Bearer token or password",
+                    helpText: "Authentication token (bearer) or password (basic auth)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                ),
+                CLIParameterDefinition(
+                    id: "username", flag: "--username", displayName: "Username",
+                    parameterType: .textField, placeholder: "e.g. admin",
+                    helpText: "Username for basic authentication",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "output-format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Output format for results",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json"]
+                ),
+                CLIParameterDefinition(
+                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
+                    parameterType: .enumPicker, placeholder: "30",
+                    helpText: "HTTP request timeout in seconds",
+                    defaultValue: "30",
+                    allowedValues: ["5", "10", "15", "30", "60", "120"]
+                ),
+            ]
+        case "dcm2dcm":
+            return [
+                CLIParameterDefinition(
+                    id: "input-file", flag: "", displayName: "Input DICOM File",
+                    parameterType: .filePath, placeholder: "Select a DICOM file...",
+                    helpText: "Source DICOM file to convert",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "target-syntax", flag: "--target-syntax", displayName: "Target Transfer Syntax",
+                    parameterType: .enumPicker, placeholder: "Select transfer syntax...",
+                    helpText: "Target transfer syntax for re-encoding (PS3.5 Annex A)",
+                    isRequired: true,
+                    allowedValues: [
+                        "Explicit VR Little Endian",
+                        "Implicit VR Little Endian",
+                        "Explicit VR Big Endian",
+                        "JPEG Baseline",
+                        "JPEG Extended",
+                        "JPEG Lossless",
+                        "JPEG Lossless SV1",
+                        "JPEG 2000 Lossless",
+                        "JPEG 2000",
+                        "JPEG-LS Lossless",
+                        "JPEG-LS Near-Lossless",
+                        "RLE Lossless"
+                    ]
+                ),
+                CLIParameterDefinition(
+                    id: "output-file", flag: "--output", displayName: "Output File",
+                    parameterType: .outputPath, placeholder: "converted.dcm",
+                    helpText: "Path for the converted output DICOM file"
+                ),
+                CLIParameterDefinition(
+                    id: "open-in-viewer", flag: "--open-viewer", displayName: "Open in Viewer",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Open the converted file in the Viewer tab after conversion",
+                    defaultValue: "true"
                 ),
             ]
         default:
@@ -1149,6 +1576,21 @@ public enum EducationalHelpers: Sendable {
                 CLIExamplePreset(toolID: toolID, title: "Convert to JPEG 2000",
                                  presetDescription: "Re-encode pixel data with JPEG 2000 lossless",
                                  commandString: "dicom-convert --transfer-syntax jpeg2000-lossless --output converted.dcm scan.dcm"),
+            ]
+        case "dcm2dcm":
+            return [
+                CLIExamplePreset(toolID: toolID, title: "Decompress to Explicit VR LE",
+                                 presetDescription: "Convert any compressed DICOM file to uncompressed Explicit VR Little Endian",
+                                 commandString: "dcm2dcm --target-syntax \"Explicit VR Little Endian\" --output decompressed.dcm scan.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Compress with JPEG 2000 Lossless",
+                                 presetDescription: "Re-encode pixel data using JPEG 2000 lossless compression",
+                                 commandString: "dcm2dcm --target-syntax \"JPEG 2000 Lossless\" --output compressed.dcm scan.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Convert to JPEG-LS Lossless",
+                                 presetDescription: "Re-encode pixel data using JPEG-LS lossless compression",
+                                 commandString: "dcm2dcm --target-syntax \"JPEG-LS Lossless\" --output jpegls.dcm scan.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Convert to RLE Lossless",
+                                 presetDescription: "Re-encode pixel data using RLE lossless compression",
+                                 commandString: "dcm2dcm --target-syntax \"RLE Lossless\" --output rle.dcm scan.dcm"),
             ]
         case "dicom-query":
             return [

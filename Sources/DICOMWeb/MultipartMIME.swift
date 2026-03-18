@@ -212,26 +212,42 @@ public struct MultipartMIME: Sendable {
     private static func parseParts(data: Data, boundary: String) throws -> [Part] {
         var parts: [Part] = []
         
-        let delimiter = "--\(boundary)"
-        let endDelimiter = "--\(boundary)--"
+        let delimiterBytes = Data("--\(boundary)".utf8)
         
-        guard let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) else {
-            throw DICOMwebError.invalidMultipart(reason: "Could not decode multipart data")
+        // Find all boundary positions by scanning raw bytes
+        let positions = findBoundaryPositions(in: data, delimiter: delimiterBytes)
+        
+        guard positions.count >= 2 else {
+            // Need at least opening and closing boundary
+            throw DICOMwebError.invalidMultipart(reason: "No valid boundary delimiters found")
         }
         
-        // Split by delimiter
-        let segments = string.components(separatedBy: delimiter)
-        
-        for (index, segment) in segments.enumerated() {
-            // Skip preamble (first segment) and epilogue (after final delimiter)
-            if index == 0 { continue }
+        for i in 0 ..< positions.count - 1 {
+            let boundaryEnd = positions[i] + delimiterBytes.count
             
-            // Check for final delimiter
-            let trimmed = segment.trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-            if trimmed.hasPrefix("--") { break } // End delimiter
+            // Check if this is the closing boundary (followed by "--")
+            if boundaryEnd + 1 < data.count,
+               data[boundaryEnd] == 0x2D, // '-'
+               data[boundaryEnd + 1] == 0x2D { // '-'
+                break
+            }
             
-            // Parse this part
-            if let part = try parsePartSegment(segment) {
+            // Part data starts after the boundary line's CRLF/LF
+            let partStart = skipLineEnding(in: data, from: boundaryEnd)
+            let partEnd = positions[i + 1]
+            
+            guard partStart < partEnd else { continue }
+            
+            // Trim trailing CRLF before next boundary
+            var trimmedEnd = partEnd
+            if trimmedEnd >= 2, data[trimmedEnd - 2] == 0x0D, data[trimmedEnd - 1] == 0x0A {
+                trimmedEnd -= 2
+            } else if trimmedEnd >= 1, data[trimmedEnd - 1] == 0x0A {
+                trimmedEnd -= 1
+            }
+            
+            let partData = data[partStart ..< trimmedEnd]
+            if let part = parsePartData(partData) {
                 parts.append(part)
             }
         }
@@ -239,95 +255,114 @@ public struct MultipartMIME: Sendable {
         return parts
     }
     
-    private static func parsePartSegment(_ segment: String) throws -> Part? {
-        // Remove leading CRLF using UTF8 view to handle grapheme cluster issues
-        var content = segment
-        let utf8 = content.utf8
-        var dropCount = 0
+    /// Find all byte offsets where the boundary delimiter occurs
+    private static func findBoundaryPositions(in data: Data, delimiter: Data) -> [Int] {
+        var positions: [Int] = []
+        let count = data.count
+        let delimCount = delimiter.count
+        guard delimCount > 0, count >= delimCount else { return positions }
         
-        if let first = utf8.first, first == 13 {  // CR
-            dropCount += 1
-            if utf8.count > 1, utf8.dropFirst().first == 10 {  // LF
-                dropCount += 1
+        var i = 0
+        while i <= count - delimCount {
+            if data[data.startIndex.advanced(by: i) ..< data.startIndex.advanced(by: i + delimCount)] == delimiter {
+                positions.append(i)
+                i += delimCount
+            } else {
+                i += 1
             }
-        } else if let first = utf8.first, first == 10 {  // LF only
-            dropCount += 1
         }
+        return positions
+    }
+    
+    /// Skip past CRLF or LF at the given position
+    private static func skipLineEnding(in data: Data, from offset: Int) -> Int {
+        var pos = offset
+        if pos < data.count, data[pos] == 0x0D { pos += 1 } // CR
+        if pos < data.count, data[pos] == 0x0A { pos += 1 } // LF
+        return pos
+    }
+    
+    /// Parse a single part's raw data (headers + blank line + body) in binary
+    private static func parsePartData(_ partData: Data) -> Part? {
+        guard !partData.isEmpty else { return nil }
         
-        if dropCount > 0 {
-            let startIndex = content.utf8.index(content.utf8.startIndex, offsetBy: dropCount)
-            // String(Substring) is guaranteed to succeed for valid UTF8 slices
-            content = String(content.utf8[startIndex...])!
-        }
+        // Find the blank line (CRLFCRLF or LFLF) that separates headers from body
+        let separatorResult = findHeaderBodySeparator(in: partData)
         
-        // Find the blank line separating headers from body
-        let headerBodySeparator: String
-        if content.contains("\r\n\r\n") {
-            headerBodySeparator = "\r\n\r\n"
-        } else if content.contains("\n\n") {
-            headerBodySeparator = "\n\n"
+        let headerData: Data
+        let bodyData: Data
+        
+        if let (sepOffset, sepLength) = separatorResult {
+            headerData = partData[partData.startIndex ..< partData.startIndex.advanced(by: sepOffset)]
+            let bodyStart = partData.startIndex.advanced(by: sepOffset + sepLength)
+            bodyData = partData[bodyStart ..< partData.endIndex]
         } else {
-            // No headers, entire content is body - create part with default content type
-            let bodyData = content.data(using: .utf8) ?? Data()
-            return Part(contentType: .octetStream, body: bodyData)
+            // No header/body separator found — treat entire content as body
+            return Part(contentType: .octetStream, body: Data(partData))
         }
         
-        guard let separatorRange = content.range(of: headerBodySeparator) else {
-            let bodyData = content.data(using: .utf8) ?? Data()
-            return Part(contentType: .octetStream, body: bodyData)
-        }
-        
-        let headerSection = String(content[..<separatorRange.lowerBound])
-        let bodySection = String(content[separatorRange.upperBound...])
-        
-        // Parse headers
+        // Parse headers as ASCII/UTF-8 text (headers are always text per RFC 2046)
         var contentType: DICOMMediaType = .octetStream
         var headers: [String: String] = [:]
         
-        // Parse headers - split by either CRLF or LF
-        let headerLines: [String]
-        if headerSection.contains("\r\n") {
-            headerLines = headerSection.components(separatedBy: "\r\n")
-        } else {
-            headerLines = headerSection.components(separatedBy: "\n")
-        }
-        
-        for line in headerLines {
-            let trimmedLine = line.trimmingCharacters(in: CharacterSet.whitespaces)
-            guard !trimmedLine.isEmpty else { continue }
+        if let headerString = String(data: headerData, encoding: .utf8) ?? String(data: headerData, encoding: .ascii) {
+            let headerLines: [String]
+            if headerString.contains("\r\n") {
+                headerLines = headerString.components(separatedBy: "\r\n")
+            } else {
+                headerLines = headerString.components(separatedBy: "\n")
+            }
             
-            if let colonIndex = trimmedLine.firstIndex(of: ":") {
-                let name = String(trimmedLine[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-                let value = String(trimmedLine[trimmedLine.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+            for line in headerLines {
+                let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+                guard !trimmedLine.isEmpty else { continue }
                 
-                if name.lowercased() == "content-type" {
-                    if let parsed = DICOMMediaType.parse(value) {
-                        contentType = parsed
+                if let colonIndex = trimmedLine.firstIndex(of: ":") {
+                    let name = String(trimmedLine[..<colonIndex]).trimmingCharacters(in: .whitespaces)
+                    let value = String(trimmedLine[trimmedLine.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+                    
+                    if name.lowercased() == "content-type" {
+                        if let parsed = DICOMMediaType.parse(value) {
+                            contentType = parsed
+                        }
+                    } else {
+                        headers[name] = value
                     }
-                } else {
-                    headers[name] = value
                 }
             }
         }
         
-        // Convert body to data
-        var bodyData = bodySection.data(using: .utf8) ?? Data()
+        return Part(contentType: contentType, headers: headers, body: Data(bodyData))
+    }
+    
+    /// Find the offset and length of the header/body separator (CRLFCRLF or LFLF)
+    private static func findHeaderBodySeparator(in data: Data) -> (offset: Int, length: Int)? {
+        let count = data.count
+        let base = data.startIndex
         
-        // Remove trailing CRLF if present
-        if bodyData.count >= 2 {
-            let suffix = bodyData.suffix(2)
-            if suffix == Data([0x0D, 0x0A]) { // CRLF
-                bodyData = bodyData.dropLast(2)
+        // Look for \r\n\r\n
+        if count >= 4 {
+            for i in 0 ..< count - 3 {
+                if data[base.advanced(by: i)] == 0x0D,
+                   data[base.advanced(by: i + 1)] == 0x0A,
+                   data[base.advanced(by: i + 2)] == 0x0D,
+                   data[base.advanced(by: i + 3)] == 0x0A {
+                    return (i, 4)
+                }
             }
         }
-        if bodyData.count >= 1 {
-            let suffix = bodyData.suffix(1)
-            if suffix == Data([0x0A]) { // LF
-                bodyData = bodyData.dropLast(1)
+        
+        // Fall back to \n\n
+        if count >= 2 {
+            for i in 0 ..< count - 1 {
+                if data[base.advanced(by: i)] == 0x0A,
+                   data[base.advanced(by: i + 1)] == 0x0A {
+                    return (i, 2)
+                }
             }
         }
         
-        return Part(contentType: contentType, headers: headers, body: bodyData)
+        return nil
     }
 }
 

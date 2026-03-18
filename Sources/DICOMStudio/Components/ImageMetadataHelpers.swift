@@ -112,7 +112,36 @@ public enum ImageMetadataHelpers: Sendable {
         "Frame \(current) / \(total)"
     }
 
-    /// Returns an estimated memory usage string for pixel data.
+    /// Returns a human-readable label for a DICOM transfer syntax UID.
+    ///
+    /// - Parameter uid: Transfer syntax UID string.
+    /// - Returns: Human-readable transfer syntax name.
+    public static func transferSyntaxLabel(for uid: String) -> String {
+        switch uid {
+        case "1.2.840.10008.1.2":        return "Implicit VR Little Endian"
+        case "1.2.840.10008.1.2.1":      return "Explicit VR Little Endian"
+        case "1.2.840.10008.1.2.1.99":   return "Deflated Explicit VR LE"
+        case "1.2.840.10008.1.2.2":      return "Explicit VR Big Endian"
+        case "1.2.840.10008.1.2.4.50":   return "JPEG Baseline"
+        case "1.2.840.10008.1.2.4.51":   return "JPEG Extended"
+        case "1.2.840.10008.1.2.4.57":   return "JPEG Lossless"
+        case "1.2.840.10008.1.2.4.70":   return "JPEG Lossless SV1"
+        case "1.2.840.10008.1.2.4.80":   return "JPEG-LS Lossless"
+        case "1.2.840.10008.1.2.4.81":   return "JPEG-LS Near-Lossless"
+        case "1.2.840.10008.1.2.4.90":   return "JPEG 2000 Lossless"
+        case "1.2.840.10008.1.2.4.91":   return "JPEG 2000"
+        case "1.2.840.10008.1.2.5":      return "RLE Lossless"
+        case "1.2.840.10008.1.2.4.100":  return "MPEG2 Main Profile"
+        case "1.2.840.10008.1.2.4.101":  return "MPEG2 High Level"
+        case "1.2.840.10008.1.2.4.102":  return "MPEG-4 AVC/H.264"
+        case "1.2.840.10008.1.2.4.103":  return "MPEG-4 BD-Compatible"
+        case "1.2.840.10008.1.2.4.107":  return "HEVC/H.265 Main"
+        case "1.2.840.10008.1.2.4.108":  return "HEVC/H.265 Main 10"
+        default:                          return uid.isEmpty ? "Unknown" : uid
+        }
+    }
+
+    /// Returns a human-readable label for a DICOM transfer syntax UID.
     ///
     /// - Parameter totalBytes: Total bytes of pixel data.
     /// - Returns: Formatted string, e.g., "25.0 MB".

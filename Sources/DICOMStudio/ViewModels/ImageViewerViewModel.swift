@@ -74,6 +74,12 @@ public final class ImageViewerViewModel {
     /// Total number of frames.
     public var numberOfFrames: Int = 1
 
+    /// Transfer syntax UID of the loaded file.
+    public var transferSyntaxUID: String = ""
+
+    /// Human-readable name for the current transfer syntax.
+    public var transferSyntaxName: String = ""
+
     // MARK: - Window/Level State
 
     /// Current window center value.
@@ -316,6 +322,11 @@ public final class ImageViewerViewModel {
         self.filePath = path
         self.sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
 
+        // Extract transfer syntax information
+        let tsUID = file.transferSyntaxUID ?? ""
+        self.transferSyntaxUID = tsUID
+        self.transferSyntaxName = ImageMetadataHelpers.transferSyntaxLabel(for: tsUID)
+
         // Extract pixel data descriptor
         if let descriptor = file.pixelDataDescriptor() {
             imageRows = descriptor.rows
@@ -415,7 +426,12 @@ public final class ImageViewerViewModel {
         currentImage = image
 
         if image == nil && errorMessage == nil {
-            errorMessage = detailedError ?? "Unable to render pixel data. The file may use an unsupported transfer syntax or contain no displayable image data."
+            let tsInfo = transferSyntaxName.isEmpty ? "" : " Transfer Syntax: \(transferSyntaxName)."
+            errorMessage = detailedError
+                ?? "Unable to render pixel data.\(tsInfo) The file may use an unsupported transfer syntax or contain no displayable image data."
+        } else if image != nil {
+            // Clear any previous rendering error upon success
+            errorMessage = nil
         }
         #endif
     }
@@ -636,6 +652,11 @@ public final class ImageViewerViewModel {
     /// Formatted render time text.
     public var renderTimeText: String {
         ImageCacheHelpers.renderTimeText(lastRenderTime)
+    }
+
+    /// Formatted transfer syntax label for the currently loaded file.
+    public var transferSyntaxLabel: String {
+        transferSyntaxName.isEmpty ? "N/A" : transferSyntaxName
     }
 
     /// Whether the loaded image is a multi-frame image.

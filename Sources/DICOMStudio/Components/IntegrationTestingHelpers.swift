@@ -11,7 +11,7 @@ import Foundation
 public enum E2ETestHelpers: Sendable {
 
     /// Total number of CLI tools across all categories.
-    public static var totalToolCount: Int { 38 }
+    public static var totalToolCount: Int { 41 }
 
     /// Generates test cases for every tool in the given category.
     public static func generateTestCases(for category: IntegrationTestToolCategory) -> [IntegrationTestCase] {

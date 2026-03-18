@@ -59,7 +59,7 @@
 | 13 | Performance & Developer Tools | Benchmarks, cache management, tag explorer | 2 weeks | 60+ |
 | 14 | macOS-Specific Enhancements | macOS multi-window, keyboard shortcuts, automation | 2 weeks | 80+ |
 | 15 | Polish, Accessibility & Release | i18n, a11y, UI tests, profiling, App Store | 2 weeks | 100+ |
-| 16 | CLI Tools Workshop ✅ | Interactive GUI for all 29 CLI tools, command builder, console | 3 weeks | 172 |
+| 16 | CLI Tools Workshop ✅ | Interactive GUI for all 32 CLI tools, command builder, console | 3 weeks | 172 |
 | **Total** | | | **37 weeks** | **1,320+** |
 
 ---
@@ -101,7 +101,7 @@
   - [x] Networking (DICOM/DICOMweb)
   - [x] Reporting (structured reports)
   - [x] Tools (data exchange, developer tools)
-  - [x] CLI Workshop (interactive GUI for all 29 CLI tools)
+  - [x] CLI Workshop (interactive GUI for all 32 CLI tools)
   - [x] Settings (configuration)
 - [x] macOS: NavigationSplitView with sidebar, detail, and inspector
 
@@ -1026,11 +1026,15 @@
 | DICOMwebHelpers.swift | ~469 | — |
 | DICOMwebService.swift | ~380 | — |
 | DICOMwebViewModel.swift | ~455 | — |
+| DICOMwebView.swift | ~885 | — |
+| DICOMwebClientFactory.swift | ~150 | — |
 | DICOMwebModelTests.swift | ~? | 69 |
 | DICOMwebHelpersTests.swift | ~? | 61 |
 | DICOMwebServiceTests.swift | ~? | 30 |
 | DICOMwebViewModelTests.swift | ~? | 31 |
-| **Total new tests** | | **191** |
+| DICOMwebViewIntegrationTests.swift | ~? | 38 |
+| DICOMwebClientFactoryTests.swift | ~? | 16 |
+| **Total new tests** | | **245** |
 
 ### Estimated Effort
 **2 weeks** (1 developer)
@@ -1537,8 +1541,8 @@ The CLI Tools Workshop integrates directly into DICOM Studio as a dedicated feat
   - [ ] **Port** (`Stepper` + `TextField`, range: 1–65535, default: 11112)
   - [ ] **Timeout** (`Stepper`, range: 5–300s, default: 60)
   - [ ] **Protocol** (`Picker`: DICOM / DICOMweb)
-- [ ] Persistence via `Codable` structs stored in `UserDefaults` (for atomicity when saving/loading complete profiles); OAuth2 tokens and sensitive credentials stored in Keychain
-- [ ] Server profile management (save, load, delete named profiles)
+- [x] Persistence via `Codable` structs stored in JSON file (`dicomweb-server-profiles.json`) for DICOMweb server profiles; PACS profiles via `ServerProfileStorageService`
+- [x] Server profile management (save, load, delete named profiles)
 - [ ] Test Connection button — runs `dicom-echo` inline and displays result
 - [ ] Validation badges (green checkmark when all fields are valid)
 

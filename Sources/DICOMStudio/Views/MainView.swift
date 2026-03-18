@@ -59,6 +59,8 @@ public struct MainView: View {
             ImageViewerView(viewModel: viewModel.imageViewerViewModel)
         case .networking:
             NetworkingView(viewModel: viewModel.networkingViewModel)
+        case .dicomWeb:
+            DICOMwebView(viewModel: viewModel.dicomWebViewModel)
         case .reporting:
             StructuredReportView(viewModel: StructuredReportViewModel())
         case .tools:

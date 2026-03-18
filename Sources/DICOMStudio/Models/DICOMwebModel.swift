@@ -47,7 +47,7 @@ public enum DICOMwebTab: String, Sendable, Equatable, Hashable, CaseIterable {
 
 /// HTTP authentication method for DICOMweb connections.
 /// Reference: DICOM PS3.18 Section 8.3 – Security
-public enum DICOMwebAuthMethod: String, Sendable, Equatable, Hashable, CaseIterable {
+public enum DICOMwebAuthMethod: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
     case none       = "NONE"
     case bearer     = "BEARER"
     case basic      = "BASIC"
@@ -70,7 +70,7 @@ public enum DICOMwebAuthMethod: String, Sendable, Equatable, Hashable, CaseItera
 
 /// TLS security mode for DICOMweb HTTPS connections.
 /// Reference: DICOM PS3.15 Annex B – Secure Transport Connection Profiles
-public enum DICOMwebTLSMode: String, Sendable, Equatable, Hashable, CaseIterable {
+public enum DICOMwebTLSMode: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
     case none        = "NONE"
     case compatible  = "COMPATIBLE"
     case strict      = "STRICT"
@@ -96,7 +96,7 @@ public enum DICOMwebTLSMode: String, Sendable, Equatable, Hashable, CaseIterable
 // MARK: - Connection Status
 
 /// Connection status of a DICOMweb server endpoint.
-public enum DICOMwebConnectionStatus: String, Sendable, Equatable, Hashable, CaseIterable {
+public enum DICOMwebConnectionStatus: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
     case unknown = "UNKNOWN"
     case testing = "TESTING"
     case online  = "ONLINE"
@@ -133,7 +133,7 @@ public enum DICOMwebConnectionStatus: String, Sendable, Equatable, Hashable, Cas
 
 /// DICOMweb service types supported by a server.
 /// Reference: DICOM PS3.18 Section 6 – Services
-public enum DICOMwebServiceType: String, Sendable, Equatable, Hashable, CaseIterable {
+public enum DICOMwebServiceType: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
     case wadoRS = "WADO_RS"
     case qidoRS = "QIDO_RS"
     case stowRS = "STOW_RS"
@@ -164,7 +164,7 @@ public enum DICOMwebServiceType: String, Sendable, Equatable, Hashable, CaseIter
 
 /// A DICOMweb server configuration profile.
 /// Reference: DICOM PS3.18 Section 8 – Conformance
-public struct DICOMwebServerProfile: Sendable, Identifiable, Equatable, Hashable {
+public struct DICOMwebServerProfile: Sendable, Identifiable, Equatable, Hashable, Codable {
     /// Unique profile identifier.
     public let id: UUID
     /// Human-readable profile name.
