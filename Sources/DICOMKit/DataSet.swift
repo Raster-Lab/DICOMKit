@@ -14,9 +14,13 @@ public struct DataSet: Sendable {
     }
     
     /// Creates a data set from an array of data elements
+    ///
+    /// If the array contains duplicate tags the last occurrence wins,
+    /// matching PS3.5 §7.1 which requires unique tags but real-world
+    /// DICOM files occasionally violate this rule.
     /// - Parameter elements: Array of data elements
     public init(elements: [DataElement]) {
-        self.elements = Dictionary(uniqueKeysWithValues: elements.map { ($0.tag, $0) })
+        self.elements = Dictionary(elements.map { ($0.tag, $0) }, uniquingKeysWith: { _, last in last })
     }
     
     /// Accesses a data element by tag

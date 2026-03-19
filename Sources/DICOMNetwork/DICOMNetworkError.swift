@@ -469,6 +469,11 @@ extension DICOMNetworkError: CustomStringConvertible {
     }
 }
 
+// MARK: - LocalizedError
+extension DICOMNetworkError: LocalizedError {
+    public var errorDescription: String? { description }
+}
+
 // MARK: - Error Helpers
 
 extension DICOMNetworkError {
