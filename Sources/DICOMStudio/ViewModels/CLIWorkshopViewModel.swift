@@ -799,15 +799,56 @@ public final class CLIWorkshopViewModel {
         let filename = "\(sopInstanceUID).dcm"
         let fileURL = dirURL.appendingPathComponent(filename)
 
-        // Wrap raw dataset in a Part 10 container so readers see the DICM magic.
-        let part10Data = part10Wrap(
-            dataset: data,
-            sopClassUID: sopClassUID,
-            sopInstanceUID: sopInstanceUID,
-            transferSyntaxUID: transferSyntaxUID
-        )
-        try part10Data.write(to: fileURL, options: .atomic)
+        // If the data already has a DICM prefix it is a complete Part 10 file
+        // (e.g. from WADO-RS). Write it as-is to avoid double-wrapping.
+        let fileData: Data
+        if data.count >= 132,
+           data[128] == 0x44, data[129] == 0x49, data[130] == 0x43, data[131] == 0x4D {
+            fileData = data
+        } else {
+            fileData = part10Wrap(
+                dataset: data,
+                sopClassUID: sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                transferSyntaxUID: transferSyntaxUID
+            )
+        }
+        try fileData.write(to: fileURL, options: .atomic)
 
+        return fileURL.path
+    }
+
+    /// Writes arbitrary data to a file in the output directory, handling security-scoped access.
+    ///
+    /// Unlike `writeReceivedDICOMFile` (which wraps DICOM datasets in Part 10 containers),
+    /// this writes raw data as-is — suitable for rendered images, JSON exports, etc.
+    ///
+    /// - Parameters:
+    ///   - data: The data to write.
+    ///   - filename: The filename (including extension) for the output file.
+    ///   - outputDir: The resolved output directory path.
+    /// - Returns: The full path where the file was written.
+    @discardableResult
+    public func writeOutputFile(data: Data, filename: String, outputDir: String) throws -> String {
+        let fm = FileManager.default
+        var dirURL: URL
+        var accessing = false
+
+        if let scopedURL = securityScopedURLs["output"] {
+            accessing = scopedURL.startAccessingSecurityScopedResource()
+            dirURL = scopedURL
+        } else {
+            dirURL = URL(fileURLWithPath: outputDir)
+        }
+        defer {
+            if accessing {
+                securityScopedURLs["output"]?.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        try fm.createDirectory(at: dirURL, withIntermediateDirectories: true)
+        let fileURL = dirURL.appendingPathComponent(filename)
+        try data.write(to: fileURL, options: .atomic)
         return fileURL.path
     }
 
@@ -1572,6 +1613,9 @@ public final class CLIWorkshopViewModel {
         let seriesUID = paramValue("series-uid")
         let instanceUID = paramValue("instance-uid")
         let mode = paramValue("mode").lowercased()
+        let acceptType = paramValue("accept")
+        let frameStr = paramValue("frame")
+        let frameNumber = Int(frameStr) ?? 0
 
         guard !studyUID.isEmpty else {
             appendConsoleOutput("Error: Study Instance UID is required.\n")
@@ -1583,14 +1627,22 @@ public final class CLIWorkshopViewModel {
 
         appendConsoleOutput("Retrieving from \(profile.baseURL) ...\n")
         appendConsoleOutput("  Mode:       \(mode.isEmpty ? "study" : mode)\n")
+        appendConsoleOutput("  Accept:     \(acceptType.isEmpty ? "application/dicom" : acceptType)\n")
         appendConsoleOutput("  Study UID:  \(studyUID)\n")
         if !seriesUID.isEmpty { appendConsoleOutput("  Series UID: \(seriesUID)\n") }
         if !instanceUID.isEmpty { appendConsoleOutput("  Instance UID: \(instanceUID)\n") }
+        if frameNumber > 0 { appendConsoleOutput("  Frame:      \(frameNumber)\n") }
         appendConsoleOutput("\n")
+
+        let outputDir = resolvedOutputDir(paramValue("output"))
+        let hierarchical = paramValue("hierarchical") == "true"
+
+        // Track retrieved files for viewer integration
+        lastRetrievedFiles.removeAll()
+        lastRetrievedOutputURL = securityScopedURLs["output"]
 
         do {
             let client = try DICOMwebClientFactory.makeClient(from: profile)
-            let transferSyntax = paramValue("transfer-syntax").isEmpty ? nil : paramValue("transfer-syntax")
 
             switch mode {
             case "instance":
@@ -1600,20 +1652,47 @@ public final class CLIWorkshopViewModel {
                     service.setConsoleStatus(.error)
                     return
                 }
-                let data = try await client.retrieveInstance(
-                    studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID,
-                    transferSyntax: transferSyntax
-                )
-                appendConsoleOutput("✅ Retrieved 1 instance (\(data.count) bytes)\n")
-                let output = paramValue("output")
-                if !output.isEmpty {
-                    try data.write(to: URL(fileURLWithPath: output))
-                    appendConsoleOutput("  Saved to: \(output)\n")
+                if frameNumber > 0 {
+                    let frames = try await client.retrieveFrames(
+                        studyUID: studyUID, seriesUID: seriesUID,
+                        instanceUID: instanceUID, frames: [frameNumber]
+                    )
+                    guard let frameResult = frames.first else {
+                        appendConsoleOutput("Error: No data returned for frame \(frameNumber).\n")
+                        consoleStatus = .error
+                        service.setConsoleStatus(.error)
+                        return
+                    }
+                    let frameData = frameResult.data
+                    appendConsoleOutput("✅ Retrieved frame \(frameNumber) (\(frameData.count) bytes)\n")
+                    let savedPath = try writeReceivedDICOMFile(
+                        data: frameData, sopInstanceUID: "\(instanceUID)_frame\(frameNumber)",
+                        studyUID: studyUID, seriesUID: seriesUID,
+                        outputDir: outputDir, hierarchical: hierarchical
+                    )
+                    appendConsoleOutput("  Saved to: \(savedPath)\n")
+                    consoleStatus = .success
+                    service.setConsoleStatus(.success)
+                    addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                                 output: "Frame \(frameNumber), \(frameData.count) bytes → \(outputDir)")
+                } else {
+                    let data = try await client.retrieveInstance(
+                        studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID
+                    )
+                    appendConsoleOutput("✅ Retrieved 1 instance (\(data.count) bytes)\n")
+                    let savedPath = try writeReceivedDICOMFile(
+                        data: data, sopInstanceUID: instanceUID,
+                        studyUID: studyUID, seriesUID: seriesUID,
+                        outputDir: outputDir, hierarchical: hierarchical
+                    )
+                    appendConsoleOutput("  Saved to: \(savedPath)\n")
+                    appendConsoleOutput("\n")
+                    wadoDisplayDataset(data, index: 1)
+                    consoleStatus = .success
+                    service.setConsoleStatus(.success)
+                    addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                                 output: "1 instance, \(data.count) bytes → \(outputDir)")
                 }
-                consoleStatus = .success
-                service.setConsoleStatus(.success)
-                addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
-                             output: "1 instance, \(data.count) bytes")
 
             case "series":
                 guard !seriesUID.isEmpty else {
@@ -1623,15 +1702,30 @@ public final class CLIWorkshopViewModel {
                     return
                 }
                 let result = try await client.retrieveSeries(
-                    studyUID: studyUID, seriesUID: seriesUID, transferSyntax: transferSyntax
+                    studyUID: studyUID, seriesUID: seriesUID
                 )
                 let count = result.instances.count
                 let totalBytes = result.instances.reduce(0) { $0 + $1.count }
                 appendConsoleOutput("✅ Retrieved \(count) instances (\(totalBytes) bytes total)\n")
+                appendConsoleOutput("  Output directory: \(outputDir)\n\n")
+                for (index, instanceData) in result.instances.enumerated() {
+                    let sopUID = wadoExtractSOPInstanceUID(instanceData) ?? "instance_\(index + 1)"
+                    do {
+                        let savedPath = try writeReceivedDICOMFile(
+                            data: instanceData, sopInstanceUID: sopUID,
+                            studyUID: studyUID, seriesUID: seriesUID,
+                            outputDir: outputDir, hierarchical: hierarchical
+                        )
+                        appendConsoleOutput("  [\(index + 1)] \(sopUID) → \(savedPath)\n")
+                    } catch {
+                        appendConsoleOutput("  [\(index + 1)] ⚠️ Save failed: \(error.localizedDescription)\n")
+                    }
+                    wadoDisplayDataset(instanceData, index: index + 1)
+                }
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
-                             output: "\(count) instances, \(totalBytes) bytes")
+                             output: "\(count) instances, \(totalBytes) bytes → \(outputDir)")
 
             case "rendered":
                 guard !seriesUID.isEmpty, !instanceUID.isEmpty else {
@@ -1640,42 +1734,126 @@ public final class CLIWorkshopViewModel {
                     service.setConsoleStatus(.error)
                     return
                 }
-                let data = try await client.retrieveRenderedInstance(
-                    studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID,
-                    options: DICOMwebClient.RenderOptions()
-                )
-                appendConsoleOutput("✅ Retrieved rendered image (\(data.count) bytes)\n")
-                let output = paramValue("output")
-                if !output.isEmpty {
-                    try data.write(to: URL(fileURLWithPath: output))
-                    appendConsoleOutput("  Saved to: \(output)\n")
+                let imageFormat: DICOMwebClient.RenderOptions.ImageFormat
+                let fileExtension: String
+                switch acceptType {
+                case "image/png":
+                    imageFormat = .png
+                    fileExtension = "png"
+                case "image/gif":
+                    imageFormat = .gif
+                    fileExtension = "gif"
+                default:
+                    imageFormat = .jpeg
+                    fileExtension = "jpg"
+                }
+                let renderOptions = DICOMwebClient.RenderOptions(format: imageFormat)
+
+                if frameNumber > 0 {
+                    let frames = try await client.retrieveRenderedFrames(
+                        studyUID: studyUID, seriesUID: seriesUID,
+                        instanceUID: instanceUID, frames: [frameNumber],
+                        options: renderOptions
+                    )
+                    guard let data = frames.first else {
+                        appendConsoleOutput("Error: No data returned for rendered frame \(frameNumber).\n")
+                        consoleStatus = .error
+                        service.setConsoleStatus(.error)
+                        return
+                    }
+                    appendConsoleOutput("✅ Retrieved rendered frame \(frameNumber) (\(data.count) bytes, image/\(fileExtension))\n")
+                    let filename = "rendered_\(instanceUID)_frame\(frameNumber).\(fileExtension)"
+                    let savedPath = try writeOutputFile(data: data, filename: filename, outputDir: outputDir)
+                    lastRetrievedFiles.append(savedPath)
+                    appendConsoleOutput("  Saved to: \(savedPath)\n")
+                    consoleStatus = .success
+                    service.setConsoleStatus(.success)
+                    addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                                 output: "Rendered frame \(frameNumber), \(data.count) bytes → \(savedPath)")
+                } else {
+                    let data = try await client.retrieveRenderedInstance(
+                        studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID,
+                        options: renderOptions
+                    )
+                    appendConsoleOutput("✅ Retrieved rendered image (\(data.count) bytes, image/\(fileExtension))\n")
+                    let filename = "rendered_\(instanceUID).\(fileExtension)"
+                    let savedPath = try writeOutputFile(data: data, filename: filename, outputDir: outputDir)
+                    lastRetrievedFiles.append(savedPath)
+                    appendConsoleOutput("  Saved to: \(savedPath)\n")
+                    consoleStatus = .success
+                    service.setConsoleStatus(.success)
+                    addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                                 output: "Rendered image, \(data.count) bytes → \(savedPath)")
+                }
+
+            default: // study-level
+                let result = try await client.retrieveStudy(studyUID: studyUID)
+                let count = result.instances.count
+                let totalBytes = result.instances.reduce(0) { $0 + $1.count }
+                appendConsoleOutput("✅ Retrieved \(count) instances (\(totalBytes) bytes total)\n")
+                appendConsoleOutput("  Output directory: \(outputDir)\n\n")
+                for (index, instanceData) in result.instances.enumerated() {
+                    let sopUID = wadoExtractSOPInstanceUID(instanceData) ?? "instance_\(index + 1)"
+                    do {
+                        let savedPath = try writeReceivedDICOMFile(
+                            data: instanceData, sopInstanceUID: sopUID,
+                            studyUID: studyUID,
+                            outputDir: outputDir, hierarchical: hierarchical
+                        )
+                        appendConsoleOutput("  [\(index + 1)] \(sopUID) → \(savedPath)\n")
+                    } catch {
+                        appendConsoleOutput("  [\(index + 1)] ⚠️ Save failed: \(error.localizedDescription)\n")
+                    }
+                    wadoDisplayDataset(instanceData, index: index + 1)
                 }
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
-                             output: "Rendered image, \(data.count) bytes")
-
-            default: // study-level
-                let result = try await client.retrieveStudy(
-                    studyUID: studyUID, transferSyntax: transferSyntax
-                )
-                let count = result.instances.count
-                let totalBytes = result.instances.reduce(0) { $0 + $1.count }
-                appendConsoleOutput("✅ Retrieved \(count) instances (\(totalBytes) bytes total)\n")
-                consoleStatus = .success
-                service.setConsoleStatus(.success)
-                addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
-                             output: "\(count) instances, \(totalBytes) bytes")
+                             output: "\(count) instances, \(totalBytes) bytes → \(outputDir)")
             }
         } catch {
             appendConsoleOutput("❌ WADO-RS retrieve failed\n")
             appendConsoleOutput("  Error: \(error.localizedDescription)\n")
             appendConsoleOutput("\n  💡 Hint: Verify the Study UID exists on the server and the Base URL is correct.\n")
+            if mode == "rendered" {
+                appendConsoleOutput("  💡 Hint: Not all servers support the /rendered endpoint. Try 'instance' mode instead.\n")
+            }
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1,
                          output: error.localizedDescription)
         }
+    }
+
+    /// Attempts to extract the SOP Instance UID from raw DICOM instance data.
+    private func wadoExtractSOPInstanceUID(_ data: Data) -> String? {
+        guard let file = try? DICOMFile.read(from: data, force: true) else { return nil }
+        return file.sopInstanceUID
+    }
+
+    /// Displays a detailed DICOM dataset summary for a retrieved instance.
+    private func wadoDisplayDataset(_ data: Data, index: Int) {
+        guard let file = try? DICOMFile.read(from: data, force: true) else { return }
+        let ds = file.dataSet
+        appendConsoleOutput("─── Instance [\(index)] ────────────────────────────────────\n")
+        appendConsoleOutput("  SOP Instance UID ..... \(file.sopInstanceUID ?? "N/A")\n")
+        appendConsoleOutput("  SOP Class UID ........ \(file.sopClassUID ?? "N/A")\n")
+        appendConsoleOutput("  Transfer Syntax ...... \(file.transferSyntaxUID ?? "N/A")\n")
+        appendConsoleOutput("  Patient Name ......... \(ds.string(for: .patientName) ?? "N/A")\n")
+        appendConsoleOutput("  Patient ID ........... \(ds.string(for: .patientID) ?? "N/A")\n")
+        appendConsoleOutput("  Study Instance UID ... \(ds.string(for: .studyInstanceUID) ?? "N/A")\n")
+        appendConsoleOutput("  Series Instance UID .. \(ds.string(for: .seriesInstanceUID) ?? "N/A")\n")
+        appendConsoleOutput("  Modality ............. \(ds.string(for: .modality) ?? "N/A")\n")
+        appendConsoleOutput("  Study Date ........... \(ds.string(for: .studyDate) ?? "N/A")\n")
+        appendConsoleOutput("  Study Description .... \(ds.string(for: .studyDescription) ?? "N/A")\n")
+        appendConsoleOutput("  Series Number ........ \(ds.string(for: .seriesNumber) ?? "N/A")\n")
+        appendConsoleOutput("  Instance Number ...... \(ds.string(for: .instanceNumber) ?? "N/A")\n")
+        appendConsoleOutput("  Rows ................. \(ds.uint16(for: .rows).map(String.init) ?? "N/A")\n")
+        appendConsoleOutput("  Columns .............. \(ds.uint16(for: .columns).map(String.init) ?? "N/A")\n")
+        appendConsoleOutput("  Bits Allocated ....... \(ds.uint16(for: .bitsAllocated).map(String.init) ?? "N/A")\n")
+        appendConsoleOutput("  Bits Stored .......... \(ds.uint16(for: .bitsStored).map(String.init) ?? "N/A")\n")
+        appendConsoleOutput("  Photometric Interp ... \(ds.string(for: .photometricInterpretation) ?? "N/A")\n")
+        appendConsoleOutput("\n")
     }
 
     /// Executes a STOW-RS upload against a DICOMweb server.
@@ -1689,24 +1867,114 @@ public final class CLIWorkshopViewModel {
         }
 
         let filesPath = paramValue("files")
-        guard !filesPath.isEmpty else {
-            appendConsoleOutput("Error: At least one file path is required.\n")
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1, output: "Files required")
-            return
-        }
-
         let studyUID = paramValue("study-uid").isEmpty ? nil : paramValue("study-uid")
         let dryRun = paramValue("dry-run") == "true"
         let validateFlag = paramValue("validate") == "true"
         let batchSize = Int(paramValue("batch-size")) ?? 10
+        let recursive = paramValue("recursive") == "true"
+        let continueOnError = paramValue("continue-on-error") == "true"
 
-        // Resolve file paths (comma-separated or single path)
-        let paths = filesPath.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        // ── Collect DICOM file paths ────────────────────────────────
+        // Merge drag-and-drop entries with the text-field path, resolve
+        // directories into individual .dcm files, and obtain
+        // security-scoped access for sandboxed reads.
+
+        var resolvedFiles: [(path: String, url: URL)] = []
+
+        // Start security-scoped access if we have one for "files"
+        let scopedURL = securityScopedURLs["files"]
+        let accessing = scopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if accessing { scopedURL?.stopAccessingSecurityScopedResource() }
+        }
+
+        // Helper: collect DICOM files from a single path (file or directory)
+        func collectDICOMFiles(from basePath: String) {
+            let fm = FileManager.default
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: basePath, isDirectory: &isDir) else { return }
+
+            if isDir.boolValue {
+                // Directory — enumerate contents
+                let enumerator: FileManager.DirectoryEnumerator?
+                if recursive {
+                    enumerator = fm.enumerator(atPath: basePath)
+                } else {
+                    // Non-recursive: just immediate children via shallow enumeration
+                    enumerator = fm.enumerator(at: URL(fileURLWithPath: basePath),
+                                               includingPropertiesForKeys: [.isRegularFileKey],
+                                               options: [.skipsSubdirectoryDescendants, .skipsHiddenFiles])
+                        .map { ShallowEnumeratorWrapper($0) }
+                }
+                if let enumerator = enumerator {
+                    if recursive {
+                        // String-based enumerator
+                        while let relativePath = enumerator.nextObject() as? String {
+                            let fullPath = (basePath as NSString).appendingPathComponent(relativePath)
+                            if isDICOMCandidate(fullPath) {
+                                resolvedFiles.append((path: fullPath, url: URL(fileURLWithPath: fullPath)))
+                            }
+                        }
+                    }
+                } else {
+                    // Fallback: try shallow contents
+                    if let contents = try? fm.contentsOfDirectory(atPath: basePath) {
+                        for name in contents where !name.hasPrefix(".") {
+                            let fullPath = (basePath as NSString).appendingPathComponent(name)
+                            if isDICOMCandidate(fullPath) {
+                                resolvedFiles.append((path: fullPath, url: URL(fileURLWithPath: fullPath)))
+                            }
+                        }
+                    }
+                }
+                // For non-recursive URL enumerator, handled via contentsOfDirectory fallback above
+                if !recursive {
+                    if let contents = try? fm.contentsOfDirectory(atPath: basePath) {
+                        for name in contents where !name.hasPrefix(".") {
+                            let fullPath = (basePath as NSString).appendingPathComponent(name)
+                            if isDICOMCandidate(fullPath),
+                               !resolvedFiles.contains(where: { $0.path == fullPath }) {
+                                resolvedFiles.append((path: fullPath, url: URL(fileURLWithPath: fullPath)))
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Single file
+                resolvedFiles.append((path: basePath, url: URL(fileURLWithPath: basePath)))
+            }
+        }
+
+        // Collect from inputFiles (drag-and-drop)
+        for entry in inputFiles {
+            collectDICOMFiles(from: entry.path)
+        }
+
+        // Collect from text field path(s)
+        if !filesPath.isEmpty {
+            let paths = filesPath.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+            for path in paths {
+                if !resolvedFiles.contains(where: { $0.path == path }) {
+                    collectDICOMFiles(from: path)
+                }
+            }
+        }
+
+        guard !resolvedFiles.isEmpty else {
+            appendConsoleOutput("Error: No DICOM files found. Verify the path exists and contains DICOM files.\n")
+            if filesPath.isEmpty {
+                appendConsoleOutput("  💡 Hint: Enter a file or directory path, or drag and drop DICOM files.\n")
+            } else {
+                appendConsoleOutput("  💡 Hint: The path '\(filesPath)' may be a directory. Enable 'Recursive Scan' to search subdirectories.\n")
+            }
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1, output: "No DICOM files found")
+            return
+        }
 
         appendConsoleOutput("Uploading to \(profile.baseURL) ...\n")
-        appendConsoleOutput("  Files:      \(paths.count)\n")
+        appendConsoleOutput("  Files:      \(resolvedFiles.count)\n")
         if let uid = studyUID { appendConsoleOutput("  Study UID:  \(uid)\n") }
         if dryRun { appendConsoleOutput("  Mode:       DRY RUN (no actual upload)\n") }
         appendConsoleOutput("  Batch size: \(batchSize)\n")
@@ -1714,43 +1982,80 @@ public final class CLIWorkshopViewModel {
         appendConsoleOutput("\n")
 
         if dryRun {
-            appendConsoleOutput("✅ Dry run complete — \(paths.count) files would be uploaded.\n")
+            for (i, file) in resolvedFiles.enumerated() {
+                appendConsoleOutput("  [\(i + 1)] \(file.url.lastPathComponent)\n")
+            }
+            appendConsoleOutput("\n✅ Dry run complete — \(resolvedFiles.count) files would be uploaded.\n")
             consoleStatus = .success
             service.setConsoleStatus(.success)
             addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 0,
-                         output: "Dry run: \(paths.count) files")
+                         output: "Dry run: \(resolvedFiles.count) files")
             return
         }
 
         do {
             let client = try DICOMwebClientFactory.makeClient(from: profile)
-            var allInstances: [Data] = []
-            for path in paths {
-                let url = URL(fileURLWithPath: path)
-                let data = try Data(contentsOf: url)
-                allInstances.append(data)
+
+            var totalStored = 0
+            var totalFailed = 0
+
+            // Upload in batches
+            let batches = stride(from: 0, to: resolvedFiles.count, by: batchSize).map {
+                Array(resolvedFiles[$0..<min($0 + batchSize, resolvedFiles.count)])
             }
 
-            let response = try await client.storeInstances(instances: allInstances, studyUID: studyUID)
-            let stored = response.storedInstances.count
-            let failed = response.failedInstances.count
-            appendConsoleOutput("✅ STOW-RS complete\n")
-            appendConsoleOutput("  Stored:  \(stored)\n")
-            if failed > 0 {
-                appendConsoleOutput("  Failed:  \(failed)\n")
+            for (batchIndex, batch) in batches.enumerated() {
+                if batches.count > 1 {
+                    appendConsoleOutput("Batch \(batchIndex + 1)/\(batches.count) (\(batch.count) files)...\n")
+                }
+
+                var batchInstances: [Data] = []
+                for file in batch {
+                    do {
+                        let data = try Data(contentsOf: file.url)
+                        batchInstances.append(data)
+                    } catch {
+                        appendConsoleOutput("  ⚠️ Cannot read \(file.url.lastPathComponent): \(error.localizedDescription)\n")
+                        totalFailed += 1
+                        if !continueOnError {
+                            appendConsoleOutput("❌ Aborting (continue-on-error is off)\n")
+                            consoleStatus = .error
+                            service.setConsoleStatus(.error)
+                            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1,
+                                         output: error.localizedDescription)
+                            return
+                        }
+                    }
+                }
+
+                guard !batchInstances.isEmpty else { continue }
+
+                let response = try await client.storeInstances(instances: batchInstances, studyUID: studyUID)
+                let stored = response.storedInstances.count
+                let failed = response.failedInstances.count
+                totalStored += stored
+                totalFailed += failed
+
+                if batches.count > 1 {
+                    appendConsoleOutput("  Stored: \(stored), Failed: \(failed)\n")
+                }
+
                 for failure in response.failedInstances {
                     let reason = failure.failureDescription ?? (failure.failureReason.map { "code \($0)" } ?? "unknown reason")
-                    appendConsoleOutput("    ❌ \(failure.sopInstanceUID ?? "unknown"): \(reason)\n")
+                    appendConsoleOutput("  ❌ \(failure.sopInstanceUID ?? "unknown"): \(reason)\n")
                 }
             }
-            if let url = response.retrieveURL {
-                appendConsoleOutput("  Retrieve URL: \(url)\n")
+
+            appendConsoleOutput("\n✅ STOW-RS complete\n")
+            appendConsoleOutput("  Stored:  \(totalStored)\n")
+            if totalFailed > 0 {
+                appendConsoleOutput("  Failed:  \(totalFailed)\n")
             }
-            consoleStatus = failed > 0 ? .error : .success
-            service.setConsoleStatus(failed > 0 ? .error : .success)
+            consoleStatus = totalFailed > 0 ? .error : .success
+            service.setConsoleStatus(totalFailed > 0 ? .error : .success)
             addToHistory(toolName: "dicom-stow", command: commandPreview,
-                         exitCode: failed > 0 ? 1 : 0,
-                         output: "\(stored) stored, \(failed) failed")
+                         exitCode: totalFailed > 0 ? 1 : 0,
+                         output: "\(totalStored) stored, \(totalFailed) failed")
         } catch {
             appendConsoleOutput("❌ STOW-RS upload failed\n")
             appendConsoleOutput("  Error: \(error.localizedDescription)\n")
@@ -1760,6 +2065,23 @@ public final class CLIWorkshopViewModel {
             addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1,
                          output: error.localizedDescription)
         }
+    }
+
+    /// Checks whether a file path looks like a DICOM candidate (by extension or lack thereof).
+    private func isDICOMCandidate(_ path: String) -> Bool {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: path, isDirectory: &isDir), !isDir.boolValue else { return false }
+        let lower = (path as NSString).lastPathComponent.lowercased()
+        // Accept .dcm, .dicom, .dic, or files without an extension (common in DICOM)
+        return lower.hasSuffix(".dcm") || lower.hasSuffix(".dicom") || lower.hasSuffix(".dic") || !lower.contains(".")
+    }
+
+    /// Minimal wrapper to bridge URL-based directory enumeration into the string pattern.
+    private class ShallowEnumeratorWrapper: FileManager.DirectoryEnumerator {
+        private let inner: FileManager.DirectoryEnumerator
+        init(_ inner: FileManager.DirectoryEnumerator) { self.inner = inner }
+        override func nextObject() -> Any? { inner.nextObject() }
     }
 
     /// Executes a UPS-RS operation against a DICOMweb server.
@@ -3399,11 +3721,25 @@ public final class CLIWorkshopViewModel {
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0,
                          output: "\(items.count) worklist item(s) found")
         } catch {
-            appendConsoleOutput("❌ Worklist query failed: \(error.localizedDescription)\n")
+            let errorDesc = (error as? DICOMNetworkError)?.description ?? error.localizedDescription
+            appendConsoleOutput("❌ Worklist query failed: \(errorDesc)\n")
+            if let netError = error as? DICOMNetworkError {
+                switch netError {
+                case .sopClassNotSupported, .noPresentationContextAccepted:
+                    appendConsoleOutput("  💡 Hint: The server may not support MWL (Modality Worklist).\n")
+                    appendConsoleOutput("     dcm4chee5: Ensure the MWL SCP is enabled in the archive configuration.\n")
+                case .associationRejected:
+                    appendConsoleOutput("  💡 Hint: The server rejected the association. Check the Called AE Title matches the server configuration.\n")
+                case .connectionFailed, .connectionClosed, .timeout, .operationTimeout, .artimTimerExpired:
+                    appendConsoleOutput("  💡 Hint: Could not connect. Verify the hostname, port, and that the PACS is running.\n")
+                default:
+                    break
+                }
+            }
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,
-                         output: error.localizedDescription)
+                         output: errorDesc)
         }
     }
 
@@ -3681,7 +4017,7 @@ public final class CLIWorkshopViewModel {
         defer { if accessing { scopedURL?.stopAccessingSecurityScopedResource() } }
 
         do {
-            let inputURL = URL(fileURLWithPath: inputPath)
+            let inputURL = scopedURL ?? URL(fileURLWithPath: inputPath)
             data = try Data(contentsOf: inputURL)
         } catch {
             appendConsoleOutput("❌ Failed to read input file: \(error.localizedDescription)\n")

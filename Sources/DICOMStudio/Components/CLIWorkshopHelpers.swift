@@ -1039,12 +1039,6 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["application/dicom", "application/octet-stream", "image/jpeg", "image/png", "image/gif"]
                 ),
                 CLIParameterDefinition(
-                    id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
-                    parameterType: .enumPicker, placeholder: "Any",
-                    helpText: "Requested transfer syntax for DICOM objects (PS3.18 §10.4.1)",
-                    allowedValues: ["", "1.2.840.10008.1.2.1", "1.2.840.10008.1.2", "1.2.840.10008.1.2.4.50", "1.2.840.10008.1.2.4.70", "1.2.840.10008.1.2.4.90", "1.2.840.10008.1.2.4.91"]
-                ),
-                CLIParameterDefinition(
                     id: "parallel", flag: "--parallel", displayName: "Parallel Downloads",
                     parameterType: .integerField, placeholder: "4",
                     helpText: "Maximum concurrent retrieval requests",
