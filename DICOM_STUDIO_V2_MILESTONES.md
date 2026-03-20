@@ -680,7 +680,7 @@ real time.
       output directory
     - `dicom-qr`: combines query + retrieve parameters
     - `dicom-wado`: subcommand, base URL, study/series/instance UID, accept type, auth
-    - `dicom-mwl`: host, port, AE titles, date range, modality filter, station name
+    - `dicom-mwl`: operation (query/create), host, port, AE titles, date range, modality filter, station name, patient demographics, procedure details
     - `dicom-mpps`: subcommand, host, port, AE titles, instance UID, status
     - `dicom-print`: host, port, AE titles, input file, film size, layout, copies, priority
     - `dicom-gateway`: listen port, forward host/port, AE title mapping, protocol translation

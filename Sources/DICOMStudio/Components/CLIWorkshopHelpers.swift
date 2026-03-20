@@ -212,9 +212,9 @@ public enum ToolCatalogHelpers: Sendable {
                               briefDescription: "Query DICOMweb servers with QIDO-RS",
                               dicomStandardRef: "PS3.18", requiresNetwork: true,
                               networkToolGroup: .dicomweb),
-            CLIToolDefinition(id: "dicom-wado", name: "dicom-wado", displayName: "WADO-RS Retrieve",
+            CLIToolDefinition(id: "dicom-wado", name: "dicom-wado", displayName: "WADO Retrieve",
                               category: .networkOperations, sfSymbol: "arrow.down.circle",
-                              briefDescription: "Retrieve DICOM objects via WADO-RS",
+                              briefDescription: "Retrieve DICOM objects via WADO-RS or WADO-URI",
                               dicomStandardRef: "PS3.18", requiresNetwork: true,
                               networkToolGroup: .dicomweb),
             CLIToolDefinition(id: "dicom-stow", name: "dicom-stow", displayName: "STOW-RS Store",
@@ -673,10 +673,12 @@ public enum ToolCatalogHelpers: Sendable {
         case "dicom-mwl":
             return [
                 CLIParameterDefinition(
-                    id: "subcommand", flag: "", displayName: "Operation",
-                    parameterType: .subcommand, placeholder: "query",
-                    helpText: "Modality Worklist operation (query scheduled procedure steps)",
-                    defaultValue: "query"
+                    id: "operation", flag: "", displayName: "Operation",
+                    parameterType: .enumPicker, placeholder: "query",
+                    helpText: "Modality Worklist operation: query scheduled procedures (C-FIND) or create a new worklist item (N-CREATE)",
+                    isRequired: true,
+                    defaultValue: "query",
+                    allowedValues: ["query", "create"]
                 ),
                 CLIParameterDefinition(
                     id: "host", flag: "--host", displayName: "Hostname",
@@ -702,43 +704,154 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Remote Worklist SCP Application Entity title",
                     defaultValue: "ANY-SCP"
                 ),
+                // ----- Query parameters (C-FIND) -----
                 CLIParameterDefinition(
                     id: "date-from", flag: "--date-from", displayName: "Date From",
                     parameterType: .textField, placeholder: "today / YYYYMMDD",
-                    helpText: "Start of scheduled date range — use 'today', 'tomorrow', or YYYYMMDD format (0040,0002)"
+                    helpText: "Start of scheduled date range — use 'today', 'tomorrow', or YYYYMMDD format (0040,0002)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "date-to", flag: "--date-to", displayName: "Date To",
                     parameterType: .textField, placeholder: "tomorrow / YYYYMMDD",
-                    helpText: "End of scheduled date range (inclusive) — leave empty for single-day query (0040,0002)"
+                    helpText: "End of scheduled date range (inclusive) — leave empty for single-day query (0040,0002)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "station", flag: "--station", displayName: "Station AE Title",
                     parameterType: .textField, placeholder: "e.g. CT1",
-                    helpText: "Filter by Scheduled Station AE Title (0040,0001)"
+                    helpText: "Filter by Scheduled Station AE Title (0040,0001)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "patient", flag: "--patient", displayName: "Patient Name",
                     parameterType: .textField, placeholder: "e.g. DOE^JOHN or DOE*",
-                    helpText: "Filter by patient name — supports wildcards * and ? (0010,0010)"
+                    helpText: "Filter by patient name — supports wildcards * and ? (0010,0010)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
                     parameterType: .textField, placeholder: "e.g. PAT001",
-                    helpText: "Filter by patient ID (0010,0020)"
+                    helpText: "Filter by patient ID (0010,0020)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Filter by scheduled imaging modality (0040,0001)",
-                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "sps-status", flag: "--sps-status", displayName: "SPS Status",
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Filter by Scheduled Procedure Step Status (0040,0004)",
-                    allowedValues: ["", "SCHEDULED", "IN PROGRESS", "DISCONTINUED", "COMPLETED"]
+                    allowedValues: ["", "SCHEDULED", "IN PROGRESS", "DISCONTINUED", "COMPLETED"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
+                // ----- Create parameters (N-CREATE) -----
+                CLIParameterDefinition(
+                    id: "create-patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN",
+                    helpText: "Patient's Name (0010,0010) — required for worklist creation",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. PAT001",
+                    helpText: "Patient ID (0010,0020) — required for worklist creation",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-dob", flag: "--patient-dob", displayName: "Patient Birth Date",
+                    parameterType: .textField, placeholder: "YYYYMMDD",
+                    helpText: "Patient's Birth Date (0010,0030) in YYYYMMDD format",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-sex", flag: "--patient-sex", displayName: "Patient Sex",
+                    parameterType: .enumPicker, placeholder: "Unknown",
+                    helpText: "Patient's Sex (0010,0040)",
+                    allowedValues: ["", "M", "F", "O"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "accession-number", flag: "--accession-number", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession Number (0008,0050) — links worklist item to the imaging order",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "referring-physician", flag: "--referring-physician", displayName: "Referring Physician",
+                    parameterType: .textField, placeholder: "e.g. SMITH^JANE",
+                    helpText: "Referring Physician's Name (0008,0090)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "procedure-id", flag: "--procedure-id", displayName: "Requested Procedure ID",
+                    parameterType: .textField, placeholder: "e.g. PROC001",
+                    helpText: "Requested Procedure ID (0040,1001)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
+                    parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
+                    helpText: "Requested Procedure Description (0032,1070)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .enumPicker, placeholder: "CT",
+                    helpText: "Scheduled modality for the procedure step (0008,0060)",
+                    defaultValue: "CT",
+                    allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "scheduled-station", flag: "--scheduled-station", displayName: "Scheduled Station AET",
+                    parameterType: .textField, placeholder: "e.g. CT1",
+                    helpText: "Scheduled Station AE Title (0040,0001) — the modality that will perform the procedure",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "station-name", flag: "--station-name", displayName: "Station Name",
+                    parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
+                    helpText: "Scheduled Station Name (0040,0010)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "scheduled-date", flag: "--scheduled-date", displayName: "Scheduled Date",
+                    parameterType: .textField, placeholder: "YYYYMMDD or today",
+                    helpText: "Scheduled Procedure Step Start Date (0040,0002) — defaults to today",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "scheduled-time", flag: "--scheduled-time", displayName: "Scheduled Time",
+                    parameterType: .textField, placeholder: "HHMMSS e.g. 143000",
+                    helpText: "Scheduled Procedure Step Start Time (0040,0003)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "sps-id", flag: "--sps-id", displayName: "Procedure Step ID",
+                    parameterType: .textField, placeholder: "e.g. SPS001",
+                    helpText: "Scheduled Procedure Step ID (0040,0009) — defaults to SPS001",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "sps-desc", flag: "--sps-desc", displayName: "Step Description",
+                    parameterType: .textField, placeholder: "e.g. CT Head Scan",
+                    helpText: "Scheduled Procedure Step Description (0040,0007)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "performing-physician", flag: "--physician", displayName: "Performing Physician",
+                    parameterType: .textField, placeholder: "e.g. JONES^ALICE",
+                    helpText: "Scheduled Performing Physician's Name (0040,0006)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                // ----- Common parameters -----
                 CLIParameterDefinition(
                     id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
                     parameterType: .enumPicker, placeholder: "60",
@@ -995,11 +1108,19 @@ public enum ToolCatalogHelpers: Sendable {
                     isRequired: true
                 ),
                 CLIParameterDefinition(
+                    id: "protocol", flag: "--protocol", displayName: "WADO Protocol",
+                    parameterType: .enumPicker, placeholder: "wado-rs",
+                    helpText: "WADO-RS (RESTful, modern PACS) or WADO-URI (query-param, legacy PACS like dcm4chee2)",
+                    defaultValue: "wado-rs",
+                    allowedValues: ["wado-rs", "wado-uri"]
+                ),
+                CLIParameterDefinition(
                     id: "mode", flag: "--mode", displayName: "Retrieve Mode",
                     parameterType: .enumPicker, placeholder: "study",
                     helpText: "Retrieval scope — study, series, instance, or rendered image",
                     defaultValue: "study",
-                    allowedValues: ["study", "series", "instance", "rendered"]
+                    allowedValues: ["study", "series", "instance", "rendered"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "protocol", values: ["wado-rs"])
                 ),
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
@@ -1010,14 +1131,12 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "Series Instance UID for series/instance retrieval (0020,000E)",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "mode", values: ["series", "instance", "rendered"])
+                    helpText: "Series Instance UID (0020,000E). Required for WADO-URI and series/instance modes."
                 ),
                 CLIParameterDefinition(
                     id: "instance-uid", flag: "--instance-uid", displayName: "SOP Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "SOP Instance UID for instance-level retrieval (0008,0018)",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "mode", values: ["instance", "rendered"])
+                    helpText: "SOP Instance UID (0008,0018). Required for WADO-URI and instance/rendered modes."
                 ),
                 CLIParameterDefinition(
                     id: "frame", flag: "--frame", displayName: "Frame Number",
@@ -1165,10 +1284,10 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "operation", flag: "", displayName: "Operation",
                     parameterType: .enumPicker, placeholder: "search",
-                    helpText: "UPS-RS operation: search workitems, get details, change state, or subscribe to events",
+                    helpText: "UPS-RS operation: search workitems, get details, create workitem, change state, or subscribe to events",
                     isRequired: true,
                     defaultValue: "search",
-                    allowedValues: ["search", "get", "change-state", "subscribe"]
+                    allowedValues: ["search", "get", "create", "change-state", "subscribe"]
                 ),
                 CLIParameterDefinition(
                     id: "url", flag: "--url", displayName: "Base URL",
@@ -1179,8 +1298,73 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "workitem-uid", flag: "--workitem-uid", displayName: "Workitem UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "UPS Workitem SOP Instance UID — required for get, change-state, subscribe",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["get", "change-state", "subscribe"])
+                    helpText: "UPS Workitem SOP Instance UID — required for get, change-state, subscribe; auto-generated for create if omitted",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["get", "create", "change-state", "subscribe"])
+                ),
+                // Create-specific parameters
+                CLIParameterDefinition(
+                    id: "create-label", flag: "--label", displayName: "Procedure Step Label",
+                    parameterType: .textField, placeholder: "e.g. CT Scan Chest",
+                    helpText: "Human-readable label for the procedure step (0074,1204)",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. Doe^Jane",
+                    helpText: "Patient name in DICOM format (0010,0010)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. PAT001",
+                    helpText: "Patient identifier (0010,0020)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-priority", flag: "--priority", displayName: "Priority",
+                    parameterType: .enumPicker, placeholder: "MEDIUM",
+                    helpText: "Scheduled Procedure Step Priority (0074,1200)",
+                    defaultValue: "MEDIUM",
+                    allowedValues: ["STAT", "HIGH", "MEDIUM", "LOW"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-scheduled-start", flag: "--scheduled-start", displayName: "Scheduled Start",
+                    parameterType: .textField, placeholder: "e.g. 2026-03-20T14:00:00",
+                    helpText: "Scheduled procedure step start date/time in ISO 8601 format",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Study Instance UID to reference in the workitem (0020,000D)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-accession", flag: "--accession", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession number (0008,0050)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-station-name", flag: "--station-name", displayName: "Station Name",
+                    parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
+                    helpText: "Scheduled station name for the procedure",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-performer", flag: "--performer", displayName: "Performer Name",
+                    parameterType: .textField, placeholder: "e.g. Tech^Mary",
+                    helpText: "Scheduled human performer name",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-comments", flag: "--comments", displayName: "Comments",
+                    parameterType: .textField, placeholder: "e.g. Patient prepped for contrast",
+                    helpText: "Comments on the scheduled procedure step (0040,0400)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "state", flag: "--state", displayName: "Target State",

@@ -387,6 +387,37 @@ public struct QIDOResultItem: Sendable, Identifiable, Equatable, Hashable {
     }
 }
 
+// MARK: - WADO Protocol
+
+/// The WADO protocol variant to use for retrieval.
+/// Reference: DICOM PS3.18 §8 (WADO-URI) and §10.4 (WADO-RS)
+public enum WADOProtocol: String, Sendable, Equatable, Hashable, CaseIterable, Codable {
+    /// WADO-RS (RESTful) — modern protocol using path-based URLs.
+    /// Supported by dcm4chee5, Orthanc, Google Cloud Healthcare, etc.
+    case wadoRS = "WADO_RS"
+    /// WADO-URI — legacy protocol using query parameters.
+    /// Supported by dcm4chee2, older PACS servers.
+    case wadoURI = "WADO_URI"
+
+    /// Human-readable display name.
+    public var displayName: String {
+        switch self {
+        case .wadoRS:  return "WADO-RS (RESTful)"
+        case .wadoURI: return "WADO-URI (Legacy)"
+        }
+    }
+
+    /// Short description of the protocol.
+    public var protocolDescription: String {
+        switch self {
+        case .wadoRS:
+            return "Modern RESTful API — /studies/{uid}/series/{uid}/instances/{uid}"
+        case .wadoURI:
+            return "Legacy query-parameter API — ?requestType=WADO&studyUID=...&seriesUID=...&objectUID=..."
+        }
+    }
+}
+
 // MARK: - WADO-RS Retrieve Mode
 
 /// The scope or mode for a WADO-RS retrieve request.

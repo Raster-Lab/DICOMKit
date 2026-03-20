@@ -802,6 +802,7 @@ struct UPSCommand: AsyncParsableCommand {
               dicom-wado ups https://server/dicom-web --search
               dicom-wado ups https://server/dicom-web --get <workitem-uid>
               dicom-wado ups https://server/dicom-web --create worklist.json
+              dicom-wado ups https://server/dicom-web --create-workitem --label "CT Scan" --patient-name "Doe^Jane" --patient-id PAT001
               dicom-wado ups https://server/dicom-web --update <uid> --state IN_PROGRESS
             """
     )
@@ -818,17 +819,86 @@ struct UPSCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Create worklist item from JSON file")
     var create: String?
     
+    @Flag(name: .customLong("create-workitem"), help: "Create a new worklist item from command-line options")
+    var createWorkitemFlag: Bool = false
+    
     @Option(name: .long, help: "Update worklist item UID")
     var update: String?
     
     @Option(name: .long, help: "New state for update: SCHEDULED, IN_PROGRESS, COMPLETED, CANCELED")
     var state: String?
     
+    // MARK: - Search Filters
+    
     @Option(name: .long, help: "Filter by procedure step state")
     var filterState: String?
     
     @Option(name: .long, help: "Filter by scheduled station AE")
     var scheduledStation: String?
+    
+    // MARK: - Create Workitem Options
+    
+    @Option(name: .long, help: "Workitem UID (auto-generated if omitted)")
+    var workitemUID: String?
+    
+    @Option(name: .long, help: "Procedure step label (e.g. 'CT Scan Chest')")
+    var label: String?
+    
+    @Option(name: .long, help: "Patient name in DICOM format (e.g. 'Doe^Jane')")
+    var patientName: String?
+    
+    @Option(name: .long, help: "Patient ID")
+    var patientID: String?
+    
+    @Option(name: .long, help: "Priority: STAT, HIGH, MEDIUM, LOW (default: MEDIUM)")
+    var priority: String?
+    
+    @Option(name: .long, help: "Patient birth date (YYYYMMDD)")
+    var patientBirthDate: String?
+    
+    @Option(name: .long, help: "Patient sex: M, F, O")
+    var patientSex: String?
+    
+    @Option(name: .long, help: "Study Instance UID to reference")
+    var studyUID: String?
+    
+    @Option(name: .long, help: "Accession number")
+    var accessionNumber: String?
+    
+    @Option(name: .long, help: "Referring physician name")
+    var referringPhysician: String?
+    
+    @Option(name: .long, help: "Requested procedure ID")
+    var procedureID: String?
+    
+    @Option(name: .long, help: "Scheduled procedure step ID")
+    var stepID: String?
+    
+    @Option(name: .long, help: "Worklist label")
+    var worklistLabel: String?
+    
+    @Option(name: .long, help: "Comments on the procedure step")
+    var comments: String?
+    
+    @Option(name: .long, help: "Scheduled start date/time (ISO 8601, e.g. '2026-03-20T14:00:00')")
+    var scheduledStart: String?
+    
+    @Option(name: .long, help: "Expected completion date/time (ISO 8601)")
+    var expectedCompletion: String?
+    
+    @Option(name: .long, help: "Scheduled station name")
+    var stationName: String?
+    
+    @Option(name: .long, help: "Performer name")
+    var performerName: String?
+    
+    @Option(name: .long, help: "Performer organization")
+    var performerOrganization: String?
+    
+    @Option(name: .long, help: "Admission ID")
+    var admissionID: String?
+    
+    // MARK: - Common Options
     
     @Option(name: .long, help: "OAuth2 bearer token for authentication")
     var token: String?
@@ -857,11 +927,13 @@ struct UPSCommand: AsyncParsableCommand {
         } else if let uid = get {
             try await getWorkitem(client: client, uid: uid)
         } else if let jsonFile = create {
-            try await createWorkitem(client: client, jsonFile: jsonFile)
+            try await createWorkitemFromJSON(client: client, jsonFile: jsonFile)
+        } else if createWorkitemFlag {
+            try await createWorkitemFromOptions(client: client)
         } else if let uid = update {
             try await updateWorkitem(client: client, uid: uid)
         } else {
-            throw ValidationError("Specify an operation: --search, --get, --create, or --update")
+            throw ValidationError("Specify an operation: --search, --get, --create, --create-workitem, or --update")
         }
     }
     
@@ -927,7 +999,7 @@ struct UPSCommand: AsyncParsableCommand {
         }
     }
     
-    private func createWorkitem(client: DICOMwebClient, jsonFile: String) async throws {
+    private func createWorkitemFromJSON(client: DICOMwebClient, jsonFile: String) async throws {
         if verbose {
             fprintln("Creating worklist item from: \(jsonFile)")
         }
@@ -942,6 +1014,92 @@ struct UPSCommand: AsyncParsableCommand {
         
         let response = try await client.createWorkitem(workitem: workitemData)
         
+        printCreateResponse(response)
+    }
+    
+    private func createWorkitemFromOptions(client: DICOMwebClient) async throws {
+        guard let stepLabel = label else {
+            throw ValidationError("--label is required when using --create-workitem")
+        }
+        
+        // Generate a UID if not provided
+        let uid = workitemUID ?? generateDICOMUID()
+        
+        if verbose {
+            fprintln("Creating worklist item from command-line options...")
+            fprintln("  UID: \(uid)")
+            fprintln("  Label: \(stepLabel)")
+        }
+        
+        let builder = WorkitemBuilder(workitemUID: uid)
+            .setState(.scheduled)
+            .setProcedureStepLabel(stepLabel)
+        
+        // Priority
+        if let priorityStr = priority {
+            let p = try parsePriority(priorityStr)
+            builder.setPriority(p)
+        }
+        
+        // Patient info
+        if let name = patientName { builder.setPatientName(name) }
+        if let pid = patientID { builder.setPatientID(pid) }
+        if let dob = patientBirthDate { builder.setPatientBirthDate(dob) }
+        if let sex = patientSex {
+            let normalized = sex.uppercased()
+            guard ["M", "F", "O"].contains(normalized) else {
+                throw ValidationError("Invalid patient sex '\(sex)'. Valid values: M, F, O")
+            }
+            builder.setPatientSex(normalized)
+        }
+        
+        // Study reference
+        if let studyRef = studyUID { builder.setStudyInstanceUID(studyRef) }
+        if let accession = accessionNumber { builder.setAccessionNumber(accession) }
+        if let referring = referringPhysician { builder.setReferringPhysicianName(referring) }
+        if let procID = procedureID { builder.setRequestedProcedureID(procID) }
+        
+        // Scheduling IDs
+        if let sid = stepID { builder.setScheduledProcedureStepID(sid) }
+        if let wlLabel = worklistLabel { builder.setWorklistLabel(wlLabel) }
+        if let cmt = comments { builder.setComments(cmt) }
+        
+        // Dates
+        if let startStr = scheduledStart {
+            let date = try parseISO8601Date(startStr, label: "--scheduled-start")
+            builder.setScheduledStartDateTime(date)
+        }
+        if let completionStr = expectedCompletion {
+            let date = try parseISO8601Date(completionStr, label: "--expected-completion")
+            builder.setExpectedCompletionDateTime(date)
+        }
+        
+        // Station
+        if let station = stationName {
+            builder.setScheduledStationNameCodes([
+                CodedEntry(codeValue: station, codingSchemeDesignator: "L", codeMeaning: station)
+            ])
+        }
+        
+        // Performer
+        if performerName != nil || performerOrganization != nil {
+            let performer = HumanPerformer(
+                performerName: performerName,
+                performerOrganization: performerOrganization
+            )
+            builder.addScheduledHumanPerformer(performer)
+        }
+        
+        // Admission
+        if let admID = admissionID { builder.setAdmissionID(admID) }
+        
+        let workitem = try builder.build()
+        let response = try await client.createWorkitem(workitem)
+        
+        printCreateResponse(response)
+    }
+    
+    private func printCreateResponse(_ response: UPSCreateResponse) {
         fprintln("Created worklist item:")
         fprintln("  UID: \(response.workitemUID)")
         if let url = response.retrieveURL {
@@ -953,6 +1111,47 @@ struct UPSCommand: AsyncParsableCommand {
                 fprintln("    - \(warning)")
             }
         }
+    }
+    
+    private func parsePriority(_ value: String) throws -> UPSPriority {
+        switch value.uppercased() {
+        case "STAT": return .stat
+        case "HIGH": return .high
+        case "MEDIUM": return .medium
+        case "LOW": return .low
+        default:
+            throw ValidationError("Invalid priority '\(value)'. Valid values: STAT, HIGH, MEDIUM, LOW")
+        }
+    }
+    
+    private func parseISO8601Date(_ value: String, label: String) throws -> Date {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        // Try without fractional seconds
+        formatter.formatOptions = [.withInternetDateTime]
+        if let date = formatter.date(from: value) {
+            return date
+        }
+        // Try date-only plus basic datetime formats
+        let fallback = DateFormatter()
+        fallback.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd", "yyyyMMdd'T'HHmmss", "yyyyMMdd"] {
+            fallback.dateFormat = fmt
+            if let date = fallback.date(from: value) {
+                return date
+            }
+        }
+        throw ValidationError("Invalid date format for \(label): '\(value)'. Use ISO 8601 (e.g. 2026-03-20T14:00:00)")
+    }
+    
+    private func generateDICOMUID() -> String {
+        // Use DICOMKit root 1.2.826.0.1.3680043.8.498 with process/time-based suffix
+        let timestamp = UInt64(Date().timeIntervalSince1970 * 1000000)
+        let random = UInt32.random(in: 1...999999)
+        return "1.2.826.0.1.3680043.8.498.\(timestamp).\(random)"
     }
     
     private func updateWorkitem(client: DICOMwebClient, uid: String) async throws {
