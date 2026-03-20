@@ -4316,7 +4316,7 @@ cp .build/release/dicom-* /usr/local/bin/
 | `dicom-send` | Send DICOM files to servers (C-STORE) | `dicom-send scan.dcm --host pacs.local:104` |
 | `dicom-retrieve` | Retrieve from PACS (C-MOVE/C-GET) | `dicom-retrieve --study-uid 1.2.3...` |
 | `dicom-print` | Print to DICOM printers | `dicom-print send image.dcm --printer rad-film-1` |
-| `dicom-mwl` | Modality Worklist query | `dicom-mwl query --station-aet CT01` |
+| `dicom-mwl` | Modality Worklist query and creation | `dicom-mwl query --station-aet CT01` |
 | `dicom-mpps` | Modality Performed Procedure Step | `dicom-mpps create --mpps-uid 1.2.3...` |
 | `dicom-qr` | Combined Query/Retrieve operations | `dicom-qr --patient-id 12345 --retrieve` |
 

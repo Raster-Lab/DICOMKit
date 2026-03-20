@@ -54,6 +54,30 @@ public enum DICOMwebClientFactory: Sendable {
         }
     }
 
+    /// Creates a `WADOURIClient` from a server profile for WADO-URI (legacy) retrieval.
+    ///
+    /// WADO-URI uses query parameters (`?requestType=WADO&studyUID=...`) instead of
+    /// RESTful path segments. Common for legacy PACS such as dcm4chee2.
+    ///
+    /// - Parameter profile: The DICOMweb server profile containing URL and auth settings.
+    /// - Throws: `DICOMwebError.invalidURL` if the profile's base URL is malformed.
+    /// - Returns: A configured `WADOURIClient` for WADO-URI operations.
+    public static func makeWADOURIClient(from profile: DICOMwebServerProfile) throws -> WADOURIClient {
+        guard let baseURL = URL(string: profile.baseURL) else {
+            throw DICOMwebError.invalidURL(url: profile.baseURL)
+        }
+
+        let authentication = mapAuthentication(profile)
+
+        let configuration = DICOMwebConfiguration(
+            baseURL: baseURL,
+            authentication: authentication,
+            maxConcurrentRequests: 4
+        )
+
+        return WADOURIClient(configuration: configuration)
+    }
+
     /// Builds a `QIDOQuery` from DICOMStudio `QIDOQueryParams`.
     public static func buildQIDOQuery(from params: QIDOQueryParams) -> QIDOQuery {
         var query = QIDOQuery()

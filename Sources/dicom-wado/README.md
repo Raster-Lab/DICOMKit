@@ -29,7 +29,8 @@ DICOMweb client for RESTful DICOM operations supporting WADO-RS, QIDO-RS, STOW-R
 - **UPS-RS (Unified Procedure Step - RESTful)**
   - Search worklist items
   - Retrieve worklist details
-  - Create new worklist items
+  - Create new worklist items from JSON files
+  - Create new worklist items from command-line options (patient, scheduling, priority, etc.)
   - Update worklist state
 
 ## Installation
@@ -340,6 +341,91 @@ Example `worklist.json`:
     }]
   }
 }
+```
+
+### Create Worklist Item from Options
+
+Create a workitem directly from command-line flags without crafting DICOM JSON:
+
+```bash
+dicom-wado ups https://pacs.example.com/dicom-web \
+  --create-workitem \
+  --label "CT Scan Chest" \
+  --patient-name "Doe^Jane" \
+  --patient-id PAT001 \
+  --priority HIGH
+```
+
+With scheduling and study reference:
+
+```bash
+dicom-wado ups https://pacs.example.com/dicom-web \
+  --create-workitem \
+  --label "MRI Brain" \
+  --patient-name "Smith^John" \
+  --patient-id PAT002 \
+  --patient-birth-date 19800115 \
+  --patient-sex M \
+  --priority STAT \
+  --scheduled-start "2026-03-21T09:00:00" \
+  --expected-completion "2026-03-21T10:30:00" \
+  --study-uid 1.2.840.113619.2.xxx \
+  --accession-number ACC12345 \
+  --referring-physician "Jones^Dr" \
+  --verbose
+```
+
+With performer and station information:
+
+```bash
+dicom-wado ups https://pacs.example.com/dicom-web \
+  --create-workitem \
+  --label "CT Abdomen" \
+  --patient-name "Brown^Alice" \
+  --patient-id PAT003 \
+  --station-name CT_STATION_1 \
+  --performer-name "Tech^Mary" \
+  --performer-organization "Radiology Dept" \
+  --step-id STEP001 \
+  --worklist-label "Morning Worklist" \
+  --comments "Patient prepped for contrast" \
+  --admission-id ADM789
+```
+
+With a specific workitem UID:
+
+```bash
+dicom-wado ups https://pacs.example.com/dicom-web \
+  --create-workitem \
+  --workitem-uid 1.2.3.4.5.6.7.8.9 \
+  --label "Process Report" \
+  --priority LOW
+```
+
+#### Create Workitem Options
+
+| Option | Description |
+|--------|-------------|
+| `--label` | **(Required)** Procedure step label |
+| `--workitem-uid` | Workitem UID (auto-generated if omitted) |
+| `--patient-name` | Patient name in DICOM format (e.g. `Doe^Jane`) |
+| `--patient-id` | Patient identifier |
+| `--patient-birth-date` | Patient birth date (`YYYYMMDD`) |
+| `--patient-sex` | Patient sex: `M`, `F`, `O` |
+| `--priority` | Priority: `STAT`, `HIGH`, `MEDIUM` (default), `LOW` |
+| `--scheduled-start` | Scheduled start date/time (ISO 8601) |
+| `--expected-completion` | Expected completion date/time (ISO 8601) |
+| `--study-uid` | Study Instance UID to reference |
+| `--accession-number` | Accession number |
+| `--referring-physician` | Referring physician name |
+| `--procedure-id` | Requested procedure ID |
+| `--step-id` | Scheduled procedure step ID |
+| `--worklist-label` | Worklist label |
+| `--comments` | Comments on the procedure step |
+| `--station-name` | Scheduled station name |
+| `--performer-name` | Performer name |
+| `--performer-organization` | Performer organization |
+| `--admission-id` | Admission ID |
 ```
 
 ### Update Worklist State

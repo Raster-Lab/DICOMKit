@@ -1599,8 +1599,14 @@ public final class CLIWorkshopViewModel {
         }
     }
 
-    /// Executes a WADO-RS retrieve against a DICOMweb server.
+    /// Executes a WADO retrieve (WADO-RS or WADO-URI) against a DICOMweb server.
     private func executeDicomWADO() async {
+        let wadoProtocol = paramValue("protocol").lowercased()
+        if wadoProtocol == "wado-uri" {
+            await executeDicomWADOURI()
+            return
+        }
+        // Default: WADO-RS path
         guard let profile = dicomwebProfileFromParams() else {
             appendConsoleOutput("Error: Base URL is required.\n")
             consoleStatus = .error
@@ -1818,6 +1824,130 @@ public final class CLIWorkshopViewModel {
             if mode == "rendered" {
                 appendConsoleOutput("  💡 Hint: Not all servers support the /rendered endpoint. Try 'instance' mode instead.\n")
             }
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1,
+                         output: error.localizedDescription)
+        }
+    }
+
+    /// Executes a WADO-URI retrieve against a legacy DICOMweb/WADO server.
+    ///
+    /// WADO-URI uses query parameters (`?requestType=WADO&studyUID=...&seriesUID=...&objectUID=...`)
+    /// and retrieves a single DICOM object per request. Common for dcm4chee2 and older PACS.
+    ///
+    /// Reference: DICOM PS3.18 §8 — WADO by means of URI
+    private func executeDicomWADOURI() async {
+        guard let profile = dicomwebProfileFromParams() else {
+            appendConsoleOutput("Error: Base URL is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1, output: "Base URL is required")
+            return
+        }
+
+        let studyUID = paramValue("study-uid")
+        let seriesUID = paramValue("series-uid")
+        let instanceUID = paramValue("instance-uid")
+        let acceptType = paramValue("accept")
+        let frameStr = paramValue("frame")
+        let frameNumber = Int(frameStr) ?? 0
+
+        guard !studyUID.isEmpty else {
+            appendConsoleOutput("Error: Study Instance UID is required for WADO-URI.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1, output: "Study UID is required")
+            return
+        }
+        guard !seriesUID.isEmpty else {
+            appendConsoleOutput("Error: Series Instance UID is required for WADO-URI.\n")
+            appendConsoleOutput("  💡 WADO-URI requires Study UID, Series UID, and SOP Instance UID.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1, output: "Series UID is required for WADO-URI")
+            return
+        }
+        guard !instanceUID.isEmpty else {
+            appendConsoleOutput("Error: SOP Instance UID is required for WADO-URI.\n")
+            appendConsoleOutput("  💡 WADO-URI requires Study UID, Series UID, and SOP Instance UID.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1, output: "SOP Instance UID is required for WADO-URI")
+            return
+        }
+
+        appendConsoleOutput("Retrieving from \(profile.baseURL) via WADO-URI ...\n")
+        appendConsoleOutput("  Protocol:     WADO-URI (PS3.18 §8)\n")
+        appendConsoleOutput("  Accept:       \(acceptType.isEmpty ? "application/dicom" : acceptType)\n")
+        appendConsoleOutput("  Study UID:    \(studyUID)\n")
+        appendConsoleOutput("  Series UID:   \(seriesUID)\n")
+        appendConsoleOutput("  Instance UID: \(instanceUID)\n")
+        if frameNumber > 0 { appendConsoleOutput("  Frame:        \(frameNumber)\n") }
+        appendConsoleOutput("\n")
+
+        let outputDir = resolvedOutputDir(paramValue("output"))
+        let hierarchical = paramValue("hierarchical") == "true"
+
+        lastRetrievedFiles.removeAll()
+        lastRetrievedOutputURL = securityScopedURLs["output"]
+
+        do {
+            let client = try DICOMwebClientFactory.makeWADOURIClient(from: profile)
+
+            // Map accept type parameter to WADOURIClient.ContentType
+            let contentType: WADOURIClient.ContentType
+            switch acceptType {
+            case "image/jpeg":  contentType = .jpeg
+            case "image/png":   contentType = .png
+            case "image/gif":   contentType = .gif
+            default:            contentType = .dicom
+            }
+
+            let result = try await client.retrieve(
+                studyUID: studyUID,
+                seriesUID: seriesUID,
+                objectUID: instanceUID,
+                contentType: contentType,
+                frameNumber: frameNumber > 0 ? frameNumber : nil
+            )
+
+            let data = result.data
+            appendConsoleOutput("✅ WADO-URI retrieve successful (\(data.count) bytes)\n")
+
+            if contentType == .dicom {
+                let sopUID = wadoExtractSOPInstanceUID(data) ?? instanceUID
+                let savedPath = try writeReceivedDICOMFile(
+                    data: data, sopInstanceUID: sopUID,
+                    studyUID: studyUID, seriesUID: seriesUID,
+                    outputDir: outputDir, hierarchical: hierarchical
+                )
+                appendConsoleOutput("  Saved to: \(savedPath)\n\n")
+                wadoDisplayDataset(data, index: 1)
+            } else {
+                let ext: String
+                switch contentType {
+                case .jpeg: ext = "jpg"
+                case .png:  ext = "png"
+                case .gif:  ext = "gif"
+                default:    ext = "bin"
+                }
+                let frameSuffix = frameNumber > 0 ? "_frame\(frameNumber)" : ""
+                let filename = "wado_\(instanceUID)\(frameSuffix).\(ext)"
+                let savedPath = try writeOutputFile(data: data, filename: filename, outputDir: outputDir)
+                lastRetrievedFiles.append(savedPath)
+                appendConsoleOutput("  Saved to: \(savedPath)\n")
+            }
+
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 0,
+                         output: "WADO-URI: 1 object, \(data.count) bytes → \(outputDir)")
+        } catch {
+            appendConsoleOutput("❌ WADO-URI retrieve failed\n")
+            appendConsoleOutput("  Error: \(error.localizedDescription)\n")
+            appendConsoleOutput("\n  💡 Hint: Verify all three UIDs (Study, Series, SOP Instance) exist on the server.\n")
+            appendConsoleOutput("  💡 Hint: Ensure the Base URL points to the WADO endpoint (e.g. http://server:8080/wado).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-wado", command: commandPreview, exitCode: 1,
@@ -2121,6 +2251,106 @@ public final class CLIWorkshopViewModel {
                 addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
                              output: "Workitem retrieved")
 
+            case "create":
+                let stepLabel = paramValue("create-label")
+                guard !stepLabel.isEmpty else {
+                    appendConsoleOutput("Error: Procedure Step Label is required for create operation.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    return
+                }
+
+                let uid = workitemUID.isEmpty ? generateDICOMUID() : workitemUID
+                appendConsoleOutput("Creating workitem \(uid)...\n")
+                appendConsoleOutput("  Label: \(stepLabel)\n")
+
+                let builder = WorkitemBuilder(workitemUID: uid)
+                    .setState(.scheduled)
+                    .setProcedureStepLabel(stepLabel)
+
+                let priorityStr = paramValue("create-priority")
+                if !priorityStr.isEmpty {
+                    switch priorityStr.uppercased() {
+                    case "STAT": builder.setPriority(.stat)
+                    case "HIGH": builder.setPriority(.high)
+                    case "MEDIUM": builder.setPriority(.medium)
+                    case "LOW": builder.setPriority(.low)
+                    default: break
+                    }
+                    appendConsoleOutput("  Priority: \(priorityStr)\n")
+                }
+
+                let patName = paramValue("create-patient-name")
+                if !patName.isEmpty {
+                    builder.setPatientName(patName)
+                    appendConsoleOutput("  Patient Name: \(patName)\n")
+                }
+
+                let patID = paramValue("create-patient-id")
+                if !patID.isEmpty {
+                    builder.setPatientID(patID)
+                    appendConsoleOutput("  Patient ID: \(patID)\n")
+                }
+
+                let startStr = paramValue("create-scheduled-start")
+                if !startStr.isEmpty, let startDate = parseISO8601(startStr) {
+                    builder.setScheduledStartDateTime(startDate)
+                    appendConsoleOutput("  Scheduled Start: \(startStr)\n")
+                }
+
+                let studyRef = paramValue("create-study-uid")
+                if !studyRef.isEmpty {
+                    builder.setStudyInstanceUID(studyRef)
+                    appendConsoleOutput("  Study UID: \(studyRef)\n")
+                }
+
+                let accession = paramValue("create-accession")
+                if !accession.isEmpty {
+                    builder.setAccessionNumber(accession)
+                    appendConsoleOutput("  Accession: \(accession)\n")
+                }
+
+                let station = paramValue("create-station-name")
+                if !station.isEmpty {
+                    builder.setScheduledStationNameCodes([
+                        CodedEntry(codeValue: station, codingSchemeDesignator: "L", codeMeaning: station)
+                    ])
+                    appendConsoleOutput("  Station: \(station)\n")
+                }
+
+                let performer = paramValue("create-performer")
+                if !performer.isEmpty {
+                    builder.addScheduledHumanPerformer(
+                        HumanPerformer(performerName: performer)
+                    )
+                    appendConsoleOutput("  Performer: \(performer)\n")
+                }
+
+                let cmt = paramValue("create-comments")
+                if !cmt.isEmpty {
+                    builder.setComments(cmt)
+                }
+
+                appendConsoleOutput("\n")
+
+                let workitem = try builder.build()
+                let response = try await client.createWorkitem(workitem)
+
+                appendConsoleOutput("✅ Workitem created successfully\n")
+                appendConsoleOutput("  UID: \(response.workitemUID)\n")
+                if let url = response.retrieveURL {
+                    appendConsoleOutput("  Retrieve URL: \(url)\n")
+                }
+                if !response.warnings.isEmpty {
+                    for w in response.warnings {
+                        appendConsoleOutput("  ⚠️ \(w)\n")
+                    }
+                }
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
+                             output: "Workitem created: \(response.workitemUID)")
+
             case "change-state":
                 guard !workitemUID.isEmpty else {
                     appendConsoleOutput("Error: Workitem UID is required for change-state operation.\n")
@@ -2183,6 +2413,29 @@ public final class CLIWorkshopViewModel {
             addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 1,
                          output: error.localizedDescription)
         }
+    }
+
+    /// Generates a DICOM UID for workitem creation.
+    private func generateDICOMUID() -> String {
+        let timestamp = UInt64(Date().timeIntervalSince1970 * 1000000)
+        let random = UInt32.random(in: 1...999999)
+        return "1.2.826.0.1.3680043.8.498.\(timestamp).\(random)"
+    }
+
+    /// Parses an ISO 8601 date string into a Date.
+    private func parseISO8601(_ value: String) -> Date? {
+        let isoFormatter = ISO8601DateFormatter()
+        isoFormatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = isoFormatter.date(from: value) { return date }
+        isoFormatter.formatOptions = [.withInternetDateTime]
+        if let date = isoFormatter.date(from: value) { return date }
+        let fallback = DateFormatter()
+        fallback.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
+            fallback.dateFormat = fmt
+            if let date = fallback.date(from: value) { return date }
+        }
+        return nil
     }
 
     /// Performs a C-FIND query against the server configured in the parameter fields.
@@ -3562,6 +3815,7 @@ public final class CLIWorkshopViewModel {
 
     /// Performs a Modality Worklist C-FIND query.
     private func executeDicomMWL() async {
+        let operation = paramValue("operation").isEmpty ? "query" : paramValue("operation")
         let host = paramValue("host")
         let portStr = paramValue("port")
         let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
@@ -3569,14 +3823,6 @@ public final class CLIWorkshopViewModel {
         let timeoutStr = paramValue("timeout")
         let port = UInt16(portStr) ?? 11112
         let timeout = TimeInterval(timeoutStr) ?? 60
-        let dateFrom = paramValue("date-from")
-        let dateTo = paramValue("date-to")
-        let station = paramValue("station")
-        let patient = paramValue("patient")
-        let patientID = paramValue("patient-id")
-        let modality = paramValue("modality")
-        let spsStatus = paramValue("sps-status")
-        let jsonOutput = paramValue("json") == "true"
 
         guard !host.isEmpty else {
             appendConsoleOutput("Error: Hostname is required.\n")
@@ -3585,6 +3831,37 @@ public final class CLIWorkshopViewModel {
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1, output: "Hostname is required")
             return
         }
+
+        if operation == "create" {
+            await executeDicomMWLCreate(
+                host: host, port: port,
+                callingAET: callingAET, calledAET: calledAET,
+                timeout: timeout
+            )
+        } else {
+            await executeDicomMWLQuery(
+                host: host, port: port,
+                callingAET: callingAET, calledAET: calledAET,
+                timeout: timeout
+            )
+        }
+    }
+
+    // MARK: - MWL Query (C-FIND)
+
+    private func executeDicomMWLQuery(
+        host: String, port: UInt16,
+        callingAET: String, calledAET: String,
+        timeout: TimeInterval
+    ) async {
+        let dateFrom = paramValue("date-from")
+        let dateTo = paramValue("date-to")
+        let station = paramValue("station")
+        let patient = paramValue("patient")
+        let patientID = paramValue("patient-id")
+        let modality = paramValue("modality")
+        let spsStatus = paramValue("sps-status")
+        let jsonOutput = paramValue("json") == "true"
 
         appendConsoleOutput("DICOM Modality Worklist (C-FIND)\n")
         appendConsoleOutput("================================\n")
@@ -3732,6 +4009,136 @@ public final class CLIWorkshopViewModel {
                     appendConsoleOutput("  💡 Hint: The server rejected the association. Check the Called AE Title matches the server configuration.\n")
                 case .connectionFailed, .connectionClosed, .timeout, .operationTimeout, .artimTimerExpired:
                     appendConsoleOutput("  💡 Hint: Could not connect. Verify the hostname, port, and that the PACS is running.\n")
+                default:
+                    break
+                }
+            }
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,
+                         output: errorDesc)
+        }
+    }
+
+    // MARK: - MWL Create (N-CREATE)
+
+    private func executeDicomMWLCreate(
+        host: String, port: UInt16,
+        callingAET: String, calledAET: String,
+        timeout: TimeInterval
+    ) async {
+        let patientName = paramValue("create-patient-name")
+        let patientID = paramValue("create-patient-id")
+        let patientDOB = paramValue("patient-dob")
+        let patientSex = paramValue("patient-sex")
+        let accessionNumber = paramValue("accession-number")
+        let referringPhysician = paramValue("referring-physician")
+        let procedureID = paramValue("procedure-id")
+        let procedureDesc = paramValue("procedure-desc")
+        let modality = paramValue("create-modality").isEmpty ? "CT" : paramValue("create-modality")
+        let scheduledStation = paramValue("scheduled-station")
+        let stationName = paramValue("station-name")
+        let scheduledDate = paramValue("scheduled-date")
+        let scheduledTime = paramValue("scheduled-time")
+        let spsID = paramValue("sps-id")
+        let spsDesc = paramValue("sps-desc")
+        let performingPhysician = paramValue("performing-physician")
+
+        guard !patientName.isEmpty else {
+            appendConsoleOutput("Error: Patient Name is required for worklist creation.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,
+                         output: "Patient Name is required")
+            return
+        }
+        guard !patientID.isEmpty else {
+            appendConsoleOutput("Error: Patient ID is required for worklist creation.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,
+                         output: "Patient ID is required")
+            return
+        }
+
+        // Resolve scheduled date
+        let resolvedDate: String
+        if scheduledDate.isEmpty {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyyMMdd"
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            resolvedDate = formatter.string(from: Date())
+        } else {
+            resolvedDate = resolvedWorklistDate(scheduledDate)
+        }
+
+        appendConsoleOutput("DICOM Modality Worklist (N-CREATE)\n")
+        appendConsoleOutput("===================================\n")
+        appendConsoleOutput("  Server:           \(host):\(port)\n")
+        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
+        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        appendConsoleOutput("\n  Patient Name:     \(patientName)\n")
+        appendConsoleOutput("  Patient ID:       \(patientID)\n")
+        if !patientDOB.isEmpty       { appendConsoleOutput("  Date of Birth:    \(patientDOB)\n") }
+        if !patientSex.isEmpty       { appendConsoleOutput("  Patient Sex:      \(patientSex)\n") }
+        if !accessionNumber.isEmpty  { appendConsoleOutput("  Accession Number: \(accessionNumber)\n") }
+        if !referringPhysician.isEmpty { appendConsoleOutput("  Referring Phys:   \(referringPhysician)\n") }
+        appendConsoleOutput("  Modality:         \(modality)\n")
+        appendConsoleOutput("  Scheduled Date:   \(resolvedDate)\n")
+        if !scheduledTime.isEmpty    { appendConsoleOutput("  Scheduled Time:   \(scheduledTime)\n") }
+        if !scheduledStation.isEmpty { appendConsoleOutput("  Station AET:      \(scheduledStation)\n") }
+        if !stationName.isEmpty      { appendConsoleOutput("  Station Name:     \(stationName)\n") }
+        if !spsID.isEmpty            { appendConsoleOutput("  SPS ID:           \(spsID)\n") }
+        if !spsDesc.isEmpty          { appendConsoleOutput("  SPS Description:  \(spsDesc)\n") }
+        if !procedureID.isEmpty      { appendConsoleOutput("  Procedure ID:     \(procedureID)\n") }
+        if !procedureDesc.isEmpty    { appendConsoleOutput("  Procedure Desc:   \(procedureDesc)\n") }
+        if !performingPhysician.isEmpty { appendConsoleOutput("  Performing Phys:  \(performingPhysician)\n") }
+        appendConsoleOutput("\nCreating Modality Worklist item...\n\n")
+
+        do {
+            let sopInstanceUID = try await DICOMModalityWorklistService.create(
+                host: host,
+                port: port,
+                callingAE: callingAET,
+                calledAE: calledAET,
+                patientName: patientName,
+                patientID: patientID,
+                patientBirthDate: patientDOB.isEmpty ? nil : patientDOB,
+                patientSex: patientSex.isEmpty ? nil : patientSex,
+                accessionNumber: accessionNumber.isEmpty ? nil : accessionNumber,
+                referringPhysicianName: referringPhysician.isEmpty ? nil : referringPhysician,
+                requestedProcedureID: procedureID.isEmpty ? nil : procedureID,
+                requestedProcedureDescription: procedureDesc.isEmpty ? nil : procedureDesc,
+                modality: modality.isEmpty ? nil : modality,
+                scheduledStationAETitle: scheduledStation.isEmpty ? nil : scheduledStation,
+                scheduledStationName: stationName.isEmpty ? nil : stationName,
+                scheduledStartDate: resolvedDate,
+                scheduledStartTime: scheduledTime.isEmpty ? nil : scheduledTime,
+                scheduledProcedureStepID: spsID.isEmpty ? nil : spsID,
+                scheduledProcedureStepDescription: spsDesc.isEmpty ? nil : spsDesc,
+                scheduledPerformingPhysicianName: performingPhysician.isEmpty ? nil : performingPhysician,
+                timeout: timeout
+            )
+
+            appendConsoleOutput("✅ Worklist item created successfully\n")
+            appendConsoleOutput("  SOP Instance UID: \(sopInstanceUID)\n")
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0,
+                         output: "Worklist item created: \(sopInstanceUID)")
+        } catch {
+            let errorDesc = (error as? DICOMNetworkError)?.description ?? error.localizedDescription
+            appendConsoleOutput("❌ Worklist create failed: \(errorDesc)\n")
+            if let netError = error as? DICOMNetworkError {
+                switch netError {
+                case .sopClassNotSupported, .noPresentationContextAccepted:
+                    appendConsoleOutput("  💡 Hint: The server may not support MWL N-CREATE.\n")
+                    appendConsoleOutput("     Not all Worklist SCPs support worklist item creation via DIMSE.\n")
+                case .associationRejected:
+                    appendConsoleOutput("  💡 Hint: The server rejected the association. Check the Called AE Title.\n")
+                case .connectionFailed, .connectionClosed, .timeout, .operationTimeout, .artimTimerExpired:
+                    appendConsoleOutput("  💡 Hint: Could not connect. Verify the hostname, port, and that the server is running.\n")
                 default:
                     break
                 }

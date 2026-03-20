@@ -211,6 +211,33 @@ struct DICOMwebModelTests {
         #expect(r1.id != r2.id)
     }
 
+    // MARK: - WADOProtocol
+
+    @Test("WADOProtocol has 2 cases")
+    func testWADOProtocolCaseCount() {
+        #expect(WADOProtocol.allCases.count == 2)
+    }
+
+    @Test("WADOProtocol raw values")
+    func testWADOProtocolRawValues() {
+        #expect(WADOProtocol.wadoRS.rawValue == "WADO_RS")
+        #expect(WADOProtocol.wadoURI.rawValue == "WADO_URI")
+    }
+
+    @Test("WADOProtocol displayName non-empty")
+    func testWADOProtocolDisplayNames() {
+        for proto in WADOProtocol.allCases {
+            #expect(!proto.displayName.isEmpty)
+        }
+    }
+
+    @Test("WADOProtocol protocolDescription non-empty")
+    func testWADOProtocolDescriptions() {
+        for proto in WADOProtocol.allCases {
+            #expect(!proto.protocolDescription.isEmpty)
+        }
+    }
+
     // MARK: - WADORetrieveMode
 
     @Test("WADORetrieveMode all cases have non-empty display names")

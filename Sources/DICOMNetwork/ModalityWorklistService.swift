@@ -789,6 +789,431 @@ public enum DICOMModalityWorklistService {
             if group == 0xFFFE && (element == 0xE00D || element == 0xE0DD) { return }
         }
     }
+
+    // MARK: - Create Worklist Item (N-CREATE)
+
+    /// Creates a new worklist item on a remote Worklist SCP via N-CREATE.
+    ///
+    /// This sends an N-CREATE request containing a complete MWL dataset
+    /// (patient, study, and scheduled procedure step attributes) to the
+    /// specified server.  The server must support N-CREATE for the
+    /// Modality Worklist SOP Class.
+    ///
+    /// - Parameters:
+    ///   - host: The remote host address
+    ///   - port: The remote port number (default: 104)
+    ///   - callingAE: The local AE title
+    ///   - calledAE: The remote AE title
+    ///   - patientName: Patient's Name (0010,0010)
+    ///   - patientID: Patient ID (0010,0020)
+    ///   - patientBirthDate: Patient's Birth Date in YYYYMMDD (0010,0030)
+    ///   - patientSex: Patient's Sex — M, F, O (0010,0040)
+    ///   - accessionNumber: Accession Number (0008,0050)
+    ///   - referringPhysicianName: Referring Physician's Name (0008,0090)
+    ///   - requestedProcedureID: Requested Procedure ID (0040,1001)
+    ///   - requestedProcedureDescription: Requested Procedure Description (0032,1070)
+    ///   - studyInstanceUID: Study Instance UID (0020,000D) — auto-generated if nil
+    ///   - modality: Modality, e.g. "CT", "MR" (0008,0060)
+    ///   - scheduledStationAETitle: Scheduled Station AE Title (0040,0001)
+    ///   - scheduledStationName: Scheduled Station Name (0040,0010)
+    ///   - scheduledStartDate: Scheduled start date in YYYYMMDD (0040,0002)
+    ///   - scheduledStartTime: Scheduled start time in HHMMSS (0040,0003)
+    ///   - scheduledProcedureStepID: Scheduled Procedure Step ID (0040,0009)
+    ///   - scheduledProcedureStepDescription: SPS Description (0040,0007)
+    ///   - scheduledPerformingPhysicianName: Scheduled Performing Physician (0040,0006)
+    ///   - timeout: Connection timeout in seconds (default: 60)
+    /// - Returns: The SOP Instance UID of the created worklist item
+    /// - Throws: `DICOMNetworkError` for connection or protocol errors
+    ///
+    /// Reference: PS3.4 Annex K — Modality Worklist Information Model
+    public static func create(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        callingAE: String,
+        calledAE: String,
+        patientName: String,
+        patientID: String,
+        patientBirthDate: String? = nil,
+        patientSex: String? = nil,
+        accessionNumber: String? = nil,
+        referringPhysicianName: String? = nil,
+        requestedProcedureID: String? = nil,
+        requestedProcedureDescription: String? = nil,
+        studyInstanceUID: String? = nil,
+        modality: String? = nil,
+        scheduledStationAETitle: String? = nil,
+        scheduledStationName: String? = nil,
+        scheduledStartDate: String? = nil,
+        scheduledStartTime: String? = nil,
+        scheduledProcedureStepID: String? = nil,
+        scheduledProcedureStepDescription: String? = nil,
+        scheduledPerformingPhysicianName: String? = nil,
+        timeout: TimeInterval = 60
+    ) async throws -> String {
+        let callingAETitle = try AETitle(callingAE)
+        let calledAETitle = try AETitle(calledAE)
+
+        let config = ModalityWorklistConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout
+        )
+
+        let sopInstanceUID = studyInstanceUID ?? UIDGenerator.generateUID().value
+
+        try await performNCreate(
+            host: host,
+            port: port,
+            configuration: config,
+            sopInstanceUID: sopInstanceUID,
+            patientName: patientName,
+            patientID: patientID,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
+            accessionNumber: accessionNumber,
+            referringPhysicianName: referringPhysicianName,
+            requestedProcedureID: requestedProcedureID,
+            requestedProcedureDescription: requestedProcedureDescription,
+            modality: modality,
+            scheduledStationAETitle: scheduledStationAETitle,
+            scheduledStationName: scheduledStationName,
+            scheduledStartDate: scheduledStartDate,
+            scheduledStartTime: scheduledStartTime,
+            scheduledProcedureStepID: scheduledProcedureStepID,
+            scheduledProcedureStepDescription: scheduledProcedureStepDescription,
+            scheduledPerformingPhysicianName: scheduledPerformingPhysicianName
+        )
+
+        return sopInstanceUID
+    }
+
+    // MARK: - N-CREATE Private Implementation
+
+    private static func performNCreate(
+        host: String,
+        port: UInt16,
+        configuration: ModalityWorklistConfiguration,
+        sopInstanceUID: String,
+        patientName: String,
+        patientID: String,
+        patientBirthDate: String?,
+        patientSex: String?,
+        accessionNumber: String?,
+        referringPhysicianName: String?,
+        requestedProcedureID: String?,
+        requestedProcedureDescription: String?,
+        modality: String?,
+        scheduledStationAETitle: String?,
+        scheduledStationName: String?,
+        scheduledStartDate: String?,
+        scheduledStartTime: String?,
+        scheduledProcedureStepID: String?,
+        scheduledProcedureStepDescription: String?,
+        scheduledPerformingPhysicianName: String?
+    ) async throws {
+        let associationConfig = AssociationConfiguration(
+            callingAETitle: configuration.callingAETitle,
+            calledAETitle: configuration.calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: configuration.maxPDUSize,
+            implementationClassUID: configuration.implementationClassUID,
+            implementationVersionName: configuration.implementationVersionName,
+            timeout: configuration.timeout,
+            userIdentity: configuration.userIdentity
+        )
+
+        let association = Association(configuration: associationConfig)
+
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: modalityWorklistInformationModelFindSOPClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+
+        do {
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(modalityWorklistInformationModelFindSOPClassUID)
+            }
+
+            let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1)
+                ?? implicitVRLittleEndianTransferSyntaxUID
+
+            try await sendMWLNCreate(
+                association: association,
+                presentationContextID: 1,
+                maxPDUSize: negotiated.maxPDUSize,
+                sopInstanceUID: sopInstanceUID,
+                transferSyntax: acceptedTransferSyntax,
+                patientName: patientName,
+                patientID: patientID,
+                patientBirthDate: patientBirthDate,
+                patientSex: patientSex,
+                accessionNumber: accessionNumber,
+                referringPhysicianName: referringPhysicianName,
+                requestedProcedureID: requestedProcedureID,
+                requestedProcedureDescription: requestedProcedureDescription,
+                modality: modality,
+                scheduledStationAETitle: scheduledStationAETitle,
+                scheduledStationName: scheduledStationName,
+                scheduledStartDate: scheduledStartDate,
+                scheduledStartTime: scheduledStartTime,
+                scheduledProcedureStepID: scheduledProcedureStepID,
+                scheduledProcedureStepDescription: scheduledProcedureStepDescription,
+                scheduledPerformingPhysicianName: scheduledPerformingPhysicianName
+            )
+
+            try await association.release()
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
+
+    private static func sendMWLNCreate(
+        association: Association,
+        presentationContextID: UInt8,
+        maxPDUSize: UInt32,
+        sopInstanceUID: String,
+        transferSyntax: String,
+        patientName: String,
+        patientID: String,
+        patientBirthDate: String?,
+        patientSex: String?,
+        accessionNumber: String?,
+        referringPhysicianName: String?,
+        requestedProcedureID: String?,
+        requestedProcedureDescription: String?,
+        modality: String?,
+        scheduledStationAETitle: String?,
+        scheduledStationName: String?,
+        scheduledStartDate: String?,
+        scheduledStartTime: String?,
+        scheduledProcedureStepID: String?,
+        scheduledProcedureStepDescription: String?,
+        scheduledPerformingPhysicianName: String?
+    ) async throws {
+        let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
+
+        // Build the MWL attribute dataset
+        let attributeData = buildMWLCreateAttributes(
+            isExplicitVR: isExplicitVR,
+            patientName: patientName,
+            patientID: patientID,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
+            accessionNumber: accessionNumber,
+            referringPhysicianName: referringPhysicianName,
+            requestedProcedureID: requestedProcedureID,
+            requestedProcedureDescription: requestedProcedureDescription,
+            studyInstanceUID: sopInstanceUID,
+            modality: modality,
+            scheduledStationAETitle: scheduledStationAETitle,
+            scheduledStationName: scheduledStationName,
+            scheduledStartDate: scheduledStartDate,
+            scheduledStartTime: scheduledStartTime,
+            scheduledProcedureStepID: scheduledProcedureStepID,
+            scheduledProcedureStepDescription: scheduledProcedureStepDescription,
+            scheduledPerformingPhysicianName: scheduledPerformingPhysicianName
+        )
+
+        // Build N-CREATE command set
+        var commandData = Data()
+        // (0000,0100) Command Field — N-CREATE-RQ = 0x0140
+        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0100),
+                                                value: Data([0x40, 0x01])))
+        // (0000,0110) Message ID
+        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0110),
+                                                value: Data([0x01, 0x00])))
+        // (0000,0002) Affected SOP Class UID
+        var sopClassData = modalityWorklistInformationModelFindSOPClassUID.data(using: .ascii) ?? Data()
+        if sopClassData.count % 2 != 0 { sopClassData.append(0x00) }
+        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0002),
+                                                value: sopClassData))
+        // (0000,1000) Affected SOP Instance UID
+        var sopInstData = sopInstanceUID.data(using: .ascii) ?? Data()
+        if sopInstData.count % 2 != 0 { sopInstData.append(0x00) }
+        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x1000),
+                                                value: sopInstData))
+        // (0000,0800) Data Set Type — 0x0001 = present
+        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0800),
+                                                value: Data([0x01, 0x00])))
+
+        let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
+        let pdus = fragmenter.fragmentMessage(
+            commandSet: try CommandSet.decode(from: commandData),
+            dataSet: attributeData,
+            presentationContextID: presentationContextID
+        )
+
+        for pdu in pdus {
+            for pdv in pdu.presentationDataValues {
+                try await association.send(pdv: pdv)
+            }
+        }
+
+        // Receive response
+        let assembler = MessageAssembler()
+        let responsePDU = try await association.receive()
+
+        if let message = try assembler.addPDVs(from: responsePDU) {
+            let responseCommandSet = message.commandSet
+            let response = NCreateResponse(commandSet: responseCommandSet,
+                                           presentationContextID: presentationContextID)
+            guard response.status.isSuccess else {
+                throw DICOMNetworkError.storeFailed(response.status)
+            }
+        }
+    }
+
+    /// Encodes a command-set element (always implicit VR, UInt32 length).
+    private static func encodeCommandElement(tag: Tag, value: Data) -> Data {
+        var data = Data()
+        var group = tag.group.littleEndian
+        var element = tag.element.littleEndian
+        data.append(Data(bytes: &group, count: 2))
+        data.append(Data(bytes: &element, count: 2))
+        var length = UInt32(value.count).littleEndian
+        data.append(Data(bytes: &length, count: 4))
+        data.append(value)
+        return data
+    }
+
+    /// Builds the full MWL attribute dataset for N-CREATE.
+    ///
+    /// Encodes top-level patient/study attributes followed by the
+    /// Scheduled Procedure Step Sequence (0040,0100) with one item
+    /// containing scheduling-related attributes, per PS3.4 Annex K.
+    private static func buildMWLCreateAttributes(
+        isExplicitVR: Bool,
+        patientName: String,
+        patientID: String,
+        patientBirthDate: String?,
+        patientSex: String?,
+        accessionNumber: String?,
+        referringPhysicianName: String?,
+        requestedProcedureID: String?,
+        requestedProcedureDescription: String?,
+        studyInstanceUID: String,
+        modality: String?,
+        scheduledStationAETitle: String?,
+        scheduledStationName: String?,
+        scheduledStartDate: String?,
+        scheduledStartTime: String?,
+        scheduledProcedureStepID: String?,
+        scheduledProcedureStepDescription: String?,
+        scheduledPerformingPhysicianName: String?
+    ) -> Data {
+        var data = Data()
+
+        // --- Top-level attributes (sorted by tag ascending) ---
+
+        // Specific Character Set (0008,0005)
+        data.append(encodeElement(
+            tag: Tag(group: 0x0008, element: 0x0005), vr: .CS,
+            value: "ISO_IR 100", explicit: isExplicitVR))
+
+        // Accession Number (0008,0050) — Type 2
+        data.append(encodeElement(
+            tag: .accessionNumber, vr: .SH,
+            value: accessionNumber ?? "", explicit: isExplicitVR))
+
+        // Referring Physician's Name (0008,0090) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0008, element: 0x0090), vr: .PN,
+            value: referringPhysicianName ?? "", explicit: isExplicitVR))
+
+        // Patient's Name (0010,0010) — Type 1
+        data.append(encodeElement(
+            tag: .patientName, vr: .PN,
+            value: patientName, explicit: isExplicitVR))
+
+        // Patient ID (0010,0020) — Type 1
+        data.append(encodeElement(
+            tag: .patientID, vr: .LO,
+            value: patientID, explicit: isExplicitVR))
+
+        // Patient's Birth Date (0010,0030) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0010, element: 0x0030), vr: .DA,
+            value: patientBirthDate ?? "", explicit: isExplicitVR))
+
+        // Patient's Sex (0010,0040) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0010, element: 0x0040), vr: .CS,
+            value: patientSex ?? "", explicit: isExplicitVR))
+
+        // Study Instance UID (0020,000D) — Type 1
+        data.append(encodeElement(
+            tag: .studyInstanceUID, vr: .UI,
+            value: studyInstanceUID, explicit: isExplicitVR))
+
+        // Requested Procedure Description (0032,1070) — Type 2
+        data.append(encodeElement(
+            tag: Tag(group: 0x0032, element: 0x1070), vr: .LO,
+            value: requestedProcedureDescription ?? "", explicit: isExplicitVR))
+
+        // --- Scheduled Procedure Step Sequence (0040,0100) ---
+        var spsKeys: [(key: Tag, value: String)] = []
+
+        // Scheduled Station AE Title (0040,0001)
+        spsKeys.append((Tag(group: 0x0040, element: 0x0001),
+                         scheduledStationAETitle ?? ""))
+
+        // Scheduled Procedure Step Start Date (0040,0002) — Type 1
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let defaultDate = dateFormatter.string(from: Date())
+        spsKeys.append((Tag(group: 0x0040, element: 0x0002),
+                         scheduledStartDate ?? defaultDate))
+
+        // Scheduled Procedure Step Start Time (0040,0003)
+        if let time = scheduledStartTime, !time.isEmpty {
+            spsKeys.append((Tag(group: 0x0040, element: 0x0003), time))
+        }
+
+        // Scheduled Performing Physician's Name (0040,0006) — Type 2
+        spsKeys.append((Tag(group: 0x0040, element: 0x0006),
+                         scheduledPerformingPhysicianName ?? ""))
+
+        // Scheduled Procedure Step Description (0040,0007) — Type 2
+        spsKeys.append((Tag(group: 0x0040, element: 0x0007),
+                         scheduledProcedureStepDescription ?? ""))
+
+        // Modality (0008,0060) within SPS — Type 1
+        spsKeys.append((Tag(group: 0x0008, element: 0x0060),
+                         modality ?? "OT"))
+
+        // Scheduled Procedure Step ID (0040,0009) — Type 1
+        spsKeys.append((Tag(group: 0x0040, element: 0x0009),
+                         scheduledProcedureStepID ?? "SPS001"))
+
+        // Scheduled Station Name (0040,0010) — Type 2
+        spsKeys.append((Tag(group: 0x0040, element: 0x0010),
+                         scheduledStationName ?? ""))
+
+        // Scheduled Procedure Step Status (0040,0020) — default SCHEDULED
+        spsKeys.append((Tag(group: 0x0040, element: 0x0020), "SCHEDULED"))
+
+        // Sort SPS keys by tag for DICOM conformance
+        spsKeys.sort { $0.key < $1.key }
+
+        data.append(encodeSPSSequence(spsKeys: spsKeys, explicit: isExplicitVR))
+
+        // Requested Procedure ID (0040,1001) — Type 1 (after SPS sequence in tag order)
+        data.append(encodeElement(
+            tag: Tag(group: 0x0040, element: 0x1001), vr: .SH,
+            value: requestedProcedureID ?? "", explicit: isExplicitVR))
+
+        return data
+    }
 }
 
 #endif

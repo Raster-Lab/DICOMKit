@@ -872,6 +872,11 @@
 - [x] Filter by date, modality, station
 - [x] Refresh with configurable interval
 - [x] Auto-populate study data from worklist
+- [x] Create worklist items via N-CREATE:
+  - [x] Patient demographics (name, ID, DOB, sex)
+  - [x] Scheduled procedure step attributes (date, time, modality, station)
+  - [x] Requested procedure details (ID, description, accession number)
+  - [x] Performing physician and referring physician
 
 #### 9.7 Modality Performed Procedure Step (MPPS)
 - [x] Create MPPS (N-CREATE) for procedure tracking
