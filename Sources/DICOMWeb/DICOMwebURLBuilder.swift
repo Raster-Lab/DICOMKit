@@ -426,6 +426,19 @@ extension DICOMwebURLBuilder {
         return workitemsURL.appendingPathComponent(workitemUID)
     }
     
+    /// URL for creating a workitem with a client-specified UID
+    /// - Parameter workitemUID: The workitem's SOP Instance UID
+    /// - Returns: URL for `/workitems?workitem={workitemUID}`
+    ///
+    /// Per PS3.18 Section 11.4, Create uses a query parameter, not a path segment.
+    public func createWorkitemURL(workitemUID: String) -> URL {
+        var components = URLComponents(url: workitemsURL, resolvingAgainstBaseURL: false)!
+        components.queryItems = (components.queryItems ?? []) + [
+            URLQueryItem(name: "workitem", value: workitemUID)
+        ]
+        return components.url!
+    }
+    
     /// URL for workitem state changes
     /// - Parameter workitemUID: The workitem's SOP Instance UID
     /// - Returns: URL for `/workitems/{workitemUID}/state`

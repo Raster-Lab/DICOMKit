@@ -269,6 +269,7 @@ public struct WorklistItem: Sendable {
 }
 
 #if canImport(Network)
+import Network
 
 // MARK: - DICOM Modality Worklist Service
 
@@ -790,20 +791,23 @@ public enum DICOMModalityWorklistService {
         }
     }
 
-    // MARK: - Create Worklist Item (N-CREATE)
+    // MARK: - Create Worklist Item (REST API)
 
-    /// Creates a new worklist item on a remote Worklist SCP via N-CREATE.
+    /// Creates a new worklist item on a remote Worklist server via REST API.
     ///
-    /// This sends an N-CREATE request containing a complete MWL dataset
-    /// (patient, study, and scheduled procedure step attributes) to the
-    /// specified server.  The server must support N-CREATE for the
-    /// Modality Worklist SOP Class.
+    /// The DICOM standard (PS3.4 Annex K) defines the Modality Worklist
+    /// Information Model as C-FIND only; N-CREATE is not supported for the
+    /// MWL FIND SOP Class.  Modern PACS (dcm4chee-arc, Orthanc, etc.)
+    /// expose REST endpoints for MWL item management instead.
+    ///
+    /// This method builds a DICOM JSON payload (PS3.18 Annex F) and POSTs
+    /// it to the server's MWL management REST endpoint.
     ///
     /// - Parameters:
     ///   - host: The remote host address
-    ///   - port: The remote port number (default: 104)
-    ///   - callingAE: The local AE title
-    ///   - calledAE: The remote AE title
+    ///   - port: The remote port number (default: 104) — used only when no `restBaseURL` is given
+    ///   - callingAE: The local AE title (informational for REST)
+    ///   - calledAE: The remote AE title — used to construct the REST path when no explicit URL is given
     ///   - patientName: Patient's Name (0010,0010)
     ///   - patientID: Patient ID (0010,0020)
     ///   - patientBirthDate: Patient's Birth Date in YYYYMMDD (0010,0030)
@@ -821,6 +825,8 @@ public enum DICOMModalityWorklistService {
     ///   - scheduledProcedureStepID: Scheduled Procedure Step ID (0040,0009)
     ///   - scheduledProcedureStepDescription: SPS Description (0040,0007)
     ///   - scheduledPerformingPhysicianName: Scheduled Performing Physician (0040,0006)
+    ///   - restBaseURL: Full REST base URL, e.g. `http://host:8080/dcm4chee-arc`.
+    ///     When nil, defaults to `http://{host}:8080/dcm4chee-arc`.
     ///   - timeout: Connection timeout in seconds (default: 60)
     /// - Returns: The SOP Instance UID of the created worklist item
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
@@ -848,23 +854,22 @@ public enum DICOMModalityWorklistService {
         scheduledProcedureStepID: String? = nil,
         scheduledProcedureStepDescription: String? = nil,
         scheduledPerformingPhysicianName: String? = nil,
+        restBaseURL: String? = nil,
         timeout: TimeInterval = 60
     ) async throws -> String {
-        let callingAETitle = try AETitle(callingAE)
-        let calledAETitle = try AETitle(calledAE)
-
-        let config = ModalityWorklistConfiguration(
-            callingAETitle: callingAETitle,
-            calledAETitle: calledAETitle,
-            timeout: timeout
-        )
-
         let sopInstanceUID = studyInstanceUID ?? UIDGenerator.generateUID().value
 
-        try await performNCreate(
-            host: host,
-            port: port,
-            configuration: config,
+        // Build REST endpoint URL
+        let baseURL = restBaseURL ?? "http://\(host):8080/dcm4chee-arc"
+        let endpointString = "\(baseURL)/aets/\(calledAE)/rs/mwlitems"
+
+        guard let endpointURL = URL(string: endpointString) else {
+            throw DICOMNetworkError.connectionFailed(
+                "Invalid MWL REST endpoint URL: \(endpointString)")
+        }
+
+        try await performRESTCreate(
+            endpointURL: endpointURL,
             sopInstanceUID: sopInstanceUID,
             patientName: patientName,
             patientID: patientID,
@@ -881,18 +886,18 @@ public enum DICOMModalityWorklistService {
             scheduledStartTime: scheduledStartTime,
             scheduledProcedureStepID: scheduledProcedureStepID,
             scheduledProcedureStepDescription: scheduledProcedureStepDescription,
-            scheduledPerformingPhysicianName: scheduledPerformingPhysicianName
+            scheduledPerformingPhysicianName: scheduledPerformingPhysicianName,
+            timeout: timeout
         )
 
         return sopInstanceUID
     }
 
-    // MARK: - N-CREATE Private Implementation
+    // MARK: - REST Create Private Implementation
 
-    private static func performNCreate(
-        host: String,
-        port: UInt16,
-        configuration: ModalityWorklistConfiguration,
+    /// Posts a DICOM JSON MWL item to the server's REST endpoint.
+    private static func performRESTCreate(
+        endpointURL: URL,
         sopInstanceUID: String,
         patientName: String,
         patientID: String,
@@ -909,101 +914,12 @@ public enum DICOMModalityWorklistService {
         scheduledStartTime: String?,
         scheduledProcedureStepID: String?,
         scheduledProcedureStepDescription: String?,
-        scheduledPerformingPhysicianName: String?
+        scheduledPerformingPhysicianName: String?,
+        timeout: TimeInterval
     ) async throws {
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: configuration.callingAETitle,
-            calledAETitle: configuration.calledAETitle,
-            host: host,
-            port: port,
-            maxPDUSize: configuration.maxPDUSize,
-            implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout,
-            userIdentity: configuration.userIdentity
-        )
-
-        let association = Association(configuration: associationConfig)
-
-        let presentationContext = try PresentationContext(
-            id: 1,
-            abstractSyntax: modalityWorklistInformationModelFindSOPClassUID,
-            transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
-            ]
-        )
-
-        do {
-            let negotiated = try await association.request(presentationContexts: [presentationContext])
-
-            guard negotiated.isContextAccepted(1) else {
-                try await association.abort()
-                throw DICOMNetworkError.sopClassNotSupported(modalityWorklistInformationModelFindSOPClassUID)
-            }
-
-            let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1)
-                ?? implicitVRLittleEndianTransferSyntaxUID
-
-            try await sendMWLNCreate(
-                association: association,
-                presentationContextID: 1,
-                maxPDUSize: negotiated.maxPDUSize,
-                sopInstanceUID: sopInstanceUID,
-                transferSyntax: acceptedTransferSyntax,
-                patientName: patientName,
-                patientID: patientID,
-                patientBirthDate: patientBirthDate,
-                patientSex: patientSex,
-                accessionNumber: accessionNumber,
-                referringPhysicianName: referringPhysicianName,
-                requestedProcedureID: requestedProcedureID,
-                requestedProcedureDescription: requestedProcedureDescription,
-                modality: modality,
-                scheduledStationAETitle: scheduledStationAETitle,
-                scheduledStationName: scheduledStationName,
-                scheduledStartDate: scheduledStartDate,
-                scheduledStartTime: scheduledStartTime,
-                scheduledProcedureStepID: scheduledProcedureStepID,
-                scheduledProcedureStepDescription: scheduledProcedureStepDescription,
-                scheduledPerformingPhysicianName: scheduledPerformingPhysicianName
-            )
-
-            try await association.release()
-        } catch {
-            try? await association.abort()
-            throw error
-        }
-    }
-
-    private static func sendMWLNCreate(
-        association: Association,
-        presentationContextID: UInt8,
-        maxPDUSize: UInt32,
-        sopInstanceUID: String,
-        transferSyntax: String,
-        patientName: String,
-        patientID: String,
-        patientBirthDate: String?,
-        patientSex: String?,
-        accessionNumber: String?,
-        referringPhysicianName: String?,
-        requestedProcedureID: String?,
-        requestedProcedureDescription: String?,
-        modality: String?,
-        scheduledStationAETitle: String?,
-        scheduledStationName: String?,
-        scheduledStartDate: String?,
-        scheduledStartTime: String?,
-        scheduledProcedureStepID: String?,
-        scheduledProcedureStepDescription: String?,
-        scheduledPerformingPhysicianName: String?
-    ) async throws {
-        let isExplicitVR = transferSyntax == explicitVRLittleEndianTransferSyntaxUID
-
-        // Build the MWL attribute dataset
-        let attributeData = buildMWLCreateAttributes(
-            isExplicitVR: isExplicitVR,
+        // Build DICOM JSON payload (PS3.18 Annex F)
+        let jsonPayload = buildMWLCreateJSON(
+            studyInstanceUID: sopInstanceUID,
             patientName: patientName,
             patientID: patientID,
             patientBirthDate: patientBirthDate,
@@ -1012,7 +928,6 @@ public enum DICOMModalityWorklistService {
             referringPhysicianName: referringPhysicianName,
             requestedProcedureID: requestedProcedureID,
             requestedProcedureDescription: requestedProcedureDescription,
-            studyInstanceUID: sopInstanceUID,
             modality: modality,
             scheduledStationAETitle: scheduledStationAETitle,
             scheduledStationName: scheduledStationName,
@@ -1023,75 +938,46 @@ public enum DICOMModalityWorklistService {
             scheduledPerformingPhysicianName: scheduledPerformingPhysicianName
         )
 
-        // Build N-CREATE command set
-        var commandData = Data()
-        // (0000,0100) Command Field — N-CREATE-RQ = 0x0140
-        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0100),
-                                                value: Data([0x40, 0x01])))
-        // (0000,0110) Message ID
-        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0110),
-                                                value: Data([0x01, 0x00])))
-        // (0000,0002) Affected SOP Class UID
-        var sopClassData = modalityWorklistInformationModelFindSOPClassUID.data(using: .ascii) ?? Data()
-        if sopClassData.count % 2 != 0 { sopClassData.append(0x00) }
-        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0002),
-                                                value: sopClassData))
-        // (0000,1000) Affected SOP Instance UID
-        var sopInstData = sopInstanceUID.data(using: .ascii) ?? Data()
-        if sopInstData.count % 2 != 0 { sopInstData.append(0x00) }
-        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x1000),
-                                                value: sopInstData))
-        // (0000,0800) Data Set Type — 0x0001 = present
-        commandData.append(encodeCommandElement(tag: Tag(group: 0x0000, element: 0x0800),
-                                                value: Data([0x01, 0x00])))
+        let jsonData = try JSONSerialization.data(withJSONObject: jsonPayload, options: [])
 
-        let fragmenter = MessageFragmenter(maxPDUSize: maxPDUSize)
-        let pdus = fragmenter.fragmentMessage(
-            commandSet: try CommandSet.decode(from: commandData),
-            dataSet: attributeData,
-            presentationContextID: presentationContextID
-        )
+        var request = URLRequest(url: endpointURL)
+        request.httpMethod = "POST"
+        request.setValue("application/dicom+json", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/dicom+json", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = timeout
+        request.httpBody = jsonData
 
-        for pdu in pdus {
-            for pdv in pdu.presentationDataValues {
-                try await association.send(pdv: pdv)
-            }
+        let (_, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw DICOMNetworkError.connectionFailed(
+                "MWL REST create received non-HTTP response")
         }
 
-        // Receive response
-        let assembler = MessageAssembler()
-        let responsePDU = try await association.receive()
-
-        if let message = try assembler.addPDVs(from: responsePDU) {
-            let responseCommandSet = message.commandSet
-            let response = NCreateResponse(commandSet: responseCommandSet,
-                                           presentationContextID: presentationContextID)
-            guard response.status.isSuccess else {
-                throw DICOMNetworkError.storeFailed(response.status)
-            }
+        switch httpResponse.statusCode {
+        case 200, 201, 202:
+            return // Success
+        case 401, 403:
+            throw DICOMNetworkError.connectionFailed(
+                "MWL REST create failed: Authentication required (HTTP \(httpResponse.statusCode)). " +
+                "Configure credentials for the server's REST API.")
+        case 404:
+            throw DICOMNetworkError.connectionFailed(
+                "MWL REST endpoint not found (HTTP 404). " +
+                "Verify the REST base URL — default pattern is " +
+                "http://<host>:8080/dcm4chee-arc/aets/<AET>/rs/mwlitems")
+        case 409:
+            throw DICOMNetworkError.connectionFailed(
+                "MWL REST create conflict (HTTP 409): A worklist item with this UID may already exist.")
+        default:
+            throw DICOMNetworkError.connectionFailed(
+                "MWL REST create failed with HTTP \(httpResponse.statusCode)")
         }
     }
 
-    /// Encodes a command-set element (always implicit VR, UInt32 length).
-    private static func encodeCommandElement(tag: Tag, value: Data) -> Data {
-        var data = Data()
-        var group = tag.group.littleEndian
-        var element = tag.element.littleEndian
-        data.append(Data(bytes: &group, count: 2))
-        data.append(Data(bytes: &element, count: 2))
-        var length = UInt32(value.count).littleEndian
-        data.append(Data(bytes: &length, count: 4))
-        data.append(value)
-        return data
-    }
-
-    /// Builds the full MWL attribute dataset for N-CREATE.
-    ///
-    /// Encodes top-level patient/study attributes followed by the
-    /// Scheduled Procedure Step Sequence (0040,0100) with one item
-    /// containing scheduling-related attributes, per PS3.4 Annex K.
-    private static func buildMWLCreateAttributes(
-        isExplicitVR: Bool,
+    /// Builds a DICOM JSON dictionary (PS3.18 Annex F) for MWL item creation.
+    private static func buildMWLCreateJSON(
+        studyInstanceUID: String,
         patientName: String,
         patientID: String,
         patientBirthDate: String?,
@@ -1100,7 +986,6 @@ public enum DICOMModalityWorklistService {
         referringPhysicianName: String?,
         requestedProcedureID: String?,
         requestedProcedureDescription: String?,
-        studyInstanceUID: String,
         modality: String?,
         scheduledStationAETitle: String?,
         scheduledStationName: String?,
@@ -1109,110 +994,517 @@ public enum DICOMModalityWorklistService {
         scheduledProcedureStepID: String?,
         scheduledProcedureStepDescription: String?,
         scheduledPerformingPhysicianName: String?
-    ) -> Data {
-        var data = Data()
-
-        // --- Top-level attributes (sorted by tag ascending) ---
+    ) -> [String: Any] {
+        var json: [String: Any] = [:]
 
         // Specific Character Set (0008,0005)
-        data.append(encodeElement(
-            tag: Tag(group: 0x0008, element: 0x0005), vr: .CS,
-            value: "ISO_IR 100", explicit: isExplicitVR))
+        json["00080005"] = ["vr": "CS", "Value": ["ISO_IR 100"]]
 
         // Accession Number (0008,0050) — Type 2
-        data.append(encodeElement(
-            tag: .accessionNumber, vr: .SH,
-            value: accessionNumber ?? "", explicit: isExplicitVR))
+        json["00080050"] = ["vr": "SH", "Value": [accessionNumber ?? ""]]
 
         // Referring Physician's Name (0008,0090) — Type 2
-        data.append(encodeElement(
-            tag: Tag(group: 0x0008, element: 0x0090), vr: .PN,
-            value: referringPhysicianName ?? "", explicit: isExplicitVR))
+        if let ref = referringPhysicianName, !ref.isEmpty {
+            json["00080090"] = ["vr": "PN", "Value": [["Alphabetic": ref]]]
+        } else {
+            json["00080090"] = ["vr": "PN"]
+        }
 
         // Patient's Name (0010,0010) — Type 1
-        data.append(encodeElement(
-            tag: .patientName, vr: .PN,
-            value: patientName, explicit: isExplicitVR))
+        json["00100010"] = ["vr": "PN", "Value": [["Alphabetic": patientName]]]
 
         // Patient ID (0010,0020) — Type 1
-        data.append(encodeElement(
-            tag: .patientID, vr: .LO,
-            value: patientID, explicit: isExplicitVR))
+        json["00100020"] = ["vr": "LO", "Value": [patientID]]
 
         // Patient's Birth Date (0010,0030) — Type 2
-        data.append(encodeElement(
-            tag: Tag(group: 0x0010, element: 0x0030), vr: .DA,
-            value: patientBirthDate ?? "", explicit: isExplicitVR))
+        json["00100030"] = ["vr": "DA", "Value": [patientBirthDate ?? ""]]
 
         // Patient's Sex (0010,0040) — Type 2
-        data.append(encodeElement(
-            tag: Tag(group: 0x0010, element: 0x0040), vr: .CS,
-            value: patientSex ?? "", explicit: isExplicitVR))
+        json["00100040"] = ["vr": "CS", "Value": [patientSex ?? ""]]
 
         // Study Instance UID (0020,000D) — Type 1
-        data.append(encodeElement(
-            tag: .studyInstanceUID, vr: .UI,
-            value: studyInstanceUID, explicit: isExplicitVR))
+        json["0020000D"] = ["vr": "UI", "Value": [studyInstanceUID]]
 
         // Requested Procedure Description (0032,1070) — Type 2
-        data.append(encodeElement(
-            tag: Tag(group: 0x0032, element: 0x1070), vr: .LO,
-            value: requestedProcedureDescription ?? "", explicit: isExplicitVR))
+        json["00321070"] = ["vr": "LO", "Value": [requestedProcedureDescription ?? ""]]
 
         // --- Scheduled Procedure Step Sequence (0040,0100) ---
-        var spsKeys: [(key: Tag, value: String)] = []
-
-        // Scheduled Station AE Title (0040,0001)
-        spsKeys.append((Tag(group: 0x0040, element: 0x0001),
-                         scheduledStationAETitle ?? ""))
-
-        // Scheduled Procedure Step Start Date (0040,0002) — Type 1
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyyMMdd"
         dateFormatter.locale = Locale(identifier: "en_US_POSIX")
         let defaultDate = dateFormatter.string(from: Date())
-        spsKeys.append((Tag(group: 0x0040, element: 0x0002),
-                         scheduledStartDate ?? defaultDate))
+
+        var spsItem: [String: Any] = [:]
+
+        // Scheduled Station AE Title (0040,0001)
+        spsItem["00400001"] = ["vr": "AE", "Value": [scheduledStationAETitle ?? ""]]
+
+        // Scheduled Procedure Step Start Date (0040,0002) — Type 1
+        spsItem["00400002"] = ["vr": "DA", "Value": [scheduledStartDate ?? defaultDate]]
 
         // Scheduled Procedure Step Start Time (0040,0003)
         if let time = scheduledStartTime, !time.isEmpty {
-            spsKeys.append((Tag(group: 0x0040, element: 0x0003), time))
+            spsItem["00400003"] = ["vr": "TM", "Value": [time]]
         }
 
         // Scheduled Performing Physician's Name (0040,0006) — Type 2
-        spsKeys.append((Tag(group: 0x0040, element: 0x0006),
-                         scheduledPerformingPhysicianName ?? ""))
+        if let perf = scheduledPerformingPhysicianName, !perf.isEmpty {
+            spsItem["00400006"] = ["vr": "PN", "Value": [["Alphabetic": perf]]]
+        } else {
+            spsItem["00400006"] = ["vr": "PN"]
+        }
 
         // Scheduled Procedure Step Description (0040,0007) — Type 2
-        spsKeys.append((Tag(group: 0x0040, element: 0x0007),
-                         scheduledProcedureStepDescription ?? ""))
+        spsItem["00400007"] = ["vr": "LO", "Value": [scheduledProcedureStepDescription ?? ""]]
 
         // Modality (0008,0060) within SPS — Type 1
-        spsKeys.append((Tag(group: 0x0008, element: 0x0060),
-                         modality ?? "OT"))
+        spsItem["00080060"] = ["vr": "CS", "Value": [modality ?? "OT"]]
 
         // Scheduled Procedure Step ID (0040,0009) — Type 1
-        spsKeys.append((Tag(group: 0x0040, element: 0x0009),
-                         scheduledProcedureStepID ?? "SPS001"))
+        spsItem["00400009"] = ["vr": "SH", "Value": [scheduledProcedureStepID ?? "SPS001"]]
 
         // Scheduled Station Name (0040,0010) — Type 2
-        spsKeys.append((Tag(group: 0x0040, element: 0x0010),
-                         scheduledStationName ?? ""))
+        spsItem["00400010"] = ["vr": "SH", "Value": [scheduledStationName ?? ""]]
 
         // Scheduled Procedure Step Status (0040,0020) — default SCHEDULED
-        spsKeys.append((Tag(group: 0x0040, element: 0x0020), "SCHEDULED"))
+        spsItem["00400020"] = ["vr": "CS", "Value": ["SCHEDULED"]]
 
-        // Sort SPS keys by tag for DICOM conformance
-        spsKeys.sort { $0.key < $1.key }
+        json["00400100"] = ["vr": "SQ", "Value": [spsItem]]
 
-        data.append(encodeSPSSequence(spsKeys: spsKeys, explicit: isExplicitVR))
+        // Requested Procedure ID (0040,1001) — Type 1
+        json["00401001"] = ["vr": "SH", "Value": [requestedProcedureID ?? ""]]
 
-        // Requested Procedure ID (0040,1001) — Type 1 (after SPS sequence in tag order)
-        data.append(encodeElement(
-            tag: Tag(group: 0x0040, element: 0x1001), vr: .SH,
-            value: requestedProcedureID ?? "", explicit: isExplicitVR))
+        return json
+    }
 
-        return data
+    // MARK: - Create Worklist Item via HL7 (ORM^O01 over MLLP)
+
+    /// Creates a new worklist item by sending an HL7 ORM^O01 order message
+    /// to the server via MLLP (Minimum Lower Layer Protocol).
+    ///
+    /// Unlike REST-based creation, the HL7 ORM^O01 message causes the
+    /// receiving system (e.g. dcm4chee-arc, Mirth Connect) to **automatically
+    /// create the patient record and the worklist item** in one step.
+    ///
+    /// - Parameters:
+    ///   - host: The HL7 server hostname or IP address
+    ///   - hl7Port: The HL7 MLLP port (default: 2575)
+    ///   - sendingApplication: MSH-3 Sending Application (default: "DICOMSTUDIO")
+    ///   - sendingFacility: MSH-4 Sending Facility (default: "IMAGING")
+    ///   - receivingApplication: MSH-5 Receiving Application (default: "DCM4CHEE")
+    ///   - receivingFacility: MSH-6 Receiving Facility (default: "HOSPITAL")
+    ///   - patientName: Patient's Name in HL7 format (Last^First)
+    ///   - patientID: Patient ID
+    ///   - patientBirthDate: Patient's Birth Date in YYYYMMDD
+    ///   - patientSex: Patient's Sex — M, F, O
+    ///   - accessionNumber: Accession Number
+    ///   - referringPhysicianName: Referring Physician's Name (Last^First)
+    ///   - requestedProcedureID: Requested Procedure ID
+    ///   - requestedProcedureDescription: Requested Procedure Description
+    ///   - studyInstanceUID: Study Instance UID — auto-generated if nil
+    ///   - modality: Modality, e.g. "CT", "MR"
+    ///   - scheduledStationAETitle: Scheduled Station AE Title
+    ///   - scheduledStationName: Scheduled Station Name
+    ///   - scheduledStartDate: Scheduled start date in YYYYMMDD
+    ///   - scheduledStartTime: Scheduled start time in HHMMSS
+    ///   - scheduledProcedureStepID: Scheduled Procedure Step ID
+    ///   - scheduledProcedureStepDescription: SPS Description
+    ///   - scheduledPerformingPhysicianName: Scheduled Performing Physician (Last^First)
+    ///   - timeout: Connection timeout in seconds (default: 30)
+    /// - Returns: The message control ID of the sent HL7 message
+    /// - Throws: `DICOMNetworkError` for connection or protocol errors
+    public static func createViaHL7(
+        host: String,
+        hl7Port: UInt16 = 2575,
+        sendingApplication: String = "DICOMSTUDIO",
+        sendingFacility: String = "IMAGING",
+        receivingApplication: String = "DCM4CHEE",
+        receivingFacility: String = "HOSPITAL",
+        patientName: String,
+        patientID: String,
+        patientBirthDate: String? = nil,
+        patientSex: String? = nil,
+        accessionNumber: String? = nil,
+        referringPhysicianName: String? = nil,
+        requestedProcedureID: String? = nil,
+        requestedProcedureDescription: String? = nil,
+        studyInstanceUID: String? = nil,
+        modality: String? = nil,
+        scheduledStationAETitle: String? = nil,
+        scheduledStationName: String? = nil,
+        scheduledStartDate: String? = nil,
+        scheduledStartTime: String? = nil,
+        scheduledProcedureStepID: String? = nil,
+        scheduledProcedureStepDescription: String? = nil,
+        scheduledPerformingPhysicianName: String? = nil,
+        timeout: TimeInterval = 30
+    ) async throws -> String {
+        let messageControlID = generateHL7MessageControlID()
+        let studyUID = studyInstanceUID ?? UIDGenerator.generateUID().value
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyyMMdd"
+        dateFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let resolvedDate = scheduledStartDate ?? dateFormatter.string(from: Date())
+
+        let timestampFormatter = DateFormatter()
+        timestampFormatter.dateFormat = "yyyyMMddHHmmss"
+        timestampFormatter.locale = Locale(identifier: "en_US_POSIX")
+        let timestamp = timestampFormatter.string(from: Date())
+
+        let resolvedTime = scheduledStartTime ?? ""
+        let scheduledDateTime = resolvedTime.isEmpty ? resolvedDate : "\(resolvedDate)\(resolvedTime)"
+
+        // Build HL7 ORM^O01 message
+        let ormMessage = buildHL7ORM(
+            messageControlID: messageControlID,
+            timestamp: timestamp,
+            sendingApplication: sendingApplication,
+            sendingFacility: sendingFacility,
+            receivingApplication: receivingApplication,
+            receivingFacility: receivingFacility,
+            patientName: patientName,
+            patientID: patientID,
+            patientBirthDate: patientBirthDate,
+            patientSex: patientSex,
+            accessionNumber: accessionNumber ?? "",
+            referringPhysicianName: referringPhysicianName,
+            requestedProcedureID: requestedProcedureID ?? "RP001",
+            requestedProcedureDescription: requestedProcedureDescription ?? "",
+            studyInstanceUID: studyUID,
+            modality: modality ?? "OT",
+            scheduledStationAETitle: scheduledStationAETitle ?? "",
+            scheduledStationName: scheduledStationName ?? "",
+            scheduledDateTime: scheduledDateTime,
+            scheduledProcedureStepID: scheduledProcedureStepID ?? "SPS001",
+            scheduledProcedureStepDescription: scheduledProcedureStepDescription ?? "",
+            scheduledPerformingPhysicianName: scheduledPerformingPhysicianName
+        )
+
+        // Send via MLLP and receive ACK
+        let ack = try await sendHL7ViaMLLP(
+            message: ormMessage,
+            host: host,
+            port: hl7Port,
+            timeout: timeout
+        )
+
+        // Parse ACK — expect MSA|AA or MSA|CA for success
+        guard let ackCode = parseHL7AckCode(ack) else {
+            throw DICOMNetworkError.connectionFailed(
+                "HL7 response missing MSA segment or unreadable")
+        }
+
+        switch ackCode {
+        case "AA", "CA":
+            return messageControlID
+        case "AE":
+            let errorText = parseHL7AckErrorText(ack) ?? "Application error"
+            throw DICOMNetworkError.connectionFailed(
+                "HL7 ORM rejected (AE): \(errorText)")
+        case "AR":
+            let errorText = parseHL7AckErrorText(ack) ?? "Application reject"
+            throw DICOMNetworkError.connectionFailed(
+                "HL7 ORM rejected (AR): \(errorText)")
+        default:
+            throw DICOMNetworkError.connectionFailed(
+                "HL7 unexpected ACK code: \(ackCode)")
+        }
+    }
+
+    // MARK: - HL7 ORM^O01 Message Builder
+
+    /// Builds an HL7 v2.5 ORM^O01 order message for MWL creation.
+    ///
+    /// Segments: MSH, PID, PV1, ORC, OBR, ZDS
+    /// The ZDS segment carries the Study Instance UID for DICOM-aware receivers.
+    private static func buildHL7ORM(
+        messageControlID: String,
+        timestamp: String,
+        sendingApplication: String,
+        sendingFacility: String,
+        receivingApplication: String,
+        receivingFacility: String,
+        patientName: String,
+        patientID: String,
+        patientBirthDate: String?,
+        patientSex: String?,
+        accessionNumber: String,
+        referringPhysicianName: String?,
+        requestedProcedureID: String,
+        requestedProcedureDescription: String,
+        studyInstanceUID: String,
+        modality: String,
+        scheduledStationAETitle: String,
+        scheduledStationName: String,
+        scheduledDateTime: String,
+        scheduledProcedureStepID: String,
+        scheduledProcedureStepDescription: String,
+        scheduledPerformingPhysicianName: String?
+    ) -> String {
+        let cr = "\r"
+
+        // MSH — Message Header
+        var msg = "MSH|^~\\&"
+        msg += "|\(sendingApplication)"
+        msg += "|\(sendingFacility)"
+        msg += "|\(receivingApplication)"
+        msg += "|\(receivingFacility)"
+        msg += "|\(timestamp)"
+        msg += "|"                        // Security
+        msg += "|ORM^O01^ORM_O01"         // Message Type
+        msg += "|\(messageControlID)"     // Message Control ID
+        msg += "|P"                       // Processing ID
+        msg += "|2.5"                     // Version ID
+        msg += cr
+
+        // PID — Patient Identification
+        msg += "PID"
+        msg += "||"                       // PID-1: Set ID (empty)
+        msg += "\(patientID)"             // PID-2: Patient ID (External)
+        msg += "|\(patientID)"            // PID-3: Patient Identifier List
+        msg += "|"                        // PID-4: Alternate Patient ID
+        msg += "|\(patientName)"          // PID-5: Patient Name (Last^First)
+        msg += "|"                        // PID-6: Mother's Maiden Name
+        msg += "|\(patientBirthDate ?? "")" // PID-7: Date of Birth
+        msg += "|\(patientSex ?? "")"     // PID-8: Sex
+        msg += cr
+
+        // PV1 — Patient Visit
+        msg += "PV1"
+        msg += "||O"                      // PV1-2: Patient Class (O=Outpatient)
+        msg += cr
+
+        // ORC — Common Order
+        msg += "ORC"
+        msg += "|NW"                      // ORC-1: Order Control (NW = New order)
+        msg += "|\(accessionNumber)"      // ORC-2: Placer Order Number
+        msg += "|"                        // ORC-3: Filler Order Number
+        msg += "|"                        // ORC-4: Placer Group Number
+        msg += "|SC"                      // ORC-5: Order Status (SC = Scheduled)
+        msg += cr
+
+        // OBR — Observation Request
+        msg += "OBR"
+        msg += "|1"                       // OBR-1: Set ID
+        msg += "|\(accessionNumber)"      // OBR-2: Placer Order Number
+        msg += "|"                        // OBR-3: Filler Order Number
+        // OBR-4: Universal Service Identifier (procedure code^description)
+        msg += "|\(requestedProcedureID)^\(requestedProcedureDescription)"
+        msg += "|"                        // OBR-5: Priority
+        msg += "|"                        // OBR-6: Requested Date/Time
+        msg += "|\(scheduledDateTime)"    // OBR-7: Observation Date/Time
+        msg += "||||"                     // OBR-8..11
+        msg += "|"                        // OBR-12: Danger Code
+        msg += "|"                        // OBR-13: Relevant Clinical Info
+        msg += "|"                        // OBR-14: Specimen Received Date/Time
+        msg += "|"                        // OBR-15: Specimen Source
+        msg += "|\(referringPhysicianName ?? "")" // OBR-16: Ordering Provider
+        msg += "|"                        // OBR-17: Order Callback Phone Number
+        msg += "|\(scheduledProcedureStepDescription)" // OBR-18: Placer Field 1 (SPS description)
+        msg += "|\(scheduledProcedureStepID)"   // OBR-19: Placer Field 2 (SPS ID)
+        msg += "|\(scheduledStationAETitle)"    // OBR-20: Filler Field 1 (Station AET)
+        msg += "|\(scheduledStationName)"       // OBR-21: Filler Field 2 (Station Name)
+        msg += "|"                        // OBR-22: Results Rpt/Status Date
+        msg += "|"                        // OBR-23: Charge to Practice
+        msg += "|\(modality)"             // OBR-24: Diagnostic Serv Sect ID (modality)
+        msg += "|"                        // OBR-25: Result Status
+        msg += "|"                        // OBR-26: Parent Result
+        msg += "|^^^" + scheduledDateTime // OBR-27: Quantity/Timing (for scheduled date/time)
+        if let performer = scheduledPerformingPhysicianName, !performer.isEmpty {
+            // OBR-28..33 (skip to OBR-34: Technician)
+            msg += "|||||||\(performer)"
+        }
+        msg += cr
+
+        // ZDS — Study Instance UID (custom Z-segment, dcm4chee convention)
+        msg += "ZDS"
+        msg += "|\(studyInstanceUID)^100^Application^DICOM"
+        msg += cr
+
+        return msg
+    }
+
+    // MARK: - MLLP Transport
+
+    /// Sends an HL7 message via MLLP and returns the ACK response.
+    ///
+    /// MLLP framing:
+    ///   - Start block: 0x0B (VT)
+    ///   - End block:   0x1C 0x0D (FS + CR)
+    private static func sendHL7ViaMLLP(
+        message: String,
+        host: String,
+        port: UInt16,
+        timeout: TimeInterval
+    ) async throws -> String {
+        guard let messageData = message.data(using: .utf8) else {
+            throw DICOMNetworkError.connectionFailed("Failed to encode HL7 message as UTF-8")
+        }
+
+        // Frame the message in MLLP: 0x0B + message + 0x1C 0x0D
+        let framedData = Data([0x0B]) + messageData + Data([0x1C, 0x0D])
+
+        let nwHost = NWEndpoint.Host(host)
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else {
+            throw DICOMNetworkError.connectionFailed("Invalid HL7 port: \(port)")
+        }
+
+        let connection = NWConnection(host: nwHost, port: nwPort, using: .tcp)
+
+        return try await withCheckedThrowingContinuation { continuation in
+            let resumed = MLLPContinuationGuard(continuation)
+
+            // Timeout
+            nonisolated(unsafe) let timeoutTask = DispatchWorkItem { [weak connection] in
+                guard !resumed.hasResumed else { return }
+                connection?.cancel()
+                resumed.resume(with: .failure(
+                    DICOMNetworkError.timeout))
+            }
+            DispatchQueue.global().asyncAfter(
+                deadline: .now() + timeout,
+                execute: timeoutTask
+            )
+
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    // Connected — send the MLLP-framed message
+                    connection.send(content: framedData, completion: .contentProcessed { error in
+                        if let error = error {
+                            timeoutTask.cancel()
+                            resumed.resume(with: .failure(
+                                DICOMNetworkError.connectionFailed(
+                                    "HL7 MLLP send failed: \(error.localizedDescription)")))
+                            connection.cancel()
+                            return
+                        }
+
+                        // Receive the ACK response
+                        connection.receive(minimumIncompleteLength: 1,
+                                           maximumLength: 65536) { data, _, _, recvError in
+                            timeoutTask.cancel()
+                            defer { connection.cancel() }
+
+                            if let recvError = recvError {
+                                resumed.resume(with: .failure(
+                                    DICOMNetworkError.connectionFailed(
+                                        "HL7 MLLP receive failed: \(recvError.localizedDescription)")))
+                                return
+                            }
+
+                            guard let data = data, !data.isEmpty else {
+                                resumed.resume(with: .failure(
+                                    DICOMNetworkError.connectionClosed))
+                                return
+                            }
+
+                            // Strip MLLP framing from the response
+                            var responseData = data
+                            if responseData.first == 0x0B {
+                                responseData = responseData.dropFirst()
+                            }
+                            if responseData.count >= 2,
+                               responseData[responseData.endIndex - 2] == 0x1C,
+                               responseData[responseData.endIndex - 1] == 0x0D {
+                                responseData = responseData.dropLast(2)
+                            }
+
+                            guard let ackString = String(data: responseData, encoding: .utf8) else {
+                                resumed.resume(with: .failure(
+                                    DICOMNetworkError.connectionFailed(
+                                        "HL7 ACK response not valid UTF-8")))
+                                return
+                            }
+
+                            resumed.resume(with: .success(ackString))
+                        }
+                    })
+
+                case .failed(let error):
+                    timeoutTask.cancel()
+                    resumed.resume(with: .failure(
+                        DICOMNetworkError.connectionFailed(
+                            "HL7 MLLP connection failed: \(error.localizedDescription)")))
+
+                case .cancelled:
+                    timeoutTask.cancel()
+                    resumed.resume(with: .failure(
+                        DICOMNetworkError.connectionClosed))
+
+                default:
+                    break
+                }
+            }
+
+            connection.start(queue: .global(qos: .userInitiated))
+        }
+    }
+
+    // MARK: - HL7 ACK Parsing Helpers
+
+    /// Extracts the ACK code from an HL7 ACK/NAK message (MSA-1).
+    /// Returns "AA", "AE", "AR", "CA", "CE", "CR", or nil if not found.
+    private static func parseHL7AckCode(_ ack: String) -> String? {
+        for line in ack.split(separator: "\r") {
+            let str = String(line)
+            if str.hasPrefix("MSA|") || str.hasPrefix("MSA\u{7C}") {
+                let fields = str.split(separator: "|", omittingEmptySubsequences: false)
+                if fields.count >= 2 {
+                    return String(fields[1])
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Extracts the error text from an HL7 ACK message (MSA-3 or ERR segment).
+    private static func parseHL7AckErrorText(_ ack: String) -> String? {
+        for line in ack.split(separator: "\r") {
+            let str = String(line)
+            if str.hasPrefix("MSA|") {
+                let fields = str.split(separator: "|", omittingEmptySubsequences: false)
+                if fields.count >= 4 {
+                    let text = String(fields[3])
+                    if !text.isEmpty { return text }
+                }
+            }
+            if str.hasPrefix("ERR|") {
+                let fields = str.split(separator: "|", omittingEmptySubsequences: false)
+                if fields.count >= 2 {
+                    return String(fields[1])
+                }
+            }
+        }
+        return nil
+    }
+
+    /// Generates a unique HL7 message control ID.
+    private static func generateHL7MessageControlID() -> String {
+        let timestamp = Int(Date().timeIntervalSince1970)
+        let random = UInt32.random(in: 1000...9999)
+        return "MSG\(timestamp)\(random)"
+    }
+}
+
+/// Thread-safe continuation guard to ensure the continuation is resumed exactly once.
+private final class MLLPContinuationGuard: @unchecked Sendable {
+    private var continuation: CheckedContinuation<String, Error>?
+    private let lock = NSLock()
+    private(set) var hasResumed = false
+
+    init(_ continuation: CheckedContinuation<String, Error>) {
+        self.continuation = continuation
+    }
+
+    func resume(with result: Result<String, Error>) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !hasResumed, let cont = continuation else { return }
+        hasResumed = true
+        continuation = nil
+        cont.resume(with: result)
     }
 }
 

@@ -90,6 +90,9 @@ public struct Workitem: Sendable, Equatable, Codable {
     
     // MARK: - Admission/Visit Information
     
+    /// Input Readiness State (0040,4041) — required for Create
+    public var inputReadinessState: InputReadinessState?
+    
     /// Admission ID
     public var admissionID: String?
     
@@ -258,6 +261,25 @@ public enum UPSPriority: String, Sendable, Codable, CaseIterable {
         case .low: return 4
         }
     }
+}
+
+// MARK: - InputReadinessState
+
+/// Input Readiness State (0040,4041)
+///
+/// Indicates whether the input information for the procedure step is complete.
+/// Required for UPS-RS Create Transaction per PS3.4 Table CC.2.5-3.
+///
+/// Reference: PS3.4 Annex CC.2.5
+public enum InputReadinessState: String, Sendable, Codable, CaseIterable {
+    /// Input is complete and ready for processing
+    case ready = "READY"
+    
+    /// Some input is not yet available
+    case unavailable = "UNAVAILABLE"
+    
+    /// Input information is incomplete
+    case incomplete = "INCOMPLETE"
 }
 
 // MARK: - ProgressInformation
@@ -574,6 +596,13 @@ extension Workitem {
             "Value": [priority.rawValue]
         ]
         
+        // Input Readiness State (0040,4041) - VR: CS — required for Create (PS3.4 CC.2.5-3)
+        let readiness = inputReadinessState ?? .ready
+        json[UPSTag.inputReadinessState] = [
+            "vr": "CS",
+            "Value": [readiness.rawValue]
+        ]
+        
         // Patient Name (0010,0010) - VR: PN
         if let patientName = patientName {
             json[UPSTag.patientName] = [
@@ -606,13 +635,12 @@ extension Workitem {
             ]
         }
         
-        // Scheduled Procedure Step Start DateTime (0040,4005) - VR: DT
-        if let scheduledStartDateTime = scheduledStartDateTime {
-            json[UPSTag.scheduledProcedureStepStartDateTime] = [
-                "vr": "DT",
-                "Value": [Workitem.formatDateTime(scheduledStartDateTime)]
-            ]
-        }
+        // Scheduled Procedure Step Start DateTime (0040,4005) - VR: DT — required for Create (PS3.4 CC.2.5-3)
+        let startDT = scheduledStartDateTime ?? Date()
+        json[UPSTag.scheduledProcedureStepStartDateTime] = [
+            "vr": "DT",
+            "Value": [Workitem.formatDateTime(startDT)]
+        ]
         
         // Expected Completion DateTime (0040,4011) - VR: DT
         if let expectedCompletionDateTime = expectedCompletionDateTime {
@@ -771,23 +799,276 @@ extension Workitem {
     
     // MARK: - Private Serialization Helpers
     
+    // MARK: - UPS-RS Create Serialization
+    
+    /// Converts this Workitem to DICOM JSON specifically for the UPS-RS Create Transaction.
+    ///
+    /// Per **PS3.4 Table CC.2.5-3** and **PS3.18 Section 11.4**, the Create request
+    /// body must contain only attributes from the **Scheduled Procedure Information Module**
+    /// (PS3.3 C.30.2). Attributes from other modules (patient demographics, study references,
+    /// procedure step state) are NOT allowed.
+    ///
+    /// **Required attributes** (always included):
+    /// - (0040,4005) Scheduled Procedure Step Start DateTime
+    /// - (0040,4041) Input Readiness State
+    /// - (0074,1200) Scheduled Procedure Step Priority
+    /// - (0074,1204) Procedure Step Label
+    /// - (0040,4018) Scheduled Workitem Code Sequence (empty if not set)
+    /// - (0040,4021) Input Information Sequence (empty if not set)
+    ///
+    /// **NOT included** (server-managed or disallowed by dcm4chee):
+    /// - (0008,0018) SOP Instance UID — provided via URL
+    /// - (0074,1000) Procedure Step State — server initializes to SCHEDULED
+    /// - (0010,0010) Patient's Name — not in Scheduled Procedure Information Module
+    /// - (0010,0020) Patient ID — not in Scheduled Procedure Information Module
+    /// - (0010,0030) Patient's Birth Date — not in Scheduled Procedure Information Module
+    /// - (0010,0040) Patient's Sex — not in Scheduled Procedure Information Module
+    /// - (0020,000D) Study Instance UID — Relationship Module, not Create-allowed
+    /// - (0008,0050) Accession Number — Relationship Module, not Create-allowed
+    /// - (0008,0090) Referring Physician — Relationship Module, not Create-allowed
+    ///
+    /// Reference: PS3.4 Table CC.2.5-3 — UPS Push SOP Class N-CREATE
+    /// Reference: PS3.18 Section 11.4 — Create Workitem Transaction
+    /// Reference: PS3.3 C.30.2 — Unified Procedure Step Scheduled Procedure Information Module
+    public func toDICOMJSONForCreate() -> [String: Any] {
+        var json: [String: Any] = [:]
+        
+        // === Required Attributes (PS3.4 Table CC.2.5-3) ===
+        
+        // Procedure Step State (0074,1000) - VR: CS - Required, must be SCHEDULED for N-CREATE
+        json[UPSTag.procedureStepState] = [
+            "vr": "CS",
+            "Value": ["SCHEDULED"]
+        ]
+        
+        // Scheduled Procedure Step Start DateTime (0040,4005) - VR: DT - Required
+        let startDT = scheduledStartDateTime ?? Date()
+        json[UPSTag.scheduledProcedureStepStartDateTime] = [
+            "vr": "DT",
+            "Value": [Workitem.formatDateTime(startDT)]
+        ]
+        
+        // Input Readiness State (0040,4041) - VR: CS - Required
+        let readiness = inputReadinessState ?? .ready
+        json[UPSTag.inputReadinessState] = [
+            "vr": "CS",
+            "Value": [readiness.rawValue]
+        ]
+        
+        // Scheduled Procedure Step Priority (0074,1200) - VR: CS - Required
+        json[UPSTag.scheduledProcedureStepPriority] = [
+            "vr": "CS",
+            "Value": [priority.rawValue]
+        ]
+        
+        // Procedure Step Label (0074,1204) - VR: LO - Required
+        json[UPSTag.procedureStepLabel] = [
+            "vr": "LO",
+            "Value": [procedureStepLabel ?? ""]
+        ]
+        
+        // Scheduled Workitem Code Sequence (0040,4018) - VR: SQ - Required (zero-length if not set)
+        if let code = scheduledWorkitemCode {
+            json[UPSTag.scheduledWorkitemCodeSequence] = [
+                "vr": "SQ",
+                "Value": [Workitem.codedEntryToJSON(code)]
+            ]
+        } else {
+            json[UPSTag.scheduledWorkitemCodeSequence] = ["vr": "SQ"]
+        }
+        
+        // Input Information Sequence (0040,4021) - VR: SQ - Required (zero-length if not set)
+        // Per PS3.3 Table 10-3a (UPS Content Item Macro), each item contains:
+        //   Study Instance UID (0020,000D) - Type 1
+        //   Series Instance UID (0020,000E) - Type 1 (empty if study-level)
+        //   Referenced SOP Sequence (0008,1199) - Type 1 (empty if study-level)
+        //   Type of Instances (0040,E020) - Type 1C
+        var inputItems: [[String: Any]] = []
+
+        // Add explicit referenced instances
+        if let inputInfo = inputInformation, !inputInfo.isEmpty {
+            inputItems.append(contentsOf: inputInfo.map { Workitem.referencedInstanceToJSON($0) })
+        }
+
+        // If a Study Instance UID is set and not already in inputItems,
+        // add a study-level input information item
+        if let studyUID = studyInstanceUID {
+            let alreadyReferenced = inputItems.contains { item in
+                if let attr = item[UPSTag.studyInstanceUID] as? [String: Any],
+                   let vals = attr["Value"] as? [String],
+                   vals.first == studyUID {
+                    return true
+                }
+                return false
+            }
+            if !alreadyReferenced {
+                var studyItem: [String: Any] = [:]
+                studyItem[UPSTag.studyInstanceUID] = ["vr": "UI", "Value": [studyUID]]
+                studyItem[UPSTag.typeOfInstances] = ["vr": "CS", "Value": ["DICOM"]]
+                studyItem[UPSTag.referencedSOPSequence] = ["vr": "SQ"]
+                inputItems.append(studyItem)
+            }
+        }
+
+        if !inputItems.isEmpty {
+            json[UPSTag.inputInformationSequence] = [
+                "vr": "SQ",
+                "Value": inputItems
+            ]
+        } else {
+            json[UPSTag.inputInformationSequence] = ["vr": "SQ"]
+        }
+        
+        // === Optional Allowed Attributes (Scheduled Procedure Information Module) ===
+        
+        // Expected Completion DateTime (0040,4011) - VR: DT
+        if let expectedCompletionDateTime = expectedCompletionDateTime {
+            json[UPSTag.expectedCompletionDateTime] = [
+                "vr": "DT",
+                "Value": [Workitem.formatDateTime(expectedCompletionDateTime)]
+            ]
+        }
+        
+        // Scheduled Procedure Step ID (0040,0009) - VR: SH
+        if let stepID = scheduledProcedureStepID {
+            json[UPSTag.scheduledProcedureStepID] = [
+                "vr": "SH",
+                "Value": [stepID]
+            ]
+        }
+        
+        // Worklist Label (0074,1202) - VR: LO
+        if let worklistLabel = worklistLabel {
+            json[UPSTag.worklistLabel] = [
+                "vr": "LO",
+                "Value": [worklistLabel]
+            ]
+        }
+        
+        // Comments on Scheduled Procedure Step (0040,0400) - VR: LT
+        if let comments = comments {
+            json[UPSTag.commentsOnScheduledProcedureStep] = [
+                "vr": "LT",
+                "Value": [comments]
+            ]
+        }
+        
+        // Scheduled Station Name Code Sequence (0040,4025) - VR: SQ
+        if let codes = scheduledStationNameCodes, !codes.isEmpty {
+            json[UPSTag.scheduledStationNameCodeSequence] = [
+                "vr": "SQ",
+                "Value": codes.map { Workitem.codedEntryToJSON($0) }
+            ]
+        }
+        
+        // Scheduled Station Class Code Sequence (0040,4026) - VR: SQ
+        if let codes = scheduledStationClassCodes, !codes.isEmpty {
+            json[UPSTag.scheduledStationClassCodeSequence] = [
+                "vr": "SQ",
+                "Value": codes.map { Workitem.codedEntryToJSON($0) }
+            ]
+        }
+        
+        // Scheduled Station Geographic Location Code Sequence (0040,4027) - VR: SQ
+        if let codes = scheduledStationGeographicLocationCodes, !codes.isEmpty {
+            json[UPSTag.scheduledStationGeographicLocationCodeSequence] = [
+                "vr": "SQ",
+                "Value": codes.map { Workitem.codedEntryToJSON($0) }
+            ]
+        }
+        
+        // Scheduled Human Performers Sequence (0040,4034) - VR: SQ
+        if let performers = scheduledHumanPerformers, !performers.isEmpty {
+            json[UPSTag.scheduledHumanPerformersSequence] = [
+                "vr": "SQ",
+                "Value": performers.map { Workitem.humanPerformerToJSON($0) }
+            ]
+        }
+        
+        // Scheduled Processing Parameters Sequence (0074,1210) - VR: SQ
+        // (not currently modeled, but reserved for future use)
+        
+        // === UPS Relationship Module (PS3.3 C.30.4) ===
+        // These attributes are part of the N-CREATE Request Identifier
+        // per PS3.4 Table CC.2.5-3.
+        
+        // Patient's Name (0010,0010) - VR: PN - Type 2 (required, may be empty)
+        // Per PS3.18 Annex F, PN values use Person Name component object
+        let pnValue = patientName ?? ""
+        json[UPSTag.patientName] = [
+            "vr": "PN",
+            "Value": [["Alphabetic": pnValue]]
+        ]
+        
+        // Patient ID (0010,0020) - VR: LO - Type 1 (required, must have value)
+        if let pid = patientID, !pid.isEmpty {
+            json[UPSTag.patientID] = [
+                "vr": "LO",
+                "Value": [pid]
+            ]
+        }
+        
+        // Patient's Birth Date (0010,0030) - VR: DA - Type 2
+        if let dob = patientBirthDate, !dob.isEmpty {
+            json[UPSTag.patientBirthDate] = [
+                "vr": "DA",
+                "Value": [dob]
+            ]
+        }
+        
+        // Patient's Sex (0010,0040) - VR: CS - Type 2
+        if let sex = patientSex, !sex.isEmpty {
+            json[UPSTag.patientSex] = [
+                "vr": "CS",
+                "Value": [sex]
+            ]
+        }
+        
+        // Referenced Request Sequence (0040,A370) - VR: SQ - Type 1C
+        // Contains Study Instance UID, Accession Number, etc.
+        if studyInstanceUID != nil || accessionNumber != nil || referringPhysicianName != nil || requestedProcedureID != nil {
+            var reqItem: [String: Any] = [:]
+            if let studyUID = studyInstanceUID {
+                reqItem[UPSTag.studyInstanceUID] = ["vr": "UI", "Value": [studyUID]]
+            }
+            if let accession = accessionNumber {
+                reqItem[UPSTag.accessionNumber] = ["vr": "SH", "Value": [accession]]
+            }
+            if let refPhys = referringPhysicianName {
+                reqItem[UPSTag.referringPhysicianName] = ["vr": "PN", "Value": [["Alphabetic": refPhys]]]
+            }
+            if let procID = requestedProcedureID {
+                reqItem[UPSTag.requestedProcedureID] = ["vr": "SH", "Value": [procID]]
+            }
+            json[UPSTag.referencedRequestSequence] = [
+                "vr": "SQ",
+                "Value": [reqItem]
+            ]
+        }
+        
+        return json
+    }
+    
+    // MARK: - Private Serialization Helpers
+    
     /// Shared ISO8601 date formatter for DICOM DT serialization
-    nonisolated(unsafe) private static let iso8601Formatter: ISO8601DateFormatter = {
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+    private static let dicomDTFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone.current
+        formatter.dateFormat = "yyyyMMddHHmmss"
         return formatter
     }()
     
-    /// Formats a Date to a DICOM DT string
+    /// Formats a Date to a DICOM DT string (YYYYMMDDHHMMSS per PS3.5 Table 6.2-1)
     private static func formatDateTime(_ date: Date) -> String {
-        return iso8601Formatter.string(from: date)
+        return dicomDTFormatter.string(from: date)
     }
     
     /// Converts a ReferencedInstance to DICOM JSON
     private static func referencedInstanceToJSON(_ ref: ReferencedInstance) -> [String: Any] {
         var item: [String: Any] = [:]
-        item[UPSTag.referencedSOPClassUID] = ["vr": "UI", "Value": [ref.sopClassUID]]
-        item[UPSTag.referencedSOPInstanceUID] = ["vr": "UI", "Value": [ref.sopInstanceUID]]
+        // Study/Series UIDs at item level per PS3.3 Table 10-3a
         if let studyUID = ref.studyInstanceUID {
             item[UPSTag.studyInstanceUID] = ["vr": "UI", "Value": [studyUID]]
         }
@@ -797,6 +1078,11 @@ extension Workitem {
         if let typeOfInstances = ref.typeOfInstances {
             item[UPSTag.typeOfInstances] = ["vr": "CS", "Value": [typeOfInstances]]
         }
+        // SOP Class/Instance UIDs nested in Referenced SOP Sequence (0008,1199)
+        var sopItem: [String: Any] = [:]
+        sopItem[UPSTag.referencedSOPClassUID] = ["vr": "UI", "Value": [ref.sopClassUID]]
+        sopItem[UPSTag.referencedSOPInstanceUID] = ["vr": "UI", "Value": [ref.sopInstanceUID]]
+        item[UPSTag.referencedSOPSequence] = ["vr": "SQ", "Value": [sopItem]]
         if let retrieveURI = ref.retrieveURI {
             item[UPSTag.retrieveURI] = ["vr": "UR", "Value": [retrieveURI]]
         }
@@ -865,6 +1151,11 @@ extension Workitem {
         let priority = priorityStr.flatMap { UPSPriority(rawValue: $0) } ?? .medium
         
         var workitem = Workitem(workitemUID: uid, state: state, priority: priority)
+        
+        // Input Readiness State
+        if let readinessStr = extractString(from: json, tag: UPSTag.inputReadinessState) {
+            workitem.inputReadinessState = InputReadinessState(rawValue: readinessStr)
+        }
         
         // Patient
         workitem.patientName = extractPersonName(from: json, tag: UPSTag.patientName)
@@ -975,8 +1266,17 @@ extension Workitem {
     }
     
     /// Parses a DICOM DT string to a Date
+    ///
+    /// Handles both DICOM DT format (YYYYMMDDHHMMSS) and ISO 8601 with separators.
     private static func parseDateTime(_ string: String) -> Date? {
-        return iso8601Formatter.date(from: string)
+        // Try DICOM DT format first (YYYYMMDDHHMMSS)
+        if let date = dicomDTFormatter.date(from: string) { return date }
+        // Fallback to ISO 8601 formats for server responses
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: string) { return date }
+        iso.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+        return iso.date(from: string)
     }
     
     /// Extracts a sequence of ReferencedInstance from DICOM JSON
@@ -1073,6 +1373,7 @@ public enum UPSTag {
     
     // UPS Performed Procedure Step
     public static let procedureStepState = "00741000"
+    public static let inputReadinessState = "00404041"
     public static let procedureStepCancellationDateTime = "00404052"
     public static let reasonForCancellation = "00741238"
     public static let procedureStepDiscontinuationReasonCodeSequence = "00741236"
@@ -1093,6 +1394,11 @@ public enum UPSTag {
     
     // Study Reference
     public static let referencedStudySequence = "00081110"
+    
+    // Referenced Request Sequence (UPS Relationship Module)
+    public static let referencedRequestSequence = "0040A370"
+    public static let requestedProcedureID = "00401001"
+    public static let requestedProcedureDescription = "00321060"
     
     // Series
     public static let seriesInstanceUID = "0020000E"

@@ -42,6 +42,7 @@ public final class WorkitemBuilder {
     private var workitemUID: String
     private var state: UPSState = .scheduled
     private var priority: UPSPriority = .medium
+    private var inputReadinessState: InputReadinessState = .ready
     
     // Patient
     private var patientName: String?
@@ -125,6 +126,13 @@ public final class WorkitemBuilder {
     @discardableResult
     public func setPriority(_ priority: UPSPriority) -> Self {
         self.priority = priority
+        return self
+    }
+    
+    /// Sets the input readiness state
+    @discardableResult
+    public func setInputReadinessState(_ state: InputReadinessState) -> Self {
+        self.inputReadinessState = state
         return self
     }
     
@@ -400,6 +408,7 @@ public final class WorkitemBuilder {
         try validate()
         
         var workitem = Workitem(workitemUID: workitemUID, state: state, priority: priority)
+        workitem.inputReadinessState = inputReadinessState
         
         // Patient
         workitem.patientName = patientName

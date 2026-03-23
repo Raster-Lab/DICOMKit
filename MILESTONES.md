@@ -4200,7 +4200,7 @@ See [DICOM_PRINTER_PLAN.md](DICOM_PRINTER_PLAN.md) for the complete enhancement 
 - ✅ dicom-qr: Integrated query-retrieve workflow (27 tests)
 - ✅ dicom-wado: DICOMweb client (WADO-RS, QIDO-RS, STOW-RS, UPS-RS)
 - ✅ dicom-echo: Network testing and diagnostics (25 tests)
-- ✅ dicom-mwl: Modality Worklist Management (C-FIND, N-CREATE)
+- ✅ dicom-mwl: Modality Worklist Management (C-FIND, REST create, HL7 ORM^O01 create via MLLP)
 - ✅ dicom-mpps: MPPS operations (N-CREATE, N-SET)
 
 **Phase 6 Tools (✅ 100% complete, February 2026)**:
