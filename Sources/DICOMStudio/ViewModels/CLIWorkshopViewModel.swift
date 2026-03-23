@@ -2242,9 +2242,28 @@ public final class CLIWorkshopViewModel {
                 }
                 let workitem = try await client.retrieveWorkitem(uid: workitemUID)
                 appendConsoleOutput("✅ Retrieved workitem \(workitemUID)\n")
-                appendConsoleOutput("  Attributes: \(workitem.count)\n")
-                for (key, value) in workitem.prefix(20) {
-                    appendConsoleOutput("  \(key): \(value)\n")
+                appendConsoleOutput("  Attributes: \(workitem.count)\n\n")
+                // Display all attributes with tag lookup
+                for (tag, value) in workitem.sorted(by: { $0.key < $1.key }) {
+                    let tagName = EducationalHelpers.dicomTagName(for: tag)
+                    if let element = value as? [String: Any],
+                       let vr = element["vr"] as? String {
+                        let valueStr: String
+                        if let values = element["Value"] as? [Any] {
+                            valueStr = values.map { item -> String in
+                                if let dict = item as? [String: Any],
+                                   let alpha = dict["Alphabetic"] as? String {
+                                    return alpha
+                                }
+                                return "\(item)"
+                            }.joined(separator: ", ")
+                        } else {
+                            valueStr = "(empty)"
+                        }
+                        appendConsoleOutput("  (\(EducationalHelpers.formatTag(tag))) \(tagName) [\(vr)]: \(valueStr)\n")
+                    } else {
+                        appendConsoleOutput("  (\(EducationalHelpers.formatTag(tag))) \(tagName): \(value)\n")
+                    }
                 }
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
@@ -2301,7 +2320,7 @@ public final class CLIWorkshopViewModel {
                 let studyRef = paramValue("create-study-uid")
                 if !studyRef.isEmpty {
                     builder.setStudyInstanceUID(studyRef)
-                    appendConsoleOutput("  Study UID: \(studyRef)\n")
+                    appendConsoleOutput("  Study UID: \(studyRef) (→ Input Information + Referenced Request)\n")
                 }
 
                 let accession = paramValue("create-accession")
@@ -2334,6 +2353,32 @@ public final class CLIWorkshopViewModel {
                 appendConsoleOutput("\n")
 
                 let workitem = try builder.build()
+
+                // Log the equivalent curl command for debugging
+                do {
+                    let createJSON = workitem.toDICOMJSONForCreate()
+                    let createURL: URL
+                    if uid.isEmpty {
+                        createURL = client.urlBuilder.workitemsURL
+                    } else {
+                        createURL = client.urlBuilder.createWorkitemURL(workitemUID: uid)
+                    }
+                    if let jsonData = try? JSONSerialization.data(
+                        withJSONObject: createJSON,
+                        options: [.prettyPrinted, .sortedKeys]
+                    ),
+                       let jsonStr = String(data: jsonData, encoding: .utf8) {
+                        let escapedJSON = jsonStr.replacingOccurrences(of: "'", with: "'\\''")
+                        appendConsoleOutput("─── curl equivalent ───\n")
+                        appendConsoleOutput("curl -X POST \\\n")
+                        appendConsoleOutput("  '\(createURL.absoluteString)' \\\n")
+                        appendConsoleOutput("  -H 'Content-Type: application/dicom+json' \\\n")
+                        appendConsoleOutput("  -H 'Accept: application/dicom+json' \\\n")
+                        appendConsoleOutput("  -d '\(escapedJSON)'\n")
+                        appendConsoleOutput("───────────────────────\n\n")
+                    }
+                }
+
                 let response = try await client.createWorkitem(workitem)
 
                 appendConsoleOutput("✅ Workitem created successfully\n")
@@ -2358,17 +2403,107 @@ public final class CLIWorkshopViewModel {
                     service.setConsoleStatus(.error)
                     return
                 }
-                let state = paramValue("state")
-                appendConsoleOutput("Changing state of \(workitemUID) to \(state.isEmpty ? "IN PROGRESS" : state) ...\n")
-                let statePayload: [String: Any] = [
-                    "00741000": ["vr": "CS", "Value": [state.isEmpty ? "IN PROGRESS" : state.uppercased()]]
+                let stateStr = paramValue("state")
+                let rawState: String
+                switch stateStr.uppercased() {
+                case "COMPLETED": rawState = "COMPLETED"
+                case "CANCELED": rawState = "CANCELED"
+                default: rawState = "IN PROGRESS"
+                }
+
+                // Per PS3.4 CC.2 UPS State Machine:
+                //   SCHEDULED → IN PROGRESS  : client supplies a new Transaction UID
+                //   IN PROGRESS → COMPLETED  : client MUST supply the same Transaction UID
+                //   IN PROGRESS → CANCELED   : client MUST supply the same Transaction UID
+                let userTxUID = paramValue("transaction-uid")
+                let txUID: String
+                if rawState == "IN PROGRESS" {
+                    // New transition — generate a fresh Transaction UID
+                    txUID = userTxUID.isEmpty ? generateDICOMUID() : userTxUID
+                } else {
+                    // COMPLETED / CANCELED — must reuse the Transaction UID from IN PROGRESS
+                    guard !userTxUID.isEmpty else {
+                        appendConsoleOutput("Error: Transaction UID is required for \(rawState) transition.\n")
+                        appendConsoleOutput("  💡 Use the Transaction UID returned when the workitem was moved to IN PROGRESS.\n")
+                        consoleStatus = .error
+                        service.setConsoleStatus(.error)
+                        return
+                    }
+                    txUID = userTxUID
+                }
+
+                appendConsoleOutput("Changing state of \(workitemUID) to \(rawState) ...\n")
+                appendConsoleOutput("  Transaction UID: \(txUID)\n")
+
+                // Per PS3.18 §11.6: PUT /workitems/{uid}/state
+                let stateChangeBody: [String: Any] = [
+                    "00741000": ["vr": "CS", "Value": [rawState]],
+                    "00081195": ["vr": "UI", "Value": [txUID]]
                 ]
-                _ = try await client.updateWorkitem(uid: workitemUID, updates: statePayload)
-                appendConsoleOutput("✅ State changed successfully\n")
+                let bodyData = try JSONSerialization.data(withJSONObject: stateChangeBody)
+
+                let stateURL = client.urlBuilder.workitemStateURL(workitemUID: workitemUID)
+                appendConsoleOutput("  URL: \(stateURL.absoluteString)\n\n")
+
+                let stateRequest = HTTPClient.Request(
+                    url: stateURL,
+                    method: .put,
+                    headers: [
+                        "Content-Type": "application/dicom+json",
+                        "Accept": "application/dicom+json"
+                    ],
+                    body: bodyData
+                )
+
+                do {
+                    let response = try await client.httpClient.execute(stateRequest)
+                    appendConsoleOutput("✅ State changed to \(rawState)\n")
+
+                    // For IN PROGRESS, parse the response to capture the Transaction UID
+                    if rawState == "IN PROGRESS" {
+                        appendConsoleOutput("\n  ⚠️ Save this Transaction UID — you will need it for COMPLETED or CANCELED transitions:\n")
+                        appendConsoleOutput("  📋 Transaction UID: \(txUID)\n")
+                    }
+
+                    // Show response body if present
+                    if !response.body.isEmpty,
+                       let responseStr = String(data: response.body, encoding: .utf8),
+                       !responseStr.isEmpty {
+                        appendConsoleOutput("  Response: \(responseStr)\n")
+                    }
+                } catch let error as DICOMwebError {
+                    if case .httpError(let statusCode, let message) = error {
+                        appendConsoleOutput("❌ State change failed (HTTP \(statusCode))\n")
+                        if let msg = message {
+                            appendConsoleOutput("  Server: \(msg)\n")
+                        }
+                        switch statusCode {
+                        case 400:
+                            appendConsoleOutput("  💡 Bad Request — the request body may be malformed or missing required attributes.\n")
+                        case 404:
+                            appendConsoleOutput("  💡 Workitem \(workitemUID) not found on the server.\n")
+                        case 409:
+                            appendConsoleOutput("  💡 State transition conflict — check:\n")
+                            appendConsoleOutput("     • Current state allows transition to \(rawState)?\n")
+                            appendConsoleOutput("     • Transaction UID matches the one from IN PROGRESS?\n")
+                            appendConsoleOutput("     • Workitem is not locked by another performer?\n")
+                        default:
+                            break
+                        }
+                    } else {
+                        appendConsoleOutput("❌ State change failed: \(error.localizedDescription)\n")
+                    }
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 1,
+                                 output: "State change to \(rawState) failed")
+                    return
+                }
+
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
-                             output: "State changed to \(state)")
+                             output: "State changed to \(rawState)")
 
             case "subscribe":
                 guard !workitemUID.isEmpty else {
@@ -2393,10 +2528,26 @@ public final class CLIWorkshopViewModel {
                 let count = results.workitems.count
                 appendConsoleOutput("✅ UPS-RS returned \(count) workitems\n\n")
                 for (i, item) in results.workitems.prefix(50).enumerated() {
-                    appendConsoleOutput("[\(i + 1)] \(item.workitemUID)\n")
-                    if let step = item.procedureStepLabel {
-                        appendConsoleOutput("    Step: \(step)\n")
-                    }
+                    appendConsoleOutput("─── [\(i + 1)] \(item.workitemUID) ───\n")
+                    if let state = item.state { appendConsoleOutput("  State:      \(state.rawValue)\n") }
+                    if let pri = item.priority { appendConsoleOutput("  Priority:   \(pri.rawValue)\n") }
+                    if let step = item.procedureStepLabel { appendConsoleOutput("  Label:      \(step)\n") }
+                    if let wl = item.worklistLabel { appendConsoleOutput("  Worklist:   \(wl)\n") }
+                    if let stepID = item.scheduledProcedureStepID { appendConsoleOutput("  Step ID:    \(stepID)\n") }
+                    if let name = item.patientName { appendConsoleOutput("  Patient:    \(name)\n") }
+                    if let pid = item.patientID { appendConsoleOutput("  Patient ID: \(pid)\n") }
+                    if let dob = item.patientBirthDate { appendConsoleOutput("  Birth Date: \(dob)\n") }
+                    if let sex = item.patientSex { appendConsoleOutput("  Sex:        \(sex)\n") }
+                    if let start = item.scheduledStartDateTime { appendConsoleOutput("  Start:      \(start)\n") }
+                    if let exp = item.expectedCompletionDateTime { appendConsoleOutput("  Expected:   \(exp)\n") }
+                    if let mod = item.modificationDateTime { appendConsoleOutput("  Modified:   \(mod)\n") }
+                    if let study = item.studyInstanceUID { appendConsoleOutput("  Study UID:  \(study)\n") }
+                    if let acc = item.accessionNumber { appendConsoleOutput("  Accession:  \(acc)\n") }
+                    if let ref = item.referringPhysicianName { appendConsoleOutput("  Ref. Phys:  \(ref)\n") }
+                    if let tx = item.transactionUID { appendConsoleOutput("  Tx UID:     \(tx)\n") }
+                    if let prog = item.progressPercentage { appendConsoleOutput("  Progress:   \(prog)%\n") }
+                    if let desc = item.progressDescription { appendConsoleOutput("  Prog Desc:  \(desc)\n") }
+                    appendConsoleOutput("\n")
                 }
                 if count > 50 { appendConsoleOutput("... and \(count - 50) more\n") }
                 consoleStatus = .success
@@ -2431,7 +2582,7 @@ public final class CLIWorkshopViewModel {
         if let date = isoFormatter.date(from: value) { return date }
         let fallback = DateFormatter()
         fallback.locale = Locale(identifier: "en_US_POSIX")
-        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"] {
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-dd"] {
             fallback.dateFormat = fmt
             if let date = fallback.date(from: value) { return date }
         }
@@ -4020,13 +4171,14 @@ public final class CLIWorkshopViewModel {
         }
     }
 
-    // MARK: - MWL Create (N-CREATE)
+    // MARK: - MWL Create (REST API)
 
     private func executeDicomMWLCreate(
         host: String, port: UInt16,
         callingAET: String, calledAET: String,
         timeout: TimeInterval
     ) async {
+        let createMethod = paramValue("create-method").isEmpty ? "hl7" : paramValue("create-method")
         let patientName = paramValue("create-patient-name")
         let patientID = paramValue("create-patient-id")
         let patientDOB = paramValue("patient-dob")
@@ -4072,11 +4224,62 @@ public final class CLIWorkshopViewModel {
             resolvedDate = resolvedWorklistDate(scheduledDate)
         }
 
-        appendConsoleOutput("DICOM Modality Worklist (N-CREATE)\n")
-        appendConsoleOutput("===================================\n")
-        appendConsoleOutput("  Server:           \(host):\(port)\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+        if createMethod == "hl7" {
+            await executeDicomMWLCreateHL7(
+                host: host, timeout: timeout,
+                patientName: patientName, patientID: patientID,
+                patientDOB: patientDOB, patientSex: patientSex,
+                accessionNumber: accessionNumber,
+                referringPhysician: referringPhysician,
+                procedureID: procedureID, procedureDesc: procedureDesc,
+                modality: modality, scheduledStation: scheduledStation,
+                stationName: stationName, resolvedDate: resolvedDate,
+                scheduledTime: scheduledTime, spsID: spsID,
+                spsDesc: spsDesc, performingPhysician: performingPhysician
+            )
+        } else {
+            await executeDicomMWLCreateREST(
+                host: host, port: port,
+                callingAET: callingAET, calledAET: calledAET,
+                timeout: timeout,
+                patientName: patientName, patientID: patientID,
+                patientDOB: patientDOB, patientSex: patientSex,
+                accessionNumber: accessionNumber,
+                referringPhysician: referringPhysician,
+                procedureID: procedureID, procedureDesc: procedureDesc,
+                modality: modality, scheduledStation: scheduledStation,
+                stationName: stationName, resolvedDate: resolvedDate,
+                scheduledTime: scheduledTime, spsID: spsID,
+                spsDesc: spsDesc, performingPhysician: performingPhysician
+            )
+        }
+    }
+
+    // MARK: - MWL Create via HL7 ORM^O01 (MLLP)
+
+    private func executeDicomMWLCreateHL7(
+        host: String, timeout: TimeInterval,
+        patientName: String, patientID: String,
+        patientDOB: String, patientSex: String,
+        accessionNumber: String, referringPhysician: String,
+        procedureID: String, procedureDesc: String,
+        modality: String, scheduledStation: String,
+        stationName: String, resolvedDate: String,
+        scheduledTime: String, spsID: String,
+        spsDesc: String, performingPhysician: String
+    ) async {
+        let hl7PortStr = paramValue("hl7-port")
+        let hl7Port = UInt16(hl7PortStr) ?? 2575
+        let sendingApp = paramValue("sending-application").isEmpty ? "DICOMSTUDIO" : paramValue("sending-application")
+        let sendingFacility = paramValue("sending-facility").isEmpty ? "IMAGING" : paramValue("sending-facility")
+        let receivingApp = paramValue("receiving-application").isEmpty ? "DCM4CHEE" : paramValue("receiving-application")
+        let receivingFacility = paramValue("receiving-facility").isEmpty ? "HOSPITAL" : paramValue("receiving-facility")
+
+        appendConsoleOutput("DICOM Modality Worklist (HL7 ORM^O01 via MLLP)\n")
+        appendConsoleOutput("================================================\n")
+        appendConsoleOutput("  HL7 Server:       \(host):\(hl7Port)\n")
+        appendConsoleOutput("  Sending App:      \(sendingApp) | \(sendingFacility)\n")
+        appendConsoleOutput("  Receiving App:    \(receivingApp) | \(receivingFacility)\n")
         appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
         appendConsoleOutput("\n  Patient Name:     \(patientName)\n")
         appendConsoleOutput("  Patient ID:       \(patientID)\n")
@@ -4094,7 +4297,98 @@ public final class CLIWorkshopViewModel {
         if !procedureID.isEmpty      { appendConsoleOutput("  Procedure ID:     \(procedureID)\n") }
         if !procedureDesc.isEmpty    { appendConsoleOutput("  Procedure Desc:   \(procedureDesc)\n") }
         if !performingPhysician.isEmpty { appendConsoleOutput("  Performing Phys:  \(performingPhysician)\n") }
-        appendConsoleOutput("\nCreating Modality Worklist item...\n\n")
+        appendConsoleOutput("\nSending HL7 ORM^O01 order message via MLLP...\n\n")
+
+        do {
+            let messageControlID = try await DICOMModalityWorklistService.createViaHL7(
+                host: host,
+                hl7Port: hl7Port,
+                sendingApplication: sendingApp,
+                sendingFacility: sendingFacility,
+                receivingApplication: receivingApp,
+                receivingFacility: receivingFacility,
+                patientName: patientName,
+                patientID: patientID,
+                patientBirthDate: patientDOB.isEmpty ? nil : patientDOB,
+                patientSex: patientSex.isEmpty ? nil : patientSex,
+                accessionNumber: accessionNumber.isEmpty ? nil : accessionNumber,
+                referringPhysicianName: referringPhysician.isEmpty ? nil : referringPhysician,
+                requestedProcedureID: procedureID.isEmpty ? nil : procedureID,
+                requestedProcedureDescription: procedureDesc.isEmpty ? nil : procedureDesc,
+                modality: modality.isEmpty ? nil : modality,
+                scheduledStationAETitle: scheduledStation.isEmpty ? nil : scheduledStation,
+                scheduledStationName: stationName.isEmpty ? nil : stationName,
+                scheduledStartDate: resolvedDate,
+                scheduledStartTime: scheduledTime.isEmpty ? nil : scheduledTime,
+                scheduledProcedureStepID: spsID.isEmpty ? nil : spsID,
+                scheduledProcedureStepDescription: spsDesc.isEmpty ? nil : spsDesc,
+                scheduledPerformingPhysicianName: performingPhysician.isEmpty ? nil : performingPhysician,
+                timeout: timeout
+            )
+
+            appendConsoleOutput("✅ HL7 ORM^O01 accepted by server (ACK: AA)\n")
+            appendConsoleOutput("  Message Control ID: \(messageControlID)\n")
+            appendConsoleOutput("  Patient and worklist item created automatically.\n")
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0,
+                         output: "HL7 ORM sent: \(messageControlID)")
+        } catch {
+            let errorDesc = (error as? DICOMNetworkError)?.description ?? error.localizedDescription
+            appendConsoleOutput("❌ HL7 ORM^O01 failed: \(errorDesc)\n")
+            appendConsoleOutput("  💡 Hints:\n")
+            appendConsoleOutput("     • Ensure the HL7 MLLP listener is running on \(host):\(hl7Port)\n")
+            appendConsoleOutput("     • dcm4chee-arc default HL7 port is 2575 (check hl7-connection in UI config)\n")
+            appendConsoleOutput("     • Verify Sending/Receiving Application names match the server config\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,
+                         output: errorDesc)
+        }
+    }
+
+    // MARK: - MWL Create via REST API
+
+    private func executeDicomMWLCreateREST(
+        host: String, port: UInt16,
+        callingAET: String, calledAET: String,
+        timeout: TimeInterval,
+        patientName: String, patientID: String,
+        patientDOB: String, patientSex: String,
+        accessionNumber: String, referringPhysician: String,
+        procedureID: String, procedureDesc: String,
+        modality: String, scheduledStation: String,
+        stationName: String, resolvedDate: String,
+        scheduledTime: String, spsID: String,
+        spsDesc: String, performingPhysician: String
+    ) async {
+        let restBaseURLRaw = paramValue("rest-base-url")
+
+        // Construct REST base URL (default: dcm4chee-arc pattern)
+        let restBaseURL: String? = restBaseURLRaw.isEmpty ? nil : restBaseURLRaw
+        let displayURL = restBaseURL ?? "http://\(host):8080/dcm4chee-arc"
+
+        appendConsoleOutput("DICOM Modality Worklist (REST API)\n")
+        appendConsoleOutput("===================================\n")
+        appendConsoleOutput("  REST Endpoint:    \(displayURL)/aets/\(calledAET)/rs/mwlitems\n")
+        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        appendConsoleOutput("\n  Patient Name:     \(patientName)\n")
+        appendConsoleOutput("  Patient ID:       \(patientID)\n")
+        if !patientDOB.isEmpty       { appendConsoleOutput("  Date of Birth:    \(patientDOB)\n") }
+        if !patientSex.isEmpty       { appendConsoleOutput("  Patient Sex:      \(patientSex)\n") }
+        if !accessionNumber.isEmpty  { appendConsoleOutput("  Accession Number: \(accessionNumber)\n") }
+        if !referringPhysician.isEmpty { appendConsoleOutput("  Referring Phys:   \(referringPhysician)\n") }
+        appendConsoleOutput("  Modality:         \(modality)\n")
+        appendConsoleOutput("  Scheduled Date:   \(resolvedDate)\n")
+        if !scheduledTime.isEmpty    { appendConsoleOutput("  Scheduled Time:   \(scheduledTime)\n") }
+        if !scheduledStation.isEmpty { appendConsoleOutput("  Station AET:      \(scheduledStation)\n") }
+        if !stationName.isEmpty      { appendConsoleOutput("  Station Name:     \(stationName)\n") }
+        if !spsID.isEmpty            { appendConsoleOutput("  SPS ID:           \(spsID)\n") }
+        if !spsDesc.isEmpty          { appendConsoleOutput("  SPS Description:  \(spsDesc)\n") }
+        if !procedureID.isEmpty      { appendConsoleOutput("  Procedure ID:     \(procedureID)\n") }
+        if !procedureDesc.isEmpty    { appendConsoleOutput("  Procedure Desc:   \(procedureDesc)\n") }
+        if !performingPhysician.isEmpty { appendConsoleOutput("  Performing Phys:  \(performingPhysician)\n") }
+        appendConsoleOutput("\nCreating Modality Worklist item via REST...\n\n")
 
         do {
             let sopInstanceUID = try await DICOMModalityWorklistService.create(
@@ -4118,6 +4412,7 @@ public final class CLIWorkshopViewModel {
                 scheduledProcedureStepID: spsID.isEmpty ? nil : spsID,
                 scheduledProcedureStepDescription: spsDesc.isEmpty ? nil : spsDesc,
                 scheduledPerformingPhysicianName: performingPhysician.isEmpty ? nil : performingPhysician,
+                restBaseURL: restBaseURL,
                 timeout: timeout
             )
 
@@ -4130,19 +4425,10 @@ public final class CLIWorkshopViewModel {
         } catch {
             let errorDesc = (error as? DICOMNetworkError)?.description ?? error.localizedDescription
             appendConsoleOutput("❌ Worklist create failed: \(errorDesc)\n")
-            if let netError = error as? DICOMNetworkError {
-                switch netError {
-                case .sopClassNotSupported, .noPresentationContextAccepted:
-                    appendConsoleOutput("  💡 Hint: The server may not support MWL N-CREATE.\n")
-                    appendConsoleOutput("     Not all Worklist SCPs support worklist item creation via DIMSE.\n")
-                case .associationRejected:
-                    appendConsoleOutput("  💡 Hint: The server rejected the association. Check the Called AE Title.\n")
-                case .connectionFailed, .connectionClosed, .timeout, .operationTimeout, .artimTimerExpired:
-                    appendConsoleOutput("  💡 Hint: Could not connect. Verify the hostname, port, and that the server is running.\n")
-                default:
-                    break
-                }
-            }
+            appendConsoleOutput("  💡 Hint: REST requires the patient to exist first on the server.\n")
+            appendConsoleOutput("     Consider using \"HL7\" create method instead — it auto-creates patient + worklist.\n")
+            appendConsoleOutput("     Default endpoint: http://<host>:8080/dcm4chee-arc/aets/<AET>/rs/mwlitems\n")
+            appendConsoleOutput("     Set \"REST Base URL\" if your server uses a different URL.\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1,

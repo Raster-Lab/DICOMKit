@@ -1138,7 +1138,7 @@ struct UPSCommand: AsyncParsableCommand {
         // Try date-only plus basic datetime formats
         let fallback = DateFormatter()
         fallback.locale = Locale(identifier: "en_US_POSIX")
-        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd", "yyyyMMdd'T'HHmmss", "yyyyMMdd"] {
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "yyyyMMdd'T'HHmmss", "yyyyMMdd"] {
             fallback.dateFormat = fmt
             if let date = fallback.date(from: value) {
                 return date

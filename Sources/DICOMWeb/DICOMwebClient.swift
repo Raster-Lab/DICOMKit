@@ -1456,9 +1456,15 @@ extension DICOMwebClient {
             throw error
         }
         
-        // Parse JSON response
-        guard let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any] else {
-            throw DICOMwebError.invalidJSON(reason: "Expected JSON object for workitem")
+        // Parse JSON response — handle both object {…} and array [{…}] formats
+        let parsed = try? JSONSerialization.jsonObject(with: response.body)
+        let json: [String: Any]
+        if let array = parsed as? [[String: Any]], let first = array.first {
+            json = first
+        } else if let object = parsed as? [String: Any] {
+            json = object
+        } else {
+            throw DICOMwebError.invalidJSON(reason: "Expected JSON object or array for workitem")
         }
         
         return json
@@ -1490,15 +1496,25 @@ extension DICOMwebClient {
         workitem: [String: Any],
         uid: String? = nil
     ) async throws -> UPSCreateResponse {
+        // Per PS3.18 §11.4: POST /workitems?workitem={uid} for client-specified UID,
+        // POST /workitems for server-generated UID.
+        // NOTE: POST /workitems/{uid} is the UPDATE endpoint (§11.5), not CREATE.
         let url: URL
         if let uid = uid {
-            url = urlBuilder.workitemURL(workitemUID: uid)
+            url = urlBuilder.createWorkitemURL(workitemUID: uid)
         } else {
             url = urlBuilder.workitemsURL
         }
         
+        // Per PS3.18 Section 11.4 and PS3.4 Table CC.2.5-3, enforce attributes
+        // for UPS-RS Create request body
+        var filteredWorkitem = workitem
+        filteredWorkitem.removeValue(forKey: UPSTag.sopInstanceUID)       // (0008,0018) in URL
+        // Procedure Step State (0074,1000) MUST be SCHEDULED for N-CREATE per PS3.4 CC.2.5-3
+        filteredWorkitem[UPSTag.procedureStepState] = ["vr": "CS", "Value": ["SCHEDULED"]]
+        
         // Serialize workitem to JSON
-        let body = try JSONSerialization.data(withJSONObject: workitem)
+        let body = try JSONSerialization.data(withJSONObject: filteredWorkitem)
         
         let request = HTTPClient.Request(
             url: url,
@@ -1542,7 +1558,7 @@ extension DICOMwebClient {
     /// - Returns: Response with the created workitem UID
     /// - Throws: DICOMwebError on failure
     public func createWorkitem(_ workitem: Workitem) async throws -> UPSCreateResponse {
-        let json = workitemToJSON(workitem)
+        let json = workitemToCreateJSON(workitem)
         return try await createWorkitem(workitem: json, uid: workitem.workitemUID)
     }
     
@@ -1956,87 +1972,18 @@ extension DICOMwebClient {
     }
     
     /// Converts a Workitem struct to DICOM JSON
+    ///
+    /// Delegates to `Workitem.toDICOMJSON()` for consistent serialization.
     private func workitemToJSON(_ workitem: Workitem) -> [String: Any] {
-        var json: [String: Any] = [:]
-        
-        // SOP Instance UID (0008,0018)
-        json[UPSTag.sopInstanceUID] = [
-            "vr": "UI",
-            "Value": [workitem.workitemUID]
-        ]
-        
-        // Procedure Step State (0074,1000)
-        json[UPSTag.procedureStepState] = [
-            "vr": "CS",
-            "Value": [workitem.state.rawValue]
-        ]
-        
-        // Scheduled Procedure Step Priority (0074,1200)
-        json[UPSTag.scheduledProcedureStepPriority] = [
-            "vr": "CS",
-            "Value": [workitem.priority.rawValue]
-        ]
-        
-        // Optional attributes
-        if let patientName = workitem.patientName {
-            json[UPSTag.patientName] = [
-                "vr": "PN",
-                "Value": [["Alphabetic": patientName]]
-            ]
-        }
-        
-        if let patientID = workitem.patientID {
-            json[UPSTag.patientID] = [
-                "vr": "LO",
-                "Value": [patientID]
-            ]
-        }
-        
-        if let scheduledStartDateTime = workitem.scheduledStartDateTime {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withFullDate, .withTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
-            json[UPSTag.scheduledProcedureStepStartDateTime] = [
-                "vr": "DT",
-                "Value": [formatter.string(from: scheduledStartDateTime)]
-            ]
-        }
-        
-        if let label = workitem.procedureStepLabel {
-            json[UPSTag.procedureStepLabel] = [
-                "vr": "LO",
-                "Value": [label]
-            ]
-        }
-        
-        if let worklistLabel = workitem.worklistLabel {
-            json[UPSTag.worklistLabel] = [
-                "vr": "LO",
-                "Value": [worklistLabel]
-            ]
-        }
-        
-        if let studyUID = workitem.studyInstanceUID {
-            json[UPSTag.studyInstanceUID] = [
-                "vr": "UI",
-                "Value": [studyUID]
-            ]
-        }
-        
-        if let accession = workitem.accessionNumber {
-            json[UPSTag.accessionNumber] = [
-                "vr": "SH",
-                "Value": [accession]
-            ]
-        }
-        
-        if let comments = workitem.comments {
-            json[UPSTag.commentsOnScheduledProcedureStep] = [
-                "vr": "LT",
-                "Value": [comments]
-            ]
-        }
-        
-        return json
+        return workitem.toDICOMJSON()
+    }
+    
+    /// Converts a Workitem struct to DICOM JSON for Create Transaction
+    ///
+    /// Uses `Workitem.toDICOMJSONForCreate()` which only includes attributes
+    /// allowed by PS3.4 Table CC.2.5-3 for UPS N-CREATE.
+    private func workitemToCreateJSON(_ workitem: Workitem) -> [String: Any] {
+        return workitem.toDICOMJSONForCreate()
     }
 }
 #endif

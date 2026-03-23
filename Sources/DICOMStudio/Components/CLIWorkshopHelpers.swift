@@ -749,7 +749,22 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["", "SCHEDULED", "IN PROGRESS", "DISCONTINUED", "COMPLETED"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
-                // ----- Create parameters (N-CREATE) -----
+                // ----- Create parameters -----
+                CLIParameterDefinition(
+                    id: "create-method", flag: "", displayName: "Create Method",
+                    parameterType: .enumPicker, placeholder: "hl7",
+                    helpText: "How to create the worklist item. HL7 (recommended): sends an ORM^O01 order message via MLLP — automatically creates the patient and worklist. REST: posts DICOM JSON to the server's REST API (requires the patient to exist first).",
+                    defaultValue: "hl7",
+                    allowedValues: ["hl7", "rest"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "hl7-port", flag: "--hl7-port", displayName: "HL7 Port",
+                    parameterType: .integerField, placeholder: "2575",
+                    helpText: "HL7 MLLP listener port on the server (default: 2575 for dcm4chee-arc)",
+                    defaultValue: "2575", minValue: 1, maxValue: 65535,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
+                ),
                 CLIParameterDefinition(
                     id: "create-patient-name", flag: "--patient-name", displayName: "Patient Name",
                     parameterType: .textField, placeholder: "e.g. DOE^JOHN",
@@ -850,6 +865,45 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "e.g. JONES^ALICE",
                     helpText: "Scheduled Performing Physician's Name (0040,0006)",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "rest-base-url", flag: "--rest-url", displayName: "REST Base URL",
+                    parameterType: .textField, placeholder: "e.g. http://host:8080/dcm4chee-arc",
+                    helpText: "REST base URL for MWL item creation. MWL creation uses the server's REST API (not DIMSE). Default: http://<host>:8080/dcm4chee-arc",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["rest"])
+                ),
+                CLIParameterDefinition(
+                    id: "sending-application", flag: "--sending-app", displayName: "Sending Application",
+                    parameterType: .textField, placeholder: "DICOMSTUDIO",
+                    helpText: "HL7 MSH-3 Sending Application name (default: DICOMSTUDIO)",
+                    isAdvanced: true,
+                    defaultValue: "DICOMSTUDIO",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
+                ),
+                CLIParameterDefinition(
+                    id: "sending-facility", flag: "--sending-facility", displayName: "Sending Facility",
+                    parameterType: .textField, placeholder: "IMAGING",
+                    helpText: "HL7 MSH-4 Sending Facility name (default: IMAGING)",
+                    isAdvanced: true,
+                    defaultValue: "IMAGING",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
+                ),
+                CLIParameterDefinition(
+                    id: "receiving-application", flag: "--receiving-app", displayName: "Receiving Application",
+                    parameterType: .textField, placeholder: "DCM4CHEE",
+                    helpText: "HL7 MSH-5 Receiving Application name (default: DCM4CHEE)",
+                    isAdvanced: true,
+                    defaultValue: "DCM4CHEE",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
+                ),
+                CLIParameterDefinition(
+                    id: "receiving-facility", flag: "--receiving-facility", displayName: "Receiving Facility",
+                    parameterType: .textField, placeholder: "HOSPITAL",
+                    helpText: "HL7 MSH-6 Receiving Facility name (default: HOSPITAL)",
+                    isAdvanced: true,
+                    defaultValue: "HOSPITAL",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
                 ),
                 // ----- Common parameters -----
                 CLIParameterDefinition(
@@ -1312,13 +1366,13 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "create-patient-name", flag: "--patient-name", displayName: "Patient Name",
                     parameterType: .textField, placeholder: "e.g. Doe^Jane",
-                    helpText: "Patient name in DICOM format (0010,0010)",
+                    helpText: "Patient name in DICOM format Last^First (0010,0010) — UPS Relationship Module, Type 2",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "create-patient-id", flag: "--patient-id", displayName: "Patient ID",
                     parameterType: .textField, placeholder: "e.g. PAT001",
-                    helpText: "Patient identifier (0010,0020)",
+                    helpText: "Patient identifier (0010,0020) — UPS Relationship Module, Type 1",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
@@ -1332,31 +1386,35 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "create-scheduled-start", flag: "--scheduled-start", displayName: "Scheduled Start",
                     parameterType: .textField, placeholder: "e.g. 2026-03-20T14:00:00",
-                    helpText: "Scheduled procedure step start date/time in ISO 8601 format",
+                    helpText: "Scheduled procedure step start date/time in ISO 8601 format (defaults to now if empty)",
+                    isAdvanced: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "create-study-uid", flag: "--study-uid", displayName: "Study Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "Study Instance UID to reference in the workitem (0020,000D)",
+                    helpText: "Study Instance UID — placed in Input Information Sequence (0040,4021) and Referenced Request Sequence (0040,A370)",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "create-accession", flag: "--accession", displayName: "Accession Number",
                     parameterType: .textField, placeholder: "e.g. ACC12345",
-                    helpText: "Accession number (0008,0050)",
+                    helpText: "Accession number in Referenced Request Sequence (0008,0050)",
+                    isAdvanced: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "create-station-name", flag: "--station-name", displayName: "Station Name",
                     parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
                     helpText: "Scheduled station name for the procedure",
+                    isAdvanced: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "create-performer", flag: "--performer", displayName: "Performer Name",
                     parameterType: .textField, placeholder: "e.g. Tech^Mary",
                     helpText: "Scheduled human performer name",
+                    isAdvanced: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
@@ -1369,9 +1427,15 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "state", flag: "--state", displayName: "Target State",
                     parameterType: .enumPicker, placeholder: "IN PROGRESS",
-                    helpText: "Desired UPS state for state change request (PS3.18 §11.7)",
+                    helpText: "Desired UPS state transition per PS3.4 CC.2: SCHEDULED→IN PROGRESS→COMPLETED or CANCELED",
                     defaultValue: "IN PROGRESS",
-                    allowedValues: ["SCHEDULED", "IN PROGRESS", "COMPLETED", "CANCELED"],
+                    allowedValues: ["IN PROGRESS", "COMPLETED", "CANCELED"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["change-state"])
+                ),
+                CLIParameterDefinition(
+                    id: "transaction-uid", flag: "--transaction-uid", displayName: "Transaction UID",
+                    parameterType: .textField, placeholder: "From IN PROGRESS response (auto-generated if empty)",
+                    helpText: "Transaction UID required for COMPLETED/CANCELED transitions — use the UID returned when moving to IN PROGRESS",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["change-state"])
                 ),
                 CLIParameterDefinition(
@@ -1555,6 +1619,16 @@ public enum CommandBuilderHelpers: Sendable {
     ) -> Bool {
         let requiredDefs = parameterDefinitions.filter { $0.isRequired }
         for def in requiredDefs {
+            // Skip required parameters that are conditionally hidden
+            if let condition = def.visibleWhen {
+                let currentValue = parameterValues.first(where: { $0.parameterID == condition.parameterId })?.stringValue ?? ""
+                let effectiveValue = currentValue.isEmpty
+                    ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
+                    : currentValue
+                if !condition.values.contains(effectiveValue) {
+                    continue
+                }
+            }
             guard let val = parameterValues.first(where: { $0.parameterID == def.id }) else { return false }
             if val.stringValue.trimmingCharacters(in: .whitespaces).isEmpty { return false }
         }
@@ -1783,4 +1857,70 @@ public enum EducationalHelpers: Sendable {
 
     /// Returns the total number of glossary entries.
     public static var defaultGlossaryCount: Int { defaultGlossaryEntries().count }
+
+    // MARK: - DICOM Tag Formatting
+
+    /// Formats a raw 8-character tag string into (GGGG,EEEE) format.
+    public static func formatTag(_ tag: String) -> String {
+        guard tag.count == 8 else { return tag }
+        let group = tag.prefix(4)
+        let element = tag.suffix(4)
+        return "\(group),\(element)"
+    }
+
+    /// Lookup table for common DICOM tag names used in UPS.
+    private static let tagNames: [String: String] = [
+        "00080016": "SOP Class UID",
+        "00080018": "SOP Instance UID",
+        "00080050": "Accession Number",
+        "00080090": "Referring Physician",
+        "00080100": "Code Value",
+        "00080102": "Coding Scheme Designator",
+        "00080104": "Code Meaning",
+        "00081110": "Referenced Study Sequence",
+        "00081150": "Referenced SOP Class UID",
+        "00081155": "Referenced SOP Instance UID",
+        "00081195": "Transaction UID",
+        "00100010": "Patient's Name",
+        "00100020": "Patient ID",
+        "00100030": "Patient's Birth Date",
+        "00100040": "Patient's Sex",
+        "0020000D": "Study Instance UID",
+        "0020000E": "Series Instance UID",
+        "00321060": "Requested Procedure Description",
+        "00400009": "Scheduled Procedure Step ID",
+        "00400400": "Comments on Scheduled Procedure Step",
+        "0040A370": "Referenced Request Sequence",
+        "00401001": "Requested Procedure ID",
+        "00404005": "Scheduled Procedure Step Start DateTime",
+        "00404010": "Scheduled Procedure Step Modification DateTime",
+        "00404011": "Expected Completion DateTime",
+        "00404018": "Scheduled Workitem Code Sequence",
+        "00404021": "Input Information Sequence",
+        "00404025": "Scheduled Station Name Code Sequence",
+        "00404026": "Scheduled Station Class Code Sequence",
+        "00404027": "Scheduled Station Geographic Location Code Sequence",
+        "00404033": "Output Information Sequence",
+        "00404034": "Scheduled Human Performers Sequence",
+        "00404035": "Actual Human Performers Sequence",
+        "00404036": "Human Performer Code Sequence",
+        "00404037": "Human Performer's Name",
+        "00404041": "Input Readiness State",
+        "00404052": "Procedure Step Cancellation DateTime",
+        "00741000": "Procedure Step State",
+        "00741002": "Contact URI",
+        "00741004": "Procedure Step Progress",
+        "00741006": "Procedure Step Progress Description",
+        "00741200": "Scheduled Procedure Step Priority",
+        "00741202": "Worklist Label",
+        "00741204": "Procedure Step Label",
+        "00741210": "Scheduled Processing Parameters Sequence",
+        "00741236": "Procedure Step Discontinuation Reason Code Sequence",
+        "00741238": "Reason for Cancellation",
+    ]
+
+    /// Returns a human-readable name for a DICOM tag, or the raw tag if unknown.
+    public static func dicomTagName(for tag: String) -> String {
+        return tagNames[tag.uppercased()] ?? tag
+    }
 }
