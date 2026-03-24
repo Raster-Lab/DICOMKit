@@ -502,8 +502,11 @@ public actor DICOMStorageServer {
             throw DICOMNetworkError.invalidState("Server is already running")
         }
         
-        let parameters = NWParameters.tcp
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         parameters.allowLocalEndpointReuse = true
+        parameters.requiredLocalEndpoint = nil
         
         guard let port = NWEndpoint.Port(rawValue: configuration.port) else {
             throw DICOMNetworkError.invalidPDU("Invalid port: \(configuration.port)")
@@ -532,7 +535,18 @@ public actor DICOMStorageServer {
     public func stop() async {
         guard isRunning else { return }
         
-        listener?.cancel()
+        if let listener = listener {
+            // Wait for the listener to fully cancel so the port is released
+            // before any subsequent restart attempt.
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                listener.stateUpdateHandler = { state in
+                    if case .cancelled = state {
+                        continuation.resume()
+                    }
+                }
+                listener.cancel()
+            }
+        }
         listener = nil
         
         // Close all active associations

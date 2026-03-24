@@ -1567,22 +1567,24 @@ extension DICOMwebClient {
     /// - Parameters:
     ///   - uid: The workitem's SOP Instance UID
     ///   - updates: The updates to apply as DICOM JSON
+    ///   - transactionUID: Transaction UID of the claimed workitem (required by PS3.18 §11.6)
     /// - Throws: DICOMwebError on failure, UPSError.workitemNotFound if not found
     ///
-    /// Reference: PS3.18 Section 11.5 - Update Transaction
-    public func updateWorkitem(uid: String, updates: [String: Any]) async throws {
-        let url = urlBuilder.workitemURL(workitemUID: uid)
-        
+    /// Reference: PS3.18 Section 11.6 - Update Workitem Transaction
+    /// Uses POST (not PUT) with the Transaction UID as a query parameter.
+    public func updateWorkitem(uid: String, updates: [String: Any], transactionUID: String) async throws {
+        let url = urlBuilder.updateWorkitemURL(workitemUID: uid, transactionUID: transactionUID)
+
         // Serialize updates to JSON
         let body = try JSONSerialization.data(withJSONObject: updates)
-        
+
         let request = HTTPClient.Request(
             url: url,
-            method: .put,
+            method: .post,
             headers: ["Content-Type": DICOMMediaType.dicomJSON.description],
             body: body
         )
-        
+
         do {
             _ = try await httpClient.execute(request)
         } catch let error as DICOMwebError {
@@ -1599,6 +1601,7 @@ extension DICOMwebClient {
     ///   - uid: The workitem's SOP Instance UID
     ///   - state: The target state
     ///   - transactionUID: Transaction UID (required when completing/canceling from IN PROGRESS)
+    ///   - requestingAE: Optional Requesting AE Title appended to the URL (required by some servers)
     /// - Returns: Response with the new state and transaction UID if applicable
     /// - Throws: DICOMwebError on failure, UPSError for invalid state transitions
     ///
@@ -1606,9 +1609,10 @@ extension DICOMwebClient {
     public func changeWorkitemState(
         uid: String,
         state: UPSState,
-        transactionUID: String? = nil
+        transactionUID: String? = nil,
+        requestingAE: String? = nil
     ) async throws -> UPSStateChangeResponse {
-        let url = urlBuilder.workitemStateURL(workitemUID: uid)
+        let url = urlBuilder.workitemStateURL(workitemUID: uid, requestingAE: requestingAE)
         
         // Build state change JSON
         let stateChangeJSON = buildUPSStateChangeJSON(state: state, transactionUID: transactionUID)
@@ -1628,21 +1632,23 @@ extension DICOMwebClient {
         do {
             response = try await httpClient.execute(request)
         } catch let error as DICOMwebError {
-            if case .notFound = error {
+            switch error {
+            case .notFound:
                 throw UPSError.workitemNotFound(uid: uid)
-            }
-            if case .httpError(let statusCode, let message) = error, statusCode == 409 {
-                // Could be invalid state transition or transaction UID mismatch
+            case .conflict(let message):
+                // 409 — invalid state transition or transaction UID mismatch
                 if let message = message, message.lowercased().contains("transaction") {
                     throw UPSError.transactionUIDMismatch
                 }
+                throw error
+            default:
+                throw error
             }
-            throw error
         }
         
-        // Parse response to get transaction UID if transitioning to IN PROGRESS
+        // Parse response to get transaction UID (returned for IN PROGRESS transitions)
         var responseTransactionUID: String? = nil
-        if state == .inProgress, !response.body.isEmpty {
+        if !response.body.isEmpty {
             if let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any] {
                 responseTransactionUID = extractUPSTransactionUID(from: json)
             }
@@ -1674,9 +1680,10 @@ extension DICOMwebClient {
         uid: String,
         reason: String? = nil,
         contactDisplayName: String? = nil,
-        contactURI: String? = nil
+        contactURI: String? = nil,
+        requestingAE: String? = nil
     ) async throws -> UPSCancellationResponse {
-        let url = urlBuilder.workitemCancelRequestURL(workitemUID: uid)
+        let url = urlBuilder.workitemCancelRequestURL(workitemUID: uid, requestingAE: requestingAE)
         
         // Build cancellation request JSON
         let cancellationJSON = buildUPSCancellationJSON(
@@ -1705,18 +1712,18 @@ extension DICOMwebClient {
             // 2xx means cancellation was accepted
             accepted = true
         } catch let error as DICOMwebError {
-            if case .notFound = error {
+            switch error {
+            case .notFound:
                 throw UPSError.workitemNotFound(uid: uid)
-            }
-            if case .httpError(let statusCode, let message) = error, statusCode == 409 {
+            case .conflict(let message):
                 // 409 Conflict means cancellation was rejected
                 rejectionReason = message
                 response = HTTPClient.Response(
-                    statusCode: statusCode,
+                    statusCode: 409,
                     headers: [:],
                     body: Data()
                 )
-            } else {
+            default:
                 throw error
             }
         }
