@@ -439,18 +439,52 @@ extension DICOMwebURLBuilder {
         return components.url!
     }
     
+    /// URL for updating a workitem with Transaction UID query parameter
+    /// - Parameters:
+    ///   - workitemUID: The workitem's SOP Instance UID
+    ///   - transactionUID: The Transaction UID of the claimed workitem
+    /// - Returns: URL for `/workitems/{workitemUID}?transactionUID={transactionUID}`
+    ///
+    /// Per PS3.18 §11.6.1, the Update Workitem Transaction uses POST with the
+    /// Transaction UID as a query parameter.
+    public func updateWorkitemURL(workitemUID: String, transactionUID: String) -> URL {
+        var components = URLComponents(url: workitemURL(workitemUID: workitemUID), resolvingAgainstBaseURL: false)!
+        components.queryItems = (components.queryItems ?? []) + [
+            URLQueryItem(name: "transactionUID", value: transactionUID)
+        ]
+        return components.url!
+    }
+
     /// URL for workitem state changes
-    /// - Parameter workitemUID: The workitem's SOP Instance UID
-    /// - Returns: URL for `/workitems/{workitemUID}/state`
-    public func workitemStateURL(workitemUID: String) -> URL {
-        return workitemURL(workitemUID: workitemUID).appendingPathComponent("state")
+    /// - Parameters:
+    ///   - workitemUID: The workitem's SOP Instance UID
+    ///   - requestingAE: Optional Requesting AE Title appended as a path segment
+    /// - Returns: URL for `/workitems/{workitemUID}/state` or `/workitems/{workitemUID}/state/{requestingAE}`
+    ///
+    /// Per PS3.18 §11.6, the Requesting AE may be included as the last path segment.
+    /// Some servers (e.g. dcm4chee-arc) require it.
+    public func workitemStateURL(workitemUID: String, requestingAE: String? = nil) -> URL {
+        let stateURL = workitemURL(workitemUID: workitemUID).appendingPathComponent("state")
+        if let ae = requestingAE, !ae.isEmpty {
+            return stateURL.appendingPathComponent(ae)
+        }
+        return stateURL
     }
     
     /// URL for workitem cancellation requests
-    /// - Parameter workitemUID: The workitem's SOP Instance UID
-    /// - Returns: URL for `/workitems/{workitemUID}/cancelrequest`
-    public func workitemCancelRequestURL(workitemUID: String) -> URL {
-        return workitemURL(workitemUID: workitemUID).appendingPathComponent("cancelrequest")
+    /// - Parameters:
+    ///   - workitemUID: The workitem's SOP Instance UID
+    ///   - requestingAE: Optional Requesting AE Title appended as a path segment
+    /// - Returns: URL for `/workitems/{workitemUID}/cancelrequest` or `/workitems/{workitemUID}/cancelrequest/{requestingAE}`
+    ///
+    /// Per PS3.18 §11.7, the Requesting AE may be included as the last path segment.
+    /// Some servers (e.g. dcm4chee-arc) require it.
+    public func workitemCancelRequestURL(workitemUID: String, requestingAE: String? = nil) -> URL {
+        let cancelURL = workitemURL(workitemUID: workitemUID).appendingPathComponent("cancelrequest")
+        if let ae = requestingAE, !ae.isEmpty {
+            return cancelURL.appendingPathComponent(ae)
+        }
+        return cancelURL
     }
     
     /// URL for workitem subscription

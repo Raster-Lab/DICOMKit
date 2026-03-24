@@ -210,6 +210,14 @@ public final class CLIWorkshopViewModel {
     public var newServerCalledAET: String = ""
     public var newServerCallingAET: String = "DICOMSTUDIO"
 
+    // MARK: - UPS Transaction UID Cache
+    /// Stores the Transaction UID used when claiming each workitem (IN PROGRESS).
+    /// Per PS3.18 §11.5.2, the server never returns the Transaction UID in
+    /// Retrieve Workitem responses — it acts as an access lock.  We must
+    /// remember it ourselves for subsequent COMPLETED / CANCELED transitions.
+    /// Key = Workitem UID, Value = Transaction UID.
+    private var upsTransactionUIDs: [String: String] = [:]
+
     // DICOMweb server selection
     /// Saved DICOMweb server profiles.
     public var savedDICOMwebProfiles: [DICOMwebServerProfile] = []
@@ -2407,43 +2415,200 @@ public final class CLIWorkshopViewModel {
                 let rawState: String
                 switch stateStr.uppercased() {
                 case "COMPLETED": rawState = "COMPLETED"
-                case "CANCELED": rawState = "CANCELED"
-                default: rawState = "IN PROGRESS"
+                case "CANCELED":  rawState = "CANCELED"
+                default:          rawState = "IN PROGRESS"
                 }
 
                 // Per PS3.4 CC.2 UPS State Machine:
                 //   SCHEDULED → IN PROGRESS  : client supplies a new Transaction UID
                 //   IN PROGRESS → COMPLETED  : client MUST supply the same Transaction UID
                 //   IN PROGRESS → CANCELED   : client MUST supply the same Transaction UID
+                //
+                // Per PS3.18 §11.5.2, the server NEVER returns the Transaction UID
+                // in Retrieve Workitem responses — it acts as an access lock.
+                // We cache it locally when claiming (IN PROGRESS) and auto-fill it
+                // for subsequent COMPLETED / CANCELED transitions.
                 let userTxUID = paramValue("transaction-uid")
-                let txUID: String
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                var effectiveTxUID: String
                 if rawState == "IN PROGRESS" {
                     // New transition — generate a fresh Transaction UID
-                    txUID = userTxUID.isEmpty ? generateDICOMUID() : userTxUID
+                    effectiveTxUID = userTxUID.isEmpty ? generateDICOMUID() : userTxUID
                 } else {
-                    // COMPLETED / CANCELED — must reuse the Transaction UID from IN PROGRESS
-                    guard !userTxUID.isEmpty else {
+                    // COMPLETED / CANCELED — must reuse the Transaction UID from IN PROGRESS.
+                    // Check (in order): user-provided → cached from previous IN PROGRESS claim.
+                    let cachedTxUID = upsTransactionUIDs[workitemUID]
+                    if !userTxUID.isEmpty {
+                        effectiveTxUID = userTxUID
+                    } else if let cached = cachedTxUID, !cached.isEmpty {
+                        effectiveTxUID = cached
+                        appendConsoleOutput("  ℹ️  Using cached Transaction UID from IN PROGRESS claim\n")
+                    } else {
                         appendConsoleOutput("Error: Transaction UID is required for \(rawState) transition.\n")
                         appendConsoleOutput("  💡 Use the Transaction UID returned when the workitem was moved to IN PROGRESS.\n")
                         consoleStatus = .error
                         service.setConsoleStatus(.error)
                         return
                     }
-                    txUID = userTxUID
                 }
 
+                // Per PS3.18 §11.6 the Requesting AE may be appended as the last
+                // path segment of the state URL.  Some servers (e.g. dcm4chee-arc)
+                // **require** this segment; without it the route returns 404.
+                let requestingAE = "DICOMSTUDIO"
+
                 appendConsoleOutput("Changing state of \(workitemUID) to \(rawState) ...\n")
-                appendConsoleOutput("  Transaction UID: \(txUID)\n")
+                appendConsoleOutput("  Transaction UID: \(effectiveTxUID)\n")
+                appendConsoleOutput("  Requesting AE:   \(requestingAE)\n")
 
-                // Per PS3.18 §11.6: PUT /workitems/{uid}/state
+                let stateURL = client.urlBuilder.workitemStateURL(
+                    workitemUID: workitemUID, requestingAE: requestingAE)
+                appendConsoleOutput("  URL: \(stateURL.absoluteString)\n")
+
+                // Pre-flight: retrieve the workitem to verify current state.
+                // NOTE: Per PS3.18 §11.5.2, the server NEVER returns Transaction
+                // UID (0008,1195) — it acts as an access lock known only to the
+                // owner.  We rely on our local cache instead.
+                do {
+                    let currentAttrs = try await client.retrieveWorkitem(uid: workitemUID)
+                    if let stateElem = currentAttrs[UPSTag.procedureStepState] as? [String: Any],
+                       let vals = stateElem["Value"] as? [String],
+                       let currentRaw = vals.first {
+                        appendConsoleOutput("  Current state:   \(currentRaw)\n")
+
+                        // Validate transition using the DICOM PS3.4 CC.1.1 state machine
+                        let validTargets: [String]
+                        switch currentRaw {
+                        case "SCHEDULED":   validTargets = ["IN PROGRESS"]
+                        case "IN PROGRESS": validTargets = ["COMPLETED", "CANCELED"]
+                        default:            validTargets = []
+                        }
+                        if !validTargets.contains(rawState) {
+                            appendConsoleOutput("\n❌ Invalid state transition: \(currentRaw) → \(rawState)\n")
+                            if currentRaw == "COMPLETED" || currentRaw == "CANCELED" {
+                                appendConsoleOutput("  💡 The workitem is in a final state and cannot be changed.\n")
+                            } else {
+                                appendConsoleOutput("  💡 The workitem must be in \(rawState == "IN PROGRESS" ? "SCHEDULED" : "IN PROGRESS") state.\n")
+                            }
+                            consoleStatus = .error
+                            service.setConsoleStatus(.error)
+                            addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 1,
+                                         output: "Invalid transition \(currentRaw) → \(rawState)")
+                            return
+                        }
+                    } else {
+                        appendConsoleOutput("  ⚠️  Could not read current state from server\n")
+                    }
+                    appendConsoleOutput("\n")
+                } catch {
+                    // Pre-flight check is best-effort; proceed with the state
+                    // change even if it fails.
+                    appendConsoleOutput("  ⚠️  Pre-flight check failed: \(error.localizedDescription)\n\n")
+                }
+
+                // ── Update Workitem with Final State attributes before COMPLETED ──
+                // Per PS3.4 CC.2.1.3 / Table CC.2.5-3, the SCP validates that
+                // Unified Procedure Step Performed Procedure Sequence (0074,1216)
+                // is populated before allowing transition to COMPLETED.  We send
+                // a minimal Update Workitem (PS3.18 §11.6) to satisfy this.
+                if rawState == "COMPLETED" {
+                    appendConsoleOutput("📝 Updating workitem with Final State attributes ...\n")
+                    appendConsoleOutput("   (required by DICOM PS3.4 CC.2.5-3 before COMPLETED)\n")
+
+                    let updateURL = client.urlBuilder.updateWorkitemURL(
+                        workitemUID: workitemUID, transactionUID: effectiveTxUID)
+
+                    // ISO 8601 date-time for DICOM DT VR
+                    let nowDT: String = {
+                        let f = ISO8601DateFormatter()
+                        f.formatOptions = [.withYear, .withMonth, .withDay,
+                                           .withTime, .withColonSeparatorInTime]
+                        return f.string(from: Date())
+                    }()
+
+                    let performedBody: [String: Any] = [
+                        UPSTag.performedProcedureStepStartDateTime: [
+                            "vr": "DT", "Value": [nowDT]
+                        ] as [String: Any],
+                        UPSTag.performedProcedureStepEndDateTime: [
+                            "vr": "DT", "Value": [nowDT]
+                        ] as [String: Any],
+                        UPSTag.unifiedProcedureStepPerformedProcedureSequence: [
+                            "vr": "SQ",
+                            "Value": [
+                                [
+                                    UPSTag.performedWorkitemCodeSequence: [
+                                        "vr": "SQ",
+                                        "Value": [
+                                            [
+                                                UPSTag.codeValue: ["vr": "SH", "Value": ["NO_WORKITEM"]],
+                                                UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99DICOMSTUDIO"]],
+                                                UPSTag.codeMeaning: ["vr": "LO", "Value": ["Procedure Performed"]]
+                                            ] as [String: Any]
+                                        ] as [[String: Any]]
+                                    ] as [String: Any],
+                                    UPSTag.outputInformationSequence: [
+                                        "vr": "SQ",
+                                        "Value": [] as [[String: Any]]
+                                    ] as [String: Any]
+                                ] as [String: Any]
+                            ] as [[String: Any]]
+                        ] as [String: Any]
+                    ]
+
+                    let updateData = try JSONSerialization.data(
+                        withJSONObject: performedBody, options: [.sortedKeys])
+
+                    appendConsoleOutput("  POST \(updateURL.absoluteString)\n")
+                    if let prettyJSON = try? JSONSerialization.data(
+                        withJSONObject: performedBody,
+                        options: [.prettyPrinted, .sortedKeys]),
+                       let prettyStr = String(data: prettyJSON, encoding: .utf8) {
+                        appendConsoleOutput("  \(prettyStr.replacingOccurrences(of: "\n", with: "\n  "))\n")
+                    }
+
+                    let updateRequest = HTTPClient.Request(
+                        url: updateURL,
+                        method: .post,
+                        headers: [
+                            "Content-Type": "application/dicom+json",
+                            "Accept": "application/dicom+json"
+                        ],
+                        body: updateData
+                    )
+
+                    do {
+                        let updateResp = try await client.httpClient.execute(updateRequest)
+                        appendConsoleOutput("  ✅ Workitem updated (HTTP \(updateResp.statusCode))\n\n")
+                    } catch {
+                        appendConsoleOutput("  ⚠️  Update failed: \(error.localizedDescription)\n")
+                        appendConsoleOutput("  💡 Proceeding with state change — server may still accept it.\n\n")
+                    }
+                }
+
+                // Build DICOM JSON body per PS3.18 §11.7
                 let stateChangeBody: [String: Any] = [
-                    "00741000": ["vr": "CS", "Value": [rawState]],
-                    "00081195": ["vr": "UI", "Value": [txUID]]
+                    UPSTag.procedureStepState: ["vr": "CS", "Value": [rawState]],
+                    UPSTag.transactionUID: ["vr": "UI", "Value": [effectiveTxUID]]
                 ]
-                let bodyData = try JSONSerialization.data(withJSONObject: stateChangeBody)
+                let bodyData = try JSONSerialization.data(withJSONObject: stateChangeBody, options: [.sortedKeys])
 
-                let stateURL = client.urlBuilder.workitemStateURL(workitemUID: workitemUID)
-                appendConsoleOutput("  URL: \(stateURL.absoluteString)\n\n")
+                // ── Show the final HTTP request in the console ──
+                appendConsoleOutput("──── HTTP Request ────\n")
+                appendConsoleOutput("PUT \(stateURL.absoluteString)\n")
+                appendConsoleOutput("Content-Type: application/dicom+json\n")
+                appendConsoleOutput("Accept: application/dicom+json\n")
+                if let bodyStr = String(data: bodyData, encoding: .utf8) {
+                    // Pretty-print the JSON for readability
+                    if let jsonObj = try? JSONSerialization.jsonObject(with: bodyData),
+                       let pretty = try? JSONSerialization.data(withJSONObject: jsonObj, options: [.prettyPrinted, .sortedKeys]),
+                       let prettyStr = String(data: pretty, encoding: .utf8) {
+                        appendConsoleOutput("\n\(prettyStr)\n")
+                    } else {
+                        appendConsoleOutput("\n\(bodyStr)\n")
+                    }
+                }
+                appendConsoleOutput("──────────────────────\n\n")
 
                 let stateRequest = HTTPClient.Request(
                     url: stateURL,
@@ -2457,40 +2622,77 @@ public final class CLIWorkshopViewModel {
 
                 do {
                     let response = try await client.httpClient.execute(stateRequest)
+
+                    // ── Show the HTTP response ──
+                    appendConsoleOutput("──── HTTP Response ────\n")
+                    appendConsoleOutput("Status: \(response.statusCode)\n")
+                    if !response.body.isEmpty,
+                       let respStr = String(data: response.body, encoding: .utf8),
+                       !respStr.isEmpty {
+                        if let jsonObj = try? JSONSerialization.jsonObject(with: response.body),
+                           let pretty = try? JSONSerialization.data(withJSONObject: jsonObj, options: [.prettyPrinted, .sortedKeys]),
+                           let prettyStr = String(data: pretty, encoding: .utf8) {
+                            appendConsoleOutput("\n\(prettyStr)\n")
+                        } else {
+                            appendConsoleOutput("\n\(respStr)\n")
+                        }
+                    }
+                    appendConsoleOutput("───────────────────────\n\n")
+
                     appendConsoleOutput("✅ State changed to \(rawState)\n")
 
-                    // For IN PROGRESS, parse the response to capture the Transaction UID
+                    // Cache / clear the Transaction UID for this workitem
                     if rawState == "IN PROGRESS" {
-                        appendConsoleOutput("\n  ⚠️ Save this Transaction UID — you will need it for COMPLETED or CANCELED transitions:\n")
-                        appendConsoleOutput("  📋 Transaction UID: \(txUID)\n")
+                        // Store the TX UID so COMPLETED/CANCELED can auto-fill it
+                        upsTransactionUIDs[workitemUID] = effectiveTxUID
+                    } else if rawState == "COMPLETED" || rawState == "CANCELED" {
+                        // Terminal state — remove the cached TX UID
+                        upsTransactionUIDs.removeValue(forKey: workitemUID)
                     }
 
-                    // Show response body if present
+                    // Parse response body for the server's Transaction UID
                     if !response.body.isEmpty,
-                       let responseStr = String(data: response.body, encoding: .utf8),
-                       !responseStr.isEmpty {
-                        appendConsoleOutput("  Response: \(responseStr)\n")
+                       let json = try? JSONSerialization.jsonObject(with: response.body) as? [String: Any],
+                       let txElem = json[UPSTag.transactionUID] as? [String: Any],
+                       let txVals = txElem["Value"] as? [String],
+                       let responseTxUID = txVals.first {
+                        if rawState == "IN PROGRESS" {
+                            // Server returned a TX UID — update the cache with it
+                            upsTransactionUIDs[workitemUID] = responseTxUID
+                            appendConsoleOutput("\n  📋 Transaction UID (cached): \(responseTxUID)\n")
+                        } else {
+                            appendConsoleOutput("  📋 Transaction UID: \(responseTxUID)\n")
+                        }
+                    } else if rawState == "IN PROGRESS" {
+                        // No Transaction UID in response body — show the one we sent
+                        appendConsoleOutput("\n  📋 Transaction UID (cached): \(effectiveTxUID)\n")
+                        appendConsoleOutput("  ℹ️  This UID is stored locally — COMPLETED/CANCELED will auto-fill it.\n")
                     }
                 } catch let error as DICOMwebError {
-                    if case .httpError(let statusCode, let message) = error {
-                        appendConsoleOutput("❌ State change failed (HTTP \(statusCode))\n")
-                        if let msg = message {
-                            appendConsoleOutput("  Server: \(msg)\n")
+                    // ── Show the error response ──
+                    appendConsoleOutput("──── HTTP Response ────\n")
+                    appendConsoleOutput("Error: \(error.localizedDescription)\n")
+                    appendConsoleOutput("───────────────────────\n\n")
+
+                    switch error {
+                    case .conflict(let message):
+                        appendConsoleOutput("❌ State change failed (HTTP 409)\n")
+                        if let msg = message, !msg.isEmpty {
+                            appendConsoleOutput("  Server message: \(msg)\n")
                         }
-                        switch statusCode {
-                        case 400:
-                            appendConsoleOutput("  💡 Bad Request — the request body may be malformed or missing required attributes.\n")
-                        case 404:
-                            appendConsoleOutput("  💡 Workitem \(workitemUID) not found on the server.\n")
-                        case 409:
-                            appendConsoleOutput("  💡 State transition conflict — check:\n")
-                            appendConsoleOutput("     • Current state allows transition to \(rawState)?\n")
-                            appendConsoleOutput("     • Transaction UID matches the one from IN PROGRESS?\n")
-                            appendConsoleOutput("     • Workitem is not locked by another performer?\n")
-                        default:
-                            break
+                        appendConsoleOutput("  💡 State transition conflict — check:\n")
+                        appendConsoleOutput("     • Current state allows transition to \(rawState)?\n")
+                        appendConsoleOutput("     • Transaction UID matches the one from IN PROGRESS?\n")
+                        appendConsoleOutput("     • Workitem is not locked by another performer?\n")
+                    case .notFound:
+                        appendConsoleOutput("❌ State change failed (HTTP 404)\n")
+                        appendConsoleOutput("  💡 Workitem \(workitemUID) not found on the server.\n")
+                    case .badRequest(let message):
+                        appendConsoleOutput("❌ State change failed (HTTP 400)\n")
+                        if let msg = message, !msg.isEmpty {
+                            appendConsoleOutput("  Server message: \(msg)\n")
                         }
-                    } else {
+                    default:
                         appendConsoleOutput("❌ State change failed: \(error.localizedDescription)\n")
                     }
                     consoleStatus = .error
@@ -2524,7 +2726,46 @@ public final class CLIWorkshopViewModel {
                              output: "Subscribed to \(workitemUID)")
 
             default: // search
-                let results = try await client.searchWorkitems(query: UPSQuery())
+                // Build a UPSQuery from the user-provided filter parameters
+                var query = UPSQuery()
+
+                let stepStateFilter = paramValue("procedure-step-state")
+                if !stepStateFilter.isEmpty {
+                    // Use raw attribute tag to avoid DICOMWeb.UPSState / DICOMStudio.UPSState ambiguity
+                    query = query.attribute("00741000", value: stepStateFilter)
+                }
+                let priorityFilter = paramValue("priority")
+                if !priorityFilter.isEmpty {
+                    query = query.attribute("00741200", value: priorityFilter)
+                }
+                let patientNameFilter = paramValue("patient-name")
+                if !patientNameFilter.isEmpty {
+                    query = query.attribute("00100010", value: patientNameFilter)
+                }
+                let stationFilter = paramValue("scheduled-station")
+                if !stationFilter.isEmpty {
+                    query = query.attribute("00404025", value: stationFilter)
+                }
+                let limitStr = paramValue("limit")
+                if let limitVal = Int(limitStr), limitVal > 0 {
+                    query = query.limit(limitVal)
+                } else {
+                    query = query.limit(50)
+                }
+                query = query.includeAllFields()
+
+                // Log the outgoing query
+                let searchURL = client.urlBuilder.searchWorkitemsURL(parameters: query.toParameters())
+                appendConsoleOutput("Query URL: \(searchURL.absoluteString)\n")
+                if !query.toParameters().isEmpty {
+                    appendConsoleOutput("Filters:\n")
+                    for (key, value) in query.toParameters().sorted(by: { $0.key < $1.key }) {
+                        appendConsoleOutput("  \(key) = \(value)\n")
+                    }
+                }
+                appendConsoleOutput("\n")
+
+                let results = try await client.searchWorkitems(query: query)
                 let count = results.workitems.count
                 appendConsoleOutput("✅ UPS-RS returned \(count) workitems\n\n")
                 for (i, item) in results.workitems.prefix(50).enumerated() {

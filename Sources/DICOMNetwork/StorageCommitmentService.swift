@@ -1145,8 +1145,11 @@ public actor CommitmentNotificationListener {
             throw DICOMNetworkError.invalidState("Listener is already running")
         }
         
-        let parameters = NWParameters.tcp
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.noDelay = true
+        let parameters = NWParameters(tls: nil, tcp: tcpOptions)
         parameters.allowLocalEndpointReuse = true
+        parameters.requiredLocalEndpoint = nil
         
         guard let port = NWEndpoint.Port(rawValue: configuration.port) else {
             throw DICOMNetworkError.invalidPDU("Invalid port: \(configuration.port)")
@@ -1175,7 +1178,16 @@ public actor CommitmentNotificationListener {
     public func stop() async {
         guard isRunning else { return }
         
-        listener?.cancel()
+        if let listener = listener {
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                listener.stateUpdateHandler = { state in
+                    if case .cancelled = state {
+                        continuation.resume()
+                    }
+                }
+                listener.cancel()
+            }
+        }
         listener = nil
         
         // Close all active associations

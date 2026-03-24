@@ -1372,6 +1372,10 @@ public enum UPSTag {
     public static let scheduledProcedureStepID = "00400009"
     
     // UPS Performed Procedure Step
+    public static let unifiedProcedureStepPerformedProcedureSequence = "00741216"
+    public static let performedWorkitemCodeSequence = "00404019"
+    public static let performedProcedureStepStartDateTime = "00404050"
+    public static let performedProcedureStepEndDateTime = "00404051"
     public static let procedureStepState = "00741000"
     public static let inputReadinessState = "00404041"
     public static let procedureStepCancellationDateTime = "00404052"
