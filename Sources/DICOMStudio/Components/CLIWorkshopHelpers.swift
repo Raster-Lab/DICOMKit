@@ -1343,6 +1343,7 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "search",
                     allowedValues: ["search", "get", "create", "change-state", "subscribe"]
                 ),
+
                 CLIParameterDefinition(
                     id: "url", flag: "--url", displayName: "Base URL",
                     parameterType: .textField, placeholder: "e.g. https://pacs.hospital.com/dicom-web",
@@ -1479,6 +1480,7 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["state-change", "progress", "cancel-requested"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["subscribe"])
                 ),
+                // ----- DICOMweb Auth Parameters -----
                 CLIParameterDefinition(
                     id: "auth", flag: "--auth", displayName: "Authentication",
                     parameterType: .enumPicker, placeholder: "none",

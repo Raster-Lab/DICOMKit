@@ -2279,6 +2279,7 @@ public final class CLIWorkshopViewModel {
                              output: "Workitem retrieved")
 
             case "create":
+                // DICOMweb (UPS-RS) create flow
                 let stepLabel = paramValue("create-label")
                 guard !stepLabel.isEmpty else {
                     appendConsoleOutput("Error: Procedure Step Label is required for create operation.\n")
@@ -2405,6 +2406,7 @@ public final class CLIWorkshopViewModel {
                              output: "Workitem created: \(response.workitemUID)")
 
             case "change-state":
+                // DICOMweb (UPS-RS) change-state flow
                 guard !workitemUID.isEmpty else {
                     appendConsoleOutput("Error: Workitem UID is required for change-state operation.\n")
                     consoleStatus = .error
@@ -2455,14 +2457,23 @@ public final class CLIWorkshopViewModel {
                 // Per PS3.18 §11.6 the Requesting AE may be appended as the last
                 // path segment of the state URL.  Some servers (e.g. dcm4chee-arc)
                 // **require** this segment; without it the route returns 404.
-                let requestingAE = "DICOMSTUDIO"
+                // Use the server's Called AE Title (e.g. "DCM4CHEE") — this is the
+                // AE that owns the UPS instance.
+                let calledAE = paramValue("called-aet")
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let requestingAE = calledAE.isEmpty ? "DCM4CHEE" : calledAE
 
                 appendConsoleOutput("Changing state of \(workitemUID) to \(rawState) ...\n")
                 appendConsoleOutput("  Transaction UID: \(effectiveTxUID)\n")
                 appendConsoleOutput("  Requesting AE:   \(requestingAE)\n")
 
+                // Per PS3.18 §11.6, the Transaction UID for the state
+                // change goes in the REQUEST BODY only (not the URL).
+                // The URL query parameter ?00081195 belongs only to the
+                // Update Workitem endpoint (§11.5).
                 let stateURL = client.urlBuilder.workitemStateURL(
-                    workitemUID: workitemUID, requestingAE: requestingAE)
+                    workitemUID: workitemUID,
+                    requestingAE: requestingAE)
                 appendConsoleOutput("  URL: \(stateURL.absoluteString)\n")
 
                 // Pre-flight: retrieve the workitem to verify current state.
@@ -2518,25 +2529,42 @@ public final class CLIWorkshopViewModel {
                     let updateURL = client.urlBuilder.updateWorkitemURL(
                         workitemUID: workitemUID, transactionUID: effectiveTxUID)
 
-                    // ISO 8601 date-time for DICOM DT VR
+                    // DICOM DT VR format: YYYYMMDDHHMMSS.FFFFFF (PS3.5 §6.2)
                     let nowDT: String = {
-                        let f = ISO8601DateFormatter()
-                        f.formatOptions = [.withYear, .withMonth, .withDay,
-                                           .withTime, .withColonSeparatorInTime]
+                        let f = DateFormatter()
+                        f.dateFormat = "yyyyMMddHHmmss.SSS000"
+                        f.locale = Locale(identifier: "en_US_POSIX")
+                        f.timeZone = TimeZone.current
                         return f.string(from: Date())
                     }()
 
+                    // Per PS3.4 Table CC.2.5-3, Start/End DateTimes and
+                    // Performed Workitem Code Sequence must all be INSIDE
+                    // the Unified Procedure Step Performed Procedure Sequence
+                    // (0074,1216) sequence item.
+                    //
+                    // dcm4chee-arc reads the Transaction UID from the JSON
+                    // request body (NOT from URL query parameters).  The
+                    // server parses it for authentication, validates it
+                    // matches the stored lock, then REMOVES it before
+                    // persisting — so it is never stored as a DICOM
+                    // attribute.  The URL ?00081195 query param is also
+                    // present for PS3.18 §11.5 conformance but dcm4chee
+                    // ignores it.
                     let performedBody: [String: Any] = [
-                        UPSTag.performedProcedureStepStartDateTime: [
-                            "vr": "DT", "Value": [nowDT]
-                        ] as [String: Any],
-                        UPSTag.performedProcedureStepEndDateTime: [
-                            "vr": "DT", "Value": [nowDT]
+                        UPSTag.transactionUID: [
+                            "vr": "UI", "Value": [effectiveTxUID]
                         ] as [String: Any],
                         UPSTag.unifiedProcedureStepPerformedProcedureSequence: [
                             "vr": "SQ",
                             "Value": [
                                 [
+                                    UPSTag.performedProcedureStepStartDateTime: [
+                                        "vr": "DT", "Value": [nowDT]
+                                    ] as [String: Any],
+                                    UPSTag.performedProcedureStepEndDateTime: [
+                                        "vr": "DT", "Value": [nowDT]
+                                    ] as [String: Any],
                                     UPSTag.performedWorkitemCodeSequence: [
                                         "vr": "SQ",
                                         "Value": [
@@ -2579,19 +2607,82 @@ public final class CLIWorkshopViewModel {
 
                     do {
                         let updateResp = try await client.httpClient.execute(updateRequest)
-                        appendConsoleOutput("  ✅ Workitem updated (HTTP \(updateResp.statusCode))\n\n")
+                        appendConsoleOutput("  ✅ Workitem updated (HTTP \(updateResp.statusCode))\n")
+                        if !updateResp.body.isEmpty,
+                           let respStr = String(data: updateResp.body, encoding: .utf8),
+                           !respStr.isEmpty {
+                            appendConsoleOutput("  Response: \(respStr)\n")
+                        }
+
+                        // Verification: GET the workitem to confirm the
+                        // Performed Procedure Sequence was actually stored.
+                        appendConsoleOutput("  🔍 Verifying attributes were stored ...\n")
+                        do {
+                            let verifyAttrs = try await client.retrieveWorkitem(uid: workitemUID)
+                            if let perfSeq = verifyAttrs[UPSTag.unifiedProcedureStepPerformedProcedureSequence] as? [String: Any],
+                               let values = perfSeq["Value"] as? [[String: Any]],
+                               !values.isEmpty {
+                                appendConsoleOutput("  ✅ Performed Procedure Sequence confirmed on server (\(values.count) item(s))\n")
+                            } else {
+                                appendConsoleOutput("  ⚠️  Performed Procedure Sequence NOT found on server after update!\n")
+                                appendConsoleOutput("     This may indicate the server accepted but did not persist the attributes.\n")
+                            }
+                            // Also check current state
+                            if let stateElem = verifyAttrs[UPSTag.procedureStepState] as? [String: Any],
+                               let stateVals = stateElem["Value"] as? [String],
+                               let currentState = stateVals.first {
+                                appendConsoleOutput("  📋 Current state after update: \(currentState)\n")
+                            }
+                            // Check if Transaction UID leaked into stored attributes
+                            if let txElem = verifyAttrs[UPSTag.transactionUID] as? [String: Any] {
+                                appendConsoleOutput("  ⚠️  Transaction UID found in stored attributes: \(txElem)\n")
+                                appendConsoleOutput("     (This is unexpected — server should NOT store TX UID as a DICOM attribute)\n")
+                            }
+                        } catch {
+                            appendConsoleOutput("  ⚠️  Verification GET failed: \(error.localizedDescription)\n")
+                        }
+                        appendConsoleOutput("\n")
                     } catch {
-                        appendConsoleOutput("  ⚠️  Update failed: \(error.localizedDescription)\n")
-                        appendConsoleOutput("  💡 Proceeding with state change — server may still accept it.\n\n")
+                        appendConsoleOutput("  ❌ Update workitem FAILED: \(error.localizedDescription)\n")
+                        if let webErr = error as? DICOMwebError,
+                           case .conflict(let msg) = webErr, let msg = msg {
+                            appendConsoleOutput("  Server says: \(msg)\n")
+                        }
+                        appendConsoleOutput("  💡 Cannot proceed to COMPLETED without Final State attributes.\n")
+                        appendConsoleOutput("     The Update Workitem POST must succeed first.\n")
+                        appendConsoleOutput("     Check that the Transaction UID matches the one used for IN PROGRESS.\n")
+                        consoleStatus = .error
+                        service.setConsoleStatus(.error)
+                        addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 1,
+                                     output: "Update workitem failed before COMPLETED: \(error.localizedDescription)")
+                        return
                     }
                 }
 
-                // Build DICOM JSON body per PS3.18 §11.7
+                // Build DICOM JSON body per PS3.18 §11.6
                 let stateChangeBody: [String: Any] = [
                     UPSTag.procedureStepState: ["vr": "CS", "Value": [rawState]],
                     UPSTag.transactionUID: ["vr": "UI", "Value": [effectiveTxUID]]
                 ]
                 let bodyData = try JSONSerialization.data(withJSONObject: stateChangeBody, options: [.sortedKeys])
+
+                // ── curl equivalent for manual reproduction ──
+                if let bodyStr = String(data: bodyData, encoding: .utf8) {
+                    appendConsoleOutput("─── curl equivalent ───\n")
+                    appendConsoleOutput("curl -X PUT \\\n")
+                    appendConsoleOutput("  '\(stateURL.absoluteString)' \\\n")
+                    appendConsoleOutput("  -H 'Content-Type: application/dicom+json' \\\n")
+                    appendConsoleOutput("  -H 'Accept: application/dicom+json' \\\n")
+                    if let pretty = try? JSONSerialization.data(
+                        withJSONObject: stateChangeBody,
+                        options: [.prettyPrinted, .sortedKeys]),
+                       let prettyStr = String(data: pretty, encoding: .utf8) {
+                        appendConsoleOutput("  -d '\(prettyStr)'\n")
+                    } else {
+                        appendConsoleOutput("  -d '\(bodyStr)'\n")
+                    }
+                    appendConsoleOutput("───────────────────────\n\n")
+                }
 
                 // ── Show the final HTTP request in the console ──
                 appendConsoleOutput("──── HTTP Request ────\n")
@@ -2684,6 +2775,9 @@ public final class CLIWorkshopViewModel {
                         appendConsoleOutput("     • Current state allows transition to \(rawState)?\n")
                         appendConsoleOutput("     • Transaction UID matches the one from IN PROGRESS?\n")
                         appendConsoleOutput("     • Workitem is not locked by another performer?\n")
+                        if rawState == "COMPLETED" {
+                            appendConsoleOutput("     • Final State attributes (Performed Procedure Sequence) are populated?\n")
+                        }
                     case .notFound:
                         appendConsoleOutput("❌ State change failed (HTTP 404)\n")
                         appendConsoleOutput("  💡 Workitem \(workitemUID) not found on the server.\n")

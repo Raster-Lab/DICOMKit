@@ -443,14 +443,16 @@ extension DICOMwebURLBuilder {
     /// - Parameters:
     ///   - workitemUID: The workitem's SOP Instance UID
     ///   - transactionUID: The Transaction UID of the claimed workitem
-    /// - Returns: URL for `/workitems/{workitemUID}?transactionUID={transactionUID}`
+    /// - Returns: URL for `/workitems/{workitemUID}?00081195={transactionUID}`
     ///
     /// Per PS3.18 §11.6.1, the Update Workitem Transaction uses POST with the
-    /// Transaction UID as a query parameter.
+    /// Transaction UID as a query parameter.  The parameter name uses the DICOM
+    /// tag keyword ``00081195`` (Transaction UID) which is the format expected by
+    /// most UPS-RS implementations including dcm4chee-arc.
     public func updateWorkitemURL(workitemUID: String, transactionUID: String) -> URL {
         var components = URLComponents(url: workitemURL(workitemUID: workitemUID), resolvingAgainstBaseURL: false)!
         components.queryItems = (components.queryItems ?? []) + [
-            URLQueryItem(name: "transactionUID", value: transactionUID)
+            URLQueryItem(name: "00081195", value: transactionUID)
         ]
         return components.url!
     }
@@ -459,14 +461,24 @@ extension DICOMwebURLBuilder {
     /// - Parameters:
     ///   - workitemUID: The workitem's SOP Instance UID
     ///   - requestingAE: Optional Requesting AE Title appended as a path segment
-    /// - Returns: URL for `/workitems/{workitemUID}/state` or `/workitems/{workitemUID}/state/{requestingAE}`
+    ///   - transactionUID: Optional Transaction UID appended as query parameter `00081195`
+    /// - Returns: URL for `/workitems/{workitemUID}/state[/{requestingAE}][?00081195={transactionUID}]`
     ///
     /// Per PS3.18 §11.6, the Requesting AE may be included as the last path segment.
-    /// Some servers (e.g. dcm4chee-arc) require it.
-    public func workitemStateURL(workitemUID: String, requestingAE: String? = nil) -> URL {
-        let stateURL = workitemURL(workitemUID: workitemUID).appendingPathComponent("state")
+    /// Some servers (e.g. dcm4chee-arc) require it.  The Transaction UID is also
+    /// required as a query parameter by dcm4chee-arc for state transitions from
+    /// IN PROGRESS to COMPLETED or CANCELED.
+    public func workitemStateURL(workitemUID: String, requestingAE: String? = nil, transactionUID: String? = nil) -> URL {
+        var stateURL = workitemURL(workitemUID: workitemUID).appendingPathComponent("state")
         if let ae = requestingAE, !ae.isEmpty {
-            return stateURL.appendingPathComponent(ae)
+            stateURL = stateURL.appendingPathComponent(ae)
+        }
+        if let txUID = transactionUID, !txUID.isEmpty {
+            var components = URLComponents(url: stateURL, resolvingAgainstBaseURL: false)!
+            components.queryItems = (components.queryItems ?? []) + [
+                URLQueryItem(name: "00081195", value: txUID)
+            ]
+            return components.url!
         }
         return stateURL
     }
