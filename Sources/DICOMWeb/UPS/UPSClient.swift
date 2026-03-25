@@ -254,25 +254,34 @@ public final class UPSClient: @unchecked Sendable {
         return try await createWorkitem(workitem: json, uid: workitem.workitemUID)
     }
     
-    // MARK: - Update Workitem (PUT /workitems/{uid})
+    // MARK: - Update Workitem (POST /workitems/{uid}?00081195={transactionUID})
     
     /// Updates an existing workitem
+    ///
+    /// Per PS3.18 §11.6, the Update Workitem Transaction uses **POST** (not PUT)
+    /// with the Transaction UID conveyed as a query parameter.
     ///
     /// - Parameters:
     ///   - uid: The workitem's SOP Instance UID
     ///   - updates: The updates to apply as DICOM JSON
+    ///   - transactionUID: Transaction UID of the claimed workitem (required when workitem is IN PROGRESS)
     /// - Throws: DICOMwebError on failure, UPSError.workitemNotFound if not found
     ///
-    /// Reference: PS3.18 Section 11.5 - Update Transaction
-    public func updateWorkitem(uid: String, updates: [String: Any]) async throws {
-        let url = urlBuilder.workitemURL(workitemUID: uid)
+    /// Reference: PS3.18 Section 11.6 - Update Workitem Transaction
+    public func updateWorkitem(uid: String, updates: [String: Any], transactionUID: String? = nil) async throws {
+        let url: URL
+        if let txUID = transactionUID {
+            url = urlBuilder.updateWorkitemURL(workitemUID: uid, transactionUID: txUID)
+        } else {
+            url = urlBuilder.workitemURL(workitemUID: uid)
+        }
         
         // Serialize updates to JSON
         let body = try JSONSerialization.data(withJSONObject: updates)
         
         let request = HTTPClient.Request(
             url: url,
-            method: .put,
+            method: .post,
             headers: ["Content-Type": DICOMMediaType.dicomJSON.description],
             body: body
         )
@@ -304,6 +313,8 @@ public final class UPSClient: @unchecked Sendable {
         state: UPSState,
         transactionUID: String? = nil
     ) async throws -> UPSStateChangeResponse {
+        // Per PS3.18 §11.6, Transaction UID for state change goes in the
+        // request body only — NOT as a URL query parameter.
         let url = urlBuilder.workitemStateURL(workitemUID: uid)
         
         // Build state change JSON

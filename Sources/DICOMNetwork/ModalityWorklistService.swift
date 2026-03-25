@@ -1332,7 +1332,7 @@ public enum DICOMModalityWorklistService {
     /// MLLP framing:
     ///   - Start block: 0x0B (VT)
     ///   - End block:   0x1C 0x0D (FS + CR)
-    private static func sendHL7ViaMLLP(
+    static func sendHL7ViaMLLP(
         message: String,
         host: String,
         port: UInt16,
@@ -1446,7 +1446,7 @@ public enum DICOMModalityWorklistService {
 
     /// Extracts the ACK code from an HL7 ACK/NAK message (MSA-1).
     /// Returns "AA", "AE", "AR", "CA", "CE", "CR", or nil if not found.
-    private static func parseHL7AckCode(_ ack: String) -> String? {
+    static func parseHL7AckCode(_ ack: String) -> String? {
         for line in ack.split(separator: "\r") {
             let str = String(line)
             if str.hasPrefix("MSA|") || str.hasPrefix("MSA\u{7C}") {
@@ -1460,7 +1460,7 @@ public enum DICOMModalityWorklistService {
     }
 
     /// Extracts the error text from an HL7 ACK message (MSA-3 or ERR segment).
-    private static func parseHL7AckErrorText(_ ack: String) -> String? {
+    static func parseHL7AckErrorText(_ ack: String) -> String? {
         for line in ack.split(separator: "\r") {
             let str = String(line)
             if str.hasPrefix("MSA|") {
@@ -1481,7 +1481,7 @@ public enum DICOMModalityWorklistService {
     }
 
     /// Generates a unique HL7 message control ID.
-    private static func generateHL7MessageControlID() -> String {
+    static func generateHL7MessageControlID() -> String {
         let timestamp = Int(Date().timeIntervalSince1970)
         let random = UInt32.random(in: 1000...9999)
         return "MSG\(timestamp)\(random)"
