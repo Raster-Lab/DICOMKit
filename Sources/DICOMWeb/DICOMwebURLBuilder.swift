@@ -535,4 +535,35 @@ extension DICOMwebURLBuilder {
     public func searchWorkitemsURL(parameters: [String: String]) -> URL {
         return Self.appendQueryParameters(to: workitemsURL, parameters: parameters)
     }
+    
+    /// WebSocket URL for the UPS event channel
+    ///
+    /// Converts the HTTP(S) base URL to a WS(S) URL and appends
+    /// the event channel subscriber path.
+    ///
+    /// - Parameter aeTitle: The subscribing AE Title
+    /// - Returns: URL for `ws[s]://<server>/ws/subscribers/{aeTitle}`
+    ///
+    /// Reference: PS3.18 §11.11 - Open Event Channel Transaction
+    public func webSocketEventChannelURL(aeTitle: String) -> URL? {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: true) else {
+            return nil
+        }
+        
+        switch components.scheme?.lowercased() {
+        case "https":
+            components.scheme = "wss"
+        case "http":
+            components.scheme = "ws"
+        case "wss", "ws":
+            break
+        default:
+            return nil
+        }
+        
+        let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        components.path = "\(basePath)/ws/subscribers/\(aeTitle)"
+        
+        return components.url
+    }
 }

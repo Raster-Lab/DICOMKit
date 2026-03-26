@@ -326,4 +326,76 @@ struct DICOMwebViewModelTests {
         let vm = DICOMwebViewModel()
         #expect(!vm.performanceHealthDescription.isEmpty)
     }
+
+    // MARK: - UPS Event Channel
+
+    @Test("startEventMonitoring sets monitoring active and connecting state")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testStartEventMonitoring() {
+        let vm = DICOMwebViewModel()
+        vm.startEventMonitoring()
+        #expect(vm.isUPSEventMonitoringActive == true)
+        #expect(vm.upsEventChannelState == .connecting)
+    }
+
+    @Test("stopEventMonitoring deactivates monitoring and disconnects")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testStopEventMonitoring() {
+        let vm = DICOMwebViewModel()
+        vm.startEventMonitoring()
+        vm.stopEventMonitoring()
+        #expect(vm.isUPSEventMonitoringActive == false)
+        #expect(vm.upsEventChannelState == .disconnected)
+    }
+
+    @Test("updateEventChannelState changes state correctly")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testUpdateEventChannelState() {
+        let vm = DICOMwebViewModel()
+        vm.updateEventChannelState(.connected)
+        #expect(vm.upsEventChannelState == .connected)
+        vm.updateEventChannelState(.reconnecting)
+        #expect(vm.upsEventChannelState == .reconnecting)
+    }
+
+    @Test("appendReceivedEvent adds event to beginning of list")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testAppendReceivedEvent() {
+        let vm = DICOMwebViewModel()
+        let event = UPSReceivedEvent(
+            eventType: .stateChange,
+            workitemUID: "1.2.3.4.5",
+            summary: "State changed to IN_PROGRESS"
+        )
+        vm.appendReceivedEvent(event)
+        #expect(vm.upsReceivedEvents.count == 1)
+        #expect(vm.upsReceivedEvents.first?.workitemUID == "1.2.3.4.5")
+    }
+
+    @Test("appendReceivedEvent trims history to max size")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testAppendReceivedEventTrimsHistory() {
+        let vm = DICOMwebViewModel()
+        vm.upsMaxEventHistory = 5
+        for i in 0..<10 {
+            let event = UPSReceivedEvent(
+                eventType: .stateChange,
+                workitemUID: "1.2.3.\(i)"
+            )
+            vm.appendReceivedEvent(event)
+        }
+        #expect(vm.upsReceivedEvents.count == 5)
+        // Most recent event should be first
+        #expect(vm.upsReceivedEvents.first?.workitemUID == "1.2.3.9")
+    }
+
+    @Test("clearReceivedEvents empties the event log")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testClearReceivedEvents() {
+        let vm = DICOMwebViewModel()
+        vm.appendReceivedEvent(UPSReceivedEvent(eventType: .stateChange, workitemUID: "1.2.3"))
+        vm.appendReceivedEvent(UPSReceivedEvent(eventType: .progressChange, workitemUID: "4.5.6"))
+        vm.clearReceivedEvents()
+        #expect(vm.upsReceivedEvents.isEmpty)
+    }
 }

@@ -113,6 +113,17 @@ public final class DICOMwebViewModel {
     /// Whether the new-subscription sheet is showing.
     public var isUPSSubscriptionSheetPresented: Bool = false
 
+    // MARK: - 10.5.1 UPS Event Channel
+
+    /// Current state of the UPS WebSocket event channel.
+    public var upsEventChannelState: UPSEventChannelState = .disconnected
+    /// Events received via the UPS WebSocket event channel.
+    public var upsReceivedEvents: [UPSReceivedEvent] = []
+    /// Whether event monitoring is active (listening for events).
+    public var isUPSEventMonitoringActive: Bool = false
+    /// Maximum number of received events to retain in the UI.
+    public var upsMaxEventHistory: Int = 200
+
     // MARK: - 10.6 Performance Dashboard
 
     /// Latest performance statistics snapshot.
@@ -719,6 +730,57 @@ public final class DICOMwebViewModel {
     /// Returns the first active global subscription (workitem UID = nil), if any.
     public var globalSubscription: UPSEventSubscription? {
         upsSubscriptions.first { $0.isGlobal && $0.isActive }
+    }
+
+    // MARK: - 10.5.1 UPS Event Channel Operations
+
+    /// Starts monitoring UPS events via the WebSocket event channel.
+    ///
+    /// Sets the event channel state and marks monitoring as active.
+    /// The actual WebSocket connection is managed externally via `UPSEventChannelManager`.
+    public func startEventMonitoring() {
+        isUPSEventMonitoringActive = true
+        upsEventChannelState = .connecting
+    }
+
+    /// Stops monitoring UPS events and updates UI state.
+    public func stopEventMonitoring() {
+        isUPSEventMonitoringActive = false
+        upsEventChannelState = .disconnected
+    }
+
+    /// Updates the event channel connection state.
+    public func updateEventChannelState(_ state: UPSEventChannelState) {
+        upsEventChannelState = state
+    }
+
+    /// Appends a received UPS event to the event log.
+    ///
+    /// Trims history to `upsMaxEventHistory` entries, removing the oldest first.
+    public func appendReceivedEvent(_ event: UPSReceivedEvent) {
+        upsReceivedEvents.insert(event, at: 0)
+        if upsReceivedEvents.count > upsMaxEventHistory {
+            upsReceivedEvents = Array(upsReceivedEvents.prefix(upsMaxEventHistory))
+        }
+
+        // Auto-update workitem state if this is a state change event
+        if event.eventType == .stateChange {
+            updateWorkitemFromEvent(event)
+        }
+    }
+
+    /// Clears the received events log.
+    public func clearReceivedEvents() {
+        upsReceivedEvents.removeAll()
+    }
+
+    /// Updates a workitem's state based on a received event.
+    private func updateWorkitemFromEvent(_ event: UPSReceivedEvent) {
+        if let index = upsWorkitems.firstIndex(where: { $0.workitemUID == event.workitemUID }) {
+            // Workitem state was updated; re-load from service for consistency
+            upsWorkitems = service.getUPSWorkitems()
+            _ = index // silences unused warning
+        }
     }
 
     // MARK: - 10.6 Performance Operations

@@ -583,6 +583,62 @@ public final class UPSClient: @unchecked Sendable {
         }
     }
     
+    // MARK: - Event Channel (PS3.18 §11.11)
+    
+    /// Creates a WebSocket event channel manager for receiving UPS event notifications
+    ///
+    /// The event channel manager handles both subscription management and
+    /// WebSocket event delivery. Subscribe to workitems via the manager,
+    /// then listen for events through the AsyncStream.
+    ///
+    /// ```swift
+    /// let manager = upsClient.createEventChannelManager(aeTitle: "MY_AE")
+    /// try await manager.subscribeToWorkitem(uid: "1.2.3.4.5")
+    /// for await event in manager.events {
+    ///     print("State changed: \(event.eventType)")
+    /// }
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - aeTitle: The subscriber's AE Title
+    ///   - wsConfiguration: WebSocket configuration (auto-reconnect, timeouts, etc.)
+    /// - Returns: A configured `UPSEventChannelManager`
+    ///
+    /// Reference: PS3.18 §11.11 - Open Event Channel Transaction
+    public func createEventChannelManager(
+        aeTitle: String,
+        wsConfiguration: UPSWebSocketConfiguration = .default
+    ) -> UPSEventChannelManager {
+        return UPSEventChannelManager(
+            configuration: configuration,
+            aeTitle: aeTitle,
+            wsConfiguration: wsConfiguration
+        )
+    }
+    
+    /// Creates a standalone WebSocket client for receiving UPS event notifications
+    ///
+    /// Use this when you manage subscriptions separately and only need the
+    /// WebSocket event stream. For integrated subscription + event management,
+    /// use `createEventChannelManager` instead.
+    ///
+    /// - Parameters:
+    ///   - aeTitle: The subscriber's AE Title
+    ///   - wsConfiguration: WebSocket configuration
+    /// - Returns: A configured `UPSWebSocketClient`
+    ///
+    /// Reference: PS3.18 §11.11 - Open Event Channel Transaction
+    public func createWebSocketClient(
+        aeTitle: String,
+        wsConfiguration: UPSWebSocketConfiguration = .default
+    ) -> UPSWebSocketClient {
+        return UPSWebSocketClient(
+            configuration: configuration,
+            aeTitle: aeTitle,
+            wsConfiguration: wsConfiguration
+        )
+    }
+    
     // MARK: - Private Helpers
     
     /// Extracts workitem UID from a Location header URL
