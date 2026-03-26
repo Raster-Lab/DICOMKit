@@ -228,15 +228,22 @@ Event generation integrated into `InMemoryUPSStorageProvider`:
 
 ---
 
+## What's Included (Completed)
+
+### WebSocket Event Delivery ✅ (PS3.18 §11.11)
+- `UPSWebSocketClient` — client-side event reception with configurable auto-reconnect
+- `UPSWebSocketConfiguration` — timeouts, heartbeat, max reconnect attempts
+- `UPSEventChannelManager` — integrated subscription management + WebSocket event stream
+- `WebSocketEventDeliveryService` — server-side actor pushing events to connected subscribers
+- `UPSWebSocketEvent` and `UPSWebSocketError` types
+- `DICOMwebURLBuilder.webSocketEventChannelURL(aeTitle:)` for WS(S) URL construction
+- `UPSClient.createEventChannelManager()` and `createWebSocketClient()` factory methods
+- `UPSEventChannelState` and `UPSReceivedEvent` models in DICOMStudio
+- 54+ dedicated WebSocket tests in `UPSWebSocketTests.swift`
+
 ## What's NOT Included (Future Enhancements)
 
 The following features are intentionally deferred for future implementation:
-
-### WebSocket Event Delivery
-- Real-time event push over WebSocket connections
-- Low-latency event delivery for interactive clients
-- Connection management and heartbeat
-- Can be implemented via `EventDeliveryService` protocol
 
 ### Long Polling Event Delivery
 - HTTP long polling for clients without WebSocket support
@@ -246,10 +253,9 @@ The following features are intentionally deferred for future implementation:
 ### Server Endpoint Wiring
 - Global subscription endpoints in DICOMwebServer
 - Event delivery endpoint configuration
-- WebSocket upgrade handling
 - HTTP POST webhook delivery
 
-**Rationale**: The core infrastructure is complete and tested. Delivery mechanism implementations are deployment-specific and can vary based on network architecture, security requirements, and client capabilities.
+**Rationale**: WebSocket delivery (PS3.18 §11.11) is now fully implemented. Remaining delivery mechanisms are deployment-specific and can vary based on network architecture and client capabilities.
 
 ---
 
@@ -335,10 +341,11 @@ try await storage.changeWorkitemState(
 - No breaking changes to existing UPS APIs
 - Backward compatible with v0.8.7
 
-### For Future WebSocket Implementation
-- Implement `EventDeliveryService` protocol
-- Wire into `EventDispatcher` via `CompositeEventDeliveryService`
-- No changes needed to event generation or subscription management
+### Using the WebSocket Event Channel
+- Use `UPSClient.createEventChannelManager(aeTitle:)` for integrated subscription + streaming
+- Use `UPSClient.createWebSocketClient(aeTitle:)` for standalone WebSocket-only streaming
+- `UPSEventChannelManager.events` delivers an `AsyncStream<UPSWebSocketEvent>`
+- Configure reconnect behaviour via `UPSWebSocketConfiguration`
 
 ---
 
@@ -363,6 +370,6 @@ try await storage.changeWorkitemState(
 
 ## Summary
 
-The UPS Event System implementation completes Milestone 8.7 by providing a production-ready event infrastructure for DICOMKit. All core functionality has been implemented, tested, and documented. The system is designed for extensibility, allowing future implementations of WebSocket and long polling delivery mechanisms without requiring changes to the core event generation and subscription management components.
+The UPS Event System implementation completes Milestone 8.7 and the subsequent WebSocket event channel work finalises PS3.18 §11.11 compliance. The system now includes a full client and server-side WebSocket implementation, event channel management, and comprehensive tests. Long polling delivery remains a future enhancement.
 
 **Status**: ✅ Complete and ready for production use

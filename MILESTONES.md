@@ -1538,10 +1538,14 @@ This milestone is divided into modular sub-milestones based on complexity, allow
 - State transitions must follow defined state machine
 - Events enable real-time workflow coordination
 - Event delivery infrastructure supports pluggable delivery mechanisms
-- **Note**: WebSocket and long polling delivery are deferred for future enhancement
-  - Current implementation provides event generation, queuing, and a logging delivery service
-  - Production deployments can implement custom `EventDeliveryService` for WebSocket/HTTP delivery
-  - The infrastructure supports reliable event delivery with retry logic and queue management
+- **WebSocket Event Channel (PS3.18 §11.11)** fully implemented:
+  - `UPSWebSocketClient` for client-side event reception with auto-reconnect
+  - `WebSocketEventDeliveryService` actor for server-side event push
+  - `UPSEventChannelManager` for integrated subscription + WebSocket management
+  - `DICOMwebURLBuilder.webSocketEventChannelURL(aeTitle:)` for WS(S) URL construction
+  - `UPSClient.createEventChannelManager()` and `createWebSocketClient()` factory methods
+  - `UPSEventChannelState` and `UPSReceivedEvent` models in DICOMStudio
+  - 54+ dedicated WebSocket tests in `UPSWebSocketTests.swift`
 
 #### Acceptance Criteria
 - [x] UPS worklist operations work correctly

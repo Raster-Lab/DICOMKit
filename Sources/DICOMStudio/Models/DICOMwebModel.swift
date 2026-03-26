@@ -866,6 +866,62 @@ public struct UPSWorkitem: Sendable, Identifiable, Equatable, Hashable {
     }
 }
 
+// MARK: - UPS Event Channel State
+
+/// Connection state for the UPS WebSocket event channel.
+public enum UPSEventChannelState: String, Sendable, Equatable, Hashable, CaseIterable {
+    case disconnected    = "DISCONNECTED"
+    case connecting      = "CONNECTING"
+    case connected       = "CONNECTED"
+    case reconnecting    = "RECONNECTING"
+    case closed          = "CLOSED"
+
+    /// Human-readable display name.
+    public var displayName: String {
+        switch self {
+        case .disconnected:  return "Disconnected"
+        case .connecting:    return "Connecting"
+        case .connected:     return "Connected"
+        case .reconnecting:  return "Reconnecting"
+        case .closed:        return "Closed"
+        }
+    }
+}
+
+// MARK: - UPS Received Event
+
+/// A UPS event notification received over the WebSocket event channel.
+public struct UPSReceivedEvent: Sendable, Identifiable, Equatable, Hashable {
+    /// Unique local identifier.
+    public let id: UUID
+    /// The type of event received.
+    public var eventType: UPSEventType
+    /// The workitem UID this event relates to.
+    public var workitemUID: String
+    /// Transaction UID (if applicable).
+    public var transactionUID: String?
+    /// Timestamp when the event was received.
+    public var receivedAt: Date
+    /// Human-readable summary of the event.
+    public var summary: String
+
+    public init(
+        id: UUID = UUID(),
+        eventType: UPSEventType = .stateChange,
+        workitemUID: String = "",
+        transactionUID: String? = nil,
+        receivedAt: Date = Date(),
+        summary: String = ""
+    ) {
+        self.id = id
+        self.eventType = eventType
+        self.workitemUID = workitemUID
+        self.transactionUID = transactionUID
+        self.receivedAt = receivedAt
+        self.summary = summary
+    }
+}
+
 // MARK: - Cache Statistics
 
 /// Statistics for the DICOMweb response cache.

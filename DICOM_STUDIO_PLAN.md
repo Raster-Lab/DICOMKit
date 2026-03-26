@@ -1027,17 +1027,20 @@
 ### Milestone Summary
 | Component | Lines | Tests |
 |-----------|-------|-------|
-| DICOMwebModel.swift | ~950 | — |
+| DICOMwebModel.swift | ~1037 | — |
 | DICOMwebHelpers.swift | ~469 | — |
 | DICOMwebService.swift | ~380 | — |
-| DICOMwebViewModel.swift | ~455 | — |
+| DICOMwebViewModel.swift | ~812 | — |
 | DICOMwebView.swift | ~885 | — |
 | DICOMwebClientFactory.swift | ~150 | — |
-| DICOMwebModelTests.swift | ~? | 69 |
+| UPSWebSocketClient.swift | ~746 | — |
+| WebSocketEventDeliveryService.swift | ~366 | — |
+| DICOMwebModelTests.swift | ~? | 156 |
 | DICOMwebHelpersTests.swift | ~? | 61 |
 | DICOMwebServiceTests.swift | ~? | 30 |
-| DICOMwebViewModelTests.swift | ~? | 31 |
+| DICOMwebViewModelTests.swift | ~? | 74 |
 | DICOMwebViewIntegrationTests.swift | ~? | 38 |
+| UPSWebSocketTests.swift | ~1056 | 54 |
 | DICOMwebClientFactoryTests.swift | ~? | 16 |
 | **Total new tests** | | **245** |
 

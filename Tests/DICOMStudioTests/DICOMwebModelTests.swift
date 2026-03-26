@@ -478,4 +478,57 @@ struct DICOMwebModelTests {
         let stats = DICOMwebPerformanceStats(totalRequestCount: 10, errorCount: 1)
         #expect(abs(stats.errorRate - 0.1) < 0.001)
     }
+
+    // MARK: - UPSEventChannelState
+
+    @Test("UPSEventChannelState all cases have display names")
+    func testUPSEventChannelStateDisplayNames() {
+        for state in UPSEventChannelState.allCases {
+            #expect(!state.displayName.isEmpty)
+        }
+    }
+
+    @Test("UPSEventChannelState raw values match expected strings")
+    func testUPSEventChannelStateRawValues() {
+        #expect(UPSEventChannelState.disconnected.rawValue == "DISCONNECTED")
+        #expect(UPSEventChannelState.connecting.rawValue == "CONNECTING")
+        #expect(UPSEventChannelState.connected.rawValue == "CONNECTED")
+        #expect(UPSEventChannelState.reconnecting.rawValue == "RECONNECTING")
+        #expect(UPSEventChannelState.closed.rawValue == "CLOSED")
+    }
+
+    // MARK: - UPSReceivedEvent
+
+    @Test("UPSReceivedEvent defaults are sensible")
+    func testUPSReceivedEventDefaults() {
+        let event = UPSReceivedEvent()
+        #expect(event.eventType == .stateChange)
+        #expect(event.workitemUID.isEmpty)
+        #expect(event.transactionUID == nil)
+        #expect(event.summary.isEmpty)
+    }
+
+    @Test("UPSReceivedEvent stores all properties")
+    func testUPSReceivedEventProperties() {
+        let date = Date()
+        let event = UPSReceivedEvent(
+            eventType: .progressChange,
+            workitemUID: "1.2.3.4.5",
+            transactionUID: "tx-123",
+            receivedAt: date,
+            summary: "Progress updated to 50%"
+        )
+        #expect(event.eventType == .progressChange)
+        #expect(event.workitemUID == "1.2.3.4.5")
+        #expect(event.transactionUID == "tx-123")
+        #expect(event.receivedAt == date)
+        #expect(event.summary == "Progress updated to 50%")
+    }
+
+    @Test("UPSReceivedEvent conforms to Identifiable")
+    func testUPSReceivedEventIdentifiable() {
+        let event1 = UPSReceivedEvent()
+        let event2 = UPSReceivedEvent()
+        #expect(event1.id != event2.id)
+    }
 }
