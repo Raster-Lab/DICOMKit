@@ -1362,8 +1362,8 @@ Each data element has:
   - ✅ JPEG Extended (Process 2 & 4) - 1.2.840.10008.1.2.4.51
   - ✅ JPEG Lossless (Process 14) - 1.2.840.10008.1.2.4.57
   - ✅ JPEG Lossless SV1 (Process 14, Selection Value 1) - 1.2.840.10008.1.2.4.70
-  - ✅ JPEG 2000 Lossless - 1.2.840.10008.1.2.4.90
-  - ✅ JPEG 2000 Lossy - 1.2.840.10008.1.2.4.91
+  - ✅ JPEG 2000 Lossless - 1.2.840.10008.1.2.4.90 *(cross-platform via J2KSwift)*
+  - ✅ JPEG 2000 Lossy - 1.2.840.10008.1.2.4.91 *(cross-platform via J2KSwift)*
   - ✅ RLE Lossless - 1.2.840.10008.1.2.5
 - ✅ **Encapsulated pixel data parsing** - Fragment and offset table support
 - ✅ **Extensible codec architecture** - Plugin-based codec support
@@ -1525,6 +1525,7 @@ These features may be added in future versions. See [MILESTONES.md](MILESTONES.m
 |------------|---------|---------|
 | Swift Argument Parser | 1.3.0+ | CLI tools argument parsing |
 | AWS SDK Swift | 1.6.0+ | Cloud storage integration (optional) |
+| J2KSwift | 2.0.0+ | Pure-Swift JPEG 2000 codec (cross-platform) |
 
 ---
 
@@ -1571,7 +1572,7 @@ Choose the modules you need:
 | Product | Description | Dependencies |
 |---------|-------------|--------------|
 | `DICOMKit` | Full toolkit (recommended) | DICOMCore, DICOMDictionary |
-| `DICOMCore` | Core types and utilities | None |
+| `DICOMCore` | Core types and utilities | J2KSwift (J2KCore, J2KCodec, J2KFileFormat) |
 | `DICOMDictionary` | Tag and UID dictionaries | DICOMCore |
 | `DICOMNetwork` | DICOM networking (DIMSE) | DICOMCore, DICOMDictionary |
 | `DICOMWeb` | DICOMweb services | DICOMCore, DICOMKit |
@@ -4528,7 +4529,7 @@ For complete CLI tool documentation, see [CLI_TOOLS_COMPLETION_SUMMARY.md](CLI_T
 
 DICOMKit is organized into four modules:
 
-### DICOMCore (v0.9.1, v0.9.4, v1.0.9, v1.0.10)
+### DICOMCore (v0.9.1, v0.9.4, v1.0.9, v1.0.10, v1.8.1)
 Core data types and utilities:
 - `VR` - All 31 Value Representations from DICOM PS3.5
 - `Tag` - Data element tags (group, element pairs)
@@ -4554,6 +4555,12 @@ Core data types and utilities:
 - `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
 - Little Endian and Big Endian byte reading/writing utilities
+
+**J2KSwift Integration (NEW in v1.8.1):**
+- `J2KSwiftCodec` - Pure-Swift JPEG 2000 codec backed by J2KSwift (cross-platform encode; Apple ImageIO fallback for decode)
+- Supports lossless (1.2.840.10008.1.2.4.90) and lossy (1.2.840.10008.1.2.4.91) transfer syntaxes
+- Maps `CompressionConfiguration` → `J2KEncodingConfiguration` (quality, speed, progressive)
+- Enables JPEG 2000 encoding on Linux (previously Apple-only)
 
 **Character Set Support (NEW in v1.0.9):**
 - `CharacterSetHandler` - ISO 2022 escape sequence handling for international text
@@ -5148,11 +5155,11 @@ DICOMKit implements the **DICOM Standard 2026a** published by NEMA. Below is a d
 | 1.2.840.10008.1.2.4.51 | JPEG Extended (Process 2 & 4) | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.4.57 | JPEG Lossless | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.4.70 | JPEG Lossless SV1 | ✅ | ⚠️ |
-| 1.2.840.10008.1.2.4.90 | JPEG 2000 Lossless Only | ✅ | ⚠️ |
-| 1.2.840.10008.1.2.4.91 | JPEG 2000 | ✅ | ⚠️ |
+| 1.2.840.10008.1.2.4.90 | JPEG 2000 Lossless Only | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.91 | JPEG 2000 | ✅ | ✅ |
 | 1.2.840.10008.1.2.5 | RLE Lossless | ✅ | ✅ |
 
-*Note: ⚠️ indicates platform codec dependency (ImageIO framework)*
+*Note: ⚠️ indicates platform codec dependency (ImageIO framework). JPEG 2000 encode is cross-platform via J2KSwift; decode uses ImageIO on Apple platforms, J2KSwift on Linux.*
 
 ### SOP Class Support
 
