@@ -45,7 +45,7 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         frameIndex: Int
     ) throws -> Data {
         guard !frameData.isEmpty else {
-            throw DICOMError.parsingFailed("Empty JPEG 2000 data")
+            throw DICOMError.parsingFailed("Empty JPEG 2000 data for frame \(frameIndex)")
         }
 
         let decoder = J2KDecoder()

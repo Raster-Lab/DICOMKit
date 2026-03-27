@@ -105,7 +105,8 @@ final class J2KSwiftCodecTests: XCTestCase {
                 XCTFail("Expected DICOMError.parsingFailed, got \(error)")
                 return
             }
-            XCTAssertTrue(msg.contains("Empty"))
+            XCTAssertTrue(msg.contains("Empty"), "Error should mention empty data")
+            XCTAssertTrue(msg.contains("frame 0"), "Error should include frame index")
         }
     }
 
@@ -140,7 +141,6 @@ final class J2KSwiftCodecTests: XCTestCase {
 
         let compressed = try codec.encodeFrame(pixelData, descriptor: desc, frameIndex: 0, configuration: .lossless)
         XCTAssertFalse(compressed.isEmpty)
-        XCTAssertGreaterThan(compressed.count, 0)
     }
 
     // MARK: - Encoding: 16-bit Grayscale (2 tests)
@@ -410,9 +410,13 @@ final class J2KSwiftCodecTests: XCTestCase {
     }
 
     private func makeGradientData8(width: Int, height: Int, seed: UInt8 = 0) -> Data {
-        var data = Data(count: width * height)
-        for i in 0..<(width * height) {
-            data[i] = UInt8(truncatingIfNeeded: Int(seed) &+ i)
+        let count = width * height
+        var data = Data(count: count)
+        data.withUnsafeMutableBytes { ptr in
+            guard let base = ptr.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            for i in 0..<count {
+                base[i] = UInt8(truncatingIfNeeded: Int(seed) &+ i)
+            }
         }
         return data
     }
@@ -448,12 +452,15 @@ final class J2KSwiftCodecTests: XCTestCase {
 
     private func makeRGBGradient8(width: Int, height: Int) -> Data {
         var data = Data(count: width * height * 3)
-        for row in 0..<height {
-            for col in 0..<width {
-                let offset = (row * width + col) * 3
-                data[offset] = UInt8(truncatingIfNeeded: col * 4)
-                data[offset + 1] = UInt8(truncatingIfNeeded: row * 4)
-                data[offset + 2] = 128
+        data.withUnsafeMutableBytes { ptr in
+            guard let base = ptr.baseAddress?.assumingMemoryBound(to: UInt8.self) else { return }
+            for row in 0..<height {
+                for col in 0..<width {
+                    let offset = (row * width + col) * 3
+                    base[offset] = UInt8(truncatingIfNeeded: col * 4)
+                    base[offset + 1] = UInt8(truncatingIfNeeded: row * 4)
+                    base[offset + 2] = 128
+                }
             }
         }
         return data
