@@ -561,7 +561,16 @@ extension DICOMwebURLBuilder {
             return nil
         }
         
-        let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        // The WebSocket endpoint is a sibling of the REST endpoint, not a child.
+        // Strip trailing /rs (or similar DICOMweb service suffix) so /ws is a sibling.
+        var basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        let serviceSuffixes = ["/rs", "/wado-rs", "/stow-rs"]
+        for suffix in serviceSuffixes {
+            if basePath.lowercased().hasSuffix(suffix) {
+                basePath = String(basePath.dropLast(suffix.count))
+                break
+            }
+        }
         components.path = "\(basePath)/ws/subscribers/\(aeTitle)"
         
         return components.url

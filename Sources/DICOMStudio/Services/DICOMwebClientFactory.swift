@@ -13,24 +13,35 @@ import DICOMWeb
 /// DICOMWeb library's `DICOMwebConfiguration` and `DICOMwebClient` types.
 public enum DICOMwebClientFactory: Sendable {
 
-    /// Creates a `DICOMwebClient` from a server profile.
+    /// Creates a `DICOMwebConfiguration` from a server profile.
+    ///
+    /// Use this when you need the raw configuration (e.g. for `UPSEventChannelManager`)
+    /// rather than a full `DICOMwebClient`.
     ///
     /// - Parameter profile: The DICOMweb server profile containing URL, auth, and TLS settings.
     /// - Throws: `DICOMwebError.invalidURL` if the profile's base URL is malformed.
-    /// - Returns: A configured `DICOMwebClient` ready for QIDO/WADO/STOW/UPS operations.
-    public static func makeClient(from profile: DICOMwebServerProfile) throws -> DICOMwebClient {
+    /// - Returns: A configured `DICOMwebConfiguration`.
+    public static func makeConfiguration(from profile: DICOMwebServerProfile) throws -> DICOMwebConfiguration {
         guard let baseURL = URL(string: profile.baseURL) else {
             throw DICOMwebError.invalidURL(url: profile.baseURL)
         }
 
         let authentication = mapAuthentication(profile)
 
-        let configuration = DICOMwebConfiguration(
+        return DICOMwebConfiguration(
             baseURL: baseURL,
             authentication: authentication,
             maxConcurrentRequests: 4
         )
+    }
 
+    /// Creates a `DICOMwebClient` from a server profile.
+    ///
+    /// - Parameter profile: The DICOMweb server profile containing URL, auth, and TLS settings.
+    /// - Throws: `DICOMwebError.invalidURL` if the profile's base URL is malformed.
+    /// - Returns: A configured `DICOMwebClient` ready for QIDO/WADO/STOW/UPS operations.
+    public static func makeClient(from profile: DICOMwebServerProfile) throws -> DICOMwebClient {
+        let configuration = try makeConfiguration(from: profile)
         return DICOMwebClient(configuration: configuration)
     }
 

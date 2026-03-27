@@ -1545,6 +1545,7 @@ This milestone is divided into modular sub-milestones based on complexity, allow
   - `DICOMwebURLBuilder.webSocketEventChannelURL(aeTitle:)` for WS(S) URL construction
   - `UPSClient.createEventChannelManager()` and `createWebSocketClient()` factory methods
   - `UPSEventChannelState` and `UPSReceivedEvent` models in DICOMStudio
+  - UPS Event Monitor UI in DICOMStudio: START/STOP toggle, connection status indicator, live received-events log, subscription creation sheet
   - 54+ dedicated WebSocket tests in `UPSWebSocketTests.swift`
 
 #### Acceptance Criteria

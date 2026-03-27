@@ -404,6 +404,82 @@ public enum DICOMwebUPSHelpers: Sendable {
     public static func eventTypeDisplayName(_ type: UPSEventType) -> String {
         type.displayName
     }
+
+    /// Returns an SF Symbol name for a UPS event channel connection state.
+    public static func eventChannelSFSymbol(for state: UPSEventChannelState) -> String {
+        switch state {
+        case .disconnected:  return "wifi.slash"
+        case .connecting:    return "wifi.exclamationmark"
+        case .connected:     return "wifi"
+        case .reconnecting:  return "arrow.triangle.2.circlepath"
+        case .closed:        return "xmark.circle"
+        }
+    }
+
+    /// Returns a color name string for a UPS event channel state.
+    ///
+    /// Returned values correspond to SwiftUI `Color` property names.
+    public static func eventChannelColor(for state: UPSEventChannelState) -> String {
+        switch state {
+        case .disconnected:  return ".secondary"
+        case .connecting:    return ".orange"
+        case .connected:     return ".green"
+        case .reconnecting:  return ".orange"
+        case .closed:        return ".red"
+        }
+    }
+
+    /// Returns an SF Symbol name for a UPS event type.
+    public static func eventTypeSFSymbol(for type: UPSEventType) -> String {
+        switch type {
+        case .stateChange:           return "arrow.left.arrow.right"
+        case .progressChange:        return "chart.bar.fill"
+        case .stepStateChange:       return "arrow.triangle.branch"
+        case .cancellationRequested: return "xmark.octagon"
+        }
+    }
+
+    /// Returns a color name string for a UPS event type.
+    public static func eventTypeColor(for type: UPSEventType) -> String {
+        switch type {
+        case .stateChange:           return ".blue"
+        case .progressChange:        return ".green"
+        case .stepStateChange:       return ".orange"
+        case .cancellationRequested: return ".red"
+        }
+    }
+
+    /// Returns a short label for the event monitor toggle button.
+    public static func monitorToggleLabel(isActive: Bool) -> String {
+        isActive ? "Stop Monitoring" : "Start Monitoring"
+    }
+
+    /// Returns an SF Symbol for the event monitor toggle button.
+    public static func monitorToggleSFSymbol(isActive: Bool) -> String {
+        isActive ? "stop.circle.fill" : "play.circle.fill"
+    }
+
+    /// Returns a formatted relative-time string for an event timestamp.
+    ///
+    /// Shows seconds ago if < 60 s, minutes ago if < 3600 s, otherwise a short time.
+    public static func relativeTimeString(from date: Date, relativeTo now: Date = Date()) -> String {
+        let interval = now.timeIntervalSince(date)
+        if interval < 1 {
+            return "just now"
+        } else if interval < 60 {
+            let seconds = Int(interval)
+            return "\(seconds)s ago"
+        } else if interval < 3600 {
+            let minutes = Int(interval / 60)
+            return "\(minutes)m ago"
+        } else if interval < 86400 {
+            let hours = Int(interval / 3600)
+            return "\(hours)h ago"
+        } else {
+            let days = Int(interval / 86400)
+            return "\(days)d ago"
+        }
+    }
 }
 
 // MARK: - Performance Helpers

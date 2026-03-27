@@ -124,6 +124,11 @@ public final class DICOMwebViewModel {
     /// Maximum number of received events to retain in the UI.
     public var upsMaxEventHistory: Int = 200
 
+    /// The event channel manager handling subscriptions + WebSocket.
+    private var eventChannelManager: UPSEventChannelManager?
+    /// Task consuming the WebSocket async event stream.
+    private var wsEventTask: Task<Void, Never>?
+
     // MARK: - 10.6 Performance Dashboard
 
     /// Latest performance statistics snapshot.
@@ -734,19 +739,141 @@ public final class DICOMwebViewModel {
 
     // MARK: - 10.5.1 UPS Event Channel Operations
 
-    /// Starts monitoring UPS events via the WebSocket event channel.
+    /// Starts monitoring UPS events via a real WebSocket event channel.
     ///
-    /// Sets the event channel state and marks monitoring as active.
-    /// The actual WebSocket connection is managed externally via `UPSEventChannelManager`.
+    /// Opens a `UPSEventChannelManager` against the default (or first) server profile
+    /// and begins consuming events from the async stream.
     public func startEventMonitoring() {
+        guard !isUPSEventMonitoringActive else { return }
         isUPSEventMonitoringActive = true
         upsEventChannelState = .connecting
+
+        wsEventTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                guard let profile = self.defaultServerProfile ?? self.serverProfiles.first else {
+                    await MainActor.run {
+                        self.upsEventChannelState = .disconnected
+                        self.isUPSEventMonitoringActive = false
+                        self.errorMessage = "No DICOMweb server configured for event monitoring."
+                    }
+                    return
+                }
+
+                let configuration = try DICOMwebClientFactory.makeConfiguration(from: profile)
+                let aeTitle = "DICOM_STUDIO"
+                let manager = UPSEventChannelManager(
+                    configuration: configuration,
+                    aeTitle: aeTitle
+                )
+
+                await MainActor.run {
+                    self.eventChannelManager = manager
+                }
+
+                // Subscribe globally first — dcm4chee-arc (and the DICOM standard)
+                // requires an active REST subscription before the WebSocket handshake
+                // will be accepted. subscribeGlobally(autoConnect: true) performs both
+                // the REST POST and opens the WebSocket channel automatically.
+                try await manager.subscribeGlobally(deletionLock: false, autoConnect: true)
+
+                await MainActor.run {
+                    self.upsEventChannelState = .connected
+                }
+
+                // Consume events from the async stream
+                for await wsEvent in manager.events {
+                    guard !Task.isCancelled else { break }
+                    let received = Self.mapWebSocketEvent(wsEvent)
+                    await MainActor.run {
+                        self.appendReceivedEvent(received)
+                        // Sync connection state from the manager
+                        self.syncChannelState(from: manager)
+                    }
+                }
+
+                // Stream ended (server closed or explicit close)
+                await MainActor.run {
+                    if self.isUPSEventMonitoringActive {
+                        self.upsEventChannelState = .disconnected
+                        self.isUPSEventMonitoringActive = false
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.upsEventChannelState = .disconnected
+                    self.isUPSEventMonitoringActive = false
+                    self.errorMessage = "Event channel error: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
-    /// Stops monitoring UPS events and updates UI state.
+    /// Stops monitoring UPS events, unsubscribes, and closes the WebSocket channel.
     public func stopEventMonitoring() {
+        wsEventTask?.cancel()
+        wsEventTask = nil
+        let manager = eventChannelManager
+        eventChannelManager = nil
         isUPSEventMonitoringActive = false
         upsEventChannelState = .disconnected
+        // Clean up subscriptions and WebSocket asynchronously
+        if let manager {
+            Task {
+                try? await manager.closeAll()
+            }
+        }
+    }
+
+    /// Syncs the UI channel state from the manager's current connection state.
+    private func syncChannelState(from manager: UPSEventChannelManager) {
+        let newState: UPSEventChannelState
+        switch manager.channelState {
+        case .disconnected: newState = .disconnected
+        case .connecting:   newState = .connecting
+        case .connected:    newState = .connected
+        case .reconnecting: newState = .reconnecting
+        case .closed:       newState = .closed
+        }
+        upsEventChannelState = newState
+    }
+
+    /// Maps a `UPSWebSocketEvent` from the DICOMWeb library to a `UPSReceivedEvent` display model.
+    nonisolated private static func mapWebSocketEvent(_ wsEvent: UPSWebSocketEvent) -> UPSReceivedEvent {
+        let eventType: UPSEventType
+        switch wsEvent.eventType {
+        case .stateReport, .assigned, .completed, .canceled:
+            eventType = .stateChange
+        case .progressReport:
+            eventType = .progressChange
+        case .cancelRequested:
+            eventType = .cancellationRequested
+        }
+
+        let summary: String
+        switch wsEvent.eventType {
+        case .stateReport:
+            summary = "State changed for workitem \(wsEvent.workitemUID)"
+        case .progressReport:
+            summary = "Progress updated for workitem \(wsEvent.workitemUID)"
+        case .cancelRequested:
+            summary = "Cancellation requested for workitem \(wsEvent.workitemUID)"
+        case .assigned:
+            summary = "Workitem \(wsEvent.workitemUID) assigned"
+        case .completed:
+            summary = "Workitem \(wsEvent.workitemUID) completed"
+        case .canceled:
+            summary = "Workitem \(wsEvent.workitemUID) canceled"
+        }
+
+        return UPSReceivedEvent(
+            eventType: eventType,
+            workitemUID: wsEvent.workitemUID,
+            transactionUID: wsEvent.transactionUID,
+            receivedAt: wsEvent.receivedAt,
+            summary: summary
+        )
     }
 
     /// Updates the event channel connection state.

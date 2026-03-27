@@ -398,7 +398,19 @@ public final class UPSWebSocketClient: @unchecked Sendable {
         
         // Build the WebSocket event channel path
         // PS3.18 §11.11: /ws/subscribers/{aeTitle}
-        let basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        // The WebSocket endpoint is a sibling of the REST endpoint, not a child.
+        // For example, dcm4chee-arc uses:
+        //   REST:      /dcm4chee-arc/aets/DCM4CHEE/rs
+        //   WebSocket: /dcm4chee-arc/aets/DCM4CHEE/ws
+        // So we strip the trailing /rs (or similar DICOMweb service suffix) before appending /ws.
+        var basePath = components.path.hasSuffix("/") ? String(components.path.dropLast()) : components.path
+        let serviceSuffixes = ["/rs", "/wado-rs", "/stow-rs"]
+        for suffix in serviceSuffixes {
+            if basePath.lowercased().hasSuffix(suffix) {
+                basePath = String(basePath.dropLast(suffix.count))
+                break
+            }
+        }
         components.path = "\(basePath)/ws/subscribers/\(aeTitle)"
         
         guard let url = components.url else {
