@@ -1109,6 +1109,12 @@ public final class CLIWorkshopViewModel {
                 level: .error,
                 message: "SCP error: \(error.localizedDescription)"
             ), at: 0)
+            // Reset running state so the listener can be restarted after
+            // a failure (e.g. port already in use).
+            scpIsRunning = false
+            scpEventTask?.cancel()
+            scpEventTask = nil
+            storageSCP = nil
         default:
             break
         }
@@ -2569,9 +2575,19 @@ public final class CLIWorkshopViewModel {
                                         "vr": "SQ",
                                         "Value": [
                                             [
-                                                UPSTag.codeValue: ["vr": "SH", "Value": ["NO_WORKITEM"]],
-                                                UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99DICOMSTUDIO"]],
-                                                UPSTag.codeMeaning: ["vr": "LO", "Value": ["Procedure Performed"]]
+                                                UPSTag.codeValue: ["vr": "SH", "Value": ["12345"]],
+                                                UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
+                                                UPSTag.codeMeaning: ["vr": "LO", "Value": ["Procedure Step Performed"]]
+                                            ] as [String: Any]
+                                        ] as [[String: Any]]
+                                    ] as [String: Any],
+                                    UPSTag.performedStationNameCodeSequence: [
+                                        "vr": "SQ",
+                                        "Value": [
+                                            [
+                                                UPSTag.codeValue: ["vr": "SH", "Value": ["STATION01"]],
+                                                UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
+                                                UPSTag.codeMeaning: ["vr": "LO", "Value": ["Default Performing Station"]]
                                             ] as [String: Any]
                                         ] as [[String: Any]]
                                     ] as [String: Any],

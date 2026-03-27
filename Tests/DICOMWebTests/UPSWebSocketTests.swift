@@ -219,6 +219,24 @@ final class UPSWebSocketTests: XCTestCase {
         XCTAssertTrue(url.path.hasPrefix("/api/v2/dicom-web"))
         XCTAssertTrue(url.path.hasSuffix("/ws/subscribers/AE1"))
     }
+
+    func test_client_buildWebSocketURL_stripsRsSuffix() throws {
+        // dcm4chee-arc style: REST is at /dcm4chee-arc/aets/DCM4CHEE/rs
+        // WebSocket should be at     /dcm4chee-arc/aets/DCM4CHEE/ws/subscribers/{ae}
+        let config = try DICOMwebConfiguration(
+            baseURLString: "http://172.17.1.111:8080/dcm4chee-arc/aets/DCM4CHEE/rs"
+        )
+        let client = UPSWebSocketClient(
+            configuration: config,
+            aeTitle: "DICOM_STUDIO"
+        )
+
+        let url = try client.buildWebSocketURL()
+        XCTAssertEqual(url.scheme, "ws")
+        XCTAssertEqual(url.path, "/dcm4chee-arc/aets/DCM4CHEE/ws/subscribers/DICOM_STUDIO")
+        // The /rs must NOT appear in the WebSocket path
+        XCTAssertFalse(url.path.contains("/rs/"))
+    }
     
     func test_client_close_setsStateToClosed() throws {
         let config = try DICOMwebConfiguration(
@@ -842,6 +860,19 @@ final class UPSWebSocketTests: XCTestCase {
         XCTAssertEqual(url?.host, "localhost")
         XCTAssertEqual(url?.port, 8042)
         XCTAssertTrue(url?.path.contains("/ws/subscribers/LOCAL_AE") ?? false)
+    }
+
+    func test_urlBuilder_webSocketEventChannelURL_stripsRsSuffix() throws {
+        let config = try DICOMwebConfiguration(
+            baseURLString: "http://172.17.1.111:8080/dcm4chee-arc/aets/DCM4CHEE/rs"
+        )
+        let urlBuilder = config.urlBuilder
+
+        let url = urlBuilder.webSocketEventChannelURL(aeTitle: "DICOM_STUDIO")
+        XCTAssertNotNil(url)
+        XCTAssertEqual(url?.scheme, "ws")
+        XCTAssertEqual(url?.path, "/dcm4chee-arc/aets/DCM4CHEE/ws/subscribers/DICOM_STUDIO")
+        XCTAssertFalse(url?.path.contains("/rs/") ?? true)
     }
     
     // MARK: - Integration: WebSocket Delivery with Event Dispatcher

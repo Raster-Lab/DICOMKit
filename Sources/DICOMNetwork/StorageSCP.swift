@@ -574,6 +574,11 @@ public actor DICOMStorageServer {
     private func handleListenerState(_ state: NWListener.State) {
         switch state {
         case .failed(let error):
+            // Clean up the failed listener so the port is released and
+            // the server can be restarted on the same (or a different) port.
+            listener?.cancel()
+            listener = nil
+            isRunning = false
             eventContinuation?.yield(.error(DICOMNetworkError.connectionFailed(error.localizedDescription)))
         case .cancelled:
             isRunning = false

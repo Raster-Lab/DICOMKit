@@ -877,7 +877,12 @@ public struct DICOMwebView: View {
             }
 
             Divider()
+            upsEventMonitorSection
+            Divider()
             upsSubscriptionsSection
+        }
+        .sheet(isPresented: $viewModel.isUPSSubscriptionSheetPresented) {
+            upsSubscriptionSheet
         }
     }
 
@@ -1004,6 +1009,213 @@ public struct DICOMwebView: View {
                 .frame(maxHeight: 120)
             }
         }
+    }
+
+    // MARK: - 5.1 UPS Event Monitor
+
+    private var upsEventMonitorSection: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Event Monitor")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                Spacer()
+
+                // Connection status indicator
+                HStack(spacing: 4) {
+                    Image(systemName: DICOMwebUPSHelpers.eventChannelSFSymbol(for: viewModel.upsEventChannelState))
+                        .foregroundStyle(upsEventChannelColor(viewModel.upsEventChannelState))
+                        .accessibilityHidden(true)
+                    Text(viewModel.upsEventChannelState.displayName)
+                        .font(.caption2)
+                        .foregroundStyle(upsEventChannelColor(viewModel.upsEventChannelState))
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(upsEventChannelColor(viewModel.upsEventChannelState).opacity(0.1))
+                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .accessibilityLabel("Event channel status: \(viewModel.upsEventChannelState.displayName)")
+
+                // START / STOP toggle
+                Button {
+                    if viewModel.isUPSEventMonitoringActive {
+                        viewModel.stopEventMonitoring()
+                    } else {
+                        viewModel.startEventMonitoring()
+                    }
+                } label: {
+                    Label(
+                        DICOMwebUPSHelpers.monitorToggleLabel(isActive: viewModel.isUPSEventMonitoringActive),
+                        systemImage: DICOMwebUPSHelpers.monitorToggleSFSymbol(isActive: viewModel.isUPSEventMonitoringActive)
+                    )
+                    .font(.caption)
+                }
+                .buttonStyle(.bordered)
+                .tint(viewModel.isUPSEventMonitoringActive ? .red : .green)
+                .accessibilityLabel(
+                    viewModel.isUPSEventMonitoringActive
+                        ? "Stop UPS event monitoring"
+                        : "Start UPS event monitoring"
+                )
+                .accessibilityHint(
+                    viewModel.isUPSEventMonitoringActive
+                        ? "Stops listening for UPS event notifications from the server"
+                        : "Starts listening for UPS event notifications from the server"
+                )
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+
+            // Received events log
+            if viewModel.upsReceivedEvents.isEmpty {
+                HStack {
+                    Spacer()
+                    VStack(spacing: 4) {
+                        Image(systemName: "bell.slash")
+                            .font(.title3)
+                            .foregroundStyle(.tertiary)
+                            .accessibilityHidden(true)
+                        Text(viewModel.isUPSEventMonitoringActive
+                             ? "Waiting for events…"
+                             : "No events received")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 12)
+            } else {
+                HStack {
+                    Text("\(viewModel.upsReceivedEvents.count) event(s)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Button {
+                        viewModel.clearReceivedEvents()
+                    } label: {
+                        Label("Clear", systemImage: "trash")
+                            .font(.caption2)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Clear received events log")
+                }
+                .padding(.horizontal)
+                .padding(.top, 4)
+
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        ForEach(viewModel.upsReceivedEvents, id: \.id) { event in
+                            upsReceivedEventRow(event)
+                        }
+                    }
+                }
+                .frame(maxHeight: 180)
+            }
+        }
+    }
+
+    private func upsReceivedEventRow(_ event: UPSReceivedEvent) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: DICOMwebUPSHelpers.eventTypeSFSymbol(for: event.eventType))
+                .foregroundStyle(upsEventTypeColor(event.eventType))
+                .frame(width: 16)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 6) {
+                    Text(event.eventType.displayName)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Text(event.workitemUID.isEmpty ? "—" : event.workitemUID)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                if !event.summary.isEmpty {
+                    Text(event.summary)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(2)
+                }
+            }
+
+            Spacer()
+
+            Text(DICOMwebUPSHelpers.relativeTimeString(from: event.receivedAt))
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Received \(DICOMwebUPSHelpers.relativeTimeString(from: event.receivedAt))")
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 3)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(event.eventType.displayName) event for workitem \(event.workitemUID.isEmpty ? "unknown" : event.workitemUID)")
+        .accessibilityValue(event.summary.isEmpty ? "" : event.summary)
+    }
+
+    // MARK: - 5.2 UPS Subscription Sheet
+
+    private var upsSubscriptionSheet: some View {
+        VStack(spacing: 16) {
+            Text("New UPS Event Subscription")
+                .font(.headline)
+
+            Form {
+                Section("Scope") {
+                    TextField("Workitem UID (empty = global)", text: $viewModel.upsNewSubscriptionWorkitemUID)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Workitem UID for subscription scope")
+                        .accessibilityHint("Leave empty to subscribe to all workitems globally")
+                    if viewModel.upsNewSubscriptionWorkitemUID.isEmpty {
+                        Label("Global subscription — all workitems", systemImage: "globe")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Section("Event Types") {
+                    ForEach(UPSEventType.allCases, id: \.self) { eventType in
+                        Toggle(isOn: Binding(
+                            get: { viewModel.upsSubscribeEventTypes.contains(eventType) },
+                            set: { include in
+                                if include {
+                                    viewModel.upsSubscribeEventTypes.insert(eventType)
+                                } else {
+                                    viewModel.upsSubscribeEventTypes.remove(eventType)
+                                }
+                            }
+                        )) {
+                            Label(eventType.displayName, systemImage: DICOMwebUPSHelpers.eventTypeSFSymbol(for: eventType))
+                        }
+                        .accessibilityLabel("Subscribe to \(eventType.displayName) events")
+                    }
+                }
+            }
+            .formStyle(.grouped)
+
+            HStack {
+                Button("Cancel") {
+                    viewModel.isUPSSubscriptionSheetPresented = false
+                }
+                .keyboardShortcut(.cancelAction)
+                .accessibilityLabel("Cancel subscription")
+
+                Spacer()
+
+                Button("Subscribe") {
+                    viewModel.addUPSSubscription()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.upsSubscribeEventTypes.isEmpty)
+                .keyboardShortcut(.defaultAction)
+                .accessibilityLabel("Create UPS event subscription")
+            }
+        }
+        .padding()
+        .frame(minWidth: 400, minHeight: 350)
     }
 
     // MARK: - 6. Performance Dashboard
@@ -1242,6 +1454,25 @@ public struct DICOMwebView: View {
         case .high:   return .red
         case .medium: return .orange
         case .low:    return .secondary
+        }
+    }
+
+    private func upsEventChannelColor(_ state: UPSEventChannelState) -> Color {
+        switch state {
+        case .disconnected:  return .secondary
+        case .connecting:    return .orange
+        case .connected:     return .green
+        case .reconnecting:  return .orange
+        case .closed:        return .red
+        }
+    }
+
+    private func upsEventTypeColor(_ type: UPSEventType) -> Color {
+        switch type {
+        case .stateChange:           return .blue
+        case .progressChange:        return .green
+        case .stepStateChange:       return .orange
+        case .cancellationRequested: return .red
         }
     }
 

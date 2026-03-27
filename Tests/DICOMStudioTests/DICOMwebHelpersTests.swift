@@ -314,6 +314,130 @@ struct DICOMwebHelpersTests {
         #expect(DICOMwebUPSHelpers.availableTransitions(from: .inProgress).count == 2)
     }
 
+    // MARK: - DICOMwebUPSHelpers Event Channel Helpers
+
+    @Test("DICOMwebUPSHelpers eventChannelSFSymbol for connected is wifi")
+    func testUPSHelpersEventChannelSFSymbolConnected() {
+        #expect(DICOMwebUPSHelpers.eventChannelSFSymbol(for: .connected) == "wifi")
+    }
+
+    @Test("DICOMwebUPSHelpers eventChannelSFSymbol for disconnected is wifi.slash")
+    func testUPSHelpersEventChannelSFSymbolDisconnected() {
+        #expect(DICOMwebUPSHelpers.eventChannelSFSymbol(for: .disconnected) == "wifi.slash")
+    }
+
+    @Test("DICOMwebUPSHelpers eventChannelSFSymbol for reconnecting is arrow.triangle.2.circlepath")
+    func testUPSHelpersEventChannelSFSymbolReconnecting() {
+        #expect(DICOMwebUPSHelpers.eventChannelSFSymbol(for: .reconnecting) == "arrow.triangle.2.circlepath")
+    }
+
+    @Test("DICOMwebUPSHelpers eventChannelColor for connected is green")
+    func testUPSHelpersEventChannelColorConnected() {
+        #expect(DICOMwebUPSHelpers.eventChannelColor(for: .connected) == ".green")
+    }
+
+    @Test("DICOMwebUPSHelpers eventChannelColor for disconnected is secondary")
+    func testUPSHelpersEventChannelColorDisconnected() {
+        #expect(DICOMwebUPSHelpers.eventChannelColor(for: .disconnected) == ".secondary")
+    }
+
+    @Test("DICOMwebUPSHelpers eventChannelColor for closed is red")
+    func testUPSHelpersEventChannelColorClosed() {
+        #expect(DICOMwebUPSHelpers.eventChannelColor(for: .closed) == ".red")
+    }
+
+    @Test("DICOMwebUPSHelpers eventTypeSFSymbol for stateChange is arrow.left.arrow.right")
+    func testUPSHelpersEventTypeSFSymbolStateChange() {
+        #expect(DICOMwebUPSHelpers.eventTypeSFSymbol(for: .stateChange) == "arrow.left.arrow.right")
+    }
+
+    @Test("DICOMwebUPSHelpers eventTypeSFSymbol for cancellationRequested is xmark.octagon")
+    func testUPSHelpersEventTypeSFSymbolCancellation() {
+        #expect(DICOMwebUPSHelpers.eventTypeSFSymbol(for: .cancellationRequested) == "xmark.octagon")
+    }
+
+    @Test("DICOMwebUPSHelpers eventTypeColor for stateChange is blue")
+    func testUPSHelpersEventTypeColorStateChange() {
+        #expect(DICOMwebUPSHelpers.eventTypeColor(for: .stateChange) == ".blue")
+    }
+
+    @Test("DICOMwebUPSHelpers eventTypeColor for cancellationRequested is red")
+    func testUPSHelpersEventTypeColorCancellation() {
+        #expect(DICOMwebUPSHelpers.eventTypeColor(for: .cancellationRequested) == ".red")
+    }
+
+    @Test("DICOMwebUPSHelpers monitorToggleLabel active returns Stop Monitoring")
+    func testUPSHelpersMonitorToggleLabelActive() {
+        #expect(DICOMwebUPSHelpers.monitorToggleLabel(isActive: true) == "Stop Monitoring")
+    }
+
+    @Test("DICOMwebUPSHelpers monitorToggleLabel inactive returns Start Monitoring")
+    func testUPSHelpersMonitorToggleLabelInactive() {
+        #expect(DICOMwebUPSHelpers.monitorToggleLabel(isActive: false) == "Start Monitoring")
+    }
+
+    @Test("DICOMwebUPSHelpers monitorToggleSFSymbol active returns stop.circle.fill")
+    func testUPSHelpersMonitorToggleSFSymbolActive() {
+        #expect(DICOMwebUPSHelpers.monitorToggleSFSymbol(isActive: true) == "stop.circle.fill")
+    }
+
+    @Test("DICOMwebUPSHelpers monitorToggleSFSymbol inactive returns play.circle.fill")
+    func testUPSHelpersMonitorToggleSFSymbolInactive() {
+        #expect(DICOMwebUPSHelpers.monitorToggleSFSymbol(isActive: false) == "play.circle.fill")
+    }
+
+    @Test("DICOMwebUPSHelpers relativeTimeString shows just now for recent date")
+    func testUPSHelpersRelativeTimeStringJustNow() {
+        let now = Date()
+        #expect(DICOMwebUPSHelpers.relativeTimeString(from: now, relativeTo: now) == "just now")
+    }
+
+    @Test("DICOMwebUPSHelpers relativeTimeString shows seconds ago for date within 60s")
+    func testUPSHelpersRelativeTimeStringSeconds() {
+        let now = Date()
+        let thirtySecondsAgo = now.addingTimeInterval(-30)
+        let result = DICOMwebUPSHelpers.relativeTimeString(from: thirtySecondsAgo, relativeTo: now)
+        #expect(result == "30s ago")
+    }
+
+    @Test("DICOMwebUPSHelpers relativeTimeString shows minutes ago for date within 1h")
+    func testUPSHelpersRelativeTimeStringMinutes() {
+        let now = Date()
+        let fiveMinutesAgo = now.addingTimeInterval(-300)
+        let result = DICOMwebUPSHelpers.relativeTimeString(from: fiveMinutesAgo, relativeTo: now)
+        #expect(result == "5m ago")
+    }
+
+    @Test("DICOMwebUPSHelpers relativeTimeString shows hours ago for date within 1d")
+    func testUPSHelpersRelativeTimeStringHours() {
+        let now = Date()
+        let twoHoursAgo = now.addingTimeInterval(-7200)
+        let result = DICOMwebUPSHelpers.relativeTimeString(from: twoHoursAgo, relativeTo: now)
+        #expect(result == "2h ago")
+    }
+
+    @Test("DICOMwebUPSHelpers relativeTimeString shows days ago for date beyond 1d")
+    func testUPSHelpersRelativeTimeStringDays() {
+        let now = Date()
+        let threeDaysAgo = now.addingTimeInterval(-259200)
+        let result = DICOMwebUPSHelpers.relativeTimeString(from: threeDaysAgo, relativeTo: now)
+        #expect(result == "3d ago")
+    }
+
+    @Test("DICOMwebUPSHelpers all event channel states have non-empty symbols")
+    func testUPSHelpersAllEventChannelStatesHaveSymbols() {
+        for state in UPSEventChannelState.allCases {
+            #expect(!DICOMwebUPSHelpers.eventChannelSFSymbol(for: state).isEmpty)
+        }
+    }
+
+    @Test("DICOMwebUPSHelpers all event types have non-empty symbols")
+    func testUPSHelpersAllEventTypesHaveSymbols() {
+        for type in UPSEventType.allCases {
+            #expect(!DICOMwebUPSHelpers.eventTypeSFSymbol(for: type).isEmpty)
+        }
+    }
+
     // MARK: - DICOMwebPerformanceHelpers
 
     @Test("DICOMwebPerformanceHelpers formattedLatency 0.5ms contains < 1")
