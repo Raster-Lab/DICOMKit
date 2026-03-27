@@ -84,6 +84,44 @@ DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) 
 - Any new dependency must be justified and reviewed
 - Use Swift Package Manager for dependency management
 
+### Upstream Dependency Bug Fix Workflow
+
+When a bug is discovered in a **first-party Raster-Lab dependency** (e.g., J2KSwift, or any library under the [Raster-Lab](https://github.com/orgs/Raster-Lab/repositories) organisation), Copilot **must** follow this workflow to contribute the fix upstream:
+
+#### 1. Create and Store a Patch Locally
+
+- Write a minimal, focused patch that fixes the bug
+- Save the patch in `patches/<dependency>-<short-description>.patch` using `git format-patch` or `git diff` format
+- The patch commit message must include: summary, root cause, reproduction steps, and the affected file(s)/line(s)
+
+#### 2. Open an Upstream Pull Request
+
+After the patch is validated locally:
+
+1. **Clone** the upstream repository: `git clone https://github.com/Raster-Lab/<Dependency>.git`
+2. **Create a fix branch**: `git checkout -b fix/<short-description>`
+3. **Apply the patch**: `git apply ../DICOMKit/patches/<dependency>-<short-description>.patch`
+4. **Commit** with a clear message referencing the DICOMKit context
+5. **Push** the branch and **open a PR** on the upstream repository
+6. Link the upstream PR back to the DICOMKit issue or integration plan
+
+> **Note:** If the sandboxed environment prevents cloning or pushing to the upstream repo, Copilot must clearly inform the user with the exact commands needed to complete the upstream PR manually, and provide the patch file path.
+
+#### 3. Track the Fix in DICOMKit
+
+- Record the upstream issue/PR in the relevant integration plan (e.g., `J2KSWIFT_INTEGRATION_PLAN.md`)
+- Add a `> [!WARNING]` alert to affected milestone files (see [Dependency Issue Alerts](#dependency-issue-alerts) below)
+- If the upstream fix is not yet merged, apply the patch locally via `swift package edit <Dependency>` and document the workaround
+
+#### 4. Clean Up After Upstream Merge
+
+Once the upstream PR is merged and a new version is released:
+
+- Update `Package.swift` to reference the new version
+- Remove the local patch from `patches/`
+- Remove the `> [!WARNING]` alerts from milestone files
+- Run `swift package unedit <Dependency>` if a local edit was active
+
 ## Performance Considerations
 
 - DICOM files can be large - optimize for memory efficiency
@@ -199,6 +237,44 @@ This helps maintain accurate and up-to-date documentation for users of DICOMKit.
 - Update the Milestone Summary table at the end of the document
 
 Failure to update these files can lead to inconsistent documentation and make it difficult for users and contributors to understand the current state of the project.
+
+### Dependency Issue Alerts
+
+When a bug or limitation in a **first-party dependency** (Raster-Lab library) is discovered that affects DICOMKit milestones or functionality, Copilot **must** add alerts to the relevant documentation files. Use GitHub's blockquote alert syntax for high visibility.
+
+#### When to Add an Alert
+
+Add a `> [!WARNING]` alert whenever:
+- A dependency bug blocks or degrades a milestone deliverable
+- A local patch/workaround is applied that must be tracked until upstream merges
+- A dependency limitation forces a design compromise (e.g., fallback codecs, disabled features)
+
+#### Alert Format
+
+Use the following format in MILESTONES.md, integration plans, and any affected milestone file:
+
+```markdown
+> [!WARNING]
+> **Dependency Issue — `<Library>` v`<version>`**: `<Brief description of the bug>`.
+> **Impact**: `<Which milestones/features are affected and how>`.
+> **Workaround**: `<Current workaround applied in DICOMKit>`.
+> **Upstream**: `<Link to upstream issue/PR, or "Patch pending at patches/…">`.
+> **Tracking**: `<Link to DICOMKit issue or integration plan section>`.
+```
+
+#### Where to Place Alerts
+
+1. **MILESTONES.md** — At the top of any milestone section whose deliverables are affected
+2. **Integration plan files** (e.g., `J2KSWIFT_INTEGRATION_PLAN.md`) — In the "Known Upstream Issues" section
+3. **DICOM_STUDIO_V2_MILESTONES.md** — If the issue affects any DICOMStudio v2 milestone
+4. **README.md** — In the Limitations section if the issue affects user-facing functionality
+
+#### When to Remove an Alert
+
+Remove the `> [!WARNING]` alert when:
+- The upstream fix is merged and DICOMKit's `Package.swift` is updated to the fixed version
+- The local patch in `patches/` is removed
+- The affected milestone deliverables are fully functional without workarounds
 
 ### CLI Tools for Completed Functionality
 

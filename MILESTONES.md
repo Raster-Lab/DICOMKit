@@ -116,6 +116,9 @@ For Milestone 10.14 (Example Applications), detailed phase-by-phase implementati
 **Status**: Completed  
 **Goal**: Support common compressed image formats
 
+> [!WARNING]
+> **Dependency Issue — `J2KSwift` v`2.0.0`**: JPEG 2000 cross-platform decode has known bugs (Int32 overflow crash, reconstruction fidelity, multi-component issues). Apple platforms use ImageIO as a reliable fallback. Linux JPEG 2000 decoding is degraded. A local patch fixes the crash; fidelity issues require upstream work. See [J2KSWIFT_INTEGRATION_PLAN.md](J2KSWIFT_INTEGRATION_PLAN.md) for details and tracking.
+
 ### Deliverables
 - [x] JPEG Baseline (Process 1) - 1.2.840.10008.1.2.4.50
 - [x] JPEG Extended (Process 2 & 4) - 1.2.840.10008.1.2.4.51

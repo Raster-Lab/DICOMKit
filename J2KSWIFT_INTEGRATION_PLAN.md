@@ -62,6 +62,13 @@ J2KSwift (package)
 
 ### Known Upstream Issues (J2KSwift v2.0.0)
 
+> [!WARNING]
+> **Dependency Issue — `J2KSwift` v`2.0.0`**: Int32 overflow crash in `DecoderPipeline.applyDequantization` (line 847) and decoder reconstruction fidelity bugs.
+> **Impact**: JPEG 2000 decoding on Linux is unreliable; Apple platforms fall back to `NativeJPEG2000Codec` via ImageIO. Affects Phase 1 decoder integration and any milestone requiring cross-platform JPEG 2000 decode.
+> **Workaround**: Clamped conversion patch applied locally via `swift package edit J2KSwift`. Encoding uses J2KSwift on all platforms; decoding uses ImageIO on Apple, J2KSwift (with patch) on Linux.
+> **Upstream**: Patch pending at `patches/j2kswift-fix-dequantization-overflow.patch` — upstream PR not yet opened.
+> **Tracking**: [J2KSWIFT_INTEGRATION_PLAN.md — Phase 1](J2KSWIFT_INTEGRATION_PLAN.md)
+
 1. **Int32 overflow crash in `DecoderPipeline.applyDequantization`** — Fixed locally via clamped conversion. Patch at `patches/j2kswift-fix-dequantization-overflow.patch`.
 2. **Decoder reconstruction fidelity** — Lossless encode → decode is not bit-exact; decoded pixel values diverge significantly. Root cause is in the J2KSwift decoder pipeline (wavelet inverse, dequantization, or colour transform). Requires upstream investigation.
 3. **Multi-component decoding** — RGB images (3 components) are decoded as 1 component. The decoder doesn't reconstruct all colour channels.
