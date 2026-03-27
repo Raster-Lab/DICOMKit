@@ -193,11 +193,17 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
-        .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.6.0")
+        .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.6.0"),
+        .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "2.0.0")
     ],
     targets: [
         .target(
             name: "DICOMCore",
+            dependencies: [
+                .product(name: "J2KCore", package: "J2KSwift"),
+                .product(name: "J2KCodec", package: "J2KSwift"),
+                .product(name: "J2KFileFormat", package: "J2KSwift")
+            ],
             exclude: ["CharacterSetHandler+README.md"]
         ),
         .target(
