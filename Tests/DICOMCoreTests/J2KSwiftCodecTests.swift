@@ -306,16 +306,25 @@ final class J2KSwiftCodecTests: XCTestCase {
 
     // MARK: - Codec Registry Integration (8 tests)
 
-    func test_codecRegistry_hasJ2KSwiftCodec_forLossless() {
+    func test_codecRegistry_hasDecoderCodec_forLossless() {
         let registeredCodec = CodecRegistry.shared.codec(for: TransferSyntax.jpeg2000Lossless.uid)
         XCTAssertNotNil(registeredCodec)
+        // On Apple platforms NativeJPEG2000Codec is the decoder; on Linux J2KSwiftCodec
+        #if canImport(ImageIO)
+        XCTAssertTrue(registeredCodec is NativeJPEG2000Codec)
+        #else
         XCTAssertTrue(registeredCodec is J2KSwiftCodec)
+        #endif
     }
 
-    func test_codecRegistry_hasJ2KSwiftCodec_forLossy() {
+    func test_codecRegistry_hasDecoderCodec_forLossy() {
         let registeredCodec = CodecRegistry.shared.codec(for: TransferSyntax.jpeg2000.uid)
         XCTAssertNotNil(registeredCodec)
+        #if canImport(ImageIO)
+        XCTAssertTrue(registeredCodec is NativeJPEG2000Codec)
+        #else
         XCTAssertTrue(registeredCodec is J2KSwiftCodec)
+        #endif
     }
 
     func test_codecRegistry_hasEncoder_forLossless() {

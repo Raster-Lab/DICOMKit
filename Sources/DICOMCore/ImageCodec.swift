@@ -310,14 +310,25 @@ public struct CodecRegistry: Sendable {
         var decoderRegistry: [String: any ImageCodec] = [:]
         var encoderRegistry: [String: any ImageEncoder] = [:]
         
-        // JPEG 2000 codecs — J2KSwift (pure-Swift, cross-platform) is the primary codec
+        // JPEG 2000 encoding — J2KSwift (pure-Swift, cross-platform)
         let j2kSwiftCodec = J2KSwiftCodec()
-        for uid in J2KSwiftCodec.supportedTransferSyntaxes {
-            decoderRegistry[uid] = j2kSwiftCodec
-        }
         for uid in J2KSwiftCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = j2kSwiftCodec
         }
+        
+        // JPEG 2000 decoding — prefer NativeJPEG2000Codec on Apple platforms
+        // (J2KSwift decoder has known reconstruction issues in v2.0.0);
+        // on non-Apple platforms J2KSwiftCodec is the only option.
+        #if canImport(ImageIO)
+        let jpeg2000Codec = NativeJPEG2000Codec()
+        for uid in NativeJPEG2000Codec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = jpeg2000Codec
+        }
+        #else
+        for uid in J2KSwiftCodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = j2kSwiftCodec
+        }
+        #endif
         
         // Register platform-native codecs
         #if canImport(ImageIO)
@@ -329,9 +340,6 @@ public struct CodecRegistry: Sendable {
         for uid in NativeJPEGCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = jpegCodec
         }
-        
-        // NativeJPEG2000Codec kept as fallback (not registered by default
-        // since J2KSwiftCodec is the primary codec for JPEG 2000).
         #endif
         
         // RLE codec (pure Swift implementation - decode only for now)

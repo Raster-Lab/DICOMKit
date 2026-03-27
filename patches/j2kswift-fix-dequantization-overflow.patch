@@ -1,0 +1,36 @@
+From: DICOMKit Integration <copilot@github.com>
+Subject: [PATCH] Fix Int32 overflow crash in DecoderPipeline.applyDequantization
+
+The dequantization step in DecoderPipeline crashes with:
+  "Fatal error: Double value cannot be converted to Int32
+   because the result would be greater than Int32.max"
+
+when `Double(coeff) * stepSize` exceeds the Int32 range.
+
+This occurs because `Int32(Double(...))` uses a trapping conversion.
+The fix clamps the product to the Int32 range before conversion.
+
+Reproduction:
+  1. Encode a 16x16 8-bit gradient image with J2KEncoder (lossless)
+  2. Decode the resulting codestream with J2KDecoder
+  3. Crash at J2KDecoderPipeline.swift:847
+
+---
+ Sources/J2KCodec/J2KDecoderPipeline.swift | 5 +++--
+ 1 file changed, 3 insertions(+), 2 deletions(-)
+
+diff --git a/Sources/J2KCodec/J2KDecoderPipeline.swift b/Sources/J2KCodec/J2KDecoderPipeline.swift
+index 6097d27..XXXXXXX 100644
+--- a/Sources/J2KCodec/J2KDecoderPipeline.swift
++++ b/Sources/J2KCodec/J2KDecoderPipeline.swift
+@@ -843,8 +843,9 @@ struct DecoderPipeline: Sendable {
+             let stepSize = metadata.quantizationSteps[key] ?? 1.0
+ 
+-            // Dequantize coefficients
++            // Dequantize coefficients (clamped to Int32 range to prevent overflow)
+             let dequantized = info.coefficients.map { coeff in
+-                Int32(Double(coeff) * stepSize)
++                let product = Double(coeff) * stepSize
++                let clamped = max(Double(Int32.min), min(Double(Int32.max), product))
++                return Int32(clamped)
+             }
