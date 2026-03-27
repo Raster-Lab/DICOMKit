@@ -63,7 +63,7 @@ J2KSwift (package)
 ### Known Upstream Issues (J2KSwift v2.0.0)
 
 > [!WARNING]
-> **Dependency Issue — `J2KSwift` v`2.0.0`**: Int32 overflow crash in `DecoderPipeline.applyDequantization` (line 847) and decoder reconstruction fidelity bugs.
+> **Dependency Issue — `J2KSwift` v`2.0.0`**: Int32 overflow crash in the `DecoderPipeline.applyDequantization` method and decoder reconstruction fidelity bugs.
 > **Impact**: JPEG 2000 decoding on Linux is unreliable; Apple platforms fall back to `NativeJPEG2000Codec` via ImageIO. Affects Phase 1 decoder integration and any milestone requiring cross-platform JPEG 2000 decode.
 > **Workaround**: Clamped conversion patch applied locally via `swift package edit J2KSwift`. Encoding uses J2KSwift on all platforms; decoding uses ImageIO on Apple, J2KSwift (with patch) on Linux.
 > **Upstream**: Patch pending at `patches/j2kswift-fix-dequantization-overflow.patch` — upstream PR not yet opened.
