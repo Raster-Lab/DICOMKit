@@ -491,4 +491,227 @@ struct DICOMwebHelpersTests {
         )
         #expect(DICOMwebPerformanceHelpers.overallHealthDescription(stats: stats) == "Poor")
     }
+
+    // MARK: - UPSEventPayloadParser
+
+    @Test("UPSEventPayloadParser parses state from DICOM JSON")
+    func testPayloadParserParsesState() throws {
+        let json: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["IN PROGRESS"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "stateReport")
+        #expect(result.newState == "IN PROGRESS")
+    }
+
+    @Test("UPSEventPayloadParser infers previous state for IN PROGRESS transition")
+    func testPayloadParserInfersPreviousStateInProgress() throws {
+        let json: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["IN PROGRESS"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "StateReport")
+        #expect(result.previousState == "SCHEDULED")
+        #expect(result.newState == "IN PROGRESS")
+    }
+
+    @Test("UPSEventPayloadParser infers previous state for COMPLETED transition")
+    func testPayloadParserInfersPreviousStateCompleted() throws {
+        let json: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["COMPLETED"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "StateReport")
+        #expect(result.previousState == "IN PROGRESS")
+        #expect(result.newState == "COMPLETED")
+    }
+
+    @Test("UPSEventPayloadParser parses progress percentage and description")
+    func testPayloadParserParsesProgress() throws {
+        let json: [String: Any] = [
+            "00741004": ["vr": "DS", "Value": ["75"]],
+            "00741006": ["vr": "ST", "Value": ["Processing series 3 of 4"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "ProgressReport")
+        #expect(result.progressPercentage == 75)
+        #expect(result.progressDescription == "Processing series 3 of 4")
+    }
+
+    @Test("UPSEventPayloadParser parses progress percentage as integer")
+    func testPayloadParserParsesProgressInt() throws {
+        let json: [String: Any] = [
+            "00741004": ["vr": "DS", "Value": [50]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "ProgressReport")
+        #expect(result.progressPercentage == 50)
+    }
+
+    @Test("UPSEventPayloadParser parses cancellation reason")
+    func testPayloadParserParsesCancellationReason() throws {
+        let json: [String: Any] = [
+            "00741238": ["vr": "LT", "Value": ["Patient declined procedure"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "CancelRequested")
+        #expect(result.reason == "Patient declined procedure")
+    }
+
+    @Test("UPSEventPayloadParser parses state change reason")
+    func testPayloadParserParsesStateChangeReason() throws {
+        let json: [String: Any] = [
+            "00741000": ["vr": "CS", "Value": ["IN PROGRESS"]],
+            "ReasonForStateChange": ["vr": "LO", "Value": ["Started by technologist"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "StateReport")
+        #expect(result.reason == "Started by technologist")
+        #expect(result.newState == "IN PROGRESS")
+    }
+
+    @Test("UPSEventPayloadParser parses contact from performer sequence")
+    func testPayloadParserParsesPerformerContact() throws {
+        let json: [String: Any] = [
+            "00404035": ["vr": "SQ", "Value": [
+                ["00404037": ["vr": "PN", "Value": ["Dr. Smith"]]]
+            ]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "Assigned")
+        #expect(result.contactDisplayName == "Dr. Smith")
+    }
+
+    @Test("UPSEventPayloadParser parses contact from ContactDisplayName field")
+    func testPayloadParserParsesContactDisplayName() throws {
+        let json: [String: Any] = [
+            "ContactDisplayName": ["vr": "LO", "Value": ["TechStation-01"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "ProgressReport")
+        #expect(result.contactDisplayName == "TechStation-01")
+    }
+
+    @Test("UPSEventPayloadParser returns empty for empty data")
+    func testPayloadParserEmptyData() {
+        let result = UPSEventPayloadParser.parse(rawJSON: Data(), eventType: "stateReport")
+        #expect(result.newState == nil)
+        #expect(result.progressPercentage == nil)
+        #expect(result.reason == nil)
+    }
+
+    @Test("UPSEventPayloadParser returns empty for invalid JSON")
+    func testPayloadParserInvalidJSON() {
+        let result = UPSEventPayloadParser.parse(rawJSON: Data("not json".utf8), eventType: "stateReport")
+        #expect(result.newState == nil)
+    }
+
+    @Test("UPSEventPayloadParser parses completion notes as reason")
+    func testPayloadParserCompletionNotes() throws {
+        let json: [String: Any] = [
+            "CompletionNotes": ["vr": "ST", "Value": ["All series processed successfully"]]
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json)
+        let result = UPSEventPayloadParser.parse(rawJSON: data, eventType: "Completed")
+        #expect(result.reason == "All series processed successfully")
+    }
+
+    // MARK: - UPSEventDetailHelpers
+
+    @Test("UPSEventDetailHelpers workitemContextDescription with full context")
+    func testEventDetailHelpersFullContext() {
+        let event = UPSReceivedEvent(
+            eventType: .stateChange,
+            workitemUID: "1.2.3.4",
+            summary: "State changed",
+            patientName: "John Doe",
+            patientID: "P12345",
+            procedureStepLabel: "CT Chest",
+            workitemState: "IN PROGRESS",
+            workitemPriority: "MEDIUM",
+            accessionNumber: "ACC001",
+            isWorkitemContextLoaded: true
+        )
+        let desc = UPSEventDetailHelpers.workitemContextDescription(event)
+        #expect(desc != nil)
+        #expect(desc!.contains("CT Chest"))
+        #expect(desc!.contains("John Doe"))
+        #expect(desc!.contains("P12345"))
+        #expect(desc!.contains("IN PROGRESS"))
+        #expect(desc!.contains("MEDIUM"))
+        #expect(desc!.contains("ACC001"))
+    }
+
+    @Test("UPSEventDetailHelpers workitemContextDescription returns nil when not loaded")
+    func testEventDetailHelpersNotLoaded() {
+        let event = UPSReceivedEvent(
+            eventType: .stateChange,
+            workitemUID: "1.2.3.4",
+            summary: "State changed"
+        )
+        #expect(UPSEventDetailHelpers.workitemContextDescription(event) == nil)
+    }
+
+    @Test("UPSEventDetailHelpers workitemContextDescription returns nil for loaded but empty context")
+    func testEventDetailHelpersEmptyContext() {
+        let event = UPSReceivedEvent(
+            eventType: .stateChange,
+            workitemUID: "1.2.3.4",
+            summary: "State changed",
+            isWorkitemContextLoaded: true
+        )
+        #expect(UPSEventDetailHelpers.workitemContextDescription(event) == nil)
+    }
+
+    @Test("UPSEventDetailHelpers workitemShortIdentifier prefers label")
+    func testEventDetailHelpersShortIDLabel() {
+        let event = UPSReceivedEvent(
+            eventType: .stateChange,
+            workitemUID: "1.2.3.4",
+            patientName: "Jane Doe",
+            procedureStepLabel: "MRI Brain",
+            isWorkitemContextLoaded: true
+        )
+        #expect(UPSEventDetailHelpers.workitemShortIdentifier(event) == "MRI Brain")
+    }
+
+    @Test("UPSEventDetailHelpers workitemShortIdentifier falls back to patient name with ID")
+    func testEventDetailHelpersShortIDPatient() {
+        let event = UPSReceivedEvent(
+            eventType: .stateChange,
+            workitemUID: "1.2.3.4",
+            patientName: "Jane Doe",
+            patientID: "P999",
+            isWorkitemContextLoaded: true
+        )
+        #expect(UPSEventDetailHelpers.workitemShortIdentifier(event) == "Jane Doe (P999)")
+    }
+
+    @Test("UPSEventDetailHelpers workitemShortIdentifier returns nil when no context")
+    func testEventDetailHelpersShortIDNil() {
+        let event = UPSReceivedEvent(
+            eventType: .stateChange,
+            workitemUID: "1.2.3.4",
+            isWorkitemContextLoaded: true
+        )
+        #expect(UPSEventDetailHelpers.workitemShortIdentifier(event) == nil)
+    }
+
+    @Test("UPSEventDetailHelpers stateTransitionSFSymbol for known states")
+    func testEventDetailHelpersStateTransitionSymbol() {
+        #expect(UPSEventDetailHelpers.stateTransitionSFSymbol(newState: "SCHEDULED") == "calendar")
+        #expect(UPSEventDetailHelpers.stateTransitionSFSymbol(newState: "IN PROGRESS") == "arrow.triangle.2.circlepath")
+        #expect(UPSEventDetailHelpers.stateTransitionSFSymbol(newState: "COMPLETED") == "checkmark.circle.fill")
+        #expect(UPSEventDetailHelpers.stateTransitionSFSymbol(newState: "CANCELED") == "xmark.circle.fill")
+        #expect(UPSEventDetailHelpers.stateTransitionSFSymbol(newState: nil) == "arrow.left.arrow.right")
+    }
+
+    @Test("UPSEventDetailHelpers stateTransitionColor for known states")
+    func testEventDetailHelpersStateTransitionColor() {
+        #expect(UPSEventDetailHelpers.stateTransitionColor(newState: "SCHEDULED") == ".blue")
+        #expect(UPSEventDetailHelpers.stateTransitionColor(newState: "IN PROGRESS") == ".orange")
+        #expect(UPSEventDetailHelpers.stateTransitionColor(newState: "COMPLETED") == ".green")
+        #expect(UPSEventDetailHelpers.stateTransitionColor(newState: "CANCELED") == ".red")
+        #expect(UPSEventDetailHelpers.stateTransitionColor(newState: nil) == ".secondary")
+    }
 }

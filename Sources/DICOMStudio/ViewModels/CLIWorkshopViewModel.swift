@@ -2830,6 +2830,47 @@ public final class CLIWorkshopViewModel {
                     aeTitle: "DICOM_STUDIO"
                 )
                 appendConsoleOutput("✅ Subscription created\n")
+
+                // Fetch and display workitem details for context
+                appendConsoleOutput("\nFetching workitem details...\n")
+                do {
+                    let result = try await client.retrieveWorkitemResult(uid: workitemUID)
+                    appendConsoleOutput("  Workitem UID:   \(result.workitemUID)\n")
+                    if let label = result.procedureStepLabel {
+                        appendConsoleOutput("  Procedure:      \(label)\n")
+                    }
+                    if let state = result.state {
+                        appendConsoleOutput("  State:          \(state.rawValue)\n")
+                    }
+                    if let priority = result.priority {
+                        appendConsoleOutput("  Priority:       \(priority.rawValue)\n")
+                    }
+                    if let name = result.patientName {
+                        appendConsoleOutput("  Patient Name:   \(name)\n")
+                    }
+                    if let pid = result.patientID {
+                        appendConsoleOutput("  Patient ID:     \(pid)\n")
+                    }
+                    if let accession = result.accessionNumber {
+                        appendConsoleOutput("  Accession:      \(accession)\n")
+                    }
+                    if let scheduled = result.scheduledStartDateTime {
+                        appendConsoleOutput("  Scheduled:      \(scheduled)\n")
+                    }
+                    if let pct = result.progressPercentage {
+                        appendConsoleOutput("  Progress:       \(pct)%\n")
+                    }
+                    if let desc = result.progressDescription {
+                        appendConsoleOutput("  Progress Desc:  \(desc)\n")
+                    }
+                    appendConsoleOutput("\n")
+                } catch {
+                    appendConsoleOutput("  (Could not fetch workitem details: \(error.localizedDescription))\n\n")
+                }
+
+                appendConsoleOutput("📡 Events for this workitem will appear in the DICOMweb Event Monitor.\n")
+                appendConsoleOutput("   Navigate to DICOMweb → UPS → Event Monitor to view live events.\n")
+
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,

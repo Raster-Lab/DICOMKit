@@ -435,10 +435,10 @@ public final class UPSWebSocketClient: @unchecked Sendable {
             request.setValue(header.value, forHTTPHeaderField: header.name)
         }
         
-        // Set WebSocket subprotocol for DICOM events
-        // The DICOM standard doesn't mandate a specific subprotocol name,
-        // but we advertise our support for DICOM JSON event format
-        request.setValue("dicom-ups-event", forHTTPHeaderField: "Sec-WebSocket-Protocol")
+        // NOTE: Do NOT set a custom Sec-WebSocket-Protocol header here.
+        // The DICOM standard (PS3.18 §11.11) does not mandate a subprotocol,
+        // and dcm4chee-arc rejects connections with unknown subprotocols.
+        // The subscriber identity is conveyed via the AE Title in the URL path.
         
         let task = urlSession.webSocketTask(with: request)
         task.maximumMessageSize = wsConfiguration.maxMessageSize
@@ -446,8 +446,9 @@ public final class UPSWebSocketClient: @unchecked Sendable {
         webSocketTask = task
         task.resume()
         
-        // Send initial handshake / identification
-        try await sendSubscriberIdentification()
+        // Per PS3.18 §11.11 the subscriber is identified by the AE Title
+        // embedded in the WebSocket URL path (/ws/subscribers/{aeTitle}).
+        // No additional handshake message is required or expected.
         
         updateState(.connected)
         reconnectAttempts = 0
@@ -459,26 +460,10 @@ public final class UPSWebSocketClient: @unchecked Sendable {
         startPingLoop()
     }
     
-    /// Sends the subscriber AE Title identification after connection
-    ///
-    /// Per PS3.18, the client identifies itself by sending its AE Title
-    /// as the first message after the WebSocket handshake completes.
-    private func sendSubscriberIdentification() async throws {
-        let identification: [String: Any] = [
-            "aeTitle": aeTitle,
-            "type": "subscriber-identification"
-        ]
-        
-        guard let data = try? JSONSerialization.data(withJSONObject: identification) else {
-            throw UPSWebSocketError.connectionFailed(reason: "Failed to serialize subscriber identification")
-        }
-        
-        guard let task = webSocketTask else {
-            throw UPSWebSocketError.connectionFailed(reason: "WebSocket task not available")
-        }
-        
-        try await task.send(.data(data))
-    }
+    // Subscriber identification is conveyed by the AE Title in the
+    // WebSocket URL path per PS3.18 §11.11.  No post-connect message
+    // is sent — dcm4chee-arc (and the standard) do not define one,
+    // and unexpected data frames cause a Connection reset.
     
     /// Starts the message receiving loop
     private func startReceiving() {

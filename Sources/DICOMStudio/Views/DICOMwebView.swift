@@ -889,12 +889,14 @@ public struct DICOMwebView: View {
     private func upsWorkitemRow(_ workitem: UPSWorkitem) -> some View {
         HStack(spacing: 10) {
             Image(systemName: DICOMwebUPSHelpers.sfSymbol(for: workitem.state))
+                .font(.title3)
                 .foregroundStyle(upsStateColor(workitem.state))
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(workitem.procedureStepLabel.isEmpty ? "Untitled Workitem" : workitem.procedureStepLabel)
                     .font(.body)
+                    .fontWeight(.medium)
                 HStack(spacing: 8) {
                     if !workitem.patientName.isEmpty {
                         Text(DICOMwebQIDOHelpers.formatPatientName(workitem.patientName))
@@ -906,34 +908,35 @@ public struct DICOMwebView: View {
                         .foregroundStyle(upsPriorityColor(workitem.priority))
                         .accessibilityLabel("\(workitem.priority.displayName) priority")
                 }
-                .font(.caption)
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
 
                 if workitem.state == .inProgress && workitem.completionPercentage > 0 {
                     HStack(spacing: 6) {
                         ProgressView(value: Double(workitem.completionPercentage), total: 100)
-                            .frame(maxWidth: 120)
+                            .frame(maxWidth: 140)
                         Text("\(workitem.completionPercentage)%")
-                            .font(.caption2)
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
 
                 if !workitem.progressInformation.isEmpty {
                     Text(workitem.progressInformation)
-                        .font(.caption2)
+                        .font(.footnote)
                         .foregroundStyle(.tertiary)
                 }
             }
             Spacer()
 
-            VStack(alignment: .trailing, spacing: 2) {
+            VStack(alignment: .trailing, spacing: 3) {
                 Text(workitem.state.displayName)
-                    .font(.caption)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                     .foregroundStyle(upsStateColor(workitem.state))
                 if let scheduledDate = workitem.scheduledDateTime {
                     Text(scheduledDate, style: .date)
-                        .font(.caption2)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
@@ -956,14 +959,13 @@ public struct DICOMwebView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Event Subscriptions")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.headline)
                 Spacer()
                 Button {
                     viewModel.isUPSSubscriptionSheetPresented = true
                 } label: {
                     Label("Subscribe", systemImage: "bell.badge.fill")
-                        .font(.caption)
+                        .font(.subheadline)
                 }
                 .accessibilityLabel("Create new UPS event subscription")
             }
@@ -972,7 +974,7 @@ public struct DICOMwebView: View {
 
             if viewModel.upsSubscriptions.isEmpty {
                 Text("No active subscriptions")
-                    .font(.caption)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .padding(.vertical, 8)
             } else {
@@ -984,11 +986,11 @@ public struct DICOMwebView: View {
                                     .foregroundStyle(sub.isActive ? .green : .secondary)
                                     .accessibilityHidden(true)
                                 Text(sub.isGlobal ? "Global" : "UID: \(sub.workitemUID ?? "")")
-                                    .font(.caption)
+                                    .font(.subheadline)
                                     .lineLimit(1)
                                 Spacer()
                                 Text(sub.eventTypes.map(\.displayName).sorted().joined(separator: ", "))
-                                    .font(.caption2)
+                                    .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                 Button {
@@ -1017,24 +1019,24 @@ public struct DICOMwebView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("Event Monitor")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
+                    .font(.headline)
 
                 Spacer()
 
                 // Connection status indicator
-                HStack(spacing: 4) {
+                HStack(spacing: 5) {
                     Image(systemName: DICOMwebUPSHelpers.eventChannelSFSymbol(for: viewModel.upsEventChannelState))
                         .foregroundStyle(upsEventChannelColor(viewModel.upsEventChannelState))
                         .accessibilityHidden(true)
                     Text(viewModel.upsEventChannelState.displayName)
-                        .font(.caption2)
+                        .font(.footnote)
+                        .fontWeight(.medium)
                         .foregroundStyle(upsEventChannelColor(viewModel.upsEventChannelState))
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 3)
                 .background(upsEventChannelColor(viewModel.upsEventChannelState).opacity(0.1))
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+                .clipShape(RoundedRectangle(cornerRadius: 5))
                 .accessibilityLabel("Event channel status: \(viewModel.upsEventChannelState.displayName)")
 
                 // START / STOP toggle
@@ -1049,7 +1051,7 @@ public struct DICOMwebView: View {
                         DICOMwebUPSHelpers.monitorToggleLabel(isActive: viewModel.isUPSEventMonitoringActive),
                         systemImage: DICOMwebUPSHelpers.monitorToggleSFSymbol(isActive: viewModel.isUPSEventMonitoringActive)
                     )
-                    .font(.caption)
+                    .font(.subheadline)
                 }
                 .buttonStyle(.bordered)
                 .tint(viewModel.isUPSEventMonitoringActive ? .red : .green)
@@ -1061,7 +1063,7 @@ public struct DICOMwebView: View {
                 .accessibilityHint(
                     viewModel.isUPSEventMonitoringActive
                         ? "Stops listening for UPS event notifications from the server"
-                        : "Starts listening for UPS event notifications from the server"
+                        : "Opens a WebSocket channel to receive UPS event notifications"
                 )
             }
             .padding(.horizontal)
@@ -1073,13 +1075,13 @@ public struct DICOMwebView: View {
                     Spacer()
                     VStack(spacing: 4) {
                         Image(systemName: "bell.slash")
-                            .font(.title3)
+                            .font(.title2)
                             .foregroundStyle(.tertiary)
                             .accessibilityHidden(true)
                         Text(viewModel.isUPSEventMonitoringActive
                              ? "Waiting for events…"
-                             : "No events received")
-                            .font(.caption)
+                             : "Press Start to open the event channel")
+                            .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
@@ -1088,14 +1090,14 @@ public struct DICOMwebView: View {
             } else {
                 HStack {
                     Text("\(viewModel.upsReceivedEvents.count) event(s)")
-                        .font(.caption2)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer()
                     Button {
                         viewModel.clearReceivedEvents()
                     } label: {
                         Label("Clear", systemImage: "trash")
-                            .font(.caption2)
+                            .font(.footnote)
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
@@ -1111,49 +1113,165 @@ public struct DICOMwebView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 180)
+                .frame(maxHeight: 320)
             }
         }
     }
 
     private func upsReceivedEventRow(_ event: UPSReceivedEvent) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: DICOMwebUPSHelpers.eventTypeSFSymbol(for: event.eventType))
-                .foregroundStyle(upsEventTypeColor(event.eventType))
-                .frame(width: 16)
-                .accessibilityHidden(true)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Image(systemName: DICOMwebUPSHelpers.eventTypeSFSymbol(for: event.eventType))
+                    .font(.callout)
+                    .foregroundStyle(upsEventTypeColor(event.eventType))
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 6) {
-                    Text(event.eventType.displayName)
-                        .font(.caption)
-                        .fontWeight(.medium)
-                    Text(event.workitemUID.isEmpty ? "—" : event.workitemUID)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(event.eventType.displayName)
+                            .font(.subheadline)
+                            .fontWeight(.semibold)
+
+                        // Show short workitem identifier if context is loaded
+                        if let shortID = UPSEventDetailHelpers.workitemShortIdentifier(event) {
+                            Text(shortID)
+                                .font(.footnote)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+
+                        Text(event.workitemUID.isEmpty ? "—" : event.workitemUID)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
+                    if !event.summary.isEmpty {
+                        Text(event.summary)
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(2)
+                    }
                 }
-                if !event.summary.isEmpty {
-                    Text(event.summary)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
+
+                Spacer()
+
+                // Loading indicator while fetching workitem context
+                if !event.isWorkitemContextLoaded && !event.workitemUID.isEmpty {
+                    ProgressView()
+                        .controlSize(.small)
+                        .accessibilityLabel("Loading workitem details")
                 }
+
+                Text(DICOMwebUPSHelpers.relativeTimeString(from: event.receivedAt))
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Received \(DICOMwebUPSHelpers.relativeTimeString(from: event.receivedAt))")
             }
 
-            Spacer()
+            // Workitem context details row
+            if let contextDesc = UPSEventDetailHelpers.workitemContextDescription(event) {
+                HStack(spacing: 4) {
+                    Rectangle()
+                        .fill(upsEventTypeColor(event.eventType).opacity(0.3))
+                        .frame(width: 2)
+                        .padding(.leading, 9)
+                        .accessibilityHidden(true)
 
-            Text(DICOMwebUPSHelpers.relativeTimeString(from: event.receivedAt))
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Received \(DICOMwebUPSHelpers.relativeTimeString(from: event.receivedAt))")
+                    Text(contextDesc)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .padding(.leading, 15)
+                }
+                .padding(.top, 3)
+                .accessibilityLabel("Workitem details: \(contextDesc)")
+            }
+
+            // Event-specific detail chips (state transition, progress bar)
+            if event.eventType == .stateChange, let newState = event.newState {
+                HStack(spacing: 5) {
+                    Spacer().frame(width: 28)
+                    if let prev = event.previousState {
+                        Text(prev)
+                            .font(.caption2.monospaced())
+                            .fontWeight(.medium)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.secondary.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 4))
+                        Image(systemName: "arrow.right")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(newState)
+                        .font(.caption2.monospaced())
+                        .fontWeight(.semibold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(upsStateChipColor(newState).opacity(0.15))
+                        .foregroundStyle(upsStateChipColor(newState))
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+                }
+                .padding(.top, 3)
+                .accessibilityLabel("State transition\(event.previousState.map { " from \($0)" } ?? "") to \(newState)")
+            }
+
+            if event.eventType == .progressChange, let pct = event.progressPercentage {
+                HStack(spacing: 6) {
+                    Spacer().frame(width: 28)
+                    GeometryReader { geo in
+                        ZStack(alignment: .leading) {
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.secondary.opacity(0.15))
+                            RoundedRectangle(cornerRadius: 3)
+                                .fill(Color.green)
+                                .frame(width: max(0, geo.size.width * CGFloat(pct) / 100.0))
+                        }
+                    }
+                    .frame(height: 6)
+                    .frame(maxWidth: 140)
+                    Text("\(pct)%")
+                        .font(.caption2.monospaced())
+                        .fontWeight(.medium)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.top, 3)
+                .accessibilityLabel("Progress: \(pct) percent")
+            }
         }
         .padding(.horizontal)
-        .padding(.vertical, 3)
+        .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(event.eventType.displayName) event for workitem \(event.workitemUID.isEmpty ? "unknown" : event.workitemUID)")
+        .accessibilityLabel(upsEventAccessibilityLabel(event))
         .accessibilityValue(event.summary.isEmpty ? "" : event.summary)
+    }
+
+    /// Builds a comprehensive accessibility label for a received event row.
+    private func upsEventAccessibilityLabel(_ event: UPSReceivedEvent) -> String {
+        var parts = ["\(event.eventType.displayName) event"]
+        if let shortID = UPSEventDetailHelpers.workitemShortIdentifier(event) {
+            parts.append("for \(shortID)")
+        }
+        parts.append("workitem \(event.workitemUID.isEmpty ? "unknown" : event.workitemUID)")
+        if let context = UPSEventDetailHelpers.workitemContextDescription(event) {
+            parts.append(context)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    /// Returns a SwiftUI color for a UPS state string used in chip badges.
+    private func upsStateChipColor(_ state: String) -> Color {
+        switch state {
+        case "SCHEDULED":   return .blue
+        case "IN PROGRESS": return .orange
+        case "COMPLETED":   return .green
+        case "CANCELED":    return .red
+        default:            return .secondary
+        }
     }
 
     // MARK: - 5.2 UPS Subscription Sheet
@@ -1171,7 +1289,7 @@ public struct DICOMwebView: View {
                         .accessibilityHint("Leave empty to subscribe to all workitems globally")
                     if viewModel.upsNewSubscriptionWorkitemUID.isEmpty {
                         Label("Global subscription — all workitems", systemImage: "globe")
-                            .font(.caption)
+                            .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
                 }
