@@ -905,13 +905,61 @@ public struct UPSReceivedEvent: Sendable, Identifiable, Equatable, Hashable {
     /// Human-readable summary of the event.
     public var summary: String
 
+    // MARK: - Event-Specific Details (from raw JSON payload)
+
+    /// Previous workitem state (for state change events).
+    public var previousState: String?
+    /// New workitem state (for state change events).
+    public var newState: String?
+    /// Reason for state change or cancellation.
+    public var reason: String?
+    /// Progress percentage (for progress events), 0–100.
+    public var progressPercentage: Int?
+    /// Progress description text (for progress events).
+    public var progressDescription: String?
+    /// Contact display name (for progress or cancel events).
+    public var contactDisplayName: String?
+
+    // MARK: - Workitem Context (fetched after event receipt)
+
+    /// Patient name associated with the workitem.
+    public var patientName: String?
+    /// Patient ID associated with the workitem.
+    public var patientID: String?
+    /// Procedure step label (human-readable workitem description).
+    public var procedureStepLabel: String?
+    /// Scheduled procedure step start date/time.
+    public var scheduledStartDateTime: String?
+    /// Current workitem state.
+    public var workitemState: String?
+    /// Workitem priority.
+    public var workitemPriority: String?
+    /// Accession number.
+    public var accessionNumber: String?
+    /// Whether workitem context has been loaded.
+    public var isWorkitemContextLoaded: Bool
+
     public init(
         id: UUID = UUID(),
         eventType: UPSEventType = .stateChange,
         workitemUID: String = "",
         transactionUID: String? = nil,
         receivedAt: Date = Date(),
-        summary: String = ""
+        summary: String = "",
+        previousState: String? = nil,
+        newState: String? = nil,
+        reason: String? = nil,
+        progressPercentage: Int? = nil,
+        progressDescription: String? = nil,
+        contactDisplayName: String? = nil,
+        patientName: String? = nil,
+        patientID: String? = nil,
+        procedureStepLabel: String? = nil,
+        scheduledStartDateTime: String? = nil,
+        workitemState: String? = nil,
+        workitemPriority: String? = nil,
+        accessionNumber: String? = nil,
+        isWorkitemContextLoaded: Bool = false
     ) {
         self.id = id
         self.eventType = eventType
@@ -919,6 +967,20 @@ public struct UPSReceivedEvent: Sendable, Identifiable, Equatable, Hashable {
         self.transactionUID = transactionUID
         self.receivedAt = receivedAt
         self.summary = summary
+        self.previousState = previousState
+        self.newState = newState
+        self.reason = reason
+        self.progressPercentage = progressPercentage
+        self.progressDescription = progressDescription
+        self.contactDisplayName = contactDisplayName
+        self.patientName = patientName
+        self.patientID = patientID
+        self.procedureStepLabel = procedureStepLabel
+        self.scheduledStartDateTime = scheduledStartDateTime
+        self.workitemState = workitemState
+        self.workitemPriority = workitemPriority
+        self.accessionNumber = accessionNumber
+        self.isWorkitemContextLoaded = isWorkitemContextLoaded
     }
 }
 

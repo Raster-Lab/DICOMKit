@@ -745,6 +745,7 @@ public final class DICOMwebViewModel {
     /// and begins consuming events from the async stream.
     public func startEventMonitoring() {
         guard !isUPSEventMonitoringActive else { return }
+
         isUPSEventMonitoringActive = true
         upsEventChannelState = .connecting
 
@@ -771,11 +772,13 @@ public final class DICOMwebViewModel {
                     self.eventChannelManager = manager
                 }
 
-                // Subscribe globally first — dcm4chee-arc (and the DICOM standard)
-                // requires an active REST subscription before the WebSocket handshake
-                // will be accepted. subscribeGlobally(autoConnect: true) performs both
-                // the REST POST and opens the WebSocket channel automatically.
-                try await manager.subscribeGlobally(deletionLock: false, autoConnect: true)
+                // Only open the WebSocket event channel.
+                // REST subscriptions are managed externally by the user
+                // (e.g. via CLI Workshop → dicom-ups subscribe) and must
+                // already exist on the server before the WebSocket will
+                // receive any events.  We do NOT register REST subscriptions
+                // here to avoid creating unwanted subscriptions on the server.
+                try await manager.openEventChannel()
 
                 await MainActor.run {
                     self.upsEventChannelState = .connected
@@ -810,7 +813,9 @@ public final class DICOMwebViewModel {
         }
     }
 
-    /// Stops monitoring UPS events, unsubscribes, and closes the WebSocket channel.
+    /// Stops monitoring UPS events and closes the WebSocket channel.
+    /// REST subscriptions are NOT removed — they are managed externally
+    /// (e.g. via CLI Workshop) and persist on the server independently.
     public func stopEventMonitoring() {
         wsEventTask?.cancel()
         wsEventTask = nil
@@ -818,11 +823,10 @@ public final class DICOMwebViewModel {
         eventChannelManager = nil
         isUPSEventMonitoringActive = false
         upsEventChannelState = .disconnected
-        // Clean up subscriptions and WebSocket asynchronously
+        // Only close the WebSocket channel — do NOT send REST unsubscribe
+        // requests, since subscriptions were created externally by the user.
         if let manager {
-            Task {
-                try? await manager.closeAll()
-            }
+            manager.closeEventChannel()
         }
     }
 
@@ -851,20 +855,53 @@ public final class DICOMwebViewModel {
             eventType = .cancellationRequested
         }
 
+        // Extract event-specific details from the raw DICOM JSON payload
+        let parsed = UPSEventPayloadParser.parse(rawJSON: wsEvent.rawJSON, eventType: wsEvent.eventType)
+
         let summary: String
         switch wsEvent.eventType {
         case .stateReport:
-            summary = "State changed for workitem \(wsEvent.workitemUID)"
+            if let prev = parsed.previousState, let cur = parsed.newState {
+                summary = "State: \(prev) → \(cur)"
+            } else if let cur = parsed.newState {
+                summary = "State changed to \(cur)"
+            } else {
+                summary = "State changed"
+            }
         case .progressReport:
-            summary = "Progress updated for workitem \(wsEvent.workitemUID)"
+            if let pct = parsed.progressPercentage, let desc = parsed.progressDescription {
+                summary = "Progress: \(pct)% — \(desc)"
+            } else if let pct = parsed.progressPercentage {
+                summary = "Progress: \(pct)%"
+            } else if let desc = parsed.progressDescription {
+                summary = "Progress: \(desc)"
+            } else {
+                summary = "Progress updated"
+            }
         case .cancelRequested:
-            summary = "Cancellation requested for workitem \(wsEvent.workitemUID)"
+            if let reason = parsed.reason {
+                summary = "Cancellation requested: \(reason)"
+            } else {
+                summary = "Cancellation requested"
+            }
         case .assigned:
-            summary = "Workitem \(wsEvent.workitemUID) assigned"
+            if let contact = parsed.contactDisplayName {
+                summary = "Assigned to \(contact)"
+            } else {
+                summary = "Workitem assigned"
+            }
         case .completed:
-            summary = "Workitem \(wsEvent.workitemUID) completed"
+            if let reason = parsed.reason {
+                summary = "Completed — \(reason)"
+            } else {
+                summary = "Workitem completed"
+            }
         case .canceled:
-            summary = "Workitem \(wsEvent.workitemUID) canceled"
+            if let reason = parsed.reason {
+                summary = "Canceled — \(reason)"
+            } else {
+                summary = "Workitem canceled"
+            }
         }
 
         return UPSReceivedEvent(
@@ -872,7 +909,13 @@ public final class DICOMwebViewModel {
             workitemUID: wsEvent.workitemUID,
             transactionUID: wsEvent.transactionUID,
             receivedAt: wsEvent.receivedAt,
-            summary: summary
+            summary: summary,
+            previousState: parsed.previousState,
+            newState: parsed.newState,
+            reason: parsed.reason,
+            progressPercentage: parsed.progressPercentage,
+            progressDescription: parsed.progressDescription,
+            contactDisplayName: parsed.contactDisplayName
         )
     }
 
@@ -884,6 +927,7 @@ public final class DICOMwebViewModel {
     /// Appends a received UPS event to the event log.
     ///
     /// Trims history to `upsMaxEventHistory` entries, removing the oldest first.
+    /// Asynchronously fetches workitem context for richer display.
     public func appendReceivedEvent(_ event: UPSReceivedEvent) {
         upsReceivedEvents.insert(event, at: 0)
         if upsReceivedEvents.count > upsMaxEventHistory {
@@ -893,6 +937,11 @@ public final class DICOMwebViewModel {
         // Auto-update workitem state if this is a state change event
         if event.eventType == .stateChange {
             updateWorkitemFromEvent(event)
+        }
+
+        // Fetch workitem context asynchronously for richer display
+        if !event.workitemUID.isEmpty {
+            fetchWorkitemContextForEvent(eventID: event.id, workitemUID: event.workitemUID)
         }
     }
 
@@ -907,6 +956,42 @@ public final class DICOMwebViewModel {
             // Workitem state was updated; re-load from service for consistency
             upsWorkitems = service.getUPSWorkitems()
             _ = index // silences unused warning
+        }
+    }
+
+    /// Fetches workitem details from the server and enriches the received event.
+    ///
+    /// Reuses the existing `UPSEventChannelManager.upsClient` to avoid creating
+    /// new URLSessions that could destabilize the active WebSocket connection.
+    private func fetchWorkitemContextForEvent(eventID: UUID, workitemUID: String) {
+        // Reuse the event channel manager's persistent UPS client — creating a
+        // new client for each event would spawn separate URLSessions / TCP
+        // connections that interfere with dcm4chee-arc's WebSocket channel.
+        guard let client = eventChannelManager?.upsClient else { return }
+
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                let result = try await client.retrieveWorkitemResult(uid: workitemUID)
+
+                await MainActor.run {
+                    guard let index = self.upsReceivedEvents.firstIndex(where: { $0.id == eventID }) else { return }
+                    self.upsReceivedEvents[index].patientName = result.patientName
+                    self.upsReceivedEvents[index].patientID = result.patientID
+                    self.upsReceivedEvents[index].procedureStepLabel = result.procedureStepLabel
+                    self.upsReceivedEvents[index].scheduledStartDateTime = result.scheduledStartDateTime
+                    self.upsReceivedEvents[index].workitemState = result.state?.rawValue
+                    self.upsReceivedEvents[index].workitemPriority = result.priority?.rawValue
+                    self.upsReceivedEvents[index].accessionNumber = result.accessionNumber
+                    self.upsReceivedEvents[index].isWorkitemContextLoaded = true
+                }
+            } catch {
+                // Silently mark as loaded (no context available) — don't block event display
+                await MainActor.run {
+                    guard let index = self.upsReceivedEvents.firstIndex(where: { $0.id == eventID }) else { return }
+                    self.upsReceivedEvents[index].isWorkitemContextLoaded = true
+                }
+            }
         }
     }
 

@@ -357,6 +357,217 @@ public enum DICOMwebSTOWHelpers: Sendable {
     }
 }
 
+// MARK: - UPS Event Payload Parser
+
+/// Parsed details from a UPS WebSocket event raw JSON payload.
+public struct UPSEventPayloadDetails: Sendable, Equatable {
+    public var previousState: String?
+    public var newState: String?
+    public var reason: String?
+    public var progressPercentage: Int?
+    public var progressDescription: String?
+    public var contactDisplayName: String?
+}
+
+/// Platform-independent parser that extracts event-specific information
+/// from a raw DICOM JSON payload delivered over the UPS WebSocket channel.
+///
+/// Reference: PS3.18 §11.6 and PS3.4 Annex CC.2.6
+public enum UPSEventPayloadParser: Sendable {
+
+    /// Parses event-specific details from a raw DICOM JSON payload.
+    ///
+    /// - Parameters:
+    ///   - rawJSON: The serialized DICOM JSON data from `UPSWebSocketEvent.rawJSON`.
+    ///   - eventType: The DICOMWeb event type raw value (e.g. "StateReport", "ProgressReport").
+    /// - Returns: Parsed details with available fields populated.
+    public static func parse(rawJSON: Data, eventType: Any) -> UPSEventPayloadDetails {
+        var details = UPSEventPayloadDetails()
+        guard !rawJSON.isEmpty,
+              let json = try? JSONSerialization.jsonObject(with: rawJSON) as? [String: Any] else {
+            return details
+        }
+
+        // Use string representation of event type for switching
+        let typeString = String(describing: eventType)
+
+        // Extract Procedure Step State (0074,1000) — present in state reports
+        if let stateElement = json["00741000"] as? [String: Any],
+           let values = stateElement["Value"] as? [String],
+           let state = values.first {
+            details.newState = state
+        }
+
+        // Look for previous state in custom/extended fields
+        if let prevElement = json["PreviousState"] as? [String: Any],
+           let values = prevElement["Value"] as? [String],
+           let prev = values.first {
+            details.previousState = prev
+        }
+
+        // Extract Reason for state change / cancellation
+        // ReasonForStateChange or (0074,1238) Reason for Cancellation
+        if let reasonElement = json["ReasonForStateChange"] as? [String: Any],
+           let values = reasonElement["Value"] as? [String],
+           let reason = values.first {
+            details.reason = reason
+        } else if let reasonElement = json["00741238"] as? [String: Any],
+                  let values = reasonElement["Value"] as? [String],
+                  let reason = values.first {
+            details.reason = reason
+        }
+
+        // Extract Completion Notes (for completed events)
+        if details.reason == nil,
+           let notesElement = json["CompletionNotes"] as? [String: Any],
+           let values = notesElement["Value"] as? [String],
+           let notes = values.first {
+            details.reason = notes
+        }
+
+        // Extract progress information
+        // Procedure Step Progress (0074,1004)
+        if let progressElement = json["00741004"] as? [String: Any],
+           let values = progressElement["Value"] as? [Any],
+           let first = values.first {
+            if let intVal = first as? Int {
+                details.progressPercentage = intVal
+            } else if let strVal = first as? String, let intVal = Int(strVal) {
+                details.progressPercentage = intVal
+            } else if let dblVal = first as? Double {
+                details.progressPercentage = Int(dblVal)
+            }
+        }
+
+        // Procedure Step Progress Description (0074,1006)
+        if let descElement = json["00741006"] as? [String: Any],
+           let values = descElement["Value"] as? [String],
+           let desc = values.first {
+            details.progressDescription = desc
+        }
+
+        // Contact Display Name (various fields)
+        if let contactElement = json["ContactDisplayName"] as? [String: Any],
+           let values = contactElement["Value"] as? [String],
+           let name = values.first {
+            details.contactDisplayName = name
+        }
+
+        // Try extracting performer from Actual Human Performers Sequence (0040,4035)
+        if details.contactDisplayName == nil,
+           let performerSeq = json["00404035"] as? [String: Any],
+           let seqValues = performerSeq["Value"] as? [[String: Any]],
+           let firstPerformer = seqValues.first {
+            if let nameElement = firstPerformer["00404037"] as? [String: Any],
+               let nameValues = nameElement["Value"] as? [Any],
+               let name = nameValues.first {
+                if let nameDict = name as? [String: Any], let alpha = nameDict["Alphabetic"] as? String {
+                    details.contactDisplayName = alpha
+                } else if let nameStr = name as? String {
+                    details.contactDisplayName = nameStr
+                }
+            }
+        }
+
+        // Infer state names for known transitions when only new state is present
+        if details.previousState == nil, details.newState != nil {
+            // For stateReport-type events, infer previous state from the DICOM state machine
+            if typeString.contains("stateReport") || typeString.contains("StateReport") {
+                if let newState = details.newState {
+                    switch newState {
+                    case "IN PROGRESS":
+                        details.previousState = "SCHEDULED"
+                    case "COMPLETED", "CANCELED":
+                        details.previousState = "IN PROGRESS"
+                    default:
+                        break
+                    }
+                }
+            }
+        }
+
+        return details
+    }
+}
+
+// MARK: - UPS Event Detail Formatting Helpers
+
+/// Platform-independent helpers for formatting UPS event details for display.
+public enum UPSEventDetailHelpers: Sendable {
+
+    /// Returns a formatted workitem context string for display below the event summary.
+    ///
+    /// - Parameter event: The received event with optional workitem context.
+    /// - Returns: A multi-line string with workitem details, or nil if no context is available.
+    public static func workitemContextDescription(_ event: UPSReceivedEvent) -> String? {
+        guard event.isWorkitemContextLoaded else { return nil }
+        var parts: [String] = []
+
+        if let label = event.procedureStepLabel, !label.isEmpty {
+            parts.append("Procedure: \(label)")
+        }
+        if let name = event.patientName, !name.isEmpty {
+            parts.append("Patient: \(name)")
+        }
+        if let pid = event.patientID, !pid.isEmpty {
+            parts.append("ID: \(pid)")
+        }
+        if let state = event.workitemState, !state.isEmpty {
+            parts.append("State: \(state)")
+        }
+        if let priority = event.workitemPriority, !priority.isEmpty {
+            parts.append("Priority: \(priority)")
+        }
+        if let accession = event.accessionNumber, !accession.isEmpty {
+            parts.append("Accession: \(accession)")
+        }
+        if let scheduled = event.scheduledStartDateTime, !scheduled.isEmpty {
+            parts.append("Scheduled: \(scheduled)")
+        }
+
+        return parts.isEmpty ? nil : parts.joined(separator: "  ·  ")
+    }
+
+    /// Returns a short one-line identifier for the workitem (label or patient info).
+    ///
+    /// - Parameter event: The received event with optional workitem context.
+    /// - Returns: A short identifier string, or nil if no context is available.
+    public static func workitemShortIdentifier(_ event: UPSReceivedEvent) -> String? {
+        if let label = event.procedureStepLabel, !label.isEmpty {
+            return label
+        }
+        if let name = event.patientName, !name.isEmpty {
+            if let pid = event.patientID, !pid.isEmpty {
+                return "\(name) (\(pid))"
+            }
+            return name
+        }
+        return nil
+    }
+
+    /// Returns an SF Symbol name appropriate for the event's new state.
+    public static func stateTransitionSFSymbol(newState: String?) -> String {
+        switch newState {
+        case "SCHEDULED":   return "calendar"
+        case "IN PROGRESS": return "arrow.triangle.2.circlepath"
+        case "COMPLETED":   return "checkmark.circle.fill"
+        case "CANCELED":    return "xmark.circle.fill"
+        default:            return "arrow.left.arrow.right"
+        }
+    }
+
+    /// Returns a color name string for the event's new state.
+    public static func stateTransitionColor(newState: String?) -> String {
+        switch newState {
+        case "SCHEDULED":   return ".blue"
+        case "IN PROGRESS": return ".orange"
+        case "COMPLETED":   return ".green"
+        case "CANCELED":    return ".red"
+        default:            return ".secondary"
+        }
+    }
+}
+
 // MARK: - UPS-RS Helpers
 
 /// Platform-independent helpers for UPS-RS workitem display and state machine.
