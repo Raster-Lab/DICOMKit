@@ -14,7 +14,7 @@ struct QueryExecutor {
     
     /// Executes a C-FIND query and returns results
     func executeQuery(level: QueryLevel, queryKeys: QueryKeys) async throws -> [GenericQueryResult] {
-        let configuration = try buildConfiguration()
+        let configuration = try buildConfiguration(level: level)
         
         return try await DICOMQueryService.find(
             host: host,
@@ -26,11 +26,13 @@ struct QueryExecutor {
     
     // MARK: - Private Helper Methods
     
-    private func buildConfiguration() throws -> QueryConfiguration {
+    private func buildConfiguration(level: QueryLevel) throws -> QueryConfiguration {
+        let informationModel: QueryRetrieveInformationModel = (level == .patient) ? .patientRoot : .studyRoot
         return QueryConfiguration(
             callingAETitle: try AETitle(callingAE),
             calledAETitle: try AETitle(calledAE),
-            timeout: timeout
+            timeout: timeout,
+            informationModel: informationModel
         )
     }
 }

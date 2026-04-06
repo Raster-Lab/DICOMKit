@@ -3,7 +3,7 @@ import ArgumentParser
 import DICOMCore
 import DICOMNetwork
 
-@available(macOS 10.15, *)
+@main
 struct DICOMQuery: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-query",
@@ -12,21 +12,24 @@ struct DICOMQuery: AsyncParsableCommand {
             Performs DICOM queries against PACS servers using the C-FIND service.
             Supports patient, study, series, and instance level queries.
             
-            URL Formats:
-              pacs://hostname:port     - DICOM C-FIND protocol
-              http://hostname/path     - QIDO-RS RESTful protocol (basic)
+            The --host option accepts a hostname or IP address, optionally with a
+            port suffix (host:port). Use --port to specify the port separately.
+            If no port is given, the default is 11112.
             
             Examples:
-              dicom-query pacs://server:11112 --aet MY_SCU --patient-name "SMITH^JOHN"
-              dicom-query pacs://server:11112 --aet MY_SCU --study-date 20240101-20240131
-              dicom-query pacs://server:11112 --aet MY_SCU --modality CT --format json
-              dicom-query pacs://server:11112 --aet MY_SCU --level series --study-uid 1.2.3
+              dicom-query --host server --port 11112 --aet MY_SCU --patient-name "SMITH^JOHN"
+              dicom-query --host server:11112 --aet MY_SCU --study-date 20240101-20240131
+              dicom-query --host server --port 4242 --aet MY_SCU --modality CT --format json
+              dicom-query --host 192.168.1.100 --port 11112 --aet MY_SCU --level series --study-uid 1.2.3
             """,
         version: "1.0.0"
     )
     
-    @Argument(help: "PACS server URL (pacs://host:port or http://host/path)")
-    var url: String
+    @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+    var host: String
+    
+    @Option(name: .long, help: "PACS server port (default: 11112)")
+    var port: UInt16?
     
     @Option(name: .long, help: "Local Application Entity Title (calling AE)")
     var aet: String
@@ -75,8 +78,7 @@ struct DICOMQuery: AsyncParsableCommand {
     
     mutating func run() async throws {
         #if canImport(Network)
-        // Parse URL
-        let serverInfo = try parseServerURL(url)
+        let serverInfo = resolveHostPort()
         
         if verbose {
             fprintln("Connecting to: \(serverInfo.host):\(serverInfo.port)")
@@ -84,10 +86,6 @@ struct DICOMQuery: AsyncParsableCommand {
             fprintln("Called AE: \(calledAet)")
             fprintln("Query Level: \(level.queryLevel)")
             fprintln("")
-        }
-        
-        guard serverInfo.scheme == "pacs" else {
-            throw ValidationError("Only pacs:// URLs are supported in this version. QIDO-RS support coming soon.")
         }
         
         // Build query keys
@@ -202,30 +200,26 @@ struct DICOMQuery: AsyncParsableCommand {
         return keys
     }
     
-    func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String, port: UInt16) {
-        // Parse pacs://hostname:port or http://hostname/path
-        guard let url = URL(string: urlString) else {
-            throw ValidationError("Invalid URL: \(urlString)")
+    /// Resolves the final host and port from ``--host`` and ``--port`` options.
+    func resolveHostPort() -> (host: String, port: UInt16) {
+        var resolvedHost = host
+        var resolvedPort: UInt16 = port ?? 11112
+
+        if resolvedHost.hasPrefix("pacs://") {
+            resolvedHost = String(resolvedHost.dropFirst(7))
         }
-        
-        guard let scheme = url.scheme, ["pacs", "http", "https"].contains(scheme) else {
-            throw ValidationError("URL must use pacs://, http://, or https:// scheme")
+
+        if let lastColon = resolvedHost.lastIndex(of: ":") {
+            let portString = String(resolvedHost[resolvedHost.index(after: lastColon)...])
+            if let embeddedPort = UInt16(portString) {
+                resolvedHost = String(resolvedHost[..<lastColon])
+                if port == nil {
+                    resolvedPort = embeddedPort
+                }
+            }
         }
-        
-        guard let host = url.host else {
-            throw ValidationError("URL must include a hostname")
-        }
-        
-        let port: UInt16
-        if let urlPort = url.port {
-            port = UInt16(urlPort)
-        } else if scheme == "pacs" {
-            port = 104 // DICOM default port
-        } else {
-            port = scheme == "https" ? 443 : 80
-        }
-        
-        return (scheme, host, port)
+
+        return (resolvedHost, resolvedPort)
     }
 }
 
@@ -256,5 +250,3 @@ enum OutputFormat: String, ExpressibleByArgument {
 private func fprintln(_ message: String) {
     FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
-
-DICOMQuery.main()

@@ -5,6 +5,9 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+import UniformTypeIdentifiers
+import DICOMKit
+import DICOMCore
 
 /// Networking hub view providing C-ECHO, C-FIND, C-MOVE/GET, C-STORE,
 /// MWL, MPPS, Print Management, and connection monitoring.
@@ -56,6 +59,9 @@ public struct NetworkingView: View {
         .sheet(isPresented: $viewModel.isNewPrintJobSheetPresented) {
             NewPrintJobSheet(serverProfiles: viewModel.serverProfiles) { job in
                 viewModel.addPrintJob(job)
+                Task {
+                    await viewModel.executePrintJob(id: job.id)
+                }
             }
         }
     }
@@ -460,7 +466,7 @@ public struct NetworkingView: View {
         VStack(spacing: 0) {
             HStack {
                 Text("DICOM Print Management")
-                    .font(.headline)
+                    .font(.title3)
                 Spacer()
                 Button {
                     viewModel.isNewPrintJobSheetPresented = true
@@ -482,23 +488,84 @@ public struct NetworkingView: View {
             } else {
                 List(viewModel.printJobs, id: \.id, selection: $viewModel.selectedPrintJobID) { job in
                     HStack {
-                        Image(systemName: "printer")
-                            .foregroundStyle(.secondary)
+                        Image(systemName: printJobIcon(for: job.status))
+                            .foregroundStyle(printJobColor(for: job.status))
                         VStack(alignment: .leading, spacing: 2) {
                             Text(job.label)
-                                .font(.body)
-                            Text("\(job.numberOfCopies) copies")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .font(.headline)
+                            HStack(spacing: 8) {
+                                Text("\(job.numberOfCopies) copies")
+                                if !job.imageFilePaths.isEmpty {
+                                    Label("\(job.imageFilePaths.count) image\(job.imageFilePaths.count == 1 ? "" : "s")",
+                                          systemImage: "photo")
+                                } else {
+                                    Text("No images")
+                                        .foregroundStyle(.orange)
+                                }
+                            }
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            if let errorMessage = job.errorMessage {
+                                Text(errorMessage)
+                                    .font(.caption)
+                                    .foregroundStyle(.red)
+                                    .lineLimit(2)
+                            }
                         }
                         Spacer()
+                        if job.status == .pending && !job.imageFilePaths.isEmpty {
+                            Button {
+                                Task {
+                                    await viewModel.executePrintJob(id: job.id)
+                                }
+                            } label: {
+                                Label("Send", systemImage: "paperplane.fill")
+                                    .font(.callout)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.blue)
+                            .accessibilityLabel("Send print job to printer")
+                            .accessibilityHint("Sends \(job.imageFilePaths.count) images to the DICOM printer")
+                        } else if job.status == .printing {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                         Text(job.status.rawValue)
-                            .font(.caption2)
+                            .font(.caption)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(.quaternary)
+                            .background(printJobColor(for: job.status).opacity(0.15))
+                            .foregroundStyle(printJobColor(for: job.status))
                             .clipShape(Capsule())
                     }
+                }
+            }
+
+            // Print execution log
+            if !viewModel.printExecutionLog.isEmpty {
+                Divider()
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Execution Log")
+                            .font(.title3)
+                        Spacer()
+                        Button("Clear") {
+                            viewModel.printExecutionLog = ""
+                        }
+                        .font(.callout)
+                    }
+                    .padding(.horizontal)
+                    .padding(.top, 8)
+
+                    ScrollView {
+                        Text(viewModel.printExecutionLog)
+                            .font(.system(.callout, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal)
+                            .textSelection(.enabled)
+                    }
+                    .frame(maxHeight: 200)
                 }
             }
         }
@@ -627,6 +694,24 @@ public struct NetworkingView: View {
         formatter.allowedUnits = [.useAll]
         formatter.countStyle = .file
         return formatter.string(fromByteCount: bytes)
+    }
+
+    private func printJobIcon(for status: PrintJobStatus) -> String {
+        switch status {
+        case .pending:   return "clock"
+        case .printing:  return "printer.fill"
+        case .completed: return "checkmark.circle.fill"
+        case .failed:    return "xmark.circle.fill"
+        }
+    }
+
+    private func printJobColor(for status: PrintJobStatus) -> Color {
+        switch status {
+        case .pending:   return .orange
+        case .printing:  return .blue
+        case .completed: return .green
+        case .failed:    return .red
+        }
     }
 }
 
@@ -898,8 +983,18 @@ struct NewPrintJobSheet: View {
     @State private var selectedServerID: UUID?
     @State private var numberOfCopies: Int = 1
     @State private var priority: PrintPriority = .med
-    @State private var mediumType: PrintMediumType = .clearFilm
+    @State private var mediumType: PrintMediumType = .paper
     @State private var filmLayout: FilmLayout = .standard2x2
+    @State private var filmSize: PrintFilmSize = .size14x17
+    @State private var selectedImageURLs: [URL] = []
+    @State private var isFileImporterPresented: Bool = false
+    @State private var isPreviewVisible: Bool = false
+
+    #if canImport(CoreGraphics)
+    @State private var previewImages: [URL: CGImage] = [:]
+    @State private var previewLoadingURLs: Set<URL> = []
+    @State private var previewCurrentSheet: Int = 0
+    #endif
 
     var body: some View {
         NavigationStack {
@@ -940,7 +1035,75 @@ struct NewPrintJobSheet: View {
                         }
                     }
                     .accessibilityLabel("Film layout")
+                    Picker("Film Size", selection: $filmSize) {
+                        ForEach(PrintFilmSize.allCases, id: \.self) { size in
+                            Text(size.displayName).tag(size)
+                        }
+                    }
+                    .accessibilityLabel("Film size")
                 }
+
+                Section {
+                    Button {
+                        isFileImporterPresented = true
+                    } label: {
+                        Label("Add DICOM Images…", systemImage: "plus.circle")
+                    }
+                    .accessibilityLabel("Select DICOM image files for printing")
+                    .accessibilityHint("Opens a file picker to choose DICOM files")
+
+                    if selectedImageURLs.isEmpty {
+                        Text("No images selected")
+                            .foregroundStyle(.secondary)
+                            .font(.callout)
+                    } else {
+                        ForEach(Array(selectedImageURLs.enumerated()), id: \.offset) { index, url in
+                            HStack {
+                                Image(systemName: "doc.richtext")
+                                    .foregroundStyle(.secondary)
+                                Text(url.lastPathComponent)
+                                    .font(.callout)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Button(role: .destructive) {
+                                    let removed = selectedImageURLs.remove(at: index)
+                                    removed.stopAccessingSecurityScopedResource()
+                                    #if canImport(CoreGraphics)
+                                    previewImages.removeValue(forKey: removed)
+                                    #endif
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Remove \(url.lastPathComponent)")
+                            }
+                        }
+                    }
+                } header: {
+                    HStack {
+                        Text("Images (\(selectedImageURLs.count))")
+                        if selectedImageURLs.count > filmLayout.cellCount {
+                            Spacer()
+                            Text("\(selectedImageURLs.count) images for \(filmLayout.cellCount) cells — multiple films will be created")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+
+                #if canImport(CoreGraphics)
+                if !selectedImageURLs.isEmpty {
+                    Section {
+                        DisclosureGroup("Print Preview", isExpanded: $isPreviewVisible) {
+                            filmPreviewContent
+                        }
+                        .accessibilityLabel("Print preview")
+                        .accessibilityHint("Shows how images will appear on the printed film")
+                    }
+                }
+                #endif
             }
             .formStyle(.grouped)
             .navigationTitle("New Print Job")
@@ -949,27 +1112,243 @@ struct NewPrintJobSheet: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        stopAllSecurityScopedAccess()
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Create") {
                         guard let serverID = selectedServerID else { return }
+                        // Create security-scoped bookmarks before releasing access
+                        var bookmarks: [Data] = []
+                        for url in selectedImageURLs {
+                            #if os(macOS)
+                            if let bookmark = try? url.bookmarkData(
+                                options: .withSecurityScope,
+                                includingResourceValuesForKeys: nil,
+                                relativeTo: nil
+                            ) {
+                                bookmarks.append(bookmark)
+                            }
+                            #else
+                            if let bookmark = try? url.bookmarkData(
+                                options: [],
+                                includingResourceValuesForKeys: nil,
+                                relativeTo: nil
+                            ) {
+                                bookmarks.append(bookmark)
+                            }
+                            #endif
+                        }
                         let job = PrintJob(
                             label: label.trimmingCharacters(in: .whitespaces),
                             printerServerProfileID: serverID,
                             numberOfCopies: numberOfCopies,
                             priority: priority,
                             mediumType: mediumType,
-                            filmLayout: filmLayout
+                            filmLayout: filmLayout,
+                            filmSize: filmSize,
+                            imageFilePaths: selectedImageURLs.map(\.path),
+                            imageBookmarks: bookmarks
                         )
+                        stopAllSecurityScopedAccess()
                         onSave(job)
                         dismiss()
                     }
-                    .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty || selectedServerID == nil)
+                    .disabled(label.trimmingCharacters(in: .whitespaces).isEmpty || selectedServerID == nil || selectedImageURLs.isEmpty)
                 }
             }
         }
-        .frame(minWidth: 420, minHeight: 440)
+        .fileImporter(
+            isPresented: $isFileImporterPresented,
+            allowedContentTypes: [.data],
+            allowsMultipleSelection: true
+        ) { result in
+            switch result {
+            case .success(let urls):
+                let dicomExts: Set<String> = ["dcm", "dicom", "dic"]
+                let newURLs = urls.filter { url in
+                    guard url.startAccessingSecurityScopedResource() else { return false }
+                    let ext = url.pathExtension.lowercased()
+                    if dicomExts.contains(ext) || ext.isEmpty {
+                        return true
+                    }
+                    url.stopAccessingSecurityScopedResource()
+                    return false
+                }
+                selectedImageURLs.append(contentsOf: newURLs)
+            case .failure:
+                break
+            }
+        }
+        .frame(minWidth: 480, minHeight: 600)
+        #if canImport(CoreGraphics)
+        .onChange(of: selectedImageURLs) { _, newURLs in
+            loadPreviewImages(for: newURLs)
+            let sheetCount = PrintHelpers.filmSheetCount(imageCount: newURLs.count, layout: filmLayout)
+            if previewCurrentSheet >= sheetCount {
+                previewCurrentSheet = max(0, sheetCount - 1)
+            }
+        }
+        .onChange(of: filmLayout) { _, _ in
+            let sheetCount = PrintHelpers.filmSheetCount(imageCount: selectedImageURLs.count, layout: filmLayout)
+            if previewCurrentSheet >= sheetCount {
+                previewCurrentSheet = max(0, sheetCount - 1)
+            }
+        }
+        #endif
+    }
+
+    // MARK: - Print Preview
+
+    #if canImport(CoreGraphics)
+
+    private var filmPreviewContent: some View {
+        VStack(spacing: 8) {
+            let sheetCount = PrintHelpers.filmSheetCount(imageCount: selectedImageURLs.count, layout: filmLayout)
+            Text(PrintHelpers.previewSummary(imageCount: selectedImageURLs.count, layout: filmLayout))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .accessibilityLabel(PrintHelpers.previewSummary(imageCount: selectedImageURLs.count, layout: filmLayout))
+
+            filmGridView(forSheet: previewCurrentSheet)
+                .padding(8)
+                .background(Color.black)
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Film sheet \(previewCurrentSheet + 1) of \(sheetCount) preview")
+
+            if sheetCount > 1 {
+                HStack {
+                    Button {
+                        previewCurrentSheet = max(0, previewCurrentSheet - 1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .disabled(previewCurrentSheet <= 0)
+                    .accessibilityLabel("Previous film sheet")
+
+                    Text("Sheet \(previewCurrentSheet + 1) of \(sheetCount)")
+                        .font(.caption)
+                        .monospacedDigit()
+
+                    Button {
+                        previewCurrentSheet = min(sheetCount - 1, previewCurrentSheet + 1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .disabled(previewCurrentSheet >= sheetCount - 1)
+                    .accessibilityLabel("Next film sheet")
+                }
+            }
+        }
+    }
+
+    private func filmGridView(forSheet sheet: Int) -> some View {
+        let indices = PrintHelpers.imageIndices(
+            forSheet: sheet, layout: filmLayout, totalImages: selectedImageURLs.count
+        )
+        let cols = filmLayout.columns
+        let rows = filmLayout.rows
+
+        return Grid(horizontalSpacing: 2, verticalSpacing: 2) {
+            ForEach(0 ..< rows, id: \.self) { row in
+                GridRow {
+                    ForEach(0 ..< cols, id: \.self) { col in
+                        let cellIndex = row * cols + col
+                        let imageIndex = indices.lowerBound + cellIndex
+                        filmCellView(imageIndex: imageIndex, isPopulated: imageIndex < indices.upperBound)
+                            .aspectRatio(1, contentMode: .fit)
+                    }
+                }
+            }
+        }
+        .frame(maxHeight: 260)
+    }
+
+    @ViewBuilder
+    private func filmCellView(imageIndex: Int, isPopulated: Bool) -> some View {
+        if isPopulated, imageIndex < selectedImageURLs.count {
+            let url = selectedImageURLs[imageIndex]
+            if let cgImage = previewImages[url] {
+                #if os(macOS)
+                let nsImage = NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .scaledToFit()
+                    .background(Color.black)
+                    .accessibilityLabel("Image \(imageIndex + 1): \(url.lastPathComponent)")
+                #else
+                Image(uiImage: UIImage(cgImage: cgImage))
+                    .resizable()
+                    .scaledToFit()
+                    .background(Color.black)
+                    .accessibilityLabel("Image \(imageIndex + 1): \(url.lastPathComponent)")
+                #endif
+            } else if previewLoadingURLs.contains(url) {
+                ZStack {
+                    Color.black
+                    ProgressView()
+                        .tint(.white)
+                        .scaleEffect(0.7)
+                }
+                .accessibilityLabel("Loading image \(imageIndex + 1)")
+            } else {
+                ZStack {
+                    Color.black
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(.orange)
+                        .font(.caption)
+                }
+                .accessibilityLabel("Failed to load image \(imageIndex + 1)")
+            }
+        } else {
+            ZStack {
+                Color(white: 0.15)
+                Text("—")
+                    .font(.caption)
+                    .foregroundStyle(.gray)
+            }
+            .accessibilityLabel("Empty cell")
+        }
+    }
+
+    private func loadPreviewImages(for urls: [URL]) {
+        for url in urls where previewImages[url] == nil && !previewLoadingURLs.contains(url) {
+            previewLoadingURLs.insert(url)
+            Task.detached {
+                let path = url.path
+                var image: CGImage?
+                if let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+                   let file = try? DICOMFile.read(from: data) {
+                    // Use stored window settings if available
+                    if file.windowSettings() != nil {
+                        image = file.renderFrameWithStoredWindow(0)
+                    } else {
+                        // Apply modality-specific defaults for better thumbnails
+                        let modality = file.dataSet.string(for: .modality) ?? ""
+                        let defaults = ThumbnailHelpers.defaultWindowSettings(for: modality)
+                        let window = WindowSettings(center: defaults.center, width: defaults.width)
+                        image = file.renderFrame(0, window: window)
+                    }
+                }
+                await MainActor.run {
+                    previewLoadingURLs.remove(url)
+                    if let image {
+                        previewImages[url] = image
+                    }
+                }
+            }
+        }
+    }
+
+    #endif
+
+    private func stopAllSecurityScopedAccess() {
+        for url in selectedImageURLs {
+            url.stopAccessingSecurityScopedResource()
+        }
     }
 }
 #endif

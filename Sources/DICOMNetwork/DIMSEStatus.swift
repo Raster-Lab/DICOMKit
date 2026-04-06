@@ -164,6 +164,12 @@ public enum DIMSEStatus: Sendable, Hashable {
         if case .success = self { return true }
         return false
     }
+
+    /// Whether this status indicates the operation succeeded (success or warning).
+    /// Warnings mean the SCP completed the operation, possibly with corrected values.
+    public var isSuccessOrWarning: Bool {
+        isSuccess || isWarning
+    }
     
     /// Whether this is a pending status (more results to follow)
     public var isPending: Bool {
@@ -197,7 +203,10 @@ public enum DIMSEStatus: Sendable, Hashable {
             return true
         case .unknown(let code):
             // Status codes 0xB000-0xBFFF are warnings
-            return code >= 0xB000 && code <= 0xBFFF
+            // Status codes 0x0001, 0x0106, 0x0107 are DIMSE-N warnings
+            // (PS3.7 Table CC.2.8-2: Attribute Value Out of Range, Attribute List Error)
+            return (code >= 0xB000 && code <= 0xBFFF)
+                || code == 0x0001 || code == 0x0106 || code == 0x0107
         default:
             return false
         }

@@ -320,12 +320,39 @@ public enum PrintHelpers: Sendable {
 
     /// Returns a description of a print job.
     public static func description(for job: PrintJob) -> String {
-        "\(job.filmLayout.displayName) layout, \(job.numberOfCopies) copy(s), \(job.mediumType.displayName)"
+        """
+        \(job.filmLayout.displayName) layout, \
+        \(job.numberOfCopies) copy(s), \
+        \(job.mediumType.displayName), \
+        \(job.imageFilePaths.count) image(s)
+        """
     }
 
     /// Returns all available layouts sorted by cell count.
     public static func allLayouts() -> [FilmLayout] {
         FilmLayout.allCases.sorted { $0.cellCount < $1.cellCount }
+    }
+
+    /// Computes how many film sheets are required for a given number of images.
+    public static func filmSheetCount(imageCount: Int, layout: FilmLayout) -> Int {
+        guard imageCount > 0 else { return 0 }
+        return (imageCount + layout.cellCount - 1) / layout.cellCount
+    }
+
+    /// Returns the range of image indices for a specific film sheet (0-based).
+    public static func imageIndices(forSheet sheet: Int, layout: FilmLayout, totalImages: Int) -> Range<Int> {
+        let start = sheet * layout.cellCount
+        let end = min(start + layout.cellCount, totalImages)
+        return start ..< end
+    }
+
+    /// Returns a summary string for the film preview.
+    public static func previewSummary(imageCount: Int, layout: FilmLayout) -> String {
+        let sheets = filmSheetCount(imageCount: imageCount, layout: layout)
+        if sheets <= 1 {
+            return "\(imageCount) of \(layout.cellCount) cells filled"
+        }
+        return "\(imageCount) images across \(sheets) film sheets"
     }
 }
 

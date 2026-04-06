@@ -104,10 +104,6 @@ public enum ToolCatalogHelpers: Sendable {
                               category: .fileProcessing, sfSymbol: "arrow.triangle.2.circlepath",
                               briefDescription: "Transfer syntax conversion and image export",
                               dicomStandardRef: "PS3.5"),
-            CLIToolDefinition(id: "dcm2dcm", name: "dcm2dcm", displayName: "DCM2DCM",
-                              category: .fileProcessing, sfSymbol: "arrow.right.arrow.left.square",
-                              briefDescription: "Convert DICOM transfer syntax (re-encode pixel data)",
-                              dicomStandardRef: "PS3.5"),
             CLIToolDefinition(id: "dicom-validate", name: "dicom-validate", displayName: "DICOM Validate",
                               category: .fileProcessing, sfSymbol: "checkmark.shield",
                               briefDescription: "DICOM conformance validation against IODs",
@@ -271,21 +267,22 @@ public enum ToolCatalogHelpers: Sendable {
         case "dicom-echo":
             return [
                 CLIParameterDefinition(
-                    id: "host", flag: "--host", displayName: "Hostname",
-                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
-                    helpText: "Remote DICOM server hostname or IP address",
+                    id: "host", flag: "--host", displayName: "Host",
+                    parameterType: .textField, placeholder: "hostname or IP address",
+                    helpText: "PACS server hostname or IP address (optionally host:port)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "port", flag: "--port", displayName: "Port",
                     parameterType: .integerField, placeholder: "11112",
-                    helpText: "Remote server port (default: 11112)",
+                    helpText: "PACS server port (default: 11112)",
                     defaultValue: "11112", minValue: 1, maxValue: 65535
                 ),
                 CLIParameterDefinition(
-                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    id: "aet", flag: "--aet", displayName: "AE Title",
                     parameterType: .textField, placeholder: "DICOMSTUDIO",
-                    helpText: "Local Application Entity title",
+                    helpText: "Local Application Entity title (calling AE)",
+                    isRequired: true,
                     defaultValue: "DICOMSTUDIO"
                 ),
                 CLIParameterDefinition(
@@ -295,31 +292,53 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "ANY-SCP"
                 ),
                 CLIParameterDefinition(
+                    id: "count", flag: "--count", displayName: "Echo Count",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: "Number of echo requests to send (default: 1)",
+                    defaultValue: "1", minValue: 1, maxValue: 1000
+                ),
+                CLIParameterDefinition(
                     id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
                     parameterType: .enumPicker, placeholder: "30",
                     helpText: "Connection timeout in seconds",
                     defaultValue: "30",
                     allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
                 ),
+                CLIParameterDefinition(
+                    id: "stats", flag: "--stats", displayName: "Show Statistics",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show statistics (min/avg/max round-trip time)"
+                ),
+                CLIParameterDefinition(
+                    id: "diagnose", flag: "--diagnose", displayName: "Network Diagnostics",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Run network diagnostics"
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show verbose output including connection details"
+                ),
             ]
         case "dicom-query":
             return [
                 CLIParameterDefinition(
-                    id: "host", flag: "--host", displayName: "Hostname",
-                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
-                    helpText: "Remote DICOM server hostname or IP address",
+                    id: "host", flag: "--host", displayName: "Host",
+                    parameterType: .textField, placeholder: "hostname or IP address",
+                    helpText: "PACS server hostname or IP address (optionally host:port)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "port", flag: "--port", displayName: "Port",
                     parameterType: .integerField, placeholder: "11112",
-                    helpText: "Remote server port (default: 11112)",
+                    helpText: "PACS server port (default: 11112)",
                     defaultValue: "11112", minValue: 1, maxValue: 65535
                 ),
                 CLIParameterDefinition(
-                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    id: "aet", flag: "--aet", displayName: "AE Title",
                     parameterType: .textField, placeholder: "DICOMSTUDIO",
-                    helpText: "Local Application Entity title",
+                    helpText: "Local Application Entity title (calling AE)",
+                    isRequired: true,
                     defaultValue: "DICOMSTUDIO"
                 ),
                 CLIParameterDefinition(
@@ -330,10 +349,10 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "level", flag: "--level", displayName: "Query Level",
-                    parameterType: .enumPicker, placeholder: "STUDY",
+                    parameterType: .enumPicker, placeholder: "study",
                     helpText: "Query retrieve level (PS3.4 C.6)",
-                    defaultValue: "STUDY",
-                    allowedValues: ["PATIENT", "STUDY", "SERIES", "IMAGE"]
+                    defaultValue: "study",
+                    allowedValues: ["patient", "study", "series", "instance"]
                 ),
                 CLIParameterDefinition(
                     id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
@@ -367,48 +386,61 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Series Instance UID to filter by (0020,000E)"
                 ),
                 CLIParameterDefinition(
-                    id: "series-date", flag: "--series-date", displayName: "Series Date",
-                    parameterType: .textField, placeholder: "e.g. 20260101 or 20260101-20260310",
-                    helpText: "Series date or range in YYYYMMDD format (0008,0021)"
+                    id: "accession-number", flag: "--accession-number", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession Number to filter by (0008,0050)"
                 ),
                 CLIParameterDefinition(
-                    id: "instance-uid", flag: "--instance-uid", displayName: "SOP Instance UID",
-                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "SOP Instance UID to search for (0008,0018)"
+                    id: "study-description", flag: "--study-description", displayName: "Study Description",
+                    parameterType: .textField, placeholder: "e.g. CHEST* or *ABDOMEN*",
+                    helpText: "Study description filter — supports wildcards (0008,1030)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "referring-physician", flag: "--referring-physician", displayName: "Referring Physician",
+                    parameterType: .textField, placeholder: "e.g. SMITH^JANE",
+                    helpText: "Referring physician name (0008,0090)",
+                    isAdvanced: true
                 ),
                 CLIParameterDefinition(
                     id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
-                    parameterType: .enumPicker, placeholder: "30",
+                    parameterType: .enumPicker, placeholder: "60",
                     helpText: "Connection timeout in seconds",
-                    defaultValue: "30",
+                    defaultValue: "60",
                     allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
                 ),
                 CLIParameterDefinition(
                     id: "output-format", flag: "--format", displayName: "Output Format",
-                    parameterType: .enumPicker, placeholder: "text",
+                    parameterType: .enumPicker, placeholder: "table",
                     helpText: "Output format for query results",
-                    defaultValue: "text",
-                    allowedValues: ["text", "json", "csv", "xml", "hl7"]
+                    defaultValue: "table",
+                    allowedValues: ["table", "json", "csv", "compact"]
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show verbose output including query details"
                 ),
             ]
         case "dicom-send":
             return [
                 CLIParameterDefinition(
-                    id: "host", flag: "--host", displayName: "Hostname",
-                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
-                    helpText: "Remote DICOM server hostname or IP address",
+                    id: "host", flag: "--host", displayName: "Host",
+                    parameterType: .textField, placeholder: "hostname or IP address",
+                    helpText: "PACS server hostname or IP address (optionally host:port)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "port", flag: "--port", displayName: "Port",
                     parameterType: .integerField, placeholder: "11112",
-                    helpText: "Remote server port (default: 11112)",
+                    helpText: "PACS server port (default: 11112)",
                     defaultValue: "11112", minValue: 1, maxValue: 65535
                 ),
                 CLIParameterDefinition(
-                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    id: "aet", flag: "--aet", displayName: "AE Title",
                     parameterType: .textField, placeholder: "DICOMSTUDIO",
-                    helpText: "Local Application Entity title (up to 16 characters)",
+                    helpText: "Local Application Entity title (calling AE)",
+                    isRequired: true,
                     defaultValue: "DICOMSTUDIO"
                 ),
                 CLIParameterDefinition(
@@ -467,25 +499,31 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Preferred transfer syntax proposed during C-STORE presentation context negotiation (PS3.8 §9.3.2)",
                     allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless", "deflate"]
                 ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show verbose output including progress"
+                ),
             ]
         case "dicom-retrieve":
             return [
                 CLIParameterDefinition(
-                    id: "host", flag: "--host", displayName: "Hostname",
-                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
-                    helpText: "Remote DICOM server hostname or IP address",
+                    id: "host", flag: "--host", displayName: "Host",
+                    parameterType: .textField, placeholder: "hostname or IP address",
+                    helpText: "PACS server hostname or IP address (optionally host:port)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "port", flag: "--port", displayName: "Port",
                     parameterType: .integerField, placeholder: "11112",
-                    helpText: "Remote server port (default: 11112)",
+                    helpText: "PACS server port (default: 11112)",
                     defaultValue: "11112", minValue: 1, maxValue: 65535
                 ),
                 CLIParameterDefinition(
-                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    id: "aet", flag: "--aet", displayName: "AE Title",
                     parameterType: .textField, placeholder: "DICOMSTUDIO",
-                    helpText: "Local Application Entity title (up to 16 characters)",
+                    helpText: "Local Application Entity title (calling AE)",
+                    isRequired: true,
                     defaultValue: "DICOMSTUDIO"
                 ),
                 CLIParameterDefinition(
@@ -523,6 +561,12 @@ public enum ToolCatalogHelpers: Sendable {
                     isAdvanced: true
                 ),
                 CLIParameterDefinition(
+                    id: "uid-list", flag: "--uid-list", displayName: "UID List File",
+                    parameterType: .filePath, placeholder: "e.g. study_uids.txt",
+                    helpText: "File containing list of Study UIDs to retrieve (one per line)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Directory",
                     parameterType: .outputPath, placeholder: "e.g. ~/Downloads/studies",
                     helpText: "Directory where retrieved files will be saved",
@@ -553,25 +597,31 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Requested transfer syntax for retrieved files — negotiated during association setup (PS3.8 §9.3.2)",
                     allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless"]
                 ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show verbose output including progress"
+                ),
             ]
         case "dicom-qr":
             return [
                 CLIParameterDefinition(
-                    id: "host", flag: "--host", displayName: "Hostname",
-                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
-                    helpText: "Remote DICOM server hostname or IP address",
+                    id: "host", flag: "--host", displayName: "Host",
+                    parameterType: .textField, placeholder: "hostname or IP address",
+                    helpText: "PACS server hostname or IP address (optionally host:port)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "port", flag: "--port", displayName: "Port",
                     parameterType: .integerField, placeholder: "11112",
-                    helpText: "Remote server port (default: 11112)",
+                    helpText: "PACS server port (default: 11112)",
                     defaultValue: "11112", minValue: 1, maxValue: 65535
                 ),
                 CLIParameterDefinition(
-                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    id: "aet", flag: "--aet", displayName: "AE Title",
                     parameterType: .textField, placeholder: "DICOMSTUDIO",
-                    helpText: "Local Application Entity title (up to 16 characters)",
+                    helpText: "Local Application Entity title (calling AE)",
+                    isRequired: true,
                     defaultValue: "DICOMSTUDIO"
                 ),
                 CLIParameterDefinition(
@@ -674,28 +724,29 @@ public enum ToolCatalogHelpers: Sendable {
             return [
                 CLIParameterDefinition(
                     id: "operation", flag: "", displayName: "Operation",
-                    parameterType: .enumPicker, placeholder: "query",
+                    parameterType: .subcommand, placeholder: "query",
                     helpText: "Modality Worklist operation: query scheduled procedures (C-FIND) or create a new worklist item (N-CREATE)",
                     isRequired: true,
                     defaultValue: "query",
                     allowedValues: ["query", "create"]
                 ),
                 CLIParameterDefinition(
-                    id: "host", flag: "--host", displayName: "Hostname",
-                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
-                    helpText: "Worklist SCP hostname or IP address (PS3.4 Annex K)",
+                    id: "host", flag: "--host", displayName: "Host",
+                    parameterType: .textField, placeholder: "hostname or IP address",
+                    helpText: "Worklist SCP hostname or IP address (optionally host:port) (PS3.4 Annex K)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "port", flag: "--port", displayName: "Port",
                     parameterType: .integerField, placeholder: "11112",
-                    helpText: "Worklist SCP port (default: 11112)",
+                    helpText: "PACS server port (default: 11112)",
                     defaultValue: "11112", minValue: 1, maxValue: 65535
                 ),
                 CLIParameterDefinition(
-                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    id: "aet", flag: "--aet", displayName: "AE Title",
                     parameterType: .textField, placeholder: "MODALITY",
                     helpText: "Local AE title identifying this modality (up to 16 characters)",
+                    isRequired: true,
                     defaultValue: "DICOMSTUDIO"
                 ),
                 CLIParameterDefinition(
@@ -928,28 +979,29 @@ public enum ToolCatalogHelpers: Sendable {
             return [
                 CLIParameterDefinition(
                     id: "operation", flag: "", displayName: "Operation",
-                    parameterType: .enumPicker, placeholder: "create",
+                    parameterType: .subcommand, placeholder: "create",
                     helpText: "MPPS operation: create a new procedure step (N-CREATE) or update an existing one (N-SET)",
                     isRequired: true,
                     defaultValue: "create",
                     allowedValues: ["create", "update"]
                 ),
                 CLIParameterDefinition(
-                    id: "host", flag: "--host", displayName: "Hostname",
-                    parameterType: .textField, placeholder: "e.g. 192.168.1.100",
-                    helpText: "MPPS SCP hostname or IP address (PS3.4 Annex F)",
+                    id: "host", flag: "--host", displayName: "Host",
+                    parameterType: .textField, placeholder: "hostname or IP address",
+                    helpText: "MPPS SCP hostname or IP address (optionally host:port) (PS3.4 Annex F)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "port", flag: "--port", displayName: "Port",
                     parameterType: .integerField, placeholder: "11112",
-                    helpText: "MPPS SCP port (default: 11112)",
+                    helpText: "PACS server port (default: 11112)",
                     defaultValue: "11112", minValue: 1, maxValue: 65535
                 ),
                 CLIParameterDefinition(
-                    id: "calling-aet", flag: "--calling-aet", displayName: "Calling AE Title",
+                    id: "aet", flag: "--aet", displayName: "AE Title",
                     parameterType: .textField, placeholder: "MODALITY",
                     helpText: "Local AE title identifying the modality sending MPPS notifications",
+                    isRequired: true,
                     defaultValue: "DICOMSTUDIO"
                 ),
                 CLIParameterDefinition(
@@ -1515,46 +1567,6 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["5", "10", "15", "30", "60", "120"]
                 ),
             ]
-        case "dcm2dcm":
-            return [
-                CLIParameterDefinition(
-                    id: "input-file", flag: "", displayName: "Input DICOM File",
-                    parameterType: .filePath, placeholder: "Select a DICOM file...",
-                    helpText: "Source DICOM file to convert",
-                    isRequired: true
-                ),
-                CLIParameterDefinition(
-                    id: "target-syntax", flag: "--target-syntax", displayName: "Target Transfer Syntax",
-                    parameterType: .enumPicker, placeholder: "Select transfer syntax...",
-                    helpText: "Target transfer syntax for re-encoding (PS3.5 Annex A)",
-                    isRequired: true,
-                    allowedValues: [
-                        "Explicit VR Little Endian",
-                        "Implicit VR Little Endian",
-                        "Explicit VR Big Endian",
-                        "JPEG Baseline",
-                        "JPEG Extended",
-                        "JPEG Lossless",
-                        "JPEG Lossless SV1",
-                        "JPEG 2000 Lossless",
-                        "JPEG 2000",
-                        "JPEG-LS Lossless",
-                        "JPEG-LS Near-Lossless",
-                        "RLE Lossless"
-                    ]
-                ),
-                CLIParameterDefinition(
-                    id: "output-file", flag: "--output", displayName: "Output File",
-                    parameterType: .outputPath, placeholder: "converted.dcm",
-                    helpText: "Path for the converted output DICOM file"
-                ),
-                CLIParameterDefinition(
-                    id: "open-in-viewer", flag: "--open-viewer", displayName: "Open in Viewer",
-                    parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Open the converted file in the Viewer tab after conversion",
-                    defaultValue: "true"
-                ),
-            ]
         default:
             return []
         }
@@ -1577,9 +1589,10 @@ public enum CommandBuilderHelpers: Sendable {
         if let sub = subcommand, !sub.isEmpty {
             parts.append(sub)
         }
-        for value in parameterValues {
+        // Iterate in definition order so the command preview matches the canonical parameter order
+        for def in parameterDefinitions {
+            guard let value = parameterValues.first(where: { $0.parameterID == def.id }) else { continue }
             guard !value.stringValue.isEmpty else { continue }
-            guard let def = parameterDefinitions.first(where: { $0.id == value.parameterID }) else { continue }
             switch def.parameterType {
             case .booleanToggle:
                 if value.stringValue == "true" {
@@ -1598,8 +1611,12 @@ public enum CommandBuilderHelpers: Sendable {
                     parts.insert(value.stringValue, at: 1)
                 }
             default:
-                parts.append(def.flag)
-                parts.append(value.stringValue)
+                if def.flag.isEmpty {
+                    parts.append(value.stringValue)
+                } else {
+                    parts.append(def.flag)
+                    parts.append(value.stringValue)
+                }
             }
         }
         return parts.joined(separator: " ")
@@ -1814,7 +1831,10 @@ public enum EducationalHelpers: Sendable {
             return [
                 CLIExamplePreset(toolID: toolID, title: "Basic Echo Test",
                                  presetDescription: "Test connectivity to a PACS server",
-                                 commandString: "dicom-echo --host pacs.example.com --port 11112 --ae-title STUDIO --called-aet PACS"),
+                                 commandString: "dicom-echo --host pacs.example.com --port 11112 --aet STUDIO --called-aet PACS"),
+                CLIExamplePreset(toolID: toolID, title: "Echo with Stats",
+                                 presetDescription: "Send 10 echoes and show round-trip statistics",
+                                 commandString: "dicom-echo --host pacs.example.com --port 11112 --aet STUDIO --count 10 --stats"),
             ]
         case "dicom-anon":
             return [
@@ -1831,26 +1851,14 @@ public enum EducationalHelpers: Sendable {
                                  presetDescription: "Re-encode pixel data with JPEG 2000 lossless",
                                  commandString: "dicom-convert --transfer-syntax jpeg2000-lossless --output converted.dcm scan.dcm"),
             ]
-        case "dcm2dcm":
-            return [
-                CLIExamplePreset(toolID: toolID, title: "Decompress to Explicit VR LE",
-                                 presetDescription: "Convert any compressed DICOM file to uncompressed Explicit VR Little Endian",
-                                 commandString: "dcm2dcm --target-syntax \"Explicit VR Little Endian\" --output decompressed.dcm scan.dcm"),
-                CLIExamplePreset(toolID: toolID, title: "Compress with JPEG 2000 Lossless",
-                                 presetDescription: "Re-encode pixel data using JPEG 2000 lossless compression",
-                                 commandString: "dcm2dcm --target-syntax \"JPEG 2000 Lossless\" --output compressed.dcm scan.dcm"),
-                CLIExamplePreset(toolID: toolID, title: "Convert to JPEG-LS Lossless",
-                                 presetDescription: "Re-encode pixel data using JPEG-LS lossless compression",
-                                 commandString: "dcm2dcm --target-syntax \"JPEG-LS Lossless\" --output jpegls.dcm scan.dcm"),
-                CLIExamplePreset(toolID: toolID, title: "Convert to RLE Lossless",
-                                 presetDescription: "Re-encode pixel data using RLE lossless compression",
-                                 commandString: "dcm2dcm --target-syntax \"RLE Lossless\" --output rle.dcm scan.dcm"),
-            ]
         case "dicom-query":
             return [
                 CLIExamplePreset(toolID: toolID, title: "Query Studies by Modality",
                                  presetDescription: "Find all CT studies on the PACS",
-                                 commandString: "dicom-query --level study --modality CT --host pacs.example.com"),
+                                 commandString: "dicom-query --host pacs.example.com --port 11112 --aet STUDIO --modality CT"),
+                CLIExamplePreset(toolID: toolID, title: "Query by Patient Name",
+                                 presetDescription: "Search for studies by patient name with wildcards",
+                                 commandString: "dicom-query --host pacs.example.com --port 11112 --aet STUDIO --patient-name \"SMITH*\" --format json"),
             ]
         default:
             return []

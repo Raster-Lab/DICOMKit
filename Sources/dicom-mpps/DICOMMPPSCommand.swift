@@ -3,7 +3,7 @@ import ArgumentParser
 import DICOMCore
 import DICOMNetwork
 
-@available(macOS 10.15, macCatalyst 13, iOS 13, tvOS 13, watchOS 6, *)
+@main
 struct DICOMMPPSCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-mpps",
@@ -14,17 +14,19 @@ struct DICOMMPPSCommand: AsyncParsableCommand {
             procedure execution status.
             
             URL Format:
-              pacs://hostname:port     - DICOM MPPS protocol
+              --host hostname          - PACS server hostname or IP address
+              --host hostname:port     - Hostname with embedded port
+              --port port              - Optional explicit port (default: 11112)
             
             Examples:
               # Create MPPS (procedure started)
-              dicom-mpps create pacs://server:11112 \\
-                --aet MODALITY \\
+              dicom-mpps create --host server --port 11112 \\
+                --aet MODALITY --called-aet PACS_SCP \\
                 --study-uid 1.2.3.4.5.6.7.8.9 \\
                 --status "IN PROGRESS"
               
               # Update MPPS (procedure completed)
-              dicom-mpps update pacs://server:11112 \\
+              dicom-mpps update --host server --port 11112 \\
                 --aet MODALITY \\
                 --mpps-uid 1.2.840.113619.2.xxx \\
                 --status COMPLETED
@@ -37,27 +39,26 @@ struct DICOMMPPSCommand: AsyncParsableCommand {
     
     // MARK: - Shared Helper Functions
     
-    static func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String, port: UInt16) {
-        guard let url = URL(string: urlString) else {
-            throw ValidationError("Invalid URL: \(urlString)")
+    /// Resolves the final host and port from ``--host`` and ``--port`` options.
+    static func resolveHostPort(host: String, port: UInt16?) -> (host: String, port: UInt16) {
+        var resolvedHost = host
+        var resolvedPort: UInt16 = port ?? 11112
+
+        if resolvedHost.hasPrefix("pacs://") {
+            resolvedHost = String(resolvedHost.dropFirst(7))
         }
-        
-        guard let scheme = url.scheme, scheme == "pacs" else {
-            throw ValidationError("URL must use pacs:// scheme")
+
+        if let lastColon = resolvedHost.lastIndex(of: ":") {
+            let portString = String(resolvedHost[resolvedHost.index(after: lastColon)...])
+            if let embeddedPort = UInt16(portString) {
+                resolvedHost = String(resolvedHost[..<lastColon])
+                if port == nil {
+                    resolvedPort = embeddedPort
+                }
+            }
         }
-        
-        guard let host = url.host else {
-            throw ValidationError("URL must include a hostname")
-        }
-        
-        let port: UInt16
-        if let urlPort = url.port {
-            port = UInt16(urlPort)
-        } else {
-            port = 104 // DICOM default port
-        }
-        
-        return (scheme, host, port)
+
+        return (resolvedHost, resolvedPort)
     }
     
     static func parseStatus(_ statusString: String) throws -> MPPSStatus {
@@ -83,8 +84,11 @@ extension DICOMMPPSCommand {
             abstract: "Create MPPS instance (N-CREATE)"
         )
         
-        @Argument(help: "PACS server URL (pacs://host:port)")
-        var url: String
+        @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+        var host: String
+        
+        @Option(name: .long, help: "PACS server port (default: 11112)")
+        var port: UInt16?
         
         @Option(name: .long, help: "Local Application Entity Title (calling AE)")
         var aet: String
@@ -106,12 +110,7 @@ extension DICOMMPPSCommand {
         
         mutating func run() async throws {
             #if canImport(Network)
-            // Parse URL
-            let serverInfo = try DICOMMPPSCommand.parseServerURL(url)
-            
-            guard serverInfo.scheme == "pacs" else {
-                throw ValidationError("Only pacs:// URLs are supported")
-            }
+            let serverInfo = DICOMMPPSCommand.resolveHostPort(host: host, port: port)
             
             // Parse status
             let mppsStatus = try DICOMMPPSCommand.parseStatus(status)
@@ -144,7 +143,7 @@ extension DICOMMPPSCommand {
             fprintln("  MPPS Instance UID: \(mppsInstanceUID)")
             fprintln("")
             fprintln("Use this UID to update the MPPS when the procedure completes:")
-            fprintln("  dicom-mpps update pacs://\(serverInfo.host):\(serverInfo.port) \\")
+            fprintln("  dicom-mpps update --host \(serverInfo.host) --port \(serverInfo.port) \\")
             fprintln("    --aet \(aet) --mpps-uid \(mppsInstanceUID) --status COMPLETED")
             
             #else
@@ -163,8 +162,11 @@ extension DICOMMPPSCommand {
             abstract: "Update MPPS instance (N-SET)"
         )
         
-        @Argument(help: "PACS server URL (pacs://host:port)")
-        var url: String
+        @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+        var host: String
+        
+        @Option(name: .long, help: "PACS server port (default: 11112)")
+        var port: UInt16?
         
         @Option(name: .long, help: "Local Application Entity Title (calling AE)")
         var aet: String
@@ -195,12 +197,7 @@ extension DICOMMPPSCommand {
         
         mutating func run() async throws {
             #if canImport(Network)
-            // Parse URL
-            let serverInfo = try DICOMMPPSCommand.parseServerURL(url)
-            
-            guard serverInfo.scheme == "pacs" else {
-                throw ValidationError("Only pacs:// URLs are supported")
-            }
+            let serverInfo = DICOMMPPSCommand.resolveHostPort(host: host, port: port)
             
             // Parse status
             let mppsStatus = try DICOMMPPSCommand.parseStatus(status)
@@ -264,5 +261,3 @@ extension DICOMMPPSCommand {
 private func fprintln(_ message: String) {
     FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
-
-DICOMMPPSCommand.main()

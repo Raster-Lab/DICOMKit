@@ -3,7 +3,7 @@ import ArgumentParser
 import DICOMCore
 import DICOMWeb
 
-@available(macOS 10.15, *)
+@main
 struct DICOMWado: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-wado",
@@ -1275,11 +1275,4 @@ extension Array {
     }
 }
 
-// MARK: - Main Entry Point
 
-if #available(macOS 10.15, *) {
-    DICOMWado.main()
-} else {
-    fprintln("Error: This tool requires macOS 10.15 or later", to: .standardError)
-    exit(1)
-}

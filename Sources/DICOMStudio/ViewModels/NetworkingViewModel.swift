@@ -6,6 +6,7 @@
 
 import Foundation
 import Observation
+import DICOMKit
 import DICOMNetwork
 
 /// ViewModel for the DICOM Networking Hub, managing state for all nine networking
@@ -114,6 +115,8 @@ public final class NetworkingViewModel {
     public var selectedPrintJobID: UUID? = nil
     /// Whether the new-print-job sheet is presenting.
     public var isNewPrintJobSheetPresented: Bool = false
+    /// Detailed log for the last print job execution.
+    public var printExecutionLog: String = ""
 
     // MARK: - 9.9 Monitoring
 
@@ -455,6 +458,227 @@ public final class NetworkingViewModel {
     public var selectedPrintJob: PrintJob? {
         guard let id = selectedPrintJobID else { return nil }
         return printJobs.first { $0.id == id }
+    }
+
+    /// Executes a pending print job by sending images to the DICOM printer.
+    ///
+    /// This method:
+    /// 1. Looks up the server profile for the print job
+    /// 2. Reads and extracts pixel data from each DICOM file
+    /// 3. Builds a `PrintConfiguration` and `PrintOptions`
+    /// 4. Calls `DICOMPrintService.printImages()` to send to the printer
+    /// 5. Updates the job status to `.completed` or `.failed`
+    public func executePrintJob(id: UUID) async {
+        printExecutionLog = ""
+        func log(_ msg: String) {
+            let ts = ISO8601DateFormatter().string(from: Date())
+            printExecutionLog += "[\(ts)] \(msg)\n"
+        }
+
+        guard var job = printJobs.first(where: { $0.id == id }),
+              job.status == .pending else {
+            log("ERROR: Job not found or not in pending state")
+            return
+        }
+        log("Starting print job: \(job.label) (id: \(job.id))")
+        log("Images: \(job.imageFilePaths.count), Bookmarks: \(job.imageBookmarks.count)")
+
+        guard let profile = serverProfiles.first(where: { $0.id == job.printerServerProfileID }) else {
+            log("ERROR: Printer server profile not found (id: \(job.printerServerProfileID))")
+            job.status = .failed
+            job.errorMessage = "Printer server profile not found"
+            job.completedDate = Date()
+            service.updatePrintJob(job)
+            printJobs = service.getPrintJobs()
+            return
+        }
+        guard !job.imageFilePaths.isEmpty else {
+            log("ERROR: No images selected for printing")
+            job.status = .failed
+            job.errorMessage = "No images selected for printing"
+            job.completedDate = Date()
+            service.updatePrintJob(job)
+            printJobs = service.getPrintJobs()
+            return
+        }
+
+        // Mark as printing
+        log("Server: \(profile.name) @ \(profile.host):\(profile.port) (AE: \(profile.remoteAETitle))")
+        job.status = .printing
+        service.updatePrintJob(job)
+        printJobs = service.getPrintJobs()
+
+        // Resolve security-scoped bookmarks to regain sandbox access
+        log("Resolving \(job.imageBookmarks.count) security-scoped bookmarks...")
+        var resolvedURLs: [URL] = []
+        for bookmark in job.imageBookmarks {
+            var isStale = false
+            #if os(macOS)
+            guard let url = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: .withSecurityScope,
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) else { continue }
+            if url.startAccessingSecurityScopedResource() {
+                resolvedURLs.append(url)
+            }
+            #else
+            guard let url = try? URL(
+                resolvingBookmarkData: bookmark,
+                options: [],
+                relativeTo: nil,
+                bookmarkDataIsStale: &isStale
+            ) else { continue }
+            resolvedURLs.append(url)
+            #endif
+        }
+        // Fall back to plain paths if no bookmarks (e.g. non-sandboxed context)
+        let fileURLs: [URL]
+        if resolvedURLs.count == job.imageFilePaths.count {
+            fileURLs = resolvedURLs
+        } else if !resolvedURLs.isEmpty {
+            fileURLs = resolvedURLs
+        } else {
+            fileURLs = job.imageFilePaths.map { URL(fileURLWithPath: $0) }
+        }
+        log("Resolved \(resolvedURLs.count) bookmark URLs, total file URLs: \(fileURLs.count)")
+
+        defer {
+            for url in resolvedURLs {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        // Extract pixel data from each DICOM file
+        log("Extracting pixel data from \(fileURLs.count) DICOM files...")
+        var pixelDataArray: [Data] = []
+        var imageDescriptors: [DICOMNetwork.PrintImageData] = []
+        for url in fileURLs {
+            do {
+                let dicomFile = try DICOMFile.read(from: url)
+                guard let pd = dicomFile.pixelData() else {
+                    log("ERROR: No pixel data in \(url.lastPathComponent)")
+                    job.status = .failed
+                    job.errorMessage = "Failed to extract pixel data from: \(url.lastPathComponent)"
+                    job.completedDate = Date()
+                    service.updatePrintJob(job)
+                    printJobs = service.getPrintJobs()
+                    return
+                }
+                pixelDataArray.append(pd.data)
+                let desc = pd.descriptor
+                imageDescriptors.append(DICOMNetwork.PrintImageData(
+                    pixelData: pd.data,
+                    rows: UInt16(desc.rows),
+                    columns: UInt16(desc.columns),
+                    bitsAllocated: UInt16(desc.bitsAllocated),
+                    bitsStored: UInt16(desc.bitsStored),
+                    highBit: UInt16(desc.highBit),
+                    samplesPerPixel: UInt16(desc.samplesPerPixel),
+                    pixelRepresentation: desc.isSigned ? 1 : 0,
+                    photometricInterpretation: desc.photometricInterpretation.rawValue
+                ))
+                log("  ✓ \(url.lastPathComponent): \(pd.data.count) bytes, \(desc.rows)×\(desc.columns), \(desc.bitsAllocated)-bit, \(desc.photometricInterpretation.rawValue)")
+            } catch {
+                log("ERROR: Failed to read \(url.lastPathComponent): \(error.localizedDescription)")
+                job.status = .failed
+                job.errorMessage = "Failed to read DICOM file \(url.lastPathComponent): \(error.localizedDescription)"
+                job.completedDate = Date()
+                service.updatePrintJob(job)
+                printJobs = service.getPrintJobs()
+                return
+            }
+        }
+
+        // Build configuration from server profile
+        log("Building print configuration...")
+        log("  Host: \(profile.host):\(profile.port)")
+        log("  Calling AE: \(profile.localAETitle), Called AE: \(profile.remoteAETitle)")
+        log("  Copies: \(job.numberOfCopies), Priority: \(job.priority.rawValue), Medium: \(job.mediumType.rawValue), Film Size: \(job.filmSize.rawValue)")
+        let printConfig = PrintConfiguration(
+            host: profile.host,
+            port: profile.port,
+            callingAETitle: profile.localAETitle,
+            calledAETitle: profile.remoteAETitle,
+            timeout: profile.timeoutSeconds
+        )
+
+        // Map DICOMStudio enums to DICOMNetwork enums
+        let networkPriority: DICOMNetwork.PrintPriority = {
+            switch job.priority {
+            case .high: return .high
+            case .med:  return .medium
+            case .low:  return .low
+            }
+        }()
+        let networkMedium: DICOMNetwork.MediumType = {
+            switch job.mediumType {
+            case .paper:     return .paper
+            case .clearFilm: return .clearFilm
+            case .bluFilm:   return .blueFilm
+            }
+        }()
+        let networkFilmSize: DICOMNetwork.FilmSize = {
+            switch job.filmSize {
+            case .size8x10:   return .size8InX10In
+            case .size8_5x11: return .size8_5InX11In
+            case .size10x12:  return .size10InX12In
+            case .size10x14:  return .size10InX14In
+            case .size11x14:  return .size11InX14In
+            case .size11x17:  return .size11InX17In
+            case .size14x14:  return .size14InX14In
+            case .size14x17:  return .size14InX17In
+            case .size24x24cm: return .size24CmX24Cm
+            case .size24x30cm: return .size24CmX30Cm
+            case .a4:          return .a4
+            case .a3:          return .a3
+            }
+        }()
+
+        let printOptions = PrintOptions(
+            numberOfCopies: job.numberOfCopies,
+            priority: networkPriority,
+            filmSize: networkFilmSize,
+            mediumType: networkMedium
+        )
+
+        // Send to printer
+        log("Sending \(pixelDataArray.count) images to printer via DICOMPrintService.printImages()...")
+        do {
+            let result = try await DICOMPrintService.printImages(
+                configuration: printConfig,
+                images: pixelDataArray,
+                options: printOptions,
+                imageDescriptors: imageDescriptors
+            )
+            if result.success {
+                log("SUCCESS: Print completed")
+                log("  Film Session UID: \(result.filmSessionUID ?? "N/A")")
+                log("  Film Box UID: \(result.filmBoxUID ?? "N/A")")
+                log("  Print Job UID: \(result.printJobUID ?? "N/A")")
+                job.status = .completed
+                job.completedDate = Date()
+            } else {
+                log("FAILED: Print service returned failure")
+                log("  Status: \(result.status)")
+                log("  Error: \(result.errorMessage ?? "none")")
+                job.status = .failed
+                job.errorMessage = result.errorMessage ?? "Print failed with status: \(result.status)"
+                job.completedDate = Date()
+            }
+        } catch {
+            log("EXCEPTION: \(error)")
+            log("  Type: \(type(of: error))")
+            log("  Description: \(error.localizedDescription)")
+            job.status = .failed
+            job.errorMessage = error.localizedDescription
+            job.completedDate = Date()
+        }
+
+        service.updatePrintJob(job)
+        printJobs = service.getPrintJobs()
+        auditLog  = service.getAuditLog()
     }
 
     // MARK: - 9.9 Monitoring Operations

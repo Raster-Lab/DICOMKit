@@ -427,6 +427,65 @@ public struct PrintJobStatus: Sendable {
     }
 }
 
+// MARK: - Print Image Data
+
+/// Bundles pixel data with its image descriptor for printing
+///
+/// The Preformatted Grayscale/Color Image Sequence (PS3.3 C.13.5.1) requires
+/// image attributes (rows, columns, bits allocated, etc.) alongside pixel data.
+/// This struct carries both through the print pipeline.
+public struct PrintImageData: Sendable {
+    /// Raw pixel data bytes (uncompressed)
+    public let pixelData: Data
+
+    /// Number of rows (height) in the image
+    public let rows: UInt16
+
+    /// Number of columns (width) in the image
+    public let columns: UInt16
+
+    /// Bits allocated per pixel sample (typically 8 or 16)
+    public let bitsAllocated: UInt16
+
+    /// Bits stored per pixel sample
+    public let bitsStored: UInt16
+
+    /// Most significant bit (usually bitsStored - 1)
+    public let highBit: UInt16
+
+    /// Samples per pixel (1 for grayscale, 3 for color)
+    public let samplesPerPixel: UInt16
+
+    /// Pixel representation: 0 = unsigned, 1 = signed
+    public let pixelRepresentation: UInt16
+
+    /// Photometric interpretation string (e.g. "MONOCHROME2")
+    public let photometricInterpretation: String
+
+    /// Creates a PrintImageData from raw values
+    public init(
+        pixelData: Data,
+        rows: UInt16,
+        columns: UInt16,
+        bitsAllocated: UInt16,
+        bitsStored: UInt16,
+        highBit: UInt16,
+        samplesPerPixel: UInt16 = 1,
+        pixelRepresentation: UInt16 = 0,
+        photometricInterpretation: String = "MONOCHROME2"
+    ) {
+        self.pixelData = pixelData
+        self.rows = rows
+        self.columns = columns
+        self.bitsAllocated = bitsAllocated
+        self.bitsStored = bitsStored
+        self.highBit = highBit
+        self.samplesPerPixel = samplesPerPixel
+        self.pixelRepresentation = pixelRepresentation
+        self.photometricInterpretation = photometricInterpretation
+    }
+}
+
 // MARK: - Print Options
 
 /// Options for print operations
@@ -1881,30 +1940,29 @@ public enum DICOMPrintService {
             
             // Receive N-GET response
             let assembler = MessageAssembler()
-            let responsePDU = try await association.receive()
-            
-            if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = message.commandSet
-                let response = NGetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+            while true {
+                let responsePDU = try await association.receive()
                 
-                guard response.status.isSuccess else {
-                    try await association.abort()
-                    throw DICOMNetworkError.queryFailed(response.status)
-                }
-                
-                // Parse printer attributes from response data set
-                if let dataSetData = message.dataSet {
-                    let printerStatus = parsePrinterStatus(from: dataSetData)
+                if let message = try assembler.addPDVs(from: responsePDU) {
+                    let responseCommandSet = message.commandSet
+                    let response = NGetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                    
+                    guard response.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.queryFailed(response.status)
+                    }
+                    
+                    // Parse printer attributes from response data set
+                    if let dataSetData = message.dataSet {
+                        let printerStatus = parsePrinterStatus(from: dataSetData)
+                        try await association.release()
+                        return printerStatus
+                    }
+                    
                     try await association.release()
-                    return printerStatus
+                    return PrinterStatus(status: "NORMAL")
                 }
-                
-                try await association.release()
-                return PrinterStatus(status: "NORMAL")
             }
-            
-            try await association.release()
-            return PrinterStatus(status: "UNKNOWN")
         } catch {
             try? await association.abort()
             throw error
@@ -1984,10 +2042,11 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         session: FilmSession
     ) async throws -> String {
+        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
         
         let presentationContext = try PresentationContext(
             id: 1,
-            abstractSyntax: basicFilmSessionSOPClassUID,
+            abstractSyntax: sopClassUID,
             transferSyntaxes: [
                 explicitVRLittleEndianTransferSyntaxUID,
                 implicitVRLittleEndianTransferSyntaxUID
@@ -2007,7 +2066,7 @@ public enum DICOMPrintService {
             // Verify presentation context was accepted
             guard negotiated.isContextAccepted(1) else {
                 try await association.abort()
-                throw DICOMNetworkError.sopClassNotSupported(basicFilmSessionSOPClassUID)
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
             
             // Build data set with Film Session attributes
@@ -2077,25 +2136,25 @@ public enum DICOMPrintService {
             
             // Receive N-CREATE response
             let assembler = MessageAssembler()
-            let responsePDU = try await association.receive()
-            
-            if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = message.commandSet
-                let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: 1)
+            while true {
+                let responsePDU = try await association.receive()
                 
-                guard response.status.isSuccess else {
-                    try await association.abort()
-                    throw DICOMNetworkError.printOperationFailed(response.status)
+                if let message = try assembler.addPDVs(from: responsePDU) {
+                    let responseCommandSet = message.commandSet
+                    let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                    
+                    guard response.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.printOperationFailed(response.status)
+                    }
+                    
+                    // Extract assigned SOP Instance UID
+                    let filmSessionUID = response.affectedSOPInstanceUID
+                    
+                    try await association.release()
+                    return filmSessionUID
                 }
-                
-                // Extract assigned SOP Instance UID
-                let filmSessionUID = response.affectedSOPInstanceUID
-                
-                try await association.release()
-                return filmSessionUID
             }
-            
-            throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
             throw error
@@ -2253,38 +2312,38 @@ public enum DICOMPrintService {
             
             // Receive N-CREATE response
             let assembler = MessageAssembler()
-            let responsePDU = try await association.receive()
-            
-            if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = message.commandSet
-                let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: 1)
+            while true {
+                let responsePDU = try await association.receive()
                 
-                guard response.status.isSuccess else {
-                    try await association.abort()
-                    throw DICOMNetworkError.printOperationFailed(response.status)
+                if let message = try assembler.addPDVs(from: responsePDU) {
+                    let responseCommandSet = message.commandSet
+                    let response = NCreateResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                    
+                    guard response.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.printOperationFailed(response.status)
+                    }
+                    
+                    // Extract assigned Film Box SOP Instance UID
+                    let filmBoxUID = response.affectedSOPInstanceUID
+                    
+                    // Parse Image Box UIDs from response data set
+                    var imageBoxUIDs: [String] = []
+                    if let dataSetData = message.dataSet {
+                        imageBoxUIDs = parseImageBoxUIDs(from: dataSetData)
+                    }
+                    
+                    // Calculate expected number of image boxes from format
+                    let imageCount = parseImageDisplayFormat(filmBox.imageDisplayFormat)
+                    
+                    try await association.release()
+                    return FilmBoxResult(
+                        filmBoxUID: filmBoxUID,
+                        imageBoxUIDs: imageBoxUIDs,
+                        imageCount: imageCount
+                    )
                 }
-                
-                // Extract assigned Film Box SOP Instance UID
-                let filmBoxUID = response.affectedSOPInstanceUID
-                
-                // Parse Image Box UIDs from response data set
-                var imageBoxUIDs: [String] = []
-                if let dataSetData = message.dataSet {
-                    imageBoxUIDs = parseImageBoxUIDs(from: dataSetData)
-                }
-                
-                // Calculate expected number of image boxes from format
-                let imageCount = parseImageDisplayFormat(filmBox.imageDisplayFormat)
-                
-                try await association.release()
-                return FilmBoxResult(
-                    filmBoxUID: filmBoxUID,
-                    imageBoxUIDs: imageBoxUIDs,
-                    imageCount: imageCount
-                )
             }
-            
-            throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
             throw error
@@ -2310,13 +2369,13 @@ public enum DICOMPrintService {
         
         data.withUnsafeBytes { buffer in
             while offset + 8 <= buffer.count {
-                let group = buffer.load(fromByteOffset: offset, as: UInt16.self).littleEndian
-                let element = buffer.load(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
+                let group = buffer.loadUnaligned(fromByteOffset: offset, as: UInt16.self).littleEndian
+                let element = buffer.loadUnaligned(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
                 
                 if group == targetGroup && element == targetElement {
                     // Found Referenced SOP Instance UID - extract the value
                     // VR is at offset+4 (2 bytes), length at offset+6 (2 bytes for UI)
-                    let length = Int(buffer.load(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
+                    let length = Int(buffer.loadUnaligned(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
                     guard length > 0, length < 256, offset + 8 + length <= buffer.count else { break }
                     let valueData = Data(bytes: buffer.baseAddress!.advanced(by: offset + 8), count: length)
                     if let uid = String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) {
@@ -2351,9 +2410,11 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         imageBoxUID: String,
         imageBox: ImageBoxContent,
-        pixelData: Data
+        pixelData: Data,
+        imageDescriptor: PrintImageData? = nil
     ) async throws {
-        let sopClassUID = configuration.colorMode == .color
+        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
+        let imageBoxSOPClassUID = configuration.colorMode == .color
             ? basicColorImageBoxSOPClassUID
             : basicGrayscaleImageBoxSOPClassUID
         
@@ -2417,17 +2478,32 @@ public enum DICOMPrintService {
             // Add pixel data based on color mode
             if configuration.colorMode == .grayscale {
                 // Preformatted Grayscale Image Sequence (2020,0110) - SQ
-                // NOTE: This is a Phase 1 simplified implementation that assumes the pixelData
-                // parameter contains a complete preformatted image with embedded attributes.
-                // Future enhancement: Accept a PixelDataDescriptor parameter containing:
-                // - Photometric Interpretation (0028,0004)
-                // - Rows (0028,0010), Columns (0028,0011)
-                // - Bits Allocated (0028,0100), Bits Stored (0028,0101), High Bit (0028,0102)
-                // - Samples Per Pixel (0028,0002)
-                // - Pixel Representation (0028,0103)
-                // - Pixel Aspect Ratio (0028,0034) if applicable
-                let pixelElement = DataElement.data(tag: .pixelData, vr: .OB, data: pixelData)
-                let sequenceItem = SequenceItem(elements: [pixelElement])
+                // PS3.3 C.13.5.1 requires image attributes within the sequence item
+                var seqElements: [DataElement] = []
+
+                if let desc = imageDescriptor {
+                    // Samples Per Pixel (0028,0002) - US
+                    seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
+                    // Photometric Interpretation (0028,0004) - CS
+                    seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
+                    // Rows (0028,0010) - US
+                    seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
+                    // Columns (0028,0011) - US
+                    seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
+                    // Bits Allocated (0028,0100) - US
+                    seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
+                    // Bits Stored (0028,0101) - US
+                    seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
+                    // High Bit (0028,0102) - US
+                    seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
+                    // Pixel Representation (0028,0103) - US
+                    seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
+                }
+
+                // Pixel Data (7FE0,0010) - OW
+                seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
+
+                let sequenceItem = SequenceItem(elements: seqElements)
                 let writer = DICOMWriter()
                 let seqItemsData = writer.serializeSequenceItem(sequenceItem)
                 elements.append(DataElement(
@@ -2439,9 +2515,22 @@ public enum DICOMPrintService {
                 ))
             } else {
                 // Preformatted Color Image Sequence (2020,0111) - SQ
-                // NOTE: Same as grayscale - assumes preformatted image data
-                let pixelElement = DataElement.data(tag: .pixelData, vr: .OB, data: pixelData)
-                let sequenceItem = SequenceItem(elements: [pixelElement])
+                var seqElements: [DataElement] = []
+
+                if let desc = imageDescriptor {
+                    seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
+                    seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
+                    seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
+                    seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
+                    seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
+                    seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
+                    seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
+                    seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
+                }
+
+                seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
+
+                let sequenceItem = SequenceItem(elements: seqElements)
                 let writer = DICOMWriter()
                 let seqItemsData = writer.serializeSequenceItem(sequenceItem)
                 elements.append(DataElement(
@@ -2459,7 +2548,7 @@ public enum DICOMPrintService {
             // Send N-SET request for Image Box
             let request = NSetRequest(
                 messageID: 1,
-                requestedSOPClassUID: sopClassUID,
+                requestedSOPClassUID: imageBoxSOPClassUID,
                 requestedSOPInstanceUID: imageBoxUID,
                 hasDataSet: true,
                 presentationContextID: 1
@@ -2480,22 +2569,22 @@ public enum DICOMPrintService {
             
             // Receive N-SET response
             let assembler = MessageAssembler()
-            let responsePDU = try await association.receive()
-            
-            if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = message.commandSet
-                let response = NSetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+            while true {
+                let responsePDU = try await association.receive()
                 
-                guard response.status.isSuccess else {
-                    try await association.abort()
-                    throw DICOMNetworkError.printOperationFailed(response.status)
+                if let message = try assembler.addPDVs(from: responsePDU) {
+                    let responseCommandSet = message.commandSet
+                    let response = NSetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                    
+                    guard response.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.printOperationFailed(response.status)
+                    }
+                    
+                    try await association.release()
+                    return
                 }
-                
-                try await association.release()
-                return
             }
-            
-            throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
             throw error
@@ -2571,33 +2660,31 @@ public enum DICOMPrintService {
             
             // Receive N-ACTION response
             let assembler = MessageAssembler()
-            let responsePDU = try await association.receive()
-            
-            if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = message.commandSet
-                let response = NActionResponse(commandSet: responseCommandSet, presentationContextID: 1)
+            while true {
+                let responsePDU = try await association.receive()
                 
-                guard response.status.isSuccess else {
-                    try await association.abort()
-                    throw DICOMNetworkError.printOperationFailed(response.status)
+                if let message = try assembler.addPDVs(from: responsePDU) {
+                    let responseCommandSet = message.commandSet
+                    let response = NActionResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                    
+                    guard response.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.printOperationFailed(response.status)
+                    }
+                    
+                    // Extract Print Job SOP Instance UID from the response
+                    let printJobUID = response.affectedSOPInstanceUID
+                    
+                    // Validate that a Print Job UID was returned
+                    guard !printJobUID.isEmpty else {
+                        try await association.abort()
+                        throw DICOMNetworkError.unexpectedResponse
+                    }
+                    
+                    try await association.release()
+                    return printJobUID
                 }
-                
-                // Extract Print Job SOP Instance UID from the response
-                // Per PS3.4 H.4.2.2.4, the N-ACTION response includes the Affected SOP Instance UID
-                // of the created Print Job SOP Instance
-                let printJobUID = response.affectedSOPInstanceUID
-                
-                // Validate that a Print Job UID was returned
-                guard !printJobUID.isEmpty else {
-                    try await association.abort()
-                    throw DICOMNetworkError.unexpectedResponse
-                }
-                
-                try await association.release()
-                return printJobUID
             }
-            
-            throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
             throw error
@@ -2669,22 +2756,22 @@ public enum DICOMPrintService {
             
             // Receive N-DELETE response
             let assembler = MessageAssembler()
-            let responsePDU = try await association.receive()
-            
-            if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = message.commandSet
-                let response = NDeleteResponse(commandSet: responseCommandSet, presentationContextID: 1)
+            while true {
+                let responsePDU = try await association.receive()
                 
-                guard response.status.isSuccess else {
-                    try await association.abort()
-                    throw DICOMNetworkError.printOperationFailed(response.status)
+                if let message = try assembler.addPDVs(from: responsePDU) {
+                    let responseCommandSet = message.commandSet
+                    let response = NDeleteResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                    
+                    guard response.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.printOperationFailed(response.status)
+                    }
+                    
+                    try await association.release()
+                    return
                 }
-                
-                try await association.release()
-                return
             }
-            
-            throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
             throw error
@@ -2757,33 +2844,33 @@ public enum DICOMPrintService {
             
             // Receive N-GET response
             let assembler = MessageAssembler()
-            let responsePDU = try await association.receive()
-            
-            if let message = try assembler.addPDVs(from: responsePDU) {
-                let responseCommandSet = message.commandSet
-                let response = NGetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+            while true {
+                let responsePDU = try await association.receive()
                 
-                guard response.status.isSuccess else {
-                    try await association.abort()
-                    throw DICOMNetworkError.queryFailed(response.status)
-                }
-                
-                // Parse print job attributes from response data set
-                if let dataSetData = message.dataSet {
-                    let printJobStatus = parsePrintJobStatus(from: dataSetData, printJobUID: printJobUID)
+                if let message = try assembler.addPDVs(from: responsePDU) {
+                    let responseCommandSet = message.commandSet
+                    let response = NGetResponse(commandSet: responseCommandSet, presentationContextID: 1)
+                    
+                    guard response.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.queryFailed(response.status)
+                    }
+                    
+                    // Parse print job attributes from response data set
+                    if let dataSetData = message.dataSet {
+                        let printJobStatus = parsePrintJobStatus(from: dataSetData, printJobUID: printJobUID)
+                        try await association.release()
+                        return printJobStatus
+                    }
+                    
+                    // If no data set returned, return a default status
                     try await association.release()
-                    return printJobStatus
+                    return PrintJobStatus(
+                        printJobUID: printJobUID,
+                        executionStatus: "UNKNOWN"
+                    )
                 }
-                
-                // If no data set returned, return a default status
-                try await association.release()
-                return PrintJobStatus(
-                    printJobUID: printJobUID,
-                    executionStatus: "UNKNOWN"
-                )
             }
-            
-            throw DICOMNetworkError.unexpectedResponse
         } catch {
             try? await association.abort()
             throw error
@@ -2916,228 +3003,316 @@ public enum DICOMPrintService {
     
     // MARK: - High-Level Print API (Phase 2)
     
-    /// Prints a single image using the complete print workflow
-    ///
-    /// This is a convenience method that handles the complete print workflow:
-    /// 1. Creates a film session
-    /// 2. Creates a film box with single image layout
-    /// 3. Sets the image box content with the provided pixel data
-    /// 4. Prints the film box
-    /// 5. Cleans up by deleting the film session
-    ///
-    /// - Parameters:
-    ///   - configuration: Print connection configuration
-    ///   - imageData: The pixel data to print (should be properly formatted)
-    ///   - options: Print options (defaults to `.default`)
-    /// - Returns: The print result
-    /// - Throws: `DICOMNetworkError` if any step of the workflow fails
-    ///
-    /// Example:
-    /// ```swift
-    /// let result = try await DICOMPrintService.printImage(
-    ///     configuration: printConfig,
-    ///     imageData: pixelData,
-    ///     options: .highQuality
-    /// )
-    /// ```
-    public static func printImage(
-        configuration: PrintConfiguration,
-        imageData: Data,
-        options: PrintOptions = .default
-    ) async throws -> PrintResult {
-        // Create film session
-        let filmSession = FilmSession(
-            numberOfCopies: options.numberOfCopies,
-            printPriority: options.priority,
-            mediumType: options.mediumType,
-            filmDestination: options.filmDestination,
-            filmSessionLabel: options.sessionLabel
+    // MARK: Single-Association Print Workflow
+    
+    /// Internal helper: sends a DIMSE message and receives the response on an existing association.
+    /// Returns the assembled response message.
+    private static func sendAndReceive(
+        association: Association,
+        negotiated: NegotiatedAssociation,
+        commandSet: CommandSet,
+        dataSet: Data?,
+        presentationContextID: UInt8
+    ) async throws -> AssembledMessage {
+        let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+        let pdus = fragmenter.fragmentMessage(
+            commandSet: commandSet,
+            dataSet: dataSet,
+            presentationContextID: presentationContextID
         )
-        
-        let filmSessionUID = try await createFilmSession(configuration: configuration, session: filmSession)
-        
-        do {
-            // Create film box with single image layout
-            let filmBox = FilmBox(
-                imageDisplayFormat: "STANDARD\\1,1",
-                filmOrientation: options.filmOrientation,
-                filmSizeID: options.filmSize,
-                magnificationType: options.magnificationType,
-                borderDensity: options.borderDensity,
-                emptyImageDensity: options.emptyImageDensity,
-                trimOption: options.trimOption
-            )
-            
-            let filmBoxResult = try await createFilmBox(
-                configuration: configuration,
-                filmSessionUID: filmSessionUID,
-                filmBox: filmBox
-            )
-            
-            // Set image box content
-            guard !filmBoxResult.imageBoxUIDs.isEmpty else {
-                throw DICOMNetworkError.unexpectedResponse
+        for pdu in pdus {
+            for pdv in pdu.presentationDataValues {
+                try await association.send(pdv: pdv)
             }
-            
-            let imageBox = ImageBoxContent(
-                sopInstanceUID: filmBoxResult.imageBoxUIDs[0],
-                imagePosition: 1,
-                polarity: options.polarity
-            )
-            
-            try await setImageBox(
-                configuration: configuration,
-                imageBoxUID: filmBoxResult.imageBoxUIDs[0],
-                imageBox: imageBox,
-                pixelData: imageData
-            )
-            
-            // Print the film box
-            let printJobUID = try await printFilmBox(
-                configuration: configuration,
-                filmBoxUID: filmBoxResult.filmBoxUID
-            )
-            
-            // Cleanup: delete film session
-            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
-            
-            return PrintResult(
-                success: true,
-                status: .success,
-                filmSessionUID: filmSessionUID,
-                filmBoxUID: filmBoxResult.filmBoxUID,
-                printJobUID: printJobUID
-            )
-        } catch {
-            // Cleanup on error
-            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
-            throw error
+        }
+        let assembler = MessageAssembler()
+        while true {
+            let responsePDU = try await association.receive()
+            if let message = try assembler.addPDVs(from: responsePDU) {
+                return message
+            }
         }
     }
     
-    /// Prints multiple images using the complete print workflow with automatic layout
+    /// Performs the complete print workflow within a single DICOM association.
     ///
-    /// This is a convenience method that handles the complete print workflow:
-    /// 1. Creates a film session
-    /// 2. Automatically determines the optimal layout based on image count
-    /// 3. Creates film box(es) as needed
-    /// 4. Sets image box content for each image
-    /// 5. Prints all film boxes
-    /// 6. Cleans up by deleting the film session
+    /// Per DICOM PS3.4 H.4, all Print Management operations (Film Session, Film Box,
+    /// Image Box, Print action) must occur within the same association because the
+    /// printer SCP maintains stateful objects tied to the association lifetime.
     ///
     /// - Parameters:
     ///   - configuration: Print connection configuration
     ///   - images: Array of pixel data to print
-    ///   - options: Print options (defaults to `.default`)
+    ///   - imageDescriptors: Optional per-image descriptors with dimensions and bit depth
+    ///   - options: Print options
+    ///   - layout: Image layout (rows × columns)
     /// - Returns: The print result
-    /// - Throws: `DICOMNetworkError` if any step of the workflow fails
-    ///
-    /// Example:
-    /// ```swift
-    /// let result = try await DICOMPrintService.printImages(
-    ///     configuration: printConfig,
-    ///     images: [image1Data, image2Data, image3Data, image4Data],
-    ///     options: PrintOptions(filmSize: .size14InX17In)
-    /// )
-    /// ```
-    public static func printImages(
+    /// - Throws: `DICOMNetworkError` if any step fails
+    private static func executePrintWorkflow(
         configuration: PrintConfiguration,
         images: [Data],
-        options: PrintOptions = .default
+        imageDescriptors: [PrintImageData],
+        options: PrintOptions,
+        layout: PrintLayout
     ) async throws -> PrintResult {
-        guard !images.isEmpty else {
-            return PrintResult(
-                success: false,
-                status: .failedUnableToProcess,
-                errorMessage: "No images provided"
-            )
-        }
+        let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
+        let imageBoxSOPClassUID = configuration.colorMode == .color
+            ? basicColorImageBoxSOPClassUID
+            : basicGrayscaleImageBoxSOPClassUID
         
-        // Single image: use printImage
-        if images.count == 1 {
-            return try await printImage(
-                configuration: configuration,
-                imageData: images[0],
-                options: options
-            )
-        }
-        
-        // Multiple images: determine optimal layout
-        let layout = PrintLayout.optimalLayout(for: images.count)
-        
-        // Create film session
-        let filmSession = FilmSession(
-            numberOfCopies: options.numberOfCopies,
-            printPriority: options.priority,
-            mediumType: options.mediumType,
-            filmDestination: options.filmDestination,
-            filmSessionLabel: options.sessionLabel
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: sopClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
         )
         
-        let filmSessionUID = try await createFilmSession(configuration: configuration, session: filmSession)
+        let associationConfig = try createPrintAssociationConfiguration(configuration)
+        let association = Association(configuration: associationConfig)
         
         do {
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            
+            guard negotiated.isContextAccepted(1) else {
+                try await association.abort()
+                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            }
+            
+            var messageID: UInt16 = 1
+            
+            // ── Step 1: N-CREATE Film Session ─────────────────────────────
+            var sessionElements: [DataElement] = []
+            sessionElements.append(DataElement.string(tag: .numberOfCopies, vr: .IS, value: String(options.numberOfCopies)))
+            sessionElements.append(DataElement.string(tag: .printPriority, vr: .CS, value: options.priority.rawValue))
+            sessionElements.append(DataElement.string(tag: .mediumType, vr: .CS, value: options.mediumType.rawValue))
+            sessionElements.append(DataElement.string(tag: .filmDestination, vr: .CS, value: options.filmDestination.rawValue))
+            if let label = options.sessionLabel {
+                sessionElements.append(DataElement.string(tag: .filmSessionLabel, vr: .LO, value: label))
+            }
+            
+            let sessionRequest = NCreateRequest(
+                messageID: messageID,
+                affectedSOPClassUID: basicFilmSessionSOPClassUID,
+                affectedSOPInstanceUID: nil,
+                hasDataSet: true,
+                presentationContextID: 1
+            )
+            messageID += 1
+            
+            let sessionResponse = try await sendAndReceive(
+                association: association,
+                negotiated: negotiated,
+                commandSet: sessionRequest.commandSet,
+                dataSet: serializeElements(sessionElements),
+                presentationContextID: 1
+            )
+            
+            let sessionRsp = NCreateResponse(commandSet: sessionResponse.commandSet, presentationContextID: 1)
+            guard sessionRsp.status.isSuccessOrWarning else {
+                try await association.abort()
+                throw DICOMNetworkError.printOperationFailed(sessionRsp.status)
+            }
+            let filmSessionUID = sessionRsp.affectedSOPInstanceUID
+            
+            // ── Step 2: Process film boxes ────────────────────────────────
             var allPrintJobUIDs: [String] = []
             var lastFilmBoxUID: String?
             
-            // Calculate how many film boxes we need
             let imagesPerFilm = layout.rows * layout.columns
-            let filmBoxCount = (images.count + imagesPerFilm - 1) / imagesPerFilm
+            let filmBoxCount = max(1, (images.count + imagesPerFilm - 1) / imagesPerFilm)
             
             for filmIndex in 0..<filmBoxCount {
-                // Create film box with the layout
-                let filmBox = FilmBox(
-                    imageDisplayFormat: "STANDARD\\\(layout.rows),\(layout.columns)",
-                    filmOrientation: options.filmOrientation,
-                    filmSizeID: options.filmSize,
-                    magnificationType: options.magnificationType,
-                    borderDensity: options.borderDensity,
-                    emptyImageDensity: options.emptyImageDensity,
-                    trimOption: options.trimOption
+                // ── Step 2a: N-CREATE Film Box ────────────────────────────
+                let imageDisplayFormat = "STANDARD\\\(layout.rows),\(layout.columns)"
+                
+                var filmBoxElements: [DataElement] = []
+                filmBoxElements.append(DataElement.string(tag: .imageDisplayFormat, vr: .ST, value: imageDisplayFormat))
+                filmBoxElements.append(DataElement.string(tag: .filmOrientation, vr: .CS, value: options.filmOrientation.rawValue))
+                filmBoxElements.append(DataElement.string(tag: .filmSizeID, vr: .CS, value: options.filmSize.rawValue))
+                filmBoxElements.append(DataElement.string(tag: .magnificationType, vr: .CS, value: options.magnificationType.rawValue))
+                filmBoxElements.append(DataElement.string(tag: .borderDensity, vr: .CS, value: options.borderDensity))
+                filmBoxElements.append(DataElement.string(tag: .emptyImageDensity, vr: .CS, value: options.emptyImageDensity))
+                filmBoxElements.append(DataElement.string(tag: .trim, vr: .CS, value: options.trimOption.rawValue))
+                
+                // Referenced Film Session Sequence (2010,0500)
+                let sessionSeqItem = SequenceItem(elements: [
+                    DataElement.string(tag: .referencedSOPClassUID, vr: .UI, value: basicFilmSessionSOPClassUID),
+                    DataElement.string(tag: .referencedSOPInstanceUID, vr: .UI, value: filmSessionUID)
+                ])
+                let writer = DICOMWriter()
+                let seqItemsData = writer.serializeSequenceItem(sessionSeqItem)
+                filmBoxElements.append(DataElement(
+                    tag: .referencedFilmSessionSequence,
+                    vr: .SQ,
+                    length: UInt32(seqItemsData.count),
+                    valueData: seqItemsData,
+                    sequenceItems: [sessionSeqItem]
+                ))
+                
+                let filmBoxRequest = NCreateRequest(
+                    messageID: messageID,
+                    affectedSOPClassUID: basicFilmBoxSOPClassUID,
+                    affectedSOPInstanceUID: nil,
+                    hasDataSet: true,
+                    presentationContextID: 1
+                )
+                messageID += 1
+                
+                let filmBoxResponse = try await sendAndReceive(
+                    association: association,
+                    negotiated: negotiated,
+                    commandSet: filmBoxRequest.commandSet,
+                    dataSet: serializeElements(filmBoxElements),
+                    presentationContextID: 1
                 )
                 
-                let filmBoxResult = try await createFilmBox(
-                    configuration: configuration,
-                    filmSessionUID: filmSessionUID,
-                    filmBox: filmBox
-                )
-                lastFilmBoxUID = filmBoxResult.filmBoxUID
+                let filmBoxRsp = NCreateResponse(commandSet: filmBoxResponse.commandSet, presentationContextID: 1)
+                guard filmBoxRsp.status.isSuccessOrWarning else {
+                    try await association.abort()
+                    throw DICOMNetworkError.printOperationFailed(filmBoxRsp.status)
+                }
                 
-                // Set image box contents for this film box
+                let filmBoxUID = filmBoxRsp.affectedSOPInstanceUID
+                lastFilmBoxUID = filmBoxUID
+                
+                // Parse Image Box UIDs from response data set
+                var imageBoxUIDs: [String] = []
+                if let dataSetData = filmBoxResponse.dataSet {
+                    imageBoxUIDs = parseImageBoxUIDs(from: dataSetData)
+                }
+                
+                // ── Step 2b: N-SET Image Boxes ────────────────────────────
                 let startIndex = filmIndex * imagesPerFilm
                 let endIndex = min(startIndex + imagesPerFilm, images.count)
                 
                 for (imageIndex, globalIndex) in (startIndex..<endIndex).enumerated() {
+                    guard imageIndex < imageBoxUIDs.count else { continue }
+                    
+                    let imageBoxUID = imageBoxUIDs[imageIndex]
                     let position = UInt16(imageIndex + 1)
                     
-                    guard imageIndex < filmBoxResult.imageBoxUIDs.count else {
-                        continue
+                    var imgElements: [DataElement] = []
+                    // Image Position (2020,0010)
+                    imgElements.append(DataElement.uint16(tag: .imageBoxPosition, value: position))
+                    // Polarity (2020,0020)
+                    imgElements.append(DataElement.string(tag: .polarity, vr: .CS, value: options.polarity.rawValue))
+                    // Decimate/Crop (2020,0040)
+                    imgElements.append(DataElement.string(tag: .requestedDecimateCropBehavior, vr: .CS, value: "DECIMATE"))
+                    
+                    // Build Preformatted Image Sequence with image attributes
+                    var seqElements: [DataElement] = []
+                    let desc = globalIndex < imageDescriptors.count ? imageDescriptors[globalIndex] : nil
+                    if let desc = desc {
+                        seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
+                        seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
+                        seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
+                        seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
+                        seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
+                        seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
+                        seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
+                        seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
                     }
+                    seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: images[globalIndex]))
                     
-                    let imageBox = ImageBoxContent(
-                        sopInstanceUID: filmBoxResult.imageBoxUIDs[imageIndex],
-                        imagePosition: position,
-                        polarity: options.polarity
+                    let imgSeqItem = SequenceItem(elements: seqElements)
+                    let imgWriter = DICOMWriter()
+                    let imgSeqData = imgWriter.serializeSequenceItem(imgSeqItem)
+                    
+                    let seqTag: Tag = configuration.colorMode == .color
+                        ? .preformattedColorImageSequence
+                        : .preformattedGrayscaleImageSequence
+                    imgElements.append(DataElement(
+                        tag: seqTag,
+                        vr: .SQ,
+                        length: UInt32(imgSeqData.count),
+                        valueData: imgSeqData,
+                        sequenceItems: [imgSeqItem]
+                    ))
+                    
+                    let setRequest = NSetRequest(
+                        messageID: messageID,
+                        requestedSOPClassUID: imageBoxSOPClassUID,
+                        requestedSOPInstanceUID: imageBoxUID,
+                        hasDataSet: true,
+                        presentationContextID: 1
+                    )
+                    messageID += 1
+                    
+                    let setResponse = try await sendAndReceive(
+                        association: association,
+                        negotiated: negotiated,
+                        commandSet: setRequest.commandSet,
+                        dataSet: serializeElements(imgElements),
+                        presentationContextID: 1
                     )
                     
-                    try await setImageBox(
-                        configuration: configuration,
-                        imageBoxUID: filmBoxResult.imageBoxUIDs[imageIndex],
-                        imageBox: imageBox,
-                        pixelData: images[globalIndex]
-                    )
+                    let setRsp = NSetResponse(commandSet: setResponse.commandSet, presentationContextID: 1)
+                    guard setRsp.status.isSuccessOrWarning else {
+                        try await association.abort()
+                        throw DICOMNetworkError.printOperationFailed(setRsp.status)
+                    }
                 }
                 
-                // Print the film box
-                let printJobUID = try await printFilmBox(
-                    configuration: configuration,
-                    filmBoxUID: filmBoxResult.filmBoxUID
+                // ── Step 2c: N-ACTION Print Film Box ──────────────────────
+                let actionRequest = NActionRequest(
+                    messageID: messageID,
+                    requestedSOPClassUID: basicFilmBoxSOPClassUID,
+                    requestedSOPInstanceUID: filmBoxUID,
+                    actionTypeID: 1,
+                    hasDataSet: false,
+                    presentationContextID: 1
                 )
+                messageID += 1
+                
+                let actionResponse = try await sendAndReceive(
+                    association: association,
+                    negotiated: negotiated,
+                    commandSet: actionRequest.commandSet,
+                    dataSet: nil,
+                    presentationContextID: 1
+                )
+                
+                let actionRsp = NActionResponse(commandSet: actionResponse.commandSet, presentationContextID: 1)
+                guard actionRsp.status.isSuccessOrWarning else {
+                    try await association.abort()
+                    throw DICOMNetworkError.printOperationFailed(actionRsp.status)
+                }
+                
+                // Extract Print Job UID from response data if available
+                var printJobUID = ""
+                if let actionDataSet = actionResponse.dataSet {
+                    if let uid = extractStringValue(from: actionDataSet, group: 0x0008, element: 0x1155) {
+                        printJobUID = uid
+                    }
+                }
+                if printJobUID.isEmpty {
+                    printJobUID = actionRsp.affectedSOPInstanceUID
+                }
                 allPrintJobUIDs.append(printJobUID)
             }
             
-            // Cleanup: delete film session
-            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            // ── Step 3: N-DELETE Film Session ──────────────────────────────
+            let deleteRequest = NDeleteRequest(
+                messageID: messageID,
+                requestedSOPClassUID: basicFilmSessionSOPClassUID,
+                requestedSOPInstanceUID: filmSessionUID,
+                presentationContextID: 1
+            )
+            
+            let deleteResponse = try await sendAndReceive(
+                association: association,
+                negotiated: negotiated,
+                commandSet: deleteRequest.commandSet,
+                dataSet: nil,
+                presentationContextID: 1
+            )
+            // Ignore N-DELETE status — cleanup is best-effort
+            _ = NDeleteResponse(commandSet: deleteResponse.commandSet, presentationContextID: 1)
+            
+            // ── Step 4: Release association ────────────────────────────────
+            try await association.release()
             
             return PrintResult(
                 success: true,
@@ -3147,10 +3322,78 @@ public enum DICOMPrintService {
                 printJobUID: allPrintJobUIDs.last
             )
         } catch {
-            // Cleanup on error
-            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
+            try? await association.abort()
             throw error
         }
+    }
+    
+    /// Prints a single image using the complete print workflow
+    ///
+    /// All DICOM Print operations are performed within a single association as required
+    /// by PS3.4 H.4.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - imageData: The pixel data to print
+    ///   - options: Print options (defaults to `.default`)
+    ///   - imageDescriptor: Optional image descriptor with dimensions and bit depth
+    /// - Returns: The print result
+    /// - Throws: `DICOMNetworkError` if any step of the workflow fails
+    public static func printImage(
+        configuration: PrintConfiguration,
+        imageData: Data,
+        options: PrintOptions = .default,
+        imageDescriptor: PrintImageData? = nil
+    ) async throws -> PrintResult {
+        return try await executePrintWorkflow(
+            configuration: configuration,
+            images: [imageData],
+            imageDescriptors: imageDescriptor.map { [$0] } ?? [],
+            options: options,
+            layout: PrintLayout(rows: 1, columns: 1)
+        )
+    }
+    
+    /// Prints multiple images using the complete print workflow with automatic layout
+    ///
+    /// All DICOM Print operations are performed within a single association as required
+    /// by PS3.4 H.4.
+    ///
+    /// - Parameters:
+    ///   - configuration: Print connection configuration
+    ///   - images: Array of pixel data to print
+    ///   - options: Print options (defaults to `.default`)
+    ///   - imageDescriptors: Optional per-image descriptors with dimensions and bit depth
+    /// - Returns: The print result
+    /// - Throws: `DICOMNetworkError` if any step of the workflow fails
+    public static func printImages(
+        configuration: PrintConfiguration,
+        images: [Data],
+        options: PrintOptions = .default,
+        imageDescriptors: [PrintImageData] = []
+    ) async throws -> PrintResult {
+        guard !images.isEmpty else {
+            return PrintResult(
+                success: false,
+                status: .failedUnableToProcess,
+                errorMessage: "No images provided"
+            )
+        }
+        
+        let layout: PrintLayout
+        if images.count == 1 {
+            layout = PrintLayout(rows: 1, columns: 1)
+        } else {
+            layout = PrintLayout.optimalLayout(for: images.count)
+        }
+        
+        return try await executePrintWorkflow(
+            configuration: configuration,
+            images: images,
+            imageDescriptors: imageDescriptors,
+            options: options,
+            layout: layout
+        )
     }
     
     /// Prints images using a specific print template

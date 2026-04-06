@@ -471,7 +471,7 @@ public struct CLIWorkshopView: View {
                     let host = viewModel.parameterValues.first(where: { $0.parameterID == "host" })?.stringValue ?? ""
                     let port = viewModel.parameterValues.first(where: { $0.parameterID == "port" })?.stringValue ?? "11112"
                     let calledAET = viewModel.parameterValues.first(where: { $0.parameterID == "called-aet" })?.stringValue ?? ""
-                    let callingAET = viewModel.parameterValues.first(where: { $0.parameterID == "calling-aet" })?.stringValue ?? "DICOMSTUDIO"
+                    let callingAET = viewModel.parameterValues.first(where: { $0.parameterID == "aet" })?.stringValue ?? "DICOMSTUDIO"
                     viewModel.newServerHost = host
                     viewModel.newServerPort = port
                     viewModel.newServerCalledAET = calledAET

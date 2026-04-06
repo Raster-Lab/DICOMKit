@@ -4,7 +4,7 @@ import DICOMCore
 import DICOMKit
 import DICOMDictionary
 
-@available(macOS 10.15, *)
+@main
 struct DICOMMerge: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-merge",
@@ -227,5 +227,3 @@ enum SortOrder: String, ExpressibleByArgument {
 private func fprintln(_ message: String) {
     FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
-
-DICOMMerge.main()

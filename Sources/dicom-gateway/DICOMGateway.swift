@@ -3,7 +3,7 @@ import ArgumentParser
 import DICOMKit
 import DICOMCore
 
-@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+@main
 struct DICOMGateway: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-gateway",
@@ -568,10 +568,4 @@ struct ForwardCommand: AsyncParsableCommand {
     }
 }
 
-// MARK: - Main Entry Point
 
-if #available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *) {
-    DICOMGateway.main()
-} else {
-    fatalError("This tool requires macOS 10.15, iOS 13, tvOS 13, watchOS 6, or later")
-}

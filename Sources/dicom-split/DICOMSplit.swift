@@ -4,7 +4,7 @@ import DICOMCore
 import DICOMKit
 import DICOMDictionary
 
-@available(macOS 10.15, *)
+@main
 struct DICOMSplit: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-split",
@@ -175,5 +175,3 @@ enum OutputFormat: String, ExpressibleByArgument {
 private func fprintln(_ message: String) {
     FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
-
-DICOMSplit.main()
