@@ -393,6 +393,80 @@ struct NetworkingHelpersTests {
         #expect(desc.contains("2"))
     }
 
+    @Test("PrintHelpers description includes image count")
+    func testPrintHelpersDescriptionIncludesImageCount() {
+        let job = PrintJob(label: "Test", printerServerProfileID: UUID(),
+                           imageFilePaths: ["/a.dcm", "/b.dcm"])
+        let desc = PrintHelpers.description(for: job)
+        #expect(desc.contains("2 image(s)"))
+    }
+
+    @Test("PrintHelpers filmSheetCount returns 0 for no images")
+    func testFilmSheetCountZero() {
+        #expect(PrintHelpers.filmSheetCount(imageCount: 0, layout: .standard2x2) == 0)
+    }
+
+    @Test("PrintHelpers filmSheetCount returns 1 when images fit one sheet")
+    func testFilmSheetCountSingle() {
+        #expect(PrintHelpers.filmSheetCount(imageCount: 4, layout: .standard2x2) == 1)
+        #expect(PrintHelpers.filmSheetCount(imageCount: 3, layout: .standard2x2) == 1)
+        #expect(PrintHelpers.filmSheetCount(imageCount: 1, layout: .standard2x2) == 1)
+    }
+
+    @Test("PrintHelpers filmSheetCount returns multiple sheets when needed")
+    func testFilmSheetCountMultiple() {
+        #expect(PrintHelpers.filmSheetCount(imageCount: 5, layout: .standard2x2) == 2)
+        #expect(PrintHelpers.filmSheetCount(imageCount: 8, layout: .standard2x2) == 2)
+        #expect(PrintHelpers.filmSheetCount(imageCount: 9, layout: .standard2x2) == 3)
+        #expect(PrintHelpers.filmSheetCount(imageCount: 20, layout: .standard4x5) == 1)
+        #expect(PrintHelpers.filmSheetCount(imageCount: 21, layout: .standard4x5) == 2)
+    }
+
+    @Test("PrintHelpers imageIndices returns correct range for first sheet")
+    func testImageIndicesFirstSheet() {
+        let range = PrintHelpers.imageIndices(forSheet: 0, layout: .standard2x2, totalImages: 7)
+        #expect(range == 0..<4)
+    }
+
+    @Test("PrintHelpers imageIndices returns correct range for subsequent sheet")
+    func testImageIndicesSecondSheet() {
+        let range = PrintHelpers.imageIndices(forSheet: 1, layout: .standard2x2, totalImages: 7)
+        #expect(range == 4..<7)
+    }
+
+    @Test("PrintHelpers imageIndices clamps to totalImages")
+    func testImageIndicesClamp() {
+        let range = PrintHelpers.imageIndices(forSheet: 0, layout: .standard2x2, totalImages: 2)
+        #expect(range == 0..<2)
+    }
+
+    @Test("PrintHelpers previewSummary single sheet message")
+    func testPreviewSummarySingle() {
+        let summary = PrintHelpers.previewSummary(imageCount: 3, layout: .standard2x2)
+        #expect(summary == "3 of 4 cells filled")
+    }
+
+    @Test("PrintHelpers previewSummary multi-sheet message")
+    func testPreviewSummaryMulti() {
+        let summary = PrintHelpers.previewSummary(imageCount: 5, layout: .standard2x2)
+        #expect(summary == "5 images across 2 film sheets")
+    }
+
+    @Test("FilmLayout rows and columns multiply to cellCount")
+    func testFilmLayoutRowsColumns() {
+        for layout in FilmLayout.allCases {
+            #expect(layout.rows * layout.columns == layout.cellCount,
+                    "\(layout.displayName): rows(\(layout.rows)) * cols(\(layout.columns)) != cellCount(\(layout.cellCount))")
+        }
+    }
+
+    @Test("FilmLayout specific dimensions")
+    func testFilmLayoutDimensions() {
+        #expect(FilmLayout.standard1x1.columns == 1 && FilmLayout.standard1x1.rows == 1)
+        #expect(FilmLayout.standard2x3.columns == 2 && FilmLayout.standard2x3.rows == 3)
+        #expect(FilmLayout.standard4x5.columns == 4 && FilmLayout.standard4x5.rows == 5)
+    }
+
     // MARK: - MonitoringHelpers
 
     @Test("MonitoringHelpers successRateLabel shows 100.0% for no operations")

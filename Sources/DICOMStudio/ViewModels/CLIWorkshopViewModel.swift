@@ -255,12 +255,12 @@ public final class CLIWorkshopViewModel {
 
     /// Saves the current server parameters as persistent defaults.
     public func saveCurrentServerAsDefault() {
-        let host = paramValue("host")
-        let port = paramValue("port")
+        let hostVal = paramValue("host")
+        let portVal = paramValue("port")
         let calledAET = paramValue("called-aet")
-        let callingAET = paramValue("calling-aet")
-        if !host.isEmpty { UserDefaults.standard.set(host, forKey: DefaultServerKeys.host) }
-        if !port.isEmpty { UserDefaults.standard.set(port, forKey: DefaultServerKeys.port) }
+        let callingAET = paramValue("aet")
+        if !hostVal.isEmpty { UserDefaults.standard.set(hostVal, forKey: DefaultServerKeys.host) }
+        if !portVal.isEmpty { UserDefaults.standard.set(portVal, forKey: DefaultServerKeys.port) }
         if !calledAET.isEmpty { UserDefaults.standard.set(calledAET, forKey: DefaultServerKeys.calledAET) }
         if !callingAET.isEmpty { UserDefaults.standard.set(callingAET, forKey: DefaultServerKeys.callingAET) }
     }
@@ -395,7 +395,7 @@ public final class CLIWorkshopViewModel {
                     updateParameterValueSilent(parameterID: "called-aet", value: calledAET)
                 }
                 if let callingAET = defaults.callingAET, !callingAET.isEmpty {
-                    updateParameterValueSilent(parameterID: "calling-aet", value: callingAET)
+                    updateParameterValueSilent(parameterID: "aet", value: callingAET)
                 }
             }
             // If a saved server is selected, override with its values;
@@ -404,8 +404,9 @@ public final class CLIWorkshopViewModel {
                let server = savedServerProfiles.first(where: { $0.id == serverID }),
                hasHostParam {
                 updateParameterValueSilent(parameterID: "host", value: server.host)
-                updateParameterValueSilent(parameterID: "port", value: String(server.port))
-                updateParameterValueSilent(parameterID: "calling-aet", value: server.localAETitle)
+                let port = server.port > 0 ? server.port : 11112
+                updateParameterValueSilent(parameterID: "port", value: String(port))
+                updateParameterValueSilent(parameterID: "aet", value: server.localAETitle)
                 updateParameterValueSilent(parameterID: "called-aet", value: server.remoteAETitle)
                 updateParameterValueSilent(parameterID: "timeout", value: String(Int(server.timeoutSeconds)))
             }
@@ -452,9 +453,10 @@ public final class CLIWorkshopViewModel {
               let server = savedServerProfiles.first(where: { $0.id == serverID }) else {
             return
         }
+        let port = server.port > 0 ? server.port : 11112
         updateParameterValue(parameterID: "host", value: server.host)
-        updateParameterValue(parameterID: "port", value: String(server.port))
-        updateParameterValue(parameterID: "calling-aet", value: server.localAETitle)
+        updateParameterValue(parameterID: "port", value: String(port))
+        updateParameterValue(parameterID: "aet", value: server.localAETitle)
         updateParameterValue(parameterID: "called-aet", value: server.remoteAETitle)
         updateParameterValue(parameterID: "timeout", value: String(Int(server.timeoutSeconds)))
         rebuildCommandPreview()
@@ -721,13 +723,24 @@ public final class CLIWorkshopViewModel {
     }
 
     /// Reads file data from a path, handling security-scoped resource access if needed.
+    ///
+    /// When the security-scoped URL for `parameterID` is a directory (e.g. the user
+    /// browsed for a folder), the scope is started on the directory and the individual
+    /// file at `path` is read within that scope.
     public func readFileData(at path: String, parameterID: String = "files") throws -> Data {
         if let scopedURL = securityScopedURLs[parameterID] {
             let accessing = scopedURL.startAccessingSecurityScopedResource()
             defer {
                 if accessing { scopedURL.stopAccessingSecurityScopedResource() }
             }
-            return try Data(contentsOf: scopedURL)
+            // If the scoped URL is a directory or differs from the target path,
+            // read the actual file at `path` (which is covered by the directory scope).
+            let fileURL = URL(fileURLWithPath: path)
+            if scopedURL.path == path {
+                return try Data(contentsOf: scopedURL)
+            } else {
+                return try Data(contentsOf: fileURL)
+            }
         }
         return try Data(contentsOf: URL(fileURLWithPath: path))
     }
@@ -991,8 +1004,6 @@ public final class CLIWorkshopViewModel {
             await executeDicomMWL()
         case "dicom-mpps":
             await executeDicomMPPS()
-        case "dcm2dcm":
-            await executeDcm2Dcm()
         case "dicom-qido":
             await executeDicomQIDO()
         case "dicom-wado":
@@ -1125,23 +1136,55 @@ public final class CLIWorkshopViewModel {
         appLog.removeAll()
     }
 
+    /// Parses host string that may contain an embedded port (e.g. "server:4242").
+    /// Returns the host and resolved port, using the given explicit port if non-nil.
+    private func resolveHostPort(_ hostValue: String, explicitPort: String?) -> (host: String, port: UInt16)? {
+        guard !hostValue.isEmpty else { return nil }
+        var host = hostValue
+        var port: UInt16 = 11112
+
+        // Strip pacs:// prefix for backward compatibility with saved defaults
+        if host.hasPrefix("pacs://") {
+            host = String(host.dropFirst(7))
+        }
+
+        // Check if host contains embedded port
+        if let lastColon = host.lastIndex(of: ":") {
+            let portStr = String(host[host.index(after: lastColon)...])
+            if let embeddedPort = UInt16(portStr) {
+                host = String(host[..<lastColon])
+                port = embeddedPort
+            }
+        }
+
+        // Explicit --port overrides embedded port
+        if let ep = explicitPort, let explicitPortNum = UInt16(ep) {
+            port = explicitPortNum
+        }
+
+        guard !host.isEmpty else { return nil }
+        return (host, port)
+    }
+
     /// Performs a real C-ECHO against the server configured in the parameter fields.
     private func executeDicomEcho() async {
-        let host = paramValue("host")
-        let portStr = paramValue("port")
-        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let hostValue = paramValue("host")
+        let portValue = paramValue("port")
+        let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
-        let port = UInt16(portStr) ?? 11112
-        let timeout = TimeInterval(timeoutStr) ?? 30
 
-        guard !host.isEmpty else {
-            appendConsoleOutput("Error: Hostname is required.\n")
+        guard let server = resolveHostPort(hostValue, explicitPort: portValue.isEmpty ? nil : portValue) else {
+            appendConsoleOutput("Error: A valid host is required (e.g. hostname or 192.168.1.1).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1, output: "Invalid host")
             return
         }
+
+        let host = server.host
+        let port = server.port
+        let timeout = TimeInterval(timeoutStr) ?? 30
 
         appendConsoleOutput("Connecting to \(host):\(port) ...\n")
         appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
@@ -2983,23 +3026,25 @@ public final class CLIWorkshopViewModel {
 
     /// Performs a C-FIND query against the server configured in the parameter fields.
     private func executeDicomQuery() async {
-        let host = paramValue("host")
-        let portStr = paramValue("port")
-        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let hostValue = paramValue("host")
+        let portValue = paramValue("port")
+        let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
-        let port = UInt16(portStr) ?? 11112
-        let timeout = TimeInterval(timeoutStr) ?? 30
         let levelStr = paramValue("level")
         let outputFormat = paramValue("output-format").lowercased()
 
-        guard !host.isEmpty else {
-            appendConsoleOutput("Error: Hostname is required.\n")
+        guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
+            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-query", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            addToHistory(toolName: "dicom-query", command: commandPreview, exitCode: 1, output: "Invalid host")
             return
         }
+
+        let host = server.host
+        let port = server.port
+        let timeout = TimeInterval(timeoutStr) ?? 30
 
         let level: QueryLevel
         switch levelStr.uppercased() {
@@ -3564,13 +3609,11 @@ public final class CLIWorkshopViewModel {
 
     /// Performs a real C-STORE to send DICOM files to the configured server.
     private func executeDicomSend() async {
-        let host = paramValue("host")
-        let portStr = paramValue("port")
-        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let hostValue = paramValue("host")
+        let portValue = paramValue("port")
+        let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
-        let port = UInt16(portStr) ?? 11112
-        let timeout = TimeInterval(timeoutStr) ?? 60
         let priorityStr = paramValue("priority").lowercased()
         let verifyFirst = paramValue("verify") == "true"
         let dryRun = paramValue("dry-run") == "true"
@@ -3583,38 +3626,108 @@ public final class CLIWorkshopViewModel {
         default: priority = .medium
         }
 
-        guard !host.isEmpty else {
-            appendConsoleOutput("Error: Hostname is required.\n")
+        guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
+            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "Invalid host")
             return
         }
 
-        // Collect files from both the file drop zone and the text parameter
+        let host = server.host
+        let port = server.port
+        let timeout = TimeInterval(timeoutStr) ?? 60
+        let recursive = paramValue("recursive") == "true"
+
+        // ── Collect DICOM file paths ────────────────────────────────
+        // Merge drag-and-drop entries with the text-field path, resolve
+        // directories into individual DICOM files, and obtain
+        // security-scoped access for sandboxed reads.
+
         let filesParamPath = paramValue("files").trimmingCharacters(in: .whitespaces)
-        var fileEntries = inputFiles
-        if !filesParamPath.isEmpty && !fileEntries.contains(where: { $0.path == filesParamPath }) {
-            let url = URL(fileURLWithPath: filesParamPath)
-            let fileSize: Int64
-            if let attrs = try? FileManager.default.attributesOfItem(atPath: filesParamPath),
-               let size = attrs[.size] as? Int64 {
-                fileSize = size
-            } else {
-                fileSize = 0
-            }
-            fileEntries.append(CLIFileEntry(
-                path: filesParamPath,
-                filename: url.lastPathComponent,
-                fileSize: fileSize
-            ))
+        var resolvedFiles: [CLIFileEntry] = []
+
+        // Start security-scoped access for the entire collection phase
+        let scopedURL = securityScopedURLs["files"]
+        let accessing = scopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if accessing { scopedURL?.stopAccessingSecurityScopedResource() }
         }
 
+        // Helper: collect DICOM files from a single path (file or directory)
+        func collectDICOMFiles(from basePath: String) {
+            let fm = FileManager.default
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: basePath, isDirectory: &isDir) else { return }
+
+            if isDir.boolValue {
+                // Directory — enumerate contents
+                if recursive {
+                    if let enumerator = fm.enumerator(atPath: basePath) {
+                        while let relativePath = enumerator.nextObject() as? String {
+                            let fullPath = (basePath as NSString).appendingPathComponent(relativePath)
+                            if isDICOMCandidate(fullPath),
+                               !resolvedFiles.contains(where: { $0.path == fullPath }) {
+                                let size = (try? fm.attributesOfItem(atPath: fullPath)[.size] as? Int64) ?? 0
+                                resolvedFiles.append(CLIFileEntry(
+                                    path: fullPath,
+                                    filename: (fullPath as NSString).lastPathComponent,
+                                    fileSize: size
+                                ))
+                            }
+                        }
+                    }
+                } else {
+                    if let contents = try? fm.contentsOfDirectory(atPath: basePath) {
+                        for name in contents where !name.hasPrefix(".") {
+                            let fullPath = (basePath as NSString).appendingPathComponent(name)
+                            if isDICOMCandidate(fullPath),
+                               !resolvedFiles.contains(where: { $0.path == fullPath }) {
+                                let size = (try? fm.attributesOfItem(atPath: fullPath)[.size] as? Int64) ?? 0
+                                resolvedFiles.append(CLIFileEntry(
+                                    path: fullPath,
+                                    filename: name,
+                                    fileSize: size
+                                ))
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Single file
+                if !resolvedFiles.contains(where: { $0.path == basePath }) {
+                    let size = (try? fm.attributesOfItem(atPath: basePath)[.size] as? Int64) ?? 0
+                    resolvedFiles.append(CLIFileEntry(
+                        path: basePath,
+                        filename: (basePath as NSString).lastPathComponent,
+                        fileSize: size
+                    ))
+                }
+            }
+        }
+
+        // Collect from drag-and-drop inputFiles
+        for entry in inputFiles {
+            collectDICOMFiles(from: entry.path)
+        }
+
+        // Collect from text-field path
+        if !filesParamPath.isEmpty {
+            collectDICOMFiles(from: filesParamPath)
+        }
+
+        let fileEntries = resolvedFiles
+
         guard !fileEntries.isEmpty else {
-            appendConsoleOutput("Error: No DICOM files specified. Enter a file path or drag and drop files.\n")
+            appendConsoleOutput("Error: No DICOM files found. Verify the path exists and contains DICOM files.\n")
+            if filesParamPath.isEmpty {
+                appendConsoleOutput("  💡 Hint: Enter a file or directory path, or drag and drop DICOM files.\n")
+            } else {
+                appendConsoleOutput("  💡 Hint: The path '\(filesParamPath)' may be a directory. Enable 'Recursive Scan' to search subdirectories.\n")
+            }
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "No files selected")
+            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "No DICOM files found")
             return
         }
 
@@ -3772,13 +3885,11 @@ public final class CLIWorkshopViewModel {
 
     /// Performs a C-MOVE or C-GET retrieval from the configured server.
     private func executeDicomRetrieve() async {
-        let host = paramValue("host")
-        let portStr = paramValue("port")
-        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let hostValue = paramValue("host")
+        let portValue = paramValue("port")
+        let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
-        let port = UInt16(portStr) ?? 11112
-        let timeout = TimeInterval(timeoutStr) ?? 60
         let methodStr = paramValue("method").lowercased()
         let moveDest = paramValue("move-dest")
         let studyUID = paramValue("study-uid")
@@ -3791,13 +3902,17 @@ public final class CLIWorkshopViewModel {
         lastRetrievedFiles.removeAll()
         lastRetrievedOutputURL = securityScopedURLs["output"]
 
-        guard !host.isEmpty else {
-            appendConsoleOutput("Error: Hostname is required.\n")
+        guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
+            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1, output: "Invalid host")
             return
         }
+
+        let host = server.host
+        let port = server.port
+        let timeout = TimeInterval(timeoutStr) ?? 60
 
         guard !studyUID.isEmpty || !seriesUID.isEmpty || !instanceUID.isEmpty else {
             appendConsoleOutput("Error: At least one UID is required (Study, Series, or Instance).\n")
@@ -4092,13 +4207,11 @@ public final class CLIWorkshopViewModel {
 
     /// Performs an integrated C-FIND query followed by C-MOVE/C-GET retrieval.
     private func executeDicomQR() async {
-        let host = paramValue("host")
-        let portStr = paramValue("port")
-        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let hostValue = paramValue("host")
+        let portValue = paramValue("port")
+        let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
-        let port = UInt16(portStr) ?? 11112
-        let timeout = TimeInterval(timeoutStr) ?? 60
         let modeStr = paramValue("mode").lowercased()
         let methodStr = paramValue("method").lowercased()
         let moveDest = paramValue("move-dest")
@@ -4117,13 +4230,17 @@ public final class CLIWorkshopViewModel {
         lastRetrievedFiles.removeAll()
         lastRetrievedOutputURL = securityScopedURLs["output"]
 
-        guard !host.isEmpty else {
-            appendConsoleOutput("Error: Hostname is required.\n")
+        guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
+            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 1, output: "Invalid host")
             return
         }
+
+        let host = server.host
+        let port = server.port
+        let timeout = TimeInterval(timeoutStr) ?? 60
 
         let isCMove = methodStr != "c-get"
         let isReviewOnly = modeStr == "review"
@@ -4359,21 +4476,23 @@ public final class CLIWorkshopViewModel {
     /// Performs a Modality Worklist C-FIND query.
     private func executeDicomMWL() async {
         let operation = paramValue("operation").isEmpty ? "query" : paramValue("operation")
-        let host = paramValue("host")
-        let portStr = paramValue("port")
-        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let hostValue = paramValue("host")
+        let portValue = paramValue("port")
+        let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
-        let port = UInt16(portStr) ?? 11112
-        let timeout = TimeInterval(timeoutStr) ?? 60
 
-        guard !host.isEmpty else {
-            appendConsoleOutput("Error: Hostname is required.\n")
+        guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
+            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1, output: "Invalid host")
             return
         }
+
+        let host = server.host
+        let port = server.port
+        let timeout = TimeInterval(timeoutStr) ?? 60
 
         if operation == "create" {
             await executeDicomMWLCreate(
@@ -4874,13 +4993,11 @@ public final class CLIWorkshopViewModel {
 
     /// Performs an MPPS N-CREATE or N-SET operation.
     private func executeDicomMPPS() async {
-        let host = paramValue("host")
-        let portStr = paramValue("port")
-        let callingAET = paramValue("calling-aet").isEmpty ? "DICOMSTUDIO" : paramValue("calling-aet")
+        let hostValue = paramValue("host")
+        let portValue = paramValue("port")
+        let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
-        let port = UInt16(portStr) ?? 11112
-        let timeout = TimeInterval(timeoutStr) ?? 60
         let operation = paramValue("operation").lowercased()
         let studyUID = paramValue("study-uid")
         let mppsUID = paramValue("mpps-uid")
@@ -4899,13 +5016,17 @@ public final class CLIWorkshopViewModel {
         let imageUIDsRaw = paramValue("image-uids")
         let discontinueReason = paramValue("discontinue-reason")
 
-        guard !host.isEmpty else {
-            appendConsoleOutput("Error: Hostname is required.\n")
+        guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
+            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: "Hostname is required")
+            addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: "Invalid host")
             return
         }
+
+        let host = server.host
+        let port = server.port
+        let timeout = TimeInterval(timeoutStr) ?? 60
 
         let isCreate = operation != "update"
 
@@ -5043,226 +5164,6 @@ public final class CLIWorkshopViewModel {
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1,
                          output: errorMessage)
-        }
-    }
-
-    // MARK: - DCM2DCM Execution (Transfer Syntax Conversion)
-
-    /// Maps user-facing transfer syntax names to DICOM Transfer Syntax UIDs.
-    private static let transferSyntaxNameToUID: [String: String] = [
-        "Explicit VR Little Endian":  "1.2.840.10008.1.2.1",
-        "Implicit VR Little Endian":  "1.2.840.10008.1.2",
-        "Explicit VR Big Endian":     "1.2.840.10008.1.2.2",
-        "JPEG Baseline":              "1.2.840.10008.1.2.4.50",
-        "JPEG Extended":              "1.2.840.10008.1.2.4.51",
-        "JPEG Lossless":              "1.2.840.10008.1.2.4.57",
-        "JPEG Lossless SV1":          "1.2.840.10008.1.2.4.70",
-        "JPEG 2000 Lossless":         "1.2.840.10008.1.2.4.90",
-        "JPEG 2000":                  "1.2.840.10008.1.2.4.91",
-        "JPEG-LS Lossless":           "1.2.840.10008.1.2.4.80",
-        "JPEG-LS Near-Lossless":      "1.2.840.10008.1.2.4.81",
-        "RLE Lossless":               "1.2.840.10008.1.2.5",
-    ]
-
-    /// Performs DCM2DCM transfer syntax conversion.
-    private func executeDcm2Dcm() async {
-        let inputPath = paramValue("input-file")
-        let targetSyntaxName = paramValue("target-syntax")
-        let outputParam = paramValue("output-file")
-        let openInViewer = paramValue("open-in-viewer").lowercased() != "false"
-
-        guard !inputPath.isEmpty else {
-            appendConsoleOutput("❌ No input DICOM file specified.\n")
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            return
-        }
-
-        guard !targetSyntaxName.isEmpty else {
-            appendConsoleOutput("❌ No target transfer syntax selected.\n")
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            return
-        }
-
-        guard let targetUID = Self.transferSyntaxNameToUID[targetSyntaxName],
-              let targetTS = TransferSyntax.from(uid: targetUID) else {
-            appendConsoleOutput("❌ Unknown transfer syntax: \(targetSyntaxName)\n")
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            return
-        }
-
-        appendConsoleOutput("📁 Reading input file…\n")
-
-        // Read input file with security-scoped access if available
-        let data: Data
-        let scopedURL = securityScopedURLs["input-file"]
-        let accessing = scopedURL?.startAccessingSecurityScopedResource() ?? false
-        defer { if accessing { scopedURL?.stopAccessingSecurityScopedResource() } }
-
-        do {
-            let inputURL = scopedURL ?? URL(fileURLWithPath: inputPath)
-            data = try Data(contentsOf: inputURL)
-        } catch {
-            appendConsoleOutput("❌ Failed to read input file: \(error.localizedDescription)\n")
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 1,
-                         output: error.localizedDescription)
-            return
-        }
-
-        do {
-            let file = try DICOMFile.read(from: data)
-            let sourceUID = file.transferSyntaxUID ?? "1.2.840.10008.1.2.1"
-            let sourceName = ImageMetadataHelpers.transferSyntaxLabel(for: sourceUID)
-
-            appendConsoleOutput("  Source transfer syntax: \(sourceName)\n")
-            appendConsoleOutput("  Target transfer syntax: \(targetSyntaxName)\n\n")
-
-            if sourceUID == targetUID {
-                appendConsoleOutput("ℹ️ Source and target transfer syntaxes are identical — no conversion needed.\n")
-                consoleStatus = .idle
-                service.setConsoleStatus(.idle)
-                addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 0,
-                             output: "No conversion needed (same transfer syntax)")
-                return
-            }
-
-            guard let sourceTS = TransferSyntax.from(uid: sourceUID) else {
-                appendConsoleOutput("❌ Unknown source transfer syntax: \(sourceUID)\n")
-                consoleStatus = .error
-                service.setConsoleStatus(.error)
-                return
-            }
-
-            // Check if conversion is supported
-            let converter = DICOMCore.TransferSyntaxConverter(
-                configuration: TranscodingConfiguration(
-                    preferredSyntaxes: [targetTS],
-                    allowLossyCompression: !targetTS.isLossless,
-                    preservePixelDataFidelity: targetTS.isLossless
-                )
-            )
-
-            guard converter.canTranscode(from: sourceTS, to: targetTS) else {
-                appendConsoleOutput("❌ Conversion from \(sourceName) to \(targetSyntaxName) is not supported.\n")
-                appendConsoleOutput("   Hint: Ensure the required codec is available for both source and target syntaxes.\n")
-                consoleStatus = .error
-                service.setConsoleStatus(.error)
-                addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 1,
-                             output: "Unsupported conversion path")
-                return
-            }
-
-            appendConsoleOutput("🔄 Converting…\n")
-
-            // Serialize the data set to bytes using the source transfer syntax encoding
-            let sourceWriter = DICOMWriter(
-                byteOrder: sourceTS.byteOrder,
-                explicitVR: sourceTS.isExplicitVR
-            )
-            let dataSetBytes = file.dataSet.write(using: sourceWriter)
-
-            let result = try converter.transcode(
-                dataSetData: dataSetBytes,
-                from: sourceTS,
-                to: targetTS
-            )
-
-            // Build the output Part 10 DICOM file using the existing file-level helper
-            let sopClassUID = file.dataSet.string(for: .sopClassUID)
-                ?? file.fileMetaInformation.string(for: .mediaStorageSOPClassUID)
-                ?? "1.2.840.10008.5.1.4.1.1.7"
-            let sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
-                ?? file.fileMetaInformation.string(for: .mediaStorageSOPInstanceUID)
-                ?? ""
-            let outputData = part10Wrap(
-                dataset: result.data,
-                sopClassUID: sopClassUID,
-                sopInstanceUID: sopInstanceUID,
-                transferSyntaxUID: targetUID
-            )
-
-            // Determine output URL, preferring security-scoped access for sandbox compliance.
-            // The Browse button for output picks a *folder*; the text field holds the full file path.
-            // We start security-scoped access on the folder URL so that writing to the child path succeeds.
-            let outputScopedURL = securityScopedURLs["output-file"]
-            let accessingOutput = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
-            defer { if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() } }
-
-            let outputURL: URL
-            if !outputParam.isEmpty {
-                outputURL = URL(fileURLWithPath: outputParam)
-            } else {
-                // Fallback: derive from input filename
-                let inputPathURL = URL(fileURLWithPath: inputPath)
-                let stem = inputPathURL.deletingPathExtension().lastPathComponent
-                let ext = inputPathURL.pathExtension.isEmpty ? "dcm" : inputPathURL.pathExtension
-
-                if let scopedDir = outputScopedURL {
-                    // User browsed to a folder but didn't type a filename — save next to input name
-                    outputURL = scopedDir.appendingPathComponent("\(stem)_converted.\(ext)")
-                } else {
-                    // No browse, no output param — place next to input file
-                    outputURL = inputPathURL
-                        .deletingLastPathComponent()
-                        .appendingPathComponent("\(stem)_converted.\(ext)")
-                }
-            }
-            let outputPath = outputURL.path
-
-            // Ensure the output directory exists
-            let outputDir = outputURL.deletingLastPathComponent()
-            try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
-
-            // Write converted file
-            try outputData.write(to: outputURL)
-
-            let savedSize = ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)
-            let originalSize = ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
-
-            appendConsoleOutput("\n✅ Conversion complete!\n")
-            appendConsoleOutput("   Output:   \(outputPath)\n")
-            appendConsoleOutput("   Original: \(originalSize) → Converted: \(savedSize)\n")
-            if result.isLossless {
-                appendConsoleOutput("   Quality:  Lossless\n")
-            } else {
-                appendConsoleOutput("   Quality:  Lossy\n")
-            }
-
-            lastRetrievedFiles = [outputPath]
-            lastRetrievedOutputURL = nil
-
-            consoleStatus = .idle
-            service.setConsoleStatus(.idle)
-            addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 0,
-                         output: "Converted \(sourceName) → \(targetSyntaxName)")
-
-            // Open in viewer if requested
-            if openInViewer {
-                appendConsoleOutput("\n📺 Opening converted file in Viewer…\n")
-                onOpenInViewer?(outputPath, nil)
-            }
-
-        } catch {
-            let desc = error.localizedDescription
-            appendConsoleOutput("❌ Conversion failed: \(desc)\n")
-
-            if let transErr = error as? TranscodingError {
-                appendConsoleOutput("   Detail: \(transErr.description)\n")
-            }
-
-            // Provide a hint when the failure is a sandbox permission issue
-            if desc.contains("permission") || desc.contains("not permitted") {
-                appendConsoleOutput("   Hint: Use the Browse button to select the output folder so the app can write there.\n")
-            }
-
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            addToHistory(toolName: "dcm2dcm", command: commandPreview, exitCode: 1,
-                         output: desc)
         }
     }
 

@@ -3,7 +3,7 @@ import ArgumentParser
 import DICOMKit
 import DICOMCore
 
-@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+@main
 struct DICOMCloud: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-cloud",
@@ -463,4 +463,3 @@ enum EncryptionType: String, ExpressibleByArgument {
 }
 
 // Entry point
-DICOMCloud.main()

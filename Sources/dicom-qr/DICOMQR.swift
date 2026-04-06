@@ -4,7 +4,7 @@ import DICOMKit
 import DICOMCore
 import DICOMNetwork
 
-@available(macOS 10.15, *)
+@main
 struct DICOMQR: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-qr",
@@ -24,14 +24,16 @@ struct DICOMQR: AsyncParsableCommand {
             
             Examples:
               # Interactive query and retrieve
-              dicom-qr pacs://server:11112 \\
-                --aet MY_AET \\
+              dicom-qr \\
+                --host server --port 11112 \\
+                --aet MY_AET --called-aet PACS_SCP \\
                 --move-dest MY_SCP \\
                 --patient-name "DOE*" \\
                 --interactive
               
               # Automatic query and retrieve
-              dicom-qr pacs://server:11112 \\
+              dicom-qr \\
+                --host server:11112 \\
                 --aet MY_AET \\
                 --move-dest MY_SCP \\
                 --study-date "20240101-20240131" \\
@@ -40,7 +42,8 @@ struct DICOMQR: AsyncParsableCommand {
                 --auto
               
               # Query, review, then retrieve
-              dicom-qr pacs://server:11112 \\
+              dicom-qr \\
+                --host server --port 11112 \\
                 --aet MY_AET \\
                 --patient-id "12345" \\
                 --review \\
@@ -67,8 +70,11 @@ extension DICOMQR {
             abstract: "Query and retrieve DICOM studies"
         )
         
-        @Argument(help: "PACS server URL (pacs://host:port)")
-        var url: String
+        @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+        var host: String
+        
+        @Option(name: .long, help: "PACS server port (default: 11112)")
+        var port: UInt16?
         
         @Option(name: .long, help: "Local Application Entity Title (calling AE)")
         var aet: String
@@ -140,6 +146,11 @@ extension DICOMQR {
         @Flag(name: .long, help: "Show verbose output")
         var verbose: Bool = false
         
+        /// Resolves the final host and port.
+        func resolveHostPort() -> (host: String, port: UInt16) {
+            dicom_qr.resolveHostPort(host: host, port: port)
+        }
+        
         mutating func run() async throws {
             #if canImport(Network)
             // Validate mode selection
@@ -165,8 +176,8 @@ extension DICOMQR {
                 throw ValidationError("Invalid method: \(method). Use c-move or c-get")
             }
             
-            // Parse server URL
-            let serverInfo = try parseServerURL(url)
+            // Parse server
+            let serverInfo = resolveHostPort()
             
             if verbose {
                 print("Query-Retrieve Configuration:")
@@ -564,25 +575,26 @@ extension DICOMQR {
 
 // MARK: - Helper Types
 
-struct ServerInfo {
-    let host: String
-    let port: UInt16
-}
+/// Resolves the final host and port from ``--host`` and ``--port`` options.
+private func resolveHostPort(host: String, port: UInt16?) -> (host: String, port: UInt16) {
+    var resolvedHost = host
+    var resolvedPort: UInt16 = port ?? 11112
 
-func parseServerURL(_ urlString: String) throws -> ServerInfo {
-    guard urlString.hasPrefix("pacs://") else {
-        throw ValidationError("Invalid URL format. Must start with pacs://")
+    if resolvedHost.hasPrefix("pacs://") {
+        resolvedHost = String(resolvedHost.dropFirst(7))
     }
-    
-    let withoutScheme = String(urlString.dropFirst(7))
-    let components = withoutScheme.components(separatedBy: ":")
-    
-    guard components.count == 2,
-          let port = UInt16(components[1]) else {
-        throw ValidationError("Invalid URL format. Expected pacs://host:port")
+
+    if let lastColon = resolvedHost.lastIndex(of: ":") {
+        let portString = String(resolvedHost[resolvedHost.index(after: lastColon)...])
+        if let embeddedPort = UInt16(portString) {
+            resolvedHost = String(resolvedHost[..<lastColon])
+            if port == nil {
+                resolvedPort = embeddedPort
+            }
+        }
     }
-    
-    return ServerInfo(host: components[0], port: port)
+
+    return (resolvedHost, resolvedPort)
 }
 
 // MARK: - State Types
@@ -681,7 +693,7 @@ struct QueryExecutor {
     let timeout: TimeInterval
     
     func executeQuery(level: QueryLevel, queryKeys: QueryKeys) async throws -> [GenericQueryResult] {
-        let configuration = try buildConfiguration()
+        let configuration = try buildConfiguration(level: level)
         
         return try await DICOMQueryService.find(
             host: host,
@@ -691,11 +703,13 @@ struct QueryExecutor {
         )
     }
     
-    private func buildConfiguration() throws -> QueryConfiguration {
+    private func buildConfiguration(level: QueryLevel) throws -> QueryConfiguration {
+        let informationModel: QueryRetrieveInformationModel = (level == .patient) ? .patientRoot : .studyRoot
         return QueryConfiguration(
             callingAETitle: try AETitle(callingAE),
             calledAETitle: try AETitle(calledAE),
-            timeout: timeout
+            timeout: timeout,
+            informationModel: informationModel
         )
     }
 }
@@ -744,5 +758,3 @@ struct RetrieveExecutor {
     }
 }
 #endif
-
-DICOMQR.main()

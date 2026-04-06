@@ -13,6 +13,7 @@ import ImageIO
 import UniformTypeIdentifiers
 #endif
 
+@main
 struct DICOMConvert: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-convert",
@@ -333,5 +334,3 @@ enum ConversionError: LocalizedError {
         }
     }
 }
-
-await DICOMConvert.main()

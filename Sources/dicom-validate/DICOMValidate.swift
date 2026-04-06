@@ -4,7 +4,7 @@ import DICOMKit
 import DICOMCore
 import DICOMDictionary
 
-@available(macOS 10.15, iOS 13, *)
+@main
 struct DICOMValidate: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-validate",
@@ -130,5 +130,3 @@ struct DICOMValidate: AsyncParsableCommand {
         return try validator.validate(data: fileData, filePath: url.path)
     }
 }
-
-await DICOMValidate.main()

@@ -3,7 +3,7 @@ import ArgumentParser
 import DICOMCore
 import DICOMNetwork
 
-@available(macOS 10.15, *)
+@main
 struct DICOMRetrieve: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-retrieve",
@@ -12,26 +12,27 @@ struct DICOMRetrieve: AsyncParsableCommand {
             Retrieves DICOM studies, series, or instances from PACS servers using the C-MOVE
             or C-GET service. C-MOVE requires a destination AE, while C-GET retrieves directly.
             
-            URL Formats:
-              pacs://hostname:port     - DICOM C-MOVE/C-GET protocol
+            The --host option accepts a hostname or IP address, optionally with a
+            port suffix (host:port). Use --port to specify the port separately.
+            If no port is given, the default is 11112.
             
             Examples:
               # Retrieve study using C-MOVE
-              dicom-retrieve pacs://server:11112 \\
-                --aet MY_SCU \\
+              dicom-retrieve --host server --port 11112 \\
+                --aet MY_SCU --called-aet PACS_SCP \\
                 --move-dest MY_SCP \\
                 --study-uid 1.2.840.xxx \\
                 --output study_dir/
               
               # Retrieve using C-GET (simpler, no move destination)
-              dicom-retrieve pacs://server:11112 \\
+              dicom-retrieve --host server --port 11112 \\
                 --aet MY_SCU \\
                 --study-uid 1.2.840.xxx \\
                 --method c-get \\
                 --output study_dir/
               
               # Retrieve specific series
-              dicom-retrieve pacs://server:11112 \\
+              dicom-retrieve --host server:11112 \\
                 --aet MY_SCU \\
                 --move-dest MY_SCP \\
                 --study-uid 1.2.840.xxx \\
@@ -39,7 +40,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
                 --output series_dir/
               
               # Bulk retrieve from UID list
-              dicom-retrieve pacs://server:11112 \\
+              dicom-retrieve --host server --port 11112 \\
                 --aet MY_SCU \\
                 --move-dest MY_SCP \\
                 --uid-list study_uids.txt \\
@@ -49,8 +50,11 @@ struct DICOMRetrieve: AsyncParsableCommand {
         version: "1.1.2"
     )
     
-    @Argument(help: "PACS server URL (pacs://host:port)")
-    var url: String
+    @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+    var host: String
+    
+    @Option(name: .long, help: "PACS server port (default: 11112)")
+    var port: UInt16?
     
     @Option(name: .long, help: "Local Application Entity Title (calling AE)")
     var aet: String
@@ -96,12 +100,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
     
     mutating func run() async throws {
         #if canImport(Network)
-        // Parse URL
-        let serverInfo = try parseServerURL(url)
-        
-        guard serverInfo.scheme == "pacs" else {
-            throw ValidationError("Only pacs:// URLs are supported")
-        }
+        let serverInfo = resolveHostPort()
         
         // Validate method and destination
         if method == .cMove && moveDest == nil {
@@ -191,27 +190,26 @@ struct DICOMRetrieve: AsyncParsableCommand {
         #endif
     }
     
-    func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String, port: UInt16) {
-        guard let url = URL(string: urlString) else {
-            throw ValidationError("Invalid URL: \(urlString)")
+    /// Resolves the final host and port from ``--host`` and ``--port`` options.
+    func resolveHostPort() -> (host: String, port: UInt16) {
+        var resolvedHost = host
+        var resolvedPort: UInt16 = port ?? 11112
+
+        if resolvedHost.hasPrefix("pacs://") {
+            resolvedHost = String(resolvedHost.dropFirst(7))
         }
-        
-        guard let scheme = url.scheme, scheme == "pacs" else {
-            throw ValidationError("URL must use pacs:// scheme")
+
+        if let lastColon = resolvedHost.lastIndex(of: ":") {
+            let portString = String(resolvedHost[resolvedHost.index(after: lastColon)...])
+            if let embeddedPort = UInt16(portString) {
+                resolvedHost = String(resolvedHost[..<lastColon])
+                if port == nil {
+                    resolvedPort = embeddedPort
+                }
+            }
         }
-        
-        guard let host = url.host else {
-            throw ValidationError("URL must include a hostname")
-        }
-        
-        let port: UInt16
-        if let urlPort = url.port {
-            port = UInt16(urlPort)
-        } else {
-            port = 104 // DICOM default port
-        }
-        
-        return (scheme, host, port)
+
+        return (resolvedHost, resolvedPort)
     }
     
     func createOutputDirectory(_ path: String) throws {
@@ -245,5 +243,3 @@ enum RetrievalMethod: String, ExpressibleByArgument {
 private func fprintln(_ message: String) {
     FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
-
-DICOMRetrieve.main()

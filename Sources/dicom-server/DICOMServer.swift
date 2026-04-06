@@ -4,7 +4,7 @@ import DICOMKit
 import DICOMCore
 import DICOMNetwork
 
-@available(macOS 10.15, iOS 13, tvOS 13, watchOS 6, *)
+@main
 struct DICOMServer: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "dicom-server",

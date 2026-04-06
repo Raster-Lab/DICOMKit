@@ -970,6 +970,70 @@ public enum FilmLayout: String, Sendable, Equatable, Hashable, CaseIterable {
         case .standard4x5: return 20
         }
     }
+
+    /// Number of columns in the layout grid.
+    public var columns: Int {
+        switch self {
+        case .standard1x1: return 1
+        case .standard1x2: return 1
+        case .standard2x1: return 2
+        case .standard2x2: return 2
+        case .standard2x3: return 2
+        case .standard3x3: return 3
+        case .standard4x4: return 4
+        case .standard4x5: return 4
+        }
+    }
+
+    /// Number of rows in the layout grid.
+    public var rows: Int {
+        switch self {
+        case .standard1x1: return 1
+        case .standard1x2: return 2
+        case .standard2x1: return 1
+        case .standard2x2: return 2
+        case .standard2x3: return 3
+        case .standard3x3: return 3
+        case .standard4x4: return 4
+        case .standard4x5: return 5
+        }
+    }
+}
+
+// MARK: - Print Film Size
+
+/// Standard film size identifiers for DICOM print.
+/// Reference: DICOM PS3.3 C.13.6 – Film Size ID, Tag (2010,0050)
+public enum PrintFilmSize: String, Sendable, Equatable, Hashable, CaseIterable {
+    case size8x10    = "8INX10IN"
+    case size8_5x11  = "8_5INX11IN"
+    case size10x12   = "10INX12IN"
+    case size10x14   = "10INX14IN"
+    case size11x14   = "11INX14IN"
+    case size11x17   = "11INX17IN"
+    case size14x14   = "14INX14IN"
+    case size14x17   = "14INX17IN"
+    case size24x24cm = "24CMX24CM"
+    case size24x30cm = "24CMX30CM"
+    case a4          = "A4"
+    case a3          = "A3"
+
+    public var displayName: String {
+        switch self {
+        case .size8x10:   return "8\" × 10\""
+        case .size8_5x11: return "8.5\" × 11\""
+        case .size10x12:  return "10\" × 12\""
+        case .size10x14:  return "10\" × 14\""
+        case .size11x14:  return "11\" × 14\""
+        case .size11x17:  return "11\" × 17\""
+        case .size14x14:  return "14\" × 14\""
+        case .size14x17:  return "14\" × 17\""
+        case .size24x24cm: return "24 × 24 cm"
+        case .size24x30cm: return "24 × 30 cm"
+        case .a4:          return "A4"
+        case .a3:          return "A3"
+        }
+    }
 }
 
 // MARK: - Print Job Status
@@ -1019,8 +1083,14 @@ public struct PrintJob: Sendable, Identifiable, Equatable {
     public var mediumType: PrintMediumType
     /// Film layout.
     public var filmLayout: FilmLayout
+    /// Film size.
+    public var filmSize: PrintFilmSize
     /// SOP Instance UIDs of images placed in the film.
     public var imageSopInstanceUIDs: [String]
+    /// File paths of DICOM images selected for printing.
+    public var imageFilePaths: [String]
+    /// Security-scoped bookmark data for each image file (macOS sandbox).
+    public var imageBookmarks: [Data]
     /// Job status.
     public var status: PrintJobStatus
     /// Error message if failed.
@@ -1036,9 +1106,12 @@ public struct PrintJob: Sendable, Identifiable, Equatable {
         printerServerProfileID: UUID,
         numberOfCopies: Int = 1,
         priority: PrintPriority = .med,
-        mediumType: PrintMediumType = .clearFilm,
+        mediumType: PrintMediumType = .paper,
         filmLayout: FilmLayout = .standard2x2,
+        filmSize: PrintFilmSize = .size14x17,
         imageSopInstanceUIDs: [String] = [],
+        imageFilePaths: [String] = [],
+        imageBookmarks: [Data] = [],
         status: PrintJobStatus = .pending,
         errorMessage: String? = nil,
         createdDate: Date = Date(),
@@ -1051,7 +1124,10 @@ public struct PrintJob: Sendable, Identifiable, Equatable {
         self.priority = priority
         self.mediumType = mediumType
         self.filmLayout = filmLayout
+        self.filmSize = filmSize
         self.imageSopInstanceUIDs = imageSopInstanceUIDs
+        self.imageFilePaths = imageFilePaths
+        self.imageBookmarks = imageBookmarks
         self.status = status
         self.errorMessage = errorMessage
         self.createdDate = createdDate
