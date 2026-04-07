@@ -260,6 +260,36 @@ struct CLIWorkshopHelpersTests {
         #expect(cmdFalse == "dicom-info")
     }
 
+    @Test("buildCommand handles flagPicker by emitting --value")
+    func testBuildCommandFlagPicker() {
+        let defs = [
+            CLIParameterDefinition(id: "host", flag: "--host", displayName: "Host", parameterType: .textField),
+            CLIParameterDefinition(
+                id: "mode", flag: "", displayName: "Operation Mode",
+                parameterType: .flagPicker, allowedValues: ["interactive", "auto", "review"]
+            ),
+        ]
+        let vals = [
+            CLIParameterValue(parameterID: "host", stringValue: "192.168.1.1"),
+            CLIParameterValue(parameterID: "mode", stringValue: "interactive"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-qr", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd == "dicom-qr --host 192.168.1.1 --interactive")
+    }
+
+    @Test("buildCommand flagPicker emits --auto for auto value")
+    func testBuildCommandFlagPickerAuto() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "mode", flag: "", displayName: "Mode",
+                parameterType: .flagPicker, allowedValues: ["interactive", "auto", "review"]
+            ),
+        ]
+        let vals = [CLIParameterValue(parameterID: "mode", stringValue: "auto")]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-qr", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd == "dicom-qr --auto")
+    }
+
     @Test("buildCommand handles file path with spaces")
     func testBuildCommandFilePathSpaces() {
         let defs = [
@@ -497,5 +527,95 @@ struct CLIWorkshopHelpersTests {
     func testExamplePresetsUnknown() {
         let presets = EducationalHelpers.examplePresets(for: "nonexistent-tool")
         #expect(presets.isEmpty)
+    }
+
+    // MARK: - buildCommand visibleWhen filtering
+
+    @Test("buildCommand excludes parameters whose visibleWhen condition is not met")
+    func testBuildCommandVisibleWhenExcludesHidden() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "operation", flag: "", displayName: "Operation",
+                parameterType: .subcommand, allowedValues: ["query", "create"]
+            ),
+            CLIParameterDefinition(
+                id: "modality", flag: "--modality", displayName: "Modality",
+                parameterType: .enumPicker,
+                visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
+            ),
+            CLIParameterDefinition(
+                id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                parameterType: .textField,
+                visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+            ),
+        ]
+        // Operation is "query" — modality should appear, patient-name should not
+        let vals = [
+            CLIParameterValue(parameterID: "operation", stringValue: "query"),
+            CLIParameterValue(parameterID: "modality", stringValue: "CT"),
+            CLIParameterValue(parameterID: "patient-name", stringValue: "DOE^JOHN"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-mwl", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd.contains("--modality CT"))
+        #expect(!cmd.contains("--patient-name"))
+        #expect(!cmd.contains("DOE^JOHN"))
+    }
+
+    @Test("buildCommand includes parameters whose visibleWhen condition IS met")
+    func testBuildCommandVisibleWhenIncludesVisible() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "operation", flag: "", displayName: "Operation",
+                parameterType: .subcommand, allowedValues: ["query", "create"]
+            ),
+            CLIParameterDefinition(
+                id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                parameterType: .textField,
+                visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+            ),
+        ]
+        // Operation is "create" — patient-name should appear
+        let vals = [
+            CLIParameterValue(parameterID: "operation", stringValue: "create"),
+            CLIParameterValue(parameterID: "patient-name", stringValue: "DOE^JOHN"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-mwl", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd.contains("--patient-name DOE^JOHN"))
+    }
+
+    @Test("buildCommand includes parameters without visibleWhen (always visible)")
+    func testBuildCommandNoVisibleWhenAlwaysIncluded() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "host", flag: "--host", displayName: "Host",
+                parameterType: .textField
+            ),
+        ]
+        let vals = [CLIParameterValue(parameterID: "host", stringValue: "localhost")]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-mwl", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd == "dicom-mwl --host localhost")
+    }
+
+    @Test("buildCommand uses default value for visibleWhen check when parameter value is empty")
+    func testBuildCommandVisibleWhenDefaultValue() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "operation", flag: "", displayName: "Operation",
+                parameterType: .subcommand, defaultValue: "query",
+                allowedValues: ["query", "create"]
+            ),
+            CLIParameterDefinition(
+                id: "modality", flag: "--modality", displayName: "Modality",
+                parameterType: .enumPicker,
+                visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
+            ),
+        ]
+        // No explicit operation value — should fall back to default "query"
+        let vals = [
+            CLIParameterValue(parameterID: "operation", stringValue: ""),
+            CLIParameterValue(parameterID: "modality", stringValue: "MR"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-mwl", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd.contains("--modality MR"))
     }
 }

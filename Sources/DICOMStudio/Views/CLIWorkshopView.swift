@@ -357,7 +357,7 @@ public struct CLIWorkshopView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(param.displayName)
                                     .font(.callout.bold())
-                                if param.parameterType == .enumPicker && !param.allowedValues.isEmpty {
+                                if (param.parameterType == .enumPicker || param.parameterType == .flagPicker || (param.parameterType == .subcommand && !param.allowedValues.isEmpty)) && !param.allowedValues.isEmpty {
                                     enumPickerField(param: param)
                                 } else if param.parameterType == .filePath || param.parameterType == .outputPath {
                                     filePathField(param: param)
