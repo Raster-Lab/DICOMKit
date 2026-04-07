@@ -631,11 +631,11 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "ANY-SCP"
                 ),
                 CLIParameterDefinition(
-                    id: "mode", flag: "--mode", displayName: "Operation Mode",
-                    parameterType: .enumPicker, placeholder: "interactive",
-                    helpText: "Interactive: select studies; Automatic: retrieve all matches; Review: query only",
+                    id: "mode", flag: "", displayName: "Operation Mode",
+                    parameterType: .flagPicker, placeholder: "interactive",
+                    helpText: "Interactive: select studies; Auto: retrieve all matches; Review: query only",
                     defaultValue: "interactive",
-                    allowedValues: ["interactive", "automatic", "review"]
+                    allowedValues: ["interactive", "auto", "review"]
                 ),
                 CLIParameterDefinition(
                     id: "method", flag: "--method", displayName: "Retrieval Method",
@@ -757,15 +757,16 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 // ----- Query parameters (C-FIND) -----
                 CLIParameterDefinition(
-                    id: "date-from", flag: "--date-from", displayName: "Date From",
+                    id: "date-from", flag: "--date", displayName: "Date",
                     parameterType: .textField, placeholder: "today / YYYYMMDD",
-                    helpText: "Start of scheduled date range — use 'today', 'tomorrow', or YYYYMMDD format (0040,0002)",
+                    helpText: "Scheduled date filter — use 'today', 'tomorrow', or YYYYMMDD format (0040,0002)",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
                     id: "date-to", flag: "--date-to", displayName: "Date To",
                     parameterType: .textField, placeholder: "tomorrow / YYYYMMDD",
-                    helpText: "End of scheduled date range (inclusive) — leave empty for single-day query (0040,0002)",
+                    helpText: "End of scheduled date range (inclusive) — used by DICOMStudio's internal execution only",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
@@ -800,11 +801,22 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["", "SCHEDULED", "IN PROGRESS", "DISCONTINUED", "COMPLETED"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
-                // ----- Create parameters -----
+                CLIParameterDefinition(
+                    id: "query-accession-number", flag: "--accession-number", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Filter by accession number (0008,0050)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
+                ),
+                // ----- Create parameters (DICOMStudio-internal, no CLI equivalent) -----
+                // Note: `dicom-mwl` CLI only supports the `query` subcommand.
+                // MWL item creation is performed by DICOMStudio via HL7 ORM^O01
+                // or REST API — these parameters drive the internal execution
+                // but are excluded from the command preview (`isInternal: true`).
                 CLIParameterDefinition(
                     id: "create-method", flag: "", displayName: "Create Method",
                     parameterType: .enumPicker, placeholder: "hl7",
                     helpText: "How to create the worklist item. HL7 (recommended): sends an ORM^O01 order message via MLLP — automatically creates the patient and worklist. REST: posts DICOM JSON to the server's REST API (requires the patient to exist first).",
+                    isInternal: true,
                     defaultValue: "hl7",
                     allowedValues: ["hl7", "rest"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
@@ -813,6 +825,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "hl7-port", flag: "--hl7-port", displayName: "HL7 Port",
                     parameterType: .integerField, placeholder: "2575",
                     helpText: "HL7 MLLP listener port on the server (default: 2575 for dcm4chee-arc)",
+                    isInternal: true,
                     defaultValue: "2575", minValue: 1, maxValue: 65535,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
                 ),
@@ -821,6 +834,7 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "e.g. DOE^JOHN",
                     helpText: "Patient's Name (0010,0010) — required for worklist creation",
                     isRequired: true,
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
@@ -828,18 +842,21 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "e.g. PAT001",
                     helpText: "Patient ID (0010,0020) — required for worklist creation",
                     isRequired: true,
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "patient-dob", flag: "--patient-dob", displayName: "Patient Birth Date",
                     parameterType: .textField, placeholder: "YYYYMMDD",
                     helpText: "Patient's Birth Date (0010,0030) in YYYYMMDD format",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "patient-sex", flag: "--patient-sex", displayName: "Patient Sex",
                     parameterType: .enumPicker, placeholder: "Unknown",
                     helpText: "Patient's Sex (0010,0040)",
+                    isInternal: true,
                     allowedValues: ["", "M", "F", "O"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
@@ -847,30 +864,35 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "accession-number", flag: "--accession-number", displayName: "Accession Number",
                     parameterType: .textField, placeholder: "e.g. ACC12345",
                     helpText: "Accession Number (0008,0050) — links worklist item to the imaging order",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "referring-physician", flag: "--referring-physician", displayName: "Referring Physician",
                     parameterType: .textField, placeholder: "e.g. SMITH^JANE",
                     helpText: "Referring Physician's Name (0008,0090)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "procedure-id", flag: "--procedure-id", displayName: "Requested Procedure ID",
                     parameterType: .textField, placeholder: "e.g. PROC001",
                     helpText: "Requested Procedure ID (0040,1001)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
                     parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
                     helpText: "Requested Procedure Description (0032,1070)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "create-modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "CT",
                     helpText: "Scheduled modality for the procedure step (0008,0060)",
+                    isInternal: true,
                     defaultValue: "CT",
                     allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
@@ -879,42 +901,49 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "scheduled-station", flag: "--scheduled-station", displayName: "Scheduled Station AET",
                     parameterType: .textField, placeholder: "e.g. CT1",
                     helpText: "Scheduled Station AE Title (0040,0001) — the modality that will perform the procedure",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "station-name", flag: "--station-name", displayName: "Station Name",
                     parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
                     helpText: "Scheduled Station Name (0040,0010)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "scheduled-date", flag: "--scheduled-date", displayName: "Scheduled Date",
                     parameterType: .textField, placeholder: "YYYYMMDD or today",
                     helpText: "Scheduled Procedure Step Start Date (0040,0002) — defaults to today",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "scheduled-time", flag: "--scheduled-time", displayName: "Scheduled Time",
                     parameterType: .textField, placeholder: "HHMMSS e.g. 143000",
                     helpText: "Scheduled Procedure Step Start Time (0040,0003)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "sps-id", flag: "--sps-id", displayName: "Procedure Step ID",
                     parameterType: .textField, placeholder: "e.g. SPS001",
                     helpText: "Scheduled Procedure Step ID (0040,0009) — defaults to SPS001",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "sps-desc", flag: "--sps-desc", displayName: "Step Description",
                     parameterType: .textField, placeholder: "e.g. CT Head Scan",
                     helpText: "Scheduled Procedure Step Description (0040,0007)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "performing-physician", flag: "--physician", displayName: "Performing Physician",
                     parameterType: .textField, placeholder: "e.g. JONES^ALICE",
                     helpText: "Scheduled Performing Physician's Name (0040,0006)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
@@ -922,6 +951,7 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "e.g. http://host:8080/dcm4chee-arc",
                     helpText: "REST base URL for MWL item creation. MWL creation uses the server's REST API (not DIMSE). Default: http://<host>:8080/dcm4chee-arc",
                     isAdvanced: true,
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["rest"])
                 ),
                 CLIParameterDefinition(
@@ -929,6 +959,7 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "DICOMSTUDIO",
                     helpText: "HL7 MSH-3 Sending Application name (default: DICOMSTUDIO)",
                     isAdvanced: true,
+                    isInternal: true,
                     defaultValue: "DICOMSTUDIO",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
                 ),
@@ -937,6 +968,7 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "IMAGING",
                     helpText: "HL7 MSH-4 Sending Facility name (default: IMAGING)",
                     isAdvanced: true,
+                    isInternal: true,
                     defaultValue: "IMAGING",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
                 ),
@@ -945,6 +977,7 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "DCM4CHEE",
                     helpText: "HL7 MSH-5 Receiving Application name (default: DCM4CHEE)",
                     isAdvanced: true,
+                    isInternal: true,
                     defaultValue: "DCM4CHEE",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
                 ),
@@ -953,6 +986,7 @@ public enum ToolCatalogHelpers: Sendable {
                     parameterType: .textField, placeholder: "HOSPITAL",
                     helpText: "HL7 MSH-6 Receiving Facility name (default: HOSPITAL)",
                     isAdvanced: true,
+                    isInternal: true,
                     defaultValue: "HOSPITAL",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "create-method", values: ["hl7"])
                 ),
@@ -1011,16 +1045,22 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "ANY-SCP"
                 ),
                 // ----- N-CREATE parameters (PS3.4 Table F.7.2-1) -----
+                // Note: The `dicom-mpps create` CLI only accepts --study-uid
+                // and --status.  The additional N-CREATE attributes below are
+                // sent by DICOMStudio's internal execution via Swift APIs but
+                // are NOT CLI flags, so they are marked `isInternal: true`.
                 CLIParameterDefinition(
                     id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
                     parameterType: .textField, placeholder: "e.g. DOE^JOHN",
-                    helpText: "Patient's Name (0010,0010) — required for N-CREATE",
+                    helpText: "Patient's Name (0010,0010) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
                     parameterType: .textField, placeholder: "e.g. PAT001",
-                    helpText: "Patient ID (0010,0020) — required for N-CREATE",
+                    helpText: "Patient ID (0010,0020) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
@@ -1030,9 +1070,16 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
+                    id: "sps-id", flag: "--sps-id", displayName: "Scheduled Procedure Step ID",
+                    parameterType: .textField, placeholder: "e.g. SPS001",
+                    helpText: "Scheduled Procedure Step ID (0040,0009) from the MWL item — links this MPPS to the worklist entry so the server transitions the MWL status from SCHEDULED to IN PROGRESS",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "CT",
-                    helpText: "Modality being performed (0008,0060) — required for N-CREATE",
+                    helpText: "Modality being performed (0008,0060) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     defaultValue: "CT",
                     allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
@@ -1040,31 +1087,35 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "procedure-id", flag: "--procedure-id", displayName: "Procedure Step ID",
                     parameterType: .textField, placeholder: "e.g. SPS001",
-                    helpText: "Performed Procedure Step ID (0040,0253)",
+                    helpText: "Performed Procedure Step ID (0040,0253) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
                     parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
-                    helpText: "Performed Procedure Step Description (0040,0254)",
+                    helpText: "Performed Procedure Step Description (0040,0254) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "accession-number", flag: "--accession-number", displayName: "Accession Number",
                     parameterType: .textField, placeholder: "e.g. ACC12345",
-                    helpText: "Accession Number (0008,0050) — links MPPS to the order",
+                    helpText: "Accession Number (0008,0050) — links the MPPS to the imaging order and helps the server match the MWL item",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "performing-physician", flag: "--physician", displayName: "Performing Physician",
                     parameterType: .textField, placeholder: "e.g. SMITH^JANE",
-                    helpText: "Name of performing physician (0008,1050)",
+                    helpText: "Name of performing physician (0008,1050) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "station-name", flag: "--station-name", displayName: "Station Name",
                     parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
-                    helpText: "Performing Station Name (0008,1010)",
+                    helpText: "Performing Station Name (0008,1010) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 // ----- N-SET parameters -----
@@ -1090,13 +1141,15 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "image-uids", flag: "--image-uids", displayName: "Image SOP Instance UIDs",
                     parameterType: .textField, placeholder: "UID1,UID2,...",
-                    helpText: "Comma-separated SOP Instance UIDs of acquired images — used in N-SET Referenced Image Sequence",
+                    helpText: "Comma-separated SOP Instance UIDs of acquired images — sent via DICOMStudio internal execution (CLI uses --image-uid, repeatable)",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
                     id: "discontinue-reason", flag: "--discontinue-reason", displayName: "Discontinuation Reason",
                     parameterType: .textField, placeholder: "e.g. Patient refused",
-                    helpText: "Reason for discontinuation (0040,0281) — used when status is DISCONTINUED",
+                    helpText: "Reason for discontinuation (0040,0281) — sent via DICOMStudio internal execution",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
@@ -1591,6 +1644,18 @@ public enum CommandBuilderHelpers: Sendable {
         }
         // Iterate in definition order so the command preview matches the canonical parameter order
         for def in parameterDefinitions {
+            // Skip parameters that are DICOMStudio-internal (not actual CLI flags)
+            guard !def.isInternal else { continue }
+            // Skip parameters whose visibility condition is not met
+            if let condition = def.visibleWhen {
+                let currentValue = parameterValues.first(where: { $0.parameterID == condition.parameterId })?.stringValue ?? ""
+                let effectiveValue = currentValue.isEmpty
+                    ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
+                    : currentValue
+                if !condition.values.contains(effectiveValue) {
+                    continue
+                }
+            }
             guard let value = parameterValues.first(where: { $0.parameterID == def.id }) else { continue }
             guard !value.stringValue.isEmpty else { continue }
             switch def.parameterType {
@@ -1598,6 +1663,9 @@ public enum CommandBuilderHelpers: Sendable {
                 if value.stringValue == "true" {
                     parts.append(def.flag)
                 }
+            case .flagPicker:
+                // Flag pickers emit "--<value>" (e.g. "--interactive") instead of "--flag value"
+                parts.append("--\(value.stringValue)")
             case .filePath, .outputPath:
                 if def.flag.isEmpty {
                     parts.append(shellEscape(value.stringValue))
@@ -1612,10 +1680,10 @@ public enum CommandBuilderHelpers: Sendable {
                 }
             default:
                 if def.flag.isEmpty {
-                    parts.append(value.stringValue)
+                    parts.append(shellEscape(value.stringValue))
                 } else {
                     parts.append(def.flag)
-                    parts.append(value.stringValue)
+                    parts.append(shellEscape(value.stringValue))
                 }
             }
         }

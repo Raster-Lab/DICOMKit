@@ -219,6 +219,7 @@ public enum CLIParameterType: String, Sendable, Equatable, Hashable, CaseIterabl
     case slider        = "SLIDER"
     case secureField   = "SECURE_FIELD"
     case subcommand    = "SUBCOMMAND"
+    case flagPicker    = "FLAG_PICKER"
 
     /// Human-readable display name.
     public var displayName: String {
@@ -234,6 +235,7 @@ public enum CLIParameterType: String, Sendable, Equatable, Hashable, CaseIterabl
         case .slider:        return "Slider"
         case .secureField:   return "Secure Field"
         case .subcommand:    return "Subcommand"
+        case .flagPicker:    return "Flag Picker"
         }
     }
 }
@@ -259,6 +261,11 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     public var helpText: String
     public var isRequired: Bool
     public var isAdvanced: Bool
+    /// When `true`, this parameter is used only by DICOMStudio's internal
+    /// execution and does **not** correspond to an actual CLI flag.  It will
+    /// still appear in the UI form but will be excluded from
+    /// `buildCommand()` output.
+    public var isInternal: Bool
     public var defaultValue: String
     public var allowedValues: [String]
     public var minValue: Int?
@@ -276,6 +283,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         helpText: String = "",
         isRequired: Bool = false,
         isAdvanced: Bool = false,
+        isInternal: Bool = false,
         defaultValue: String = "",
         allowedValues: [String] = [],
         minValue: Int? = nil,
@@ -290,6 +298,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         self.helpText = helpText
         self.isRequired = isRequired
         self.isAdvanced = isAdvanced
+        self.isInternal = isInternal
         self.defaultValue = defaultValue
         self.allowedValues = allowedValues
         self.minValue = minValue

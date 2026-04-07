@@ -102,6 +102,12 @@ extension DICOMMPPSCommand {
         @Option(name: .long, help: "Initial status (default: IN PROGRESS)")
         var status: String = "IN PROGRESS"
         
+        @Option(name: .long, help: "Scheduled Procedure Step ID from the MWL item — links this MPPS to the worklist entry so the server can transition its status (0040,0009)")
+        var spsId: String?
+        
+        @Option(name: .long, help: "Accession Number linking the procedure to the imaging order (0008,0050)")
+        var accessionNumber: String?
+        
         @Option(name: .long, help: "Connection timeout in seconds (default: 60)")
         var timeout: Int = 60
         
@@ -124,6 +130,8 @@ extension DICOMMPPSCommand {
                 fprintln("Called AE: \(calledAet)")
                 fprintln("Study UID: \(studyUid)")
                 fprintln("Status: \(mppsStatus.rawValue)")
+                if let spsId { fprintln("SPS ID: \(spsId)") }
+                if let accessionNumber { fprintln("Accession #: \(accessionNumber)") }
                 fprintln("Timeout: \(timeout)s")
                 fprintln("")
             }
@@ -136,7 +144,9 @@ extension DICOMMPPSCommand {
                 calledAE: calledAet,
                 studyInstanceUID: studyUid,
                 status: mppsStatus,
-                timeout: TimeInterval(timeout)
+                timeout: TimeInterval(timeout),
+                accessionNumber: accessionNumber,
+                scheduledProcedureStepID: spsId
             )
             
             fprintln("✓ MPPS instance created successfully")

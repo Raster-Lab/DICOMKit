@@ -219,6 +219,18 @@ extension DICOMQR {
                 return
             }
             
+            if verbose {
+                print("Raw C-FIND response attributes:")
+                for (index, result) in results.enumerated() {
+                    print("  Result [\(index + 1)]:")
+                    for (tag, data) in result.attributes.sorted(by: { $0.key < $1.key }) {
+                        let str = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) ?? "<binary \(data.count) bytes>"
+                        print("    (\(String(format: "%04X", tag.group)),\(String(format: "%04X", tag.element))) = \"\(str.trimmingCharacters(in: CharacterSet(charactersIn: " \0")))\"")
+                    }
+                }
+                print("")
+            }
+            
             print("Found \(results.count) studies")
             print("")
             
@@ -328,10 +340,22 @@ extension DICOMQR {
         // MARK: - Helper Methods
         
         private func buildQueryKeys() -> QueryKeys {
+            // Always request all standard return keys first, then add
+            // matching keys for user-supplied filter values.  This mirrors
+            // the approach used by the DICOMStudio ViewModel.
             var keys = QueryKeys(level: .study)
+                .requestStudyInstanceUID()
+                .requestPatientName()
+                .requestPatientID()
+                .requestStudyDate()
+                .requestStudyDescription()
+                .requestAccessionNumber()
+                .requestModalitiesInStudy()
+                .requestNumberOfStudyRelatedSeries()
+                .requestNumberOfStudyRelatedInstances()
             
             if let name = patientName {
-                keys = keys.patientName(name)
+                keys = keys.patientName(name.uppercased())
             }
             if let id = patientId {
                 keys = keys.patientID(id)
@@ -346,7 +370,7 @@ extension DICOMQR {
                 keys = keys.accessionNumber(accession)
             }
             if let mod = modality {
-                keys = keys.modality(mod)
+                keys = keys.modalitiesInStudy(mod)
             }
             if let desc = studyDescription {
                 keys = keys.studyDescription(desc)
@@ -753,8 +777,122 @@ struct RetrieveExecutor {
                 studyInstanceUID: studyUID,
                 timeout: timeout
             )
-            for await _ in stream {}
+            var filesReceived = 0
+            var totalBytes = 0
+            for await event in stream {
+                switch event {
+                case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
+                    try saveInstance(
+                        sopInstanceUID: sopInstanceUID,
+                        sopClassUID: sopClassUID,
+                        transferSyntaxUID: transferSyntaxUID,
+                        data: data,
+                        studyUID: studyUID
+                    )
+                    filesReceived += 1
+                    totalBytes += data.count
+                    if verbose {
+                        print("    Received instance: \(sopInstanceUID) (\(formatBytes(totalBytes)))")
+                    }
+                case .progress(let progress):
+                    if verbose {
+                        print("    Progress: \(progress.completed)/\(progress.completed + progress.remaining)")
+                    }
+                case .completed(let result):
+                    print("  Files received: \(filesReceived) (\(formatBytes(totalBytes)))")
+                    if verbose {
+                        print("  C-GET status: \(result.status)")
+                    }
+                case .error(let err):
+                    throw err
+                }
+            }
         }
+    }
+    
+    // MARK: - File Management
+    
+    private func saveInstance(
+        sopInstanceUID: String,
+        sopClassUID: String,
+        transferSyntaxUID: String,
+        data: Data,
+        studyUID: String
+    ) throws {
+        let fm = FileManager.default
+        let filename = "\(sopInstanceUID).dcm"
+        let dirPath: String
+        
+        if hierarchical {
+            dirPath = (outputPath as NSString).appendingPathComponent(studyUID)
+        } else {
+            dirPath = outputPath
+        }
+        
+        try fm.createDirectory(atPath: dirPath, withIntermediateDirectories: true)
+        
+        let filepath = (dirPath as NSString).appendingPathComponent(filename)
+        
+        // Wrap the raw dataset in a Part 10 container if it is not already one
+        let fileData: Data
+        if data.count >= 132,
+           data[128] == 0x44, data[129] == 0x49, data[130] == 0x43, data[131] == 0x4D {
+            fileData = data
+        } else {
+            fileData = buildPart10(
+                dataset: data,
+                sopClassUID: sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                transferSyntaxUID: transferSyntaxUID
+            )
+        }
+        try fileData.write(to: URL(fileURLWithPath: filepath), options: .atomic)
+    }
+    
+    // MARK: - Part 10 Wrapper
+    
+    private func buildPart10(
+        dataset: Data,
+        sopClassUID: String,
+        sopInstanceUID: String,
+        transferSyntaxUID: String
+    ) -> Data {
+        func le16(_ v: UInt16) -> Data { Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF)]) }
+        func le32(_ v: UInt32) -> Data { Data([UInt8(v & 0xFF), UInt8((v >> 8) & 0xFF),
+                                               UInt8((v >> 16) & 0xFF), UInt8((v >> 24) & 0xFF)]) }
+        func ulElem(_ g: UInt16, _ e: UInt16, _ val: UInt32) -> Data {
+            le16(g) + le16(e) + Data([0x55, 0x4C]) + le16(4) + le32(val)
+        }
+        func obElem(_ g: UInt16, _ e: UInt16, _ val: Data) -> Data {
+            le16(g) + le16(e) + Data([0x4F, 0x42, 0x00, 0x00]) + le32(UInt32(val.count)) + val
+        }
+        func uiElem(_ g: UInt16, _ e: UInt16, _ val: String) -> Data {
+            var b = val.data(using: .ascii) ?? Data()
+            if b.count % 2 != 0 { b.append(0x00) }
+            return le16(g) + le16(e) + Data([0x55, 0x49]) + le16(UInt16(b.count)) + b
+        }
+        
+        var meta = Data()
+        meta += obElem(0x0002, 0x0001, Data([0x00, 0x01]))               // File Meta Information Version
+        meta += uiElem(0x0002, 0x0002, sopClassUID)                      // Media Storage SOP Class UID
+        meta += uiElem(0x0002, 0x0003, sopInstanceUID)                   // Media Storage SOP Instance UID
+        meta += uiElem(0x0002, 0x0010, transferSyntaxUID)                // Transfer Syntax UID
+        meta += uiElem(0x0002, 0x0012, "1.2.826.0.1.3680043.9.7433.1.1") // Implementation Class UID
+        
+        var file = Data(repeating: 0, count: 128)                         // 128-byte preamble
+        file += Data([0x44, 0x49, 0x43, 0x4D])                            // DICM magic
+        file += ulElem(0x0002, 0x0000, UInt32(meta.count))               // File Meta Group Length
+        file += meta
+        file += dataset
+        return file
+    }
+    
+    private func formatBytes(_ bytes: Int) -> String {
+        let kb = Double(bytes) / 1024.0
+        if kb < 1024.0 { return String(format: "%.1f KB", kb) }
+        let mb = kb / 1024.0
+        if mb < 1024.0 { return String(format: "%.1f MB", mb) }
+        return String(format: "%.1f GB", mb / 1024.0)
     }
 }
 #endif
