@@ -203,7 +203,7 @@ public enum ToolCatalogHelpers: Sendable {
                               briefDescription: "Modality Performed Procedure Step management",
                               dicomStandardRef: "PS3.4", hasSubcommands: true, requiresNetwork: true,
                               networkToolGroup: .dimse),
-            CLIToolDefinition(id: "dicom-qido", name: "dicom-qido", displayName: "QIDO-RS Query",
+            CLIToolDefinition(id: "dicom-qido", name: "dicom-wado", displayName: "QIDO-RS Query",
                               category: .networkOperations, sfSymbol: "magnifyingglass.circle",
                               briefDescription: "Query DICOMweb servers with QIDO-RS",
                               dicomStandardRef: "PS3.18", requiresNetwork: true,
@@ -1045,22 +1045,16 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "ANY-SCP"
                 ),
                 // ----- N-CREATE parameters (PS3.4 Table F.7.2-1) -----
-                // Note: The `dicom-mpps create` CLI only accepts --study-uid
-                // and --status.  The additional N-CREATE attributes below are
-                // sent by DICOMStudio's internal execution via Swift APIs but
-                // are NOT CLI flags, so they are marked `isInternal: true`.
                 CLIParameterDefinition(
                     id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
                     parameterType: .textField, placeholder: "e.g. DOE^JOHN",
-                    helpText: "Patient's Name (0010,0010) — sent via DICOMStudio internal execution",
-                    isInternal: true,
+                    helpText: "Patient's Name (0010,0010) — included in the N-CREATE dataset sent to the PACS",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
                     id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
                     parameterType: .textField, placeholder: "e.g. PAT001",
-                    helpText: "Patient ID (0010,0020) — sent via DICOMStudio internal execution",
-                    isInternal: true,
+                    helpText: "Patient ID (0010,0020) — included in the N-CREATE dataset sent to the PACS",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
@@ -1168,17 +1162,25 @@ public enum ToolCatalogHelpers: Sendable {
         case "dicom-qido":
             return [
                 CLIParameterDefinition(
-                    id: "url", flag: "--url", displayName: "Base URL",
+                    id: "operation", flag: "", displayName: "Subcommand",
+                    parameterType: .subcommand, placeholder: "query",
+                    helpText: "QIDO-RS query subcommand",
+                    isRequired: true,
+                    defaultValue: "query",
+                    allowedValues: ["query"]
+                ),
+                CLIParameterDefinition(
+                    id: "url", flag: "", displayName: "Base URL",
                     parameterType: .textField, placeholder: "e.g. https://pacs.hospital.com/dicom-web",
                     helpText: "DICOMweb server base URL (PS3.18 §6.5)",
                     isRequired: true
                 ),
                 CLIParameterDefinition(
                     id: "level", flag: "--level", displayName: "Query Level",
-                    parameterType: .enumPicker, placeholder: "STUDY",
+                    parameterType: .enumPicker, placeholder: "study",
                     helpText: "QIDO-RS query level — determines which resource is searched (PS3.18 §10.6)",
-                    defaultValue: "STUDY",
-                    allowedValues: ["STUDY", "SERIES", "INSTANCE"]
+                    defaultValue: "study",
+                    allowedValues: ["study", "series", "instance"]
                 ),
                 CLIParameterDefinition(
                     id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
@@ -1202,7 +1204,7 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
                 ),
                 CLIParameterDefinition(
-                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    id: "study-uid", flag: "--study", displayName: "Study Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
                     helpText: "Study Instance UID to filter results (0020,000D)"
                 ),
@@ -1228,6 +1230,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "auth", flag: "--auth", displayName: "Authentication",
                     parameterType: .enumPicker, placeholder: "none",
                     helpText: "Authentication method for the DICOMweb server",
+                    isInternal: true,
                     defaultValue: "none",
                     allowedValues: ["none", "basic", "bearer"]
                 ),
@@ -1241,19 +1244,21 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "username", flag: "--username", displayName: "Username",
                     parameterType: .textField, placeholder: "e.g. admin",
                     helpText: "Username for basic authentication",
+                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
                 ),
                 CLIParameterDefinition(
                     id: "output-format", flag: "--format", displayName: "Output Format",
-                    parameterType: .enumPicker, placeholder: "text",
+                    parameterType: .enumPicker, placeholder: "table",
                     helpText: "Output format for query results",
-                    defaultValue: "text",
-                    allowedValues: ["text", "json", "csv", "xml"]
+                    defaultValue: "table",
+                    allowedValues: ["table", "json", "csv"]
                 ),
                 CLIParameterDefinition(
                     id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
                     parameterType: .enumPicker, placeholder: "30",
                     helpText: "HTTP request timeout in seconds",
+                    isInternal: true,
                     defaultValue: "30",
                     allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
                 ),

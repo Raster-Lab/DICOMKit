@@ -99,6 +99,12 @@ extension DICOMMPPSCommand {
         @Option(name: .long, help: "Study Instance UID for the procedure")
         var studyUid: String
         
+        @Option(name: .long, help: "Patient's Name (0010,0010) in DICOM format e.g. DOE^JOHN")
+        var patientName: String?
+        
+        @Option(name: .long, help: "Patient ID (0010,0020)")
+        var patientId: String?
+        
         @Option(name: .long, help: "Initial status (default: IN PROGRESS)")
         var status: String = "IN PROGRESS"
         
@@ -130,6 +136,8 @@ extension DICOMMPPSCommand {
                 fprintln("Called AE: \(calledAet)")
                 fprintln("Study UID: \(studyUid)")
                 fprintln("Status: \(mppsStatus.rawValue)")
+                if let patientName { fprintln("Patient Name: \(patientName)") }
+                if let patientId { fprintln("Patient ID: \(patientId)") }
                 if let spsId { fprintln("SPS ID: \(spsId)") }
                 if let accessionNumber { fprintln("Accession #: \(accessionNumber)") }
                 fprintln("Timeout: \(timeout)s")
@@ -145,6 +153,8 @@ extension DICOMMPPSCommand {
                 studyInstanceUID: studyUid,
                 status: mppsStatus,
                 timeout: TimeInterval(timeout),
+                patientName: patientName,
+                patientID: patientId,
                 accessionNumber: accessionNumber,
                 scheduledProcedureStepID: spsId
             )
