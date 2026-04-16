@@ -13,33 +13,40 @@ DICOM network testing and diagnostics tool using C-ECHO verification service.
 
 ## Usage
 
+```
+dicom-echo <host> [--port <port>] --aet <aet> [options]
+```
+
+The `<host>` argument accepts a hostname or IP address, optionally with a port suffix (`host:port`). Use `--port` to specify the port separately. If no port is given, the default is 11112.
+
 ### Basic C-ECHO
 
 ```bash
-dicom-echo pacs://server:11112 --aet TEST_SCU
+dicom-echo server:11112 --aet TEST_SCU
 ```
 
 ### Multiple Echo Requests with Statistics
 
 ```bash
-dicom-echo pacs://server:11112 --aet TEST_SCU --count 10 --stats
+dicom-echo server:11112 --aet TEST_SCU --count 10 --stats
 ```
 
 ### Verbose Output
 
 ```bash
-dicom-echo pacs://server:11112 --aet TEST_SCU --verbose
+dicom-echo server:11112 --aet TEST_SCU --verbose
 ```
 
 ### Network Diagnostics
 
 ```bash
-dicom-echo pacs://server:11112 --aet TEST_SCU --diagnose
+dicom-echo server:11112 --aet TEST_SCU --diagnose
 ```
 
 ## Options
 
-- `url` (required): PACS server URL in format `pacs://hostname:port`
+- `<host>` (required): PACS server hostname or IP address, optionally `host:port`
+- `--port`: PACS server port (default: 11112; overrides port embedded in `<host>`)
 - `--aet` (required): Local Application Entity Title (calling AE)
 - `--called-aet`: Remote Application Entity Title (default: ANY-SCP)
 - `--count, -c`: Number of echo requests to send (default: 1)
@@ -53,13 +60,13 @@ dicom-echo pacs://server:11112 --aet TEST_SCU --diagnose
 ### Test connectivity to PACS
 
 ```bash
-dicom-echo pacs://pacs.hospital.com:11112 --aet WORKSTATION --called-aet PACS_SCP
+dicom-echo pacs.hospital.com:11112 --aet WORKSTATION --called-aet PACS_SCP
 ```
 
 ### Measure network latency (10 requests)
 
 ```bash
-dicom-echo pacs://pacs.hospital.com:11112 --aet WORKSTATION --count 10 --stats
+dicom-echo pacs.hospital.com:11112 --aet WORKSTATION --count 10 --stats
 ```
 
 Output:
@@ -80,7 +87,7 @@ Round-trip time statistics:
 ### Full network diagnostics
 
 ```bash
-dicom-echo pacs://pacs.hospital.com:11112 --aet WORKSTATION --diagnose
+dicom-echo pacs.hospital.com:11112 --aet WORKSTATION --diagnose
 ```
 
 Output:
