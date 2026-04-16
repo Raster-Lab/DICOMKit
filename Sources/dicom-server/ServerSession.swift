@@ -739,7 +739,7 @@ actor ServerSession {
             }
             
             // Send final response
-            let finalStatus: DIMSEStatus = failed == 0 ? .success : (completed > 0 ? .warningSubOperationsCompleteOneOrMoreFailures : .refusedUnableToPerformSubOperations)
+            let finalStatus: DIMSEStatus = failed == 0 ? .success : (completed > 0 ? .warningCoercionOfDataElements : .failedUnableToProcess)
             let finalResponse = CMoveResponse(
                 messageIDBeingRespondedTo: request.messageID,
                 affectedSOPClassUID: request.affectedSOPClassUID,
@@ -950,7 +950,7 @@ actor ServerSession {
             }
             
             // Send final response
-            let finalStatus: DIMSEStatus = failed == 0 ? .success : (completed > 0 ? .warningSubOperationsCompleteOneOrMoreFailures : .refusedUnableToPerformSubOperations)
+            let finalStatus: DIMSEStatus = failed == 0 ? .success : (completed > 0 ? .warningCoercionOfDataElements : .failedUnableToProcess)
             let finalResponse = CGetResponse(
                 messageIDBeingRespondedTo: request.messageID,
                 affectedSOPClassUID: request.affectedSOPClassUID,

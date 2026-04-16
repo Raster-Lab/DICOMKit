@@ -713,7 +713,8 @@ public final class DICOMwebClient: @unchecked Sendable {
     /// Parses a multipart MIME response
     private func parseMultipartResponse(data: Data, contentType: String) throws -> [MultipartMIME.Part] {
         // If content type is not multipart, return single part
-        guard contentType.contains("multipart") else {
+        // MIME types are case-insensitive per RFC 2045 §5.1
+        guard contentType.lowercased().contains("multipart") else {
             let mediaType = DICOMMediaType.parse(contentType) ?? .octetStream
             return [MultipartMIME.Part(contentType: mediaType, body: data)]
         }

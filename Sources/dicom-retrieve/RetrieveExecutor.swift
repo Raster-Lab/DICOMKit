@@ -173,6 +173,10 @@ struct RetrieveExecutor {
             fprintln("  Warnings: \(result.progress.warning)")
         }
         
+        if result.hasWarning {
+            fprintln("Warning: \(result.status)")
+        }
+        
         if !result.isSuccess {
             throw RetrieveError.retrievalFailed(status: result.status)
         }
@@ -247,13 +251,17 @@ struct RetrieveExecutor {
                 }
                 
             case .completed(let result):
-                if verbose {
+                if verbose || result.hasWarning {
                     fprintln("\nC-GET Completed:")
                     fprintln("  Files received: \(filesReceived)")
                     fprintln("  Total size: \(formatBytes(totalBytes))")
                     fprintln("  Status: \(result.status)")
                     fprintln("  Completed: \(result.progress.completed)")
                     fprintln("  Failed: \(result.progress.failed)")
+                }
+                
+                if result.hasWarning {
+                    fprintln("Warning: \(result.status)")
                 }
                 
                 if !result.isSuccess {

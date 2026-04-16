@@ -13,25 +13,25 @@ struct DICOMEcho: AsyncParsableCommand {
             This is the simplest DICOM network operation and is useful for testing
             connectivity, network configuration, and PACS server availability.
             
-            The --host option accepts a hostname or IP address, optionally with a
+            The host argument accepts a hostname or IP address, optionally with a
             port suffix (host:port). Use --port to specify the port separately.
             If no port is given, the default is 11112.
             
             Examples:
-              dicom-echo --host server --port 11112 --aet TEST_SCU
-              dicom-echo --host server:11112 --aet TEST_SCU
-              dicom-echo --host server --port 11112 --aet TEST_SCU --called-aet PACS_SCP
-              dicom-echo --host 192.168.1.100 --port 11112 --aet TEST_SCU --count 10 --stats
-              dicom-echo --host server --port 4242 --aet TEST_SCU --verbose
-              dicom-echo --host server --port 11112 --aet TEST_SCU --diagnose
+              dicom-echo server:11112 --aet TEST_SCU
+              dicom-echo server --port 11112 --aet TEST_SCU
+              dicom-echo server:11112 --aet TEST_SCU --called-aet PACS_SCP
+              dicom-echo 192.168.1.100:11112 --aet TEST_SCU --count 10 --stats
+              dicom-echo server:4242 --aet TEST_SCU --verbose
+              dicom-echo server:11112 --aet TEST_SCU --diagnose
             """,
         version: "1.0.0"
     )
     
-    @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+    @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
     var host: String
     
-    @Option(name: .long, help: "PACS server port (default: 11112)")
+    @Option(name: .long, help: "PACS server port (default: 11112, overrides port in host argument)")
     var port: UInt16?
     
     @Option(name: .long, help: "Local Application Entity Title (calling AE)")

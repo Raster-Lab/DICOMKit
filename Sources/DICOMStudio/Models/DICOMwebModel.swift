@@ -22,10 +22,10 @@ public enum DICOMwebTab: String, Sendable, Equatable, Hashable, CaseIterable {
     public var displayName: String {
         switch self {
         case .serverConfig:         return "Server Config"
-        case .qidoRS:               return "QIDO-RS"
-        case .wadoRS:               return "WADO-RS"
-        case .stowRS:               return "STOW-RS"
-        case .upsRS:                return "UPS-RS"
+        case .qidoRS:               return "dicom-wado query"
+        case .wadoRS:               return "dicom-wado retrieve"
+        case .stowRS:               return "dicom-wado store"
+        case .upsRS:                return "dicom-wado ups"
         case .performanceDashboard: return "Performance"
         }
     }

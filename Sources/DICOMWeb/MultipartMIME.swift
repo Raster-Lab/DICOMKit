@@ -255,7 +255,12 @@ public struct MultipartMIME: Sendable {
         return parts
     }
     
-    /// Find all byte offsets where the boundary delimiter occurs
+    /// Find all byte offsets where the boundary delimiter occurs at a line boundary.
+    ///
+    /// Per RFC 2046 §5.1.1, boundary delimiters MUST occur at the beginning of a line,
+    /// i.e. at position 0 or immediately following a CRLF (or bare LF).
+    /// Matching at arbitrary positions inside binary DICOM pixel data would produce
+    /// false positives that truncate multi-instance responses.
     private static func findBoundaryPositions(in data: Data, delimiter: Data) -> [Int] {
         var positions: [Int] = []
         let count = data.count
@@ -265,8 +270,26 @@ public struct MultipartMIME: Sendable {
         var i = 0
         while i <= count - delimCount {
             if data[data.startIndex.advanced(by: i) ..< data.startIndex.advanced(by: i + delimCount)] == delimiter {
-                positions.append(i)
-                i += delimCount
+                // Boundary is valid only at position 0 or after CRLF / bare LF
+                let isLineStart: Bool
+                if i == 0 {
+                    isLineStart = true
+                } else if i >= 2,
+                          data[data.startIndex.advanced(by: i - 2)] == 0x0D,
+                          data[data.startIndex.advanced(by: i - 1)] == 0x0A {
+                    isLineStart = true
+                } else if data[data.startIndex.advanced(by: i - 1)] == 0x0A {
+                    isLineStart = true
+                } else {
+                    isLineStart = false
+                }
+                
+                if isLineStart {
+                    positions.append(i)
+                    i += delimCount
+                } else {
+                    i += 1
+                }
             } else {
                 i += 1
             }
