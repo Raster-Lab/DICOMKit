@@ -94,13 +94,26 @@ public struct RetrieveResult: Sendable, Hashable {
     public let progress: RetrieveProgress
     
     /// Whether the retrieve was successful (all sub-operations completed successfully)
+    ///
+    /// Warning statuses (e.g. 0xB000 "Coercion of data elements") are treated as
+    /// successful because the SCP completed the operation. When the overall status
+    /// is a warning, the failed sub-operation count is ignored because some SCPs
+    /// (e.g. DCM4CHEE) count coerced sub-operations as both completed and failed.
     public var isSuccess: Bool {
-        status.isSuccess && progress.failed == 0
+        if status.isWarning {
+            return true
+        }
+        return status.isSuccess && progress.failed == 0
     }
     
     /// Whether the retrieve completed with some failures
     public var hasPartialFailures: Bool {
         status.isSuccess && progress.failed > 0
+    }
+    
+    /// Whether the retrieve completed with a warning status
+    public var hasWarning: Bool {
+        status.isWarning
     }
     
     /// Creates a retrieve result

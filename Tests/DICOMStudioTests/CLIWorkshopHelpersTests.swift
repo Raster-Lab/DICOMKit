@@ -237,6 +237,12 @@ struct CLIWorkshopHelpersTests {
         #expect(cmd == "dicom-compress compress")
     }
 
+    @Test("dicom-qido does not expose subcommand parameter")
+    func testDicomQIDONoSubcommandParameter() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-qido")
+        #expect(!defs.contains(where: { $0.id == "operation" }))
+    }
+
     @Test("buildCommand includes flag and value parameters")
     func testBuildCommandWithParams() {
         let defs = [
@@ -245,6 +251,21 @@ struct CLIWorkshopHelpersTests {
         let vals = [CLIParameterValue(parameterID: "format", stringValue: "json")]
         let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-info", parameterValues: vals, parameterDefinitions: defs)
         #expect(cmd == "dicom-info --format json")
+    }
+
+    @Test("buildCommand uses positional host port for dicom-echo")
+    func testBuildCommandDICOMEchoPositionalHostPort() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-echo")
+        let vals = [
+            CLIParameterValue(parameterID: "host", stringValue: "172.17.1.111"),
+            CLIParameterValue(parameterID: "port", stringValue: "11112"),
+            CLIParameterValue(parameterID: "aet", stringValue: "DICOMSTUDIO"),
+            CLIParameterValue(parameterID: "called-aet", stringValue: "DCM4CHEE"),
+            CLIParameterValue(parameterID: "count", stringValue: "1"),
+            CLIParameterValue(parameterID: "timeout", stringValue: "30"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-echo", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd == "dicom-echo 172.17.1.111:11112 --aet DICOMSTUDIO --called-aet DCM4CHEE --count 1 --timeout 30")
     }
 
     @Test("buildCommand handles boolean toggles correctly")
@@ -346,6 +367,111 @@ struct CLIWorkshopHelpersTests {
         ]
         let missing = CommandBuilderHelpers.missingRequiredParameters(parameterValues: [], parameterDefinitions: defs)
         #expect(missing == ["Input File"])
+    }
+
+    @Test("buildCommand emits cliMapping tokens for internal parameters")
+    func testBuildCommandCLIMapping() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "proto", flag: "", displayName: "Protocol",
+                parameterType: .enumPicker, isInternal: true,
+                defaultValue: "wado-rs", allowedValues: ["wado-rs", "wado-uri"],
+                cliMapping: ["wado-uri": "--uri"]
+            ),
+            CLIParameterDefinition(
+                id: "url", flag: "", displayName: "URL",
+                parameterType: .textField
+            ),
+        ]
+        // When mapped value is selected, the mapped flag appears
+        let valsURI = [
+            CLIParameterValue(parameterID: "proto", stringValue: "wado-uri"),
+            CLIParameterValue(parameterID: "url", stringValue: "http://server/wado"),
+        ]
+        let cmdURI = CommandBuilderHelpers.buildCommand(toolName: "dicom-wado retrieve", parameterValues: valsURI, parameterDefinitions: defs)
+        #expect(cmdURI == "dicom-wado retrieve --uri http://server/wado")
+
+        // When unmapped value is selected, no extra flag appears
+        let valsRS = [
+            CLIParameterValue(parameterID: "proto", stringValue: "wado-rs"),
+            CLIParameterValue(parameterID: "url", stringValue: "http://server/dicom-web"),
+        ]
+        let cmdRS = CommandBuilderHelpers.buildCommand(toolName: "dicom-wado retrieve", parameterValues: valsRS, parameterDefinitions: defs)
+        #expect(cmdRS == "dicom-wado retrieve http://server/dicom-web")
+    }
+
+    @Test("buildCommand cliMapping emits multi-token values")
+    func testBuildCommandCLIMappingMultiToken() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "ctype", flag: "", displayName: "Content Type",
+                parameterType: .enumPicker, isInternal: true,
+                defaultValue: "application/dicom",
+                allowedValues: ["application/dicom", "image/jpeg"],
+                cliMapping: ["image/jpeg": "--content-type image/jpeg"]
+            ),
+        ]
+        let vals = [CLIParameterValue(parameterID: "ctype", stringValue: "image/jpeg")]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-wado retrieve", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd == "dicom-wado retrieve --content-type image/jpeg")
+
+        // Default value has no mapping → no extra tokens
+        let valsDefault = [CLIParameterValue(parameterID: "ctype", stringValue: "application/dicom")]
+        let cmdDefault = CommandBuilderHelpers.buildCommand(toolName: "dicom-wado retrieve", parameterValues: valsDefault, parameterDefinitions: defs)
+        #expect(cmdDefault == "dicom-wado retrieve")
+    }
+
+    @Test("buildCommand omits UPS output format for non-retrieval operations")
+    func testBuildCommandUPSOutputFormatVisibility() {
+        let defs = [
+            CLIParameterDefinition(
+                id: "operation", flag: "", displayName: "Operation",
+                parameterType: .enumPicker, isInternal: true,
+                defaultValue: "search", allowedValues: ["search", "get", "create-workitem", "change-state", "subscribe"]
+            ),
+            CLIParameterDefinition(
+                id: "url", flag: "", displayName: "Base URL",
+                parameterType: .textField
+            ),
+            CLIParameterDefinition(
+                id: "output-format", flag: "--format", displayName: "Output Format",
+                parameterType: .enumPicker,
+                defaultValue: "table",
+                allowedValues: ["table", "json"],
+                visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search", "get"])
+            ),
+            CLIParameterDefinition(
+                id: "create-workitem-flag", flag: "--create-workitem", displayName: "Create Workitem",
+                parameterType: .booleanToggle,
+                visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+            ),
+        ]
+
+        let retrievalValues = [
+            CLIParameterValue(parameterID: "operation", stringValue: "search"),
+            CLIParameterValue(parameterID: "url", stringValue: "https://server/dicom-web"),
+            CLIParameterValue(parameterID: "output-format", stringValue: "table"),
+        ]
+        let retrievalCommand = CommandBuilderHelpers.buildCommand(
+            toolName: "dicom-wado ups",
+            parameterValues: retrievalValues,
+            parameterDefinitions: defs
+        )
+        #expect(retrievalCommand.contains("--format table"))
+
+        let createValues = [
+            CLIParameterValue(parameterID: "operation", stringValue: "create-workitem"),
+            CLIParameterValue(parameterID: "url", stringValue: "https://server/dicom-web"),
+            CLIParameterValue(parameterID: "output-format", stringValue: "table"),
+            CLIParameterValue(parameterID: "create-workitem-flag", stringValue: "true"),
+        ]
+        let createCommand = CommandBuilderHelpers.buildCommand(
+            toolName: "dicom-wado ups",
+            parameterValues: createValues,
+            parameterDefinitions: defs
+        )
+        #expect(!createCommand.contains("--format"))
+        #expect(createCommand.contains("--create-workitem"))
     }
 
     @Test("tokenize correctly identifies tool name, flags, values, and paths")
@@ -617,5 +743,168 @@ struct CLIWorkshopHelpersTests {
         ]
         let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-mwl", parameterValues: vals, parameterDefinitions: defs)
         #expect(cmd.contains("--modality MR"))
+    }
+
+    // MARK: - dicom-convert Parameter Definitions
+
+    @Test("dicom-convert has parameter definitions")
+    func testDicomConvertHasParameterDefs() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        #expect(!defs.isEmpty)
+    }
+
+    @Test("dicom-convert requires inputPath and output")
+    func testDicomConvertRequiredParams() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let required = defs.filter { $0.isRequired }
+        let requiredIDs = Set(required.map { $0.id })
+        #expect(requiredIDs.contains("inputPath"))
+        #expect(requiredIDs.contains("output"))
+        #expect(required.count == 2)
+    }
+
+    @Test("dicom-convert has expected parameter count")
+    func testDicomConvertParameterCount() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        #expect(defs.count == 13)
+    }
+
+    @Test("dicom-convert format parameter has enum values")
+    func testDicomConvertFormatParam() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let formatParam = defs.first { $0.id == "format" }
+        #expect(formatParam != nil)
+        #expect(formatParam?.parameterType == .enumPicker)
+        #expect(formatParam?.allowedValues.contains("dicom") == true)
+        #expect(formatParam?.allowedValues.contains("png") == true)
+        #expect(formatParam?.allowedValues.contains("jpeg") == true)
+        #expect(formatParam?.allowedValues.contains("tiff") == true)
+        #expect(formatParam?.defaultValue == "dicom")
+    }
+
+    @Test("dicom-convert transfer-syntax visible only for DICOM format")
+    func testDicomConvertTransferSyntaxVisibility() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let tsParam = defs.first { $0.id == "transfer-syntax" }
+        #expect(tsParam != nil)
+        #expect(tsParam?.visibleWhen?.parameterId == "format")
+        #expect(tsParam?.visibleWhen?.values == ["dicom"])
+    }
+
+    @Test("dicom-convert quality visible only for JPEG format")
+    func testDicomConvertQualityVisibility() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let qualityParam = defs.first { $0.id == "quality" }
+        #expect(qualityParam != nil)
+        #expect(qualityParam?.visibleWhen?.parameterId == "format")
+        #expect(qualityParam?.visibleWhen?.values == ["jpeg"])
+        #expect(qualityParam?.minValue == 1)
+        #expect(qualityParam?.maxValue == 100)
+        #expect(qualityParam?.defaultValue == "90")
+    }
+
+    @Test("dicom-convert windowing params visible only for image formats")
+    func testDicomConvertWindowingVisibility() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let imageFormats = ["png", "jpeg", "tiff"]
+        for paramID in ["window-center", "window-width", "apply-window", "frame"] {
+            let param = defs.first { $0.id == paramID }
+            #expect(param != nil, "Expected parameter \(paramID)")
+            #expect(param?.visibleWhen?.parameterId == "format")
+            #expect(param?.visibleWhen?.values == imageFormats, "\(paramID) should be visible for image formats")
+        }
+    }
+
+    @Test("dicom-convert advanced params are flagged correctly")
+    func testDicomConvertAdvancedParams() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let advancedIDs = Set(defs.filter { $0.isAdvanced }.map { $0.id })
+        #expect(advancedIDs.contains("strip-private"))
+        #expect(advancedIDs.contains("recursive"))
+        #expect(advancedIDs.contains("validate"))
+        #expect(advancedIDs.contains("force"))
+    }
+
+    @Test("dicom-convert buildCommand produces correct output for DICOM conversion")
+    func testDicomConvertBuildCommandDicom() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let vals: [CLIParameterValue] = [
+            CLIParameterValue(parameterID: "inputPath", stringValue: "scan.dcm"),
+            CLIParameterValue(parameterID: "output", stringValue: "out.dcm"),
+            CLIParameterValue(parameterID: "format", stringValue: "dicom"),
+            CLIParameterValue(parameterID: "transfer-syntax", stringValue: "ExplicitVRLittleEndian"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-convert", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd.contains("dicom-convert"))
+        #expect(cmd.contains("scan.dcm"))
+        #expect(cmd.contains("--output out.dcm"))
+        #expect(cmd.contains("--format dicom"))
+        #expect(cmd.contains("--transfer-syntax ExplicitVRLittleEndian"))
+    }
+
+    @Test("dicom-convert buildCommand produces correct output for image export")
+    func testDicomConvertBuildCommandImage() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let vals: [CLIParameterValue] = [
+            CLIParameterValue(parameterID: "inputPath", stringValue: "ct.dcm"),
+            CLIParameterValue(parameterID: "output", stringValue: "ct.png"),
+            CLIParameterValue(parameterID: "format", stringValue: "png"),
+            CLIParameterValue(parameterID: "apply-window", stringValue: "true"),
+            CLIParameterValue(parameterID: "window-center", stringValue: "40"),
+            CLIParameterValue(parameterID: "window-width", stringValue: "400"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-convert", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd.contains("--format png"))
+        #expect(cmd.contains("--window-center 40"))
+        #expect(cmd.contains("--window-width 400"))
+        #expect(cmd.contains("--apply-window"))
+    }
+
+    @Test("dicom-convert buildCommand handles boolean flags")
+    func testDicomConvertBuildCommandFlags() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+        let vals: [CLIParameterValue] = [
+            CLIParameterValue(parameterID: "inputPath", stringValue: "dir/"),
+            CLIParameterValue(parameterID: "output", stringValue: "out/"),
+            CLIParameterValue(parameterID: "format", stringValue: "dicom"),
+            CLIParameterValue(parameterID: "transfer-syntax", stringValue: "ImplicitVRLittleEndian"),
+            CLIParameterValue(parameterID: "strip-private", stringValue: "true"),
+            CLIParameterValue(parameterID: "recursive", stringValue: "true"),
+            CLIParameterValue(parameterID: "validate", stringValue: "true"),
+            CLIParameterValue(parameterID: "force", stringValue: "true"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-convert", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd.contains("--strip-private"))
+        #expect(cmd.contains("--recursive"))
+        #expect(cmd.contains("--validate"))
+        #expect(cmd.contains("--force"))
+    }
+
+    @Test("dicom-convert example presets exist")
+    func testDicomConvertExamplePresets() {
+        let presets = EducationalHelpers.examplePresets(for: "dicom-convert")
+        #expect(presets.count == 4)
+        #expect(presets.allSatisfy { $0.toolID == "dicom-convert" })
+        #expect(presets.allSatisfy { !$0.title.isEmpty })
+        #expect(presets.allSatisfy { !$0.commandString.isEmpty })
+    }
+
+    @Test("dicom-convert validateRequired detects missing required fields")
+    func testDicomConvertValidateRequired() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-convert")
+
+        // No values: should fail
+        #expect(CommandBuilderHelpers.validateRequired(parameterValues: [], parameterDefinitions: defs) == false)
+
+        // Only input: should fail (output missing)
+        let partialVals = [CLIParameterValue(parameterID: "inputPath", stringValue: "test.dcm")]
+        #expect(CommandBuilderHelpers.validateRequired(parameterValues: partialVals, parameterDefinitions: defs) == false)
+
+        // Both input and output: should pass
+        let fullVals = [
+            CLIParameterValue(parameterID: "inputPath", stringValue: "test.dcm"),
+            CLIParameterValue(parameterID: "output", stringValue: "out.dcm"),
+        ]
+        #expect(CommandBuilderHelpers.validateRequired(parameterValues: fullVals, parameterDefinitions: defs) == true)
     }
 }

@@ -273,6 +273,13 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     /// When set, this parameter is only visible if the referenced parameter
     /// currently has one of the specified values.
     public var visibleWhen: CLIParameterVisibilityCondition?
+    /// Maps internal enum values to CLI argument strings for the command
+    /// preview.  Only used when ``isInternal`` is `true`.  Each entry maps
+    /// an ``allowedValues`` element to the literal CLI tokens that should
+    /// appear in the preview (e.g. `["wado-uri": "--uri"]`).  Values
+    /// that do not appear in the dictionary (or that map to an empty
+    /// string) are silently omitted.
+    public var cliMapping: [String: String]
 
     public init(
         id: String,
@@ -288,7 +295,8 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         allowedValues: [String] = [],
         minValue: Int? = nil,
         maxValue: Int? = nil,
-        visibleWhen: CLIParameterVisibilityCondition? = nil
+        visibleWhen: CLIParameterVisibilityCondition? = nil,
+        cliMapping: [String: String] = [:]
     ) {
         self.id = id
         self.flag = flag
@@ -304,6 +312,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         self.minValue = minValue
         self.maxValue = maxValue
         self.visibleWhen = visibleWhen
+        self.cliMapping = cliMapping
     }
 }
 

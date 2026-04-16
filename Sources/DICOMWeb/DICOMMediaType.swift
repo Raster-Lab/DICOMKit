@@ -54,8 +54,8 @@ public struct DICOMMediaType: Sendable, Hashable, CustomStringConvertible {
         let typeSubtype = parts[0].split(separator: "/")
         guard typeSubtype.count == 2 else { return nil }
         
-        let type = String(typeSubtype[0]).trimmingCharacters(in: .whitespaces)
-        let subtype = String(typeSubtype[1]).trimmingCharacters(in: .whitespaces)
+        let type = String(typeSubtype[0]).trimmingCharacters(in: .whitespaces).lowercased()
+        let subtype = String(typeSubtype[1]).trimmingCharacters(in: .whitespaces).lowercased()
         
         guard !type.isEmpty && !subtype.isEmpty else { return nil }
         
@@ -64,7 +64,7 @@ public struct DICOMMediaType: Sendable, Hashable, CustomStringConvertible {
         for i in 1..<parts.count {
             let param = parts[i]
             if let equalsIndex = param.firstIndex(of: "=") {
-                let key = String(param[..<equalsIndex]).trimmingCharacters(in: .whitespaces)
+                let key = String(param[..<equalsIndex]).trimmingCharacters(in: .whitespaces).lowercased()
                 var value = String(param[param.index(after: equalsIndex)...]).trimmingCharacters(in: .whitespaces)
                 
                 // Remove quotes if present
@@ -92,9 +92,10 @@ public struct DICOMMediaType: Sendable, Hashable, CustomStringConvertible {
     
     /// Checks if this media type matches another (ignoring parameters)
     /// - Parameter other: The media type to compare against
-    /// - Returns: True if type and subtype match
+    /// - Returns: True if type and subtype match (case-insensitive per RFC 2045)
     public func matches(_ other: DICOMMediaType) -> Bool {
-        return type == other.type && subtype == other.subtype
+        return type.lowercased() == other.type.lowercased()
+            && subtype.lowercased() == other.subtype.lowercased()
     }
 }
 

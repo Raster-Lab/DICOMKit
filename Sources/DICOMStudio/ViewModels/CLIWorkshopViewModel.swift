@@ -10,6 +10,11 @@ import DICOMKit
 import DICOMNetwork
 import DICOMWeb
 
+#if canImport(CoreGraphics)
+import CoreGraphics
+import ImageIO
+#endif
+
 // MARK: - DICOM Part 10 File Format helpers (file-private, context-free)
 
 /// Encodes a 16-bit unsigned integer in little-endian byte order.
@@ -1012,10 +1017,354 @@ public final class CLIWorkshopViewModel {
             await executeDicomSTOW()
         case "dicom-ups":
             await executeDicomUPS()
+        case "dicom-convert":
+            await executeDicomConvert()
         default:
             appendConsoleOutput("⚠ Command execution not yet supported for \(tool.name).\n")
             consoleStatus = .idle
             service.setConsoleStatus(.idle)
+        }
+    }
+
+    // MARK: - dicom-convert Execution
+
+    /// Performs DICOM file conversion: transfer syntax conversion or image export.
+    private func executeDicomConvert() async {
+        let inputPath = paramValue("inputPath")
+        let outputPath = paramValue("output")
+        let format = paramValue("format").isEmpty ? "dicom" : paramValue("format")
+        let transferSyntax = paramValue("transfer-syntax")
+        let qualityStr = paramValue("quality")
+        let windowCenterStr = paramValue("window-center")
+        let windowWidthStr = paramValue("window-width")
+        let applyWindow = paramValue("apply-window") == "true"
+        let frameStr = paramValue("frame")
+        let stripPrivate = paramValue("strip-private") == "true"
+        let recursive = paramValue("recursive") == "true"
+        let validateOutput = paramValue("validate") == "true"
+        let force = paramValue("force") == "true"
+
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: Input file path is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: "Missing input path")
+            return
+        }
+        guard !outputPath.isEmpty else {
+            appendConsoleOutput("Error: Output path is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: "Missing output path")
+            return
+        }
+
+        // Gain sandbox access via security-scoped URLs
+        let inputScopedURL = securityScopedURLs["inputPath"]
+        let outputScopedURL = securityScopedURLs["output"]
+        let accessingInput = inputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        let accessingOutput = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if accessingInput { inputScopedURL?.stopAccessingSecurityScopedResource() }
+            if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() }
+        }
+
+        let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
+        let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
+
+        appendConsoleOutput("Input:  \(inputURL.path)\n")
+        appendConsoleOutput("Output: \(outputURL.path)\n")
+        appendConsoleOutput("Format: \(format)\n")
+        if format == "dicom" && !transferSyntax.isEmpty {
+            appendConsoleOutput("Transfer Syntax: \(transferSyntax)\n")
+        }
+        appendConsoleOutput("\n")
+
+        // Check if the input is a directory
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: inputURL.path, isDirectory: &isDirectory) else {
+            appendConsoleOutput("Error: Input path not found: \(inputURL.path)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: "Input not found")
+            return
+        }
+
+        if isDirectory.boolValue {
+            guard recursive else {
+                appendConsoleOutput("Error: Directory conversion requires the Recursive option to be enabled.\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: "Recursive required")
+                return
+            }
+            await convertDirectory(
+                inputURL: inputURL, outputURL: outputURL,
+                format: format, transferSyntax: transferSyntax,
+                quality: Int(qualityStr) ?? 90,
+                windowCenter: Double(windowCenterStr), windowWidth: Double(windowWidthStr),
+                applyWindow: applyWindow, frame: Int(frameStr),
+                stripPrivate: stripPrivate, validateOutput: validateOutput, force: force
+            )
+        } else {
+            do {
+                try convertSingleFile(
+                    inputURL: inputURL, outputURL: outputURL,
+                    format: format, transferSyntax: transferSyntax,
+                    quality: Int(qualityStr) ?? 90,
+                    windowCenter: Double(windowCenterStr), windowWidth: Double(windowWidthStr),
+                    applyWindow: applyWindow, frame: Int(frameStr),
+                    stripPrivate: stripPrivate, validateOutput: validateOutput, force: force
+                )
+                appendConsoleOutput("\n✅ Conversion completed successfully.\n")
+                consoleStatus = .success
+                service.setConsoleStatus(.success)
+                addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 0, output: "Success")
+            } catch {
+                appendConsoleOutput("\n❌ Conversion failed: \(error.localizedDescription)\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: error.localizedDescription)
+            }
+        }
+    }
+
+    /// Converts a single DICOM file to the specified format.
+    private func convertSingleFile(
+        inputURL: URL, outputURL: URL,
+        format: String, transferSyntax: String,
+        quality: Int,
+        windowCenter: Double?, windowWidth: Double?,
+        applyWindow: Bool, frame: Int?,
+        stripPrivate: Bool, validateOutput: Bool, force: Bool
+    ) throws {
+        let fileData = try Data(contentsOf: inputURL)
+        let dicomFile = try DICOMFile.read(from: fileData, force: force)
+
+        let inputSize = fileData.count
+        appendConsoleOutput("  Read \(inputURL.lastPathComponent) (\(ByteCountFormatter.string(fromByteCount: Int64(inputSize), countStyle: .file)))\n")
+
+        switch format {
+        case "png", "jpeg", "tiff":
+            try exportDicomImage(
+                dicomFile: dicomFile, outputURL: outputURL, format: format,
+                quality: quality, windowCenter: windowCenter, windowWidth: windowWidth,
+                applyWindow: applyWindow, frame: frame
+            )
+        default:
+            // DICOM transfer syntax conversion
+            guard !transferSyntax.isEmpty else {
+                throw ConvertError.missingTransferSyntax
+            }
+            let targetSyntax = try parseTransferSyntax(transferSyntax)
+            var dataSet = dicomFile.dataSet
+
+            if stripPrivate {
+                let publicTags = dataSet.tags.filter { !$0.isPrivate }
+                var filtered = DataSet()
+                for tag in publicTags {
+                    if let element = dataSet[tag] {
+                        filtered[tag] = element
+                    }
+                }
+                let removedCount = dataSet.tags.count - publicTags.count
+                dataSet = filtered
+                appendConsoleOutput("  Stripped \(removedCount) private tag(s)\n")
+            }
+
+            // Build a new DICOMFile with updated File Meta Information for the target transfer syntax
+            var fileMeta = dicomFile.fileMetaInformation
+
+            // Update Transfer Syntax UID in File Meta Information
+            let tsTag = Tag.transferSyntaxUID
+            if let tsData = targetSyntax.uid.data(using: .ascii) {
+                fileMeta[tsTag] = DataElement(tag: tsTag, vr: .UI, length: UInt32(tsData.count), valueData: tsData)
+            }
+
+            // Build the output DICOM file
+            let newFile = DICOMFile(
+                fileMetaInformation: fileMeta,
+                dataSet: dataSet
+            )
+            let outputData = try newFile.write()
+
+            // Create output directory if needed
+            let outputDir = outputURL.deletingLastPathComponent()
+            try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+
+            try outputData.write(to: outputURL)
+            appendConsoleOutput("  Wrote \(outputURL.lastPathComponent) (\(ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)))\n")
+            appendConsoleOutput("  Transfer Syntax: \(targetSyntax.uid)\n")
+
+            if validateOutput {
+                let validationData = try Data(contentsOf: outputURL)
+                _ = try DICOMFile.read(from: validationData, force: false)
+                appendConsoleOutput("  ✓ Output validation passed\n")
+            }
+        }
+    }
+
+    /// Exports DICOM pixel data to an image format (PNG, JPEG, or TIFF).
+    private func exportDicomImage(
+        dicomFile: DICOMFile, outputURL: URL,
+        format: String, quality: Int,
+        windowCenter: Double?, windowWidth: Double?,
+        applyWindow: Bool, frame: Int?
+    ) throws {
+        #if canImport(CoreGraphics)
+        let pixelData = try dicomFile.tryPixelData()
+        let frameIndex = frame ?? 0
+        guard frameIndex < pixelData.descriptor.numberOfFrames else {
+            throw ConvertError.invalidFrame(frameIndex, pixelData.descriptor.numberOfFrames)
+        }
+
+        appendConsoleOutput("  Exporting frame \(frameIndex) of \(pixelData.descriptor.numberOfFrames) as \(format.uppercased())\n")
+
+        let cgImage: CGImage?
+        if applyWindow {
+            if let center = windowCenter, let width = windowWidth {
+                let window = WindowSettings(center: center, width: width)
+                cgImage = try dicomFile.tryRenderFrame(frameIndex, window: window)
+            } else {
+                cgImage = try dicomFile.tryRenderFrameWithStoredWindow(frameIndex)
+            }
+        } else {
+            cgImage = try dicomFile.tryRenderFrame(frameIndex)
+        }
+
+        guard let image = cgImage else {
+            throw ConvertError.renderFailed
+        }
+
+        let utType: String
+        switch format {
+        case "png":  utType = "public.png"
+        case "jpeg": utType = "public.jpeg"
+        case "tiff": utType = "public.tiff"
+        default:     utType = "public.png"
+        }
+
+        // Create output directory if needed
+        let outputDir = outputURL.deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
+
+        guard let destination = CGImageDestinationCreateWithURL(
+            outputURL as CFURL, utType as CFString, 1, nil
+        ) else {
+            throw ConvertError.exportFailed
+        }
+
+        var options: [CFString: Any] = [:]
+        if format == "jpeg" {
+            options[kCGImageDestinationLossyCompressionQuality] = Double(quality) / 100.0
+        }
+
+        CGImageDestinationAddImage(destination, image, options as CFDictionary)
+        guard CGImageDestinationFinalize(destination) else {
+            throw ConvertError.exportFailed
+        }
+
+        appendConsoleOutput("  Wrote \(outputURL.lastPathComponent) (\(image.width)×\(image.height))\n")
+        if format == "jpeg" {
+            appendConsoleOutput("  JPEG quality: \(quality)%\n")
+        }
+        #else
+        throw ConvertError.unsupportedPlatform
+        #endif
+    }
+
+    /// Recursively converts all DICOM files in a directory.
+    private func convertDirectory(
+        inputURL: URL, outputURL: URL,
+        format: String, transferSyntax: String,
+        quality: Int,
+        windowCenter: Double?, windowWidth: Double?,
+        applyWindow: Bool, frame: Int?,
+        stripPrivate: Bool, validateOutput: Bool, force: Bool
+    ) async {
+        do {
+            try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
+        } catch {
+            appendConsoleOutput("Error: Could not create output directory: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: error.localizedDescription)
+            return
+        }
+
+        guard let enumerator = FileManager.default.enumerator(
+            at: inputURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            appendConsoleOutput("Error: Failed to enumerate directory.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: "Enumeration failed")
+            return
+        }
+
+        var fileCount = 0
+        var successCount = 0
+        var errorCount = 0
+
+        // Collect file URLs via allObjects to avoid async iterator restriction on NSEnumerator
+        let fileURLs: [URL] = (enumerator.allObjects as? [URL] ?? []).filter { url in
+            (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+        }
+
+        for fileURL in fileURLs {
+
+            fileCount += 1
+            let relativePath = fileURL.path.replacingOccurrences(of: inputURL.path, with: "")
+                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            let outFileURL = outputURL.appendingPathComponent(relativePath)
+            let outDir = outFileURL.deletingLastPathComponent()
+            try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+
+            do {
+                try convertSingleFile(
+                    inputURL: fileURL, outputURL: outFileURL,
+                    format: format, transferSyntax: transferSyntax,
+                    quality: quality, windowCenter: windowCenter, windowWidth: windowWidth,
+                    applyWindow: applyWindow, frame: frame,
+                    stripPrivate: stripPrivate, validateOutput: validateOutput, force: force
+                )
+                successCount += 1
+                appendConsoleOutput("  ✓ \(relativePath)\n")
+            } catch {
+                errorCount += 1
+                appendConsoleOutput("  ✗ \(relativePath): \(error.localizedDescription)\n")
+            }
+        }
+
+        appendConsoleOutput("\nBatch conversion complete: \(successCount)/\(fileCount) succeeded, \(errorCount) failed\n")
+        if errorCount == 0 {
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 0,
+                         output: "\(successCount)/\(fileCount) converted")
+        } else {
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1,
+                         output: "\(successCount)/\(fileCount) succeeded, \(errorCount) failed")
+        }
+    }
+
+    /// Parses a transfer syntax name string to a TransferSyntax value.
+    private func parseTransferSyntax(_ name: String) throws -> TransferSyntax {
+        switch name.lowercased() {
+        case "explicitvrlittleendian", "explicit", "evle":
+            return .explicitVRLittleEndian
+        case "implicitvrlittleendian", "implicit", "ivle":
+            return .implicitVRLittleEndian
+        case "explicitvrbigendian", "evbe":
+            return .explicitVRBigEndian
+        case "deflate", "deflated":
+            return .deflatedExplicitVRLittleEndian
+        default:
+            throw ConvertError.unknownTransferSyntax(name)
         }
     }
 
@@ -1658,11 +2007,12 @@ public final class CLIWorkshopViewModel {
 
     /// Executes a WADO retrieve (WADO-RS or WADO-URI) against a DICOMweb server.
     private func executeDicomWADO() async {
-        let wadoProtocol = paramValue("protocol").lowercased()
-        if wadoProtocol == "wado-uri" {
+        let protocol_ = paramValue("wado-protocol")
+        if protocol_ == "wado-uri" {
             await executeDicomWADOURI()
             return
         }
+
         // Default: WADO-RS path
         guard let profile = dicomwebProfileFromParams() else {
             appendConsoleOutput("Error: Base URL is required.\n")
@@ -1675,10 +2025,29 @@ public final class CLIWorkshopViewModel {
         let studyUID = paramValue("study-uid")
         let seriesUID = paramValue("series-uid")
         let instanceUID = paramValue("instance-uid")
-        let mode = paramValue("mode").lowercased()
-        let acceptType = paramValue("accept")
-        let frameStr = paramValue("frame")
-        let frameNumber = Int(frameStr) ?? 0
+        let metadataFlag = paramValue("metadata") == "true"
+        let renderedFlag = paramValue("rendered") == "true"
+        let thumbnailFlag = paramValue("thumbnail") == "true"
+        let framesStr = paramValue("frames")
+        let frameNumber = Int(framesStr.split(separator: ",").first ?? "") ?? 0
+
+        // Determine effective mode from flags
+        let mode: String
+        if metadataFlag {
+            mode = "metadata"
+        } else if renderedFlag {
+            mode = "rendered"
+        } else if thumbnailFlag {
+            mode = "thumbnail"
+        } else if !framesStr.isEmpty {
+            mode = "frames"
+        } else if !instanceUID.isEmpty {
+            mode = "instance"
+        } else if !seriesUID.isEmpty {
+            mode = "series"
+        } else {
+            mode = "study"
+        }
 
         guard !studyUID.isEmpty else {
             appendConsoleOutput("Error: Study Instance UID is required.\n")
@@ -1689,8 +2058,7 @@ public final class CLIWorkshopViewModel {
         }
 
         appendConsoleOutput("Retrieving from \(profile.baseURL) ...\n")
-        appendConsoleOutput("  Mode:       \(mode.isEmpty ? "study" : mode)\n")
-        appendConsoleOutput("  Accept:     \(acceptType.isEmpty ? "application/dicom" : acceptType)\n")
+        appendConsoleOutput("  Mode:       \(mode)\n")
         appendConsoleOutput("  Study UID:  \(studyUID)\n")
         if !seriesUID.isEmpty { appendConsoleOutput("  Series UID: \(seriesUID)\n") }
         if !instanceUID.isEmpty { appendConsoleOutput("  Instance UID: \(instanceUID)\n") }
@@ -1698,7 +2066,7 @@ public final class CLIWorkshopViewModel {
         appendConsoleOutput("\n")
 
         let outputDir = resolvedOutputDir(paramValue("output"))
-        let hierarchical = paramValue("hierarchical") == "true"
+        let hierarchical = false
 
         // Track retrieved files for viewer integration
         lastRetrievedFiles.removeAll()
@@ -1708,7 +2076,7 @@ public final class CLIWorkshopViewModel {
             let client = try DICOMwebClientFactory.makeClient(from: profile)
 
             switch mode {
-            case "instance":
+            case "instance", "frames":
                 guard !seriesUID.isEmpty, !instanceUID.isEmpty else {
                     appendConsoleOutput("Error: Series UID and Instance UID are required for instance-level retrieve.\n")
                     consoleStatus = .error
@@ -1799,11 +2167,12 @@ public final class CLIWorkshopViewModel {
                 }
                 let imageFormat: DICOMwebClient.RenderOptions.ImageFormat
                 let fileExtension: String
-                switch acceptType {
-                case "image/png":
+                let formatParam = paramValue("format").lowercased()
+                switch formatParam {
+                case "png":
                     imageFormat = .png
                     fileExtension = "png"
-                case "image/gif":
+                case "gif":
                     imageFormat = .gif
                     fileExtension = "gif"
                 default:
@@ -1906,9 +2275,9 @@ public final class CLIWorkshopViewModel {
         let studyUID = paramValue("study-uid")
         let seriesUID = paramValue("series-uid")
         let instanceUID = paramValue("instance-uid")
-        let acceptType = paramValue("accept")
-        let frameStr = paramValue("frame")
-        let frameNumber = Int(frameStr) ?? 0
+        let acceptType = paramValue("content-type")
+        let framesStr = paramValue("frames")
+        let frameNumber = Int(framesStr.split(separator: ",").first ?? "") ?? 0
 
         guard !studyUID.isEmpty else {
             appendConsoleOutput("Error: Study Instance UID is required for WADO-URI.\n")
@@ -1944,7 +2313,7 @@ public final class CLIWorkshopViewModel {
         appendConsoleOutput("\n")
 
         let outputDir = resolvedOutputDir(paramValue("output"))
-        let hierarchical = paramValue("hierarchical") == "true"
+        let hierarchical = false
 
         lastRetrievedFiles.removeAll()
         lastRetrievedOutputURL = securityScopedURLs["output"]
@@ -2055,11 +2424,9 @@ public final class CLIWorkshopViewModel {
 
         let filesPath = paramValue("files")
         let studyUID = paramValue("study-uid").isEmpty ? nil : paramValue("study-uid")
-        let dryRun = paramValue("dry-run") == "true"
-        let validateFlag = paramValue("validate") == "true"
-        let batchSize = Int(paramValue("batch-size")) ?? 10
-        let recursive = paramValue("recursive") == "true"
+        let batchSize = Int(paramValue("batch")) ?? 10
         let continueOnError = paramValue("continue-on-error") == "true"
+        let recursive = true  // Always scan directories recursively
 
         // ── Collect DICOM file paths ────────────────────────────────
         // Merge drag-and-drop entries with the text-field path, resolve
@@ -2163,22 +2530,8 @@ public final class CLIWorkshopViewModel {
         appendConsoleOutput("Uploading to \(profile.baseURL) ...\n")
         appendConsoleOutput("  Files:      \(resolvedFiles.count)\n")
         if let uid = studyUID { appendConsoleOutput("  Study UID:  \(uid)\n") }
-        if dryRun { appendConsoleOutput("  Mode:       DRY RUN (no actual upload)\n") }
         appendConsoleOutput("  Batch size: \(batchSize)\n")
-        if validateFlag { appendConsoleOutput("  Validate:   yes\n") }
         appendConsoleOutput("\n")
-
-        if dryRun {
-            for (i, file) in resolvedFiles.enumerated() {
-                appendConsoleOutput("  [\(i + 1)] \(file.url.lastPathComponent)\n")
-            }
-            appendConsoleOutput("\n✅ Dry run complete — \(resolvedFiles.count) files would be uploaded.\n")
-            consoleStatus = .success
-            service.setConsoleStatus(.success)
-            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 0,
-                         output: "Dry run: \(resolvedFiles.count) files")
-            return
-        }
 
         do {
             let client = try DICOMwebClientFactory.makeClient(from: profile)
@@ -2282,7 +2635,16 @@ public final class CLIWorkshopViewModel {
         }
 
         let operation = paramValue("operation").lowercased()
-        let workitemUID = paramValue("workitem-uid")
+        // Resolve workitem UID from the appropriate parameter based on operation
+        let workitemUID: String
+        switch operation {
+        case "get":
+            workitemUID = paramValue("get-uid")
+        case "change-state":
+            workitemUID = paramValue("update-uid")
+        default:
+            workitemUID = paramValue("workitem-uid")
+        }
 
         appendConsoleOutput("UPS-RS \(operation.isEmpty ? "search" : operation) on \(profile.baseURL) ...\n\n")
 
@@ -2327,7 +2689,7 @@ public final class CLIWorkshopViewModel {
                 addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
                              output: "Workitem retrieved")
 
-            case "create":
+            case "create-workitem":
                 // DICOMweb (UPS-RS) create flow
                 let stepLabel = paramValue("create-label")
                 guard !stepLabel.isEmpty else {
@@ -2923,7 +3285,7 @@ public final class CLIWorkshopViewModel {
                 // Build a UPSQuery from the user-provided filter parameters
                 var query = UPSQuery()
 
-                let stepStateFilter = paramValue("procedure-step-state")
+                let stepStateFilter = paramValue("filter-state")
                 if !stepStateFilter.isEmpty {
                     // Use raw attribute tag to avoid DICOMWeb.UPSState / DICOMStudio.UPSState ambiguity
                     query = query.attribute("00741000", value: stepStateFilter)
@@ -5523,5 +5885,34 @@ public final class CLIWorkshopViewModel {
     public func examplePresetsForSelectedTool() -> [CLIExamplePreset] {
         guard let id = selectedToolID else { return [] }
         return EducationalHelpers.examplePresets(for: id)
+    }
+}
+
+// MARK: - Convert Error
+
+/// Errors specific to the dicom-convert execution in the CLI Workshop.
+enum ConvertError: LocalizedError {
+    case missingTransferSyntax
+    case unknownTransferSyntax(String)
+    case invalidFrame(Int, Int)
+    case renderFailed
+    case exportFailed
+    case unsupportedPlatform
+
+    var errorDescription: String? {
+        switch self {
+        case .missingTransferSyntax:
+            return "Transfer syntax is required for DICOM output format"
+        case .unknownTransferSyntax(let name):
+            return "Unknown transfer syntax: \(name). Use: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, or DEFLATE"
+        case .invalidFrame(let requested, let total):
+            return "Invalid frame \(requested). File has \(total) frame(s) (0-\(total - 1))"
+        case .renderFailed:
+            return "Failed to render pixel data to image"
+        case .exportFailed:
+            return "Failed to export image to file"
+        case .unsupportedPlatform:
+            return "Image export is not supported on this platform"
+        }
     }
 }

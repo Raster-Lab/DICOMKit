@@ -40,15 +40,21 @@ struct DICOMWado: AsyncParsableCommand {
 struct RetrieveCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "retrieve",
-        abstract: "Retrieve DICOM objects using WADO-RS",
+        abstract: "Retrieve DICOM objects using WADO-RS or WADO-URI",
         discussion: """
             Downloads studies, series, instances, frames, or metadata from DICOMweb server.
             
-            Examples:
+            By default uses WADO-RS (RESTful paths). Use --uri for legacy WADO-URI servers
+            (e.g. dcm4chee2) that expect query-parameter URLs.
+            
+            WADO-RS examples:
               dicom-wado retrieve https://server/dicom-web --study 1.2.3.4.5 -o study/
               dicom-wado retrieve https://server/dicom-web --study 1.2.3 --series 1.2.3.4 -o series/
               dicom-wado retrieve https://server/dicom-web --study 1.2.3 --metadata --format json
-              dicom-wado retrieve https://server/dicom-web --study 1.2.3 --frames 1,2,3 -o frames/
+            
+            WADO-URI examples (legacy):
+              dicom-wado retrieve http://server:8080/wado --uri --study 1.2.3 --series 1.2.3.4 --instance 1.2.3.4.5 -o out/
+              dicom-wado retrieve http://server:8080/wado --uri --study 1.2.3 --series 1.2.3.4 --instance 1.2.3.4.5 --content-type image/jpeg -o out/
             """
     )
     
@@ -66,6 +72,12 @@ struct RetrieveCommand: AsyncParsableCommand {
     
     @Option(name: .long, help: "Frame numbers to retrieve (comma-separated, e.g., 1,2,3)")
     var frames: String?
+    
+    @Flag(name: .long, help: "Use WADO-URI protocol (legacy query-parameter URLs for dcm4chee2 etc.)")
+    var uri: Bool = false
+    
+    @Option(name: .long, help: "Content type for WADO-URI: application/dicom, image/jpeg, image/png, image/gif (default: application/dicom)")
+    var contentType: String?
     
     @Flag(name: .long, help: "Retrieve only metadata (not pixel data)")
     var metadata: Bool = false
@@ -102,6 +114,12 @@ struct RetrieveCommand: AsyncParsableCommand {
             authentication: token.map { .bearer(token: $0) }
         )
         
+        // WADO-URI mode
+        if uri {
+            try await runWADOURI(config: config, studyUID: studyUID)
+            return
+        }
+        
         let client = DICOMwebClient(configuration: config)
         
         if verbose {
@@ -116,7 +134,7 @@ struct RetrieveCommand: AsyncParsableCommand {
             fprintln("")
         }
         
-        // Handle different retrieval types
+        // Handle different retrieval types (WADO-RS)
         if metadata {
             try await retrieveMetadata(client: client, studyUID: studyUID)
         } else if rendered {
@@ -127,6 +145,79 @@ struct RetrieveCommand: AsyncParsableCommand {
             try await retrieveFrames(client: client, studyUID: studyUID, framesString: framesString)
         } else {
             try await retrieveInstances(client: client, studyUID: studyUID)
+        }
+    }
+    
+    // MARK: - WADO-URI
+    
+    private func runWADOURI(config: DICOMwebConfiguration, studyUID: String) async throws {
+        guard let seriesUID = series else {
+            throw ValidationError("--series is required for WADO-URI retrieval")
+        }
+        guard let instanceUID = instance else {
+            throw ValidationError("--instance is required for WADO-URI retrieval")
+        }
+        
+        let wadoContentType: WADOURIClient.ContentType
+        switch contentType?.lowercased() {
+        case "image/jpeg", "jpeg":  wadoContentType = .jpeg
+        case "image/png", "png":    wadoContentType = .png
+        case "image/gif", "gif":    wadoContentType = .gif
+        case "image/jp2", "jp2":    wadoContentType = .jpeg2000
+        case "video/mpeg", "mpeg":  wadoContentType = .mpeg
+        default:                     wadoContentType = .dicom
+        }
+        
+        let frameNumber: Int?
+        if let framesString = frames,
+           let first = framesString.split(separator: ",").first,
+           let num = Int(first.trimmingCharacters(in: .whitespaces)) {
+            frameNumber = num
+        } else {
+            frameNumber = nil
+        }
+        
+        if verbose {
+            fprintln("WADO-URI Server: \(baseURL)")
+            fprintln("Protocol:     WADO-URI (PS3.18 §8)")
+            fprintln("Study UID:    \(studyUID)")
+            fprintln("Series UID:   \(seriesUID)")
+            fprintln("Instance UID: \(instanceUID)")
+            fprintln("Content-Type: \(wadoContentType.rawValue)")
+            if let frame = frameNumber {
+                fprintln("Frame:        \(frame)")
+            }
+            fprintln("")
+        }
+        
+        let client = WADOURIClient(configuration: config)
+        let result = try await client.retrieve(
+            studyUID: studyUID,
+            seriesUID: seriesUID,
+            objectUID: instanceUID,
+            contentType: wadoContentType,
+            frameNumber: frameNumber
+        )
+        
+        // Determine filename and extension
+        let frameSuffix = frameNumber.map { "_frame\($0)" } ?? ""
+        let ext: String
+        switch wadoContentType {
+        case .dicom:    ext = "dcm"
+        case .jpeg:     ext = "jpg"
+        case .png:      ext = "png"
+        case .gif:      ext = "gif"
+        case .jpeg2000: ext = "jp2"
+        case .mpeg:     ext = "mpg"
+        }
+        let filename = "\(instanceUID)\(frameSuffix).\(ext)"
+        try saveData(result.data, filename: filename)
+        
+        if verbose {
+            fprintln("Retrieved \(result.data.count) bytes via WADO-URI")
+            fprintln("Saved to: \(output ?? FileManager.default.currentDirectoryPath)/\(filename)")
+        } else {
+            fprintln("Retrieved \(result.data.count) bytes → \(filename)")
         }
     }
     
@@ -495,8 +586,25 @@ struct QueryCommand: AsyncParsableCommand {
         case .table:
             return formatStudyTable(results.results)
         case .json:
-            // Simplified: just show table format for now as results don't have direct dictionary representation
-            return formatStudyTable(results.results)
+            let dicts: [[String: Any]] = results.results.map { study in
+                var dict: [String: Any] = [:]
+                if let v = study.studyInstanceUID { dict["StudyInstanceUID"] = v }
+                if let v = study.patientName { dict["PatientName"] = v }
+                if let v = study.patientID { dict["PatientID"] = v }
+                if let v = study.studyDate { dict["StudyDate"] = v }
+                if let v = study.studyTime { dict["StudyTime"] = v }
+                if let v = study.studyDescription { dict["StudyDescription"] = v }
+                if let v = study.accessionNumber { dict["AccessionNumber"] = v }
+                if let v = study.studyID { dict["StudyID"] = v }
+                if let v = study.referringPhysicianName { dict["ReferringPhysicianName"] = v }
+                if let v = study.numberOfStudyRelatedSeries { dict["NumberOfStudyRelatedSeries"] = v }
+                if let v = study.numberOfStudyRelatedInstances { dict["NumberOfStudyRelatedInstances"] = v }
+                if !study.modalitiesInStudy.isEmpty { dict["ModalitiesInStudy"] = study.modalitiesInStudy }
+                if let v = study.patientBirthDate { dict["PatientBirthDate"] = v }
+                if let v = study.patientSex { dict["PatientSex"] = v }
+                return dict
+            }
+            return formatJSON(dicts)
         case .csv:
             return formatStudyCSV(results.results)
         }
@@ -507,8 +615,19 @@ struct QueryCommand: AsyncParsableCommand {
         case .table:
             return formatSeriesTable(results.results)
         case .json:
-            // Simplified: just show table format for now as results don't have direct dictionary representation
-            return formatSeriesTable(results.results)
+            let dicts: [[String: Any]] = results.results.map { s in
+                var dict: [String: Any] = [:]
+                if let v = s.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
+                if let v = s.studyInstanceUID { dict["StudyInstanceUID"] = v }
+                if let v = s.modality { dict["Modality"] = v }
+                if let v = s.seriesNumber { dict["SeriesNumber"] = v }
+                if let v = s.seriesDescription { dict["SeriesDescription"] = v }
+                if let v = s.bodyPartExamined { dict["BodyPartExamined"] = v }
+                if let v = s.performedProcedureStepStartDate { dict["PerformedProcedureStepStartDate"] = v }
+                if let v = s.numberOfSeriesRelatedInstances { dict["NumberOfSeriesRelatedInstances"] = v }
+                return dict
+            }
+            return formatJSON(dicts)
         case .csv:
             return formatSeriesCSV(results.results)
         }
@@ -519,8 +638,19 @@ struct QueryCommand: AsyncParsableCommand {
         case .table:
             return formatInstanceTable(results.results)
         case .json:
-            // Simplified: just show table format for now as results don't have direct dictionary representation
-            return formatInstanceTable(results.results)
+            let dicts: [[String: Any]] = results.results.map { instance in
+                var dict: [String: Any] = [:]
+                if let v = instance.sopInstanceUID { dict["SOPInstanceUID"] = v }
+                if let v = instance.sopClassUID { dict["SOPClassUID"] = v }
+                if let v = instance.instanceNumber { dict["InstanceNumber"] = v }
+                if let v = instance.numberOfFrames { dict["NumberOfFrames"] = v }
+                if let v = instance.rows { dict["Rows"] = v }
+                if let v = instance.columns { dict["Columns"] = v }
+                if let v = instance.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
+                if let v = instance.studyInstanceUID { dict["StudyInstanceUID"] = v }
+                return dict
+            }
+            return formatJSON(dicts)
         case .csv:
             return formatInstanceCSV(results.results)
         }
@@ -529,8 +659,7 @@ struct QueryCommand: AsyncParsableCommand {
     private func formatStudyTable(_ studies: [QIDOStudyResult]) -> String {
         var output = ""
         output += String(repeating: "=", count: 120) + "\n"
-        output += String(format: "%-20s %-30s %-20s %-10s %-10s\n",
-                        "Study UID", "Patient Name", "Study Date", "Modality", "# Series")
+        output += pad("Study UID", 20) + " " + pad("Patient Name", 30) + " " + pad("Study Date", 20) + " " + pad("Modality", 10) + " " + pad("# Series", 10) + "\n"
         output += String(repeating: "=", count: 120) + "\n"
         
         for study in studies {
@@ -540,8 +669,7 @@ struct QueryCommand: AsyncParsableCommand {
             let modality = truncate(study.modalitiesInStudy.joined(separator: ", "), maxLength: 10)
             let numSeries = study.numberOfStudyRelatedSeries ?? 0
             
-            output += String(format: "%-20s %-30s %-20s %-10s %-10d\n",
-                           studyUID, patientName, studyDate, modality, numSeries)
+            output += pad(studyUID, 20) + " " + pad(patientName, 30) + " " + pad(studyDate, 20) + " " + pad(modality, 10) + " " + pad("\(numSeries)", 10) + "\n"
         }
         
         output += String(repeating: "=", count: 120) + "\n"
@@ -551,8 +679,7 @@ struct QueryCommand: AsyncParsableCommand {
     private func formatSeriesTable(_ series: [QIDOSeriesResult]) -> String {
         var output = ""
         output += String(repeating: "=", count: 100) + "\n"
-        output += String(format: "%-25s %-10s %-30s %-10s\n",
-                        "Series UID", "Modality", "Description", "# Images")
+        output += pad("Series UID", 25) + " " + pad("Modality", 10) + " " + pad("Description", 30) + " " + pad("# Images", 10) + "\n"
         output += String(repeating: "=", count: 100) + "\n"
         
         for s in series {
@@ -561,8 +688,7 @@ struct QueryCommand: AsyncParsableCommand {
             let description = truncate(s.seriesDescription ?? "", maxLength: 30)
             let numInstances = s.numberOfSeriesRelatedInstances ?? 0
             
-            output += String(format: "%-25s %-10s %-30s %-10d\n",
-                           seriesUID, modality, description, numInstances)
+            output += pad(seriesUID, 25) + " " + pad(modality, 10) + " " + pad(description, 30) + " " + pad("\(numInstances)", 10) + "\n"
         }
         
         output += String(repeating: "=", count: 100) + "\n"
@@ -572,8 +698,7 @@ struct QueryCommand: AsyncParsableCommand {
     private func formatInstanceTable(_ instances: [QIDOInstanceResult]) -> String {
         var output = ""
         output += String(repeating: "=", count: 80) + "\n"
-        output += String(format: "%-30s %-15s %-10s\n",
-                        "SOP Instance UID", "SOP Class", "# Frames")
+        output += pad("SOP Instance UID", 30) + " " + pad("SOP Class", 15) + " " + pad("# Frames", 10) + "\n"
         output += String(repeating: "=", count: 80) + "\n"
         
         for instance in instances {
@@ -581,8 +706,7 @@ struct QueryCommand: AsyncParsableCommand {
             let sopClass = truncate(instance.sopClassUID ?? "", maxLength: 15)
             let numFrames = instance.numberOfFrames ?? 1
             
-            output += String(format: "%-30s %-15s %-10d\n",
-                           sopUID, sopClass, numFrames)
+            output += pad(sopUID, 30) + " " + pad(sopClass, 15) + " " + pad("\(numFrames)", 10) + "\n"
         }
         
         output += String(repeating: "=", count: 80) + "\n"
@@ -803,7 +927,10 @@ struct UPSCommand: AsyncParsableCommand {
               dicom-wado ups https://server/dicom-web --get <workitem-uid>
               dicom-wado ups https://server/dicom-web --create worklist.json
               dicom-wado ups https://server/dicom-web --create-workitem --label "CT Scan" --patient-name "Doe^Jane" --patient-id PAT001
-              dicom-wado ups https://server/dicom-web --update <uid> --state IN_PROGRESS
+              dicom-wado ups https://server/dicom-web --update <uid> --state IN_PROGRESS --aet MY_AE
+              dicom-wado ups https://server/dicom-web --update <uid> --state COMPLETED --aet MY_AE --transaction-uid <txuid>
+              dicom-wado ups https://server/dicom-web --subscribe --workitem-uid <uid> --aet MY_AE
+              dicom-wado ups https://server/dicom-web --unsubscribe --workitem-uid <uid> --aet MY_AE
             """
     )
     
@@ -825,8 +952,20 @@ struct UPSCommand: AsyncParsableCommand {
     @Option(name: .long, help: "Update worklist item UID")
     var update: String?
     
+    @Flag(name: .long, help: "Subscribe to workitem events (requires --workitem-uid and --aet)")
+    var subscribe: Bool = false
+    
+    @Flag(name: .long, help: "Unsubscribe from workitem events (requires --workitem-uid and --aet)")
+    var unsubscribe: Bool = false
+    
+    @Option(name: .long, help: "Local Application Entity Title for subscribe/unsubscribe")
+    var aet: String?
+    
     @Option(name: .long, help: "New state for update: SCHEDULED, IN_PROGRESS, COMPLETED, CANCELED")
     var state: String?
+    
+    @Option(name: .long, help: "Transaction UID for state changes (required for COMPLETED/CANCELED; auto-generated for IN_PROGRESS)")
+    var transactionUID: String?
     
     // MARK: - Search Filters
     
@@ -932,8 +1071,12 @@ struct UPSCommand: AsyncParsableCommand {
             try await createWorkitemFromOptions(client: client)
         } else if let uid = update {
             try await updateWorkitem(client: client, uid: uid)
+        } else if subscribe {
+            try await subscribeToWorkitem(client: client)
+        } else if unsubscribe {
+            try await unsubscribeFromWorkitem(client: client)
         } else {
-            throw ValidationError("Specify an operation: --search, --get, --create, --create-workitem, or --update")
+            throw ValidationError("Specify an operation: --search, --get, --create, --create-workitem, --update, --subscribe, or --unsubscribe")
         }
     }
     
@@ -970,10 +1113,7 @@ struct UPSCommand: AsyncParsableCommand {
         case .table:
             print(formatWorkitemTable(results.workitems))
         case .json:
-            // For JSON, print raw worklist results
-            fprintln("JSON format for workitems:")
-            fprintln("[\(results.workitems.count) worklist items found]")
-            print(formatWorkitemTable(results.workitems))
+            print(formatWorkitemJSON(results.workitems))
         case .csv:
             print(formatWorkitemCSV(results.workitems))
         }
@@ -1174,34 +1314,234 @@ struct UPSCommand: AsyncParsableCommand {
             throw ValidationError("Invalid state: \(stateString). Valid states: SCHEDULED, IN_PROGRESS, COMPLETED, CANCELED")
         }
         
-        if verbose {
-            fprintln("Updating worklist item \(uid) to state: \(newState.rawValue)")
+        // Determine transaction UID:
+        // - IN_PROGRESS: auto-generate if not provided (server returns one in response)
+        // - COMPLETED/CANCELED: required (must match the one from IN_PROGRESS transition)
+        let effectiveTxUID: String?
+        switch newState {
+        case .inProgress:
+            effectiveTxUID = transactionUID ?? generateDICOMUID()
+        case .completed, .canceled:
+            guard let txUID = transactionUID else {
+                throw ValidationError("--transaction-uid is required for \(newState.rawValue) transition (use the UID returned from IN_PROGRESS)")
+            }
+            effectiveTxUID = txUID
+        default:
+            effectiveTxUID = transactionUID
         }
         
-        _ = try await client.changeWorkitemState(uid: uid, state: newState)
+        // Per PS3.18 §11.6, DCM4CHEE requires the Requesting AE as the
+        // last path segment of the state URL; without it the route returns 404.
+        let requestingAE = aet
         
-        fprintln("Successfully updated worklist item \(uid)")
+        if verbose {
+            fprintln("Updating worklist item \(uid) to state: \(newState.rawValue)")
+            if let ae = requestingAE { fprintln("  Requesting AE: \(ae)") }
+            if let tx = effectiveTxUID { fprintln("  Transaction UID: \(tx)") }
+        }
+        
+        // Per PS3.4 CC.2.1.3/Table CC.2.5-3, the SCP validates that
+        // Unified Procedure Step Performed Procedure Sequence (0074,1216)
+        // is populated before allowing transition to COMPLETED.
+        // Send a minimal Update Workitem (PS3.18 §11.5) to satisfy this.
+        if newState == .completed, let txUID = effectiveTxUID {
+            if verbose {
+                fprintln("Updating workitem with Final State attributes (required before COMPLETED)...")
+            }
+            
+            let nowDT: String = {
+                let f = DateFormatter()
+                f.dateFormat = "yyyyMMddHHmmss.SSS000"
+                f.locale = Locale(identifier: "en_US_POSIX")
+                f.timeZone = TimeZone.current
+                return f.string(from: Date())
+            }()
+            
+            let performedBody: [String: Any] = [
+                UPSTag.transactionUID: [
+                    "vr": "UI", "Value": [txUID]
+                ] as [String: Any],
+                UPSTag.unifiedProcedureStepPerformedProcedureSequence: [
+                    "vr": "SQ",
+                    "Value": [
+                        [
+                            UPSTag.performedProcedureStepStartDateTime: [
+                                "vr": "DT", "Value": [nowDT]
+                            ] as [String: Any],
+                            UPSTag.performedProcedureStepEndDateTime: [
+                                "vr": "DT", "Value": [nowDT]
+                            ] as [String: Any],
+                            UPSTag.performedWorkitemCodeSequence: [
+                                "vr": "SQ",
+                                "Value": [
+                                    [
+                                        UPSTag.codeValue: ["vr": "SH", "Value": ["12345"]],
+                                        UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
+                                        UPSTag.codeMeaning: ["vr": "LO", "Value": ["Procedure Step Performed"]]
+                                    ] as [String: Any]
+                                ] as [[String: Any]]
+                            ] as [String: Any],
+                            UPSTag.performedStationNameCodeSequence: [
+                                "vr": "SQ",
+                                "Value": [
+                                    [
+                                        UPSTag.codeValue: ["vr": "SH", "Value": ["STATION01"]],
+                                        UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
+                                        UPSTag.codeMeaning: ["vr": "LO", "Value": ["Default Performing Station"]]
+                                    ] as [String: Any]
+                                ] as [[String: Any]]
+                            ] as [String: Any],
+                            UPSTag.outputInformationSequence: [
+                                "vr": "SQ",
+                                "Value": [] as [[String: Any]]
+                            ] as [String: Any]
+                        ] as [String: Any]
+                    ] as [[String: Any]]
+                ] as [String: Any]
+            ]
+            
+            try await client.updateWorkitem(uid: uid, updates: performedBody, transactionUID: txUID)
+            if verbose {
+                fprintln("Final State attributes updated successfully")
+            }
+        }
+        
+        let response = try await client.changeWorkitemState(
+            uid: uid,
+            state: newState,
+            transactionUID: effectiveTxUID,
+            requestingAE: requestingAE
+        )
+        
+        fprintln("Successfully updated worklist item \(uid) to \(newState.rawValue)")
+        if let txUID = response.transactionUID {
+            fprintln("Transaction UID: \(txUID)")
+        }
+        if !response.warnings.isEmpty {
+            for warning in response.warnings {
+                fprintln("Warning: \(warning)")
+            }
+        }
+    }
+    
+    private func subscribeToWorkitem(client: DICOMwebClient) async throws {
+        guard let aeTitle = aet else {
+            throw ValidationError("--aet is required for subscribe operations")
+        }
+        
+        let uid = workitemUID
+        
+        if verbose {
+            if let uid = uid {
+                fprintln("Subscribing to workitem \(uid) as \(aeTitle) ...")
+            } else {
+                fprintln("Subscribing globally as \(aeTitle) ...")
+            }
+        }
+        
+        try await client.subscribeToWorkitem(workitemUID: uid, aeTitle: aeTitle)
+        
+        if let uid = uid {
+            fprintln("Subscription created for workitem \(uid)")
+            
+            // Fetch and display workitem details
+            if verbose {
+                fprintln("\nFetching workitem details...")
+                do {
+                    let result = try await client.retrieveWorkitemResult(uid: uid)
+                    fprintln("  Workitem UID:   \(result.workitemUID)")
+                    if let label = result.procedureStepLabel { fprintln("  Procedure:      \(label)") }
+                    if let state = result.state { fprintln("  State:          \(state.rawValue)") }
+                    if let priority = result.priority { fprintln("  Priority:       \(priority.rawValue)") }
+                    if let name = result.patientName { fprintln("  Patient Name:   \(name)") }
+                    if let pid = result.patientID { fprintln("  Patient ID:     \(pid)") }
+                    if let scheduled = result.scheduledStartDateTime { fprintln("  Scheduled:      \(scheduled)") }
+                } catch {
+                    fprintln("  (Could not fetch workitem details: \(error.localizedDescription))")
+                }
+            }
+        } else {
+            fprintln("Global subscription created for AE \(aeTitle)")
+        }
+    }
+    
+    private func unsubscribeFromWorkitem(client: DICOMwebClient) async throws {
+        guard let aeTitle = aet else {
+            throw ValidationError("--aet is required for unsubscribe operations")
+        }
+        
+        let uid = workitemUID
+        
+        if verbose {
+            if let uid = uid {
+                fprintln("Unsubscribing from workitem \(uid) as \(aeTitle) ...")
+            } else {
+                fprintln("Unsubscribing globally as \(aeTitle) ...")
+            }
+        }
+        
+        try await client.unsubscribeFromWorkitem(workitemUID: uid, aeTitle: aeTitle)
+        
+        if let uid = uid {
+            fprintln("Unsubscribed from workitem \(uid)")
+        } else {
+            fprintln("Global subscription removed for AE \(aeTitle)")
+        }
     }
     
     private func formatWorkitemTable(_ workitems: [WorkitemResult]) -> String {
+        // Compute dynamic column width for UID based on longest value
+        let maxUIDLength = workitems.reduce(12) { max($0, $1.workitemUID.count) }  // min 12 for header
+        let uidWidth = min(maxUIDLength, 70)  // cap at 70 to avoid excessive width
+        let totalWidth = uidWidth + 1 + 20 + 1 + 30 + 1 + 20
+
         var output = ""
-        output += String(repeating: "=", count: 100) + "\n"
-        output += String(format: "%-30s %-20s %-30s %-15s\n",
-                        "Worklist UID", "State", "Label", "Patient")
-        output += String(repeating: "=", count: 100) + "\n"
+        output += String(repeating: "=", count: totalWidth) + "\n"
+        output += pad("Worklist UID", uidWidth) + " " + pad("State", 20) + " " + pad("Label", 30) + " " + pad("Patient", 20) + "\n"
+        output += String(repeating: "=", count: totalWidth) + "\n"
         
         for item in workitems {
-            let uid = truncate(item.workitemUID, maxLength: 30)
+            let uid = truncate(item.workitemUID, maxLength: uidWidth)
             let state = item.state?.rawValue ?? ""
             let label = truncate(item.procedureStepLabel ?? "", maxLength: 30)
-            let patient = truncate(item.patientName ?? "", maxLength: 15)
+            let patient = truncate(item.patientName ?? "", maxLength: 20)
             
-            output += String(format: "%-30s %-20s %-30s %-15s\n",
-                           uid, state, label, patient)
+            output += pad(uid, uidWidth) + " " + pad(state, 20) + " " + pad(label, 30) + " " + pad(patient, 20) + "\n"
         }
         
-        output += String(repeating: "=", count: 100) + "\n"
+        output += String(repeating: "=", count: totalWidth) + "\n"
         return output
+    }
+    
+    private func formatWorkitemJSON(_ workitems: [WorkitemResult]) -> String {
+        var items: [[String: Any]] = []
+        for item in workitems {
+            var dict: [String: Any] = ["workitemUID": item.workitemUID]
+            if let s = item.state { dict["state"] = s.rawValue }
+            if let p = item.priority { dict["priority"] = p.rawValue }
+            if let pp = item.progressPercentage { dict["progressPercentage"] = pp }
+            if let pd = item.progressDescription { dict["progressDescription"] = pd }
+            if let sd = item.scheduledStartDateTime { dict["scheduledStartDateTime"] = sd }
+            if let ec = item.expectedCompletionDateTime { dict["expectedCompletionDateTime"] = ec }
+            if let md = item.modificationDateTime { dict["modificationDateTime"] = md }
+            if let l = item.procedureStepLabel { dict["procedureStepLabel"] = l }
+            if let wl = item.worklistLabel { dict["worklistLabel"] = wl }
+            if let sid = item.scheduledProcedureStepID { dict["scheduledProcedureStepID"] = sid }
+            if let pn = item.patientName { dict["patientName"] = pn }
+            if let pid = item.patientID { dict["patientID"] = pid }
+            if let dob = item.patientBirthDate { dict["patientBirthDate"] = dob }
+            if let sex = item.patientSex { dict["patientSex"] = sex }
+            if let suid = item.studyInstanceUID { dict["studyInstanceUID"] = suid }
+            if let acc = item.accessionNumber { dict["accessionNumber"] = acc }
+            if let ref = item.referringPhysicianName { dict["referringPhysicianName"] = ref }
+            if let tx = item.transactionUID { dict["transactionUID"] = tx }
+            items.append(dict)
+        }
+        guard let data = try? JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted, .sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else {
+            return "[]"
+        }
+        return str
     }
     
     private func formatWorkitemCSV(_ workitems: [WorkitemResult]) -> String {
@@ -1258,6 +1598,13 @@ func truncate(_ string: String, maxLength: Int) -> String {
     }
     let endIndex = string.index(string.startIndex, offsetBy: maxLength - 3)
     return String(string[..<endIndex]) + "..."
+}
+
+func pad(_ string: String, _ width: Int) -> String {
+    if string.count >= width {
+        return string
+    }
+    return string + String(repeating: " ", count: width - string.count)
 }
 
 func csvEscape(_ string: String) -> String {
