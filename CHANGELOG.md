@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **JPEG 2000 16-bit rendering pipeline**: Fixed near-black output after conversion when preserving original bit depth
+  - Normalized ImageIO-decoded 16-bit JPEG 2000 samples back to the DICOM `Bits Stored` range in `NativeJPEG2000Codec`
+  - Preserved original metadata for JPEG 2000 and JPEG 2000 Lossless conversions (`BitsAllocated`, `BitsStored`, `HighBit`)
+  - Verified CT-style datasets with VOI/Rescale tags render correctly after implicit VR → JPEG 2000 lossless transcoding
+
+- **DICOM Studio metadata consistency**: Fixed transfer syntax source ordering in metadata loading
+  - `MetadataViewModel` now prefers File Meta Information `(0002,0010)` before dataset fallback
+  - Aligns metadata display behavior with converted-file transfer syntax as stored on disk
+
 - **Test Infrastructure**: Fixed platform-specific test compilation errors
   - Added `#if canImport(CoreGraphics)` guards to ColorTransformTests for Apple platform-only APIs
   - Fixed DataElement initializer calls in ICCProfileAdvancedTests with missing length parameters

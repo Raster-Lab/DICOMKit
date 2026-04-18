@@ -48,6 +48,30 @@ public enum DICOMInspectorHelpers: Sendable {
             return "\(preview) [\(bytes.count) bytes]"
         }
 
+        // Numeric VRs: prefer explicit numeric decoding over stringValue.
+        switch element.vr {
+        case .US, .SS:
+            if let values = element.uint16Values, !values.isEmpty {
+                return values.map(String.init).joined(separator: "\\")
+            }
+            if let value = element.uint16Value {
+                return String(value)
+            }
+        case .UL, .SL:
+            if let values = element.uint32Values, !values.isEmpty {
+                return values.map(String.init).joined(separator: "\\")
+            }
+            if let value = element.uint32Value {
+                return String(value)
+            }
+        case .IS:
+            if let values = element.stringValues, !values.isEmpty {
+                return values.joined(separator: "\\")
+            }
+        default:
+            break
+        }
+
         // String-valued VRs
         return element.stringValue ?? "<\(element.valueData.count) bytes>"
     }
@@ -193,7 +217,7 @@ public struct DICOMInspectorView: View {
                 switch row.kind {
                 case .sectionHeader(let title):
                     Text(title)
-                        .font(.caption)
+                        .font(.callout.weight(.semibold))
                         .foregroundStyle(.secondary)
                         .listRowBackground(Color.secondary.opacity(0.12))
                 case .element, .sequenceItem:
@@ -269,27 +293,27 @@ struct InspectorElementRow: View {
             // Tag + VR
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.tagString)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
                     .foregroundStyle(.secondary)
                 Text(row.vr)
-                    .font(.system(.caption2, design: .monospaced))
+                    .font(.system(.caption, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .padding(.horizontal, 4)
                     .background(Color.accentColor.opacity(0.1))
                     .clipShape(RoundedRectangle(cornerRadius: 3))
             }
-            .frame(width: 88, alignment: .leading)
+            .frame(width: 104, alignment: .leading)
 
             // Name + Value
             VStack(alignment: .leading, spacing: 2) {
                 Text(row.name)
-                    .font(.caption)
+                    .font(.body)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                 Text(row.value)
-                    .font(.system(.caption, design: .monospaced))
+                    .font(.system(.body, design: .monospaced))
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .lineLimit(3)
                     .textSelection(.enabled)
             }
         }

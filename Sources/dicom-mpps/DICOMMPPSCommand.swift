@@ -14,19 +14,19 @@ struct DICOMMPPSCommand: AsyncParsableCommand {
             procedure execution status.
             
             URL Format:
-              --host hostname          - PACS server hostname or IP address
-              --host hostname:port     - Hostname with embedded port
-              --port port              - Optional explicit port (default: 11112)
+              hostname               - PACS server hostname or IP address
+              hostname:port          - Hostname with embedded port
+              --port port            - Optional explicit port (default: 11112)
             
             Examples:
               # Create MPPS (procedure started)
-              dicom-mpps create --host server --port 11112 \\
+              dicom-mpps create server --port 11112 \\
                 --aet MODALITY --called-aet PACS_SCP \\
                 --study-uid 1.2.3.4.5.6.7.8.9 \\
                 --status "IN PROGRESS"
               
               # Update MPPS (procedure completed)
-              dicom-mpps update --host server --port 11112 \\
+              dicom-mpps update server --port 11112 \\
                 --aet MODALITY \\
                 --mpps-uid 1.2.840.113619.2.xxx \\
                 --status COMPLETED
@@ -84,7 +84,7 @@ extension DICOMMPPSCommand {
             abstract: "Create MPPS instance (N-CREATE)"
         )
         
-        @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+        @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
         var host: String
         
         @Option(name: .long, help: "PACS server port (default: 11112)")
@@ -163,7 +163,7 @@ extension DICOMMPPSCommand {
             fprintln("  MPPS Instance UID: \(mppsInstanceUID)")
             fprintln("")
             fprintln("Use this UID to update the MPPS when the procedure completes:")
-            fprintln("  dicom-mpps update --host \(serverInfo.host) --port \(serverInfo.port) \\")
+            fprintln("  dicom-mpps update \(serverInfo.host) --port \(serverInfo.port) \\")
             fprintln("    --aet \(aet) --mpps-uid \(mppsInstanceUID) --status COMPLETED")
             
             #else
@@ -182,7 +182,7 @@ extension DICOMMPPSCommand {
             abstract: "Update MPPS instance (N-SET)"
         )
         
-        @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+        @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
         var host: String
         
         @Option(name: .long, help: "PACS server port (default: 11112)")

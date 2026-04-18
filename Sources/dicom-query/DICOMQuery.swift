@@ -12,23 +12,23 @@ struct DICOMQuery: AsyncParsableCommand {
             Performs DICOM queries against PACS servers using the C-FIND service.
             Supports patient, study, series, and instance level queries.
             
-            The --host option accepts a hostname or IP address, optionally with a
+            The host argument accepts a hostname or IP address, optionally with a
             port suffix (host:port). Use --port to specify the port separately.
             If no port is given, the default is 11112.
             
             Examples:
-              dicom-query --host server --port 11112 --aet MY_SCU --patient-name "SMITH^JOHN"
-              dicom-query --host server:11112 --aet MY_SCU --study-date 20240101-20240131
-              dicom-query --host server --port 4242 --aet MY_SCU --modality CT --format json
-              dicom-query --host 192.168.1.100 --port 11112 --aet MY_SCU --level series --study-uid 1.2.3
+              dicom-query server --port 11112 --aet MY_SCU --patient-name "SMITH^JOHN"
+              dicom-query server:11112 --aet MY_SCU --study-date 20240101-20240131
+              dicom-query server:11112 --aet MY_SCU --modality CT --format json
+              dicom-query 192.168.1.100:11112 --aet MY_SCU --level series --study-uid 1.2.3
             """,
         version: "1.0.0"
     )
     
-    @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+    @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
     var host: String
     
-    @Option(name: .long, help: "PACS server port (default: 11112)")
+    @Option(name: .long, help: "PACS server port (default: 11112, overrides port in host argument)")
     var port: UInt16?
     
     @Option(name: .long, help: "Local Application Entity Title (calling AE)")

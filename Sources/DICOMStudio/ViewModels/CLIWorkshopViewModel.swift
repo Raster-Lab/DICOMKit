@@ -1070,7 +1070,7 @@ public final class CLIWorkshopViewModel {
         }
 
         let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-        let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
+        var outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
 
         appendConsoleOutput("Input:  \(inputURL.path)\n")
         appendConsoleOutput("Output: \(outputURL.path)\n")
@@ -1088,6 +1088,36 @@ public final class CLIWorkshopViewModel {
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: "Input not found")
             return
+        }
+
+        // When converting a single file and the output path is (or was chosen as) a
+        // directory, write the result *inside* that directory using the input filename.
+        if !isDirectory.boolValue {
+            var outIsDir: ObjCBool = false
+            let outExists = FileManager.default.fileExists(atPath: outputURL.path, isDirectory: &outIsDir)
+            let treatAsDir = (outExists && outIsDir.boolValue)
+                || (!outExists && outputURL.pathExtension.isEmpty)
+            if treatAsDir {
+                // Ensure the directory exists
+                try? FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
+                // Build output filename: input stem + appropriate extension
+                let stem = inputURL.deletingPathExtension().lastPathComponent
+                let ext: String
+                switch format {
+                case "png":  ext = "png"
+                case "jpeg": ext = "jpg"
+                case "tiff": ext = "tiff"
+                default:     ext = "dcm"
+                }
+                outputURL = outputURL.appendingPathComponent("\(stem).\(ext)")
+            } else if !outExists {
+                // Output path has an extension (e.g. output.dcm) — ensure parent dir exists
+                let parentDir = outputURL.deletingLastPathComponent()
+                try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            }
+        } else {
+            // Directory-to-directory: make sure output dir exists
+            try? FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
         }
 
         if isDirectory.boolValue {
@@ -1172,21 +1202,54 @@ public final class CLIWorkshopViewModel {
                 appendConsoleOutput("  Stripped \(removedCount) private tag(s)\n")
             }
 
-            // Build a new DICOMFile with updated File Meta Information for the target transfer syntax
-            var fileMeta = dicomFile.fileMetaInformation
+            // Determine source transfer syntax from the file
+            let sourceSyntaxUID = dicomFile.transferSyntaxUID ?? TransferSyntax.explicitVRLittleEndian.uid
+            let sourceSyntax = TransferSyntax.from(uid: sourceSyntaxUID) ?? .explicitVRLittleEndian
 
-            // Update Transfer Syntax UID in File Meta Information
-            let tsTag = Tag.transferSyntaxUID
-            if let tsData = targetSyntax.uid.data(using: .ascii) {
-                fileMeta[tsTag] = DataElement(tag: tsTag, vr: .UI, length: UInt32(tsData.count), valueData: tsData)
-            }
-
-            // Build the output DICOM file
-            let newFile = DICOMFile(
-                fileMetaInformation: fileMeta,
-                dataSet: dataSet
+            // Use DICOMCore TransferSyntaxConverter for full transcoding (pixel data included)
+            // Use lossless compression config for lossless targets, default for lossy
+            let compressionConfig: DICOMCore.CompressionConfiguration = targetSyntax.isLossless
+                ? .lossless
+                : .default
+            let converter = TransferSyntaxConverter(
+                configuration: TranscodingConfiguration(
+                    preferredSyntaxes: [targetSyntax],
+                    allowLossyCompression: !targetSyntax.isLossless,
+                    preservePixelDataFidelity: targetSyntax.isLossless
+                ),
+                compressionConfiguration: compressionConfig
             )
-            let outputData = try newFile.write()
+
+            // Serialize the dataset to bytes in the source transfer syntax
+            let sourceWriter = DICOMWriter(
+                byteOrder: sourceSyntax.byteOrder,
+                explicitVR: sourceSyntax.isExplicitVR
+            )
+            let dataSetBytes = dataSet.write(using: sourceWriter)
+
+            // Transcode
+            let result = try converter.transcode(
+                dataSetData: dataSetBytes,
+                from: sourceSyntax,
+                to: targetSyntax
+            )
+
+            // Build output file: preamble + DICM + file meta info + transcoded dataset
+            let sopClassUID = dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.7"
+            let sopInstanceUID = dataSet.string(for: .sopInstanceUID) ?? UIDGenerator.generateSOPInstanceUID().value
+            let outputFile = DICOMFile.create(
+                dataSet: dataSet,
+                sopClassUID: sopClassUID,
+                sopInstanceUID: sopInstanceUID,
+                transferSyntaxUID: targetSyntax.uid
+            )
+
+            var outputData = Data()
+            outputData.append(Data(repeating: 0, count: 128))  // Preamble
+            outputData.append(contentsOf: "DICM".utf8)          // DICM prefix
+            let fmiWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+            outputData.append(outputFile.fileMetaInformation.write(using: fmiWriter))
+            outputData.append(result.data)
 
             // Create output directory if needed
             let outputDir = outputURL.deletingLastPathComponent()
@@ -1194,7 +1257,11 @@ public final class CLIWorkshopViewModel {
 
             try outputData.write(to: outputURL)
             appendConsoleOutput("  Wrote \(outputURL.lastPathComponent) (\(ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)))\n")
-            appendConsoleOutput("  Transfer Syntax: \(targetSyntax.uid)\n")
+            let lossInfo = result.isLossless ? "lossless" : "lossy"
+            appendConsoleOutput("  Transfer Syntax: \(targetSyntax.uid) (\(lossInfo))\n")
+            if result.wasTranscoded {
+                appendConsoleOutput("  Transcoded from \(sourceSyntax.uid)\n")
+            }
 
             if validateOutput {
                 let validationData = try Data(contentsOf: outputURL)
@@ -1355,6 +1422,7 @@ public final class CLIWorkshopViewModel {
     /// Parses a transfer syntax name string to a TransferSyntax value.
     private func parseTransferSyntax(_ name: String) throws -> TransferSyntax {
         switch name.lowercased() {
+        // Uncompressed
         case "explicitvrlittleendian", "explicit", "evle":
             return .explicitVRLittleEndian
         case "implicitvrlittleendian", "implicit", "ivle":
@@ -1363,6 +1431,28 @@ public final class CLIWorkshopViewModel {
             return .explicitVRBigEndian
         case "deflate", "deflated":
             return .deflatedExplicitVRLittleEndian
+        // JPEG
+        case "jpegbaseline", "jpeg-baseline", "jpeg":
+            return .jpegBaseline
+        case "jpegextended", "jpeg-extended":
+            return .jpegExtended
+        case "jpeglossless", "jpeg-lossless":
+            return .jpegLossless
+        case "jpeglosslesssv1", "jpeg-lossless-sv1":
+            return .jpegLosslessSV1
+        // JPEG 2000
+        case "jpeg2000lossless", "jpeg2000-lossless", "j2k-lossless":
+            return .jpeg2000Lossless
+        case "jpeg2000", "jpeg2000-lossy", "j2k":
+            return .jpeg2000
+        // JPEG-LS
+        case "jpeglslossless", "jpeg-ls-lossless", "jpegls":
+            return .jpegLSLossless
+        case "jpeglsnearlossless", "jpeg-ls-near-lossless", "jpegls-near":
+            return .jpegLSNearLossless
+        // RLE
+        case "rlelossless", "rle-lossless", "rle":
+            return .rleLossless
         default:
             throw ConvertError.unknownTransferSyntax(name)
         }
@@ -1714,13 +1804,9 @@ public final class CLIWorkshopViewModel {
             let studyUID = paramValue("study-uid")
             let studyDesc = paramValue("study-description")
 
-            // Case-insensitive patient name with auto-wildcard suffix
+            // Pass patient name as-is (matches CLI behavior)
             if !patientName.isEmpty {
-                var nameQuery = patientName.uppercased()
-                if !nameQuery.contains("*") && !nameQuery.contains("?") {
-                    nameQuery += "*"
-                }
-                query = query.patientName(nameQuery)
+                query = query.patientName(patientName)
             }
             if !patientID.isEmpty { query = query.patientID(patientID) }
             if !studyDate.isEmpty { query = query.studyDate(studyDate) }
@@ -3397,7 +3483,7 @@ public final class CLIWorkshopViewModel {
         let outputFormat = paramValue("output-format").lowercased()
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
-            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
+            appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-query", command: commandPreview, exitCode: 1, output: "Invalid host")
@@ -3423,8 +3509,7 @@ public final class CLIWorkshopViewModel {
 
         // Collect all user-provided filter values
         let patientID = paramValue("patient-id")
-        let rawPatientName = paramValue("patient-name")
-        let patientName = rawPatientName.isEmpty ? "" : (rawPatientName.hasSuffix("*") ? rawPatientName : rawPatientName + "*")
+        let patientName = paramValue("patient-name")
         let studyDate = paramValue("study-date")
         let modality = paramValue("modality")
         let studyUID = paramValue("study-uid")
@@ -3471,8 +3556,8 @@ public final class CLIWorkshopViewModel {
                 queryKeys = queryKeys.requestPatientID()
             }
             if !patientName.isEmpty {
-                queryKeys = queryKeys.patientName(patientName.uppercased())
-                appendConsoleOutput("  Patient Name:     \(patientName) (uppercased for matching)\n")
+                queryKeys = queryKeys.patientName(patientName)
+                appendConsoleOutput("  Patient Name:     \(patientName)\n")
             } else {
                 queryKeys = queryKeys.requestPatientName()
             }
@@ -3491,8 +3576,8 @@ public final class CLIWorkshopViewModel {
                 queryKeys = queryKeys.requestPatientID()
             }
             if !patientName.isEmpty {
-                queryKeys = queryKeys.patientName(patientName.uppercased())
-                appendConsoleOutput("  Patient Name:     \(patientName) (uppercased for matching)\n")
+                queryKeys = queryKeys.patientName(patientName)
+                appendConsoleOutput("  Patient Name:     \(patientName)\n")
             } else {
                 queryKeys = queryKeys.requestPatientName()
             }
@@ -3705,10 +3790,10 @@ public final class CLIWorkshopViewModel {
                     appendConsoleOutput(formatQueryResultsXML(collected, level: level))
                 case "hl7":
                     appendConsoleOutput(formatQueryResultsHL7(collected, level: level))
+                case "table":
+                    appendConsoleOutput(formatQueryResultsTable(collected, level: level))
                 default:
-                    for (index, pair) in collected.enumerated() {
-                        appendConsoleOutput(formatQueryResult(pair.result, index: index + 1, level: level, parentStudyInfo: pair.parent))
-                    }
+                    appendConsoleOutput(formatQueryResultsTable(collected, level: level))
                 }
             }
             consoleStatus = .success
@@ -3797,7 +3882,7 @@ public final class CLIWorkshopViewModel {
         var studyQueryKeys = QueryKeys(level: .study)
             .requestStudyInstanceUID()
         if !patientID.isEmpty { studyQueryKeys = studyQueryKeys.patientID(patientID) }
-        if !patientName.isEmpty { studyQueryKeys = studyQueryKeys.patientName(patientName.uppercased()) }
+        if !patientName.isEmpty { studyQueryKeys = studyQueryKeys.patientName(patientName) }
         if !studyDate.isEmpty { studyQueryKeys = studyQueryKeys.studyDate(studyDate) }
         if !modality.isEmpty { studyQueryKeys = studyQueryKeys.modalitiesInStudy(modality) }
 
@@ -3989,7 +4074,7 @@ public final class CLIWorkshopViewModel {
         }
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
-            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
+            appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "Invalid host")
@@ -4265,7 +4350,7 @@ public final class CLIWorkshopViewModel {
         lastRetrievedOutputURL = securityScopedURLs["output"]
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
-            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
+            appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1, output: "Invalid host")
@@ -4593,7 +4678,7 @@ public final class CLIWorkshopViewModel {
         lastRetrievedOutputURL = securityScopedURLs["output"]
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
-            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
+            appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-qr", command: commandPreview, exitCode: 1, output: "Invalid host")
@@ -4678,7 +4763,7 @@ public final class CLIWorkshopViewModel {
                 .requestNumberOfStudyRelatedSeries()
                 .requestNumberOfStudyRelatedInstances()
 
-            if !patientName.isEmpty { queryKeys = queryKeys.patientName(patientName.uppercased()) }
+            if !patientName.isEmpty { queryKeys = queryKeys.patientName(patientName) }
             if !patientID.isEmpty { queryKeys = queryKeys.patientID(patientID) }
             if !studyDate.isEmpty { queryKeys = queryKeys.studyDate(studyDate) }
             if !modality.isEmpty { queryKeys = queryKeys.modalitiesInStudy(modality) }
@@ -4845,7 +4930,7 @@ public final class CLIWorkshopViewModel {
         let timeoutStr = paramValue("timeout")
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
-            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
+            appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1, output: "Invalid host")
@@ -5379,7 +5464,7 @@ public final class CLIWorkshopViewModel {
         let discontinueReason = paramValue("discontinue-reason")
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
-            appendConsoleOutput("Error: A valid host is required (e.g. --host hostname or --host hostname:11112).\n")
+            appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 1, output: "Invalid host")
@@ -5531,6 +5616,125 @@ public final class CLIWorkshopViewModel {
 
     /// Formats a single generic query result for console display.
     // MARK: - Query Result Formatters
+
+    /// Renders all results as a table matching the CLI's `dicom-query --format table` output.
+    private func formatQueryResultsTable(_ pairs: [(result: GenericQueryResult, parent: GenericQueryResult?)], level: QueryLevel) -> String {
+        guard !pairs.isEmpty else { return "No results found.\n" }
+
+        switch level {
+        case .patient:
+            var output = ""
+            output += String(repeating: "─", count: 100) + "\n"
+            output += padRight("Patient Name", 30) + " "
+            output += padRight("Patient ID", 15) + " "
+            output += padRight("Birth Date", 12) + " "
+            output += padRight("Sex", 5) + " "
+            output += padRight("Studies", 8) + "\n"
+            output += String(repeating: "─", count: 100) + "\n"
+            for pair in pairs {
+                let p = pair.result.toPatientResult()
+                output += padRight(p.patientName ?? "", 30) + " "
+                output += padRight(p.patientID ?? "", 15) + " "
+                output += padRight(formatDICOMDate(p.patientBirthDate), 12) + " "
+                output += padRight(p.patientSex ?? "", 5) + " "
+                output += padRight(p.numberOfPatientRelatedStudies.map(String.init) ?? "", 8) + "\n"
+            }
+            output += String(repeating: "─", count: 100) + "\n"
+            output += "Total: \(pairs.count) patient(s)\n"
+            return output
+
+        case .study:
+            var output = ""
+            output += String(repeating: "─", count: 120) + "\n"
+            output += padRight("Patient Name", 25) + " "
+            output += padRight("Patient ID", 12) + " "
+            output += padRight("Date", 12) + " "
+            output += padRight("Description", 30) + " "
+            output += padRight("Modalities", 12) + " "
+            output += padRight("Series", 8) + "\n"
+            output += String(repeating: "─", count: 120) + "\n"
+            for pair in pairs {
+                let s = pair.result.toStudyResult()
+                output += padRight(s.patientName ?? "", 25) + " "
+                output += padRight(s.patientID ?? "", 12) + " "
+                output += padRight(formatDICOMDate(s.studyDate), 12) + " "
+                output += padRight(s.studyDescription ?? "", 30) + " "
+                output += padRight(s.modalitiesInStudy ?? "", 12) + " "
+                output += padRight(s.numberOfStudyRelatedSeries.map(String.init) ?? "", 8) + "\n"
+            }
+            output += String(repeating: "─", count: 120) + "\n"
+            output += "Total: \(pairs.count) study(ies)\n"
+            return output
+
+        case .series:
+            var output = ""
+            output += String(repeating: "─", count: 100) + "\n"
+            output += padRight("Series Number", 15) + " "
+            output += padRight("Modality", 10) + " "
+            output += padRight("Description", 40) + " "
+            output += padRight("Date", 12) + " "
+            output += padRight("Instances", 10) + "\n"
+            output += String(repeating: "─", count: 100) + "\n"
+            for pair in pairs {
+                let s = pair.result.toSeriesResult()
+                output += padRight(s.seriesNumber.map(String.init) ?? "", 15) + " "
+                output += padRight(s.modality ?? "", 10) + " "
+                output += padRight(s.seriesDescription ?? "", 40) + " "
+                output += padRight(formatDICOMDate(s.seriesDate), 12) + " "
+                output += padRight(s.numberOfSeriesRelatedInstances.map(String.init) ?? "", 10) + "\n"
+            }
+            output += String(repeating: "─", count: 100) + "\n"
+            output += "Total: \(pairs.count) series\n"
+            return output
+
+        case .image:
+            var output = ""
+            output += String(repeating: "─", count: 100) + "\n"
+            output += padRight("Instance Number", 17) + " "
+            output += padRight("SOP Class", 30) + " "
+            output += padRight("Dimensions", 15) + " "
+            output += padRight("Frames", 8) + "\n"
+            output += String(repeating: "─", count: 100) + "\n"
+            for pair in pairs {
+                let i = pair.result.toInstanceResult()
+                output += padRight(i.instanceNumber.map(String.init) ?? "", 17) + " "
+                let sopClass = i.sopClassUID ?? ""
+                let sopComponents = sopClass.split(separator: ".")
+                let shortSOP = sopComponents.count > 5
+                    ? "..." + sopComponents.suffix(3).joined(separator: ".")
+                    : sopClass
+                output += padRight(shortSOP, 30) + " "
+                let dims: String
+                if let rows = i.rows, let cols = i.columns {
+                    dims = "\(cols)×\(rows)"
+                } else {
+                    dims = ""
+                }
+                output += padRight(dims, 15) + " "
+                output += padRight(i.numberOfFrames.map(String.init) ?? "1", 8) + "\n"
+            }
+            output += String(repeating: "─", count: 100) + "\n"
+            output += "Total: \(pairs.count) instance(s)\n"
+            return output
+        }
+    }
+
+    /// Pads a string to a fixed width, truncating if longer.
+    private func padRight(_ string: String, _ width: Int) -> String {
+        let truncated = String(string.prefix(width))
+        return truncated.padding(toLength: width, withPad: " ", startingAt: 0)
+    }
+
+    /// Converts a DICOM date string (YYYYMMDD) to YYYY-MM-DD for display.
+    private func formatDICOMDate(_ dateString: String?) -> String {
+        guard let dateString = dateString, dateString.count == 8 else {
+            return dateString ?? ""
+        }
+        let year = dateString.prefix(4)
+        let month = dateString.dropFirst(4).prefix(2)
+        let day = dateString.dropFirst(6)
+        return "\(year)-\(month)-\(day)"
+    }
 
     /// Renders all results as a JSON array string.
     private func formatQueryResultsJSON(_ pairs: [(result: GenericQueryResult, parent: GenericQueryResult?)], level: QueryLevel) -> String {

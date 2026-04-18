@@ -1072,6 +1072,12 @@ optimization, and final UI polish to bring DICOM Studio v2.0 to release quality.
 | `IntegrationTestingViewModel.swift` | ✅ Completed | `@Observable` ViewModel with full mutation API for E2E tests, unit tests, accessibility, performance, UI polish, and documentation |
 | `IntegrationTestingTests.swift` | ✅ Completed | 138 tests across 5 suites (Model, Helpers, Service, ViewModel, Navigation) |
 
+### Post-M23 Maintenance Updates (April 2026)
+
+- [x] Fixed converted-file metadata display ordering so transfer syntax prefers File Meta Information `(0002,0010)`.
+- [x] Updated inspector/viewer metadata consistency for converted DICOM workflows.
+- [x] Verified CLI-driven conversion + viewer integration path for JPEG 2000 preserved-bit outputs.
+
 ---
 
 ## Milestone Summary
@@ -1193,3 +1199,4 @@ version-locked to the DICOM Studio release.
 *Document created: 2026-03-07*
 *Based on DICOMKit v1.8.0 with 38 CLI tools*
 *Estimated total effort: 19 weeks (1 developer)*
+*Maintenance updates: 2026-04-18 (JPEG 2000 conversion/render and metadata consistency fixes)*

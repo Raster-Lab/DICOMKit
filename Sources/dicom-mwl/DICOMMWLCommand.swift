@@ -14,28 +14,28 @@ struct DICOMMWLCommand: AsyncParsableCommand {
             from a worklist SCP server.
             
             URL Format:
-              --host hostname          - PACS server hostname or IP address
-              --host hostname:port     - Hostname with embedded port
-              --port port              - Optional explicit port (default: 11112)
+              hostname               - PACS server hostname or IP address
+              hostname:port          - Hostname with embedded port
+              --port port            - Optional explicit port (default: 11112)
             
             Examples:
               # Query worklist for today
-              dicom-mwl query --host server --port 11112 --aet MODALITY --date today
+              dicom-mwl query server --port 11112 --aet MODALITY --date today
               
               # Query with filters
-              dicom-mwl query --host server:11112 --aet MODALITY \\
+              dicom-mwl query server:11112 --aet MODALITY \\
                 --date 20240315 --station CT1 --patient "DOE^JOHN"
               
               # Filter to only SCHEDULED items
-              dicom-mwl query --host server --port 4242 --aet MODALITY \\
+              dicom-mwl query server --port 11112 --aet MODALITY \\
                 --sps-status SCHEDULED
               
               # Filter by modality and date with JSON output
-              dicom-mwl query --host 192.168.1.100 --port 11112 --aet MODALITY \\
+              dicom-mwl query 192.168.1.100 --port 11112 --aet MODALITY \\
                 --modality CT --date today --json
               
               # Verbose output showing all attributes
-              dicom-mwl query --host server --port 11112 --aet MODALITY \\
+              dicom-mwl query server --port 11112 --aet MODALITY \\
                 --date today --verbose
             
             SPS Status values: SCHEDULED, IN PROGRESS, DISCONTINUED, COMPLETED
@@ -60,7 +60,7 @@ extension DICOMMWLCommand {
             abstract: "Query Modality Worklist (C-FIND)"
         )
         
-        @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+        @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
         var host: String
         
         @Option(name: .long, help: "PACS server port (default: 11112)")

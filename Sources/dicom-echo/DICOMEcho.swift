@@ -22,7 +22,7 @@ struct DICOMEcho: AsyncParsableCommand {
               dicom-echo server --port 11112 --aet TEST_SCU
               dicom-echo server:11112 --aet TEST_SCU --called-aet PACS_SCP
               dicom-echo 192.168.1.100:11112 --aet TEST_SCU --count 10 --stats
-              dicom-echo server:4242 --aet TEST_SCU --verbose
+              dicom-echo server:11112 --aet TEST_SCU --verbose
               dicom-echo server:11112 --aet TEST_SCU --diagnose
             """,
         version: "1.0.0"

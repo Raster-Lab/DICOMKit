@@ -25,7 +25,7 @@ struct DICOMQR: AsyncParsableCommand {
             Examples:
               # Interactive query and retrieve
               dicom-qr \\
-                --host server --port 11112 \\
+                server --port 11112 \\
                 --aet MY_AET --called-aet PACS_SCP \\
                 --move-dest MY_SCP \\
                 --patient-name "DOE*" \\
@@ -33,7 +33,7 @@ struct DICOMQR: AsyncParsableCommand {
               
               # Automatic query and retrieve
               dicom-qr \\
-                --host server:11112 \\
+                server:11112 \\
                 --aet MY_AET \\
                 --move-dest MY_SCP \\
                 --study-date "20240101-20240131" \\
@@ -43,7 +43,7 @@ struct DICOMQR: AsyncParsableCommand {
               
               # Query, review, then retrieve
               dicom-qr \\
-                --host server --port 11112 \\
+                server --port 11112 \\
                 --aet MY_AET \\
                 --patient-id "12345" \\
                 --review \\
@@ -70,7 +70,7 @@ extension DICOMQR {
             abstract: "Query and retrieve DICOM studies"
         )
         
-        @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+        @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
         var host: String
         
         @Option(name: .long, help: "PACS server port (default: 11112)")
