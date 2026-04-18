@@ -75,8 +75,8 @@ public final class MetadataViewModel {
             let data = try Data(contentsOf: url)
             let dicomFile = try DICOMFile.read(from: data)
             filePath = url.path
-            transferSyntaxUID = dicomFile.dataSet.string(for: .transferSyntaxUID)
-                ?? dicomFile.fileMetaInformation.string(for: .transferSyntaxUID)
+            transferSyntaxUID = dicomFile.fileMetaInformation.string(for: .transferSyntaxUID)
+                ?? dicomFile.dataSet.string(for: .transferSyntaxUID)
             specificCharacterSet = dicomFile.dataSet.string(for: .specificCharacterSet)
 
             nodes = buildTree(from: dicomFile)

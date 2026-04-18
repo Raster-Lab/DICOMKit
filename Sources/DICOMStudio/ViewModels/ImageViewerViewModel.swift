@@ -322,23 +322,51 @@ public final class ImageViewerViewModel {
         self.filePath = path
         self.sopInstanceUID = file.dataSet.string(for: .sopInstanceUID)
 
+        let ds = file.dataSet
+        let fmi = file.fileMetaInformation
+
         // Extract transfer syntax information
-        let tsUID = file.transferSyntaxUID ?? ""
+        let tsUID = fmi.string(for: .transferSyntaxUID)
+            ?? ds.string(for: .transferSyntaxUID)
+            ?? file.transferSyntaxUID
+            ?? ""
         self.transferSyntaxUID = tsUID
         self.transferSyntaxName = ImageMetadataHelpers.transferSyntaxLabel(for: tsUID)
 
-        // Extract pixel data descriptor
+        // Read metadata directly from current file tags first.
+        // This ensures overlay values match what is actually stored in the
+        // currently loaded DICOM file (including transcoded outputs).
+        imageRows = ds.uint16(for: .rows).map(Int.init) ?? 0
+        imageColumns = ds.uint16(for: .columns).map(Int.init) ?? 0
+        bitsAllocated = ds.uint16(for: .bitsAllocated).map(Int.init) ?? 0
+        bitsStored = ds.uint16(for: .bitsStored).map(Int.init) ?? 0
+        highBit = ds.uint16(for: .highBit).map(Int.init) ?? 0
+        isSigned = (ds.uint16(for: .pixelRepresentation) ?? 0) == 1
+        samplesPerPixel = ds.uint16(for: .samplesPerPixel).map(Int.init) ?? 1
+        planarConfiguration = ds.uint16(for: .planarConfiguration).map(Int.init) ?? 0
+        photometricInterpretation = ds.string(for: .photometricInterpretation) ?? ""
+        numberOfFrames = ds.string(for: .numberOfFrames)
+            .flatMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+            ?? 1
+
+        // Fallback to pixel descriptor for missing tags only.
         if let descriptor = file.pixelDataDescriptor() {
-            imageRows = descriptor.rows
-            imageColumns = descriptor.columns
-            bitsAllocated = descriptor.bitsAllocated
-            bitsStored = descriptor.bitsStored
-            highBit = descriptor.highBit
-            isSigned = descriptor.isSigned
-            samplesPerPixel = descriptor.samplesPerPixel
-            planarConfiguration = descriptor.planarConfiguration
-            photometricInterpretation = descriptor.photometricInterpretation.rawValue
-            numberOfFrames = descriptor.numberOfFrames
+            if imageRows == 0 { imageRows = descriptor.rows }
+            if imageColumns == 0 { imageColumns = descriptor.columns }
+            if bitsAllocated == 0 { bitsAllocated = descriptor.bitsAllocated }
+            if bitsStored == 0 { bitsStored = descriptor.bitsStored }
+            if highBit == 0 && descriptor.highBit != 0 { highBit = descriptor.highBit }
+            if samplesPerPixel == 0 { samplesPerPixel = descriptor.samplesPerPixel }
+            if planarConfiguration == 0 && descriptor.samplesPerPixel > 1 {
+                planarConfiguration = descriptor.planarConfiguration
+            }
+            if photometricInterpretation.isEmpty {
+                photometricInterpretation = descriptor.photometricInterpretation.rawValue
+            }
+            if numberOfFrames <= 0 { numberOfFrames = descriptor.numberOfFrames }
+            if ds.uint16(for: .pixelRepresentation) == nil {
+                isSigned = descriptor.isSigned
+            }
         }
 
         // Extract rescale parameters for window correction

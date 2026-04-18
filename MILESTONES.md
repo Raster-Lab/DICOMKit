@@ -4251,6 +4251,12 @@ These features may be considered for future development based on community needs
 - SwiftUI components library
 - Combine/AsyncSequence publishers
 
+### Post-v1.8 Maintenance (April 2026)
+- [x] Fixed JPEG 2000/JPEG 2000 Lossless 16-bit preserved-bit rendering regression in conversion/render pipeline
+- [x] Ensured converted files preserve pixel metadata (`Bits Allocated`, `Bits Stored`, `High Bit`) for JPEG 2000 targets
+- [x] Fixed DICOM Studio metadata transfer syntax source ordering to prefer File Meta Information `(0002,0010)`
+- [x] Added regression coverage for 12-bit-in-16-bit JPEG 2000 roundtrip decode normalization
+
 ### Interoperability
 - HL7 FHIR integration
 - IHE profile support (XDS, PIX/PDQ)
@@ -4276,4 +4282,4 @@ We welcome contributions at any milestone! Please see [CONTRIBUTING.md](CONTRIBU
 
 ---
 
-*This roadmap is subject to change based on community feedback and project priorities. Last updated: February 2026*
+*This roadmap is subject to change based on community feedback and project priorities. Last updated: April 2026*

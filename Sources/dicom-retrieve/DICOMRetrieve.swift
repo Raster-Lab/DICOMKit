@@ -12,27 +12,27 @@ struct DICOMRetrieve: AsyncParsableCommand {
             Retrieves DICOM studies, series, or instances from PACS servers using the C-MOVE
             or C-GET service. C-MOVE requires a destination AE, while C-GET retrieves directly.
             
-            The --host option accepts a hostname or IP address, optionally with a
+            The host argument accepts a hostname or IP address, optionally with a
             port suffix (host:port). Use --port to specify the port separately.
             If no port is given, the default is 11112.
             
             Examples:
               # Retrieve study using C-MOVE
-              dicom-retrieve --host server --port 11112 \\
+              dicom-retrieve server --port 11112 \\
                 --aet MY_SCU --called-aet PACS_SCP \\
                 --move-dest MY_SCP \\
                 --study-uid 1.2.840.xxx \\
                 --output study_dir/
               
               # Retrieve using C-GET (simpler, no move destination)
-              dicom-retrieve --host server --port 11112 \\
+              dicom-retrieve server --port 11112 \\
                 --aet MY_SCU \\
                 --study-uid 1.2.840.xxx \\
                 --method c-get \\
                 --output study_dir/
               
               # Retrieve specific series
-              dicom-retrieve --host server:11112 \\
+              dicom-retrieve server:11112 \\
                 --aet MY_SCU \\
                 --move-dest MY_SCP \\
                 --study-uid 1.2.840.xxx \\
@@ -40,7 +40,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
                 --output series_dir/
               
               # Bulk retrieve from UID list
-              dicom-retrieve --host server --port 11112 \\
+              dicom-retrieve server --port 11112 \\
                 --aet MY_SCU \\
                 --move-dest MY_SCP \\
                 --uid-list study_uids.txt \\
@@ -50,7 +50,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
         version: "1.1.2"
     )
     
-    @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+    @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
     var host: String
     
     @Option(name: .long, help: "PACS server port (default: 11112)")

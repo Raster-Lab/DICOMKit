@@ -63,7 +63,7 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
     
     /// Whether this encoder supports the given configuration
     public func canEncode(with configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) -> Bool {
-        // JPEG 2000 supports various bit depths
+        // JPEG 2000 supports 8-bit and 16-bit sample precision.
         guard descriptor.bitsAllocated == 8 || descriptor.bitsAllocated == 16 else {
             return false
         }
@@ -159,7 +159,7 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
             context.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
         }
         
-        return pixelData
+        return normalizeDecoded16BitSamplesIfNeeded(pixelData, descriptor: descriptor)
     }
     
     /// Extracts RGB pixel data
@@ -231,7 +231,66 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
             }
         }
         
-        return rgbData
+        return normalizeDecoded16BitSamplesIfNeeded(rgbData, descriptor: descriptor)
+    }
+
+    /// Normalizes ImageIO-decoded 16-bit samples back into the DICOM stored-bit range.
+    ///
+    /// ImageIO may expand sub-16-bit JPEG 2000 precision into full-range 16-bit samples.
+    /// DICOM consumers expect the decoded samples to remain in the original Bits Stored range.
+    private func normalizeDecoded16BitSamplesIfNeeded(_ data: Data, descriptor: PixelDataDescriptor) -> Data {
+        guard descriptor.bitsAllocated == 16,
+              descriptor.bitsStored > 0,
+              descriptor.bitsStored < 16,
+              !descriptor.isSigned,
+              data.count >= 2
+        else {
+            return data
+        }
+
+        let maxStoredValue = UInt32(descriptor.maxPossibleValue)
+        let lowBitCount = 16 - descriptor.bitsStored
+        let lowBitMask = lowBitCount > 0 ? UInt16((1 << lowBitCount) - 1) : 0
+
+        var maxDecodedValue: UInt16 = 0
+        var sampleCount = 0
+        var leftAlignedSampleCount = 0
+
+        for offset in stride(from: 0, to: data.count - 1, by: 2) {
+            let value = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+            if value > maxDecodedValue {
+                maxDecodedValue = value
+            }
+            if lowBitMask == 0 || (value & lowBitMask) == 0 {
+                leftAlignedSampleCount += 1
+            }
+            sampleCount += 1
+        }
+
+        guard UInt32(maxDecodedValue) > maxStoredValue else {
+            return data
+        }
+
+        let looksLeftAligned = sampleCount > 0 && leftAlignedSampleCount * 100 >= sampleCount * 95
+        let denominator = UInt32(UInt16.max)
+
+        var normalized = Data(capacity: data.count)
+        for offset in stride(from: 0, to: data.count - 1, by: 2) {
+            let value = UInt16(data[offset]) | (UInt16(data[offset + 1]) << 8)
+            let adjusted: UInt16
+
+            if looksLeftAligned {
+                adjusted = value >> lowBitCount
+            } else {
+                let scaled = (UInt32(value) * maxStoredValue + (denominator / 2)) / denominator
+                adjusted = UInt16(min(scaled, maxStoredValue))
+            }
+
+            normalized.append(UInt8(adjusted & 0x00FF))
+            normalized.append(UInt8(adjusted >> 8))
+        }
+
+        return normalized
     }
     
     // MARK: - Private Encoding Helpers
@@ -242,7 +301,6 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
         let height = descriptor.rows
         let bytesPerSample = descriptor.bytesPerSample
         let samplesPerPixel = descriptor.samplesPerPixel
-        let bitsPerComponent = bytesPerSample * 8
         
         let colorSpace: CGColorSpace
         let bitmapInfo: CGBitmapInfo
@@ -252,12 +310,14 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
         if samplesPerPixel == 1 {
             // Grayscale
             colorSpace = CGColorSpaceCreateDeviceGray()
-            if bytesPerSample == 1 {
-                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
-            } else {
+            
+            if bytesPerSample == 2 {
                 bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue | CGBitmapInfo.byteOrder16Little.rawValue)
+                bytesPerRow = width * 2
+            } else {
+                bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+                bytesPerRow = width * bytesPerSample
             }
-            bytesPerRow = width * bytesPerSample
         } else if samplesPerPixel == 3 {
             // RGB - need to convert to RGBA for CGImage
             colorSpace = CGColorSpaceCreateDeviceRGB()
@@ -279,6 +339,7 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
             throw DICOMError.parsingFailed("Failed to create data provider for encoding")
         }
         
+        let bitsPerComponent = bytesPerSample * 8
         let bitsPerPixel: Int
         if samplesPerPixel == 1 {
             bitsPerPixel = bitsPerComponent
@@ -352,14 +413,39 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
     }
     
     /// Encodes a CGImage to JPEG 2000 data
+    ///
+    /// Apple's ImageIO produces JP2 file format data (with box structure), but DICOM
+    /// requires the raw JPEG 2000 codestream (J2C) per PS3.5 Section A.4.4.
+    /// This method encodes via ImageIO and then extracts the raw J2C codestream.
     private func encodeToJPEG2000(_ image: CGImage, configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) throws -> Data {
         let mutableData = NSMutableData()
         
-        // Use JP2 (JPEG 2000) format - use "public.jp2" identifier directly
-        // Note: UTType.jpeg2000 doesn't exist; we use the raw identifier string
-        let jp2UTType = "public.jp2" as CFString
-        guard let destination = CGImageDestinationCreateWithData(mutableData, jp2UTType, 1, nil) else {
-            throw DICOMError.parsingFailed("Failed to create JPEG 2000 image destination")
+        // The standard Apple UTI for JPEG 2000 is "public.jpeg-2000" (kUTTypeJPEG2000).
+        // Try it first, then fall back to the JP2 identifier used by some macOS versions.
+        let jp2Identifiers: [CFString] = [
+            "public.jpeg-2000" as CFString,
+            "org.jpeg.jp2" as CFString,
+            "public.jp2" as CFString,
+        ]
+        
+        // Debug: log available types and image info
+        let availableTypes = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
+        let hasJP2 = availableTypes.contains("public.jpeg-2000")
+        
+        var destination: CGImageDestination?
+        for identifier in jp2Identifiers {
+            destination = CGImageDestinationCreateWithData(mutableData, identifier, 1, nil)
+            if destination != nil { break }
+        }
+        
+        guard let destination else {
+            throw DICOMError.parsingFailed(
+                "Failed to create JPEG 2000 image destination — "
+                + "JPEG 2000 encoding may not be supported on this platform "
+                + "(available=\(hasJP2), types=\(availableTypes.count), "
+                + "image=\(image.width)x\(image.height) bpc=\(image.bitsPerComponent) "
+                + "bpp=\(image.bitsPerPixel) cs=\(image.colorSpace?.name ?? "nil" as CFString))"
+            )
         }
         
         // Set compression options
@@ -380,7 +466,82 @@ public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
             throw DICOMError.parsingFailed("Failed to finalize JPEG 2000 encoding")
         }
         
-        return mutableData as Data
+        let jp2Data = mutableData as Data
+        
+        // Extract raw J2C codestream from JP2 file format.
+        // DICOM requires the raw codestream (starting with SOC marker FF 4F),
+        // not the JP2 wrapper with Signature/FileType/Header boxes.
+        guard let j2cData = Self.extractJ2CCodestream(from: jp2Data) else {
+            // If extraction fails, check if the data is already a raw codestream
+            if jp2Data.count >= 2 && jp2Data[0] == 0xFF && jp2Data[1] == 0x4F {
+                return jp2Data
+            }
+            throw DICOMError.parsingFailed("Failed to extract JPEG 2000 codestream from encoded data")
+        }
+        
+        return j2cData
+    }
+    
+    /// Extracts the raw JPEG 2000 codestream (J2C) from JP2 file format data.
+    ///
+    /// Apple's ImageIO produces JP2 file format data containing box structures
+    /// (Signature, FileType, Header, Contiguous Codestream). DICOM requires
+    /// only the raw J2C codestream per PS3.5 Section A.4.4.
+    ///
+    /// This function parses the JP2 box structure to find the "jp2c"
+    /// (Contiguous Codestream) box and returns its contents.
+    ///
+    /// Reference: ISO/IEC 15444-1 Annex I — JP2 file format
+    private static func extractJ2CCodestream(from jp2Data: Data) -> Data? {
+        let jp2cBoxType = Data("jp2c".utf8) // 0x6A, 0x70, 0x32, 0x63
+        var offset = 0
+        
+        while offset + 8 <= jp2Data.count {
+            // Read box length (big-endian UInt32)
+            let b0 = UInt32(jp2Data[offset])
+            let b1 = UInt32(jp2Data[offset + 1])
+            let b2 = UInt32(jp2Data[offset + 2])
+            let b3 = UInt32(jp2Data[offset + 3])
+            let boxLength = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+            
+            // Read box type (4 bytes)
+            let boxType = jp2Data.subdata(in: (offset + 4)..<(offset + 8))
+            
+            if boxType == jp2cBoxType {
+                // Found the Contiguous Codestream box
+                if boxLength == 0 {
+                    // Box extends to end of data
+                    return jp2Data.subdata(in: (offset + 8)..<jp2Data.count)
+                } else if boxLength == 1 {
+                    // Extended length (8-byte big-endian length at offset + 8)
+                    guard offset + 16 <= jp2Data.count else { return nil }
+                    return jp2Data.subdata(in: (offset + 16)..<jp2Data.count)
+                } else {
+                    let codestreamStart = offset + 8
+                    let codestreamEnd = min(offset + Int(boxLength), jp2Data.count)
+                    guard codestreamStart < codestreamEnd else { return nil }
+                    return jp2Data.subdata(in: codestreamStart..<codestreamEnd)
+                }
+            }
+            
+            // Move to next box
+            if boxLength == 0 {
+                break // Box extends to end of data — no more boxes
+            } else if boxLength == 1 {
+                // Extended length
+                guard offset + 16 <= jp2Data.count else { break }
+                let ext = jp2Data.subdata(in: (offset + 8)..<(offset + 16))
+                var extLen: UInt64 = 0
+                for byte in ext { extLen = (extLen << 8) | UInt64(byte) }
+                offset += Int(extLen)
+            } else if boxLength < 8 {
+                break // Invalid box
+            } else {
+                offset += Int(boxLength)
+            }
+        }
+        
+        return nil
     }
 }
 

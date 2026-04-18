@@ -452,10 +452,37 @@ public struct TransferSyntaxConverter: Sendable {
         // Parse elements from source
         let elements = try parseDataElements(from: dataSetData, transferSyntax: source)
         
-        // Find pixel data element and compress if present
+        // Pre-scan: determine if bit-depth reduction will be needed.
+        // This must happen before the output element loop because the bit-depth
+        // metadata tags (group 0x0028) precede pixel data (group 0x7FE0) in tag
+        // order. Without pre-scanning, the metadata tags would be emitted before
+        // we know whether reduction is required.
+        var needsBitReduction = false
+        if elements.contains(where: { $0.tag == .pixelData && !$0.isEncapsulated }) {
+            let descriptor = try extractPixelDataDescriptor(from: elements)
+            if !encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) {
+                if descriptor.bitsAllocated == 16 && descriptor.samplesPerPixel <= 3 {
+                    let test8Descriptor = PixelDataDescriptor(
+                        rows: descriptor.rows,
+                        columns: descriptor.columns,
+                        numberOfFrames: descriptor.numberOfFrames,
+                        bitsAllocated: 8,
+                        bitsStored: 8,
+                        highBit: 7,
+                        isSigned: false,
+                        samplesPerPixel: descriptor.samplesPerPixel,
+                        photometricInterpretation: descriptor.photometricInterpretation,
+                        planarConfiguration: descriptor.planarConfiguration
+                    )
+                    if encoder.canEncode(with: compressionConfiguration, descriptor: test8Descriptor) {
+                        needsBitReduction = true
+                    }
+                }
+            }
+        }
+        
+        // Build output elements, applying bit-depth reduction when necessary
         var outputElements: [DataElement] = []
-        // Track whether bit-depth reduction was applied so we can rewrite metadata tags
-        var reducedTo8Bit = false
         
         for element in elements {
             if element.tag == .pixelData && !element.isEncapsulated {
@@ -463,40 +490,34 @@ public struct TransferSyntaxConverter: Sendable {
                 var descriptor = try extractPixelDataDescriptor(from: elements)
                 var pixelBytes = element.valueData
                 
-                // If encoder rejects the native configuration, try bit-depth reduction
+                // Apply bit-depth reduction if pre-scan determined it's needed
+                if needsBitReduction {
+                    pixelBytes = rescalePixelData16To8(
+                        pixelBytes,
+                        descriptor: descriptor,
+                        elements: elements
+                    )
+                    descriptor = PixelDataDescriptor(
+                        rows: descriptor.rows,
+                        columns: descriptor.columns,
+                        numberOfFrames: descriptor.numberOfFrames,
+                        bitsAllocated: 8,
+                        bitsStored: 8,
+                        highBit: 7,
+                        isSigned: false,
+                        samplesPerPixel: descriptor.samplesPerPixel,
+                        photometricInterpretation: descriptor.photometricInterpretation,
+                        planarConfiguration: descriptor.planarConfiguration
+                    )
+                }
+                
+                // Verify the encoder can handle the (possibly reduced) configuration
                 if !encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) {
-                    // Attempt 16→8 bit reduction for encoders that only support 8-bit
-                    if descriptor.bitsAllocated == 16 && descriptor.samplesPerPixel <= 3 {
-                        let test8Descriptor = PixelDataDescriptor(
-                            rows: descriptor.rows,
-                            columns: descriptor.columns,
-                            numberOfFrames: descriptor.numberOfFrames,
-                            bitsAllocated: 8,
-                            bitsStored: 8,
-                            highBit: 7,
-                            isSigned: false,
-                            samplesPerPixel: descriptor.samplesPerPixel,
-                            photometricInterpretation: descriptor.photometricInterpretation,
-                            planarConfiguration: descriptor.planarConfiguration
-                        )
-                        if encoder.canEncode(with: compressionConfiguration, descriptor: test8Descriptor) {
-                            pixelBytes = rescalePixelData16To8(
-                                pixelBytes,
-                                descriptor: descriptor,
-                                elements: elements
-                            )
-                            descriptor = test8Descriptor
-                            reducedTo8Bit = true
-                        }
-                    }
-                    // Still can't encode after reduction attempt
-                    if !encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) {
-                        throw TranscodingError.encodingFailed(
-                            "Encoder does not support the given pixel data configuration "
-                            + "(bitsAllocated=\(descriptor.bitsAllocated), "
-                            + "samplesPerPixel=\(descriptor.samplesPerPixel))"
-                        )
-                    }
+                    throw TranscodingError.encodingFailed(
+                        "Encoder does not support the given pixel data configuration "
+                        + "(bitsAllocated=\(descriptor.bitsAllocated), "
+                        + "samplesPerPixel=\(descriptor.samplesPerPixel))"
+                    )
                 }
                 
                 // Compress the pixel data
@@ -516,7 +537,7 @@ public struct TransferSyntaxConverter: Sendable {
                     encapsulatedOffsetTable: buildOffsetTable(for: compressedFrames)
                 )
                 outputElements.append(newElement)
-            } else if reducedTo8Bit && (element.tag == .bitsAllocated || element.tag == .bitsStored
+            } else if needsBitReduction && (element.tag == .bitsAllocated || element.tag == .bitsStored
                                         || element.tag == .highBit || element.tag == .pixelRepresentation) {
                 // Rewrite pixel attribute tags to reflect 8-bit encoding
                 let newValue: UInt16
@@ -531,6 +552,17 @@ public struct TransferSyntaxConverter: Sendable {
                 let valData = Data(bytes: &leBytes, count: 2)
                 outputElements.append(DataElement(tag: element.tag, vr: element.vr,
                                                   length: UInt32(valData.count), valueData: valData))
+            } else if needsBitReduction && (element.tag == .windowCenter
+                                        || element.tag == .windowWidth
+                                        || element.tag == .windowCenterWidthExplanation
+                                        || element.tag == .voiLUTFunction
+                                        || element.tag == .rescaleIntercept
+                                        || element.tag == .rescaleSlope
+                                        || element.tag == .rescaleType) {
+                // After 16->8 mapping, original modality/VOI attributes may no longer
+                // represent the encoded pixel range and can cause over-bright rendering
+                // in strict viewers (for example Horos). Omit them so viewers auto-window.
+                continue
             } else {
                 outputElements.append(element)
             }

@@ -88,6 +88,12 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 **Status**: Production-ready v1.8.0 release with comprehensive DICOM support, example applications, and professional documentation.
 
+### Recent Maintenance Updates (April 2026)
+
+- ✅ Fixed JPEG 2000 and JPEG 2000 Lossless preserved-16-bit rendering path to avoid black/near-black outputs after conversion.
+- ✅ Preserved `Bits Allocated`, `Bits Stored`, and `High Bit` metadata for JPEG 2000 targets while keeping converted output visibly correct.
+- ✅ Improved DICOM Studio metadata consistency by preferring transfer syntax from File Meta Information `(0002,0010)` during metadata loading.
+
 ### Key Highlights
 
 | Category | Description |

@@ -160,30 +160,66 @@ public struct CLIWorkshopView: View {
     // MARK: - Command and Console Panel
 
     private var commandAndConsolePanel: some View {
-        VStack(spacing: 0) {
-            // Server list and parameter input fields above the command preview
-            if viewModel.selectedTool() != nil {
-                VStack(alignment: .leading, spacing: 8) {
-                    // Server selection for network tools
-                    if viewModel.isNetworkToolSelected {
-                        if viewModel.isDICOMwebToolSelected {
-                            dicomwebServerSelectionSection
-                        } else {
-                            serverSelectionSection
-                        }
-                        Divider()
-                    }
-
-                    Text("Parameters")
-                        .font(.headline.bold())
-
-                    manualParameterFields
-                }
-                .padding()
+        GeometryReader { geo in
+            VStack(spacing: 0) {
+                // ── Top half: tool header + server + parameters ──
+                upperPanel
+                    .frame(height: geo.size.height * 0.5)
 
                 Divider()
-            }
 
+                // ── Bottom half: command preview + console + history ──
+                lowerPanel
+                    .frame(height: geo.size.height * 0.5)
+            }
+        }
+    }
+
+    /// Upper half — tool purpose header, server selector, and parameter fields (scrollable).
+    private var upperPanel: some View {
+        Group {
+            if let tool = viewModel.selectedTool() {
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        toolPurposeHeader(tool: tool)
+                        Divider()
+
+                        VStack(alignment: .leading, spacing: 8) {
+                            if viewModel.isNetworkToolSelected {
+                                if viewModel.isDICOMwebToolSelected {
+                                    dicomwebServerSelectionSection
+                                } else {
+                                    serverSelectionSection
+                                }
+                                Divider()
+                            }
+
+                            Text("Parameters")
+                                .font(.title3.bold())
+
+                            parameterGrid
+                        }
+                        .padding()
+                    }
+                }
+            } else {
+                VStack(spacing: 8) {
+                    Image(systemName: "terminal")
+                        .font(.system(size: 36))
+                        .foregroundStyle(.tertiary)
+                    Text("Select a tool from the list")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+
+    /// Lower half — command preview, console output, and history (scrollable console).
+    private var lowerPanel: some View {
+        VStack(spacing: 0) {
+            // Command Preview (pinned at top of lower half)
             GroupBox {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack {
@@ -233,79 +269,80 @@ public struct CLIWorkshopView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.vertical, 8)
 
             Divider()
 
-            VStack(alignment: .leading, spacing: 0) {
-                HStack {
-                    Label("Console", systemImage: "terminal")
-                        .font(.headline.bold())
-                    Spacer()
+            // Console header
+            HStack {
+                Label("Console", systemImage: "terminal")
+                    .font(.headline.bold())
+                Spacer()
 
-                    consoleStatusBadge
+                consoleStatusBadge
 
-                    if !viewModel.consoleOutput.isEmpty {
-                        Button {
-                            copyConsoleToClipboard()
-                        } label: {
-                            Image(systemName: "doc.on.doc")
-                                .font(.body)
-                        }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel("Copy console output")
-                        .accessibilityHint("Copies the console output to the clipboard")
-                    }
-
-                    if !viewModel.lastRetrievedFiles.isEmpty {
-                        Button {
-                            viewModel.openRetrievedFileInViewer()
-                        } label: {
-                            Label("Open in Viewer", systemImage: "eye")
-                                .font(.body)
-                        }
-                        .buttonStyle(.bordered)
-                        .accessibilityLabel("Open retrieved file in viewer")
-                        .accessibilityHint("Opens the first retrieved DICOM file in the image viewer")
-                    }
-
-                    Button("Clear") {
-                        viewModel.clearConsoleOutput()
-                    }
-                    .font(.body)
-                    .disabled(viewModel.consoleOutput.isEmpty)
-                    .accessibilityLabel("Clear console output")
-                }
-                .padding(.horizontal)
-                .padding(.vertical, 8)
-
-                Divider()
-
-                if viewModel.consoleOutput.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "terminal")
-                            .font(.system(size: 44))
-                            .foregroundStyle(.secondary)
-                        Text("Console output will appear here")
+                if !viewModel.consoleOutput.isEmpty {
+                    Button {
+                        copyConsoleToClipboard()
+                    } label: {
+                        Image(systemName: "doc.on.doc")
                             .font(.body)
-                            .foregroundStyle(.secondary)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        Text(viewModel.consoleOutput)
-                            .font(.system(.body, design: .monospaced))
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(10)
-                    }
-                    .background(.black.opacity(0.05))
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("Copy console output")
+                    .accessibilityHint("Copies the console output to the clipboard")
                 }
+
+                if !viewModel.lastRetrievedFiles.isEmpty {
+                    Button {
+                        viewModel.openRetrievedFileInViewer()
+                    } label: {
+                        Label("Open in Viewer", systemImage: "eye")
+                            .font(.body)
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityLabel("Open retrieved file in viewer")
+                    .accessibilityHint("Opens the first retrieved DICOM file in the image viewer")
+                }
+
+                Button("Clear") {
+                    viewModel.clearConsoleOutput()
+                }
+                .font(.body)
+                .disabled(viewModel.consoleOutput.isEmpty)
+                .accessibilityLabel("Clear console output")
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+
+            Divider()
+
+            // Console body (scrollable, fills remaining space)
+            if viewModel.consoleOutput.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "terminal")
+                        .font(.title2)
+                        .foregroundStyle(.tertiary)
+                    Text("Console output will appear here")
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    Text(viewModel.consoleOutput)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                }
+                .background(.black.opacity(0.05))
             }
 
-            Divider()
-
+            // History bar
             if !viewModel.commandHistory.isEmpty {
+                Divider()
                 VStack(alignment: .leading, spacing: 4) {
                     HStack {
                         Text("History")
@@ -336,10 +373,78 @@ public struct CLIWorkshopView: View {
         }
     }
 
+    // MARK: - Tool Purpose Header
+
+    /// A card displayed at the top of the command panel explaining what the selected tool does.
+    private func toolPurposeHeader(tool: CLIToolDefinition) -> some View {
+        let purpose = ToolCatalogHelpers.toolPurposeDescription(for: tool.id)
+        let capabilities = ToolCatalogHelpers.toolCapabilities(for: tool.id)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            // Tool name row
+            HStack(spacing: 10) {
+                Image(systemName: tool.sfSymbol)
+                    .font(.title2)
+                    .foregroundStyle(.green)
+                    .frame(width: 32, height: 32)
+                    .background(Color.green.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 6))
+
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(spacing: 6) {
+                        Text(tool.name)
+                            .font(.title3.monospaced().bold())
+                        if !tool.dicomStandardRef.isEmpty {
+                            Text(tool.dicomStandardRef)
+                                .font(.callout)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(Color.secondary.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
+                    }
+                    Text(tool.briefDescription)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            // Purpose paragraph (only shown when a rich description is available)
+            if !purpose.isEmpty {
+                Text(purpose)
+                    .font(.body)
+                    .foregroundStyle(.primary.opacity(0.85))
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Capability pills (only shown when available)
+            if !capabilities.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(capabilities, id: \.self) { cap in
+                            Label(cap, systemImage: "checkmark")
+                                .font(.callout)
+                                .foregroundStyle(.green)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.green.opacity(0.08))
+                                .clipShape(Capsule())
+                        }
+                    }
+                }
+            }
+        }
+        .padding()
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(tool.displayName). \(purpose)")
+    }
+
     // MARK: - Parameter Input Views
 
-    /// Manual parameter entry fields for the selected tool.
-    private var manualParameterFields: some View {
+    /// Parameter grid (no scroll — parent handles scrolling).
+    private var parameterGrid: some View {
         let params = viewModel.visibleParameters()
         let columns = [
             GridItem(.flexible(), spacing: 12),
@@ -351,29 +456,27 @@ public struct CLIWorkshopView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             } else {
-                ScrollView {
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 10) {
-                        ForEach(params, id: \.id) { param in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(param.displayName)
-                                    .font(.callout.bold())
-                                if (param.parameterType == .enumPicker || param.parameterType == .flagPicker || (param.parameterType == .subcommand && !param.allowedValues.isEmpty)) && !param.allowedValues.isEmpty {
-                                    enumPickerField(param: param)
-                                } else if param.parameterType == .filePath || param.parameterType == .outputPath {
-                                    filePathField(param: param)
-                                } else if param.parameterType == .booleanToggle {
-                                    booleanToggleField(param: param)
-                                } else {
-                                    TextField(param.placeholder, text: parameterBinding(for: param.id))
-                                        .textFieldStyle(.roundedBorder)
-                                        .font(.callout)
-                                        .accessibilityLabel(param.displayName)
-                                }
-                                if !param.helpText.isEmpty {
-                                    Text(param.helpText)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
+                    ForEach(params, id: \.id) { param in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(param.displayName)
+                                .font(.body.bold())
+                            if (param.parameterType == .enumPicker || param.parameterType == .flagPicker || (param.parameterType == .subcommand && !param.allowedValues.isEmpty)) && !param.allowedValues.isEmpty {
+                                enumPickerField(param: param)
+                            } else if param.parameterType == .filePath || param.parameterType == .outputPath {
+                                filePathField(param: param)
+                            } else if param.parameterType == .booleanToggle {
+                                booleanToggleField(param: param)
+                            } else {
+                                TextField(param.placeholder, text: parameterBinding(for: param.id))
+                                    .textFieldStyle(.roundedBorder)
+                                    .font(.body)
+                                    .accessibilityLabel(param.displayName)
+                            }
+                            if !param.helpText.isEmpty {
+                                Text(param.helpText)
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
                             }
                         }
                     }
@@ -387,7 +490,7 @@ public struct CLIWorkshopView: View {
         HStack(spacing: 4) {
             TextField(param.placeholder, text: parameterBinding(for: param.id))
                 .textFieldStyle(.roundedBorder)
-                .font(.callout)
+                .font(.body)
                 .accessibilityLabel(param.displayName)
             Button {
                 fileImporterParamID = param.id
@@ -395,7 +498,7 @@ public struct CLIWorkshopView: View {
                 showFileImporter = true
             } label: {
                 Label("Browse", systemImage: "folder")
-                    .font(.callout)
+                    .font(.body)
             }
             .buttonStyle(.bordered)
             .accessibilityLabel("Browse for \(param.displayName)")
@@ -451,7 +554,7 @@ public struct CLIWorkshopView: View {
                     }
                 }
                 .labelsHidden()
-                .font(.callout)
+                .font(.body)
                 .accessibilityLabel(param.displayName)
             }
         }

@@ -261,6 +261,64 @@ public enum ToolCatalogHelpers: Sendable {
     /// Returns the total count of tools.
     public static var totalToolCount: Int { 33 }
 
+    // MARK: - Tool Purpose Descriptions
+
+    /// Returns a rich multi-sentence purpose description for the given tool ID.
+    /// Used in the CLI Workshop tool header panel.
+    public static func toolPurposeDescription(for toolID: String) -> String {
+        switch toolID {
+        case "dicom-convert":
+            return """
+                dicom-convert re-encodes DICOM files into a different transfer syntax, \
+                or exports their pixel data to a standard image format (PNG, JPEG, or TIFF). \
+                It supports single-file and bulk-directory conversion. \
+                For image export it can apply window/level values so output images are \
+                correctly windowed — useful for CT, MR, and X-ray reading applications. \
+                Conversions are handled natively using DICOMKit without any third-party dependencies.
+                """
+        case "dicom-info":
+            return "Displays all DICOM tags, pixel statistics, and file metadata from a DICOM file or directory."
+        case "dicom-dump":
+            return "Prints a hex dump of a DICOM file annotated with tag names and VR information."
+        case "dicom-validate":
+            return "Checks a DICOM file for conformance against the matching IOD and returns a structured report."
+        case "dicom-anon":
+            return "Removes or replaces patient-identifying attributes according to PS3.15 anonymization profiles."
+        case "dicom-compress":
+            return "Compresses or decompresses DICOM pixel data using standard photometric and codec options."
+        case "dicom-query":
+            return "Queries a DICOM server using C-FIND to search for patients, studies, series, or instances."
+        case "dicom-send":
+            return "Sends DICOM files to a remote storage SCP using C-STORE."
+        case "dicom-retrieve":
+            return "Retrieves DICOM objects from a remote server using C-MOVE or C-GET."
+        case "dicom-echo":
+            return "Sends one or more C-ECHO requests to verify DICOM network connectivity and round-trip latency."
+        default:
+            return ""
+        }
+    }
+
+    /// Returns short capability bullet points for the given tool ID.
+    /// Each string is a terse label (no trailing punctuation).
+    public static func toolCapabilities(for toolID: String) -> [String] {
+        switch toolID {
+        case "dicom-convert":
+            return [
+                "Transfer syntax re-encoding (PS3.5)",
+                "Compressed encoding: JPEG, JPEG 2000, JPEG-LS, RLE",
+                "Export to PNG, JPEG, TIFF",
+                "Window / level adjustment on export",
+                "Multi-frame: choose specific frame",
+                "Batch directory conversion",
+                "Strip private tags",
+                "Post-conversion DICOM validation",
+            ]
+        default:
+            return []
+        }
+    }
+
     /// Returns M16-style parameter definitions for a tool by ID.
     public static func parameterDefinitions(for toolID: String) -> [CLIParameterDefinition] {
         switch toolID {
@@ -1670,8 +1728,23 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
                     parameterType: .enumPicker, placeholder: "Target transfer syntax",
-                    helpText: "Target transfer syntax for DICOM-to-DICOM conversion (PS3.5)",
-                    allowedValues: ["", "ExplicitVRLittleEndian", "ImplicitVRLittleEndian", "ExplicitVRBigEndian", "DEFLATE"],
+                    helpText: "Target transfer syntax for DICOM-to-DICOM conversion — supports uncompressed and compressed encoding (PS3.5 §10)",
+                    allowedValues: [
+                        "",
+                        "ExplicitVRLittleEndian",
+                        "ImplicitVRLittleEndian",
+                        "ExplicitVRBigEndian",
+                        "DEFLATE",
+                        "JPEGBaseline",
+                        "JPEGExtended",
+                        "JPEGLossless",
+                        "JPEGLosslessSV1",
+                        "JPEG2000Lossless",
+                        "JPEG2000",
+                        "JPEGLSLossless",
+                        "JPEGLSNearLossless",
+                        "RLELossless",
+                    ],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "format", values: ["dicom"])
                 ),
                 CLIParameterDefinition(
@@ -1754,12 +1827,22 @@ public enum CommandBuilderHelpers: Sendable {
             parts.append(sub)
         }
 
-        // dicom-echo uses positional endpoint syntax in preview:
+        // Some DIMSE tools use a positional host:port argument:
         //   dicom-echo <host:port> --aet ...
-        // Keep host/port parameters in the UI, but suppress their flag form.
-        let isDICOMEcho = toolName == "dicom-echo"
+        //   dicom-query <host:port> --aet ...
+        //   dicom-send <host:port> --aet ... <files>
+        //   dicom-retrieve <host:port> --aet ...
+        //   dicom-qr <host:port> --aet ...
+        //   dicom-mwl <host:port> --aet ...
+        //   dicom-mpps <host:port> --aet ...
+        // Keep host/port fields in the UI for convenience, but suppress their flag
+        // form in the command preview — combine them into a single positional token instead.
+        let usesPositionalEndpoint = toolName == "dicom-echo" || toolName == "dicom-query"
+            || toolName == "dicom-send" || toolName == "dicom-retrieve"
+            || toolName == "dicom-qr" || toolName == "dicom-mwl"
+            || toolName == "dicom-mpps"
         var skipParameterIDs: Set<String> = []
-        if isDICOMEcho {
+        if usesPositionalEndpoint {
             let hostValue = parameterValues.first(where: { $0.parameterID == "host" })?.stringValue ?? ""
             let portValueRaw = parameterValues.first(where: { $0.parameterID == "port" })?.stringValue ?? ""
             let defaultPort = parameterDefinitions.first(where: { $0.id == "port" })?.defaultValue ?? ""

@@ -12,21 +12,21 @@ struct DICOMSend: AsyncParsableCommand {
             Transfers DICOM files to PACS servers using the C-STORE service.
             Supports single files, multiple files, and recursive directory traversal.
             
-            The --host option accepts a hostname or IP address, optionally with a
+            The host argument accepts a hostname or IP address, optionally with a
             port suffix (host:port). Use --port to specify the port separately.
             If no port is given, the default is 11112.
             
             Examples:
-              dicom-send --host server --port 11112 --aet SENDER file.dcm
-              dicom-send --host server:11112 --aet SENDER study/ --recursive
-              dicom-send --host server --port 4242 --aet SENDER *.dcm --verify
-              dicom-send --host 192.168.1.100 --port 11112 --aet SENDER files/ --recursive --dry-run
-              dicom-send --host server --port 11112 --aet SENDER study/ --retry 3 --verbose
+              dicom-send server --port 11112 --aet SENDER file.dcm
+              dicom-send server:11112 --aet SENDER study/ --recursive
+              dicom-send server --port 11112 --aet SENDER *.dcm --verify
+              dicom-send 192.168.1.100 --port 11112 --aet SENDER files/ --recursive --dry-run
+              dicom-send server --port 11112 --aet SENDER study/ --retry 3 --verbose
             """,
         version: "1.0.0"
     )
     
-    @Option(name: .long, help: "PACS server hostname or IP address (optionally host:port)")
+    @Argument(help: "PACS server hostname or IP address, optionally with port (host:port)")
     var host: String
     
     @Option(name: .long, help: "PACS server port (default: 11112)")

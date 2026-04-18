@@ -37,7 +37,7 @@ struct DICOMConvert: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String
     
-    @Option(name: .long, help: "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE")
+    @Option(name: .long, help: "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, JPEGLSLossless, JPEGLSNearLossless, RLELossless")
     var transferSyntax: String?
     
     @Option(name: .long, help: "Output format for image export: png, jpeg, tiff, dicom (default: dicom)")
@@ -165,6 +165,10 @@ struct DICOMConvert: AsyncParsableCommand {
         
         let targetSyntax = try parseTransferSyntax(transferSyntaxName)
         
+        // Determine source transfer syntax from the file
+        let sourceSyntaxUID = dicomFile.transferSyntaxUID ?? DICOMCore.TransferSyntax.explicitVRLittleEndian.uid
+        let sourceSyntax = DICOMCore.TransferSyntax.from(uid: sourceSyntaxUID) ?? .explicitVRLittleEndian
+        
         // Create modified dataset
         var newDataSet = dicomFile.dataSet
         
@@ -180,15 +184,62 @@ struct DICOMConvert: AsyncParsableCommand {
             newDataSet = filteredDataSet
         }
         
-        // Write DICOM file with new transfer syntax
-        let converter = TransferSyntaxConverter()
-        let outputData = try converter.convert(
-            dataSet: newDataSet,
-            to: targetSyntax,
-            preservePixelData: true
+        // Use the DICOMCore TransferSyntaxConverter for full transcoding (including pixel data)
+        // Use lossless compression config for lossless targets, default for lossy
+        let compressionConfig: DICOMCore.CompressionConfiguration = targetSyntax.isLossless
+            ? .lossless
+            : .default
+        let coreConverter = DICOMCore.TransferSyntaxConverter(
+            configuration: TranscodingConfiguration(
+                preferredSyntaxes: [targetSyntax],
+                allowLossyCompression: !targetSyntax.isLossless,
+                preservePixelDataFidelity: targetSyntax.isLossless
+            ),
+            compressionConfiguration: compressionConfig
         )
         
+        // Serialize the current dataset to bytes in the source transfer syntax
+        let sourceWriter = DICOMWriter(
+            byteOrder: sourceSyntax.byteOrder,
+            explicitVR: sourceSyntax.isExplicitVR
+        )
+        let dataSetBytes = newDataSet.write(using: sourceWriter)
+        
+        // Transcode the dataset bytes
+        let result = try coreConverter.transcode(
+            dataSetData: dataSetBytes,
+            from: sourceSyntax,
+            to: targetSyntax
+        )
+        
+        // Write the complete DICOM file with proper File Meta Information
+        let sopClassUID = newDataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.7"
+        let sopInstanceUID = newDataSet.string(for: .sopInstanceUID) ?? UIDGenerator.generateSOPInstanceUID().value
+        let outputFile = DICOMFile.create(
+            dataSet: newDataSet,
+            sopClassUID: sopClassUID,
+            sopInstanceUID: sopInstanceUID,
+            transferSyntaxUID: targetSyntax.uid
+        )
+        
+        // Build the final output: preamble + DICM + file meta info + transcoded dataset
+        var outputData = Data()
+        outputData.append(Data(repeating: 0, count: 128))  // Preamble
+        outputData.append(contentsOf: "DICM".utf8)          // DICM prefix
+        
+        // Write File Meta Information (always Explicit VR Little Endian)
+        let fmiWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+        outputData.append(outputFile.fileMetaInformation.write(using: fmiWriter))
+        
+        // Append the transcoded dataset bytes
+        outputData.append(result.data)
+        
         try outputData.write(to: output)
+        
+        if result.wasTranscoded {
+            let lossInfo = result.isLossless ? "lossless" : "lossy"
+            print("Transcoded from \(sourceSyntax.uid) to \(targetSyntax.uid) (\(lossInfo))")
+        }
     }
     
     private func exportImage(dicomFile: DICOMFile, output: URL) throws {
@@ -276,6 +327,7 @@ struct DICOMConvert: AsyncParsableCommand {
     
     private func parseTransferSyntax(_ name: String) throws -> TransferSyntax {
         switch name.lowercased() {
+        // Uncompressed
         case "explicitvrlittleendian", "explicit", "evle":
             return .explicitVRLittleEndian
         case "implicitvrlittleendian", "implicit", "ivle":
@@ -284,8 +336,38 @@ struct DICOMConvert: AsyncParsableCommand {
             return .explicitVRBigEndian
         case "deflate", "deflated":
             return .deflatedExplicitVRLittleEndian
+        // JPEG
+        case "jpegbaseline", "jpeg-baseline", "jpeg":
+            return .jpegBaseline
+        case "jpegextended", "jpeg-extended":
+            return .jpegExtended
+        case "jpeglossless", "jpeg-lossless":
+            return .jpegLossless
+        case "jpeglosslesssv1", "jpeg-lossless-sv1":
+            return .jpegLosslessSV1
+        // JPEG 2000
+        case "jpeg2000lossless", "jpeg2000-lossless", "j2k-lossless":
+            return .jpeg2000Lossless
+        case "jpeg2000", "jpeg2000-lossy", "j2k":
+            return .jpeg2000
+        // JPEG-LS
+        case "jpeglslossless", "jpeg-ls-lossless", "jpegls":
+            return .jpegLSLossless
+        case "jpeglsnearlossless", "jpeg-ls-near-lossless", "jpegls-near":
+            return .jpegLSNearLossless
+        // RLE
+        case "rlelossless", "rle-lossless", "rle":
+            return .rleLossless
         default:
-            throw ValidationError("Unknown transfer syntax: \(name). Use: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, or DEFLATE")
+            throw ValidationError("""
+                Unknown transfer syntax: \(name).
+                Available syntaxes:
+                  Uncompressed: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE
+                  JPEG:         JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1
+                  JPEG 2000:    JPEG2000Lossless, JPEG2000
+                  JPEG-LS:      JPEGLSLossless, JPEGLSNearLossless
+                  RLE:          RLELossless
+                """)
         }
     }
 }

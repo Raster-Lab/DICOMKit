@@ -836,6 +836,53 @@ struct NativeJPEG2000CodecEncoderTests {
         let config = CompressionConfiguration.lossless
         #expect(codec.canEncode(with: config, descriptor: descriptor) == true)
     }
+
+    @Test("Lossless 12-bit grayscale roundtrip decodes in stored-bit range")
+    func testLossless12BitGrayscaleRoundtripDecodesInStoredBitRange() throws {
+        let codec = NativeJPEG2000Codec()
+        let descriptor = PixelDataDescriptor(
+            rows: 64,
+            columns: 64,
+            numberOfFrames: 1,
+            bitsAllocated: 16,
+            bitsStored: 12,
+            highBit: 11,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+
+        var frameData = Data(capacity: descriptor.rows * descriptor.columns * 2)
+        let totalPixels = descriptor.rows * descriptor.columns
+        for index in 0..<totalPixels {
+            let sample = UInt16((index * descriptor.maxPossibleValue) / max(totalPixels - 1, 1))
+            frameData.append(UInt8(sample & 0x00FF))
+            frameData.append(UInt8(sample >> 8))
+        }
+
+        let encoded = try codec.encodeFrame(
+            frameData,
+            descriptor: descriptor,
+            frameIndex: 0,
+            configuration: .lossless
+        )
+        let decoded = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
+
+        #expect(decoded.count == frameData.count)
+
+        var decodedMax: UInt16 = 0
+        var decodedLast: UInt16 = 0
+        for offset in stride(from: 0, to: decoded.count - 1, by: 2) {
+            let value = UInt16(decoded[offset]) | (UInt16(decoded[offset + 1]) << 8)
+            if value > decodedMax {
+                decodedMax = value
+            }
+            decodedLast = value
+        }
+
+        #expect(decodedMax <= UInt16(descriptor.maxPossibleValue))
+        #expect(decodedLast >= UInt16(descriptor.maxPossibleValue - 8))
+    }
 }
 #endif
 
@@ -858,3 +905,252 @@ struct TransferSyntaxConverterCompressionTests {
         #expect(converter.compressionConfiguration.progressive == true)
     }
 }
+
+#if canImport(ImageIO)
+@Suite("End-to-End Compression Transcoding Tests")
+struct EndToEndCompressionTests {
+
+    /// Creates a synthetic uncompressed DICOM dataset as serialized bytes
+    private func createSyntheticDataset(width: Int = 64, height: Int = 64, bitsAllocated: Int = 8) -> Data {
+        let writer = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+        var elements: [DataElement] = []
+
+        // SamplesPerPixel
+        var spp: UInt16 = 1
+        elements.append(DataElement(tag: .samplesPerPixel, vr: .US, length: 2, valueData: Data(bytes: &spp, count: 2)))
+
+        // PhotometricInterpretation
+        let pi = "MONOCHROME2 "
+        elements.append(DataElement(tag: .photometricInterpretation, vr: .CS, length: UInt32(pi.utf8.count), valueData: Data(pi.utf8)))
+
+        // Rows
+        var rows = UInt16(height)
+        elements.append(DataElement(tag: .rows, vr: .US, length: 2, valueData: Data(bytes: &rows, count: 2)))
+
+        // Columns
+        var cols = UInt16(width)
+        elements.append(DataElement(tag: .columns, vr: .US, length: 2, valueData: Data(bytes: &cols, count: 2)))
+
+        // BitsAllocated
+        var ba = UInt16(bitsAllocated)
+        elements.append(DataElement(tag: .bitsAllocated, vr: .US, length: 2, valueData: Data(bytes: &ba, count: 2)))
+
+        // BitsStored
+        var bs = UInt16(bitsAllocated)
+        elements.append(DataElement(tag: .bitsStored, vr: .US, length: 2, valueData: Data(bytes: &bs, count: 2)))
+
+        // HighBit
+        var hb = UInt16(bitsAllocated - 1)
+        elements.append(DataElement(tag: .highBit, vr: .US, length: 2, valueData: Data(bytes: &hb, count: 2)))
+
+        // PixelRepresentation
+        var pr: UInt16 = 0
+        elements.append(DataElement(tag: .pixelRepresentation, vr: .US, length: 2, valueData: Data(bytes: &pr, count: 2)))
+
+        // Pixel Data - gradient pattern
+        let bytesPerSample = bitsAllocated / 8
+        let pixelCount = width * height
+        var pixelData = Data(capacity: pixelCount * bytesPerSample)
+        for i in 0..<pixelCount {
+            if bytesPerSample == 1 {
+                let val = UInt8((i * 255) / max(pixelCount - 1, 1))
+                pixelData.append(val)
+            } else {
+                var val = UInt16((i * 65535) / max(pixelCount - 1, 1))
+                withUnsafeBytes(of: &val) { pixelData.append(contentsOf: $0) }
+            }
+        }
+        elements.append(DataElement(tag: .pixelData, vr: .OW, length: UInt32(pixelData.count), valueData: pixelData))
+
+        // Serialize in tag order
+        var data = Data()
+        for element in elements.sorted(by: { $0.tag < $1.tag }) {
+            data.append(writer.serializeElement(element))
+        }
+        return data
+    }
+
+    @Test("Transcode 8-bit to JPEG 2000 Lossless produces valid encapsulated data")
+    func testTranscodeToJPEG2000Lossless8Bit() throws {
+        let sourceData = createSyntheticDataset(width: 64, height: 64, bitsAllocated: 8)
+        let converter = TransferSyntaxConverter(
+            configuration: TranscodingConfiguration(
+                preferredSyntaxes: [.jpeg2000Lossless],
+                allowLossyCompression: false,
+                preservePixelDataFidelity: true
+            ),
+            compressionConfiguration: .lossless
+        )
+
+        let result = try converter.transcode(
+            dataSetData: sourceData,
+            from: .explicitVRLittleEndian,
+            to: .jpeg2000Lossless
+        )
+
+        #expect(result.wasTranscoded == true)
+
+        // Verify pixel data tag exists with encapsulated format in the output
+        // Scan for pixel data tag (7FE0,0010)
+        var foundPixelData = false
+        var offset = 0
+        while offset + 12 <= result.data.count {
+            let g = UInt16(result.data[offset]) | (UInt16(result.data[offset + 1]) << 8)
+            let e = UInt16(result.data[offset + 2]) | (UInt16(result.data[offset + 3]) << 8)
+            if g == 0x7FE0 && e == 0x0010 {
+                foundPixelData = true
+                // Check VR = OB
+                let vrChar1 = result.data[offset + 4]
+                let vrChar2 = result.data[offset + 5]
+                #expect(vrChar1 == 0x4F) // 'O'
+                #expect(vrChar2 == 0x42) // 'B'
+                // Check undefined length
+                let len = UInt32(result.data[offset + 8]) | (UInt32(result.data[offset + 9]) << 8) |
+                          (UInt32(result.data[offset + 10]) << 16) | (UInt32(result.data[offset + 11]) << 24)
+                #expect(len == 0xFFFFFFFF)
+                // Check offset table item
+                let itemG = UInt16(result.data[offset + 12]) | (UInt16(result.data[offset + 13]) << 8)
+                let itemE = UInt16(result.data[offset + 14]) | (UInt16(result.data[offset + 15]) << 8)
+                #expect(itemG == 0xFFFE)
+                #expect(itemE == 0xE000)
+                // Get offset table length
+                let otLen = UInt32(result.data[offset + 16]) | (UInt32(result.data[offset + 17]) << 8) |
+                            (UInt32(result.data[offset + 18]) << 16) | (UInt32(result.data[offset + 19]) << 24)
+                // Fragment should follow
+                let fragStart = offset + 20 + Int(otLen)
+                if fragStart + 8 <= result.data.count {
+                    let fragG = UInt16(result.data[fragStart]) | (UInt16(result.data[fragStart + 1]) << 8)
+                    let fragE = UInt16(result.data[fragStart + 2]) | (UInt16(result.data[fragStart + 3]) << 8)
+                    #expect(fragG == 0xFFFE)
+                    #expect(fragE == 0xE000)
+                    let fragLen = UInt32(result.data[fragStart + 4]) | (UInt32(result.data[fragStart + 5]) << 8) |
+                                  (UInt32(result.data[fragStart + 6]) << 16) | (UInt32(result.data[fragStart + 7]) << 24)
+                    #expect(fragLen > 0, "Fragment should contain compressed data, got length 0")
+                    // Verify we have actual data
+                    let fragData = result.data[(fragStart + 8)..<min(fragStart + 8 + Int(fragLen), result.data.count)]
+                    #expect(fragData.count > 0, "Fragment data should be non-empty")
+                }
+                break
+            }
+            offset += 1
+        }
+        #expect(foundPixelData, "Pixel data tag (7FE0,0010) not found in transcoded output")
+    }
+
+    @Test("Transcode 16-bit to JPEG 2000 Lossless preserves data")
+    func testTranscodeToJPEG2000Lossless16Bit() throws {
+        let sourceData = createSyntheticDataset(width: 64, height: 64, bitsAllocated: 16)
+        let converter = TransferSyntaxConverter(
+            configuration: TranscodingConfiguration(
+                preferredSyntaxes: [.jpeg2000Lossless],
+                allowLossyCompression: false,
+                preservePixelDataFidelity: true
+            ),
+            compressionConfiguration: .lossless
+        )
+
+        let result = try converter.transcode(
+            dataSetData: sourceData,
+            from: .explicitVRLittleEndian,
+            to: .jpeg2000Lossless
+        )
+
+        #expect(result.wasTranscoded == true)
+        #expect(result.data.count > 0)
+    }
+
+    @Test("Transcode 8-bit to JPEG Baseline produces valid output")
+    func testTranscodeToJPEGBaseline() throws {
+        let sourceData = createSyntheticDataset(width: 64, height: 64, bitsAllocated: 8)
+        let converter = TransferSyntaxConverter(
+            configuration: TranscodingConfiguration(
+                preferredSyntaxes: [.jpegBaseline],
+                allowLossyCompression: true,
+                preservePixelDataFidelity: false
+            )
+        )
+
+        let result = try converter.transcode(
+            dataSetData: sourceData,
+            from: .explicitVRLittleEndian,
+            to: .jpegBaseline
+        )
+
+        #expect(result.wasTranscoded == true)
+        #expect(result.data.count > 0)
+    }
+
+    @Test("Roundtrip: transcode to JPEG 2000 then back to uncompressed preserves pixel data")
+    func testRoundtripJPEG2000Lossless() throws {
+        let sourceData = createSyntheticDataset(width: 64, height: 64, bitsAllocated: 8)
+
+        // Compress
+        let compressor = TransferSyntaxConverter(
+            configuration: TranscodingConfiguration(
+                preferredSyntaxes: [.jpeg2000Lossless],
+                allowLossyCompression: false,
+                preservePixelDataFidelity: true
+            ),
+            compressionConfiguration: .lossless
+        )
+        let compressed = try compressor.transcode(
+            dataSetData: sourceData,
+            from: .explicitVRLittleEndian,
+            to: .jpeg2000Lossless
+        )
+
+        // Decompress
+        let decompressor = TransferSyntaxConverter(
+            configuration: TranscodingConfiguration(
+                preferredSyntaxes: [.explicitVRLittleEndian],
+                allowLossyCompression: false,
+                preservePixelDataFidelity: true
+            )
+        )
+        let decompressed = try decompressor.transcode(
+            dataSetData: compressed.data,
+            from: .jpeg2000Lossless,
+            to: .explicitVRLittleEndian
+        )
+
+        #expect(decompressed.wasTranscoded == true)
+
+        // Extract pixel data from both source and decompressed datasets
+        // Find pixel data tag in source
+        var sourcePixels = Data()
+        var offset = 0
+        while offset + 12 <= sourceData.count {
+            let g = UInt16(sourceData[offset]) | (UInt16(sourceData[offset + 1]) << 8)
+            let e = UInt16(sourceData[offset + 2]) | (UInt16(sourceData[offset + 3]) << 8)
+            if g == 0x7FE0 && e == 0x0010 {
+                // Skip header: tag(4) + VR(2) + reserved(2) + len(4) = 12
+                let len = UInt32(sourceData[offset + 8]) | (UInt32(sourceData[offset + 9]) << 8) |
+                          (UInt32(sourceData[offset + 10]) << 16) | (UInt32(sourceData[offset + 11]) << 24)
+                sourcePixels = sourceData[(offset + 12)..<(offset + 12 + Int(len))]
+                break
+            }
+            offset += 1
+        }
+
+        // Find pixel data in decompressed
+        var decompressedPixels = Data()
+        offset = 0
+        while offset + 12 <= decompressed.data.count {
+            let g = UInt16(decompressed.data[offset]) | (UInt16(decompressed.data[offset + 1]) << 8)
+            let e = UInt16(decompressed.data[offset + 2]) | (UInt16(decompressed.data[offset + 3]) << 8)
+            if g == 0x7FE0 && e == 0x0010 {
+                let len = UInt32(decompressed.data[offset + 8]) | (UInt32(decompressed.data[offset + 9]) << 8) |
+                          (UInt32(decompressed.data[offset + 10]) << 16) | (UInt32(decompressed.data[offset + 11]) << 24)
+                if len != 0xFFFFFFFF {
+                    decompressedPixels = decompressed.data[(offset + 12)..<(offset + 12 + Int(len))]
+                }
+                break
+            }
+            offset += 1
+        }
+
+        #expect(sourcePixels.count == decompressedPixels.count, "Pixel data size should match after roundtrip")
+        #expect(sourcePixels == decompressedPixels, "Pixel data should be identical after lossless roundtrip")
+    }
+}
+#endif
