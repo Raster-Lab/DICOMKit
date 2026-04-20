@@ -94,6 +94,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 - ✅ Preserved `Bits Allocated`, `Bits Stored`, and `High Bit` metadata for JPEG 2000 targets while keeping converted output visibly correct.
 - ✅ Updated the JPEG 2000 integration to J2KSwift v3.2.0 with a direct async-backed codec bridge, completed Phase 1 regression coverage, and verified the workflow against real LocalDatasets DICOM samples plus benchmark validation on macOS.
 - ✅ Enabled HTJ2K lossless and RPCL transfer syntax handling across codec registration, CLI conversion/compression aliases, DICOM validation, and Studio import workflows, with a measured 5.296× real-file decode speedup over legacy J2K on macOS. The remaining HTJ2K lossy real-sample issue is documented as a non-blocking limitation for now.
+- ✅ Validated live dcm4chee interoperability on a local LDAP-backed PACS stack with successful C-ECHO and real MR C-STORE to AE DCM4CHEE on port 11112.
 - ✅ Improved DICOM Studio metadata consistency by preferring transfer syntax from File Meta Information `(0002,0010)` during metadata loading.
 
 ### Key Highlights

@@ -37,6 +37,16 @@ DICOMNetwork ──────────────────────�
 
 **Purpose**: Core types and utilities for DICOM data representation.
 
+### JPEG 2000 codec architecture
+
+The default JPEG 2000 path now uses J2KSwift v3.2.0 through the DICOMCore codec registry. This gives DICOMKit a pure Swift implementation for JPEG 2000 and HTJ2K and avoids relying on Apple-only runtime behavior for the primary path.
+
+Key points:
+- J2KSwift is the preferred default codec for JPEG 2000 and HTJ2K handling
+- Native ImageIO remains available only for separate Apple-side comparison and diagnostics
+- No default runtime workaround path is used to mask confirmed upstream J2KSwift issues
+- This design keeps Linux compatibility and Phase 1 behavior consistent across platforms
+
 ### Key Types
 
 | Type | Description |

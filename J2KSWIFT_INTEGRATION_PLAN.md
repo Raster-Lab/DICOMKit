@@ -52,6 +52,44 @@ J2KSwift (package)
 └── J2KCLI           ─ CLI reference tool (encode/decode/transcode/validate/bench)
 ```
 
+### dcm4chee Validation Gate for Every Completed Phase
+
+Each J2KSwift integration phase must finish with a real interoperability check against a local dcm4chee-arc deployment before that phase is marked complete. Unit tests and benchmarks remain required, but they are not sufficient on their own.
+
+#### Standard Validation Environment
+
+- Local dcm4chee-arc test node running via Docker or equivalent container workflow
+- DICOM listener on port 11112 and web interface / DICOMweb endpoints on port 8080
+- Calling AE: `DICOMKIT`, called AE: `DCM4CHEE`
+- Real validation assets from `LocalDatasets/` covering grayscale CT/MR and RGB or PX cases
+- Evidence captured for every completed phase: C-STORE result, query/retrieve result, transfer syntax confirmation, and any rejection logs
+
+#### Phase Completion Matrix
+
+| Phase | dcm4chee validation required before marking complete |
+|------|-------------------------------------------------------|
+| Phase 1 — Core J2K replacement | Send lossless and lossy JPEG 2000 DICOM objects with `dicom-send`, verify study appears in dcm4chee, retrieve it back, and confirm transfer syntax plus pixel decoding remain correct. |
+| Phase 2 — HTJ2K | Send `.201`, `.202`, and `.203` outputs to dcm4chee, verify whether each syntax is accepted, and for accepted objects retrieve and compare metadata and pixel behavior. If the server rejects a syntax, record the exact rejection instead of adding a workaround. |
+| Phase 3 — JPEG 2000 Part 2 | Store Part 2 lossless and lossy instances in dcm4chee, confirm they are queryable and retrievable, and document whether the archive preserves the intended transfer syntax. |
+| Phase 4 — Hardware acceleration | Encode using Metal, Vulkan, or SIMD-backed paths, then validate that the produced DICOM objects still store and retrieve correctly through dcm4chee with no interoperability regressions. |
+| Phase 5 — Progressive and ROI decoding | Archive representative studies in dcm4chee, retrieve them through normal network or web routes, and validate that progressive preview and ROI decode behavior still works from server-hosted instances. |
+| Phase 6 — JPIP streaming | Use dcm4chee as the archive of record for the source study, validate retrieval through supported web endpoints, and document any JPIP-specific limitations as server interoperability findings rather than DICOMKit defects. |
+| Phase 7 — JP3D volumetric compression | Store JP3D or volumetric derivatives in dcm4chee where possible, verify the archive keeps the instance stable and retrievable, and record any unsupported viewer behavior separately from storage conformance. |
+| Phase 8 — Advanced CLI tooling | Run an end-to-end CLI script against dcm4chee covering send, query, retrieve, compress, and diff workflows to prove the tools operate correctly against a real PACS. |
+| Phase 9 — DICOMWeb and network integration | Validate STOW-RS, QIDO-RS, and WADO-RS against dcm4chee endpoints using the new network features and confirm returned studies remain compatible with DICOMKit decoding. |
+| Phase 10 — MJ2 integration | Send a motion or multi-frame object to dcm4chee, retrieve it, and verify frame count, metadata, and playback-oriented structure remain intact. |
+| Phase 11 — JPEG XS experimental work | Attempt controlled conformance uploads only after upstream support is stable; if dcm4chee does not support the syntax, capture the negative result as expected interoperability evidence. |
+| Phase 12 — DICOMStudio GUI integration | Connect DICOM Studio to dcm4chee, browse studies, import objects, render them, and send generated derivatives back to the archive as the final GUI acceptance gate. |
+
+#### Required Evidence for Phase Sign-off
+
+A phase is only considered complete when all of the following are true:
+
+- Relevant local unit and regression tests pass
+- Real LocalDatasets validation was run for the phase output
+- dcm4chee storage, query, and retrieval behavior was checked where applicable
+- Any unsupported syntax or server limitation is recorded in `J2KSWIFT_BUG_REPORT.md` or the phase notes with no downstream masking logic added
+
 ---
 
 ## Phase 1 — Foundation: SPM Dependency & Core Codec Replacement
@@ -659,7 +697,7 @@ dicom-j2k mj2-frames cardiac.mj2 --frame 0-5 -o frame_samples/
 - [ ] Add `--experimental-xs` flag to `dicom-compress`
 - [ ] Track DICOM standard proposals for JPEG XS transfer syntax UIDs
 
-**Note:** J2KXS is currently in scaffold/exploration phase in J2KSwift v2.2.0. Implementation will track the module's maturity.
+**Note:** J2KXS remains in scaffold/exploration phase relative to the current J2KSwift v3.2.0 baseline. Implementation will track the module's maturity.
 
 ---
 
@@ -818,4 +856,4 @@ CLI Tools
 
 ---
 
-> **Note:** This plan assumes J2KSwift v2.2.0 as the baseline. Module APIs and capabilities should be verified against the latest J2KSwift release before starting each phase. Per DICOMKit conventions, J2KSwift is a first-party Raster-Lab library and should be used directly without reimplementation.
+> **Note:** This plan now uses J2KSwift v3.2.0 as the project baseline. Module APIs and capabilities should still be re-verified against the latest J2KSwift release before starting each later phase. Per DICOMKit conventions, J2KSwift is a first-party Raster-Lab library and should be used directly without reimplementation.

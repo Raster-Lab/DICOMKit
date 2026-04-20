@@ -34,11 +34,7 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         #if canImport(J2KCore) && canImport(J2KCodec)
         return try Self.decodeWithJ2KSwift(frameData, descriptor: descriptor)
         #else
-        #if canImport(ImageIO)
-        return try NativeJPEG2000Codec().decodeFrame(frameData, descriptor: descriptor, frameIndex: frameIndex)
-        #else
-        throw DICOMError.unsupportedTransferSyntax("JPEG 2000 requires J2KSwift or ImageIO support")
-        #endif
+        throw DICOMError.unsupportedTransferSyntax("JPEG 2000 requires J2KSwift support in this build")
         #endif
     }
 
@@ -81,16 +77,7 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         try Self.verifyEncodedRoundTrip(encoded, original: frameData, descriptor: descriptor, configuration: configuration)
         return encoded
         #else
-        #if canImport(ImageIO)
-        return try NativeJPEG2000Codec().encodeFrame(
-            frameData,
-            descriptor: descriptor,
-            frameIndex: frameIndex,
-            configuration: configuration
-        )
-        #else
-        throw DICOMError.unsupportedTransferSyntax("JPEG 2000 encoding requires J2KSwift or ImageIO support")
-        #endif
+        throw DICOMError.unsupportedTransferSyntax("JPEG 2000 encoding requires J2KSwift support in this build")
         #endif
     }
 }
