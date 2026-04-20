@@ -176,6 +176,46 @@ extension TransferSyntax {
         byteOrder: .littleEndian,
         isEncapsulated: true
     )
+
+    /// JPEG 2000 Part 2 Multi-component Image Compression (Lossless Only) (1.2.840.10008.1.2.4.92)
+    public static let jpeg2000Part2Lossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.92",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG 2000 Part 2 Multi-component Image Compression (1.2.840.10008.1.2.4.93)
+    public static let jpeg2000Part2 = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.93",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// High-Throughput JPEG 2000 Image Compression (Lossless Only) (1.2.840.10008.1.2.4.201)
+    public static let htj2kLossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.201",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// High-Throughput JPEG 2000 with RPCL options (Lossless Only) (1.2.840.10008.1.2.4.202)
+    public static let htj2kRPCLLossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.202",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// High-Throughput JPEG 2000 Image Compression (1.2.840.10008.1.2.4.203)
+    public static let htj2kLossy = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.203",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
     
     // MARK: - JPEG-LS Transfer Syntaxes
     
@@ -328,6 +368,16 @@ extension TransferSyntax {
             return .jpeg2000Lossless
         case jpeg2000.uid:
             return .jpeg2000
+        case jpeg2000Part2Lossless.uid:
+            return .jpeg2000Part2Lossless
+        case jpeg2000Part2.uid:
+            return .jpeg2000Part2
+        case htj2kLossless.uid:
+            return .htj2kLossless
+        case htj2kRPCLLossless.uid:
+            return .htj2kRPCLLossless
+        case htj2kLossy.uid:
+            return .htj2kLossy
         // JPEG-LS
         case jpegLSLossless.uid:
             return .jpegLSLossless
@@ -371,7 +421,35 @@ extension TransferSyntax {
     public var isJPEG2000: Bool {
         switch uid {
         case TransferSyntax.jpeg2000Lossless.uid,
-             TransferSyntax.jpeg2000.uid:
+             TransferSyntax.jpeg2000.uid,
+             TransferSyntax.jpeg2000Part2Lossless.uid,
+             TransferSyntax.jpeg2000Part2.uid,
+             TransferSyntax.htj2kLossless.uid,
+             TransferSyntax.htj2kRPCLLossless.uid,
+             TransferSyntax.htj2kLossy.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this transfer syntax uses JPEG 2000 Part 2 compression.
+    public var isJPEG2000Part2: Bool {
+        switch uid {
+        case TransferSyntax.jpeg2000Part2Lossless.uid,
+             TransferSyntax.jpeg2000Part2.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this transfer syntax uses High-Throughput JPEG 2000 compression.
+    public var isHTJ2K: Bool {
+        switch uid {
+        case TransferSyntax.htj2kLossless.uid,
+             TransferSyntax.htj2kRPCLLossless.uid,
+             TransferSyntax.htj2kLossy.uid:
             return true
         default:
             return false
@@ -452,6 +530,9 @@ extension TransferSyntax {
              TransferSyntax.jpegLossless.uid,
              TransferSyntax.jpegLosslessSV1.uid,
              TransferSyntax.jpeg2000Lossless.uid,
+             TransferSyntax.jpeg2000Part2Lossless.uid,
+             TransferSyntax.htj2kLossless.uid,
+             TransferSyntax.htj2kRPCLLossless.uid,
              TransferSyntax.jpegLSLossless.uid,
              TransferSyntax.rleLossless.uid:
             return true

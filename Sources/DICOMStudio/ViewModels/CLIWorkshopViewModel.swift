@@ -1445,6 +1445,12 @@ public final class CLIWorkshopViewModel {
             return .jpeg2000Lossless
         case "jpeg2000", "jpeg2000-lossy", "j2k":
             return .jpeg2000
+        case "htj2klossless", "htj2k-lossless":
+            return .htj2kLossless
+        case "htj2krpcllossless", "htj2k-rpcl", "htj2k-lossless-rpcl":
+            return .htj2kRPCLLossless
+        case "htj2k", "htj2k-lossy":
+            return .htj2kLossy
         // JPEG-LS
         case "jpeglslossless", "jpeg-ls-lossless", "jpegls":
             return .jpegLSLossless

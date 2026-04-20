@@ -4254,6 +4254,9 @@ These features may be considered for future development based on community needs
 ### Post-v1.8 Maintenance (April 2026)
 - [x] Fixed JPEG 2000/JPEG 2000 Lossless 16-bit preserved-bit rendering regression in conversion/render pipeline
 - [x] Ensured converted files preserve pixel metadata (`Bits Allocated`, `Bits Stored`, `High Bit`) for JPEG 2000 targets
+- [x] Updated the J2KSwift-backed JPEG 2000 foundation to v3.2.0, removed workaround-era runtime fallback logic, and completed Phase 1 regression plus real LocalDatasets benchmark coverage
+- [x] Added Phase 2 HTJ2K lossless and RPCL transfer syntax support across codec registration, CLI aliases, network validation defaults, and Studio import checks with verified real-file regression coverage
+- [x] Confirmed a 5.296× HTJ2K real-file decode speedup over legacy J2K on macOS and documented the remaining HTJ2K lossy issue as a non-blocking limitation for now
 - [x] Fixed DICOM Studio metadata transfer syntax source ordering to prefer File Meta Information `(0002,0010)`
 - [x] Added regression coverage for 12-bit-in-16-bit JPEG 2000 roundtrip decode normalization
 

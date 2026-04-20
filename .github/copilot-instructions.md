@@ -84,6 +84,18 @@ DICOMKit is a pure Swift DICOM (Digital Imaging and Communications in Medicine) 
 - Any new dependency must be justified and reviewed
 - Use Swift Package Manager for dependency management
 
+## J2KSwift Bug Handling Policy
+
+**IMPORTANT**: When working on JPEG 2000 functionality backed by J2KSwift:
+
+- **Do not add DICOMKit-side fixes, fallbacks, masking logic, or workarounds** for confirmed J2KSwift bugs unless the user explicitly requests a temporary workaround.
+- If a bug is found in J2KSwift, **reproduce it, keep the failure visible, and report it** rather than hiding it behind ImageIO or alternate codec paths.
+- Document the issue in `J2KSWIFT_BUG_REPORT.md` and update the relevant milestone or integration plan to mark the work as blocked upstream.
+- Prefer upstream fixes in `Raster-Lab/J2KSwift` over downstream behavior changes in DICOMKit.
+- If a temporary mitigation is ever explicitly approved by the user, it must be clearly labeled as temporary and must not replace the upstream bug report.
+
+This policy exists to ensure DICOMKit does not silently diverge from J2KSwift behavior and that codec defects are fixed at the correct layer.
+
 ## Performance Considerations
 
 - DICOM files can be large - optimize for memory efficiency

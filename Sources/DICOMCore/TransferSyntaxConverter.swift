@@ -521,10 +521,11 @@ public struct TransferSyntaxConverter: Sendable {
                 }
                 
                 // Compress the pixel data
+                let effectiveCompressionConfiguration = target.isLossless ? .lossless : compressionConfiguration
                 let compressedFrames = try encoder.encode(
                     pixelBytes,
                     descriptor: descriptor,
-                    configuration: compressionConfiguration
+                    configuration: effectiveCompressionConfiguration
                 )
                 
                 // Create new encapsulated pixel data element
