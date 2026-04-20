@@ -39,9 +39,9 @@ This plan replaces DICOMKit's Apple‑ImageIO‑based `NativeJPEG2000Codec` with
 | JPEG 2000 Lossy | `1.2.840.10008.1.2.4.91` | ImageIO (Apple only) | J2KCodec (all platforms) |
 | JPEG 2000 Part 2 Lossless | `1.2.840.10008.1.2.4.92` | ❌ | J2KCodec Part 2 |
 | JPEG 2000 Part 2 Lossy | `1.2.840.10008.1.2.4.93` | ❌ | J2KCodec Part 2 |
-| HTJ2K Lossless | `1.2.840.10008.1.2.4.201` | ❌ | J2KCodec HTJ2K |
-| HTJ2K RPCL Lossless | `1.2.840.10008.1.2.4.202` | ❌ | J2KCodec HTJ2K + RPCL |
-| HTJ2K Lossy | `1.2.840.10008.1.2.4.203` | ❌ | J2KCodec HTJ2K |
+| HTJ2K Lossless | `1.2.840.10008.1.2.4.201` | ✅ J2KSwift v3.2.0 | J2KCodec HTJ2K |
+| HTJ2K RPCL Lossless | `1.2.840.10008.1.2.4.202` | ✅ J2KSwift v3.2.0 | J2KCodec HTJ2K + RPCL |
+| HTJ2K Lossy | `1.2.840.10008.1.2.4.203` | ⚠️ Partially validated | J2KCodec HTJ2K |
 | JPIP Referenced | `1.2.840.10008.1.2.4.94` | ❌ | JPIP module |
 | JPIP Referenced Deflate | `1.2.840.10008.1.2.4.95` | ❌ | JPIP + zlib |
 | (Vendor) JP3D in multi‑frame wrapper | — | ❌ | J2K3D (experimental private SOP) |
@@ -237,13 +237,13 @@ dicom-diff fixtures/ct.dcm /tmp/ct.j2k.dcm
 
 #### Milestone 2.1 — Transfer syntax model
 
-- [ ] Add to `TransferSyntax`:
-  - [ ] `.htj2kLossless` → `1.2.840.10008.1.2.4.201`
-  - [ ] `.htj2kRPCLLossless` → `1.2.840.10008.1.2.4.202`
-  - [ ] `.htj2kLossy` → `1.2.840.10008.1.2.4.203`
-- [ ] `isHTJ2K`, `isEncapsulated`, `isLossless`, `displayName` updates
-- [ ] Add to `TransferSyntax.allKnown`, `DICOMValidator`, `StorageSCP` presentation contexts
-- [ ] Update `Sources/DICOMDictionary/UIDDictionary.swift`
+- [x] Add to `TransferSyntax`:
+  - [x] `.htj2kLossless` → `1.2.840.10008.1.2.4.201`
+  - [x] `.htj2kRPCLLossless` → `1.2.840.10008.1.2.4.202`
+  - [x] `.htj2kLossy` → `1.2.840.10008.1.2.4.203`
+- [x] `isHTJ2K`, `isEncapsulated`, `isLossless`, `displayName` updates
+- [x] Add to `TransferSyntax.allKnown`, `DICOMValidator`, `StorageSCP` presentation contexts
+- [x] Update `Sources/DICOMDictionary/UIDDictionary.swift`
 
 #### Milestone 2.2 — `HTJ2KCodec`
 
@@ -261,9 +261,11 @@ dicom-diff fixtures/ct.dcm /tmp/ct.j2k.dcm
 
 #### Milestone 2.4 — Network & Web
 
-- [ ] `DICOMNetwork`: add HTJ2K to default SCP/SCU presentation contexts
-- [ ] `DICOMWeb`: add `image/jph` and `image/jphc` media types; update `WADOURIClient` / `STOWRSClient`
-- [ ] `dicom-retrieve` / `dicom-send`: accept `--transfer-syntax htj2k|htj2k-rpcl|htj2k-lossless`
+- [x] `DICOMNetwork`: add HTJ2K to default SCP/SCU presentation contexts
+- [x] `DICOMWeb`: add `image/jph` and `image/jphc` media types; update capability advertising for HTJ2K retrieval/storage
+- [x] `dicom-retrieve` / `dicom-send`: accept `--transfer-syntax htj2k|htj2k-rpcl|htj2k-lossless`
+
+**Progress update (2026-04-20):** The shared transfer syntax converter now supports verified JPEG 2000 ↔ HTJ2K recompression via the decode/re-encode path, DICOMweb now advertises and handles HTJ2K media types, and the send/retrieve command builders and runtime parsing now accept HTJ2K aliases with the focused CLI suites passing 11 tests across 2 suites.
 
 **CLI smoke:**
 ```bash

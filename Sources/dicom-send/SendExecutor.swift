@@ -14,6 +14,7 @@ struct SendExecutor {
     let priority: DIMSEPriority
     let retryAttempts: Int
     let verbose: Bool
+    let preferredTransferSyntaxUID: String?
     
     /// Verifies connection using C-ECHO
     func verifyConnection() async throws {
@@ -101,6 +102,19 @@ struct SendExecutor {
     
     /// Sends a single DICOM file to the PACS server
     private func sendFile(fileData: Data) async throws -> StoreResult {
+        if let preferredTransferSyntaxUID, !preferredTransferSyntaxUID.isEmpty {
+            return try await DICOMStorageService.store(
+                fileData: fileData,
+                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
+                to: host,
+                port: port,
+                callingAE: callingAE,
+                calledAE: calledAE,
+                priority: priority,
+                timeout: timeout
+            )
+        }
+
         return try await DICOMStorageService.store(
             fileData: fileData,
             to: host,

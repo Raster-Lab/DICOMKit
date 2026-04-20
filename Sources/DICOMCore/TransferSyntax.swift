@@ -403,6 +403,68 @@ extension TransferSyntax {
             return nil
         }
     }
+
+    /// Parses a transfer syntax from a user-facing alias or UID string.
+    ///
+    /// Accepts standard UIDs plus common CLI names such as
+    /// explicit-vr-le, jpeg2000-lossless, htj2k-lossless, htj2k-rpcl, and htj2k.
+    ///
+    /// - Parameter nameOrUID: The transfer syntax alias or UID.
+    /// - Returns: The matching transfer syntax, or nil when unrecognized.
+    public static func parse(_ nameOrUID: String) -> TransferSyntax? {
+        let trimmed = nameOrUID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let syntax = from(uid: trimmed) {
+            return syntax
+        }
+
+        let normalized = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+
+        switch normalized {
+        case "implicitvrlittleendian", "implicit-vr-le", "implicit", "ivle":
+            return .implicitVRLittleEndian
+        case "explicitvrlittleendian", "explicit-vr-le", "explicit", "evle":
+            return .explicitVRLittleEndian
+        case "explicitvrbigendian", "explicit-vr-be", "big-endian", "evbe":
+            return .explicitVRBigEndian
+        case "deflate", "deflated-explicit-vr-le":
+            return .deflatedExplicitVRLittleEndian
+        case "jpeg-baseline", "jpegbaseline", "jpeg":
+            return .jpegBaseline
+        case "jpeg-extended", "jpegextended":
+            return .jpegExtended
+        case "jpeg-lossless", "jpeglossless":
+            return .jpegLossless
+        case "jpeg-lossless-sv1", "jpeglosslesssv1":
+            return .jpegLosslessSV1
+        case "jpeg2000-lossless", "jpeg2000lossless", "j2k-lossless":
+            return .jpeg2000Lossless
+        case "jpeg2000", "jpeg2000-lossy", "j2k":
+            return .jpeg2000
+        case "jpeg2000-part2-lossless", "jpeg2000part2lossless", "j2k-part2-lossless":
+            return .jpeg2000Part2Lossless
+        case "jpeg2000-part2", "jpeg2000part2", "j2k-part2":
+            return .jpeg2000Part2
+        case "htj2k-lossless", "htj2klossless":
+            return .htj2kLossless
+        case "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless":
+            return .htj2kRPCLLossless
+        case "htj2k", "htj2k-lossy", "htj2klossy":
+            return .htj2kLossy
+        case "jpeg-ls-lossless", "jpegls-lossless", "jls-lossless":
+            return .jpegLSLossless
+        case "jpeg-ls", "jpegls", "jls":
+            return .jpegLSNearLossless
+        case "rle", "rle-lossless":
+            return .rleLossless
+        default:
+            return nil
+        }
+    }
     
     /// Whether this transfer syntax uses JPEG compression
     public var isJPEG: Bool {

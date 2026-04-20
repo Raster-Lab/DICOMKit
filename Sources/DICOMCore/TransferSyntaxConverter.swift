@@ -36,8 +36,9 @@ public struct TranscodingConfiguration: Sendable, Hashable {
     /// Configuration for maximum compression (allows lossy)
     public static let maxCompression = TranscodingConfiguration(
         preferredSyntaxes: [
-            .jpegBaseline,
+            .htj2kLossy,
             .jpeg2000,
+            .jpegBaseline,
             .explicitVRLittleEndian
         ],
         allowLossyCompression: true,
@@ -47,6 +48,8 @@ public struct TranscodingConfiguration: Sendable, Hashable {
     /// Configuration for lossless compression only
     public static let losslessCompression = TranscodingConfiguration(
         preferredSyntaxes: [
+            .htj2kLossless,
+            .htj2kRPCLLossless,
             .jpeg2000Lossless,
             .jpegLosslessSV1,
             .rleLossless,
@@ -223,6 +226,12 @@ public struct TransferSyntaxConverter: Sendable {
         if sourceIsUncompressed && target.isEncapsulated {
             return CodecRegistry.shared.hasEncoder(for: target.uid)
         }
+
+        // Recompression: compressed to compressed
+        if source.isEncapsulated && target.isEncapsulated {
+            return CodecRegistry.shared.hasCodec(for: source.uid)
+                && CodecRegistry.shared.hasEncoder(for: target.uid)
+        }
         
         return false
     }
@@ -339,6 +348,19 @@ public struct TransferSyntaxConverter: Sendable {
             transcodedData = try transcodeToEncapsulated(
                 dataSetData: dataSetData,
                 from: sourceSyntax,
+                to: targetSyntax
+            )
+        } else if sourceSyntax.isEncapsulated && targetSyntax.isEncapsulated {
+            // Compressed to compressed (recompression via lossless decode + re-encode path)
+            let uncompressedSyntax = TransferSyntax.explicitVRLittleEndian
+            let uncompressedData = try transcodeFromEncapsulated(
+                dataSetData: dataSetData,
+                from: sourceSyntax,
+                to: uncompressedSyntax
+            )
+            transcodedData = try transcodeToEncapsulated(
+                dataSetData: uncompressedData,
+                from: uncompressedSyntax,
                 to: targetSyntax
             )
         } else {

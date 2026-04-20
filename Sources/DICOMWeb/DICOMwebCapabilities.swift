@@ -132,15 +132,23 @@ extension DICOMwebCapabilities {
             retrieve: [String] = [
                 "application/dicom",
                 "application/dicom+json",
-                "multipart/related"
+                "multipart/related",
+                "image/jp2",
+                "image/jph",
+                "image/jphc"
             ],
             store: [String] = [
                 "application/dicom",
-                "multipart/related"
+                "multipart/related",
+                "image/jp2",
+                "image/jph",
+                "image/jphc"
             ],
             rendered: [String] = [
                 "image/jpeg",
-                "image/png"
+                "image/png",
+                "image/jp2",
+                "image/jph"
             ]
         ) {
             self.retrieve = retrieve
@@ -281,6 +289,9 @@ extension DICOMwebCapabilities {
             "1.2.840.10008.1.2.4.70",  // JPEG Lossless SV1
             "1.2.840.10008.1.2.4.90",  // JPEG 2000 Lossless
             "1.2.840.10008.1.2.4.91",  // JPEG 2000
+            "1.2.840.10008.1.2.4.201", // HTJ2K Lossless
+            "1.2.840.10008.1.2.4.202", // HTJ2K RPCL Lossless
+            "1.2.840.10008.1.2.4.203", // HTJ2K Lossy
             "1.2.840.10008.1.2.5"      // RLE Lossless
         ],
         queryCapabilities: QueryCapabilities(

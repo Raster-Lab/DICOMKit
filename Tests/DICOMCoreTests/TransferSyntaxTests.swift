@@ -141,6 +141,18 @@ struct TransferSyntaxTests {
         #expect(htLossy.isHTJ2K)
         #expect(htLossy.isLossless == false)
     }
+
+    @Test("TransferSyntax parse recognizes CLI aliases and UIDs")
+    func testParseAliases() {
+        #expect(TransferSyntax.parse("explicit-vr-le") == .explicitVRLittleEndian)
+        #expect(TransferSyntax.parse("implicit-vr-le") == .implicitVRLittleEndian)
+        #expect(TransferSyntax.parse("jpeg2000-lossless") == .jpeg2000Lossless)
+        #expect(TransferSyntax.parse("htj2k-lossless") == .htj2kLossless)
+        #expect(TransferSyntax.parse("htj2k-rpcl") == .htj2kRPCLLossless)
+        #expect(TransferSyntax.parse("htj2k") == .htj2kLossy)
+        #expect(TransferSyntax.parse("1.2.840.10008.1.2.4.201") == .htj2kLossless)
+        #expect(TransferSyntax.parse("not-a-syntax") == nil)
+    }
     
     @Test("JPEG transfer syntax properties")
     func testJPEGTransferSyntaxes() {

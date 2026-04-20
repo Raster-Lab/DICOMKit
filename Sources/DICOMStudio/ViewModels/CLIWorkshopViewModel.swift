@@ -2419,7 +2419,10 @@ public final class CLIWorkshopViewModel {
             case "image/jpeg":  contentType = .jpeg
             case "image/png":   contentType = .png
             case "image/gif":   contentType = .gif
-            default:            contentType = .dicom
+            case "image/jp2":   contentType = .jpeg2000
+            case "image/jph":   contentType = .htj2k
+            case "image/jphc":  contentType = .htj2kContainer
+            default:             contentType = .dicom
             }
 
             let result = try await client.retrieve(
@@ -2445,10 +2448,13 @@ public final class CLIWorkshopViewModel {
             } else {
                 let ext: String
                 switch contentType {
-                case .jpeg: ext = "jpg"
-                case .png:  ext = "png"
-                case .gif:  ext = "gif"
-                default:    ext = "bin"
+                case .jpeg:           ext = "jpg"
+                case .png:            ext = "png"
+                case .gif:            ext = "gif"
+                case .jpeg2000:       ext = "jp2"
+                case .htj2k:          ext = "jph"
+                case .htj2kContainer: ext = "jphc"
+                default:              ext = "bin"
                 }
                 let frameSuffix = frameNumber > 0 ? "_frame\(frameNumber)" : ""
                 let filename = "wado_\(instanceUID)\(frameSuffix).\(ext)"

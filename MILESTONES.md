@@ -4258,6 +4258,7 @@ These features may be considered for future development based on community needs
 - [x] Re-verified Phase 1 on 2026-04-20 with a successful build, 16 J2KSwift codec tests passing, 3 benchmark tests passing, and dependency resolution locked to J2KSwift 3.2.0
 - [x] Added Phase 2 HTJ2K lossless and RPCL transfer syntax support across codec registration, CLI aliases, network validation defaults, and Studio import checks with verified real-file regression coverage
 - [x] Confirmed a 5.296× HTJ2K real-file decode speedup over legacy J2K on macOS and documented the remaining HTJ2K lossy issue as a non-blocking limitation for now
+- [x] Extended the transfer syntax converter for verified JPEG 2000 ↔ HTJ2K recompression, exposed DICOMweb HTJ2K media types (`image/jph`, `image/jphc`), and completed HTJ2K transfer-syntax plumbing for the send/retrieve CLI flows with passing focused regression suites
 - [x] Added a mandatory dcm4chee interoperability validation gate to the J2KSwift phase plan so each completed phase is checked against a real PACS workflow
 - [x] Completed live local dcm4chee validation with an LDAP-backed archive stack, including successful C-ECHO and real MR C-STORE to AE `DCM4CHEE` on port `11112`
 - [x] Fixed DICOM Studio metadata transfer syntax source ordering to prefer File Meta Information `(0002,0010)`
