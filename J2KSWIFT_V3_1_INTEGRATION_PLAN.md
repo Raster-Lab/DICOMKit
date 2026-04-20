@@ -1,10 +1,16 @@
-# J2KSwift v3.0.1 Integration Plan for DICOMKit
+# J2KSwift v3.1.0 Integration Plan for DICOMKit
 
-> **Dependency:** `.package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "3.0.1")`
+> **Dependency:** `.package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "3.1.0")`
 > **Target repo:** [Raster-Lab/DICOMKit](https://github.com/Raster-Lab/DICOMKit)
 > **Branch:** `feature/j2kswift-v3-integration`
 > **Supersedes:** [J2KSWIFT_INTEGRATION_PLAN.md](J2KSWIFT_INTEGRATION_PLAN.md) (v2.2.0 plan)
 > **Date:** 2026‑04‑20
+
+> ⚠️ **Breaking platform bump required.** J2KSwift v3.1.0 requires `swift-tools-version: 6.2` and
+> minimum platforms `macOS 15 / iOS 17 / tvOS 17 / watchOS 10 / visionOS 1`. DICOMKit currently
+> targets `swift-tools-version: 6.0` with `macOS 14 / iOS 17 / visionOS 1`. Adopting J2KSwift
+> therefore forces a **macOS 15** floor and a Swift toolchain bump to 6.2. This is scheduled as
+> Milestone 1.0 (Platform Bump) below and must be merged before any Phase 1 dependency wiring.
 
 ---
 
@@ -12,7 +18,7 @@
 
 This plan replaces DICOMKit's Apple‑ImageIO‑based `NativeJPEG2000Codec` with a pure‑Swift codec stack backed by **J2KSwift v3.0.1**, and extends the library, viewer, and CLI surface to cover the full DICOM JPEG 2000 family: **Part 1 (J2K)**, **Part 15 (HTJ2K)**, and **Part 10 (JP3D)** — plus JPIP streaming and JPEG XS exploration.
 
-### 1.1 Why v3.0.1 (vs. the earlier v2.2.0 plan)
+### 1.1 Why v3.1.0 (vs. the earlier v2.2.0 plan)
 
 | Change in J2KSwift 3.x | Impact on DICOMKit |
 |------------------------|--------------------|
@@ -22,7 +28,8 @@ This plan replaces DICOMKit's Apple‑ImageIO‑based `NativeJPEG2000Codec` with
 | **JP3D production ready** (ISO/IEC 15444‑10, HTJ2K‑backed) | Direct mapping to multi‑frame / volumetric DICOM (CT, MR, PET, 4D series) |
 | **Multi‑spectral JP3D + Vulkan 3D DWT** | Future path for hyperspectral / functional MRI datasets |
 | **3,100+ tests, 100% pass, Part 4 conformance + OpenJPEG interop** | Strong justification for replacing ImageIO on macOS and unlocking Linux |
-| **Patch bump 3.0.0 → 3.0.1** | We pin `from: "3.0.1"` to guarantee the patch fixes land |
+| **Minor bump 3.0.1 → 3.1.0** | We pin `from: "3.1.0"` to pick up the latest 3.x additive features while staying on a stable major |
+| **Tooling** | J2KSwift requires `swift-tools-version: 6.2` and `macOS 15+`; DICOMKit must follow suit |
 
 ### 1.2 End‑State Capability Matrix
 
@@ -55,10 +62,10 @@ This plan replaces DICOMKit's Apple‑ImageIO‑based `NativeJPEG2000Codec` with
 
 ## 2. Architecture
 
-### 2.1 J2KSwift Module Map (v3.0.1)
+### 2.1 J2KSwift Module Map (v3.1.0)
 
 ```
-J2KSwift 3.0.1
+J2KSwift 3.1.0
 ├── J2KCore          ─ Image model, wavelet, entropy, quantisation
 ├── J2KCodec         ─ J2KEncoder / J2KDecoder / J2KTranscoder (Part 1 + Part 15 HTJ2K)
 ├── J2KFileFormat    ─ JP2 / J2K / JPX / JPM / JPH / JHC / MJ2 containers
@@ -69,6 +76,10 @@ J2KSwift 3.0.1
 ├── J2K3D            ─ JP3D volumetric (ISO/IEC 15444‑10)
 └── J2KXS            ─ JPEG XS (ISO/IEC 21122) — optional
 ```
+
+**Platforms / toolchain (v3.1.0):** `swift-tools-version: 6.2`, `macOS 15`, `iOS 17`, `tvOS 17`,
+`watchOS 10`, `visionOS 1`. Linux is supported via Swift 6.2 with the scalar codec path; GPU
+backends require Metal (Apple) or Vulkan (Linux/Windows).
 
 ### 2.2 Proposed DICOMKit Layering
 
@@ -95,7 +106,7 @@ J2KSwift 3.0.1
 └───────────────────────────┬──────────────────────────────────┘
                             │
 ┌───────────────────────────▼──────────────────────────────────┐
-│  J2KSwift 3.0.1 (external SPM dependency)                    │
+│  J2KSwift 3.1.0 (external SPM dependency)                    │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -124,10 +135,35 @@ Each phase is shippable on its own and gated by a green `swift build && swift te
 ### Phase 0 — Branch & Scaffolding (this branch)
 
 - [x] Create branch `feature/j2kswift-v3-integration`
-- [ ] Add `J2KSWIFT_V3_INTEGRATION_PLAN.md` (this file) to main
+- [ ] Add `J2KSWIFT_V3_1_INTEGRATION_PLAN.md` (this file) to main
 - [ ] Update `MILESTONES.md` with a “Milestone 24 — J2KSwift v3 Integration” section pointing here
 - [ ] Record acceptance‑criteria table in `MILESTONES.md`
-- [ ] Open tracking issue `J2KSwift v3.0.1 integration` on GitHub
+- [ ] Open tracking issue `J2KSwift v3.1.0 integration` on GitHub
+
+---
+
+### Milestone 1.0 — Platform & Toolchain Bump (prerequisite)
+
+**Goal:** Unblock the J2KSwift dependency by raising DICOMKit's minimum Swift toolchain and
+Apple platform versions to the levels required by J2KSwift v3.1.0.
+
+- [ ] `Package.swift`: change header to `// swift-tools-version: 6.2`
+- [ ] `Package.swift`: bump Apple platforms:
+  - [ ] `.macOS(.v14)` → `.macOS(.v15)`
+  - [ ] `.iOS(.v17)` (unchanged)
+  - [ ] `.visionOS(.v1)` (unchanged)
+  - [ ] Add `.tvOS(.v17)` and `.watchOS(.v10)` **only if** we actually ship on those platforms; otherwise document explicit non‑support
+- [ ] `.github/workflows/*`: pin Xcode 16.2+ (or newer) for Swift 6.2 on macOS runners; pin Swift 6.2 toolchain on Linux runners
+- [ ] Audit `#available` / `@available` in DICOMKit sources — remove any now‑redundant `macOS 14` gates
+- [ ] Update `README.md` requirements table (“macOS 15+”)
+- [ ] Update `INSTALLATION.md`, `Documentation/*IntegrationGuide.md`, `Formula/*.rb` minimum macOS
+- [ ] Update `CHANGELOG.md` → record breaking platform bump
+- [ ] Semver: DICOMKit moves to **v2.0.0** because this is a breaking platform change
+- [ ] `swift build` green on macOS 15 + Xcode 16.2+
+- [ ] `swift test` green (no behavioural changes expected from the bump alone)
+
+**Exit criteria:** Package compiles and all tests pass under Swift 6.2 on macOS 15 with no
+J2KSwift dependency added yet. Only after this lands does Phase 1 begin.
 
 ---
 
@@ -139,13 +175,13 @@ Each phase is shippable on its own and gated by a green `swift build && swift te
 
 - [ ] Add dependency:
   ```swift
-  .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "3.0.1")
+  .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "3.1.0")
   ```
 - [ ] Add default products to `DICOMCore` target: `J2KCore`, `J2KCodec`, `J2KFileFormat`
 - [ ] Gate `J2KMetal` / `J2KAccelerate` behind `#if canImport(Metal)` / `#if canImport(Accelerate)`
 - [ ] Gate `J2KVulkan` behind `#if canImport(Vulkan)` (Linux CI)
-- [ ] Verify `swift build` on macOS 14 and Linux (Ubuntu 22.04, Swift 6.2)
-- [ ] Verify `swift package show-dependencies` resolves 3.0.1
+- [ ] Verify `swift build` on macOS 15 (Xcode 16.2+) and Linux (Ubuntu 22.04, Swift 6.2)
+- [ ] Verify `swift package show-dependencies` resolves 3.1.0 (or newer 3.x)
 - [ ] Document the Apple‑first note (no x86‑64 SIMD post v3.0.0) in `Documentation/Architecture.md`
 
 #### Milestone 1.2 — `J2KSwiftCodec` adapter
@@ -435,7 +471,8 @@ Fixtures live under `Tests/Fixtures/JPEG2000/` and are segmented by transfer syn
 
 | Risk | Likelihood | Mitigation |
 |------|------------|------------|
-| J2KSwift 3.0.1 API changes in minor bumps | Medium | Pin `from: "3.0.1"` but run weekly CI against `main` |
+| macOS 15 / Swift 6.2 floor breaks downstream users on macOS 14 | High (1× only) | Version DICOMKit as v2.0.0; ship release notes + migration guide; offer maintenance branch for v1.x users if needed |
+| J2KSwift 3.x API changes in minor bumps | Medium | Pin `from: "3.1.0"` but run weekly CI against J2KSwift `main` |
 | Removal of x86‑64 SIMD hurts Linux x86 perf | Low‑Medium | Vulkan backend for Linux GPU, scalar fallback, document perf delta |
 | JP3D non‑standard in DICOM | High | Keep behind experimental SOP, clear warnings, no default serialisation |
 | Larger binary footprint | Medium | Package traits let embedders opt out; document per‑module cost |
@@ -446,7 +483,8 @@ Fixtures live under `Tests/Fixtures/JPEG2000/` and are segmented by transfer syn
 
 ## 6. Acceptance Criteria (Milestone 24)
 
-- [ ] `Package.swift` depends on `J2KSwift 3.0.1` and resolves cleanly on macOS + Linux CI.
+- [ ] DICOMKit compiles under `swift-tools-version: 6.2` with `macOS 15` floor (Milestone 1.0 prerequisite).
+- [ ] `Package.swift` depends on `J2KSwift 3.1.0` (`from: "3.1.0"`) and resolves cleanly on macOS + Linux CI.
 - [ ] All 8 DICOM JPEG 2000 transfer syntaxes (`.90`, `.91`, `.92`, `.93`, `.201`, `.202`, `.203`, + JPIP `.94`/`.95`) are registered, documented, and covered by round‑trip tests.
 - [ ] `NativeJPEG2000Codec` is marked deprecated and only used as a fallback on Apple.
 - [ ] `JP3DCodec` + `JP3DVolumeBridge` can round‑trip a 128‑slice CT lossless with bit‑exact output.
@@ -461,12 +499,13 @@ Fixtures live under `Tests/Fixtures/JPEG2000/` and are segmented by transfer syn
 ## 7. Execution Order & Dependencies
 
 ```
-Phase 0 (branch) ─┐
-                  ├─► Phase 1 (SPM + adapter) ─► Phase 2 (HTJ2K) ─┬─► Phase 3 (Part 2)
-                  │                                               │
-                  │                                               └─► Phase 4 (JP3D)
-                  │                                                      │
-                  └─► Phase 5 (HW accel, parallel with 2/3/4)            │
+Phase 0 (branch) ─► Milestone 1.0 (platform/toolchain bump) ─┐
+                                                             │
+                                                             ├─► Phase 1 (SPM + adapter) ─► Phase 2 (HTJ2K) ─┬─► Phase 3 (Part 2)
+                                                             │                                              │
+                                                             │                                              └─► Phase 4 (JP3D)
+                                                             │                                                     │
+                                                             └─► Phase 5 (HW accel, parallel with 2/3/4)           │
                                                                          │
 Phase 6 (JPIP) ◄─ depends on Phase 1 + Phase 4 for 3D JPIP ──────────────┘
 Phase 7 (dicom-viewer CLI)  ◄─ depends on Phase 2 + Phase 4
@@ -481,6 +520,7 @@ Phase 11 (docs/release)     ◄─ runs continuously, finalises at tag time
 ## 8. References
 
 - J2KSwift repository: <https://github.com/Raster-Lab/J2KSwift>
+- J2KSwift v3.1.0 release notes: `RELEASE_NOTES_v3.1.0.md` (upstream, once published)
 - J2KSwift v3.0.1 release notes: `RELEASE_NOTES_v3.0.1.md` (upstream)
 - J2KSwift v3.0.0 migration: `MIGRATION_GUIDE_v2.0.md` + `RELEASE_CHECKLIST_v3.0.0.md`
 - DICOM PS3.5 Annex A — Transfer Syntaxes
