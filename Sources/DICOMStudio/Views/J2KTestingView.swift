@@ -258,6 +258,21 @@ public struct J2KTestingView: View {
                     }
                 }
 
+                // Debug-build performance warning
+                #if DEBUG
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Debug build — J2KSwift runs unoptimized. Rebuild with Release configuration for accurate J2KSwift benchmarks.")
+                        .font(.system(size: StudioTypography.captionSize - 1))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                #endif
+
                 // Results table
                 if viewModel.j2kTesting.comparisonResults.isEmpty {
                     if viewModel.dicomFile == nil {
@@ -435,6 +450,21 @@ public struct J2KTestingView: View {
                             .disabled(viewModel.j2kTesting.isRunning)
                     }
                 }
+
+                // Debug-build performance warning
+                #if DEBUG
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Debug build — J2KSwift runs unoptimized. Use Release configuration for accurate encode/decode timing.")
+                        .font(.system(size: StudioTypography.captionSize - 1))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(8)
+                .background(Color.orange.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+                #endif
 
                 // Per-codec result cards
                 if viewModel.j2kTesting.roundTripResults.isEmpty {
