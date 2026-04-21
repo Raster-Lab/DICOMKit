@@ -415,7 +415,7 @@ swift test --filter "DICOMVolumeProgressiveUpdate"
 - [x] New "Codec" inspector panel: shows decoder used, backend (Metal/Neon/scalar), timing
 - [x] Progressive decoding: display first resolution level, then refine (SwiftUI `Canvas` driven by `AsyncStream`) — implemented via post-decode downscale workaround (J2KDecoder.decodeResolution blocked upstream; see J2KSWIFT_BUG_REPORT.md). New files: `ProgressiveDecodeModel.swift`, `ProgressiveImageView.swift`, `ProgressiveDecodeTests.swift` (30+ tests). `ImageDecodingService` gains `decodeProgressively(file:)` AsyncStream API; `ImageViewerViewModel` (@MainActor) drives state machine (.quarter → .half → .complete).
 - [x] ROI decoding hooked to pinch/zoom gestures (`isROIActiveOnZoom` + `updateROIOnZoom()`)
-- [ ] JP3D MPR view (axial / sagittal / coronal) using `J2K3D` slice API — deferred to Phase 9
+- [x] JP3D MPR view (axial / sagittal / coronal) using `J2K3D` slice API — implemented in Phase 9 (`JP3DMPRSliceExtractor`, `JP3DMPRRenderHelpers`, `JP3DMPRViewModel`, `JP3DMPRView`; 37 tests)
 - [x] JPIP loader (URL bar → live stream via `DICOMJPIPClient`, progressive quality layers)
 - [x] All new UI follows the GUI standards in `.github/copilot-instructions.md` (localisation, RTL, VoiceOver, Dynamic Type)
 - [x] Update `DICOM_STUDIO_V2_MILESTONES.md` with a new milestone (Milestone 24, v2.1.0)
