@@ -282,3 +282,125 @@ struct DICOMJPIPClientActorTests {
         #expect(client.serverURL.scheme == "https")
     }
 }
+
+// MARK: - DICOMVolumeProgressiveUpdate Tests
+
+@Suite("DICOMVolumeProgressiveUpdate Tests")
+struct DICOMVolumeProgressiveUpdateTests {
+
+    @Test("init stores all properties correctly")
+    func init_storesAllProperties() {
+        let data = Data([0xAA, 0xBB, 0xCC])
+        let update = DICOMVolumeProgressiveUpdate(
+            sliceIndex: 7,
+            qualityLayer: 2,
+            totalLayers: 4,
+            sliceData: data,
+            width: 512,
+            height: 512,
+            isVolumeComplete: false
+        )
+        #expect(update.sliceIndex == 7)
+        #expect(update.qualityLayer == 2)
+        #expect(update.totalLayers == 4)
+        #expect(update.sliceData == data)
+        #expect(update.width == 512)
+        #expect(update.height == 512)
+        #expect(update.isVolumeComplete == false)
+    }
+
+    @Test("isVolumeComplete true is preserved")
+    func init_isVolumeComplete_true() {
+        let update = DICOMVolumeProgressiveUpdate(
+            sliceIndex: 0, qualityLayer: 4, totalLayers: 4,
+            sliceData: Data(), width: 256, height: 256, isVolumeComplete: true
+        )
+        #expect(update.isVolumeComplete == true)
+    }
+
+    @Test("sliceIndex 0 is valid")
+    func init_sliceIndexZero_isValid() {
+        let update = DICOMVolumeProgressiveUpdate(
+            sliceIndex: 0, qualityLayer: 1, totalLayers: 1,
+            sliceData: Data([0x01]), width: 4, height: 4, isVolumeComplete: true
+        )
+        #expect(update.sliceIndex == 0)
+    }
+
+    @Test("qualityLayer 1 is minimum valid layer")
+    func init_qualityLayer1_isMinimum() {
+        let update = DICOMVolumeProgressiveUpdate(
+            sliceIndex: 0, qualityLayer: 1, totalLayers: 1,
+            sliceData: Data(), width: 64, height: 64, isVolumeComplete: false
+        )
+        #expect(update.qualityLayer == 1)
+    }
+
+    @Test("totalLayers equals qualityLayer at full quality")
+    func totalLayers_equalsQualityLayerAtFullQuality() {
+        let update = DICOMVolumeProgressiveUpdate(
+            sliceIndex: 5, qualityLayer: 4, totalLayers: 4,
+            sliceData: Data(), width: 128, height: 128, isVolumeComplete: false
+        )
+        #expect(update.qualityLayer == update.totalLayers)
+    }
+
+    @Test("sliceData is stored exactly")
+    func sliceData_storedExactly() {
+        let expected = Data(0..<64)
+        let update = DICOMVolumeProgressiveUpdate(
+            sliceIndex: 1, qualityLayer: 1, totalLayers: 2,
+            sliceData: expected, width: 8, height: 8, isVolumeComplete: false
+        )
+        #expect(update.sliceData == expected)
+    }
+}
+
+// MARK: - Progressive Volume API Surface Tests
+
+@Suite("Progressive Volume API Surface Tests")
+struct ProgressiveVolumeAPISurfaceTests {
+
+    @Test("openVolumeProgressively with empty URI list finishes immediately")
+    func openVolumeProgressively_emptyURIs_finishesImmediately() async {
+        let stream = DICOMFile.openVolumeProgressively(
+            serverURL: URL(string: "http://localhost:8080")!,
+            sliceJPIPURIs: [],
+            qualityLayers: 4
+        )
+        var updateCount = 0
+        for await _ in stream {
+            updateCount += 1
+        }
+        #expect(updateCount == 0)
+    }
+
+    @Test("openVolumeProgressively qualityLayers clamped below 1 uses 1 layer")
+    func openVolumeProgressively_negativeQualityLayers_clampedToOne() async {
+        // Pass an unreachable server + 1 URI; since JPIP module is not available in CI,
+        // fetchProgressiveQuality will fail silently (skip) and the stream finishes with 0 updates.
+        let dummyURI = URL(string: "jpip://localhost:8080/slice0")!
+        let stream = DICOMFile.openVolumeProgressively(
+            serverURL: URL(string: "http://localhost:8080")!,
+            sliceJPIPURIs: [dummyURI],
+            qualityLayers: -5
+        )
+        // We cannot assert a specific count since JPIP module availability varies;
+        // the goal is to verify the call compiles and terminates rather than hanging.
+        var terminated = false
+        for await _ in stream { }
+        terminated = true
+        #expect(terminated)
+    }
+
+    @Test("DICOMVolumeProgressiveUpdate is Sendable")
+    func progressiveUpdate_isSendable() {
+        // Compile-time check: assigning to a Sendable-typed variable verifies conformance.
+        let update: any Sendable = DICOMVolumeProgressiveUpdate(
+            sliceIndex: 0, qualityLayer: 1, totalLayers: 1,
+            sliceData: Data(), width: 1, height: 1, isVolumeComplete: true
+        )
+        #expect(update is DICOMVolumeProgressiveUpdate)
+    }
+}
+

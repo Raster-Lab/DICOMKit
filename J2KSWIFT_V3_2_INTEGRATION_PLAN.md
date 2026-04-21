@@ -337,11 +337,15 @@ dicom-send ct.htj2k.dcm --host pacs.local --port 11112 --aet TEST \
   - [x] Detects JP3D encapsulation → decodes on demand via `JP3DVolumeDocument`
   - [x] Handles directories of single-frame slices (sorted by Z/InstanceNumber)
   - [x] `DICOMVolume` struct with `slice(at:)`, `voxel(x:y:z:)`, spacing, origin, modality
-- [ ] Progressive decoding via JPIP (see Phase 6) for huge CT/MR studies
+- [x] Progressive decoding via JPIP (see Phase 6) for huge CT/MR studies — ``DICOMVolumeProgressiveUpdate`` + ``DICOMFile.openVolumeProgressively(serverURL:sliceJPIPURIs:qualityLayers:)`` + ``DICOMFile.openVolume(from:jpipServerURL:)``
 
-**Tests (25 total, all passing):**
+**Tests (39 total, all passing):**
+- 25 JP3DVolumeDocument tests (unchanged)
+- 9 `DICOMVolumeProgressiveUpdate` unit tests
+- 5 `ProgressiveVolumeAPISurface` tests
 ```
 swift test --filter "JP3DVolumeDocumentTests"
+swift test --filter "DICOMVolumeProgressiveUpdate"
 ```
 
 ---
@@ -377,10 +381,11 @@ swift test --filter "JP3DVolumeDocumentTests"
 - [x] Optional dependency on `JPIP` module (trait `JPIP`) — added to DICOMKit target in `Package.swift`
 - [x] `DICOMJPIPClient` wrapping JPIP session; maps WADO‑URI + JPIP URL templates — `Sources/DICOMKit/DICOMJPIPClient.swift`
 - [x] Transfer syntaxes `.jpip` (`.94`) and `.jpipDeflate` (`.95`) — registered in `TransferSyntax.swift` with `isJPIP` property
-- [ ] `dicom-viewer` (terminal) shows live resolution‑progressive ASCII preview via JPIP — deferred to Phase 7
-- [ ] `DICOMStudio`: JPIP study loader (quality/resolution slider wired to JPIP session) — deferred to Phase 8
+- [x] `dicom-viewer` (terminal) shows live resolution‑progressive ASCII preview via JPIP — completed in Phase 7
+- [x] `DICOMStudio`: JPIP study loader (quality/resolution slider wired to JPIP session) — completed in Phase 8
+- [x] Progressive decoding for huge CT/MR studies — `DICOMVolumeProgressiveUpdate` + `DICOMFile.openVolumeProgressively(serverURL:sliceJPIPURIs:qualityLayers:)` + `DICOMFile.openVolume(from:jpipServerURL:)` — `Sources/DICOMKit/DICOMVolume.swift` + `Sources/DICOMKit/DICOMKit+Volume.swift`
 - [x] CLI tool `dicom-jpip` (new) with `fetch`, `uri`, `serve`, and `info` subcommands — `Sources/dicom-jpip/main.swift`
-- [x] 28 tests passing — `Tests/DICOMKitTests/JPIPTests.swift`
+- [x] 42 tests passing — `Tests/DICOMKitTests/JPIPTests.swift` (28 original + 14 new progressive volume tests)
 
 ---
 

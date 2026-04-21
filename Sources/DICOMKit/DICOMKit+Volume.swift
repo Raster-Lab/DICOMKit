@@ -335,3 +335,128 @@ extension DICOMFile {
             && header[130] == 0x43 && header[131] == 0x4D
     }
 }
+
+// MARK: - JPIP Progressive Volume Loading
+
+extension DICOMFile {
+
+    /// Opens a JPIP-referenced DICOM file and fetches its full pixel data from the server.
+    ///
+    /// Use this overload when you have a DICOM file whose transfer syntax is
+    /// ``TransferSyntax/jpipReferenced`` or ``TransferSyntax/jpipReferencedDeflate``
+    /// and whose Pixel Data element contains a JPIP target URI.
+    ///
+    /// For a more memory-efficient approach on large studies, see
+    /// ``openVolumeProgressively(serverURL:sliceJPIPURIs:qualityLayers:)``.
+    ///
+    /// - Parameters:
+    ///   - url: Path to the JPIP-referenced DICOM file.
+    ///   - jpipServerURL: Base URL of the JPIP server.
+    /// - Returns: A ``DICOMVolume`` containing the fully fetched image as a single slice.
+    /// - Throws: ``DICOMError`` if the file cannot be read, ``DICOMJPIPError`` if retrieval fails.
+    public static func openVolume(from url: URL, jpipServerURL: URL) async throws -> DICOMVolume {
+        let file = try DICOMFile.read(from: url)
+        let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
+        let jpipURI = try DICOMJPIPClient.jpipURI(from: file.dataSet, transferSyntaxUID: tsUID)
+
+        let client = DICOMJPIPClient(serverURL: jpipServerURL)
+        let image = try await client.fetchImage(jpipURI: jpipURI)
+        try? await client.close()
+
+        return DICOMVolume(
+            width: image.width,
+            height: image.height,
+            depth: 1,
+            bitsAllocated: image.bitDepth <= 8 ? 8 : 16,
+            bitsStored: image.bitDepth,
+            isSigned: false,
+            pixelData: image.pixelData,
+            sourceTransferSyntax: TransferSyntax.from(uid: tsUID),
+            modality: file.dataSet.string(for: .modality),
+            seriesInstanceUID: file.dataSet.string(for: .seriesInstanceUID),
+            studyInstanceUID: file.dataSet.string(for: .studyInstanceUID)
+        )
+    }
+
+    /// Streams a multi-slice DICOM volume from a JPIP server progressively.
+    ///
+    /// This API is designed for huge CT/MR studies where loading all slices at full quality
+    /// up-front is too slow or memory-intensive. Each slice is fetched at quality layer 1
+    /// first (fast, low-fidelity overview), then iteratively refined up to `qualityLayers`.
+    ///
+    /// The caller receives a ``DICOMVolumeProgressiveUpdate`` for every (slice, layer) pair
+    /// as data arrives, allowing the UI to render each slice as soon as its first quality
+    /// layer is available and then replace it as higher layers arrive.
+    ///
+    /// ## Example
+    ///
+    /// ```swift
+    /// for await update in DICOMFile.openVolumeProgressively(
+    ///     serverURL: URL(string: "http://pacs.example.com:8080")!,
+    ///     sliceJPIPURIs: jpipURIs,
+    ///     qualityLayers: 4
+    /// ) {
+    ///     viewer.updateSlice(
+    ///         update.sliceData,
+    ///         at: update.sliceIndex,
+    ///         size: CGSize(width: update.width, height: update.height)
+    ///     )
+    ///     if update.isVolumeComplete {
+    ///         print("CT volume fully loaded at full quality")
+    ///     }
+    /// }
+    /// ```
+    ///
+    /// - Parameters:
+    ///   - serverURL: Base URL of the JPIP server (e.g., `http://pacs.example.com:8080`).
+    ///   - sliceJPIPURIs: Ordered JPIP target URIs, one per slice, in Z order.
+    ///   - qualityLayers: Number of progressive quality passes (default 4; 1 = single full fetch).
+    /// - Returns: An `AsyncStream` of ``DICOMVolumeProgressiveUpdate`` values.
+    public static func openVolumeProgressively(
+        serverURL: URL,
+        sliceJPIPURIs: [URL],
+        qualityLayers: Int = 4
+    ) -> AsyncStream<DICOMVolumeProgressiveUpdate> {
+        AsyncStream { continuation in
+            Task {
+                guard !sliceJPIPURIs.isEmpty else {
+                    continuation.finish()
+                    return
+                }
+
+                let client = DICOMJPIPClient(serverURL: serverURL)
+                let totalSlices = sliceJPIPURIs.count
+                let clampedLayers = max(1, qualityLayers)
+
+                // Pass 1…N: fetch all slices at successively higher quality layers.
+                for layer in 1...clampedLayers {
+                    for (sliceIndex, jpipURI) in sliceJPIPURIs.enumerated() {
+                        guard let image = try? await client.fetchProgressiveQuality(
+                            jpipURI: jpipURI,
+                            layers: layer
+                        ) else {
+                            // Skip failed slices rather than aborting the stream.
+                            continue
+                        }
+
+                        let isLast = (layer == clampedLayers)
+                            && (sliceIndex == totalSlices - 1)
+
+                        continuation.yield(DICOMVolumeProgressiveUpdate(
+                            sliceIndex: sliceIndex,
+                            qualityLayer: layer,
+                            totalLayers: clampedLayers,
+                            sliceData: image.pixelData,
+                            width: image.width,
+                            height: image.height,
+                            isVolumeComplete: isLast
+                        ))
+                    }
+                }
+
+                try? await client.close()
+                continuation.finish()
+            }
+        }
+    }
+}

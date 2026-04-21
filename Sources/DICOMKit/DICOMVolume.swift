@@ -11,14 +11,25 @@ import J2K3D
 ///
 /// ## Usage
 ///
-/// Use `DICOMKit.openVolume(from:)` to load and decode a volume:
+/// Use `DICOMFile.openVolume(from:)` to load and decode a volume:
 ///
 /// ```swift
 /// // From a directory of DICOM slice files
-/// let volume = try await DICOMKit.openVolume(from: seriesDirectoryURL)
+/// let volume = try await DICOMFile.openVolume(from: seriesDirectoryURL)
 ///
 /// // From a single JP3D encapsulated document
-/// let volume = try await DICOMKit.openVolume(from: jp3dDocumentURL)
+/// let volume = try await DICOMFile.openVolume(from: jp3dDocumentURL)
+///
+/// // From a JPIP-referenced DICOM file (fetches pixels from server)
+/// let volume = try await DICOMFile.openVolume(from: jpipFileURL, jpipServerURL: serverURL)
+///
+/// // Progressive quality streaming for huge CT/MR studies
+/// for await update in DICOMFile.openVolumeProgressively(
+///     serverURL: serverURL, sliceJPIPURIs: jpipURIs, qualityLayers: 4
+/// ) {
+///     renderSlice(update.sliceData, at: update.sliceIndex)
+///     if update.isVolumeComplete { print("All slices at full quality") }
+/// }
 ///
 /// // Access pixel data
 /// let sliceData = volume.slice(at: 42)
@@ -187,5 +198,67 @@ public struct DICOMVolume: Sendable {
         self.modality = modality
         self.seriesInstanceUID = seriesInstanceUID
         self.studyInstanceUID = studyInstanceUID
+    }
+}
+
+// MARK: - DICOMVolumeProgressiveUpdate
+
+/// A progressive quality update for a single slice retrieved via JPIP.
+///
+/// Emitted by ``DICOMFile/openVolumeProgressively(serverURL:sliceJPIPURIs:qualityLayers:)``
+/// as successive quality layers arrive from the JPIP server.
+///
+/// The typical rendering pattern is:
+///
+/// ```swift
+/// for await update in DICOMFile.openVolumeProgressively(
+///     serverURL: serverURL,
+///     sliceJPIPURIs: jpipURIs,
+///     qualityLayers: 4
+/// ) {
+///     renderSlice(update.sliceData, at: update.sliceIndex)
+///     if update.isVolumeComplete { print("Volume fully loaded") }
+/// }
+/// ```
+public struct DICOMVolumeProgressiveUpdate: Sendable {
+
+    /// Zero-based index of the slice within the volume.
+    public let sliceIndex: Int
+
+    /// Quality layer that was just fetched (1 = lowest, `totalLayers` = full quality).
+    public let qualityLayer: Int
+
+    /// Total number of quality layers being fetched.
+    public let totalLayers: Int
+
+    /// Decoded pixel bytes for this slice at the current quality level.
+    public let sliceData: Data
+
+    /// Slice width in pixels.
+    public let width: Int
+
+    /// Slice height in pixels.
+    public let height: Int
+
+    /// `true` when this update is the final full-quality delivery for the entire volume.
+    public let isVolumeComplete: Bool
+
+    /// Creates a ``DICOMVolumeProgressiveUpdate``.
+    public init(
+        sliceIndex: Int,
+        qualityLayer: Int,
+        totalLayers: Int,
+        sliceData: Data,
+        width: Int,
+        height: Int,
+        isVolumeComplete: Bool
+    ) {
+        self.sliceIndex = sliceIndex
+        self.qualityLayer = qualityLayer
+        self.totalLayers = totalLayers
+        self.sliceData = sliceData
+        self.width = width
+        self.height = height
+        self.isVolumeComplete = isVolumeComplete
     }
 }
