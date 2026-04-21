@@ -222,6 +222,33 @@ struct AssociateAcceptPDUTests {
         #expect(decodedAccept.presentationContexts.count == original.presentationContexts.count)
         #expect(decodedAccept.maxPDUSize == original.maxPDUSize)
     }
+    
+    @Test("Associate Accept decoding preserves rejected context result")
+    func testAssociateAcceptDecodePreservesRejectedContextResult() throws {
+        let contexts = [
+            AcceptedPresentationContext(id: 1, result: .transferSyntaxesNotSupported, transferSyntax: nil)
+        ]
+        
+        let original = AssociateAcceptPDU(
+            calledAETitle: try AETitle("SCU"),
+            callingAETitle: try AETitle("SCP"),
+            presentationContexts: contexts,
+            maxPDUSize: 16384,
+            implementationClassUID: "1.2.3.4.5.6"
+        )
+        
+        let encoded = try original.encode()
+        let decoded = try PDUDecoder.decode(from: encoded)
+        
+        guard let decodedAccept = decoded as? AssociateAcceptPDU else {
+            #expect(Bool(false), "Decoded PDU is not AssociateAcceptPDU")
+            return
+        }
+        
+        #expect(decodedAccept.presentationContexts.count == 1)
+        #expect(decodedAccept.presentationContexts[0].result == .transferSyntaxesNotSupported)
+        #expect(decodedAccept.acceptedContextIDs.isEmpty)
+    }
 }
 
 @Suite("Associate Reject PDU Tests")

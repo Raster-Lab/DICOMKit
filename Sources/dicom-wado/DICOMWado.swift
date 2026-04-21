@@ -164,6 +164,10 @@ struct RetrieveCommand: AsyncParsableCommand {
         case "image/png", "png":    wadoContentType = .png
         case "image/gif", "gif":    wadoContentType = .gif
         case "image/jp2", "jp2":    wadoContentType = .jpeg2000
+        case "image/jph", "jph", "htj2k":
+            wadoContentType = .htj2k
+        case "image/jphc", "jphc", "htj2k-container":
+            wadoContentType = .htj2kContainer
         case "video/mpeg", "mpeg":  wadoContentType = .mpeg
         default:                     wadoContentType = .dicom
         }
@@ -203,12 +207,14 @@ struct RetrieveCommand: AsyncParsableCommand {
         let frameSuffix = frameNumber.map { "_frame\($0)" } ?? ""
         let ext: String
         switch wadoContentType {
-        case .dicom:    ext = "dcm"
-        case .jpeg:     ext = "jpg"
-        case .png:      ext = "png"
-        case .gif:      ext = "gif"
-        case .jpeg2000: ext = "jp2"
-        case .mpeg:     ext = "mpg"
+        case .dicom:          ext = "dcm"
+        case .jpeg:           ext = "jpg"
+        case .png:            ext = "png"
+        case .gif:            ext = "gif"
+        case .jpeg2000:       ext = "jp2"
+        case .htj2k:          ext = "jph"
+        case .htj2kContainer: ext = "jphc"
+        case .mpeg:           ext = "mpg"
         }
         let filename = "\(instanceUID)\(frameSuffix).\(ext)"
         try saveData(result.data, filename: filename)

@@ -110,12 +110,48 @@ struct TransferSyntaxTests {
         #expect(ts?.byteOrder == .littleEndian)
     }
     
-    @Test("TransferSyntax from UID - Unsupported transfer syntax returns nil")
+    @Test("TransferSyntax from UID - Unknown transfer syntax returns nil")
     func testFromUIDUnsupported() {
-        // JPEG 2000 Part 2 Multi-component (not supported)
-        let ts = TransferSyntax.from(uid: "1.2.840.10008.1.2.4.92")
+        let ts = TransferSyntax.from(uid: "1.2.840.10008.1.2.4.999")
         
         #expect(ts == nil)
+    }
+
+    @Test("Extended JPEG 2000 families are recognized")
+    func testExtendedJPEG2000Families() {
+        let part2Lossless = TransferSyntax.jpeg2000Part2Lossless
+        #expect(TransferSyntax.from(uid: part2Lossless.uid) == .jpeg2000Part2Lossless)
+        #expect(part2Lossless.isJPEG2000)
+        #expect(part2Lossless.isJPEG2000Part2)
+        #expect(part2Lossless.isLossless)
+
+        let htLossless = TransferSyntax.htj2kLossless
+        #expect(TransferSyntax.from(uid: htLossless.uid) == .htj2kLossless)
+        #expect(htLossless.isJPEG2000)
+        #expect(htLossless.isHTJ2K)
+        #expect(htLossless.isLossless)
+
+        let htRPCL = TransferSyntax.htj2kRPCLLossless
+        #expect(TransferSyntax.from(uid: htRPCL.uid) == .htj2kRPCLLossless)
+        #expect(htRPCL.isHTJ2K)
+        #expect(htRPCL.isLossless)
+
+        let htLossy = TransferSyntax.htj2kLossy
+        #expect(TransferSyntax.from(uid: htLossy.uid) == .htj2kLossy)
+        #expect(htLossy.isHTJ2K)
+        #expect(htLossy.isLossless == false)
+    }
+
+    @Test("TransferSyntax parse recognizes CLI aliases and UIDs")
+    func testParseAliases() {
+        #expect(TransferSyntax.parse("explicit-vr-le") == .explicitVRLittleEndian)
+        #expect(TransferSyntax.parse("implicit-vr-le") == .implicitVRLittleEndian)
+        #expect(TransferSyntax.parse("jpeg2000-lossless") == .jpeg2000Lossless)
+        #expect(TransferSyntax.parse("htj2k-lossless") == .htj2kLossless)
+        #expect(TransferSyntax.parse("htj2k-rpcl") == .htj2kRPCLLossless)
+        #expect(TransferSyntax.parse("htj2k") == .htj2kLossy)
+        #expect(TransferSyntax.parse("1.2.840.10008.1.2.4.201") == .htj2kLossless)
+        #expect(TransferSyntax.parse("not-a-syntax") == nil)
     }
     
     @Test("JPEG transfer syntax properties")

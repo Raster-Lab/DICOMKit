@@ -46,7 +46,7 @@ struct ImportValidationTests {
         let issues = ImportValidation.validate(data: data)
         #expect(issues.count == 1)
         #expect(issues[0].rule == .fileSize)
-        #expect(issues[0].severity == .error)
+        #expect(issues[0].severity == .warning)
     }
 
     @Test("Validates missing DICM magic")
@@ -142,6 +142,13 @@ struct ImportValidationTests {
     func testTransferSyntaxJPEG() {
         let issues = ImportValidation.validateTransferSyntax("1.2.840.10008.1.2.4.50")
         #expect(issues.isEmpty)
+    }
+
+    @Test("HTJ2K transfer syntaxes are valid")
+    func testTransferSyntaxHTJ2K() {
+        #expect(ImportValidation.validateTransferSyntax("1.2.840.10008.1.2.4.201").isEmpty)
+        #expect(ImportValidation.validateTransferSyntax("1.2.840.10008.1.2.4.202").isEmpty)
+        #expect(ImportValidation.validateTransferSyntax("1.2.840.10008.1.2.4.203").isEmpty)
     }
 
     // MARK: - Summary and Rejection

@@ -15,6 +15,7 @@ struct RetrieveExecutor {
     let outputPath: String
     let hierarchical: Bool
     let verbose: Bool
+    let preferredTransferSyntaxUID: String?
     
     /// Retrieves a study from PACS
     func retrieveStudy(studyUID: String, method: RetrievalMethod) async throws {
@@ -197,6 +198,7 @@ struct RetrieveExecutor {
                 studyInstanceUID: studyUID,
                 seriesInstanceUID: seriesUID,
                 sopInstanceUID: sopUID,
+                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
                 timeout: timeout
             )
         } else if let seriesUID = seriesUID {
@@ -208,6 +210,7 @@ struct RetrieveExecutor {
                 calledAE: calledAE,
                 studyInstanceUID: studyUID,
                 seriesInstanceUID: seriesUID,
+                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
                 timeout: timeout
             )
         } else {
@@ -218,6 +221,7 @@ struct RetrieveExecutor {
                 callingAE: callingAE,
                 calledAE: calledAE,
                 studyInstanceUID: studyUID,
+                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
                 timeout: timeout
             )
         }

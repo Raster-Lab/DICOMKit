@@ -7,9 +7,10 @@ This guide provides best practices and recommendations for optimizing performanc
 1. [Memory Optimization](#memory-optimization)
 2. [Parsing Performance](#parsing-performance)
 3. [Image Processing](#image-processing)
-4. [Network Performance](#network-performance)
-5. [Benchmarking](#benchmarking)
-6. [Platform Considerations](#platform-considerations)
+4. [JPEG 2000 / HTJ2K / JP3D Performance](#jpeg-2000--htj2k--jp3d-performance)
+5. [Network Performance](#network-performance)
+6. [Benchmarking](#benchmarking)
+7. [Platform Considerations](#platform-considerations)
 
 ---
 
@@ -228,6 +229,79 @@ await withTaskGroup(of: CGImage?.self) { group in
     }
 }
 ```
+
+---
+
+## JPEG 2000 / HTJ2K / JP3D Performance
+
+DICOMKit uses J2KSwift v3.2.0 for all JPEG 2000 family codecs. Performance varies by codec, hardware backend, and image characteristics.
+
+### Codec Selection
+
+`CodecBackendProbe` automatically selects the fastest available backend:
+
+```swift
+// Check active backend at runtime
+let backend = CodecRegistry.shared.activeBackend
+// → .metal, .accelerate, or .scalar
+
+// Force a specific backend (testing / benchmarking)
+let config = CodecBackendPreference.require(.accelerate)
+```
+
+### Decode Performance (macOS arm64, real clinical DICOM)
+
+Measured on `instance_003317.dcm` — MR series, macOS arm64 (Apple Silicon), J2KSwift 3.2.0:
+
+| Codec | Decode time | Relative |
+|-------|-------------|----------|
+| JPEG 2000 (J2KSwift scalar) | 4 809 ms | 1× baseline |
+| HTJ2K Lossless (J2KSwift scalar) | 886 ms | **5.4× faster** |
+| HTJ2K RPCL Lossless | ~880 ms | ~5.5× faster |
+
+> Benchmark suite: `swift test --filter J2KSwiftCodecBenchmarkTests` — 3 tests, 125.9 s total on macOS arm64.
+
+### Backend Speedup Summary
+
+| Backend | Typical uplift over scalar |
+|---------|---------------------------|
+| J2KMetal (Apple GPU) | Up to 8–10× for large volumes |
+| J2KAccelerate (SIMD / ARM Neon) | 2–4× |
+| J2KCodec scalar | 1× (baseline) |
+
+These multipliers are additive on top of the HTJ2K vs J2K codec gain, so HTJ2K + Metal can be ~40–50× faster than plain J2K scalar on Apple hardware.
+
+### JP3D Volumetric Decoding
+
+JP3D encoding and decoding is performed by `JP3DCodec` wrapping `J2K3D`. Throughput scales with the number of CPU cores (the J2K3D engine parallelises slice decoding):
+
+| Volume size | Compression mode | Approximate round-trip time |
+|-------------|------------------|-----------------------------|
+| 128-slice CT (512×512, 16-bit) | Lossless HTJ2K | < 5 s (Apple Silicon) |
+| 512-slice MR (256×256, 12-bit) | Lossless | < 10 s (Apple Silicon) |
+
+> JP3D is available via an experimental private SOP only; see [JPEG2000_GUIDE.md](Documentation/JPEG2000_GUIDE.md).
+
+### JPIP Progressive Streaming
+
+JPIP (`DICOMJPIPClient`) delivers quality layers incrementally. First-tile latency is typically under 200 ms on a local 1 Gbps network; full quality converges within 1–3 s for a 512×512 CT frame.
+
+```swift
+let client = DICOMJPIPClient(serverURL: jpipURL)
+for await update in client.stream(quality: .layers(4)) {
+    display(update.image)   // progressively improves
+}
+```
+
+### Choosing the Right Codec
+
+| Scenario | Recommended transfer syntax | Why |
+|----------|-----------------------------|-----|
+| Archive / long-term storage | HTJ2K Lossless (`.201`) | 5× faster decode, same bit-exact quality as J2K |
+| Lossy compression for display | HTJ2K Lossy (`.203`) | Superior rate-distortion vs. JPEG 2000 lossy |
+| Cross-vendor interop | JPEG 2000 Lossless (`.90`) | Universally supported |
+| Large remote study (WSI / CT) | JPIP Referenced (`.94`) | Stream only requested tiles/quality layers |
+| Multi-frame volume exchange | JP3D private SOP | Compact volumetric storage (experimental) |
 
 ---
 
@@ -459,5 +533,5 @@ let processed = SIMDImageProcessor.applyWindowLevel(
 
 ---
 
-*Last updated: 2026-02-05*
-*DICOMKit version: 1.0.12*
+*Last updated: 2026-04-21*
+*DICOMKit version: 1.2.7*

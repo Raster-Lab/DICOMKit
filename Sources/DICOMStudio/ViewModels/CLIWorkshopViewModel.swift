@@ -1445,6 +1445,12 @@ public final class CLIWorkshopViewModel {
             return .jpeg2000Lossless
         case "jpeg2000", "jpeg2000-lossy", "j2k":
             return .jpeg2000
+        case "htj2klossless", "htj2k-lossless":
+            return .htj2kLossless
+        case "htj2krpcllossless", "htj2k-rpcl", "htj2k-lossless-rpcl":
+            return .htj2kRPCLLossless
+        case "htj2k", "htj2k-lossy":
+            return .htj2kLossy
         // JPEG-LS
         case "jpeglslossless", "jpeg-ls-lossless", "jpegls":
             return .jpegLSLossless
@@ -2413,7 +2419,10 @@ public final class CLIWorkshopViewModel {
             case "image/jpeg":  contentType = .jpeg
             case "image/png":   contentType = .png
             case "image/gif":   contentType = .gif
-            default:            contentType = .dicom
+            case "image/jp2":   contentType = .jpeg2000
+            case "image/jph":   contentType = .htj2k
+            case "image/jphc":  contentType = .htj2kContainer
+            default:             contentType = .dicom
             }
 
             let result = try await client.retrieve(
@@ -2439,10 +2448,13 @@ public final class CLIWorkshopViewModel {
             } else {
                 let ext: String
                 switch contentType {
-                case .jpeg: ext = "jpg"
-                case .png:  ext = "png"
-                case .gif:  ext = "gif"
-                default:    ext = "bin"
+                case .jpeg:           ext = "jpg"
+                case .png:            ext = "png"
+                case .gif:            ext = "gif"
+                case .jpeg2000:       ext = "jp2"
+                case .htj2k:          ext = "jph"
+                case .htj2kContainer: ext = "jphc"
+                default:              ext = "bin"
                 }
                 let frameSuffix = frameNumber > 0 ? "_frame\(frameNumber)" : ""
                 let filename = "wado_\(instanceUID)\(frameSuffix).\(ext)"

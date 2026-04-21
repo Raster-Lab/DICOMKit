@@ -119,6 +119,16 @@ public struct StorageSCPConfiguration: Sendable, Hashable {
         "1.2.840.10008.1.2.4.90",
         // JPEG 2000 Lossy
         "1.2.840.10008.1.2.4.91",
+        // JPEG 2000 Part 2 Lossless
+        "1.2.840.10008.1.2.4.92",
+        // JPEG 2000 Part 2 Lossy
+        "1.2.840.10008.1.2.4.93",
+        // HTJ2K Lossless
+        "1.2.840.10008.1.2.4.201",
+        // HTJ2K RPCL Lossless
+        "1.2.840.10008.1.2.4.202",
+        // HTJ2K Lossy
+        "1.2.840.10008.1.2.4.203",
         // RLE Lossless
         "1.2.840.10008.1.2.5"
     ]

@@ -45,6 +45,17 @@ public struct CineControlsView: View {
 
             // Transport controls
             HStack(spacing: 12) {
+                // First frame
+                Button {
+                    viewModel.goToFrame(0)
+                } label: {
+                    Image(systemName: "backward.end.fill")
+                }
+                .accessibilityLabel("First frame")
+                .help("Go to first frame (Home)")
+                .disabled(viewModel.playbackState == .playing)
+                .keyboardShortcut(.home, modifiers: [])
+
                 // Step backward
                 Button {
                     viewModel.previousFrame()
@@ -52,8 +63,9 @@ public struct CineControlsView: View {
                     Image(systemName: "backward.frame.fill")
                 }
                 .accessibilityLabel("Previous frame")
-                .help("Previous frame (Left arrow)")
+                .help("Previous frame (←)")
                 .disabled(viewModel.playbackState == .playing)
+                .keyboardShortcut(.leftArrow, modifiers: [])
 
                 // Play/Pause
                 Button {
@@ -64,6 +76,7 @@ public struct CineControlsView: View {
                 }
                 .accessibilityLabel(viewModel.playbackState == .playing ? "Pause" : "Play")
                 .help("Play/Pause (Space)")
+                .keyboardShortcut(" ", modifiers: [])
 
                 // Stop
                 Button {
@@ -82,8 +95,20 @@ public struct CineControlsView: View {
                     Image(systemName: "forward.frame.fill")
                 }
                 .accessibilityLabel("Next frame")
-                .help("Next frame (Right arrow)")
+                .help("Next frame (→)")
                 .disabled(viewModel.playbackState == .playing)
+                .keyboardShortcut(.rightArrow, modifiers: [])
+
+                // Last frame
+                Button {
+                    viewModel.goToFrame(viewModel.numberOfFrames - 1)
+                } label: {
+                    Image(systemName: "forward.end.fill")
+                }
+                .accessibilityLabel("Last frame")
+                .help("Go to last frame (End)")
+                .disabled(viewModel.playbackState == .playing)
+                .keyboardShortcut(.end, modifiers: [])
 
                 Divider()
                     .frame(height: 16)
@@ -105,15 +130,28 @@ public struct CineControlsView: View {
                     .frame(height: 16)
 
                 // FPS control
-                HStack(spacing: 4) {
-                    Text("FPS:")
-                        .font(.caption)
-                        .foregroundStyle(.white)
-                    TextField("FPS", value: Bindable(viewModel).playbackFPS, format: .number)
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 50)
-                        .accessibilityLabel("Frames per second")
-                        .onSubmit { updateTimer() }
+                VStack(spacing: 2) {
+                    HStack(spacing: 4) {
+                        Text("FPS:")
+                            .font(.caption)
+                            .foregroundStyle(.white)
+                        Slider(
+                            value: Bindable(viewModel).playbackFPS,
+                            in: CinePlaybackHelpers.minFPS...CinePlaybackHelpers.maxFPS,
+                            step: 1
+                        )
+                        .frame(width: 80)
+                        .onChange(of: viewModel.playbackFPS) { _, _ in updateTimer() }
+                        .accessibilityLabel("Playback speed")
+                        TextField("FPS", value: Bindable(viewModel).playbackFPS, format: .number)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 44)
+                            .accessibilityLabel("Frames per second")
+                            .onSubmit { updateTimer() }
+                    }
+                    Text(String(format: "%.1fs", Double(viewModel.numberOfFrames) / viewModel.playbackFPS))
+                        .font(.system(size: StudioTypography.captionSize).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.6))
                 }
             }
             .buttonStyle(.borderless)

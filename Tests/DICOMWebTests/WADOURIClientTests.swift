@@ -26,6 +26,8 @@ struct WADOURIClientTests {
         #expect(WADOURIClient.ContentType.png.rawValue == "image/png")
         #expect(WADOURIClient.ContentType.gif.rawValue == "image/gif")
         #expect(WADOURIClient.ContentType.jpeg2000.rawValue == "image/jp2")
+        #expect(WADOURIClient.ContentType.htj2k.rawValue == "image/jph")
+        #expect(WADOURIClient.ContentType.htj2kContainer.rawValue == "image/jphc")
         #expect(WADOURIClient.ContentType.mpeg.rawValue == "video/mpeg")
     }
 

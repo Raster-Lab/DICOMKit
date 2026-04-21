@@ -75,6 +75,9 @@ dicom-compress batch input_dir/ --output output_dir/ --decompress --recursive
 | `jpeg-lossless-sv1` | — | JPEG Lossless SV1 | Yes |
 | `jpeg2000` | `j2k` | JPEG 2000 | No |
 | `jpeg2000-lossless` | `j2k-lossless` | JPEG 2000 Lossless | Yes |
+| `htj2k` | `htj2k-lossy` | HTJ2K | No |
+| `htj2k-lossless` | — | HTJ2K Lossless | Yes |
+| `htj2k-rpcl` | `htj2k-lossless-rpcl` | HTJ2K RPCL Lossless | Yes |
 | `rle` | — | RLE Lossless | Yes |
 | `deflate` | — | Deflated Explicit VR LE | Yes |
 | `explicit-le` | — | Explicit VR Little Endian | Yes |
@@ -97,6 +100,7 @@ Quality settings only apply to lossy codecs (JPEG Baseline, JPEG Extended, JPEG 
 - DICOM files are detected by `.dcm`, `.dicom`, `.dic` extensions or by the `DICM` magic prefix
 - Batch mode preserves directory structure in the output
 - The tool writes valid DICOM Part 10 files with proper File Meta Information
+- JPEG 2000 compression now uses the J2KSwift v3.2.0 adapter as the Phase 1 implementation, with verified round-trip and benchmark coverage
 - Platform codec support may vary; not all codecs are available on all systems
 
 ## Version

@@ -17,6 +17,7 @@ import CoreGraphics
 ///
 /// Requires macOS 14+ / iOS 17+ for the `@Observable` macro.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+@MainActor
 @Observable
 public final class ImageViewerViewModel {
 
@@ -137,6 +138,12 @@ public final class ImageViewerViewModel {
     /// Rotation angle in degrees.
     public var rotationAngle: Double = 0.0
 
+    /// Whether the image is flipped horizontally.
+    public var isFlippedHorizontal: Bool = false
+
+    /// Whether the image is flipped vertically.
+    public var isFlippedVertical: Bool = false
+
     /// Whether the metadata overlay is visible.
     public var showMetadataOverlay: Bool = false
 
@@ -177,20 +184,70 @@ public final class ImageViewerViewModel {
     /// Image cache service.
     public let cacheService: ImageCacheService
 
+    /// Codec-aware image decoding service (Phase 8).
+    public let decodingService: ImageDecodingService
+
     // MARK: - Performance
 
     /// Last render time in seconds.
     public var lastRenderTime: Double = 0.0
+
+    // MARK: - Codec Inspector (Phase 8)
+
+    /// Codec inspector state — populated after each successful decode.
+    public var codecInspector = CodecInspectorViewModel()
+
+    // MARK: - J2KSwift Testing Panel
+
+    /// J2KSwift implementation testing state (benchmark, round-trip, platform probe).
+    public var j2kTesting = J2KTestingViewModel()
+
+    /// Whether the J2KSwift testing sheet is presented.
+    public var showJ2KTesting: Bool = false
+
+    // MARK: - JPIP Streaming (Phase 8)
+
+    /// JPIP server URL string for remote streaming.
+    /// Set this before calling ``loadFromJPIP()``.
+    public var jpipURLString: String = ""
+
+    /// Current JPIP loading state.
+    public var jpipLoadingState: JPIPLoadingState = .idle
+
+    /// Whether ROI-based decoding should be active at the current zoom level.
+    ///
+    /// Set to `true` automatically when zoom exceeds 2× and a JPIP URL is configured.
+    public var isROIActiveOnZoom: Bool = false
+
+    // MARK: - Progressive Decode (Phase 8)
+
+    /// The current state of the progressive JPEG 2000 decode pipeline.
+    ///
+    /// Observe this property to update the quality-level badge in the viewer.
+    public var progressiveDecodeState: ProgressiveDecodeState = .idle
+
+    #if canImport(CoreGraphics)
+    /// The most recently received progressive CGImage (quarter, half, or full resolution).
+    ///
+    /// This image replaces `currentImage` during the progressive decode sequence
+    /// and is identical to it once the final full-resolution level is delivered.
+    public var progressiveImage: CGImage?
+    #endif
+
+    /// Internal task handle for the active progressive decode. Cancelled when a new file loads.
+    private var progressiveDecodeTask: Task<Void, Never>?
 
     // MARK: - Initialization
 
     /// Creates an image viewer ViewModel with dependency-injected services.
     public init(
         renderingService: ImageRenderingService = ImageRenderingService(),
-        cacheService: ImageCacheService = ImageCacheService()
+        cacheService: ImageCacheService = ImageCacheService(),
+        decodingService: ImageDecodingService = ImageDecodingService()
     ) {
         self.renderingService = renderingService
         self.cacheService = cacheService
+        self.decodingService = decodingService
     }
 
     // MARK: - File Loading
@@ -275,6 +332,7 @@ public final class ImageViewerViewModel {
         seriesFiles = []
         currentFileIndex = 0
         seriesSecurityScopedParent = nil
+        cancelProgressiveDecode()
     }
 
     /// Internal file loader that does NOT reset series state.
@@ -413,7 +471,24 @@ public final class ImageViewerViewModel {
         // Render first frame
         renderCurrentFrame()
 
+        // Populate the codec inspector with metadata for this file (Phase 8)
+        let inspectorStatus = decodingService.inspectorStatus(for: file)
+        switch inspectorStatus {
+        case .uncompressed:
+            codecInspector.status = inspectorStatus
+        default:
+            // For compressed files, do a timed decode to populate timing info
+            if let result = decodingService.decode(file: file) {
+                codecInspector.update(from: result, frameCount: numberOfFrames)
+            } else {
+                codecInspector.status = inspectorStatus
+            }
+        }
+
         isLoading = false
+
+        // Start progressive decode for J2K/HTJ2K files (Phase 8).
+        startProgressiveDecode()
     }
 
     // MARK: - Rendering
@@ -598,21 +673,32 @@ public final class ImageViewerViewModel {
     // MARK: - Zoom / Pan / Rotation
 
     /// Zooms in by a step.
+    ///
+    /// Automatically enables ROI decode when zoom exceeds 2× and a JPIP URL is configured.
     public func zoomIn() {
         zoomLevel = GestureHelpers.clampZoom(zoomLevel * 1.25)
+        updateROIOnZoom()
     }
 
     /// Zooms out by a step.
     public func zoomOut() {
         zoomLevel = GestureHelpers.clampZoom(zoomLevel / 1.25)
+        updateROIOnZoom()
     }
 
     /// Resets zoom, pan, and rotation to defaults.
     public func resetView() {
+        resetTransformations()
+    }
+
+    /// Resets all image transforms: zoom, pan, rotation, and flip.
+    public func resetTransformations() {
         zoomLevel = 1.0
         panOffsetX = 0.0
         panOffsetY = 0.0
         rotationAngle = 0.0
+        isFlippedHorizontal = false
+        isFlippedVertical = false
     }
 
     /// Fits the image to the view.
@@ -631,6 +717,15 @@ public final class ImageViewerViewModel {
         panOffsetY = 0.0
     }
 
+    /// Stored view dimensions — updated by the view layer when the container resizes.
+    public var viewContentWidth: Double = 0
+    public var viewContentHeight: Double = 0
+
+    /// Fits the image using the last-known view dimensions. Used by Commands (no access to view state).
+    public func fitToView() {
+        fitToView(viewWidth: viewContentWidth, viewHeight: viewContentHeight)
+    }
+
     /// Rotates the image 90° clockwise.
     public func rotateClockwise() {
         rotationAngle = GestureHelpers.rotateClockwise(from: rotationAngle)
@@ -639,6 +734,16 @@ public final class ImageViewerViewModel {
     /// Rotates the image 90° counter-clockwise.
     public func rotateCounterClockwise() {
         rotationAngle = GestureHelpers.rotateCounterClockwise(from: rotationAngle)
+    }
+
+    /// Flips the image horizontally.
+    public func flipHorizontal() {
+        isFlippedHorizontal.toggle()
+    }
+
+    /// Flips the image vertically.
+    public func flipVertical() {
+        isFlippedVertical.toggle()
     }
 
     // MARK: - Display Text Helpers
@@ -708,4 +813,146 @@ public final class ImageViewerViewModel {
         guard isInSeries else { return "" }
         return "\(currentFileIndex + 1) / \(seriesFiles.count)"
     }
+
+    // MARK: - JPIP Loading (Phase 8)
+
+    /// Loads and renders a DICOM image from a JPIP server.
+    ///
+    /// Fetches an initial low-quality preview (1 quality layer) first, then
+    /// progressively refines to full quality. The ``jpipLoadingState`` property
+    /// tracks progress.
+    ///
+    /// - Note: Requires a valid URL in ``jpipURLString`` and an active network connection.
+    public func loadFromJPIP() async {
+        guard !jpipURLString.isEmpty else {
+            jpipLoadingState = .failed(reason: "No JPIP URL provided")
+            return
+        }
+        guard let serverURL = extractJPIPServerURL(from: jpipURLString),
+              let jpipURI   = URL(string: jpipURLString) else {
+            jpipLoadingState = .failed(reason: "Invalid JPIP URL: \(jpipURLString)")
+            return
+        }
+
+        // Phase 1: fetch low-quality preview
+        jpipLoadingState = .fetchingPreview
+        let client = DICOMJPIPClient(serverURL: serverURL)
+        do {
+            let preview = try await client.fetchProgressiveQuality(jpipURI: jpipURI, layers: 1)
+            applyJPIPImage(preview, layers: 1)
+            jpipLoadingState = .refining(layers: 4)
+
+            // Phase 2: refine to full quality
+            let full = try await client.fetchImage(jpipURI: jpipURI)
+            applyJPIPImage(full, layers: 0)
+            jpipLoadingState = .loaded(layers: 0)
+        } catch {
+            jpipLoadingState = .failed(reason: error.localizedDescription)
+        }
+    }
+
+    // MARK: - Private Phase 8 Helpers
+
+    /// Updates ``isROIActiveOnZoom`` based on the current zoom level and JPIP URL.
+    private func updateROIOnZoom() {
+        isROIActiveOnZoom = zoomLevel > 2.0 && !jpipURLString.isEmpty
+    }
+
+    /// Applies a received `DICOMJPIPImage` to the viewer state.
+    ///
+    /// Updates dimension and bit-depth metadata. Rendering from raw JPIP pixel
+    /// data requires a `DICOMFile` wrapper; consumers should call
+    /// `renderCurrentFrame()` once the file has been created from the JPIP bytes.
+    private func applyJPIPImage(_ jpipImage: DICOMJPIPImage, layers: Int) {
+        imageRows         = jpipImage.height
+        imageColumns      = jpipImage.width
+        bitsAllocated     = jpipImage.bitDepth
+        bitsStored        = jpipImage.bitDepth
+        samplesPerPixel   = jpipImage.components
+        numberOfFrames    = 1
+        photometricInterpretation = jpipImage.components == 1 ? "MONOCHROME2" : "RGB"
+        // Note: currentImage is populated by renderCurrentFrame() once the caller
+        // wraps jpipImage.pixelData in a DICOMFile and calls loadFile(_:).
+    }
+
+    /// Extracts the JPIP server base URL from a full JPIP URI.
+    ///
+    ///     "jpip://pacs.example.com:8080/dcm4chee-arc/wado?..." → "http://pacs.example.com:8080"
+    private func extractJPIPServerURL(from jpipURIString: String) -> URL? {
+        var s = jpipURIString
+        if s.hasPrefix("jpips://") { s = "https://" + s.dropFirst(8) }
+        else if s.hasPrefix("jpip://") { s = "http://" + s.dropFirst(7) }
+        guard let url = URL(string: s),
+              let scheme = url.scheme,
+              let host   = url.host else { return nil }
+        let port = url.port.map { ":\($0)" } ?? ""
+        return URL(string: "\(scheme)://\(host)\(port)")
+    }
+
+    // MARK: - Progressive Decode (Phase 8)
+
+    /// Starts the progressive decode pipeline for the currently loaded J2K/HTJ2K file.
+    ///
+    /// Cancels any previous progressive decode task, then launches a new unstructured
+    /// `Task` that iterates the `AsyncStream` from
+    /// ``ImageDecodingService/decodeProgressively(file:windowCenter:windowWidth:)``.
+    ///
+    /// State machine:
+    /// - `.unavailable` is set synchronously when the file is not J2K/HTJ2K.
+    /// - `.decoding(.quarter)` after the first yielded frame.
+    /// - `.decoding(.half)` after the second frame.
+    /// - `.complete(_:)` after the third (full-resolution) frame.
+    ///
+    /// Each frame is reflected into `progressiveImage` (and `currentImage`) for the
+    /// SwiftUI `Canvas` in `ProgressiveImageView` to pick up automatically.
+    func startProgressiveDecode() {
+        #if canImport(CoreGraphics)
+        guard let file = dicomFile else { return }
+
+        // Cancel any in-flight task from a previous file load.
+        progressiveDecodeTask?.cancel()
+
+        let tsUID = file.transferSyntaxUID ?? ""
+        guard ProgressiveDecodeHelpers.isJ2KTransferSyntax(tsUID) else {
+            progressiveDecodeState = .unavailable
+            return
+        }
+
+        let svc = decodingService
+        let wc = windowCenter
+        let ww = windowWidth
+
+        progressiveDecodeState = .decoding(level: .quarter)
+
+        progressiveDecodeTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = svc.decodeProgressively(file: file, windowCenter: wc, windowWidth: ww)
+            for await (level, image, decodeMs) in stream {
+                guard !Task.isCancelled else { break }
+                // Property mutations inherit @MainActor isolation from the class.
+                self.progressiveImage = image
+                self.currentImage = image
+                if level.isFinal {
+                    self.progressiveDecodeState = .complete(totalDecodeMs: decodeMs)
+                } else {
+                    self.progressiveDecodeState = .decoding(level: level)
+                }
+            }
+        }
+        #endif
+    }
+
+    /// Cancels the active progressive decode task and resets the state to `.idle`.
+    ///
+    /// Called automatically when `clearSeriesState()` runs, ensuring no stale frames
+    /// are applied after a new file is opened.
+    private func cancelProgressiveDecode() {
+        progressiveDecodeTask?.cancel()
+        progressiveDecodeTask = nil
+        progressiveDecodeState = .idle
+        #if canImport(CoreGraphics)
+        progressiveImage = nil
+        #endif
+    }
 }
+

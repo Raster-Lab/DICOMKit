@@ -1,11 +1,11 @@
-# dicom-3d - 3D Reconstruction and Multi-Planar Reformation
+# dicom-3d — 3D Reconstruction, MPR, and JP3D Volumetric Encoding
 
-**Version:** 1.4.0  
-**Part of:** DICOMKit CLI Tools Phase 7
+**Version:** 1.5.0  
+**Part of:** DICOMKit CLI Tools (Phases 7 + 9.2)
 
 ## Overview
 
-`dicom-3d` performs 3D volume reconstruction, Multi-Planar Reformation (MPR), and advanced projection techniques from multi-slice DICOM series for medical imaging visualization.
+`dicom-3d` performs 3D volume reconstruction, Multi-Planar Reformation (MPR), intensity projections, JP3D volumetric encode/decode, and format export from multi-slice DICOM series.
 
 ## Features
 
@@ -29,9 +29,16 @@
 - Suitable for 3D printing and visualization
 
 ### Volume Export
-- **NIfTI** format (.nii) - neuroimaging standard
-- **MetaImage** format (.mhd + .raw) - ITK/VTK compatible
+- **NIfTI** format (.nii) — neuroimaging standard
+- **MetaImage** format (.mhd + .raw) — ITK/VTK compatible
 - Preserves spatial information and metadata
+
+### JP3D Volumetric Encoding (J2KSwift v3.2.0)
+- **encode-volume** — encode a slice series as a single JP3D DICOM document
+- **decode-volume** — decode a JP3D document back to individual DICOM slices
+- **inspect** — display JP3D sidecar metadata without decoding the codestream
+- Compression modes: lossless, lossless-htj2k (~5× faster decode), lossy, lossy-htj2k
+- Uses ISO/IEC 15444-10 (JP3D) via J2KSwift 3.2.0; experimental private SOP only
 
 ## Installation
 
@@ -125,6 +132,39 @@ dicom-3d surface series/*.dcm \
   --output model.obj \
   --threshold 150 \
   --format obj
+```
+
+### JP3D Volumetric Encoding
+
+Encode a series directory as a lossless JP3D document:
+
+```bash
+dicom-3d encode-volume ./series/ --output volume.jp3d.dcm
+```
+
+Encode with HTJ2K lossless (~5× faster decode):
+
+```bash
+dicom-3d encode-volume series/*.dcm --output volume.jp3d.dcm --mode lossless-htj2k
+```
+
+Encode with lossy compression at 55 dB PSNR:
+
+```bash
+dicom-3d encode-volume series/*.dcm --output volume.jp3d.dcm --mode lossy --psnr 55
+```
+
+Decode back to individual slices:
+
+```bash
+dicom-3d decode-volume volume.jp3d.dcm --output ./decoded/
+```
+
+Inspect metadata without decoding the codestream:
+
+```bash
+dicom-3d inspect volume.jp3d.dcm
+dicom-3d inspect volume.jp3d.dcm --json
 ```
 
 ### Volume Export
@@ -276,13 +316,14 @@ dicom-3d export brain-mri/*.dcm \
 
 ## Limitations
 
-### Current Version (1.4.0)
+### Current Version (1.5.0)
 
 - **Volume rendering**: Not yet implemented
 - **Curved MPR**: Planned for future version
 - **Animation**: Planned for future version
 - **Transfer functions**: Planned for future version
 - **GPU acceleration**: Not available (CPU-only)
+- **JP3D standard SOP**: No standard DICOM transfer syntax UID; private SOP only (experimental)
 
 ### Performance Notes
 
@@ -340,7 +381,13 @@ Common errors and solutions:
 
 ## Version History
 
-### 1.4.0 (Current)
+### 1.5.0 (Current)
+- `encode-volume`: JP3D volumetric encoding via J2KSwift v3.2.0
+- `decode-volume`: JP3D document decode back to DICOM slices
+- `inspect`: near-instant JP3D sidecar metadata display (no pixel decode)
+- Compression modes: lossless, lossless-htj2k, lossy, lossy-htj2k
+
+### 1.4.0
 - Initial release
 - MPR generation (axial, sagittal, coronal)
 - Intensity projections (MIP, MinIP, Average)

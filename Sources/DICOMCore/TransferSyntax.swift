@@ -176,6 +176,100 @@ extension TransferSyntax {
         byteOrder: .littleEndian,
         isEncapsulated: true
     )
+
+    /// JPEG 2000 Part 2 Multi-component Image Compression (Lossless Only) (1.2.840.10008.1.2.4.92)
+    public static let jpeg2000Part2Lossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.92",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG 2000 Part 2 Multi-component Image Compression (1.2.840.10008.1.2.4.93)
+    public static let jpeg2000Part2 = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.93",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// High-Throughput JPEG 2000 Image Compression (Lossless Only) (1.2.840.10008.1.2.4.201)
+    public static let htj2kLossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.201",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// High-Throughput JPEG 2000 with RPCL options (Lossless Only) (1.2.840.10008.1.2.4.202)
+    public static let htj2kRPCLLossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.202",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// High-Throughput JPEG 2000 Image Compression (1.2.840.10008.1.2.4.203)
+    public static let htj2kLossy = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.203",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    // MARK: - JP3D Experimental Transfer Syntaxes
+    
+    /// JP3D Lossless (Experimental) — private vendor extension
+    ///
+    /// ISO/IEC 15444-10 volumetric JPEG 2000 lossless compression.
+    /// DICOM does not define a standard JP3D transfer syntax; this private UID
+    /// is used for round-trip testing and internal storage only.
+    /// Clearly labelled experimental — not for interoperability.
+    public static let jp3dLossless = TransferSyntax(
+        uid: "1.2.826.0.1.3680043.10.511.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// JP3D Lossy (Experimental) — private vendor extension
+    ///
+    /// ISO/IEC 15444-10 volumetric JPEG 2000 lossy compression.
+    /// DICOM does not define a standard JP3D transfer syntax; this private UID
+    /// is used for round-trip testing and internal storage only.
+    /// Clearly labelled experimental — not for interoperability.
+    public static let jp3dLossy = TransferSyntax(
+        uid: "1.2.826.0.1.3680043.10.511.2",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    // MARK: - JPIP Transfer Syntaxes
+    
+    /// JPIP Referenced (1.2.840.10008.1.2.4.94)
+    ///
+    /// JPEG 2000 Interactive Protocol — the pixel data is a URI reference to a
+    /// JPIP server endpoint rather than inline pixel data.
+    /// Reference: PS3.5 Table A-1, PS3.5 Annex A.8
+    public static let jpipReferenced = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.94",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+    
+    /// JPIP Referenced Deflate (1.2.840.10008.1.2.4.95)
+    ///
+    /// Like ``jpipReferenced`` but the DICOM dataset is deflate-compressed.
+    /// Reference: PS3.5 Table A-1, PS3.5 Annex A.8
+    public static let jpipReferencedDeflate = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.95",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false,
+        isDeflated: true
+    )
     
     // MARK: - JPEG-LS Transfer Syntaxes
     
@@ -328,6 +422,26 @@ extension TransferSyntax {
             return .jpeg2000Lossless
         case jpeg2000.uid:
             return .jpeg2000
+        case jpeg2000Part2Lossless.uid:
+            return .jpeg2000Part2Lossless
+        case jpeg2000Part2.uid:
+            return .jpeg2000Part2
+        case htj2kLossless.uid:
+            return .htj2kLossless
+        case htj2kRPCLLossless.uid:
+            return .htj2kRPCLLossless
+        case htj2kLossy.uid:
+            return .htj2kLossy
+        // JP3D (experimental)
+        case jp3dLossless.uid:
+            return .jp3dLossless
+        case jp3dLossy.uid:
+            return .jp3dLossy
+        // JPIP
+        case jpipReferenced.uid:
+            return .jpipReferenced
+        case jpipReferencedDeflate.uid:
+            return .jpipReferencedDeflate
         // JPEG-LS
         case jpegLSLossless.uid:
             return .jpegLSLossless
@@ -353,6 +467,76 @@ extension TransferSyntax {
             return nil
         }
     }
+
+    /// Parses a transfer syntax from a user-facing alias or UID string.
+    ///
+    /// Accepts standard UIDs plus common CLI names such as
+    /// explicit-vr-le, jpeg2000-lossless, htj2k-lossless, htj2k-rpcl, and htj2k.
+    ///
+    /// - Parameter nameOrUID: The transfer syntax alias or UID.
+    /// - Returns: The matching transfer syntax, or nil when unrecognized.
+    public static func parse(_ nameOrUID: String) -> TransferSyntax? {
+        let trimmed = nameOrUID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let syntax = from(uid: trimmed) {
+            return syntax
+        }
+
+        let normalized = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+
+        switch normalized {
+        case "implicitvrlittleendian", "implicit-vr-le", "implicit", "ivle":
+            return .implicitVRLittleEndian
+        case "explicitvrlittleendian", "explicit-vr-le", "explicit", "evle":
+            return .explicitVRLittleEndian
+        case "explicitvrbigendian", "explicit-vr-be", "big-endian", "evbe":
+            return .explicitVRBigEndian
+        case "deflate", "deflated-explicit-vr-le":
+            return .deflatedExplicitVRLittleEndian
+        case "jpeg-baseline", "jpegbaseline", "jpeg":
+            return .jpegBaseline
+        case "jpeg-extended", "jpegextended":
+            return .jpegExtended
+        case "jpeg-lossless", "jpeglossless":
+            return .jpegLossless
+        case "jpeg-lossless-sv1", "jpeglosslesssv1":
+            return .jpegLosslessSV1
+        case "jpeg2000-lossless", "jpeg2000lossless", "j2k-lossless":
+            return .jpeg2000Lossless
+        case "jpeg2000", "jpeg2000-lossy", "j2k":
+            return .jpeg2000
+        case "jpeg2000-part2-lossless", "jpeg2000part2lossless", "j2k-part2-lossless":
+            return .jpeg2000Part2Lossless
+        case "jpeg2000-part2", "jpeg2000part2", "j2k-part2":
+            return .jpeg2000Part2
+        case "htj2k-lossless", "htj2klossless":
+            return .htj2kLossless
+        case "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless":
+            return .htj2kRPCLLossless
+        case "htj2k", "htj2k-lossy", "htj2klossy":
+            return .htj2kLossy
+        case "jpeg-ls-lossless", "jpegls-lossless", "jls-lossless":
+            return .jpegLSLossless
+        case "jpeg-ls", "jpegls", "jls":
+            return .jpegLSNearLossless
+        case "rle", "rle-lossless":
+            return .rleLossless
+        case "jp3d-lossless", "jp3dlossless":
+            return .jp3dLossless
+        case "jp3d", "jp3d-lossy", "jp3dlossy":
+            return .jp3dLossy
+        case "jpip", "jpip-referenced":
+            return .jpipReferenced
+        case "jpip-deflate", "jpip-referenced-deflate":
+            return .jpipReferencedDeflate
+        default:
+            return nil
+        }
+    }
     
     /// Whether this transfer syntax uses JPEG compression
     public var isJPEG: Bool {
@@ -371,7 +555,60 @@ extension TransferSyntax {
     public var isJPEG2000: Bool {
         switch uid {
         case TransferSyntax.jpeg2000Lossless.uid,
-             TransferSyntax.jpeg2000.uid:
+             TransferSyntax.jpeg2000.uid,
+             TransferSyntax.jpeg2000Part2Lossless.uid,
+             TransferSyntax.jpeg2000Part2.uid,
+             TransferSyntax.htj2kLossless.uid,
+             TransferSyntax.htj2kRPCLLossless.uid,
+             TransferSyntax.htj2kLossy.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this transfer syntax uses JPEG 2000 Part 2 compression.
+    public var isJPEG2000Part2: Bool {
+        switch uid {
+        case TransferSyntax.jpeg2000Part2Lossless.uid,
+             TransferSyntax.jpeg2000Part2.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this transfer syntax uses High-Throughput JPEG 2000 compression.
+    public var isHTJ2K: Bool {
+        switch uid {
+        case TransferSyntax.htj2kLossless.uid,
+             TransferSyntax.htj2kRPCLLossless.uid,
+             TransferSyntax.htj2kLossy.uid:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this transfer syntax is a JPIP referenced transfer syntax.
+    ///
+    /// JPIP transfer syntaxes contain a URI reference rather than inline pixel data.
+    /// The URI points to a JPIP server where the actual JPEG 2000 image resides.
+    public var isJPIP: Bool {
+        switch uid {
+        case TransferSyntax.jpipReferenced.uid,
+             TransferSyntax.jpipReferencedDeflate.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this transfer syntax uses JP3D volumetric compression (experimental)
+    public var isJP3D: Bool {
+        switch uid {
+        case TransferSyntax.jp3dLossless.uid,
+             TransferSyntax.jp3dLossy.uid:
             return true
         default:
             return false
@@ -452,8 +689,12 @@ extension TransferSyntax {
              TransferSyntax.jpegLossless.uid,
              TransferSyntax.jpegLosslessSV1.uid,
              TransferSyntax.jpeg2000Lossless.uid,
+             TransferSyntax.jpeg2000Part2Lossless.uid,
+             TransferSyntax.htj2kLossless.uid,
+             TransferSyntax.htj2kRPCLLossless.uid,
              TransferSyntax.jpegLSLossless.uid,
-             TransferSyntax.rleLossless.uid:
+             TransferSyntax.rleLossless.uid,
+             TransferSyntax.jp3dLossless.uid:
             return true
         default:
             return false

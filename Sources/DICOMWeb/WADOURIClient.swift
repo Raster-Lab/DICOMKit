@@ -55,6 +55,10 @@ public final class WADOURIClient: @unchecked Sendable {
         case gif = "image/gif"
         /// JPEG 2000 image (image/jp2)
         case jpeg2000 = "image/jp2"
+        /// HTJ2K codestream image (image/jph)
+        case htj2k = "image/jph"
+        /// HTJ2K codestream with container (image/jphc)
+        case htj2kContainer = "image/jphc"
         /// MPEG video (video/mpeg)
         case mpeg = "video/mpeg"
     }

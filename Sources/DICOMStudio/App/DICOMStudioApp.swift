@@ -21,6 +21,7 @@ public struct DICOMStudioApp: App {
             MainView(viewModel: viewModel)
         }
         .defaultSize(width: 1200, height: 800)
+        .commands { ViewerCommands() }
 
         #if os(macOS)
         Settings {

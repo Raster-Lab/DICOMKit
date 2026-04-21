@@ -310,9 +310,8 @@ public struct CodecRegistry: Sendable {
         var decoderRegistry: [String: any ImageCodec] = [:]
         var encoderRegistry: [String: any ImageEncoder] = [:]
         
-        // Register platform-native codecs
+        // Register Apple-native baseline JPEG codecs when available.
         #if canImport(ImageIO)
-        // JPEG codecs (decode and encode)
         let jpegCodec = NativeJPEGCodec()
         for uid in NativeJPEGCodec.supportedTransferSyntaxes {
             decoderRegistry[uid] = jpegCodec
@@ -320,16 +319,28 @@ public struct CodecRegistry: Sendable {
         for uid in NativeJPEGCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = jpegCodec
         }
-        
-        // JPEG 2000 codecs (decode and encode)
-        let jpeg2000Codec = NativeJPEG2000Codec()
-        for uid in NativeJPEG2000Codec.supportedTransferSyntaxes {
-            decoderRegistry[uid] = jpeg2000Codec
-        }
-        for uid in NativeJPEG2000Codec.supportedEncodingTransferSyntaxes {
-            encoderRegistry[uid] = jpeg2000Codec
-        }
         #endif
+
+        // Register the preferred JPEG 2000 adapter.
+        // Phase 1 uses J2KSwift directly; the native Apple codec remains available
+        // as a separate platform codec, not as a runtime workaround path.
+        let jpeg2000Decoder = J2KSwiftCodec()
+        for uid in J2KSwiftCodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = jpeg2000Decoder
+        }
+        for uid in J2KSwiftCodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = J2KSwiftCodec(encodingTransferSyntaxUID: uid)
+        }
+
+        // Register the dedicated HTJ2K codec as the preferred handler for the
+        // three HTJ2K transfer syntaxes, overriding the generic J2KSwiftCodec
+        // entries with HTJ2K-specific configuration (RPCL ordering, etc.).
+        for uid in HTJ2KCodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = HTJ2KCodec(targetTransferSyntaxUID: uid)
+        }
+        for uid in HTJ2KCodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = HTJ2KCodec(targetTransferSyntaxUID: uid)
+        }
         
         // RLE codec (pure Swift implementation - decode only for now)
         let rleCodec = RLECodec()
@@ -344,6 +355,15 @@ public struct CodecRegistry: Sendable {
         }
         for uid in JPEGLSCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = jpegLSCodec
+        }
+
+        // JP3D volumetric codec (experimental — private transfer syntaxes)
+        let jp3dCodec = JP3DCodec()
+        for uid in JP3DCodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = jp3dCodec
+        }
+        for uid in JP3DCodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = JP3DCodec(compressionMode: uid == TransferSyntax.jp3dLossless.uid ? .lossless : .lossy())
         }
         
         self.codecs = decoderRegistry

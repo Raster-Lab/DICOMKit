@@ -88,11 +88,21 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 **Status**: Production-ready v1.8.0 release with comprehensive DICOM support, example applications, and professional documentation.
 
-### Recent Maintenance Updates (April 2026)
+### J2KSwift v3.2.0 Integration (April 2026)
 
-- ✅ Fixed JPEG 2000 and JPEG 2000 Lossless preserved-16-bit rendering path to avoid black/near-black outputs after conversion.
-- ✅ Preserved `Bits Allocated`, `Bits Stored`, and `High Bit` metadata for JPEG 2000 targets while keeping converted output visibly correct.
-- ✅ Improved DICOM Studio metadata consistency by preferring transfer syntax from File Meta Information `(0002,0010)` during metadata loading.
+DICOMKit has completed a full integration of **J2KSwift v3.2.0** as its primary JPEG 2000 codec stack, replacing Apple ImageIO on all platforms.
+
+- ✅ **J2KSwiftCodec** — Pure-Swift JPEG 2000 (`.90`/`.91`), Part 2 (`.92`/`.93`) encoding and decoding; cross-platform including Linux.
+- ✅ **HTJ2KCodec** — HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`); fast-path transcoder achieves **5.4× decode speedup** over J2K on macOS arm64.
+- ✅ **JP3DCodec** — ISO/IEC 15444-10 volumetric encoding for multi-frame CT/MR/PET series.
+- ✅ **JPIP streaming** — Progressive 2D and 3D tile streaming (`.94`/`.95`) via `DICOMJPIPClient`.
+- ✅ **Hardware acceleration** — `CodecBackend` enum selects Metal (Apple GPU), Accelerate (SIMD), or scalar automatically.
+- ✅ **`dicom-j2k` CLI tool** — 8 subcommands: `info`, `validate`, `transcode`, `reduce`, `roi`, `benchmark`, `compare`, `completions`.
+- ✅ **DICOMStudio** — Progressive decoding (`.quarter → .half → .complete`), ROI on pinch-zoom, JP3D MPR views, JPIP quality-layer slider.
+- ✅ **DICOMweb** — `image/jph` / `image/jphc` media types advertised; HTJ2K retrieve/store supported.
+- ✅ Validated against a live dcm4chee PACS (C-ECHO + real MR C-STORE on port 11112).
+- ✅ Fixed JPEG 2000 16-bit rendering — preserved `Bits Allocated`, `Bits Stored`, `High Bit` metadata correctly.
+- ✅ Improved DICOMStudio metadata loading — prefers `(0002,0010)` File Meta Information for transfer syntax.
 
 ### Key Highlights
 
@@ -1370,6 +1380,13 @@ Each data element has:
   - ✅ JPEG Lossless SV1 (Process 14, Selection Value 1) - 1.2.840.10008.1.2.4.70
   - ✅ JPEG 2000 Lossless - 1.2.840.10008.1.2.4.90
   - ✅ JPEG 2000 Lossy - 1.2.840.10008.1.2.4.91
+  - ✅ JPEG 2000 Part 2 Lossless - 1.2.840.10008.1.2.4.92
+  - ✅ JPEG 2000 Part 2 Lossy - 1.2.840.10008.1.2.4.93
+  - ✅ JPIP Referenced - 1.2.840.10008.1.2.4.94
+  - ✅ JPIP Referenced Deflate - 1.2.840.10008.1.2.4.95
+  - ✅ HTJ2K Lossless - 1.2.840.10008.1.2.4.201
+  - ✅ HTJ2K RPCL Lossless - 1.2.840.10008.1.2.4.202
+  - ✅ HTJ2K Lossy - 1.2.840.10008.1.2.4.203
   - ✅ RLE Lossless - 1.2.840.10008.1.2.5
 - ✅ **Encapsulated pixel data parsing** - Fragment and offset table support
 - ✅ **Extensible codec architecture** - Plugin-based codec support
@@ -1483,7 +1500,8 @@ The following features have known limitations or are not yet implemented:
 | Category | Limitation | Status |
 |----------|------------|--------|
 | **Character Sets** | Extended character set conversion is read-only | ⚠️ Partial support via v1.0.9 |
-| **Transfer Syntaxes** | JPEG-LS and HTJ2K codecs not native | ❌ Platform codec fallback |
+| **Transfer Syntaxes** | JPEG-LS not supported | ❌ Not planned |
+| **HTJ2K Lossy (`.203`)** | Partially validated; some edge cases unconfirmed | ⚠️ Non-blocking |
 | **DICOM Print** | Complete Print Management Service Class | ✅ v1.4.5 complete (all phases) |
 | **DICOM Storage Commitment** | Not implemented | ❌ Planned |
 | **DICOM Worklist Push** | Not implemented | ❌ Planned |
@@ -4253,7 +4271,7 @@ A production-quality mobile DICOM viewer for iOS and iPadOS. **Implementation co
 
 #### Planned Demo Applications
 
-- **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-7 (38 tools including: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-print, dicom-measure, dicom-viewer, dicom-report, dicom-3d, dicom-ai, dicom-cloud, dicom-gateway, dicom-server with 1,111+ tests; all Phase 7 advanced tools complete)
+- **DICOMTools CLI** - Command-line utilities ✅ Complete Phase 1-9 (39 tools including: dicom-info, dicom-convert, dicom-anon, dicom-validate, dicom-query, dicom-send, dicom-dump, dicom-diff, dicom-retrieve, dicom-split, dicom-merge, dicom-json, dicom-xml, dicom-pdf, dicom-image, dicom-dcmdir, dicom-archive, dicom-export, dicom-qr, dicom-wado, dicom-echo, dicom-mwl, dicom-mpps, dicom-pixedit, dicom-tags, dicom-uid, dicom-compress, dicom-study, dicom-script, dicom-print, dicom-measure, dicom-viewer, dicom-report, dicom-3d, dicom-ai, dicom-cloud, dicom-gateway, dicom-server, dicom-jpip, dicom-j2k with 1,164+ tests; Phase 9 J2K/HTJ2K CLI complete)
 - **DICOMToolbox GUI** - ✅ Complete (Phase 1-8) - SwiftUI macOS application providing graphical interface for 37 CLI tools with drag-and-drop, real-time command preview, educational features, DICOM glossary, accessibility, settings, integration testing, documentation, and release preparation (Phases 1-8 implemented with 370+ tests)
 
 See [DEMO_APPLICATION_PLAN.md](DEMO_APPLICATION_PLAN.md) for complete plans and [CLI_TOOLS_GUI_PLAN.md](CLI_TOOLS_GUI_PLAN.md) for GUI toolbox details.
@@ -4293,6 +4311,7 @@ cp .build/release/dicom-* /usr/local/bin/
 | `dicom-diff` | Compare two DICOM files for differences | `dicom-diff file1.dcm file2.dcm` |
 | `dicom-convert` | Transfer syntax conversion and image export | `dicom-convert scan.dcm --output scan.png` |
 | `dicom-compress` | Compression operations (JPEG, JPEG2000, RLE) | `dicom-compress scan.dcm --jpeg2000` |
+| `dicom-j2k` | JPEG 2000 / HTJ2K codestream operations (info, validate, transcode, reduce, roi, benchmark, compare) | `dicom-j2k transcode j2k.dcm --output htj2k.dcm --target htj2k-lossless` |
 | `dicom-dcmdir` | DICOMDIR creation and management | `dicom-dcmdir create ./studies` |
 
 </details>
@@ -4557,6 +4576,7 @@ Core data types and utilities:
 - `PixelDataDescriptor` - Pixel data attributes and metadata
 - `PixelData` - Uncompressed pixel data access
 - `PixelDataError` - Detailed error types for pixel data extraction failures
+- `J2KSwiftCodec` - Cross-platform JPEG 2000 adapter using J2KSwift v3.2.0 as the primary Phase 1 implementation (NEW in April 2026)
 - `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
 - Little Endian and Big Endian byte reading/writing utilities
@@ -5154,11 +5174,18 @@ DICOMKit implements the **DICOM Standard 2026a** published by NEMA. Below is a d
 | 1.2.840.10008.1.2.4.51 | JPEG Extended (Process 2 & 4) | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.4.57 | JPEG Lossless | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.4.70 | JPEG Lossless SV1 | ✅ | ⚠️ |
-| 1.2.840.10008.1.2.4.90 | JPEG 2000 Lossless Only | ✅ | ⚠️ |
-| 1.2.840.10008.1.2.4.91 | JPEG 2000 | ✅ | ⚠️ |
+| 1.2.840.10008.1.2.4.90 | JPEG 2000 Lossless Only | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.91 | JPEG 2000 | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.92 | JPEG 2000 Part 2 Lossless | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.93 | JPEG 2000 Part 2 Lossy | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.94 | JPIP Referenced | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.95 | JPIP Referenced Deflate | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.201 | HTJ2K Lossless | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.202 | HTJ2K RPCL Lossless | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.203 | HTJ2K Lossy | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.5 | RLE Lossless | ✅ | ✅ |
 
-*Note: ⚠️ indicates platform codec dependency (ImageIO framework)*
+*Note: ⚠️ indicates partial support. JPEG 2000 family codecs are provided by J2KSwift v3.2.0 (pure Swift, all platforms). Apple ImageIO (`NativeJPEG2000Codec`) is retained only for diagnostics.*
 
 ### SOP Class Support
 

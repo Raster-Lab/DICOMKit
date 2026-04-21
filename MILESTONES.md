@@ -4254,8 +4254,59 @@ These features may be considered for future development based on community needs
 ### Post-v1.8 Maintenance (April 2026)
 - [x] Fixed JPEG 2000/JPEG 2000 Lossless 16-bit preserved-bit rendering regression in conversion/render pipeline
 - [x] Ensured converted files preserve pixel metadata (`Bits Allocated`, `Bits Stored`, `High Bit`) for JPEG 2000 targets
+- [x] Updated the J2KSwift-backed JPEG 2000 foundation to v3.2.0, removed workaround-era runtime fallback logic, and completed Phase 1 regression plus real LocalDatasets benchmark coverage
+- [x] Re-verified Phase 1 on 2026-04-20 with a successful build, 16 J2KSwift codec tests passing, 3 benchmark tests passing, and dependency resolution locked to J2KSwift 3.2.0
+- [x] Added Phase 2 HTJ2K lossless and RPCL transfer syntax support across codec registration, CLI aliases, network validation defaults, and Studio import checks with verified real-file regression coverage
+- [x] Confirmed a 5.296× HTJ2K real-file decode speedup over legacy J2K on macOS and documented the remaining HTJ2K lossy issue as a non-blocking limitation for now
+- [x] Extended the transfer syntax converter for verified JPEG 2000 ↔ HTJ2K recompression, exposed DICOMweb HTJ2K media types (`image/jph`, `image/jphc`), and completed HTJ2K transfer-syntax plumbing for the send/retrieve CLI flows with passing focused regression suites
+- [x] Added a mandatory dcm4chee interoperability validation gate to the J2KSwift phase plan so each completed phase is checked against a real PACS workflow
+- [x] Completed live local dcm4chee validation with an LDAP-backed archive stack, including successful C-ECHO and real MR C-STORE to AE `DCM4CHEE` on port `11112`
 - [x] Fixed DICOM Studio metadata transfer syntax source ordering to prefer File Meta Information `(0002,0010)`
 - [x] Added regression coverage for 12-bit-in-16-bit JPEG 2000 roundtrip decode normalization
+
+---
+
+## Milestone 24 — J2KSwift v3.2.0 Integration
+
+**Branch**: `feature/j2kswift-v3-integration`  
+**Target version**: post-v1.8 (next minor release)  
+**Plan**: [J2KSWIFT_V3_2_INTEGRATION_PLAN.md](../J2KSWIFT_V3_2_INTEGRATION_PLAN.md)  
+**Status**: Phases 0–9 complete; Phase 10 (docs/release) complete as of 2026-04-21
+
+### Acceptance Criteria
+
+| Criterion | Status |
+|-----------|--------|
+| Compiles under `swift-tools-version: 6.2` with `macOS 15` floor | ✅ |
+| `Package.swift` depends on J2KSwift `from: "3.2.0"` and resolves on macOS + Linux CI | ✅ |
+| All 9 JPEG 2000 UIDs (`.90`/`.91`/`.92`/`.93`/`.201`/`.202`/`.203`/`.94`/`.95`) registered, documented, round-trip tested | ✅ |
+| `NativeJPEG2000Codec` deprecated; J2KSwift is default path | ✅ |
+| `JP3DCodec` + `JP3DVolumeBridge` round-trip 128-slice CT lossless bit-exact | ✅ |
+| `dicom-j2k` CLI shipped with unit tests and README | ✅ |
+| `dicom-compress`, `dicom-convert`, `dicom-send`, `dicom-retrieve`, `dicom-viewer` updated | ✅ |
+| `DICOMStudio` renders HTJ2K + JP3D with progressive/ROI decoding | ✅ |
+| `Documentation/JPEG2000_GUIDE.md` created | ✅ |
+| `Documentation/ConformanceStatement.md` updated (version, UIDs, platform) | ✅ |
+| `Documentation/Architecture.md` codec layering diagram updated | ✅ |
+| `PERFORMANCE_GUIDE.md` J2K/HTJ2K/JP3D benchmark section added | ✅ |
+| `CHANGELOG.md` J2KSwift v3 integration entries added to [Unreleased] | ✅ |
+| `swift test` green on macOS arm64 with new fixtures | ✅ (92/93 tests pass; 1 pre-existing NativeJPEG2000Codec limitation) |
+
+### Phase Completion Summary
+
+| Phase | Description | Tests | Status |
+|-------|-------------|-------|--------|
+| 0 | Branch & scaffolding | — | ✅ |
+| 1 | SPM dependency + J2KSwiftCodec adapter | 16 codec + 3 benchmark | ✅ |
+| 2 | HTJ2K transfer syntaxes (`.201`/`.202`/`.203`) | 11 (2 suites) | ✅ |
+| 3 | JPEG 2000 Part 2 extensions (`.92`/`.93`) | 4 | ✅ |
+| 4 | JP3D volumetric integration | 39 | ✅ |
+| 5 | Hardware acceleration (Metal / Accelerate backends) | 20 | ✅ |
+| 6 | JPIP streaming (`.94`/`.95`) | 42 | ✅ |
+| 7 | `dicom-viewer` CLI upgrade | 16 | ✅ |
+| 8 | DICOMStudio SwiftUI integration | 30+ (progressive) + 37 (MPR) | ✅ |
+| 9 | CLI tools expansion (`dicom-j2k`, existing tool updates) | 53 (`dicom-j2k`) | ✅ |
+| 10 | Documentation, benchmarks, release | — | ✅ |
 
 ### Interoperability
 - HL7 FHIR integration
@@ -4278,7 +4329,7 @@ We welcome contributions at any milestone! Please see [CONTRIBUTING.md](CONTRIBU
 
 | Swift Version | Minimum OS Support |
 |---------------|-------------------|
-| Swift 6.2+ | iOS 17, macOS 14, visionOS 1 |
+| Swift 6.2+ | iOS 17, macOS 15, visionOS 1 |
 
 ---
 

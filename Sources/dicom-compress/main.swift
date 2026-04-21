@@ -23,7 +23,7 @@ struct DICOMCompress: ParsableCommand {
               dicom-compress batch input_dir/ --output output_dir/ --decompress --recursive
             """,
         version: "1.3.3",
-        subcommands: [Compress.self, Decompress.self, Info.self, Batch.self],
+        subcommands: [Compress.self, Decompress.self, Info.self, Batch.self, Backends.self],
         defaultSubcommand: Info.self
     )
 }
@@ -46,6 +46,12 @@ extension DICOMCompress {
                   jpeg2000, j2k          JPEG 2000 (lossy)
                   jpeg2000-lossless,     JPEG 2000 Lossless
                     j2k-lossless
+                  j2k-part2              JPEG 2000 Part 2 (MCT, lossy)
+                  j2k-part2-lossless     JPEG 2000 Part 2 Lossless
+                  htj2k, htj2k-lossy     High-Throughput JPEG 2000 (lossy)
+                  htj2k-lossless         HTJ2K Lossless
+                  htj2k-rpcl,            HTJ2K RPCL Lossless Only
+                    htj2k-lossless-rpcl
                   rle                    RLE Lossless
                   deflate                Deflated Explicit VR Little Endian
                   explicit-le            Explicit VR Little Endian
@@ -54,7 +60,8 @@ extension DICOMCompress {
                 Examples:
                   dicom-compress compress input.dcm --output output.dcm --codec jpeg-lossless
                   dicom-compress compress input.dcm --output output.dcm --codec jpeg2000 --quality high
-                  dicom-compress compress input.dcm --output output.dcm --codec jpeg-baseline --quality 0.85
+                  dicom-compress compress input.dcm --output output.dcm --codec htj2k-lossless
+                  dicom-compress compress input.dcm --output output.dcm --codec htj2k --quality 0.9
                 """
         )
 
@@ -73,6 +80,9 @@ extension DICOMCompress {
         @Flag(name: .shortAndLong, help: "Show verbose output")
         var verbose: Bool = false
 
+        @Option(name: .long, help: "Hardware backend: auto (default), metal, accelerate, scalar")
+        var backend: String = "auto"
+
         mutating func validate() throws {
             guard FileManager.default.fileExists(atPath: input) else {
                 throw ValidationError("Input file not found: \(input)")
@@ -81,17 +91,23 @@ extension DICOMCompress {
                 let supported = CompressionManager.supportedCodecs().map { $0.name }.joined(separator: ", ")
                 throw ValidationError("Unknown codec '\(codec)'. Supported: \(supported)")
             }
+            let validBackends = ["auto", "metal", "accelerate", "scalar"]
+            guard validBackends.contains(backend.lowercased()) else {
+                throw ValidationError("Unknown backend '\(backend)'. Valid options: \(validBackends.joined(separator: ", "))")
+            }
         }
 
         mutating func run() throws {
             let manager = CompressionManager()
 
+            let backendPref = parseBackendPreference(backend)
             if verbose {
                 fprintln("Compressing: \(input)")
                 fprintln("Codec: \(codec)")
                 if let q = quality {
                     fprintln("Quality: \(q)")
                 }
+                fprintln("Backend: \(backendPref.effective.displayName)")
             }
 
             let qualityPreset = try parseQuality(quality)
@@ -248,7 +264,14 @@ extension DICOMCompress {
             print("Lossless: \(info.isLossless ? "Yes" : "No")")
 
             if info.isJPEG { print("Codec: JPEG") }
-            else if info.isJPEG2000 { print("Codec: JPEG 2000") }
+            else if info.isJPEG2000 {
+                let uid = info.transferSyntaxUID
+                if uid.hasPrefix("1.2.840.10008.1.2.4.20") {
+                    print("Codec: HTJ2K (High-Throughput JPEG 2000)")
+                } else {
+                    print("Codec: JPEG 2000")
+                }
+            }
             else if info.isRLE { print("Codec: RLE") }
             else if info.isDeflated { print("Codec: Deflate") }
             else { print("Codec: None (uncompressed)") }
@@ -493,6 +516,69 @@ private func parseQuality(_ qualityString: String?) throws -> CompressionQuality
             return .custom(value)
         }
         throw ValidationError("Invalid quality '\(qs)'. Use maximum, high, medium, low, or a value 0.0-1.0")
+    }
+}
+
+private func parseBackendPreference(_ rawValue: String) -> CodecBackendPreference {
+    switch rawValue.lowercased() {
+    case "metal":       return .metal
+    case "accelerate":  return .accelerate
+    case "scalar":      return .scalar
+    default:            return .auto
+    }
+}
+
+// MARK: - Backends subcommand
+
+@available(macOS 10.15, *)
+extension DICOMCompress {
+    struct Backends: ParsableCommand {
+        static let configuration = CommandConfiguration(
+            commandName: "backends",
+            abstract: "List available hardware acceleration backends",
+            discussion: """
+                Displays the hardware acceleration backends available on this platform
+                and shows which backend will be used automatically.
+
+                Examples:
+                  dicom-compress backends
+                  dicom-compress backends --json
+                """
+        )
+
+        @Flag(name: .long, help: "Output as JSON")
+        var json: Bool = false
+
+        mutating func run() throws {
+            let best = CodecBackendProbe.bestAvailable
+            let available = CodecBackendProbe.availableBackends
+
+            if json {
+                var items: [[String: Any]] = []
+                for backend in CodecBackend.allCases {
+                    let isAvail = CodecBackendProbe.isAvailable(backend)
+                    items.append([
+                        "backend": backend.rawValue,
+                        "available": isAvail,
+                        "active": backend == best,
+                        "displayName": backend.displayName
+                    ])
+                }
+                let data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
+                print(String(data: data, encoding: .utf8) ?? "")
+            } else {
+                print("Available hardware acceleration backends:")
+                print("")
+                for backend in CodecBackend.allCases {
+                    let isAvail = CodecBackendProbe.isAvailable(backend)
+                    let marker = isAvail ? (backend == best ? "✓ (active)" : "✓") : "✗"
+                    print("  [\(marker)] \(backend.rawValue.padding(toLength: 12, withPad: " ", startingAt: 0))\(backend.displayName)")
+                }
+                print("")
+                print("Active backend: \(best.displayName)")
+                print("Use --backend <name> on the compress command to select a specific backend.")
+            }
+        }
     }
 }
 

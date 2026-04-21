@@ -2,6 +2,7 @@ import Foundation
 import DICOMCore
 import DICOMKit
 import DICOMDictionary
+import J2KCore
 
 /// Main validator class that orchestrates DICOM file validation
 public struct DICOMValidator {
@@ -69,6 +70,14 @@ public struct DICOMValidator {
         if level >= 4 {
             // Level 4: Best practices validation
             validateBestPractices(dataSet: dicomFile.dataSet, errors: &errors, warnings: &warnings)
+        }
+        
+        if level >= 5 {
+            // Level 5: JPEG 2000 codestream conformance validation
+            let tsUID = dicomFile.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
+            if isJ2KTransferSyntax(tsUID) {
+                validateJ2KCodestream(dataSet: dicomFile.dataSet, tsUID: tsUID, errors: &errors, warnings: &warnings)
+            }
         }
         
         let isValid = errors.isEmpty
@@ -427,6 +436,115 @@ public struct DICOMValidator {
         }
         
         return true
+    }
+    
+    // MARK: - JPEG 2000 Codestream Validation (Level 5)
+    
+    private static let j2kTransferSyntaxUIDs: Set<String> = [
+        "1.2.840.10008.1.2.4.90",
+        "1.2.840.10008.1.2.4.91",
+        "1.2.840.10008.1.2.4.92",
+        "1.2.840.10008.1.2.4.93",
+        "1.2.840.10008.1.2.4.201",
+        "1.2.840.10008.1.2.4.202",
+        "1.2.840.10008.1.2.4.203",
+        "1.2.840.10008.1.2.4.204"
+    ]
+    
+    private func isJ2KTransferSyntax(_ uid: String) -> Bool {
+        DICOMValidator.j2kTransferSyntaxUIDs.contains(uid)
+    }
+    
+    private func validateJ2KCodestream(
+        dataSet: DataSet,
+        tsUID: String,
+        errors: inout [ValidationIssue],
+        warnings: inout [ValidationIssue]
+    ) {
+        guard let pixelElement = dataSet[.pixelData] else {
+            errors.append(ValidationIssue(
+                level: .error,
+                message: "J2K transfer syntax declared but Pixel Data (7FE0,0010) is absent",
+                tag: .pixelData
+            ))
+            return
+        }
+        
+        guard let fragments = pixelElement.encapsulatedFragments, !fragments.isEmpty else {
+            warnings.append(ValidationIssue(
+                level: .warning,
+                message: "J2K transfer syntax declared but pixel data is not encapsulated",
+                tag: .pixelData
+            ))
+            return
+        }
+        
+        let validator = J2KHTInteroperabilityValidator()
+        let harness = HTJ2KConformanceTestHarness()
+        
+        for (idx, fragment) in fragments.enumerated() {
+            guard !fragment.isEmpty else { continue }
+            
+            // ISO 15444-4 structure check
+            let structureErrors = harness.validateCodestreamStructure(fragment)
+            for msg in structureErrors {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "Frame \(idx + 1) J2K structure: \(msg)",
+                    tag: .pixelData
+                ))
+            }
+            
+            // Marker ordering
+            let markerResult = validator.validateMarkerOrdering(codestream: fragment)
+            for msg in markerResult {
+                warnings.append(ValidationIssue(
+                    level: .warning,
+                    message: "Frame \(idx + 1) J2K marker ordering: \(msg)",
+                    tag: .pixelData
+                ))
+            }
+            
+            // Segment lengths
+            let segResult = validator.validateSegmentLengths(codestream: fragment)
+            for msg in segResult {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "Frame \(idx + 1) J2K segment length: \(msg)",
+                    tag: .pixelData
+                ))
+            }
+            
+            // HTJ2K capability signaling
+            let capResult = validator.validateCapabilitySignaling(codestream: fragment)
+            let expectedHTJ2K = tsUID.hasPrefix("1.2.840.10008.1.2.4.20")
+            if expectedHTJ2K && !capResult.isHTJ2K {
+                warnings.append(ValidationIssue(
+                    level: .warning,
+                    message: "Frame \(idx + 1): Transfer syntax declares HTJ2K but CAP marker absent",
+                    tag: .pixelData
+                ))
+            }
+            for msg in capResult.errors {
+                errors.append(ValidationIssue(
+                    level: .error,
+                    message: "Frame \(idx + 1) HTJ2K CAP: \(msg)",
+                    tag: .pixelData
+                ))
+            }
+            for msg in capResult.warnings {
+                warnings.append(ValidationIssue(
+                    level: .warning,
+                    message: "Frame \(idx + 1) HTJ2K CAP: \(msg)",
+                    tag: .pixelData
+                ))
+            }
+            
+            // Only validate first frame to keep performance acceptable for large multi-frame files
+            if idx == 0 && fragments.count > 1 {
+                break
+            }
+        }
     }
 }
 

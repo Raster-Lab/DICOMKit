@@ -92,7 +92,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
     @Option(name: .long, help: "Number of parallel retrieval operations (default: 1)")
     var parallel: Int = 1
 
-    @Option(name: .long, help: "Requested transfer syntax for retrieved files (e.g. explicit-vr-le, jpeg-baseline, jpeg2000, rle-lossless, implicit-vr-le)")
+    @Option(name: .long, help: "Requested transfer syntax for retrieved files (for example explicit-vr-le, jpeg2000, htj2k-lossless, htj2k-rpcl, htj2k, rle-lossless). This applies directly to C-GET and is advisory for C-MOVE.")
     var transferSyntax: String?
 
     @Flag(name: .shortAndLong, help: "Show verbose output including progress")
@@ -101,6 +101,16 @@ struct DICOMRetrieve: AsyncParsableCommand {
     mutating func run() async throws {
         #if canImport(Network)
         let serverInfo = resolveHostPort()
+
+        let preferredTransferSyntaxUID: String?
+        if let transferSyntax, !transferSyntax.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let syntax = TransferSyntax.parse(transferSyntax) else {
+                throw ValidationError("Unknown transfer syntax: \(transferSyntax)")
+            }
+            preferredTransferSyntaxUID = syntax.uid
+        } else {
+            preferredTransferSyntaxUID = nil
+        }
         
         // Validate method and destination
         if method == .cMove && moveDest == nil {
@@ -134,8 +144,9 @@ struct DICOMRetrieve: AsyncParsableCommand {
             fprintln("Organization: \(hierarchical ? "Hierarchical" : "Flat")")
             fprintln("Timeout: \(timeout)s")
             fprintln("Parallel: \(parallel)")
-            if let ts = transferSyntax {
-                fprintln("Transfer Syntax: \(ts) (requested)")
+            if let ts = preferredTransferSyntaxUID {
+                let scopeNote = method == .cGet ? "requested for C-GET" : "advisory for C-MOVE"
+                fprintln("Transfer Syntax: \(ts) (\(scopeNote))")
             }
             fprintln("")
         }
@@ -153,7 +164,8 @@ struct DICOMRetrieve: AsyncParsableCommand {
             timeout: TimeInterval(timeout),
             outputPath: output,
             hierarchical: hierarchical,
-            verbose: verbose
+            verbose: verbose,
+            preferredTransferSyntaxUID: preferredTransferSyntaxUID
         )
         
         // Execute retrieval

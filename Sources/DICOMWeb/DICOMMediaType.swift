@@ -135,6 +135,12 @@ extension DICOMMediaType {
     
     /// JPEG 2000 image format
     public static let jp2 = DICOMMediaType(type: "image", subtype: "jp2")
+
+    /// HTJ2K codestream media type
+    public static let jph = DICOMMediaType(type: "image", subtype: "jph")
+
+    /// HTJ2K codestream with container media type
+    public static let jphc = DICOMMediaType(type: "image", subtype: "jphc")
     
     /// JPEG-LS image format
     public static let jpegLS = DICOMMediaType(type: "image", subtype: "jls")
@@ -208,6 +214,15 @@ extension DICOMMediaType {
         
         /// JPEG 2000 Image Compression
         public static let jpeg2000 = "1.2.840.10008.1.2.4.91"
+
+        /// HTJ2K Lossless
+        public static let htj2kLossless = "1.2.840.10008.1.2.4.201"
+
+        /// HTJ2K RPCL Lossless
+        public static let htj2kRPCLLossless = "1.2.840.10008.1.2.4.202"
+
+        /// HTJ2K
+        public static let htj2k = "1.2.840.10008.1.2.4.203"
         
         /// RLE Lossless
         public static let rleLossless = "1.2.840.10008.1.2.5"

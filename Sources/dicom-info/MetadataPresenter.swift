@@ -2,6 +2,8 @@ import Foundation
 import DICOMKit
 import DICOMCore
 import DICOMDictionary
+import J2KCore
+import J2KCodec
 
 /// Presents DICOM metadata in various output formats
 struct MetadataPresenter {
@@ -29,6 +31,12 @@ struct MetadataPresenter {
         if showStats {
             output += renderFileStatistics()
             output += "\n"
+            
+            let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
+            if isJ2KTransferSyntax(tsUID) {
+                output += renderJ2KSection(tsUID: tsUID)
+                output += "\n"
+            }
         }
         
         output += "=== File Meta Information ===\n"
@@ -121,6 +129,15 @@ struct MetadataPresenter {
         
         if let modality = file.dataSet.string(for: .modality) {
             stats["modality"] = modality
+        }
+        
+        // Add J2K metadata when transfer syntax is JPEG 2000
+        let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
+        if isJ2KTransferSyntax(tsUID) {
+            let j2kInfo = buildJ2KMetadataDict(tsUID: tsUID)
+            for (key, value) in j2kInfo {
+                stats["j2k_\(key)"] = value
+            }
         }
         
         return stats
@@ -234,5 +251,102 @@ struct MetadataPresenter {
         }
         
         return ""
+    }
+    
+    // MARK: - JPEG 2000 Metadata
+    
+    private static let j2kTransferSyntaxUIDs: Set<String> = [
+        "1.2.840.10008.1.2.4.90",   // JPEG 2000 Lossless
+        "1.2.840.10008.1.2.4.91",   // JPEG 2000 (Lossy or Lossless)
+        "1.2.840.10008.1.2.4.92",   // JPEG 2000 Part 2 Lossless
+        "1.2.840.10008.1.2.4.93",   // JPEG 2000 Part 2
+        "1.2.840.10008.1.2.4.201",  // HTJ2K Lossless (RPCL)
+        "1.2.840.10008.1.2.4.202",  // HTJ2K Lossless
+        "1.2.840.10008.1.2.4.203",  // HTJ2K RPCL Lossless
+        "1.2.840.10008.1.2.4.204"   // HTJ2K (Lossy)
+    ]
+    
+    private func isJ2KTransferSyntax(_ uid: String) -> Bool {
+        MetadataPresenter.j2kTransferSyntaxUIDs.contains(uid)
+    }
+    
+    private func j2kTransferSyntaxLabel(_ uid: String) -> String {
+        switch uid {
+        case "1.2.840.10008.1.2.4.90": return "JPEG 2000 Image Compression (Lossless Only)"
+        case "1.2.840.10008.1.2.4.91": return "JPEG 2000 Image Compression"
+        case "1.2.840.10008.1.2.4.92": return "JPEG 2000 Part 2 Lossless"
+        case "1.2.840.10008.1.2.4.93": return "JPEG 2000 Part 2"
+        case "1.2.840.10008.1.2.4.201": return "HTJ2K Lossless (RPCL)"
+        case "1.2.840.10008.1.2.4.202": return "HTJ2K Lossless"
+        case "1.2.840.10008.1.2.4.203": return "HTJ2K RPCL Lossless Only"
+        case "1.2.840.10008.1.2.4.204": return "HTJ2K (Lossy)"
+        default: return "JPEG 2000 (unknown variant)"
+        }
+    }
+    
+    private func firstEncapsulatedFragment() -> Data? {
+        guard let pixelElement = file.dataSet[.pixelData],
+              let fragments = pixelElement.encapsulatedFragments,
+              let first = fragments.first else {
+            return nil
+        }
+        return first
+    }
+    
+    private func renderJ2KSection(tsUID: String) -> String {
+        var lines = ["=== JPEG 2000 Codestream Info ==="]
+        lines.append("Transfer Syntax : \(j2kTransferSyntaxLabel(tsUID))")
+        lines.append("UID             : \(tsUID)")
+        
+        let isHTJ2K = tsUID.hasPrefix("1.2.840.10008.1.2.4.20")
+        lines.append("HTJ2K           : \(isHTJ2K ? "Yes" : "No")")
+        
+        if let fragment = firstEncapsulatedFragment() {
+            lines.append("First fragment  : \(fragment.count) bytes")
+            
+            // Quick HTJ2K capability check via marker inspection
+            let capResult = J2KHTInteroperabilityValidator()
+                .validateCapabilitySignaling(codestream: fragment)
+            lines.append("HTJ2K (CAP mrk) : \(capResult.isHTJ2K ? "Yes" : "No")")
+            if capResult.isMixedMode {
+                lines.append("Mixed mode      : Yes")
+            }
+            if !capResult.warnings.isEmpty {
+                lines.append("Warnings        : \(capResult.warnings.joined(separator: "; "))")
+            }
+        } else {
+            lines.append("Pixel data      : Not found or uncompressed")
+        }
+        
+        if let frameStr = file.dataSet.string(for: .numberOfFrames) {
+            lines.append("Frames          : \(frameStr)")
+        }
+        if let rows = file.dataSet.string(for: .rows) {
+            lines.append("Rows            : \(rows)")
+        }
+        if let cols = file.dataSet.string(for: .columns) {
+            lines.append("Columns         : \(cols)")
+        }
+        if let bitsAlloc = file.dataSet.string(for: .bitsAllocated) {
+            lines.append("Bits Allocated  : \(bitsAlloc)")
+        }
+        
+        return lines.joined(separator: "\n") + "\n"
+    }
+    
+    private func buildJ2KMetadataDict(tsUID: String) -> [String: String] {
+        var info: [String: String] = [:]
+        info["transferSyntaxLabel"] = j2kTransferSyntaxLabel(tsUID)
+        info["isHTJ2K"] = tsUID.hasPrefix("1.2.840.10008.1.2.4.20") ? "true" : "false"
+        
+        if let fragment = firstEncapsulatedFragment() {
+            let capResult = J2KHTInteroperabilityValidator()
+                .validateCapabilitySignaling(codestream: fragment)
+            info["capMarkerHTJ2K"] = capResult.isHTJ2K ? "true" : "false"
+            info["isMixedMode"] = capResult.isMixedMode ? "true" : "false"
+            info["firstFragmentBytes"] = "\(fragment.count)"
+        }
+        
+        return info
     }
 }

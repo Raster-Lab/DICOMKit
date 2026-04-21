@@ -101,6 +101,16 @@ struct DICOMMediaTypeTests {
         #expect(DICOMMediaType.octetStream.description == "application/octet-stream")
         #expect(DICOMMediaType.jpeg.description == "image/jpeg")
         #expect(DICOMMediaType.png.description == "image/png")
+        #expect(DICOMMediaType.jp2.description == "image/jp2")
+        #expect(DICOMMediaType.jph.description == "image/jph")
+        #expect(DICOMMediaType.jphc.description == "image/jphc")
+    }
+
+    @Test("HTJ2K transfer syntaxes are exposed for DICOMweb")
+    func testHTJ2KTransferSyntaxConstants() {
+        #expect(DICOMMediaType.TransferSyntax.htj2kLossless == "1.2.840.10008.1.2.4.201")
+        #expect(DICOMMediaType.TransferSyntax.htj2kRPCLLossless == "1.2.840.10008.1.2.4.202")
+        #expect(DICOMMediaType.TransferSyntax.htj2k == "1.2.840.10008.1.2.4.203")
     }
     
     // MARK: - Parameter Methods Tests

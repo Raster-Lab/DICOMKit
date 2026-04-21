@@ -589,6 +589,7 @@ public enum DICOMStorageService {
             sopClassUID: fileInfo.sopClassUID,
             sopInstanceUID: fileInfo.sopInstanceUID,
             transferSyntaxes: transferSyntaxes,
+            dataTransferSyntaxUID: fileInfo.transferSyntaxUID,
             dataSetData: fileInfo.dataSetData
         )
     }
@@ -830,10 +831,10 @@ public enum DICOMStorageService {
         sopClassUID: String,
         sopInstanceUID: String,
         transferSyntaxes: [String],
+        dataTransferSyntaxUID: String,
         dataSetData: Data
     ) async throws -> StoreResult {
         let startTime = Date()
-        let dataTransferSyntaxUID = transferSyntaxes.last ?? explicitVRLittleEndianTransferSyntaxUID
 
         let associationConfig = AssociationConfiguration(
             callingAETitle: configuration.callingAETitle,
