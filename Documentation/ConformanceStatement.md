@@ -13,9 +13,9 @@ This Conformance Statement follows the template defined in DICOM PS3.2 (Conforma
 | Field | Value |
 |-------|-------|
 | Product Name | DICOMKit |
-| Version | 1.0.13 |
+| Version | 1.2.7 |
 | DICOM Standard Version | 2026a |
-| Document Date | February 2026 |
+| Document Date | April 2026 |
 
 ## Implementation Model
 
@@ -128,12 +128,26 @@ DICOMKit supports reading and writing the following Storage SOP Classes:
 | JPEG Lossless (Process 14, SV1) | 1.2.840.10008.1.2.4.70 | ✅ | ✅ |
 | JPEG 2000 Lossless | 1.2.840.10008.1.2.4.90 | ✅ | ✅ |
 | JPEG 2000 Lossy | 1.2.840.10008.1.2.4.91 | ✅ | ✅ |
+| JPEG 2000 Part 2 Lossless | 1.2.840.10008.1.2.4.92 | ✅ | ✅ |
+| JPEG 2000 Part 2 Lossy | 1.2.840.10008.1.2.4.93 | ✅ | ✅ |
+| JPIP Referenced | 1.2.840.10008.1.2.4.94 | ✅ | ✅ |
+| JPIP Referenced Deflate | 1.2.840.10008.1.2.4.95 | ✅ | ✅ |
 | HTJ2K Lossless | 1.2.840.10008.1.2.4.201 | ✅ | ✅ |
 | HTJ2K RPCL Lossless | 1.2.840.10008.1.2.4.202 | ✅ | ✅ |
 | HTJ2K Lossy | 1.2.840.10008.1.2.4.203 | ⚠️ | ⚠️ |
 | RLE Lossless | 1.2.840.10008.1.2.5 | ✅ | ✅ |
 
 **Legend**: ✅ Full support, ⚠️ Partial support
+
+### Codec Implementation
+
+JPEG 2000 and HTJ2K decoding and encoding is provided by J2KSwift v3.2.0, a pure-Swift codec that operates on all supported platforms. Hardware acceleration is available via J2KMetal (Apple GPU) and J2KAccelerate (SIMD) where present; scalar fallback is used otherwise.
+
+### Experimental Private SOP Classes
+
+| SOP Class | UID | Notes |
+|-----------|-----|-------|
+| DICOMKit JP3D Volume (experimental) | 1.2.826.0.1.3680043.10.511.10 | JP3D volumetric encapsulation (ISO/IEC 15444-10); not a standard DICOM SOP |
 
 ## Character Set Support
 
@@ -263,7 +277,7 @@ DICOMKit includes dictionaries for common vendor private tags:
 | Platform | Minimum Version |
 |----------|-----------------|
 | iOS | 17.0 |
-| macOS | 14.0 |
+| macOS | 15.0 |
 | visionOS | 1.0 |
 | Swift | 6.2 |
 
@@ -273,6 +287,10 @@ DICOMKit includes dictionaries for common vendor private tags:
 2. **JPEG-LS**: Not supported
 3. **MPEG-2/4 Video**: Not supported
 4. **Network SCP**: Limited concurrent connections (configurable)
+5. **HTJ2K Lossy (`.203`)**: Partially validated; real-sample lossy decoding confirmed working but not all edge cases covered
+6. **JP3D transfer syntax**: No standard DICOM UID assigned; exposed via private SOP and runtime-only codec only — do not use for production interchange
+7. **J2KDecoder.decodeResolution** (upstream J2KSwift): Not yet implemented; `--reduce` in `dicom-viewer` uses post-decode downscale as a workaround
+8. **J2KVulkan**: Linux Vulkan GPU backend deferred — requires Linux CI configuration
 
 ### D. References
 

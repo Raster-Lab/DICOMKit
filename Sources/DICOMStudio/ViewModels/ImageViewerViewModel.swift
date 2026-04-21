@@ -17,6 +17,7 @@ import CoreGraphics
 ///
 /// Requires macOS 14+ / iOS 17+ for the `@Observable` macro.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+@MainActor
 @Observable
 public final class ImageViewerViewModel {
 
@@ -204,6 +205,24 @@ public final class ImageViewerViewModel {
     /// Set to `true` automatically when zoom exceeds 2× and a JPIP URL is configured.
     public var isROIActiveOnZoom: Bool = false
 
+    // MARK: - Progressive Decode (Phase 8)
+
+    /// The current state of the progressive JPEG 2000 decode pipeline.
+    ///
+    /// Observe this property to update the quality-level badge in the viewer.
+    public var progressiveDecodeState: ProgressiveDecodeState = .idle
+
+    #if canImport(CoreGraphics)
+    /// The most recently received progressive CGImage (quarter, half, or full resolution).
+    ///
+    /// This image replaces `currentImage` during the progressive decode sequence
+    /// and is identical to it once the final full-resolution level is delivered.
+    public var progressiveImage: CGImage?
+    #endif
+
+    /// Internal task handle for the active progressive decode. Cancelled when a new file loads.
+    private var progressiveDecodeTask: Task<Void, Never>?
+
     // MARK: - Initialization
 
     /// Creates an image viewer ViewModel with dependency-injected services.
@@ -299,6 +318,7 @@ public final class ImageViewerViewModel {
         seriesFiles = []
         currentFileIndex = 0
         seriesSecurityScopedParent = nil
+        cancelProgressiveDecode()
     }
 
     /// Internal file loader that does NOT reset series state.
@@ -452,6 +472,9 @@ public final class ImageViewerViewModel {
         }
 
         isLoading = false
+
+        // Start progressive decode for J2K/HTJ2K files (Phase 8).
+        startProgressiveDecode()
     }
 
     // MARK: - Rendering
@@ -825,4 +848,71 @@ public final class ImageViewerViewModel {
         let port = url.port.map { ":\($0)" } ?? ""
         return URL(string: "\(scheme)://\(host)\(port)")
     }
+
+    // MARK: - Progressive Decode (Phase 8)
+
+    /// Starts the progressive decode pipeline for the currently loaded J2K/HTJ2K file.
+    ///
+    /// Cancels any previous progressive decode task, then launches a new unstructured
+    /// `Task` that iterates the `AsyncStream` from
+    /// ``ImageDecodingService/decodeProgressively(file:windowCenter:windowWidth:)``.
+    ///
+    /// State machine:
+    /// - `.unavailable` is set synchronously when the file is not J2K/HTJ2K.
+    /// - `.decoding(.quarter)` after the first yielded frame.
+    /// - `.decoding(.half)` after the second frame.
+    /// - `.complete(_:)` after the third (full-resolution) frame.
+    ///
+    /// Each frame is reflected into `progressiveImage` (and `currentImage`) for the
+    /// SwiftUI `Canvas` in `ProgressiveImageView` to pick up automatically.
+    func startProgressiveDecode() {
+        #if canImport(CoreGraphics)
+        guard let file = dicomFile else { return }
+
+        // Cancel any in-flight task from a previous file load.
+        progressiveDecodeTask?.cancel()
+
+        let tsUID = file.transferSyntaxUID ?? ""
+        guard ProgressiveDecodeHelpers.isJ2KTransferSyntax(tsUID) else {
+            progressiveDecodeState = .unavailable
+            return
+        }
+
+        let svc = decodingService
+        let wc = windowCenter
+        let ww = windowWidth
+
+        progressiveDecodeState = .decoding(level: .quarter)
+
+        progressiveDecodeTask = Task { [weak self] in
+            guard let self else { return }
+            let stream = svc.decodeProgressively(file: file, windowCenter: wc, windowWidth: ww)
+            for await (level, image, decodeMs) in stream {
+                guard !Task.isCancelled else { break }
+                // Property mutations inherit @MainActor isolation from the class.
+                self.progressiveImage = image
+                self.currentImage = image
+                if level.isFinal {
+                    self.progressiveDecodeState = .complete(totalDecodeMs: decodeMs)
+                } else {
+                    self.progressiveDecodeState = .decoding(level: level)
+                }
+            }
+        }
+        #endif
+    }
+
+    /// Cancels the active progressive decode task and resets the state to `.idle`.
+    ///
+    /// Called automatically when `clearSeriesState()` runs, ensuring no stale frames
+    /// are applied after a new file is opened.
+    private func cancelProgressiveDecode() {
+        progressiveDecodeTask?.cancel()
+        progressiveDecodeTask = nil
+        progressiveDecodeState = .idle
+        #if canImport(CoreGraphics)
+        progressiveImage = nil
+        #endif
+    }
 }
+

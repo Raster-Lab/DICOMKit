@@ -111,7 +111,15 @@ public struct ImageViewerView: View {
     @ViewBuilder
     private var imageContent: some View {
         #if canImport(CoreGraphics)
-        if let cgImage = viewModel.currentImage {
+        // Use the Canvas-based ProgressiveImageView for J2K/HTJ2K files that are
+        // actively being decoded progressively (Phase 8).
+        if viewModel.progressiveDecodeState != .unavailable &&
+           viewModel.progressiveDecodeState != .idle,
+           viewModel.progressiveImage != nil || viewModel.currentImage != nil {
+            ProgressiveImageView(viewModel: viewModel)
+                .gesture(panGesture)
+                .gesture(magnificationGesture)
+        } else if let cgImage = viewModel.currentImage {
             Image(decorative: cgImage, scale: 1.0)
                 .resizable()
                 .aspectRatio(contentMode: .fit)

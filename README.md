@@ -88,15 +88,21 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 **Status**: Production-ready v1.8.0 release with comprehensive DICOM support, example applications, and professional documentation.
 
-### Recent Maintenance Updates (April 2026)
+### J2KSwift v3.2.0 Integration (April 2026)
 
-- ✅ Fixed JPEG 2000 and JPEG 2000 Lossless preserved-16-bit rendering path to avoid black/near-black outputs after conversion.
-- ✅ Preserved `Bits Allocated`, `Bits Stored`, and `High Bit` metadata for JPEG 2000 targets while keeping converted output visibly correct.
-- ✅ Updated the JPEG 2000 integration to J2KSwift v3.2.0 with a direct async-backed codec bridge, completed Phase 1 regression coverage, and verified the workflow against real LocalDatasets DICOM samples plus benchmark validation on macOS.
-- ✅ Enabled HTJ2K lossless and RPCL transfer syntax handling across codec registration, CLI conversion/compression aliases, DICOM validation, and Studio import workflows, with a measured 5.296× real-file decode speedup over legacy J2K on macOS. The remaining HTJ2K lossy real-sample issue is documented as a non-blocking limitation for now.
-- ✅ Extended Phase 2 transcoding to support JPEG 2000 ↔ HTJ2K recompression through the shared converter path, added DICOMweb `image/jph` / `image/jphc` media type support, and wired HTJ2K transfer-syntax selection through the send/retrieve CLI flows with focused regression coverage.
-- ✅ Validated live dcm4chee interoperability on a local LDAP-backed PACS stack with successful C-ECHO and real MR C-STORE to AE DCM4CHEE on port 11112.
-- ✅ Improved DICOM Studio metadata consistency by preferring transfer syntax from File Meta Information `(0002,0010)` during metadata loading.
+DICOMKit has completed a full integration of **J2KSwift v3.2.0** as its primary JPEG 2000 codec stack, replacing Apple ImageIO on all platforms.
+
+- ✅ **J2KSwiftCodec** — Pure-Swift JPEG 2000 (`.90`/`.91`), Part 2 (`.92`/`.93`) encoding and decoding; cross-platform including Linux.
+- ✅ **HTJ2KCodec** — HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`); fast-path transcoder achieves **5.4× decode speedup** over J2K on macOS arm64.
+- ✅ **JP3DCodec** — ISO/IEC 15444-10 volumetric encoding for multi-frame CT/MR/PET series.
+- ✅ **JPIP streaming** — Progressive 2D and 3D tile streaming (`.94`/`.95`) via `DICOMJPIPClient`.
+- ✅ **Hardware acceleration** — `CodecBackend` enum selects Metal (Apple GPU), Accelerate (SIMD), or scalar automatically.
+- ✅ **`dicom-j2k` CLI tool** — 8 subcommands: `info`, `validate`, `transcode`, `reduce`, `roi`, `benchmark`, `compare`, `completions`.
+- ✅ **DICOMStudio** — Progressive decoding (`.quarter → .half → .complete`), ROI on pinch-zoom, JP3D MPR views, JPIP quality-layer slider.
+- ✅ **DICOMweb** — `image/jph` / `image/jphc` media types advertised; HTJ2K retrieve/store supported.
+- ✅ Validated against a live dcm4chee PACS (C-ECHO + real MR C-STORE on port 11112).
+- ✅ Fixed JPEG 2000 16-bit rendering — preserved `Bits Allocated`, `Bits Stored`, `High Bit` metadata correctly.
+- ✅ Improved DICOMStudio metadata loading — prefers `(0002,0010)` File Meta Information for transfer syntax.
 
 ### Key Highlights
 
@@ -1374,6 +1380,10 @@ Each data element has:
   - ✅ JPEG Lossless SV1 (Process 14, Selection Value 1) - 1.2.840.10008.1.2.4.70
   - ✅ JPEG 2000 Lossless - 1.2.840.10008.1.2.4.90
   - ✅ JPEG 2000 Lossy - 1.2.840.10008.1.2.4.91
+  - ✅ JPEG 2000 Part 2 Lossless - 1.2.840.10008.1.2.4.92
+  - ✅ JPEG 2000 Part 2 Lossy - 1.2.840.10008.1.2.4.93
+  - ✅ JPIP Referenced - 1.2.840.10008.1.2.4.94
+  - ✅ JPIP Referenced Deflate - 1.2.840.10008.1.2.4.95
   - ✅ HTJ2K Lossless - 1.2.840.10008.1.2.4.201
   - ✅ HTJ2K RPCL Lossless - 1.2.840.10008.1.2.4.202
   - ✅ HTJ2K Lossy - 1.2.840.10008.1.2.4.203
@@ -1490,7 +1500,8 @@ The following features have known limitations or are not yet implemented:
 | Category | Limitation | Status |
 |----------|------------|--------|
 | **Character Sets** | Extended character set conversion is read-only | ⚠️ Partial support via v1.0.9 |
-| **Transfer Syntaxes** | JPEG-LS and HTJ2K codecs not native | ❌ Platform codec fallback |
+| **Transfer Syntaxes** | JPEG-LS not supported | ❌ Not planned |
+| **HTJ2K Lossy (`.203`)** | Partially validated; some edge cases unconfirmed | ⚠️ Non-blocking |
 | **DICOM Print** | Complete Print Management Service Class | ✅ v1.4.5 complete (all phases) |
 | **DICOM Storage Commitment** | Not implemented | ❌ Planned |
 | **DICOM Worklist Push** | Not implemented | ❌ Planned |
@@ -5163,11 +5174,18 @@ DICOMKit implements the **DICOM Standard 2026a** published by NEMA. Below is a d
 | 1.2.840.10008.1.2.4.51 | JPEG Extended (Process 2 & 4) | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.4.57 | JPEG Lossless | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.4.70 | JPEG Lossless SV1 | ✅ | ⚠️ |
-| 1.2.840.10008.1.2.4.90 | JPEG 2000 Lossless Only | ✅ | ⚠️ |
-| 1.2.840.10008.1.2.4.91 | JPEG 2000 | ✅ | ⚠️ |
+| 1.2.840.10008.1.2.4.90 | JPEG 2000 Lossless Only | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.91 | JPEG 2000 | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.92 | JPEG 2000 Part 2 Lossless | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.93 | JPEG 2000 Part 2 Lossy | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.94 | JPIP Referenced | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.95 | JPIP Referenced Deflate | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.201 | HTJ2K Lossless | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.202 | HTJ2K RPCL Lossless | ✅ | ✅ |
+| 1.2.840.10008.1.2.4.203 | HTJ2K Lossy | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.5 | RLE Lossless | ✅ | ✅ |
 
-*Note: ⚠️ indicates platform codec dependency (ImageIO framework)*
+*Note: ⚠️ indicates partial support. JPEG 2000 family codecs are provided by J2KSwift v3.2.0 (pure Swift, all platforms). Apple ImageIO (`NativeJPEG2000Codec`) is retained only for diagnostics.*
 
 ### SOP Class Support
 

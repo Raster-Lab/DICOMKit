@@ -276,7 +276,7 @@ final class DICOM3DTests: XCTestCase {
         let orientation = VolumeOrientation.axial
         let origin = Point3D.zero
         let voxels: [Double] = Array(repeating: 100.0, count: 64)
-        
+
         let volume = VolumeData(
             dimensions: dims,
             spacing: spacing,
@@ -284,9 +284,71 @@ final class DICOM3DTests: XCTestCase {
             origin: origin,
             voxels: voxels
         )
-        
+
         let extractor = SurfaceExtractor(volume: volume, verbose: false)
         XCTAssertNotNil(extractor)
+    }
+
+    // MARK: - JP3D CLI Subcommand Tests (encode-volume / decode-volume / inspect)
+
+    func test_encodeVolume_losslessHTJ2K_roundTrip() async throws {
+        let series = JP3DTestHelpers.makeSyntheticSeries(slices: 8, rows: 16, columns: 16)
+        let doc = try await JP3DVolumeDocument.encode(series, compressionMode: .losslessHTJ2K)
+        XCTAssertTrue(JP3DVolumeDocument.isJP3DVolumeDocument(doc))
+        let decoded = try await JP3DVolumeDocument.decode(from: doc)
+        XCTAssertEqual(decoded.count, 8)
+        // Lossless: all pixel bytes must be identical
+        for (i, original) in series.enumerated() {
+            let origPx = original.dataSet[.pixelData]!.valueData
+            let decodedPx = decoded[i].dataSet[.pixelData]!.valueData
+            XCTAssertEqual(origPx, decodedPx, "Slice \(i) pixel mismatch after lossless-htj2k round-trip")
+        }
+    }
+
+    func test_encodeVolume_lossy_roundTrip_producesOutput() async throws {
+        let series = JP3DTestHelpers.makeSyntheticSeries(slices: 4, rows: 8, columns: 8)
+        let doc = try await JP3DVolumeDocument.encode(series, compressionMode: .lossy(psnr: 40.0))
+        XCTAssertTrue(JP3DVolumeDocument.isJP3DVolumeDocument(doc))
+        let decoded = try await JP3DVolumeDocument.decode(from: doc)
+        XCTAssertEqual(decoded.count, 4)
+    }
+
+    func test_inspectSidecar_containsExpectedFields() async throws {
+        let series = JP3DTestHelpers.makeSyntheticSeries(slices: 4, rows: 16, columns: 16)
+        let doc = try await JP3DVolumeDocument.encode(series, compressionMode: .lossless)
+        // Extract sidecar JSON from payload (same path as InspectCommand)
+        guard let payloadElement = doc.dataSet[.encapsulatedDocument] else {
+            XCTFail("Missing encapsulated document element"); return
+        }
+        let payload = payloadElement.valueData
+        XCTAssertGreaterThanOrEqual(payload.count, 8)
+        let jp3dLen = Int(payload.subdata(in: 0..<4).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian })
+        let jsonOffset = 4 + jp3dLen
+        let jsonLen = Int(payload.subdata(in: jsonOffset..<(jsonOffset + 4)).withUnsafeBytes { $0.load(as: UInt32.self).littleEndian })
+        let jsonData = payload.subdata(in: (jsonOffset + 4)..<(jsonOffset + 4 + jsonLen))
+        guard let meta = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+            XCTFail("Sidecar JSON parse failed"); return
+        }
+        XCTAssertEqual(meta["rows"] as? Int, 16)
+        XCTAssertEqual(meta["columns"] as? Int, 16)
+        XCTAssertEqual(meta["frames"] as? Int, 4)
+        XCTAssertNotNil(meta["spacingX"])
+        XCTAssertNotNil(meta["spacingY"])
+        XCTAssertNotNil(meta["spacingZ"])
+        XCTAssertEqual(meta["compressionMode"] as? String, "lossless")
+    }
+
+    func test_isJP3DDocument_returnsFalse_forNormalDICOM() throws {
+        var ds = DataSet()
+        ds.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI) // CT Image Storage
+        ds.setString("1.2.3.4.5", for: .sopInstanceUID, vr: .UI)
+        let fmi = FileMetaInformation(
+            mediaStorageSOPClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            mediaStorageSOPInstanceUID: "1.2.3.4.5",
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid
+        )
+        let normalFile = DICOMFile(fileMetaInformation: fmi, dataSet: ds)
+        XCTAssertFalse(JP3DVolumeDocument.isJP3DVolumeDocument(normalFile))
     }
 }
 
@@ -562,9 +624,61 @@ class ProjectionRenderer {
 class SurfaceExtractor {
     let volume: VolumeData
     let verbose: Bool
-    
+
     init(volume: VolumeData, verbose: Bool = false) {
         self.volume = volume
         self.verbose = verbose
+    }
+}
+
+// MARK: - JP3D Test Helpers
+
+enum JP3DTestHelpers {
+    static func makeSyntheticSeries(slices: Int, rows: Int, columns: Int) -> [DICOMFile] {
+        let studyUID = "1.2.3.4.5.6"
+        let seriesUID = "1.2.3.4.5.7"
+        return (0..<slices).compactMap { i in
+            try? makeSlice(rows: rows, columns: columns, index: i, studyUID: studyUID, seriesUID: seriesUID)
+        }
+    }
+
+    private static func makeSlice(
+        rows: Int, columns: Int, index: Int,
+        studyUID: String, seriesUID: String
+    ) throws -> DICOMFile {
+        var pixelData = Data(capacity: rows * columns * 2)
+        for r in 0..<rows {
+            for c in 0..<columns {
+                var v = UInt16((index * 256 + r * 16 + c) & 0x0FFF).littleEndian
+                pixelData.append(Data(bytes: &v, count: 2))
+            }
+        }
+        var ds = DataSet()
+        ds.setUInt16(UInt16(rows),    for: .rows)
+        ds.setUInt16(UInt16(columns), for: .columns)
+        ds.setUInt16(16, for: .bitsAllocated)
+        ds.setUInt16(12, for: .bitsStored)
+        ds.setUInt16(11, for: .highBit)
+        ds.setUInt16(0,  for: .pixelRepresentation)
+        ds.setUInt16(1,  for: .samplesPerPixel)
+        ds.setString("MONOCHROME2",                   for: .photometricInterpretation, vr: .CS)
+        ds.setString("CT",                            for: .modality,                  vr: .CS)
+        ds.setString(studyUID,                        for: .studyInstanceUID,          vr: .UI)
+        ds.setString(seriesUID,                       for: .seriesInstanceUID,         vr: .UI)
+        ds.setString(UIDGenerator.generateUID().value, for: .sopInstanceUID,            vr: .UI)
+        ds.setString("1.2.840.10008.5.1.4.1.1.2",    for: .sopClassUID,               vr: .UI)
+        ds.setInt(index + 1,                          for: .instanceNumber,            vr: .IS)
+        let z = Double(index) * 2.5
+        ds.setString("0.0\\0.0\\\(z)", for: .imagePositionPatient, vr: .DS)
+        ds.setString(String(z),        for: .sliceLocation,        vr: .DS)
+        ds.setString("0.8\\0.8",       for: .pixelSpacing,         vr: .DS)
+        ds.setString("2.5",            for: .sliceThickness,       vr: .DS)
+        ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: pixelData)
+        return try DICOMFile.create(
+            dataSet: ds,
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            sopInstanceUID: ds.string(for: .sopInstanceUID)!,
+            transferSyntaxUID: TransferSyntax.explicitVRLittleEndian.uid
+        )
     }
 }
