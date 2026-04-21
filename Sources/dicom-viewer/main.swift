@@ -11,6 +11,7 @@ struct DICOMViewer: ParsableCommand {
         discussion: """
             Display DICOM images using ASCII art, ANSI colors, or terminal graphics
             protocols (iTerm2, Kitty, Sixel) for quick image inspection and triage.
+            All registered codecs (J2K, HTJ2K, JPEG-LS, RLE …) are used automatically.
             
             Examples:
               dicom-viewer scan.dcm
@@ -19,8 +20,12 @@ struct DICOMViewer: ParsableCommand {
               dicom-viewer ct.dcm --window-center -600 --window-width 1500
               dicom-viewer scan.dcm --show-info
               dicom-viewer series/*.dcm --thumbnail
+              dicom-viewer j2k.dcm --reduce 2            # 1/4 resolution preview
+              dicom-viewer ct.dcm --roi 100,50,256,256   # crop region x,y,w,h
+              dicom-viewer volume.dcm --volume           # multi-frame / JP3D volume
+              dicom-viewer --jpip "http://server/wado?..." # stream via JPIP
             """,
-        version: "1.4.0"
+        version: "1.5.0"
     )
 
     @Argument(help: "Path(s) to DICOM file(s)")
@@ -71,9 +76,28 @@ struct DICOMViewer: ParsableCommand {
     @Flag(name: .long, help: "Verbose output for debugging")
     var verbose: Bool = false
 
+    // MARK: - J2KSwift / Phase 7 options
+
+    @Option(name: .long,
+            help: "Resolution reduce factor n: decode at 1/2^n spatial resolution (0 = full).")
+    var reduce: Int = 0
+
+    @Option(name: .long,
+            help: "Region of interest as \"x,y,width,height\" (pixel coordinates, 0-based).")
+    var roi: String?
+
+    @Flag(name: .long,
+          help: "Volume / multi-frame mode: display all frames as a thumbnail filmstrip.")
+    var volume: Bool = false
+
+    @Option(name: .long,
+            help: "Fetch and display image from a JPIP server URL (requires JPIP module).")
+    var jpip: String?
+
     mutating func validate() throws {
-        guard !filePaths.isEmpty else {
-            throw ValidationError("At least one DICOM file path is required")
+        // When --jpip is provided a local file path is optional
+        guard !filePaths.isEmpty || jpip != nil else {
+            throw ValidationError("At least one DICOM file path or --jpip URL is required")
         }
 
         for path in filePaths {
@@ -101,6 +125,10 @@ struct DICOMViewer: ParsableCommand {
             throw ValidationError("Height must be at least 1")
         }
 
+        if reduce < 0 {
+            throw ValidationError("--reduce must be non-negative")
+        }
+
         // Parse size option
         if let sizeStr = size {
             let parts = sizeStr.lowercased().split(separator: "x")
@@ -110,10 +138,27 @@ struct DICOMViewer: ParsableCommand {
                 throw ValidationError("Size must be in format WxH (e.g., 80x40)")
             }
         }
+
+        // Validate ROI format
+        if let roiStr = roi {
+            let parts = roiStr.split(separator: ",")
+            guard parts.count == 4,
+                  parts.allSatisfy({ Int($0) != nil }) else {
+                throw ValidationError("--roi must be in format \"x,y,width,height\" with integer values")
+            }
+        }
     }
 
     mutating func run() throws {
-        if thumbnail && filePaths.count > 1 {
+        // JPIP remote mode: no local file required
+        if let jpipURLStr = jpip {
+            try renderJPIP(urlString: jpipURLStr)
+            return
+        }
+
+        if volume {
+            try renderVolume()
+        } else if thumbnail && filePaths.count > 1 {
             try renderMultiFileThumbnails()
         } else if thumbnail {
             try renderFrameThumbnails()
@@ -143,12 +188,38 @@ struct DICOMViewer: ParsableCommand {
         }
 
         // Extract and render
-        let image = try renderer.extractPixels(
+        var image = try renderer.extractPixels(
             frame: frame,
             windowCenter: windowCenter,
             windowWidth: windowWidth,
             invert: invert
         )
+
+        // Apply resolution reduce (post-decode downscale by 2^n)
+        if reduce > 0 {
+            let factor = 1 << reduce
+            let reducedW = max(1, image.width / factor)
+            let reducedH = max(1, image.height / factor)
+            image = TerminalRenderer.scaleImage(image, toWidth: reducedW, toHeight: reducedH)
+            if verbose {
+                print("Reduced by factor \(factor): \(reducedW)x\(reducedH)")
+            }
+        }
+
+        // Apply ROI crop
+        if let roiStr = roi {
+            let parts = roiStr.split(separator: ",").compactMap { Int($0) }
+            if parts.count == 4 {
+                image = TerminalRenderer.cropImage(
+                    image,
+                    x: parts[0], y: parts[1],
+                    width: parts[2], height: parts[3]
+                )
+                if verbose {
+                    print("Cropped to ROI (\(parts[0]),\(parts[1])) \(image.width)x\(image.height)")
+                }
+            }
+        }
 
         let termSize = TerminalSize.detect()
         let fitSize = TerminalRenderer.fitToTerminal(
@@ -297,6 +368,159 @@ struct DICOMViewer: ParsableCommand {
             }
         }
         return TerminalSize.detect()
+    }
+
+    // MARK: - Volume / Multi-frame Rendering
+
+    /// Display all frames of a multi-frame (or JP3D) DICOM file as a thumbnail filmstrip.
+    private func renderVolume() throws {
+        let path = filePaths[0]
+
+        if verbose {
+            print("Volume mode: \(path)")
+        }
+
+        let fileData = try Data(contentsOf: URL(fileURLWithPath: path))
+        let dicomFile = try DICOMFile.read(from: fileData, force: force)
+        let renderer = TerminalRenderer(dicomFile: dicomFile, verbose: verbose)
+
+        let totalFrames = renderer.frameCount()
+        if totalFrames < 1 {
+            print("No frames found in \(path)")
+            return
+        }
+
+        if showInfo {
+            print(renderer.generateInfoOverlay())
+            print(String(repeating: "─", count: 40))
+        }
+
+        print("Volume: \(totalFrames) frames — \(path)")
+
+        let termSize = parseTerminalSize()
+        let frameIndices = Array(0..<totalFrames)
+
+        let output = try renderer.renderThumbnailGrid(
+            frames: frameIndices,
+            mode: mode,
+            terminalSize: termSize,
+            quality: quality,
+            colorDepth: color
+        )
+        print(output, terminator: "")
+    }
+
+    // MARK: - JPIP Remote Rendering
+
+    /// Fetch an image from a JPIP server URL and render it.
+    private func renderJPIP(urlString: String) throws {
+        guard let jpipURL = URL(string: urlString) else {
+            fputs("Error: invalid JPIP URL: \(urlString)\n", stderr)
+            throw ExitCode.failure
+        }
+
+        // Bridge the async JPIP client into the synchronous CLI context.
+        let jpipURLCopy = jpipURL
+
+        final class JPIPResultBox: @unchecked Sendable {
+            var image: DICOMJPIPImage?
+            var error: Error?
+        }
+        let box = JPIPResultBox()
+        let sema = DispatchSemaphore(value: 0)
+
+        Task { @MainActor in
+            do {
+                let client = DICOMJPIPClient(serverURL: jpipURLCopy)
+                box.image = try await client.fetchImage(jpipURI: jpipURLCopy)
+            } catch {
+                box.error = error
+            }
+            sema.signal()
+        }
+        sema.wait()
+
+        if let err = box.error {
+            fputs("Error fetching JPIP image: \(err)\n", stderr)
+            throw ExitCode.failure
+        }
+        guard let result = box.image else {
+            fputs("Error: no image returned from JPIP server\n", stderr)
+            throw ExitCode.failure
+        }
+
+        if verbose {
+            print("JPIP image: \(result.width)x\(result.height), "
+                  + "\(result.components) components, "
+                  + "\(result.qualityLayers) quality layers")
+        }
+
+        // Convert DICOMJPIPImage to NormalizedImage for rendering
+        let pixelCount = result.width * result.height
+        let maxVal = Double((1 << result.bitDepth) - 1)
+        var normalized = [Double](repeating: 0.0, count: pixelCount)
+
+        let bytesPerPixel = (result.bitDepth + 7) / 8
+        let pixelStride = result.components * bytesPerPixel
+
+        for i in 0..<pixelCount {
+            let offset = i * pixelStride
+            guard offset + bytesPerPixel - 1 < result.pixelData.count else { break }
+            var raw = 0
+            for b in 0..<bytesPerPixel {
+                raw |= Int(result.pixelData[offset + b]) << (b * 8)
+            }
+            var v = Double(raw) / maxVal
+            if invert { v = 1.0 - v }
+            normalized[i] = max(0.0, min(1.0, v))
+        }
+
+        var image = NormalizedImage(
+            pixels: normalized,
+            width: result.width,
+            height: result.height,
+            originalRows: result.height,
+            originalColumns: result.width
+        )
+
+        // Apply reduce / ROI if specified
+        if reduce > 0 {
+            let factor = 1 << reduce
+            image = TerminalRenderer.scaleImage(
+                image,
+                toWidth: max(1, image.width / factor),
+                toHeight: max(1, image.height / factor)
+            )
+        }
+        if let roiStr = roi {
+            let parts = roiStr.split(separator: ",").compactMap { Int($0) }
+            if parts.count == 4 {
+                image = TerminalRenderer.cropImage(
+                    image, x: parts[0], y: parts[1], width: parts[2], height: parts[3]
+                )
+            }
+        }
+
+        let termSize = TerminalSize.detect()
+        let fitSize = TerminalRenderer.fitToTerminal(
+            imageWidth: image.width,
+            imageHeight: image.height,
+            terminalWidth: termSize.width,
+            terminalHeight: termSize.height,
+            customWidth: width,
+            customHeight: height
+        )
+        let scaled = TerminalRenderer.scaleImage(image, toWidth: fitSize.width, toHeight: fitSize.height)
+
+        let output: String
+        switch mode {
+        case .ascii:  output = TerminalRenderer.renderASCII(scaled, quality: quality)
+        case .ansi:   output = TerminalRenderer.renderANSI(scaled, colorDepth: color)
+        case .iterm2: output = TerminalRenderer.renderITerm2(image, width: width, height: height)
+        case .kitty:  output = TerminalRenderer.renderKitty(image)
+        case .sixel:  output = TerminalRenderer.renderSixel(scaled)
+        }
+        print(output, terminator: "")
     }
 }
 

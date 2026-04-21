@@ -178,6 +178,14 @@ let package = Package(
             name: "dicom-3d",
             targets: ["dicom-3d"]
         ),
+        .executable(
+            name: "dicom-jpip",
+            targets: ["dicom-jpip"]
+        ),
+        .executable(
+            name: "dicom-j2k",
+            targets: ["dicom-j2k"]
+        ),
         // Phase 1 scope: exclude dicom-ai because it is outside JPEG 2000 validation.
         // .executable(
         //     name: "dicom-ai",
@@ -211,7 +219,11 @@ let package = Package(
             dependencies: [
                 .product(name: "J2KCore", package: "J2KSwift"),
                 .product(name: "J2KCodec", package: "J2KSwift"),
-                .product(name: "J2KFileFormat", package: "J2KSwift")
+                .product(name: "J2KFileFormat", package: "J2KSwift"),
+                .product(name: "J2K3D", package: "J2KSwift"),
+                // Phase 5: hardware acceleration backends
+                .product(name: "J2KAccelerate", package: "J2KSwift"),
+                .product(name: "J2KMetal", package: "J2KSwift")
             ],
             exclude: ["CharacterSetHandler+README.md"]
         ),
@@ -230,7 +242,13 @@ let package = Package(
         ),
         .target(
             name: "DICOMKit",
-            dependencies: ["DICOMCore", "DICOMDictionary"],
+            dependencies: [
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "J2K3D", package: "J2KSwift"),
+                // Phase 6: JPIP streaming
+                .product(name: "JPIP", package: "J2KSwift")
+            ],
             exclude: ["AI/SIMPLIFIED_README.md"]
         ),
         .target(
@@ -244,11 +262,17 @@ let package = Package(
             name: "DICOMDictionaryTests",
             dependencies: ["DICOMDictionary"]
         ),
-        // Phase 1 scope: exclude DICOMKitTests and DICOMNetworkTests because they contain unrelated integration coverage.
-        // .testTarget(
-        //     name: "DICOMKitTests",
-        //     dependencies: ["DICOMKit"]
-        // ),
+        // Phase 1 scope: DICOMKitTests re-enabled for JP3D volume integration tests.
+        // Only the JP3D-related test files are included to avoid pre-existing
+        // concurrency errors in PerformanceTests/ImageCacheTests.swift.
+        .testTarget(
+            name: "DICOMKitTests",
+            dependencies: ["DICOMKit", "DICOMCore"],
+            sources: [
+                "JP3DVolumeDocumentTests.swift",
+                "JPIPTests.swift"
+            ]
+        ),
         // .testTarget(
         //     name: "DICOMNetworkTests",
         //     dependencies: ["DICOMNetwork"]
@@ -266,12 +290,20 @@ let package = Package(
         //     name: "DICOMToolsTests",
         //     dependencies: ["DICOMKit", "DICOMCore", "DICOMDictionary", "DICOMNetwork", "DICOMWeb", "dicom-server", "dicom-gateway", "dicom-ai", "dicom-echo", "dicom-query"]
         // ),
+        .testTarget(
+            name: "DICOMViewerTests",
+            dependencies: ["DICOMKit", "DICOMCore"],
+            path: "Tests/DICOMToolsTests",
+            sources: ["DICOMViewerTests.swift"]
+        ),
         .executableTarget(
             name: "dicom-info",
             dependencies: [
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMDictionary",
+                .product(name: "J2KCore", package: "J2KSwift"),
+                .product(name: "J2KCodec", package: "J2KSwift"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-info",
@@ -294,6 +326,7 @@ let package = Package(
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMDictionary",
+                .product(name: "J2KCore", package: "J2KSwift"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-validate",
@@ -643,6 +676,30 @@ let package = Package(
             ],
             path: "Sources/dicom-3d"
         ),
+        .executableTarget(
+            name: "dicom-jpip",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "JPIP", package: "J2KSwift"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-jpip"
+        ),
+        .executableTarget(
+            name: "dicom-j2k",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "J2KCore", package: "J2KSwift"),
+                .product(name: "J2KCodec", package: "J2KSwift"),
+                .product(name: "J2KFileFormat", package: "J2KSwift"),
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-j2k"
+        ),
         // Phase 1 scope: exclude dicom-ai because it is outside JPEG 2000 validation.
         // .executableTarget(
         //     name: "dicom-ai",
@@ -694,6 +751,14 @@ let package = Package(
         .testTarget(
             name: "DICOMStudioTests",
             dependencies: ["DICOMStudio"]
+        ),
+        .testTarget(
+            name: "dicom-j2kTests",
+            dependencies: [
+                "DICOMCore",
+                "DICOMKit",
+                .product(name: "J2KCore", package: "J2KSwift")
+            ]
         )
     ]
 )

@@ -150,6 +150,15 @@ struct J2KSwiftCodecTests {
         #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000.uid))
     }
 
+    @Test("CodecRegistry exposes JPEG 2000 Part 2 codec and encoder")
+    func registryResolvesPart2Codec() {
+        let registry = CodecRegistry.shared
+        #expect(registry.hasCodec(for: TransferSyntax.jpeg2000Part2Lossless.uid))
+        #expect(registry.hasCodec(for: TransferSyntax.jpeg2000Part2.uid))
+        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000Part2Lossless.uid))
+        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000Part2.uid))
+    }
+
     @Test("TransferSyntax helpers recognize Part 2 and HTJ2K families")
     func transferSyntaxHelpersRecognizeExtendedFamilies() {
         #expect(TransferSyntax.jpeg2000Part2Lossless.isJPEG2000)
@@ -361,5 +370,41 @@ struct J2KSwiftCodecTests {
         #expect(throws: DICOMError.self) {
             try codec.decodeFrame(Data(), descriptor: grayscale8Descriptor(), frameIndex: 0)
         }
+    }
+
+    @Test("JPEG 2000 Part 2 lossless round-trip preserves payload")
+    func part2LosslessRoundTrip() throws {
+        let codec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.jpeg2000Part2Lossless.uid)
+        let descriptor = grayscale8Descriptor()
+        let original = Data((0..<(descriptor.rows * descriptor.columns)).map { UInt8($0 % 251) })
+
+        let encoded = try codec.encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: .lossless)
+        let decoded = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
+
+        #expect(encoded.isEmpty == false)
+        #expect(decoded.count == original.count)
+        #expect(decoded == original)
+    }
+
+    @Test("JPEG 2000 Part 2 lossy round-trip preserves dimensions")
+    func part2LossyRoundTrip() throws {
+        let codec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.jpeg2000Part2.uid)
+        let descriptor = grayscale8Descriptor()
+        let original = Data((0..<(descriptor.rows * descriptor.columns)).map { UInt8(($0 * 9) % 251) })
+
+        let config = CompressionConfiguration(quality: .medium, speed: .balanced, progressive: false, preferLossless: false)
+        let encoded = try codec.encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: config)
+        let decoded = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
+
+        #expect(encoded.isEmpty == false)
+        #expect(decoded.count == original.count)
+    }
+
+    @Test("JPEG 2000 Part 2 parse aliases resolve correctly")
+    func part2ParseAliases() {
+        #expect(TransferSyntax.parse("j2k-part2") == .jpeg2000Part2)
+        #expect(TransferSyntax.parse("j2k-part2-lossless") == .jpeg2000Part2Lossless)
+        #expect(TransferSyntax.parse("jpeg2000-part2") == .jpeg2000Part2)
+        #expect(TransferSyntax.parse("jpeg2000-part2-lossless") == .jpeg2000Part2Lossless)
     }
 }

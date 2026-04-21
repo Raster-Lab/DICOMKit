@@ -38,6 +38,8 @@ struct CompressionManager {
         (["jpeg-lossless-sv1"], .jpegLosslessSV1),
         (["jpeg2000", "j2k"], .jpeg2000),
         (["jpeg2000-lossless", "j2k-lossless"], .jpeg2000Lossless),
+        (["j2k-part2", "jpeg2000-part2"], .jpeg2000Part2),
+        (["j2k-part2-lossless", "jpeg2000-part2-lossless"], .jpeg2000Part2Lossless),
         (["htj2k", "htj2k-lossy"], .htj2kLossy),
         (["htj2k-lossless"], .htj2kLossless),
         (["htj2k-rpcl", "htj2k-lossless-rpcl"], .htj2kRPCLLossless),
@@ -88,6 +90,10 @@ struct CompressionManager {
             return "JPEG 2000 Lossless"
         case TransferSyntax.jpeg2000.uid:
             return "JPEG 2000"
+        case TransferSyntax.jpeg2000Part2Lossless.uid:
+            return "JPEG 2000 Part 2 Lossless"
+        case TransferSyntax.jpeg2000Part2.uid:
+            return "JPEG 2000 Part 2"
         case TransferSyntax.htj2kLossless.uid:
             return "HTJ2K Lossless"
         case TransferSyntax.htj2kRPCLLossless.uid:

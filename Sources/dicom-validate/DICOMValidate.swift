@@ -26,7 +26,7 @@ struct DICOMValidate: AsyncParsableCommand {
     @Argument(help: "Path to DICOM file or directory")
     var inputPath: String
     
-    @Option(name: .long, help: "Validation level (1-4): 1=Format, 2=Tags/VR/VM, 3=IOD, 4=Best practices")
+    @Option(name: .long, help: "Validation level (1-5): 1=Format, 2=Tags/VR/VM, 3=IOD, 4=Best practices, 5=J2K codestream")
     var level: Int = 3
     
     @Option(name: .long, help: "Specific IOD to validate against (e.g., CTImageStorage, MRImageStorage)")
@@ -58,8 +58,8 @@ struct DICOMValidate: AsyncParsableCommand {
             throw ValidationError("Input path not found: \(inputPath)")
         }
         
-        guard level >= 1 && level <= 4 else {
-            throw ValidationError("Validation level must be between 1 and 4")
+        guard level >= 1 && level <= 5 else {
+            throw ValidationError("Validation level must be between 1 and 5")
         }
         
         let results: [ValidationResult]

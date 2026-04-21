@@ -568,3 +568,37 @@ Phase 2 enhancement is **IN PROGRESS**. The dicom-diff tool has been successfull
 ✅ **Comprehensive documentation**
 
 🎉 **Mission Accomplished!** 🎉
+
+---
+
+## Phase 9 — J2KSwift v3 CLI Tools
+
+### `dicom-j2k` (Phase 9.1) ✅
+
+JPEG 2000 / HTJ2K codestream operations on DICOM files. All subcommands bridge the synchronous `ParsableCommand.run()` API to J2KSwift's async codec via a reusable `runAsync` helper.
+
+| Subcommand | Purpose |
+|------------|---------|
+| `info` | Show J2K/HTJ2K codestream metadata (text or JSON) |
+| `validate` | ISO/IEC 15444-4 conformance using `HTJ2KConformanceTestHarness` + `J2KHTInteroperabilityValidator` |
+| `transcode` | J2K ↔ HTJ2K re-encode while preserving DICOM metadata |
+| `reduce` | Re-encode at fewer wavelet levels or quality layers |
+| `roi` | Crop a frame to a region of interest and re-wrap as DICOM |
+| `benchmark` | Decode-speed timing via `J2KBenchmark` (avg, median, min, max, std dev) |
+| `compare` | Pixel-level PSNR / MSE / MAE between two DICOM images |
+| `completions` | Generate bash / zsh / fish shell completion scripts |
+
+- **Lines of code**: ~670 (`Sources/dicom-j2k/main.swift`)
+- **Tests**: 53 tests across 8 suites (`Tests/dicom-j2kTests/DicomJ2KTests.swift`)
+- **Dependencies**: `J2KCore`, `J2KCodec`, `J2KFileFormat`, `DICOMKit`, `DICOMCore`, `DICOMDictionary`, `ArgumentParser`
+
+---
+
+### Phase 9.2 — Existing CLI Tool Updates ✅
+
+| Tool | What Changed |
+|------|-------------|
+| `dicom-info` | Auto J2K section (`=== JPEG 2000 Codestream Info ===`) when `--statistics` used on J2K file; `J2KCore` + `J2KCodec` dependencies added to target |
+| `dicom-validate` | Level 5 validation (`--level 5`): full ISO 15444-4 codestream check via `HTJ2KConformanceTestHarness` + `J2KHTInteroperabilityValidator`; `J2KCore` dependency added |
+| `dicom-compress` | HTJ2K codec names (`htj2k`, `htj2k-lossless`, `htj2k-rpcl`) documented in `Compress` discussion text; HTJ2K label shown in `info` output |
+| `dicom-convert` | HTJ2K target syntaxes already present (no change needed) |

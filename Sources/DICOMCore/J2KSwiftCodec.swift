@@ -13,6 +13,8 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
     public static let supportedTransferSyntaxes: [String] = [
         TransferSyntax.jpeg2000Lossless.uid,
         TransferSyntax.jpeg2000.uid,
+        TransferSyntax.jpeg2000Part2Lossless.uid,
+        TransferSyntax.jpeg2000Part2.uid,
         TransferSyntax.htj2kLossless.uid,
         TransferSyntax.htj2kRPCLLossless.uid,
         TransferSyntax.htj2kLossy.uid
@@ -121,8 +123,11 @@ private extension J2KSwiftCodec {
         let useHTJ2K = targetSyntax?.isHTJ2K ?? false
         let useRPCL = transferSyntaxUID == TransferSyntax.htj2kRPCLLossless.uid
 
-        // Use a conservative single-resolution codestream for compatibility while
-        // enabling HTJ2K and RPCL signaling when the target transfer syntax requests it.
+        // Part 2 uses the same encoding pipeline as Part 1. The built-in RCT/ICT
+        // transforms apply automatically for multi-component images. Explicit
+        // array-based MCT or arbitrary wavelet kernels can be exposed later when
+        // per-image decorrelation matrices are needed.
+
         return J2KEncodingConfiguration(
             quality: isLossless ? 1.0 : configuration.quality.value,
             lossless: isLossless,

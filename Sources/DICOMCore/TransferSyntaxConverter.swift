@@ -351,18 +351,29 @@ public struct TransferSyntaxConverter: Sendable {
                 to: targetSyntax
             )
         } else if sourceSyntax.isEncapsulated && targetSyntax.isEncapsulated {
-            // Compressed to compressed (recompression via lossless decode + re-encode path)
-            let uncompressedSyntax = TransferSyntax.explicitVRLittleEndian
-            let uncompressedData = try transcodeFromEncapsulated(
-                dataSetData: dataSetData,
-                from: sourceSyntax,
-                to: uncompressedSyntax
-            )
-            transcodedData = try transcodeToEncapsulated(
-                dataSetData: uncompressedData,
-                from: uncompressedSyntax,
-                to: targetSyntax
-            )
+            // Compressed to compressed
+            if Self.canUseFastPathTranscode(from: sourceSyntax, to: targetSyntax) {
+                // Fast-path: J2K ↔ HTJ2K via J2KTranscoder (coefficient re-encoding,
+                // no full pixel decode/re-encode). Significantly faster.
+                transcodedData = try transcodeFastPath(
+                    dataSetData: dataSetData,
+                    from: sourceSyntax,
+                    to: targetSyntax
+                )
+            } else {
+                // Slow path: full decode to uncompressed then re-encode
+                let uncompressedSyntax = TransferSyntax.explicitVRLittleEndian
+                let uncompressedData = try transcodeFromEncapsulated(
+                    dataSetData: dataSetData,
+                    from: sourceSyntax,
+                    to: uncompressedSyntax
+                )
+                transcodedData = try transcodeToEncapsulated(
+                    dataSetData: uncompressedData,
+                    from: uncompressedSyntax,
+                    to: targetSyntax
+                )
+            }
         } else {
             throw TranscodingError.unsupportedTargetSyntax(targetSyntax.uid)
         }
@@ -376,6 +387,116 @@ public struct TransferSyntaxConverter: Sendable {
         )
     }
     
+    // MARK: - HTJ2K Recommendation
+
+    /// Recommends the best HTJ2K transfer syntax for a given pixel data descriptor.
+    ///
+    /// - Parameter descriptor: The pixel data characteristics.
+    /// - Returns: The most appropriate HTJ2K transfer syntax.
+    ///   Returns `.htj2kRPCLLossless` for multi-frame data (CT volumes, etc.) where
+    ///   resolution-first ordering benefits progressive decoding, and `.htj2kLossless`
+    ///   for single-frame data.
+    public static func recommendHTJ2K(for descriptor: PixelDataDescriptor) -> TransferSyntax {
+        // RPCL ordering benefits volumetric data (multi-frame, typically CT/MR)
+        // where progressive resolution access is useful for streaming and preview.
+        if descriptor.numberOfFrames > 1 {
+            return .htj2kRPCLLossless
+        }
+        return .htj2kLossless
+    }
+
+    // MARK: - Fast-Path J2K ↔ HTJ2K Transcoding
+
+    /// Whether the source and target form a J2K ↔ HTJ2K pair eligible for
+    /// coefficient-level transcoding (no pixel decode/re-encode needed).
+    static func canUseFastPathTranscode(from source: TransferSyntax, to target: TransferSyntax) -> Bool {
+        let j2kPart1UIDs: Set<String> = [
+            TransferSyntax.jpeg2000Lossless.uid,
+            TransferSyntax.jpeg2000.uid
+        ]
+        let htj2kUIDs: Set<String> = [
+            TransferSyntax.htj2kLossless.uid,
+            TransferSyntax.htj2kRPCLLossless.uid,
+            TransferSyntax.htj2kLossy.uid
+        ]
+
+        // J2K Part 1 → HTJ2K
+        if j2kPart1UIDs.contains(source.uid) && htj2kUIDs.contains(target.uid) {
+            return true
+        }
+        // HTJ2K → J2K Part 1
+        if htj2kUIDs.contains(source.uid) && j2kPart1UIDs.contains(target.uid) {
+            return true
+        }
+        return false
+    }
+
+    /// Transcodes between J2K Part 1 and HTJ2K using J2KTranscoder's fast coefficient path.
+    ///
+    /// Operates on encapsulated pixel data fragments directly — each codestream
+    /// fragment is transcoded individually without decoding to pixels.
+    private func transcodeFastPath(
+        dataSetData: Data,
+        from source: TransferSyntax,
+        to target: TransferSyntax
+    ) throws -> Data {
+        let direction: HTJ2KCodec.TranscodeDirection = source.isHTJ2K ? .htj2kToJ2K : .j2kToHTJ2K
+
+        // Parse elements including the encapsulated pixel data
+        let elements = try parseDataElements(from: dataSetData, transferSyntax: source)
+
+        var outputElements: [DataElement] = []
+
+        for element in elements {
+            if element.tag == .pixelData && element.isEncapsulated,
+               let fragments = element.encapsulatedFragments {
+                // Transcode each codestream fragment using J2KTranscoder
+                var transcodedFragments: [Data] = []
+                for fragment in fragments {
+                    let transcoded: Data
+                    switch direction {
+                    case .j2kToHTJ2K:
+                        transcoded = try HTJ2KCodec.transcodeToHTJ2K(fragment)
+                    case .htj2kToJ2K:
+                        transcoded = try HTJ2KCodec.transcodeFromHTJ2K(fragment)
+                    }
+                    transcodedFragments.append(transcoded)
+                }
+
+                // Build new encapsulated pixel data element
+                let newElement = DataElement(
+                    tag: element.tag,
+                    vr: element.vr,
+                    length: 0xFFFFFFFF,
+                    valueData: Data(),
+                    encapsulatedFragments: transcodedFragments,
+                    encapsulatedOffsetTable: element.encapsulatedOffsetTable ?? []
+                )
+                outputElements.append(newElement)
+            } else if element.tag == Tag.transferSyntaxUID {
+                // Update Transfer Syntax UID in File Meta
+                let uidData = Data(target.uid.utf8)
+                let newElement = DataElement(
+                    tag: element.tag,
+                    vr: .UI,
+                    length: UInt32(uidData.count),
+                    valueData: uidData
+                )
+                outputElements.append(newElement)
+            } else {
+                outputElements.append(element)
+            }
+        }
+
+        // Write elements in target transfer syntax (all HTJ2K/J2K use Explicit VR LE)
+        let writer = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
+        var outputData = Data()
+        for element in outputElements {
+            outputData.append(writer.serializeElement(element))
+        }
+        return outputData
+    }
+
     // MARK: - Private Methods
     
     /// Transcodes between uncompressed transfer syntaxes

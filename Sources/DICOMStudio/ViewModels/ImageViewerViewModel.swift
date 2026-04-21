@@ -177,20 +177,44 @@ public final class ImageViewerViewModel {
     /// Image cache service.
     public let cacheService: ImageCacheService
 
+    /// Codec-aware image decoding service (Phase 8).
+    public let decodingService: ImageDecodingService
+
     // MARK: - Performance
 
     /// Last render time in seconds.
     public var lastRenderTime: Double = 0.0
+
+    // MARK: - Codec Inspector (Phase 8)
+
+    /// Codec inspector state — populated after each successful decode.
+    public var codecInspector = CodecInspectorViewModel()
+
+    // MARK: - JPIP Streaming (Phase 8)
+
+    /// JPIP server URL string for remote streaming.
+    /// Set this before calling ``loadFromJPIP()``.
+    public var jpipURLString: String = ""
+
+    /// Current JPIP loading state.
+    public var jpipLoadingState: JPIPLoadingState = .idle
+
+    /// Whether ROI-based decoding should be active at the current zoom level.
+    ///
+    /// Set to `true` automatically when zoom exceeds 2× and a JPIP URL is configured.
+    public var isROIActiveOnZoom: Bool = false
 
     // MARK: - Initialization
 
     /// Creates an image viewer ViewModel with dependency-injected services.
     public init(
         renderingService: ImageRenderingService = ImageRenderingService(),
-        cacheService: ImageCacheService = ImageCacheService()
+        cacheService: ImageCacheService = ImageCacheService(),
+        decodingService: ImageDecodingService = ImageDecodingService()
     ) {
         self.renderingService = renderingService
         self.cacheService = cacheService
+        self.decodingService = decodingService
     }
 
     // MARK: - File Loading
@@ -413,6 +437,20 @@ public final class ImageViewerViewModel {
         // Render first frame
         renderCurrentFrame()
 
+        // Populate the codec inspector with metadata for this file (Phase 8)
+        let inspectorStatus = decodingService.inspectorStatus(for: file)
+        switch inspectorStatus {
+        case .uncompressed:
+            codecInspector.status = inspectorStatus
+        default:
+            // For compressed files, do a timed decode to populate timing info
+            if let result = decodingService.decode(file: file) {
+                codecInspector.update(from: result, frameCount: numberOfFrames)
+            } else {
+                codecInspector.status = inspectorStatus
+            }
+        }
+
         isLoading = false
     }
 
@@ -598,13 +636,17 @@ public final class ImageViewerViewModel {
     // MARK: - Zoom / Pan / Rotation
 
     /// Zooms in by a step.
+    ///
+    /// Automatically enables ROI decode when zoom exceeds 2× and a JPIP URL is configured.
     public func zoomIn() {
         zoomLevel = GestureHelpers.clampZoom(zoomLevel * 1.25)
+        updateROIOnZoom()
     }
 
     /// Zooms out by a step.
     public func zoomOut() {
         zoomLevel = GestureHelpers.clampZoom(zoomLevel / 1.25)
+        updateROIOnZoom()
     }
 
     /// Resets zoom, pan, and rotation to defaults.
@@ -707,5 +749,80 @@ public final class ImageViewerViewModel {
     public var seriesPositionText: String {
         guard isInSeries else { return "" }
         return "\(currentFileIndex + 1) / \(seriesFiles.count)"
+    }
+
+    // MARK: - JPIP Loading (Phase 8)
+
+    /// Loads and renders a DICOM image from a JPIP server.
+    ///
+    /// Fetches an initial low-quality preview (1 quality layer) first, then
+    /// progressively refines to full quality. The ``jpipLoadingState`` property
+    /// tracks progress.
+    ///
+    /// - Note: Requires a valid URL in ``jpipURLString`` and an active network connection.
+    public func loadFromJPIP() async {
+        guard !jpipURLString.isEmpty else {
+            jpipLoadingState = .failed(reason: "No JPIP URL provided")
+            return
+        }
+        guard let serverURL = extractJPIPServerURL(from: jpipURLString),
+              let jpipURI   = URL(string: jpipURLString) else {
+            jpipLoadingState = .failed(reason: "Invalid JPIP URL: \(jpipURLString)")
+            return
+        }
+
+        // Phase 1: fetch low-quality preview
+        jpipLoadingState = .fetchingPreview
+        let client = DICOMJPIPClient(serverURL: serverURL)
+        do {
+            let preview = try await client.fetchProgressiveQuality(jpipURI: jpipURI, layers: 1)
+            applyJPIPImage(preview, layers: 1)
+            jpipLoadingState = .refining(layers: 4)
+
+            // Phase 2: refine to full quality
+            let full = try await client.fetchImage(jpipURI: jpipURI)
+            applyJPIPImage(full, layers: 0)
+            jpipLoadingState = .loaded(layers: 0)
+        } catch {
+            jpipLoadingState = .failed(reason: error.localizedDescription)
+        }
+    }
+
+    // MARK: - Private Phase 8 Helpers
+
+    /// Updates ``isROIActiveOnZoom`` based on the current zoom level and JPIP URL.
+    private func updateROIOnZoom() {
+        isROIActiveOnZoom = zoomLevel > 2.0 && !jpipURLString.isEmpty
+    }
+
+    /// Applies a received `DICOMJPIPImage` to the viewer state.
+    ///
+    /// Updates dimension and bit-depth metadata. Rendering from raw JPIP pixel
+    /// data requires a `DICOMFile` wrapper; consumers should call
+    /// `renderCurrentFrame()` once the file has been created from the JPIP bytes.
+    private func applyJPIPImage(_ jpipImage: DICOMJPIPImage, layers: Int) {
+        imageRows         = jpipImage.height
+        imageColumns      = jpipImage.width
+        bitsAllocated     = jpipImage.bitDepth
+        bitsStored        = jpipImage.bitDepth
+        samplesPerPixel   = jpipImage.components
+        numberOfFrames    = 1
+        photometricInterpretation = jpipImage.components == 1 ? "MONOCHROME2" : "RGB"
+        // Note: currentImage is populated by renderCurrentFrame() once the caller
+        // wraps jpipImage.pixelData in a DICOMFile and calls loadFile(_:).
+    }
+
+    /// Extracts the JPIP server base URL from a full JPIP URI.
+    ///
+    ///     "jpip://pacs.example.com:8080/dcm4chee-arc/wado?..." → "http://pacs.example.com:8080"
+    private func extractJPIPServerURL(from jpipURIString: String) -> URL? {
+        var s = jpipURIString
+        if s.hasPrefix("jpips://") { s = "https://" + s.dropFirst(8) }
+        else if s.hasPrefix("jpip://") { s = "http://" + s.dropFirst(7) }
+        guard let url = URL(string: s),
+              let scheme = url.scheme,
+              let host   = url.host else { return nil }
+        let port = url.port.map { ":\($0)" } ?? ""
+        return URL(string: "\(scheme)://\(host)\(port)")
     }
 }

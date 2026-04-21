@@ -217,6 +217,60 @@ extension TransferSyntax {
         isEncapsulated: true
     )
     
+    // MARK: - JP3D Experimental Transfer Syntaxes
+    
+    /// JP3D Lossless (Experimental) — private vendor extension
+    ///
+    /// ISO/IEC 15444-10 volumetric JPEG 2000 lossless compression.
+    /// DICOM does not define a standard JP3D transfer syntax; this private UID
+    /// is used for round-trip testing and internal storage only.
+    /// Clearly labelled experimental — not for interoperability.
+    public static let jp3dLossless = TransferSyntax(
+        uid: "1.2.826.0.1.3680043.10.511.1",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    /// JP3D Lossy (Experimental) — private vendor extension
+    ///
+    /// ISO/IEC 15444-10 volumetric JPEG 2000 lossy compression.
+    /// DICOM does not define a standard JP3D transfer syntax; this private UID
+    /// is used for round-trip testing and internal storage only.
+    /// Clearly labelled experimental — not for interoperability.
+    public static let jp3dLossy = TransferSyntax(
+        uid: "1.2.826.0.1.3680043.10.511.2",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+    
+    // MARK: - JPIP Transfer Syntaxes
+    
+    /// JPIP Referenced (1.2.840.10008.1.2.4.94)
+    ///
+    /// JPEG 2000 Interactive Protocol — the pixel data is a URI reference to a
+    /// JPIP server endpoint rather than inline pixel data.
+    /// Reference: PS3.5 Table A-1, PS3.5 Annex A.8
+    public static let jpipReferenced = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.94",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false
+    )
+    
+    /// JPIP Referenced Deflate (1.2.840.10008.1.2.4.95)
+    ///
+    /// Like ``jpipReferenced`` but the DICOM dataset is deflate-compressed.
+    /// Reference: PS3.5 Table A-1, PS3.5 Annex A.8
+    public static let jpipReferencedDeflate = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.95",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: false,
+        isDeflated: true
+    )
+    
     // MARK: - JPEG-LS Transfer Syntaxes
     
     /// JPEG-LS Lossless Image Compression (1.2.840.10008.1.2.4.80)
@@ -378,6 +432,16 @@ extension TransferSyntax {
             return .htj2kRPCLLossless
         case htj2kLossy.uid:
             return .htj2kLossy
+        // JP3D (experimental)
+        case jp3dLossless.uid:
+            return .jp3dLossless
+        case jp3dLossy.uid:
+            return .jp3dLossy
+        // JPIP
+        case jpipReferenced.uid:
+            return .jpipReferenced
+        case jpipReferencedDeflate.uid:
+            return .jpipReferencedDeflate
         // JPEG-LS
         case jpegLSLossless.uid:
             return .jpegLSLossless
@@ -461,6 +525,14 @@ extension TransferSyntax {
             return .jpegLSNearLossless
         case "rle", "rle-lossless":
             return .rleLossless
+        case "jp3d-lossless", "jp3dlossless":
+            return .jp3dLossless
+        case "jp3d", "jp3d-lossy", "jp3dlossy":
+            return .jp3dLossy
+        case "jpip", "jpip-referenced":
+            return .jpipReferenced
+        case "jpip-deflate", "jpip-referenced-deflate":
+            return .jpipReferencedDeflate
         default:
             return nil
         }
@@ -512,6 +584,31 @@ extension TransferSyntax {
         case TransferSyntax.htj2kLossless.uid,
              TransferSyntax.htj2kRPCLLossless.uid,
              TransferSyntax.htj2kLossy.uid:
+            return true
+        default:
+            return false
+        }
+    }
+    
+    /// Whether this transfer syntax is a JPIP referenced transfer syntax.
+    ///
+    /// JPIP transfer syntaxes contain a URI reference rather than inline pixel data.
+    /// The URI points to a JPIP server where the actual JPEG 2000 image resides.
+    public var isJPIP: Bool {
+        switch uid {
+        case TransferSyntax.jpipReferenced.uid,
+             TransferSyntax.jpipReferencedDeflate.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// Whether this transfer syntax uses JP3D volumetric compression (experimental)
+    public var isJP3D: Bool {
+        switch uid {
+        case TransferSyntax.jp3dLossless.uid,
+             TransferSyntax.jp3dLossy.uid:
             return true
         default:
             return false
@@ -596,7 +693,8 @@ extension TransferSyntax {
              TransferSyntax.htj2kLossless.uid,
              TransferSyntax.htj2kRPCLLossless.uid,
              TransferSyntax.jpegLSLossless.uid,
-             TransferSyntax.rleLossless.uid:
+             TransferSyntax.rleLossless.uid,
+             TransferSyntax.jp3dLossless.uid:
             return true
         default:
             return false

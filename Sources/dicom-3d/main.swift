@@ -33,7 +33,8 @@ struct DICOM3D: ParsableCommand {
             AverageCommand.self,
             SurfaceCommand.self,
             VolumeCommand.self,
-            ExportCommand.self
+            ExportCommand.self,
+            BackendsCommand.self
         ]
     )
 }
@@ -556,6 +557,54 @@ enum InterpolationMethod: String, ExpressibleByArgument {
 enum MeshFormat: String, ExpressibleByArgument {
     case stl
     case obj
+}
+
+// MARK: - Backends Command
+
+struct BackendsCommand: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "backends",
+        abstract: "List available hardware acceleration backends",
+        discussion: """
+            Displays the hardware acceleration backends available on this platform.
+            
+            Examples:
+              dicom-3d backends
+              dicom-3d backends --json
+            """
+    )
+
+    @Flag(name: .long, help: "Output as JSON")
+    var json: Bool = false
+
+    mutating func run() throws {
+        let best = CodecBackendProbe.bestAvailable
+
+        if json {
+            var items: [[String: Any]] = []
+            for backend in CodecBackend.allCases {
+                let isAvail = CodecBackendProbe.isAvailable(backend)
+                items.append([
+                    "backend": backend.rawValue,
+                    "available": isAvail,
+                    "active": backend == best,
+                    "displayName": backend.displayName
+                ])
+            }
+            let data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
+            print(String(data: data, encoding: .utf8) ?? "")
+        } else {
+            print("Available hardware acceleration backends:")
+            print("")
+            for backend in CodecBackend.allCases {
+                let isAvail = CodecBackendProbe.isAvailable(backend)
+                let marker = isAvail ? (backend == best ? "✓ (active)" : "✓") : "✗"
+                print("  [\(marker)] \(backend.rawValue.padding(toLength: 12, withPad: " ", startingAt: 0))\(backend.displayName)")
+            }
+            print("")
+            print("Active backend: \(best.displayName)")
+        }
+    }
 }
 
 // MARK: - Main
