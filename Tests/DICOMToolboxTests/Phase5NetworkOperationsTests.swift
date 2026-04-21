@@ -374,6 +374,16 @@ struct DicomSendCommandTests {
         ])
         #expect(command.contains("--dry-run"))
     }
+
+    @Test("dicom-send with HTJ2K transfer syntax")
+    func testHTJ2KTransferSyntax() {
+        let builder = CommandBuilder(tool: ToolRegistry.dicomSend, networkConfig: config)
+        let command = builder.buildCommand(values: [
+            "paths": "scan.dcm",
+            "transfer-syntax": "htj2k-lossless",
+        ])
+        #expect(command.contains("--transfer-syntax htj2k-lossless"))
+    }
 }
 
 // MARK: - dicom-retrieve Method-Dependent Fields Tests
@@ -435,6 +445,17 @@ struct DicomRetrieveCommandTests {
             "parallel": "4",
         ])
         #expect(command.contains("--parallel 4"))
+    }
+
+    @Test("dicom-retrieve with HTJ2K transfer syntax")
+    func testRetrieveHTJ2KTransferSyntax() {
+        let builder = CommandBuilder(tool: ToolRegistry.dicomRetrieve, networkConfig: config)
+        let command = builder.buildCommand(values: [
+            "study-uid": "1.2.840.12345",
+            "output": "/output",
+            "transfer-syntax": "htj2k-rpcl",
+        ])
+        #expect(command.contains("--transfer-syntax htj2k-rpcl"))
     }
 }
 

@@ -10,6 +10,10 @@ import UniformTypeIdentifiers
 /// Supports JPEG 2000 lossless and lossy transfer syntaxes.
 /// Provides both decoding and encoding capabilities.
 /// Reference: DICOM PS3.5 Section A.4.4
+///
+/// - Note: Deprecated in favour of ``J2KSwiftCodec`` and ``HTJ2KCodec``,
+///   which use J2KSwift for cross-platform, higher-fidelity JPEG 2000 support.
+@available(*, deprecated, renamed: "J2KSwiftCodec", message: "Use J2KSwiftCodec or HTJ2KCodec instead. NativeJPEG2000Codec relies on Apple ImageIO which has known 12-bit grayscale limitations.")
 public struct NativeJPEG2000Codec: ImageCodec, ImageEncoder, Sendable {
     /// Supported JPEG 2000 transfer syntaxes for decoding
     public static let supportedTransferSyntaxes: [String] = [

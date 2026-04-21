@@ -565,6 +565,16 @@ public enum ToolRegistry {
                 EnumValue(label: "High", value: "high"),
             ]),
             ParameterDefinition(id: "dry-run", cliFlag: "--dry-run", label: "Dry Run", help: "Preview without sending", type: .boolean),
+            ParameterDefinition(id: "transfer-syntax", cliFlag: "--transfer-syntax", label: "Transfer Syntax", help: "Preferred transfer syntax for C-STORE negotiation", type: .enumeration, enumValues: [
+                EnumValue(label: "Explicit VR LE", value: "explicit-vr-le"),
+                EnumValue(label: "Implicit VR LE", value: "implicit-vr-le"),
+                EnumValue(label: "JPEG Baseline", value: "jpeg-baseline"),
+                EnumValue(label: "JPEG 2000", value: "jpeg2000"),
+                EnumValue(label: "HTJ2K Lossless", value: "htj2k-lossless"),
+                EnumValue(label: "HTJ2K RPCL", value: "htj2k-rpcl"),
+                EnumValue(label: "HTJ2K", value: "htj2k"),
+                EnumValue(label: "RLE Lossless", value: "rle-lossless"),
+            ]),
             ParameterDefinition(id: "verbose", cliFlag: "--verbose", shortFlag: "-v", label: "Verbose", help: "Detailed output", type: .boolean),
         ],
         requiresNetwork: true
@@ -587,6 +597,16 @@ public enum ToolRegistry {
             ]),
             ParameterDefinition(id: "move-dest", cliFlag: "--move-dest", label: "Move Destination", help: "Move destination AET", type: .string),
             ParameterDefinition(id: "parallel", cliFlag: "--parallel", label: "Parallel", help: "Number of parallel operations", type: .integer, defaultValue: "1", validation: ValidationRule(minValue: 1, maxValue: 8)),
+            ParameterDefinition(id: "transfer-syntax", cliFlag: "--transfer-syntax", label: "Transfer Syntax", help: "Requested transfer syntax for C-GET and advisory syntax for C-MOVE", type: .enumeration, enumValues: [
+                EnumValue(label: "Explicit VR LE", value: "explicit-vr-le"),
+                EnumValue(label: "Implicit VR LE", value: "implicit-vr-le"),
+                EnumValue(label: "JPEG Baseline", value: "jpeg-baseline"),
+                EnumValue(label: "JPEG 2000", value: "jpeg2000"),
+                EnumValue(label: "HTJ2K Lossless", value: "htj2k-lossless"),
+                EnumValue(label: "HTJ2K RPCL", value: "htj2k-rpcl"),
+                EnumValue(label: "HTJ2K", value: "htj2k"),
+                EnumValue(label: "RLE Lossless", value: "rle-lossless"),
+            ]),
             ParameterDefinition(id: "verbose", cliFlag: "--verbose", shortFlag: "-v", label: "Verbose", help: "Detailed output", type: .boolean),
         ],
         requiresNetwork: true

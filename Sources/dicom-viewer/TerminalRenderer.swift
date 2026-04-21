@@ -82,13 +82,18 @@ struct TerminalRenderer {
     // MARK: - Image Extraction
 
     /// Extract normalized grayscale pixel data from the DICOM file
+    ///
+    /// Pixels are decoded through ``CodecRegistry`` so all registered codecs
+    /// (J2K, HTJ2K, Part 2, JPEG-LS, RLE, …) are handled automatically.
     func extractPixels(
         frame: Int = 0,
         windowCenter: Double? = nil,
         windowWidth: Double? = nil,
         invert: Bool = false
     ) throws -> NormalizedImage {
-        guard let pixelData = dataSet.pixelData() else {
+        // Use DICOMFile.pixelData() which routes through CodecRegistry for all
+        // compressed transfer syntaxes (J2K, HTJ2K, Part 2, JPEG-LS, RLE …)
+        guard let pixelData = dicomFile.pixelData() else {
             throw ViewerError.noPixelData
         }
 
@@ -459,10 +464,52 @@ struct TerminalRenderer {
 
     /// Get total number of frames
     func frameCount() -> Int {
-        if let pixelData = dataSet.pixelData() {
+        if let pixelData = dicomFile.pixelData() {
             return pixelData.descriptor.numberOfFrames
         }
         return 1
+    }
+
+    // MARK: - ROI Cropping
+
+    /// Crop a normalized image to a specified rectangular region.
+    ///
+    /// Coordinates are clamped to the image bounds so invalid rectangles are
+    /// handled gracefully.
+    ///
+    /// - Parameters:
+    ///   - image: Source normalized image.
+    ///   - x: Left edge of the region (pixel column, 0-based).
+    ///   - y: Top edge of the region (pixel row, 0-based).
+    ///   - width: Width of the region in pixels.
+    ///   - height: Height of the region in pixels.
+    /// - Returns: Cropped image, or the original if the region is degenerate.
+    static func cropImage(
+        _ image: NormalizedImage,
+        x: Int, y: Int,
+        width: Int, height: Int
+    ) -> NormalizedImage {
+        let clampedX = max(0, min(x, image.width - 1))
+        let clampedY = max(0, min(y, image.height - 1))
+        let clampedW = max(1, min(width, image.width - clampedX))
+        let clampedH = max(1, min(height, image.height - clampedY))
+
+        var cropped = [Double](repeating: 0.0, count: clampedW * clampedH)
+        for row in 0..<clampedH {
+            let srcOffset = (clampedY + row) * image.width + clampedX
+            let dstOffset = row * clampedW
+            for col in 0..<clampedW {
+                cropped[dstOffset + col] = image.pixels[srcOffset + col]
+            }
+        }
+
+        return NormalizedImage(
+            pixels: cropped,
+            width: clampedW,
+            height: clampedH,
+            originalRows: clampedH,
+            originalColumns: clampedW
+        )
     }
 
     // MARK: - PGM Image Creation

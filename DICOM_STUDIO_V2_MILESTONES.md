@@ -1080,6 +1080,51 @@ optimization, and final UI polish to bring DICOM Studio v2.0 to release quality.
 
 ---
 
+## Milestone 24: Codec Inspector & JPIP Streaming Integration
+
+**Version**: v2.1.0
+**Status**: Completed ✅
+**Effort**: ~2 weeks
+
+### Overview
+
+Phase 8 of the J2KSwift v3 integration plan. This milestone wires the J2KSwift decode pipeline into
+the DICOMStudio image viewer via `ImageDecodingService`, exposes codec metadata through a
+`CodecInspectorViewModel`, and adds JPIP streaming support with progressive quality layers
+(`DICOMJPIPClient`).
+
+### Deliverables
+
+- [x] **24.1** `CodecInspectorModel.swift` — `CodecInspectorEntry`, `CodecInspectorStatus`, `JPIPLoadingState` value types
+- [x] **24.2** `CodecInspectorHelpers.swift` — `CodecInspectorHelpers` enum with display-name, SF Symbol, decode-time formatting, and status-summary helpers
+- [x] **24.3** `ImageDecodingService.swift` — `DecodedImageResult`, `ImageDecodingService` wrapping J2KSwift decode + `CodecInspectorStatus` factory
+- [x] **24.4** `CodecInspectorViewModel.swift` — `@Observable` ViewModel: `status`, `isVisible`, `statusSummary`, `hasEntry`, `entry`, `update(from:frameCount:)`, `markDecoding()`, `clear()`
+- [x] **24.5** `CodecInspectorView.swift` — SwiftUI overlay card showing codec name, backend, decode time, transfer syntax
+- [x] **24.6** `ImageViewerViewModel` — wired `decodingService`, `codecInspector`, `jpipURLString`, `jpipLoadingState`, `isROIActiveOnZoom`; added `loadFromJPIP() async`, `applyJPIPImage(_:layers:)`, `updateROIOnZoom()`
+- [x] **24.7** Tests — 74 tests across `CodecInspectorHelpersTests`, `CodecInspectorViewModelTests`, `ImageDecodingServiceTests`, `ImageViewerViewModelTests` (all pass)
+
+### Acceptance Criteria
+
+- [x] `CodecInspectorViewModel` reflects decoded transfer syntax, codec, backend, and timing
+- [x] `JPIPLoadingState` transitions: `.idle` → `.fetchingPreview` → `.refining(layers:)` → `.loaded(layers:)` / `.failed(reason:)`
+- [x] `isROIActiveOnZoom` activates when `zoomLevel > 2.0` and a JPIP URL is set
+- [x] All 74 Phase 8 tests pass
+- [x] DICOMStudio builds clean with 0 warnings
+
+### Milestone 24 Summary
+
+| Component | Status | Details |
+|-----------|--------|---------|
+| `CodecInspectorModel.swift` | ✅ Completed | `CodecInspectorEntry`, `CodecInspectorStatus` (5 cases), `JPIPLoadingState` (5 cases) |
+| `CodecInspectorHelpers.swift` | ✅ Completed | `CodecInspectorHelpers` enum: `backendDisplayName`, `backendSFSymbol`, `formatDecodeTime`, `codecDisplayName`, `statusSummary` |
+| `ImageDecodingService.swift` | ✅ Completed | `DecodedImageResult` + `ImageDecodingService` with J2KSwift decode and inspector-status factory |
+| `CodecInspectorViewModel.swift` | ✅ Completed | `@Observable` ViewModel, 5 public properties, 3 mutation methods |
+| `CodecInspectorView.swift` | ✅ Completed | SwiftUI overlay card (guarded `#if canImport(SwiftUI)`) |
+| `ImageViewerViewModel.swift` | ✅ Completed | JPIP loader, ROI-on-zoom, codec inspector wired in |
+| `CodecInspectorTests.swift` | ✅ Completed | 74 tests, all pass |
+
+---
+
 ## Milestone Summary
 
 | Milestone | Title | Version | Status | Effort | Key Deliverables |
@@ -1091,7 +1136,8 @@ optimization, and final UI polish to bring DICOM Studio v2.0 to release quality.
 | **21** | Dynamic GUI Controls & Parameter Builder | v2.0.0-beta.1 | ✅ Completed | 4 weeks | 300+ parameter definitions, dynamic form renderer, 39 tool configs (135 tests) |
 | **22** | File Operations & Drag-and-Drop | v2.0.0-beta.2 | ✅ Completed | 2 weeks | File picker, drag-and-drop, output path management, validation (120+ tests) |
 | **23** | Integration Testing, Accessibility & Polish | v2.0.0-rc.1 | ✅ Completed | 3 weeks | E2E tests, accessibility compliance, performance optimization, documentation (138 tests) |
-| | **Total** | | | **19 weeks** | |
+| **24** | Codec Inspector & JPIP Streaming Integration | v2.1.0 | ✅ Completed | 2 weeks | Codec inspector overlay, JPIP streaming, ROI-on-zoom, 74 tests |
+| | **Total** | | | **21 weeks** | |
 
 ---
 

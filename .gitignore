@@ -33,3 +33,6 @@ Package.resolved
 docker-compose.override.yml
 orthanc-db-data/
 dcm4chee-db-data/
+
+# Local datasets
+LocalDatasets/

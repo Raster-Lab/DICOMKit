@@ -555,7 +555,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
                     parameterType: .enumPicker, placeholder: "Any (negotiate)",
                     helpText: "Preferred transfer syntax proposed during C-STORE presentation context negotiation (PS3.8 §9.3.2)",
-                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless", "deflate"]
+                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "htj2k-lossless", "htj2k-rpcl", "htj2k", "rle-lossless", "deflate"]
                 ),
                 CLIParameterDefinition(
                     id: "verbose", flag: "--verbose", displayName: "Verbose",

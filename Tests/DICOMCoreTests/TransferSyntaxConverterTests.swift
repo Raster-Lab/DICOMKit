@@ -22,6 +22,7 @@ struct TranscodingConfigurationTests {
         
         #expect(config.allowLossyCompression == true)
         #expect(config.preservePixelDataFidelity == false)
+        #expect(config.preferredSyntaxes.contains { $0.uid == TransferSyntax.htj2kLossy.uid })
         #expect(config.preferredSyntaxes.contains { $0.uid == TransferSyntax.jpegBaseline.uid })
     }
     
@@ -31,6 +32,8 @@ struct TranscodingConfigurationTests {
         
         #expect(config.allowLossyCompression == false)
         #expect(config.preservePixelDataFidelity == true)
+        #expect(config.preferredSyntaxes.contains { $0.uid == TransferSyntax.htj2kLossless.uid })
+        #expect(config.preferredSyntaxes.contains { $0.uid == TransferSyntax.htj2kRPCLLossless.uid })
         
         // All syntaxes should be lossless
         for syntax in config.preferredSyntaxes {
@@ -230,6 +233,19 @@ struct TransferSyntaxConverterTests {
         #expect(converter.canTranscode(from: .rleLossless, to: .explicitVRLittleEndian) == true)
         #expect(converter.canTranscode(from: .rleLossless, to: .implicitVRLittleEndian) == true)
     }
+
+    @Test("Can recompress between JPEG 2000 and HTJ2K families when codecs are available")
+    func testCanRecompressBetweenJPEG2000Families() {
+        let converter = TransferSyntaxConverter()
+
+        let expectedForward = CodecRegistry.shared.hasCodec(for: TransferSyntax.jpeg2000Lossless.uid)
+            && CodecRegistry.shared.hasEncoder(for: TransferSyntax.htj2kLossless.uid)
+        let expectedReverse = CodecRegistry.shared.hasCodec(for: TransferSyntax.htj2kLossless.uid)
+            && CodecRegistry.shared.hasEncoder(for: TransferSyntax.jpeg2000Lossless.uid)
+
+        #expect(converter.canTranscode(from: .jpeg2000Lossless, to: .htj2kLossless) == expectedForward)
+        #expect(converter.canTranscode(from: .htj2kLossless, to: .jpeg2000Lossless) == expectedReverse)
+    }
     
     // MARK: - selectTargetSyntax Tests
     
@@ -255,13 +271,13 @@ struct TransferSyntaxConverterTests {
     @Test("Select target syntax returns nil when none compatible")
     func testSelectTargetSyntaxNoCompatible() {
         let config = TranscodingConfiguration(
-            preferredSyntaxes: [.jpegBaseline], // Cannot encode to JPEG
+            preferredSyntaxes: [.jpegBaseline],
             allowLossyCompression: true,
             preservePixelDataFidelity: false
         )
         let converter = TransferSyntaxConverter(configuration: config)
         
-        let accepted = [TransferSyntax.jpegBaseline.uid]
+        let accepted = ["9.9.9.9"]
         
         let target = converter.selectTargetSyntax(
             for: Data(),
@@ -269,7 +285,6 @@ struct TransferSyntaxConverterTests {
             acceptedSyntaxes: accepted
         )
         
-        // Cannot encode to JPEG, so should return nil
         #expect(target == nil)
     }
     

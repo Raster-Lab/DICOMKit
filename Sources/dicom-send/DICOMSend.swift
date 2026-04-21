@@ -62,12 +62,22 @@ struct DICOMSend: AsyncParsableCommand {
     @Option(name: .long, help: "Operation priority: low, medium, high (default: medium)")
     var priority: PriorityOption = .medium
 
-    @Option(name: .long, help: "Preferred transfer syntax for C-STORE presentation context negotiation (e.g. explicit-vr-le, jpeg-baseline, jpeg2000, rle-lossless, implicit-vr-le)")
+    @Option(name: .long, help: "Preferred transfer syntax for C-STORE presentation context negotiation (for example explicit-vr-le, jpeg2000, htj2k-lossless, htj2k-rpcl, htj2k, rle-lossless)")
     var transferSyntax: String?
 
     mutating func run() async throws {
         #if canImport(Network)
         let serverInfo = resolveHostPort()
+
+        let preferredTransferSyntaxUID: String?
+        if let transferSyntax, !transferSyntax.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            guard let syntax = TransferSyntax.parse(transferSyntax) else {
+                throw ValidationError("Unknown transfer syntax: \(transferSyntax)")
+            }
+            preferredTransferSyntaxUID = syntax.uid
+        } else {
+            preferredTransferSyntaxUID = nil
+        }
         
         if verbose {
             fprintln("DICOM Send Tool v1.0.0")
@@ -77,8 +87,8 @@ struct DICOMSend: AsyncParsableCommand {
             fprintln("Called AE: \(calledAet)")
             fprintln("Priority: \(priority)")
             fprintln("Timeout: \(timeout)s")
-            if let ts = transferSyntax {
-                fprintln("Transfer Syntax: \(ts) (proposed in presentation context)")
+            if let ts = preferredTransferSyntaxUID {
+                fprintln("Transfer Syntax: \(ts) (preferred in presentation context)")
             }
             if retry > 0 {
                 fprintln("Retry attempts: \(retry)")
@@ -120,7 +130,8 @@ struct DICOMSend: AsyncParsableCommand {
             timeout: TimeInterval(timeout),
             priority: priority.dimseValue,
             retryAttempts: retry,
-            verbose: verbose
+            verbose: verbose,
+            preferredTransferSyntaxUID: preferredTransferSyntaxUID
         )
         
         // Verify connection if requested

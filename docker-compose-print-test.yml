@@ -1,21 +1,47 @@
-version: '3.8'
-
 services:
-  # DCM4CHEE DICOM Archive with Print SCP support
+  # LDAP configuration store required by dcm4chee to expose DIMSE listeners
+  ldap-dcm4chee:
+    image: dcm4che/slapd-dcm4chee:2.6.10-34.3
+    container_name: ldap-dcm4chee
+    environment:
+      - LDAP_ROOTPASS=secret
+      - ARCHIVE_DEVICE_NAME=dcm4chee-arc
+      - AE_TITLE=DCM4CHEE
+      - DICOM_PORT=11112
+      - SYSLOG_HOST=127.0.0.1
+      - STORAGE_DIR=/opt/wildfly/standalone/data/fs1
+    volumes:
+      - dcm4chee-ldap-data:/var/lib/openldap/openldap-data
+      - dcm4chee-slapd-data:/etc/openldap/slapd.d
+    networks:
+      - dicom-print-test
+    healthcheck:
+      test: ["CMD-SHELL", "ldapsearch -x -H ldap://localhost:389 -b dc=dcm4che,dc=org -s base >/dev/null 2>&1"]
+      interval: 20s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
+
+  # DCM4CHEE DICOM Archive with DIMSE and web UI support
   dcm4chee:
     image: dcm4che/dcm4chee-arc-psql:5.31.0
     container_name: dcm4chee-print-scp
     environment:
+      - POSTGRES_HOST=postgres-dcm4chee
       - POSTGRES_DB=pacsdb
       - POSTGRES_USER=pacs
       - POSTGRES_PASSWORD=pacs
-      - PRINT_SCP_AET=DCM4CHEE_PRINT
+      - LDAP_URL=ldap://ldap-dcm4chee:389
+      - LDAP_ROOTPASS=secret
       - ARCHIVE_DEVICE_NAME=dcm4chee-arc
+      - DCM4CHEE_ARC_URLS=http://localhost:8080/dcm4chee-arc
+      - WILDFLY_WAIT_FOR=ldap-dcm4chee:389 postgres-dcm4chee:5432
       - JAVA_OPTS=-Xms64m -Xmx512m
     ports:
-      - "11112:11112"  # DICOM Print SCP
+      - "11112:11112"  # DICOM DIMSE listener
       - "8080:8080"    # Web UI
     depends_on:
+      - ldap-dcm4chee
       - postgres-dcm4chee
     networks:
       - dicom-print-test
@@ -24,7 +50,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
-      start_period: 60s
+      start_period: 90s
 
   postgres-dcm4chee:
     image: postgres:15-alpine
@@ -67,6 +93,10 @@ services:
 volumes:
   dcm4chee-db-data:
     driver: local
+  dcm4chee-ldap-data:
+    driver: local
+  dcm4chee-slapd-data:
+    driver: local
   orthanc-db-data:
     driver: local
 
@@ -76,25 +106,24 @@ networks:
 
 # Usage Instructions:
 #
-# 1. Start DCM4CHEE print server:
-#    docker-compose -f docker-compose-print-test.yml up -d dcm4chee postgres-dcm4chee
+# 1. Start the full DCM4CHEE stack (LDAP + PostgreSQL + archive):
+#    docker compose -f docker-compose-print-test.yml up -d ldap-dcm4chee postgres-dcm4chee dcm4chee
 #
-# 2. Start Orthanc print server (alternative):
-#    docker-compose -f docker-compose-print-test.yml up -d orthanc
+# 2. Start Orthanc as an alternative comparison server:
+#    docker compose -f docker-compose-print-test.yml up -d orthanc
 #
-# 3. Run DICOMKit print integration tests:
-#    swift test --filter PrintServiceIntegrationTests
+# 3. Verify DIMSE connectivity:
+#    swift run dicom-echo 127.0.0.1 --port 11112 --aet DICOMKIT --called-aet DCM4CHEE
 #
-# 4. Test with dicom-print CLI:
-#    dicom-print status pacs://localhost:11112 --aet WORKSTATION --called-ae DCM4CHEE_PRINT
-#    dicom-print send pacs://localhost:11112 test.dcm --aet WORKSTATION --called-ae DCM4CHEE_PRINT
+# 4. Send a test object:
+#    swift run dicom-send 127.0.0.1 --port 11112 --aet DICOMKIT --called-aet DCM4CHEE test.dcm --verbose
 #
 # 5. Access web UIs:
 #    DCM4CHEE: http://localhost:8080/dcm4chee-arc/ui2/
 #    Orthanc:  http://localhost:8042/ (user: orthanc, pass: orthanc)
 #
 # 6. Stop services:
-#    docker-compose -f docker-compose-print-test.yml down
+#    docker compose -f docker-compose-print-test.yml down
 #
 # 7. Clean up volumes (WARNING: deletes all data):
-#    docker-compose -f docker-compose-print-test.yml down -v
+#    docker compose -f docker-compose-print-test.yml down -v

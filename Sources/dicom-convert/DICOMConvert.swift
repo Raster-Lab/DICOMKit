@@ -37,7 +37,7 @@ struct DICOMConvert: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String
     
-    @Option(name: .long, help: "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, JPEGLSLossless, JPEGLSNearLossless, RLELossless")
+    @Option(name: .long, help: "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, RLELossless")
     var transferSyntax: String?
     
     @Option(name: .long, help: "Output format for image export: png, jpeg, tiff, dicom (default: dicom)")
@@ -350,6 +350,12 @@ struct DICOMConvert: AsyncParsableCommand {
             return .jpeg2000Lossless
         case "jpeg2000", "jpeg2000-lossy", "j2k":
             return .jpeg2000
+        case "htj2klossless", "htj2k-lossless":
+            return .htj2kLossless
+        case "htj2krpcllossless", "htj2k-rpcl", "htj2k-lossless-rpcl":
+            return .htj2kRPCLLossless
+        case "htj2k", "htj2k-lossy":
+            return .htj2kLossy
         // JPEG-LS
         case "jpeglslossless", "jpeg-ls-lossless", "jpegls":
             return .jpegLSLossless
@@ -364,7 +370,7 @@ struct DICOMConvert: AsyncParsableCommand {
                 Available syntaxes:
                   Uncompressed: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE
                   JPEG:         JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1
-                  JPEG 2000:    JPEG2000Lossless, JPEG2000
+                  JPEG 2000:    JPEG2000Lossless, JPEG2000, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K
                   JPEG-LS:      JPEGLSLossless, JPEGLSNearLossless
                   RLE:          RLELossless
                 """)

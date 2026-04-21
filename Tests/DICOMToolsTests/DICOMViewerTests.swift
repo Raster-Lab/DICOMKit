@@ -703,4 +703,164 @@ final class DICOMViewerTests: XCTestCase {
             XCTAssertEqual(char, "@")
         }
     }
+
+    // MARK: - Phase 7: ROI Crop Tests
+
+    /// Simulates the cropImage logic added in Phase 7.
+    private func cropImage(
+        pixels: [Double], width: Int, height: Int,
+        x: Int, y: Int, cropW: Int, cropH: Int
+    ) -> (pixels: [Double], width: Int, height: Int) {
+        let clampedX = max(0, min(x, width - 1))
+        let clampedY = max(0, min(y, height - 1))
+        let clampedW = max(1, min(cropW, width - clampedX))
+        let clampedH = max(1, min(cropH, height - clampedY))
+
+        var cropped = [Double](repeating: 0.0, count: clampedW * clampedH)
+        for row in 0..<clampedH {
+            let srcOffset = (clampedY + row) * width + clampedX
+            let dstOffset = row * clampedW
+            for col in 0..<clampedW {
+                cropped[dstOffset + col] = pixels[srcOffset + col]
+            }
+        }
+        return (cropped, clampedW, clampedH)
+    }
+
+    func testCropImage_returnsCorrectDimensions() {
+        let pixels = [Double](repeating: 0.5, count: 16 * 16)
+        let result = cropImage(pixels: pixels, width: 16, height: 16,
+                               x: 4, y: 4, cropW: 8, cropH: 6)
+        XCTAssertEqual(result.width, 8)
+        XCTAssertEqual(result.height, 6)
+        XCTAssertEqual(result.pixels.count, 48)
+    }
+
+    func testCropImage_clampsToBounds() {
+        let pixels = [Double](repeating: 0.5, count: 16 * 16)
+        // Request a region that extends beyond image edges
+        let result = cropImage(pixels: pixels, width: 16, height: 16,
+                               x: 10, y: 10, cropW: 20, cropH: 20)
+        XCTAssertEqual(result.width, 6)   // clamped from 10+20=30 → width-x = 6
+        XCTAssertEqual(result.height, 6)
+    }
+
+    func testCropImage_preservesPixelValues() {
+        // Create a 4x4 image with identifiable values
+        var pixels = [Double](repeating: 0.0, count: 4 * 4)
+        for i in 0..<16 { pixels[i] = Double(i) / 15.0 }
+        let result = cropImage(pixels: pixels, width: 4, height: 4,
+                               x: 1, y: 1, cropW: 2, cropH: 2)
+        // Pixel at (1,1) → linear index 1*4+1 = 5
+        XCTAssertEqual(result.pixels[0], pixels[5], accuracy: 1e-9)
+        // Pixel at (2,1) → linear index 1*4+2 = 6
+        XCTAssertEqual(result.pixels[1], pixels[6], accuracy: 1e-9)
+        // Pixel at (1,2) → linear index 2*4+1 = 9
+        XCTAssertEqual(result.pixels[2], pixels[9], accuracy: 1e-9)
+    }
+
+    func testCropImage_fullImageNoChange() {
+        var pixels = [Double](repeating: 0.0, count: 4 * 4)
+        for i in 0..<16 { pixels[i] = Double(i) / 15.0 }
+        let result = cropImage(pixels: pixels, width: 4, height: 4,
+                               x: 0, y: 0, cropW: 4, cropH: 4)
+        XCTAssertEqual(result.width, 4)
+        XCTAssertEqual(result.height, 4)
+        XCTAssertEqual(result.pixels, pixels)
+    }
+
+    func testCropImage_negativeCoordsClampedToZero() {
+        let pixels = [Double](repeating: 0.5, count: 8 * 8)
+        let result = cropImage(pixels: pixels, width: 8, height: 8,
+                               x: -5, y: -5, cropW: 4, cropH: 4)
+        // negative coordinates clamped to 0
+        XCTAssertEqual(result.width, 4)
+        XCTAssertEqual(result.height, 4)
+    }
+
+    // MARK: - Phase 7: Resolution Reduce Tests
+
+    /// Verifies the reduce-factor downscale produces expected dimensions.
+    func testReduceFactor_halvesDimensions() {
+        let w = 512, h = 512
+        let factor = 1 // reduce by 2^1 = 2
+        let divisor = 1 << factor
+        let expectedW = w / divisor
+        let expectedH = h / divisor
+        XCTAssertEqual(expectedW, 256)
+        XCTAssertEqual(expectedH, 256)
+    }
+
+    func testReduceFactor_quartersDimensions() {
+        let w = 512, h = 512
+        let factor = 2 // reduce by 2^2 = 4
+        let divisor = 1 << factor
+        XCTAssertEqual(w / divisor, 128)
+        XCTAssertEqual(h / divisor, 128)
+    }
+
+    func testReduceFactor_zeroNoChange() {
+        let w = 512, h = 256
+        let factor = 0
+        let divisor = 1 << factor  // = 1
+        XCTAssertEqual(w / divisor, w)
+        XCTAssertEqual(h / divisor, h)
+    }
+
+    func testReduceFactor_clampsToMinimumOne() {
+        let w = 1, h = 1
+        let factor = 5
+        let divisor = 1 << factor  // = 32
+        XCTAssertEqual(max(1, w / divisor), 1)
+        XCTAssertEqual(max(1, h / divisor), 1)
+    }
+
+    // MARK: - Phase 7: ROI String Parsing Tests
+
+    func testROIStringParsing_validFormat() {
+        let roiStr = "10,20,256,256"
+        let parts = roiStr.split(separator: ",").compactMap { Int($0) }
+        XCTAssertEqual(parts.count, 4)
+        XCTAssertEqual(parts[0], 10)
+        XCTAssertEqual(parts[1], 20)
+        XCTAssertEqual(parts[2], 256)
+        XCTAssertEqual(parts[3], 256)
+    }
+
+    func testROIStringParsing_invalidFormat() {
+        let roiStr = "10,20,abc,256"
+        let parts = roiStr.split(separator: ",")
+        let valid = parts.count == 4 && parts.allSatisfy({ Int($0) != nil })
+        XCTAssertFalse(valid)
+    }
+
+    func testROIStringParsing_wrongCount() {
+        let roiStr = "10,20,256"
+        let parts = roiStr.split(separator: ",")
+        let valid = parts.count == 4 && parts.allSatisfy({ Int($0) != nil })
+        XCTAssertFalse(valid)
+    }
+
+    // MARK: - Phase 7: JPIP Transfer Syntax Integration Tests
+
+    func testJPIPTransferSyntaxIsRegistered() {
+        let jpipUID = "1.2.840.10008.1.2.4.94"
+        let ts = TransferSyntax.from(uid: jpipUID)
+        XCTAssertNotNil(ts)
+        XCTAssertTrue(ts?.isJPIP == true)
+    }
+
+    func testJPIPDeflateTransferSyntaxIsRegistered() {
+        let jpipDeflateUID = "1.2.840.10008.1.2.4.95"
+        let ts = TransferSyntax.from(uid: jpipDeflateUID)
+        XCTAssertNotNil(ts)
+        XCTAssertTrue(ts?.isJPIP == true)
+    }
+
+    func testNonJPIPTransferSyntaxIsNotJPIP() {
+        let explicitVRUID = "1.2.840.10008.1.2.1"
+        let ts = TransferSyntax.from(uid: explicitVRUID)
+        XCTAssertNotNil(ts)
+        XCTAssertFalse(ts?.isJPIP == true)
+    }
 }

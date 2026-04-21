@@ -419,4 +419,79 @@ struct ImageViewerViewModelTests {
         #expect(vm.renderingService === renderingService)
         #expect(vm.cacheService === cacheService)
     }
+
+    // MARK: - Phase 8: JPIP / Codec Inspector Initial State
+
+    @Test("JPIP URL string is empty initially")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testJPIPURLStringInitiallyEmpty() {
+        let vm = ImageViewerViewModel()
+        #expect(vm.jpipURLString.isEmpty)
+    }
+
+    @Test("JPIP loading state is idle initially")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testJPIPLoadingStateInitiallyIdle() {
+        let vm = ImageViewerViewModel()
+        if case .idle = vm.jpipLoadingState {
+            // expected
+        } else {
+            Issue.record("Expected .idle, got \(vm.jpipLoadingState)")
+        }
+    }
+
+    @Test("isROIActiveOnZoom is false initially")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testIsROIActiveOnZoomInitiallyFalse() {
+        let vm = ImageViewerViewModel()
+        #expect(vm.isROIActiveOnZoom == false)
+    }
+
+    @Test("Codec inspector initial state is noImage")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testCodecInspectorInitialState() {
+        let vm = ImageViewerViewModel()
+        if case .noImage = vm.codecInspector.status {
+            // expected
+        } else {
+            Issue.record("Expected codecInspector.status == .noImage initially")
+        }
+    }
+
+    @Test("Zoom in below threshold with no JPIP URL does not set ROI active")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testZoomInBelowThresholdNoROI() {
+        let vm = ImageViewerViewModel()
+        // Zoom in once (1.0 × 1.25 = 1.25, still < 2.0)
+        vm.zoomIn()
+        #expect(vm.isROIActiveOnZoom == false)
+    }
+
+    @Test("Zoom in above threshold with no JPIP URL does not set ROI active")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testZoomInAboveThresholdNoJPIPURL_doesNotSetROI() {
+        let vm = ImageViewerViewModel()
+        // Zoom in several times to exceed 2×
+        for _ in 0..<8 { vm.zoomIn() }
+        // Without a JPIP URL, ROI should stay false
+        #expect(vm.isROIActiveOnZoom == false)
+    }
+
+    @Test("Zoom in above threshold with JPIP URL sets ROI active")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testZoomInAboveThreshold_withJPIPURL_setsROI() {
+        let vm = ImageViewerViewModel()
+        vm.jpipURLString = "jpip://pacs.example.com:8080/wado"
+        // Zoom in many times to exceed 2×
+        for _ in 0..<8 { vm.zoomIn() }
+        #expect(vm.isROIActiveOnZoom == true)
+    }
+
+    @Test("Decoding service is stored and accessible")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testDecodingServiceAccessible() {
+        let decodingService = ImageDecodingService()
+        let vm = ImageViewerViewModel(decodingService: decodingService)
+        #expect(vm.decodingService === decodingService)
+    }
 }

@@ -799,6 +799,46 @@
             "target": "DICOMStudioApp",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release DICOMStudioApp"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-jpip",
+            "target": "dicom-jpip",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-jpip"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-jpip",
+            "target": "dicom-jpip",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-jpip"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug dicom-j2k",
+            "target": "dicom-j2k",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug dicom-j2k"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release dicom-j2k",
+            "target": "dicom-j2k",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release dicom-j2k"
         }
     ]
 }

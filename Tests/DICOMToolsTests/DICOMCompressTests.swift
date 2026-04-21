@@ -247,6 +247,24 @@ final class DICOMCompressTests: XCTestCase {
         XCTAssertEqual(canDecompress, hasCodec)
     }
 
+    func testCanTranscodeBetweenCompressedJPEG2000Families() {
+        let converter = TransferSyntaxConverter()
+
+        let expectedForward = CodecRegistry.shared.hasCodec(for: TransferSyntax.jpeg2000Lossless.uid)
+            && CodecRegistry.shared.hasEncoder(for: TransferSyntax.htj2kLossless.uid)
+        let expectedReverse = CodecRegistry.shared.hasCodec(for: TransferSyntax.htj2kLossless.uid)
+            && CodecRegistry.shared.hasEncoder(for: TransferSyntax.jpeg2000Lossless.uid)
+
+        XCTAssertEqual(
+            converter.canTranscode(from: .jpeg2000Lossless, to: .htj2kLossless),
+            expectedForward
+        )
+        XCTAssertEqual(
+            converter.canTranscode(from: .htj2kLossless, to: .jpeg2000Lossless),
+            expectedReverse
+        )
+    }
+
     func testCanTranscodeSameSyntax() {
         let converter = TransferSyntaxConverter()
 
