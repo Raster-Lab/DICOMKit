@@ -138,6 +138,12 @@ public final class ImageViewerViewModel {
     /// Rotation angle in degrees.
     public var rotationAngle: Double = 0.0
 
+    /// Whether the image is flipped horizontally.
+    public var isFlippedHorizontal: Bool = false
+
+    /// Whether the image is flipped vertically.
+    public var isFlippedVertical: Bool = false
+
     /// Whether the metadata overlay is visible.
     public var showMetadataOverlay: Bool = false
 
@@ -190,6 +196,14 @@ public final class ImageViewerViewModel {
 
     /// Codec inspector state — populated after each successful decode.
     public var codecInspector = CodecInspectorViewModel()
+
+    // MARK: - J2KSwift Testing Panel
+
+    /// J2KSwift implementation testing state (benchmark, round-trip, platform probe).
+    public var j2kTesting = J2KTestingViewModel()
+
+    /// Whether the J2KSwift testing sheet is presented.
+    public var showJ2KTesting: Bool = false
 
     // MARK: - JPIP Streaming (Phase 8)
 
@@ -674,10 +688,17 @@ public final class ImageViewerViewModel {
 
     /// Resets zoom, pan, and rotation to defaults.
     public func resetView() {
+        resetTransformations()
+    }
+
+    /// Resets all image transforms: zoom, pan, rotation, and flip.
+    public func resetTransformations() {
         zoomLevel = 1.0
         panOffsetX = 0.0
         panOffsetY = 0.0
         rotationAngle = 0.0
+        isFlippedHorizontal = false
+        isFlippedVertical = false
     }
 
     /// Fits the image to the view.
@@ -696,6 +717,15 @@ public final class ImageViewerViewModel {
         panOffsetY = 0.0
     }
 
+    /// Stored view dimensions — updated by the view layer when the container resizes.
+    public var viewContentWidth: Double = 0
+    public var viewContentHeight: Double = 0
+
+    /// Fits the image using the last-known view dimensions. Used by Commands (no access to view state).
+    public func fitToView() {
+        fitToView(viewWidth: viewContentWidth, viewHeight: viewContentHeight)
+    }
+
     /// Rotates the image 90° clockwise.
     public func rotateClockwise() {
         rotationAngle = GestureHelpers.rotateClockwise(from: rotationAngle)
@@ -704,6 +734,16 @@ public final class ImageViewerViewModel {
     /// Rotates the image 90° counter-clockwise.
     public func rotateCounterClockwise() {
         rotationAngle = GestureHelpers.rotateCounterClockwise(from: rotationAngle)
+    }
+
+    /// Flips the image horizontally.
+    public func flipHorizontal() {
+        isFlippedHorizontal.toggle()
+    }
+
+    /// Flips the image vertically.
+    public func flipVertical() {
+        isFlippedVertical.toggle()
     }
 
     // MARK: - Display Text Helpers

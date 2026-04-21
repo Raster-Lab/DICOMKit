@@ -70,6 +70,10 @@ public struct ProgressiveImageView: View {
                 y: viewModel.panOffsetY
             )
             .rotationEffect(.degrees(viewModel.rotationAngle))
+            .scaleEffect(
+                x: viewModel.isFlippedHorizontal ? -1 : 1,
+                y: viewModel.isFlippedVertical   ? -1 : 1
+            )
         } else {
             Color.black
         }

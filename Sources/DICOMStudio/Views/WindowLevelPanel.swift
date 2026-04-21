@@ -24,36 +24,68 @@ public struct WindowLevelPanel: View {
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
 
-            // Numeric inputs
-            HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Center")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField(
-                        "Center",
-                        value: Bindable(viewModel).windowCenter,
-                        format: .number
-                    )
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 100)
-                    .accessibilityLabel("Window center value")
-                    .onSubmit { viewModel.renderCurrentFrame() }
+            // Numeric inputs + sliders + step buttons
+            VStack(alignment: .leading, spacing: 8) {
+                // Center
+                Text("Center")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "Center",
+                    value: Bindable(viewModel).windowCenter,
+                    format: .number
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 100)
+                .accessibilityLabel("Window center value")
+                .onSubmit { viewModel.renderCurrentFrame() }
+
+                Slider(value: Bindable(viewModel).windowCenter, in: -1024...3072, step: 1)
+                    .onChange(of: viewModel.windowCenter) { _, _ in viewModel.renderCurrentFrame() }
+                    .accessibilityLabel("Window center slider")
+
+                HStack(spacing: 4) {
+                    ForEach([-100, -10, 10, 100], id: \.self) { step in
+                        Button(step > 0 ? "+\(step)" : "\(step)") {
+                            viewModel.windowCenter += Double(step)
+                            viewModel.renderCurrentFrame()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .accessibilityLabel("\(step > 0 ? "Increase" : "Decrease") center by \(abs(step))")
+                    }
                 }
 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Width")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    TextField(
-                        "Width",
-                        value: Bindable(viewModel).windowWidth,
-                        format: .number
-                    )
-                    .textFieldStyle(.roundedBorder)
-                    .frame(width: 100)
-                    .accessibilityLabel("Window width value")
-                    .onSubmit { viewModel.renderCurrentFrame() }
+                Divider()
+
+                // Width
+                Text("Width")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField(
+                    "Width",
+                    value: Bindable(viewModel).windowWidth,
+                    format: .number
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 100)
+                .accessibilityLabel("Window width value")
+                .onSubmit { viewModel.renderCurrentFrame() }
+
+                Slider(value: Bindable(viewModel).windowWidth, in: 1...4096, step: 1)
+                    .onChange(of: viewModel.windowWidth) { _, _ in viewModel.renderCurrentFrame() }
+                    .accessibilityLabel("Window width slider")
+
+                HStack(spacing: 4) {
+                    ForEach([-100, -10, 10, 100], id: \.self) { step in
+                        Button(step > 0 ? "+\(step)" : "\(step)") {
+                            viewModel.windowWidth = max(1, viewModel.windowWidth + Double(step))
+                            viewModel.renderCurrentFrame()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.mini)
+                        .accessibilityLabel("\(step > 0 ? "Increase" : "Decrease") width by \(abs(step))")
+                    }
                 }
             }
 

@@ -702,7 +702,7 @@ struct EncodeVolumeCommand: ParsableCommand {
         if verbose { print("Encoding \(series.count) slice(s) — mode: \(mode)...") }
 
         let document = try waitForTask(Task {
-            try await JP3DVolumeDocument.encode(series, compressionMode: compressionMode)
+            try await JP3DVolumeDocument.encode(series: series, compressionMode: compressionMode)
         })
 
         let outputURL = URL(fileURLWithPath: output)

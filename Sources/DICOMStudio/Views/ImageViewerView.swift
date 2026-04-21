@@ -17,6 +17,8 @@ public struct ImageViewerView: View {
 
     @State private var magnifyBy: CGFloat = 1.0
     @State private var dragOffset: CGSize = .zero
+    @State private var viewSize: CGSize = .zero
+    @State private var wlDragStart: CGSize = .zero
 
     public init(viewModel: ImageViewerViewModel) {
         self.viewModel = viewModel
@@ -43,6 +45,25 @@ public struct ImageViewerView: View {
                 .padding()
             } else if viewModel.hasImage {
                 imageContent
+                    .contextMenu {
+                        Button("Fit to View") {
+                            viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
+                        }
+                        Button("Reset View") {
+                            viewModel.resetTransformations()
+                        }
+                        Divider()
+                        Button("Rotate Clockwise") { viewModel.rotateClockwise() }
+                        Button("Rotate Counter-Clockwise") { viewModel.rotateCounterClockwise() }
+                        Button("Flip Horizontal") { viewModel.flipHorizontal() }
+                        Button("Flip Vertical") { viewModel.flipVertical() }
+                        if viewModel.isMonochrome {
+                            Divider()
+                            Button(viewModel.isInverted ? "Remove Inversion" : "Invert Grayscale") {
+                                viewModel.toggleInversion()
+                            }
+                        }
+                    }
             } else {
                 VStack(spacing: 12) {
                     Image(systemName: "photo")
@@ -64,6 +85,22 @@ public struct ImageViewerView: View {
                 }
             }
         }
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        viewSize = geo.size
+                        viewModel.viewContentWidth = geo.size.width
+                        viewModel.viewContentHeight = geo.size.height
+                    }
+                    .onChange(of: geo.size) { _, newSize in
+                        viewSize = newSize
+                        viewModel.viewContentWidth = newSize.width
+                        viewModel.viewContentHeight = newSize.height
+                    }
+            }
+        )
+        .focusedValue(\.imageViewerViewModel, viewModel)
         .overlay(alignment: .bottomLeading) {
             if viewModel.showMetadataOverlay && viewModel.hasImage {
                 ImageMetadataOverlayView(viewModel: viewModel)
@@ -89,6 +126,9 @@ public struct ImageViewerView: View {
             if let file = viewModel.dicomFile {
                 DICOMInspectorView(dicomFile: file)
             }
+        }
+        .sheet(isPresented: Bindable(viewModel).showJ2KTesting) {
+            J2KTestingView(viewModel: viewModel)
         }
         .fileImporter(
             isPresented: $viewModel.isFileImporterPresented,
@@ -119,6 +159,14 @@ public struct ImageViewerView: View {
             ProgressiveImageView(viewModel: viewModel)
                 .gesture(panGesture)
                 .gesture(magnificationGesture)
+                #if os(macOS)
+                .background(ScrollWheelHandler { delta in
+                    viewModel.zoomLevel = GestureHelpers.zoomFromScrollDelta(
+                        currentZoom: viewModel.zoomLevel,
+                        scrollDelta: delta
+                    )
+                })
+                #endif
         } else if let cgImage = viewModel.currentImage {
             Image(decorative: cgImage, scale: 1.0)
                 .resizable()
@@ -129,11 +177,23 @@ public struct ImageViewerView: View {
                     y: viewModel.panOffsetY + dragOffset.height
                 )
                 .rotationEffect(.degrees(viewModel.rotationAngle))
+                .scaleEffect(
+                    x: viewModel.isFlippedHorizontal ? -1 : 1,
+                    y: viewModel.isFlippedVertical   ? -1 : 1
+                )
                 .gesture(panGesture)
                 .gesture(magnificationGesture)
                 .accessibilityLabel("DICOM Image")
                 .accessibilityValue(viewModel.dimensionsText)
                 .accessibilityHint("Use pinch to zoom, drag to pan")
+                #if os(macOS)
+                .background(ScrollWheelHandler { delta in
+                    viewModel.zoomLevel = GestureHelpers.zoomFromScrollDelta(
+                        currentZoom: viewModel.zoomLevel,
+                        scrollDelta: delta
+                    )
+                })
+                #endif
         } else {
             Text("Unable to render image")
                 .foregroundStyle(.gray)
@@ -159,9 +219,24 @@ public struct ImageViewerView: View {
     private var panGesture: some Gesture {
         DragGesture()
             .onChanged { value in
+                #if os(macOS)
+                if NSEvent.modifierFlags.contains(.option) {
+                    let dx = Double(value.translation.width - wlDragStart.width)
+                    let dy = Double(value.translation.height - wlDragStart.height)
+                    viewModel.adjustWindowLevel(deltaX: dx, deltaY: dy)
+                    wlDragStart = value.translation
+                    return
+                }
+                #endif
                 dragOffset = value.translation
             }
             .onEnded { value in
+                #if os(macOS)
+                if NSEvent.modifierFlags.contains(.option) {
+                    wlDragStart = .zero
+                    return
+                }
+                #endif
                 viewModel.panOffsetX += value.translation.width
                 viewModel.panOffsetY += value.translation.height
                 dragOffset = .zero
@@ -187,111 +262,174 @@ public struct ImageViewerView: View {
 
     @ToolbarContentBuilder
     private var viewerToolbar: some ToolbarContent {
-        ToolbarItemGroup {
+        // Open file
+        ToolbarItem(placement: .automatic) {
             Button {
                 viewModel.isFileImporterPresented = true
             } label: {
                 Image(systemName: "folder")
             }
             .accessibilityLabel("Open DICOM file")
-            .help("Open a DICOM file (O)")
+            .help("Open a DICOM file (⌘O)")
+            .keyboardShortcut("o", modifiers: .command)
+        }
 
-            Divider()
+        // Series navigation — grouped in one item so it doesn't fragment the toolbar
+        if viewModel.isInSeries {
+            ToolbarItem(placement: .automatic) {
+                HStack(spacing: 4) {
+                    Button {
+                        viewModel.navigateToPreviousFile()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .disabled(!viewModel.canGoPreviousFile)
+                    .accessibilityLabel("Previous file in series")
+                    .help("Previous file in series")
 
-            // Series navigation — only visible when viewing a multi-file series
-            if viewModel.isInSeries {
-                Button {
-                    viewModel.navigateToPreviousFile()
-                } label: {
-                    Image(systemName: "chevron.left")
+                    Text(viewModel.seriesPositionText)
+                        .font(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("File \(viewModel.currentFileIndex + 1) of \(viewModel.seriesFiles.count)")
+
+                    Button {
+                        viewModel.navigateToNextFile()
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .disabled(!viewModel.canGoNextFile)
+                    .accessibilityLabel("Next file in series")
+                    .help("Next file in series")
                 }
-                .disabled(!viewModel.canGoPreviousFile)
-                .accessibilityLabel("Previous file in series")
-                .help("Previous file in series")
-
-                Text(viewModel.seriesPositionText)
-                    .font(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(.secondary)
-                    .accessibilityLabel("File \(viewModel.currentFileIndex + 1) of \(viewModel.seriesFiles.count)")
-
-                Button {
-                    viewModel.navigateToNextFile()
-                } label: {
-                    Image(systemName: "chevron.right")
-                }
-                .disabled(!viewModel.canGoNextFile)
-                .accessibilityLabel("Next file in series")
-                .help("Next file in series")
-
-                Divider()
             }
+        }
 
-            Button {
-                viewModel.zoomIn()
-            } label: {
+        // Zoom / view controls — kept as a group so they stay together if overflow occurs
+        ToolbarItemGroup(placement: .automatic) {
+            Button { viewModel.zoomIn() } label: {
                 Image(systemName: "plus.magnifyingglass")
             }
             .accessibilityLabel("Zoom in")
-            .help("Zoom in (+)")
+            .help("Zoom in (=)")
+            .keyboardShortcut("=", modifiers: [])
 
-            Button {
-                viewModel.zoomOut()
-            } label: {
+            Button { viewModel.zoomOut() } label: {
                 Image(systemName: "minus.magnifyingglass")
             }
             .accessibilityLabel("Zoom out")
             .help("Zoom out (-)")
+            .keyboardShortcut("-", modifiers: [])
 
-            Button {
-                viewModel.resetView()
-            } label: {
+            Button { viewModel.resetView() } label: {
                 Image(systemName: "arrow.counterclockwise")
             }
             .accessibilityLabel("Reset view")
-            .help("Reset zoom, pan, and rotation (R)")
-
-            Divider()
-
-            if viewModel.isMonochrome {
-                Button {
-                    viewModel.toggleInversion()
-                } label: {
-                    Image(systemName: viewModel.isInverted ? "circle.lefthalf.filled" : "circle.righthalf.filled")
-                }
-                .accessibilityLabel("Invert grayscale")
-                .help("Toggle grayscale inversion (I)")
-            }
+            .help("Reset view (R)")
+            .keyboardShortcut("r", modifiers: [])
 
             Button {
-                viewModel.rotateClockwise()
+                viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
             } label: {
-                Image(systemName: "rotate.right")
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
             }
-            .accessibilityLabel("Rotate clockwise")
-            .help("Rotate 90° clockwise")
+            .accessibilityLabel("Fit image to view")
+            .help("Fit image to view (F)")
+            .keyboardShortcut("f", modifiers: [])
+        }
 
-            Divider()
-
-            Toggle(isOn: Bindable(viewModel).showMetadataOverlay) {
-                Image(systemName: "info.circle")
+        // Transform menu — collapses rotate, flip, and invert into one button
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                if viewModel.isMonochrome {
+                    Button {
+                        viewModel.toggleInversion()
+                    } label: {
+                        Label(
+                            viewModel.isInverted ? "Remove Inversion" : "Invert Grayscale",
+                            systemImage: viewModel.isInverted ? "circle.lefthalf.filled" : "circle.righthalf.filled"
+                        )
+                    }
+                    Divider()
+                }
+                Button { viewModel.rotateCounterClockwise() } label: {
+                    Label("Rotate Counter-Clockwise", systemImage: "rotate.left")
+                }
+                Button { viewModel.rotateClockwise() } label: {
+                    Label("Rotate Clockwise", systemImage: "rotate.right")
+                }
+                Divider()
+                Button { viewModel.flipHorizontal() } label: {
+                    Label("Flip Horizontal", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                }
+                Button { viewModel.flipVertical() } label: {
+                    Label("Flip Vertical", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down")
+                }
+                Divider()
+                Button { viewModel.resetTransformations() } label: {
+                    Label("Reset All Transforms", systemImage: "arrow.counterclockwise.circle")
+                }
+            } label: {
+                Image(systemName: "wand.and.stars")
             }
-            .accessibilityLabel("Toggle metadata overlay")
-            .help("Show/hide pixel data metadata")
+            .help("Transform — rotate, flip, invert")
+        }
 
-            Toggle(isOn: Bindable(viewModel).showPerformanceOverlay) {
-                Image(systemName: "gauge.with.dots.needle.bottom.50percent")
+        // Overlays & Panels menu — collapses toggles and panels into one button
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                Toggle(isOn: Bindable(viewModel).showMetadataOverlay) {
+                    Label("Metadata Overlay", systemImage: "info.circle")
+                }
+                Toggle(isOn: Bindable(viewModel).showPerformanceOverlay) {
+                    Label("Performance Overlay", systemImage: "gauge.with.dots.needle.bottom.50percent")
+                }
+                Divider()
+                Toggle(isOn: Bindable(viewModel).showDICOMInspector) {
+                    Label("DICOM Tag Inspector", systemImage: "list.bullet.rectangle")
+                }
+                .disabled(viewModel.dicomFile == nil)
+                Divider()
+                Button {
+                    viewModel.showJ2KTesting = true
+                } label: {
+                    Label("J2KSwift Testing…", systemImage: "staroflife.circle")
+                }
+            } label: {
+                Image(systemName: "square.stack.3d.up")
             }
-            .accessibilityLabel("Toggle performance overlay")
-            .help("Show/hide performance metrics")
-
-            Toggle(isOn: Bindable(viewModel).showDICOMInspector) {
-                Image(systemName: "list.bullet.rectangle")
-            }
-            .disabled(viewModel.dicomFile == nil)
-            .accessibilityLabel("Toggle DICOM tag inspector")
-            .help("Show/hide DICOM tag inspector")
+            .help("Overlays and panels")
         }
     }
 }
+
+// MARK: - Scroll Wheel Zoom (macOS)
+
+#if os(macOS)
+/// Zero-size NSView that installs a local NSEvent monitor for scroll-wheel events.
+private struct ScrollWheelHandler: NSViewRepresentable {
+    let onScroll: (CGFloat) -> Void
+
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            onScroll(event.deltaY)
+            return event
+        }
+        return view
+    }
+
+    func updateNSView(_ nsView: NSView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    final class Coordinator {
+        var monitor: Any?
+        deinit {
+            if let m = monitor { NSEvent.removeMonitor(m) }
+        }
+    }
+}
+#endif
+
 #endif
