@@ -214,6 +214,19 @@ let package = Package(
         .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "3.2.0")
     ],
     targets: [
+        // OpenJPEG 2.x system library (https://www.openjpeg.org)
+        // Requires: brew install openjpeg
+        //
+        // pkgConfig is intentionally omitted: `pkg-config --libs libopenjp2` emits
+        // `-L/opt/homebrew/opt/openjpeg/lib -lopenjp2`, which causes a dynamic link to
+        // libopenjp2.7.dylib.  With App Sandbox enabled that path is inaccessible and
+        // dyld aborts at launch.  The actual link is handled statically via the
+        // .unsafeFlags(["/opt/homebrew/lib/libopenjp2.a"]) in DICOMCore's linkerSettings.
+        // Headers are resolved directly from the modulemap (no pkg-config needed).
+        .systemLibrary(
+            name: "COpenJPEG",
+            providers: [.brew(["openjpeg"])]
+        ),
         .target(
             name: "DICOMCore",
             dependencies: [
@@ -223,9 +236,17 @@ let package = Package(
                 .product(name: "J2K3D", package: "J2KSwift"),
                 // Phase 5: hardware acceleration backends
                 .product(name: "J2KAccelerate", package: "J2KSwift"),
-                .product(name: "J2KMetal", package: "J2KSwift")
+                .product(name: "J2KMetal", package: "J2KSwift"),
+                // OpenJPEG — decode comparison codec (macOS only, requires brew install openjpeg)
+                .target(name: "COpenJPEG", condition: .when(platforms: [.macOS]))
             ],
-            exclude: ["CharacterSetHandler+README.md"]
+            exclude: ["CharacterSetHandler+README.md"],
+            linkerSettings: [
+                // Link the static OpenJPEG library directly so the app has no runtime
+                // dependency on /opt/homebrew/lib (avoids dyld rpath failures).
+                // Apple Silicon path; for Intel Macs change to /usr/local/lib/libopenjp2.a
+                .unsafeFlags(["/opt/homebrew/lib/libopenjp2.a"], .when(platforms: [.macOS]))
+            ]
         ),
         .target(
             name: "DICOMDictionary",
