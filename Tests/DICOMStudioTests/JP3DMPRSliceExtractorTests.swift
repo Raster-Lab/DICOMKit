@@ -448,10 +448,10 @@ struct JP3DMPRRenderHelpersTests {
 
 // MARK: - JP3DMPRViewModel Tests
 
-@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 @Suite("JP3DMPRViewModel")
 struct JP3DMPRViewModelTests {
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("Initial state: no volume, no buffers")
     func testInitialState() {
         let vm = JP3DMPRViewModel()
@@ -464,6 +464,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.errorMessage == nil)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("setVolume populates slice indices to centre")
     @MainActor
     func testSetVolumeIndex() {
@@ -475,6 +476,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.coronalIndex == 4)  // height/2 = 4
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("setVolume populates all three buffers")
     @MainActor
     func testSetVolumeBuffers() {
@@ -485,6 +487,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.coronalBuffer != nil)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("setSliceIndex clamps to valid range")
     @MainActor
     func testSetSliceIndexClamping() {
@@ -496,6 +499,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.axialIndex == 1)  // max = depth-1 = 1
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("scroll increments and decrements slice index")
     @MainActor
     func testScroll() {
@@ -508,6 +512,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.axialIndex == 1)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("setWindowLevel with valid width updates windowCenter and windowWidth")
     @MainActor
     func testSetWindowLevel() {
@@ -518,6 +523,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.windowWidth == 200.0)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("setWindowLevel with zero width is ignored")
     @MainActor
     func testSetWindowLevelZeroWidth() {
@@ -530,6 +536,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.windowWidth == originalWidth)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("setSliceIndex with no volume is a no-op")
     @MainActor
     func testSetSliceIndexNoVolume() {
@@ -538,6 +545,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.axialIndex == 0)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("handleClick without linking does not update indices")
     @MainActor
     func testHandleClickNoLinking() {
@@ -549,6 +557,7 @@ struct JP3DMPRViewModelTests {
         #expect(vm.axialIndex == beforeAxial)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("referenceLinePosition returns nil when no volume")
     @MainActor
     func testRefLineNoVolume() {
@@ -557,6 +566,7 @@ struct JP3DMPRViewModelTests {
         #expect(result == nil)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("referenceLinePosition returns nil when reference lines hidden")
     @MainActor
     func testRefLineHidden() {
@@ -567,6 +577,7 @@ struct JP3DMPRViewModelTests {
         #expect(result == nil)
     }
 
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("referenceLinePosition returns value in [0,1] when enabled")
     @MainActor
     func testRefLineInRange() {
