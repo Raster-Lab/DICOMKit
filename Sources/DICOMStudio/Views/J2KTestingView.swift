@@ -34,6 +34,7 @@ public struct J2KTestingView: View {
                     platformSection
                     codecInspectorSection
                     benchmarkSection
+                    codecComparisonSection
                     roundTripSection
                 }
                 .padding()
@@ -218,6 +219,156 @@ public struct J2KTestingView: View {
         }
     }
 
+    // MARK: - Codec Comparison Section
+
+    private var codecComparisonSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Encodes frame 0 with J2KSwift using the target codec, then decodes the resulting bitstream with both J2KSwift and OpenJPEG side by side.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                // Controls
+                HStack(spacing: 10) {
+                    Text("Target:")
+                        .font(.callout)
+                    Picker("", selection: Bindable(viewModel.j2kTesting).selectedRoundTripUID) {
+                        ForEach(viewModel.j2kTesting.supportMatrix.filter(\.canEncode), id: \.uid) { e in
+                            Text(e.shortName).tag(e.uid)
+                        }
+                    }
+                    .labelsHidden()
+                    #if os(macOS)
+                    .frame(maxWidth: 180)
+                    #endif
+                    Spacer()
+                    Button {
+                        if let file = viewModel.dicomFile {
+                            viewModel.j2kTesting.runCodecComparison(file: file)
+                        }
+                    } label: {
+                        Label("Compare", systemImage: "arrow.left.arrow.right")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(viewModel.dicomFile == nil || viewModel.j2kTesting.isRunning)
+
+                    if !viewModel.j2kTesting.comparisonResults.isEmpty {
+                        Button("Reset") { viewModel.j2kTesting.reset() }
+                            .disabled(viewModel.j2kTesting.isRunning)
+                    }
+                }
+
+                // Results table
+                if viewModel.j2kTesting.comparisonResults.isEmpty {
+                    if viewModel.dicomFile == nil {
+                        Text("Load a DICOM file to compare codecs.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    comparisonTable
+                }
+            }
+        } label: {
+            Label("J2KSwift vs OpenJPEG Decode", systemImage: "chart.bar.xaxis")
+                .font(.headline)
+        }
+    }
+
+    @ViewBuilder
+    private var comparisonTable: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Header row
+            HStack(spacing: 0) {
+                Text("Codec").frame(minWidth: 180, alignment: .leading)
+                Text("Decode").frame(minWidth: 80, alignment: .trailing)
+                Text("Bytes").frame(minWidth: 80, alignment: .trailing)
+                Text("vs J2KSwift").frame(minWidth: 90, alignment: .trailing)
+                Spacer()
+            }
+            .font(.system(size: StudioTypography.captionSize - 1, weight: .semibold))
+            .foregroundStyle(.secondary)
+
+            Divider()
+
+            ForEach(viewModel.j2kTesting.comparisonResults) { entry in
+                comparisonRow(entry)
+            }
+
+            // Image previews
+            #if canImport(CoreGraphics)
+            if !viewModel.j2kTesting.comparisonImages.isEmpty {
+                Divider()
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(viewModel.j2kTesting.comparisonResults, id: \.id) { entry in
+                            if let img = viewModel.j2kTesting.comparisonImages[entry.codecName] {
+                                imageStrip(label: entry.codecName, image: img)
+                                    .frame(width: 200)
+                            }
+                        }
+                    }
+                }
+            }
+            #endif
+        }
+        .padding(.vertical, 4)
+    }
+
+    @ViewBuilder
+    private func comparisonRow(_ entry: CodecComparisonEntry) -> some View {
+        HStack(spacing: 0) {
+            // Codec name
+            Text(entry.codecName)
+                .font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                .lineLimit(1)
+                .frame(minWidth: 180, alignment: .leading)
+
+            switch entry.state {
+            case .idle:
+                EmptyView()
+            case .running:
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.mini)
+                    Text("Decoding…").font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(minWidth: 250, alignment: .leading)
+            case .complete(let r):
+                Text(formatMs(r.decodeMs))
+                    .font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                    .frame(minWidth: 80, alignment: .trailing)
+                Text(formatBytes(r.outputBytes))
+                    .font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                    .frame(minWidth: 80, alignment: .trailing)
+                HStack(spacing: 4) {
+                    if entry.codecName.hasPrefix("J2KSwift") {
+                        Text("reference")
+                            .font(.system(size: StudioTypography.captionSize - 1))
+                            .foregroundStyle(.secondary)
+                    } else if let psnr = r.psnrDb {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        Text(String(format: "%.1f dB", psnr))
+                            .font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                    } else if r.matchesReference {
+                        Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                        Text("identical")
+                            .font(.system(size: StudioTypography.captionSize - 1))
+                    } else {
+                        Image(systemName: "xmark.circle").foregroundStyle(.red)
+                        Text("size mismatch")
+                            .font(.system(size: StudioTypography.captionSize - 1))
+                            .foregroundStyle(.red)
+                    }
+                }
+                .frame(minWidth: 90, alignment: .trailing)
+                Spacer()
+            case .failed(let msg):
+                Label(msg, systemImage: "exclamationmark.triangle")
+                    .font(.caption).foregroundStyle(.red)
+                    .frame(minWidth: 250, alignment: .leading)
+            }
+        }
+    }
+
     // MARK: - Round-Trip Section
 
     private var roundTripSection: some View {
@@ -335,15 +486,22 @@ public struct J2KTestingView: View {
                             .multilineTextAlignment(.trailing)
                     }
                     Divider()
+                    // Image geometry
+                    resultRow(
+                        "Dimensions",
+                        value: "\(r.imageWidth) × \(r.imageHeight) · \(r.bitsAllocated)-bit · \(r.samplesPerPixel == 1 ? "grayscale" : "RGB")"
+                    )
+                    Divider()
                     // Metrics grid
                     LazyVGrid(
                         columns: [GridItem(.flexible()), GridItem(.flexible()), GridItem(.flexible())],
                         alignment: .leading,
                         spacing: 4
                     ) {
-                        resultRow("Original", value: formatBytes(r.originalBytes))
+                        resultRow("Raw",      value: formatBytes(r.originalBytes))
                         resultRow("Encoded",  value: formatBytes(r.encodedBytes))
                         resultRow("Ratio",    value: String(format: "%.2f×", r.compressionRatio))
+                        resultRow("Decoded",  value: formatBytes(r.decodedBytes), statusColor: r.passed ? .green : .red)
                         resultRow("Encode",   value: formatMs(r.encodeMs))
                         resultRow("Decode",   value: formatMs(r.decodeMs))
                         resultRow("Total",    value: formatMs(r.encodeMs + r.decodeMs), accent: true)
@@ -413,7 +571,7 @@ public struct J2KTestingView: View {
     }
 
     @ViewBuilder
-    private func resultRow(_ label: String, value: String, accent: Bool = false) -> some View {
+    private func resultRow(_ label: String, value: String, accent: Bool = false, statusColor: Color? = nil) -> some View {
         HStack(alignment: .firstTextBaseline) {
             Text(label)
                 .font(.system(size: StudioTypography.captionSize))
@@ -422,7 +580,12 @@ public struct J2KTestingView: View {
             Text(value)
                 .font(.system(size: StudioTypography.captionSize, design: .monospaced)
                     .weight(accent ? .bold : .regular))
-                .foregroundStyle(accent ? .primary : .primary)
+                .foregroundStyle(statusColor ?? (accent ? Color.primary : Color.primary))
+            if let color = statusColor {
+                Image(systemName: color == .green ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .foregroundStyle(color)
+                    .font(.system(size: StudioTypography.captionSize))
+            }
         }
     }
 
