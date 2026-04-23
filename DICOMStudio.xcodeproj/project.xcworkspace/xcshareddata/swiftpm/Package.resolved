@@ -1,13 +1,13 @@
 {
-  "originHash" : "6c95539b72cef6518a2af9e1f7c4cf0fb95bc881782b652776522f3a11a040c7",
+  "originHash" : "e4aae79e8455dc43067c35918ec820fa1ca5fc6830a0dd55781320cbc25bafd0",
   "pins" : [
     {
       "identity" : "j2kswift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/J2KSwift.git",
       "state" : {
-        "revision" : "a6b204aaa6c2eeaa1cf61022c528d4405d62f02a",
-        "version" : "3.2.0"
+        "revision" : "67717126cab42e5d060484475a94f7490bdfb91c",
+        "version" : "4.0.1"
       }
     },
     {
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-argument-parser.git",
       "state" : {
-        "revision" : "c5d11a805e765f52ba34ec7284bd4fcd6ba68615",
-        "version" : "1.7.0"
+        "revision" : "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
+        "version" : "1.7.1"
       }
     }
   ],
