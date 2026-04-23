@@ -57,6 +57,10 @@ public struct MainView: View {
                 .id(NavigationDestination.library)
         case .viewer:
             ImageViewerView(viewModel: viewModel.imageViewerViewModel)
+        case .volumeViewer:
+            DICOMVolumeViewerView(viewModel: viewModel.volumeViewerViewModel)
+        case .jp3dComparison:
+            JP3DComparisonView(viewModel: viewModel.jp3dComparisonViewModel)
         case .networking:
             NetworkingView(viewModel: viewModel.networkingViewModel)
         case .dicomWeb:

@@ -38,13 +38,23 @@ public struct J2KBenchmarkResult: Sendable {
 /// Result of a J2K encode → decode round-trip test for a single transfer syntax.
 public struct J2KRoundTripResult: Sendable {
     public let targetSyntaxName: String
+    /// Raw pixel buffer size (frame0.count before encoding).
     public let originalBytes: Int
+    /// Encoded bitstream size produced by J2KSwift.
     public let encodedBytes: Int
+    /// Decoded pixel buffer size after decoding the bitstream back.
+    public let decodedBytes: Int
     public let encodeMs: Double
     public let decodeMs: Double
     public let compressionRatio: Double
+    /// True when `decodedBytes == originalBytes`.
     public let passed: Bool
     public let notes: String
+    // Image geometry (from PixelDataDescriptor)
+    public let imageWidth: Int
+    public let imageHeight: Int
+    public let bitsAllocated: Int
+    public let samplesPerPixel: Int
 }
 
 /// Per-codec entry in the round-trip results table.
@@ -121,11 +131,24 @@ public final class J2KTestingViewModel {
     public private(set) var decodedImages: [String: CGImage] = [:]
     #endif
 
+    // MARK: - Codec Comparison (J2KSwift vs OpenJPEG)
+
+    /// Results of the most recent codec comparison run.
+    public private(set) var comparisonResults: [CodecComparisonEntry] = []
+
+    /// Whether the codec comparison is currently running.
+    public private(set) var isComparisonRunning: Bool = false
+
+    #if canImport(CoreGraphics)
+    /// Decoded preview images from the comparison run, keyed by codec name.
+    public private(set) var comparisonImages: [String: CGImage] = [:]
+    #endif
+
     // MARK: - Computed
 
     public var isRunning: Bool {
         if case .running = benchmarkState { return true }
-        return isRoundTripRunning
+        return isRoundTripRunning || isComparisonRunning
     }
 
     // MARK: - Actions
@@ -206,7 +229,42 @@ public final class J2KTestingViewModel {
         guard !isRunning else { return }
         benchmarkState = .idle
         roundTripResults = []
+        comparisonResults = []
+        #if canImport(CoreGraphics)
+        comparisonImages = [:]
+        #endif
         clearImages()
+    }
+
+    // MARK: - Codec Comparison
+
+    /// Encodes frame 0 with J2KSwift using the selected transfer syntax, then decodes
+    /// the resulting bitstream with both J2KSwift and OpenJPEG (if available).
+    /// Results are written to ``comparisonResults`` and ``comparisonImages``.
+    public func runCodecComparison(file: DICOMFile) {
+        guard !isRunning else { return }
+        isComparisonRunning = true
+        #if canImport(COpenJPEG) && os(macOS)
+        let entries: [CodecComparisonEntry] = [
+            CodecComparisonEntry(codecName: "J2KSwift",  state: .running),
+            CodecComparisonEntry(codecName: "OpenJPEG \(OpenJPEGCodec.version)", state: .running)
+        ]
+        #else
+        let entries: [CodecComparisonEntry] = [
+            CodecComparisonEntry(codecName: "J2KSwift", state: .running)
+        ]
+        #endif
+        comparisonResults = entries
+        let uid = selectedRoundTripUID
+        Task {
+            let output = await Self.performComparison(file: file, targetUID: uid)
+            comparisonResults = output.entries
+            #if canImport(CoreGraphics)
+            if rawImage == nil { rawImage = output.rawImage }
+            for (name, img) in output.images { comparisonImages[name] = img }
+            #endif
+            isComparisonRunning = false
+        }
     }
 
     // MARK: - Background Workers
@@ -319,25 +377,31 @@ public final class J2KTestingViewModel {
                 let decodedImage = encodedImage // same pixels; distinct reference for independent clearing
 
                 let ratio = Double(originalBytes) / Double(max(1, encoded.count))
-                let passed = decoded.count == originalBytes
+                let decodedBytes = decoded.count
+                let passed = decodedBytes == originalBytes
                 let notes: String
                 if passed {
                     notes = isLossless
-                        ? "Decoded \(decoded.count) B — lossless round-trip verified"
-                        : "Decoded \(decoded.count) B — lossy cycle verified (values differ)"
+                        ? "Lossless round-trip verified — decoded \(decodedBytes) B matches raw"
+                        : "Lossy cycle complete — decoded \(decodedBytes) B (values intentionally differ)"
                 } else {
-                    notes = "Size mismatch: \(decoded.count) B decoded vs \(originalBytes) B original"
+                    notes = "Size mismatch: decoded \(decodedBytes) B ≠ raw \(originalBytes) B"
                 }
 
                 let result = J2KRoundTripResult(
                     targetSyntaxName: targetName,
                     originalBytes: originalBytes,
                     encodedBytes: encoded.count,
+                    decodedBytes: decodedBytes,
                     encodeMs: encodeMs,
                     decodeMs: decodeMs,
                     compressionRatio: ratio,
                     passed: passed,
-                    notes: notes
+                    notes: notes,
+                    imageWidth: descriptor.columns,
+                    imageHeight: descriptor.rows,
+                    bitsAllocated: descriptor.bitsAllocated,
+                    samplesPerPixel: descriptor.samplesPerPixel
                 )
                 continuation.resume(returning: .init(
                     state: .complete(result),
@@ -433,6 +497,200 @@ public final class J2KTestingViewModel {
     // MARK: - Init
 
     public init() {}
+}
+
+// MARK: - Codec Comparison Types
+
+/// One row in the codec comparison table.
+public struct CodecComparisonEntry: Identifiable, Sendable {
+    public var id: String { codecName }
+    public let codecName: String
+    public var state: CodecComparisonState
+}
+
+public enum CodecComparisonState: Sendable {
+    case idle
+    case running
+    case complete(CodecComparisonResult)
+    case failed(String)
+}
+
+/// Timing and correctness result for a single codec in the comparison.
+public struct CodecComparisonResult: Sendable {
+    public let decodeMs: Double
+    public let outputBytes: Int
+    /// Whether the output byte count matches the reference (J2KSwift) output.
+    public let matchesReference: Bool
+    /// Peak signal-to-noise ratio vs J2KSwift output (nil when outputs are different sizes).
+    public let psnrDb: Double?
+}
+
+// MARK: - Comparison Background Worker
+
+extension J2KTestingViewModel {
+
+    /// Output bundle returned by `performComparison`.
+    fileprivate struct ComparisonOutput: @unchecked Sendable {
+        let entries: [CodecComparisonEntry]
+        #if canImport(CoreGraphics)
+        let rawImage: CGImage?
+        let images: [String: CGImage]
+        init(entries: [CodecComparisonEntry], rawImage: CGImage? = nil, images: [String: CGImage] = [:]) {
+            self.entries = entries; self.rawImage = rawImage; self.images = images
+        }
+        #else
+        init(entries: [CodecComparisonEntry]) { self.entries = entries }
+        #endif
+    }
+
+    fileprivate static func performComparison(
+        file: DICOMFile,
+        targetUID: String
+    ) async -> ComparisonOutput {
+        await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+
+                // 1. Get raw pixels
+                guard let pixData = file.pixelData(),
+                      let frame0 = pixData.frameData(at: 0) else {
+                    let failed = failedEntries("Frame 0 not accessible")
+                    #if canImport(CoreGraphics)
+                    continuation.resume(returning: ComparisonOutput(entries: failed))
+                    #else
+                    continuation.resume(returning: ComparisonOutput(entries: failed))
+                    #endif
+                    return
+                }
+                let descriptor = pixData.descriptor
+                let rawImage = makePreviewImage(pixels: frame0, descriptor: descriptor)
+
+                // 2. Encode with J2KSwift to produce the reference bitstream
+                let isLossless = !targetUID.hasSuffix(".91")
+                    && !targetUID.hasSuffix(".93")
+                    && !targetUID.hasSuffix(".203")
+                let encoder = J2KSwiftCodec(encodingTransferSyntaxUID: targetUID)
+                let encoded: Data
+                do {
+                    encoded = try encoder.encodeFrame(
+                        frame0,
+                        descriptor: descriptor,
+                        frameIndex: 0,
+                        configuration: CompressionConfiguration(
+                            quality: isLossless ? .maximum : .medium,
+                            speed: .balanced,
+                            progressive: false,
+                            preferLossless: isLossless
+                        )
+                    )
+                } catch {
+                    let failed = failedEntries("Encode failed: \(error.localizedDescription)")
+                    #if canImport(CoreGraphics)
+                    continuation.resume(returning: ComparisonOutput(entries: failed, rawImage: rawImage))
+                    #else
+                    continuation.resume(returning: ComparisonOutput(entries: failed))
+                    #endif
+                    return
+                }
+
+                var entries: [CodecComparisonEntry] = []
+                #if canImport(CoreGraphics)
+                var images: [String: CGImage] = [:]
+                #endif
+                var referenceOutput: Data? = nil
+
+                // 3. Decode with J2KSwift
+                let j2kDecoder = J2KSwiftCodec()
+                let t0 = Date()
+                let j2kResult: Data?
+                do {
+                    j2kResult = try j2kDecoder.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
+                } catch {
+                    j2kResult = nil
+                }
+                let j2kMs = Date().timeIntervalSince(t0) * 1_000
+
+                if let out = j2kResult {
+                    referenceOutput = out
+                    let result = CodecComparisonResult(
+                        decodeMs: j2kMs,
+                        outputBytes: out.count,
+                        matchesReference: true,
+                        psnrDb: nil
+                    )
+                    entries.append(CodecComparisonEntry(codecName: "J2KSwift", state: .complete(result)))
+                    #if canImport(CoreGraphics)
+                    if let img = makePreviewImage(pixels: out, descriptor: descriptor) {
+                        images["J2KSwift"] = img
+                    }
+                    #endif
+                } else {
+                    entries.append(CodecComparisonEntry(codecName: "J2KSwift", state: .failed("Decode failed")))
+                }
+
+                // 4. Decode with OpenJPEG (macOS only)
+                #if canImport(COpenJPEG) && os(macOS)
+                let opjName = "OpenJPEG \(OpenJPEGCodec.version)"
+                let opjDecoder = OpenJPEGCodec()
+                let t1 = Date()
+                let opjResult: Data?
+                do {
+                    opjResult = try opjDecoder.decodeFrame(encoded, descriptor: descriptor)
+                } catch {
+                    opjResult = nil
+                }
+                let opjMs = Date().timeIntervalSince(t1) * 1_000
+
+                if let out = opjResult {
+                    let matches = out.count == (referenceOutput?.count ?? -1)
+                    let psnr: Double? = matches ? computePSNR(out, referenceOutput!, descriptor: descriptor) : nil
+                    let result = CodecComparisonResult(
+                        decodeMs: opjMs,
+                        outputBytes: out.count,
+                        matchesReference: matches,
+                        psnrDb: psnr
+                    )
+                    entries.append(CodecComparisonEntry(codecName: opjName, state: .complete(result)))
+                    #if canImport(CoreGraphics)
+                    if let img = makePreviewImage(pixels: out, descriptor: descriptor) {
+                        images[opjName] = img
+                    }
+                    #endif
+                } else {
+                    entries.append(CodecComparisonEntry(codecName: opjName, state: .failed("Decode failed")))
+                }
+                #endif
+
+                #if canImport(CoreGraphics)
+                continuation.resume(returning: ComparisonOutput(entries: entries, rawImage: rawImage, images: images))
+                #else
+                continuation.resume(returning: ComparisonOutput(entries: entries))
+                #endif
+            }
+        }
+    }
+
+    private static func failedEntries(_ msg: String) -> [CodecComparisonEntry] {
+        var entries = [CodecComparisonEntry(codecName: "J2KSwift", state: .failed(msg))]
+        #if canImport(COpenJPEG) && os(macOS)
+        entries.append(CodecComparisonEntry(codecName: "OpenJPEG", state: .failed(msg)))
+        #endif
+        return entries
+    }
+
+    /// Computes PSNR in dB between two raw pixel buffers.
+    /// Returns `nil` (infinity) when buffers are identical (lossless perfect match).
+    private static func computePSNR(_ a: Data, _ b: Data, descriptor: PixelDataDescriptor) -> Double? {
+        guard a.count == b.count, !a.isEmpty else { return nil }
+        let maxVal: Double = descriptor.bitsAllocated <= 8 ? 255.0 : 65535.0
+        var mse: Double = 0
+        for i in 0..<a.count {
+            let diff = Double(Int(a[a.startIndex + i]) - Int(b[b.startIndex + i]))
+            mse += diff * diff
+        }
+        mse /= Double(a.count)
+        guard mse > 0 else { return nil }   // nil = infinity (perfect lossless match)
+        return 10.0 * log10((maxVal * maxVal) / mse)
+    }
 }
 
 // MARK: - Round-Trip Output (internal)

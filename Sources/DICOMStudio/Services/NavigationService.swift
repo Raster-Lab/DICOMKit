@@ -9,6 +9,8 @@ import Foundation
 public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable {
     case library          = "Library"
     case viewer           = "Viewer"
+    case volumeViewer     = "3D Viewer"
+    case jp3dComparison   = "JP3D Comparison"
     case networking       = "Networking"
     case dicomWeb         = "DICOMweb"
     case reporting        = "Reporting"
@@ -29,6 +31,8 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         switch self {
         case .library:          return "folder"
         case .viewer:           return "photo"
+        case .volumeViewer:     return "cube.transparent"
+        case .jp3dComparison:   return "waveform.path.ecg.rectangle"
         case .networking:       return "network"
         case .dicomWeb:         return "globe"
         case .reporting:        return "doc.text"
@@ -49,6 +53,8 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         switch self {
         case .library:          return "DICOM File Library"
         case .viewer:           return "Image Viewer"
+        case .volumeViewer:     return "3D Volume Viewer"
+        case .jp3dComparison:   return "JP3D Volumetric Comparison"
         case .networking:       return "DICOM Networking Hub"
         case .dicomWeb:         return "DICOMweb Integration Hub"
         case .reporting:        return "Structured Reporting"

@@ -63,6 +63,15 @@ public final class MainViewModel {
     /// Persistent image viewer ViewModel — survives tab switches.
     public var imageViewerViewModel: ImageViewerViewModel
 
+    /// Persistent standalone 3D MPR viewer ViewModel — survives tab switches.
+    public var volumeViewerViewModel: DICOMVolumeViewerViewModel
+
+    /// Persistent JP3D volumetric comparison ViewModel — survives tab switches.
+    public var jp3dComparisonViewModel: JP3DComparisonViewModel
+
+    /// Persistent J2KSwift frame-by-frame comparison ViewModel — survives tab switches.
+    public var volumeComparisonViewModel: JP3DVolumeComparisonViewModel
+
     /// Persistent networking ViewModel — survives tab switches.
     public var networkingViewModel: NetworkingViewModel
 
@@ -111,6 +120,9 @@ public final class MainViewModel {
         )
 
         self.imageViewerViewModel = ImageViewerViewModel()
+        self.volumeViewerViewModel = DICOMVolumeViewerViewModel()
+        self.jp3dComparisonViewModel = JP3DComparisonViewModel()
+        self.volumeComparisonViewModel = JP3DVolumeComparisonViewModel()
 
         let profileStorage = ServerProfileStorageService(storageService: storageService)
         let networkingService = NetworkingService(profileStorage: profileStorage)
