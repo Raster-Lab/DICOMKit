@@ -1,0 +1,14 @@
+// System library wrapper for OpenJPEG 2.x (https://www.openjpeg.org)
+// Install via Homebrew: brew install openjpeg
+//
+// Apple Silicon path: /opt/homebrew  (used below)
+// Intel Mac path:     /usr/local      (update the header path if needed)
+//
+// Note: "link" is intentionally omitted here; linking is handled via
+// linkerSettings in Package.swift so the static library (.a) is used
+// instead of the dynamic library (.dylib), avoiding a runtime rpath dependency.
+
+module COpenJPEG [system] {
+    header "/opt/homebrew/include/openjpeg-2.5/openjpeg.h"
+    export *
+}

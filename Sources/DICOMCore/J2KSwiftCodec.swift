@@ -163,7 +163,7 @@ private extension J2KSwiftCodec {
         let image: J2KImage
         do {
             image = try Self.awaitJ2KResult {
-                try await J2KDecoder().decode(frameData)
+                try await J2KDecoder().decodeGPU(frameData)
             }
         } catch {
             throw DICOMError.parsingFailed("J2KSwift decode failed: \(error)")
