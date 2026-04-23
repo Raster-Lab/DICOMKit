@@ -36,3 +36,9 @@ dcm4chee-db-data/
 
 # Local datasets
 LocalDatasets/
+
+# Xcode build output (SwiftPM uses .build/; Xcode schemes emit build/)
+build/
+
+# Claude Code per-project memory (not source)
+memory/
