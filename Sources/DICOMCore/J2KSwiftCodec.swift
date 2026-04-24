@@ -5,6 +5,10 @@ import J2KCore
 import J2KCodec
 #endif
 
+#if canImport(Accelerate)
+import Accelerate
+#endif
+
 /// JPEG 2000 codec adapter backed directly by J2KSwift.
 ///
 /// This provides the Phase 1 pure-Swift JPEG 2000 path for DICOMKit and establishes
@@ -184,17 +188,31 @@ private extension J2KSwiftCodec {
 
     static func makeJ2KImage(from frameData: Data, descriptor: PixelDataDescriptor) throws -> J2KImage {
         let expectedBytes = descriptor.bytesPerFrame
-        let input = Data(frameData.prefix(expectedBytes))
         let bytesPerSample = descriptor.bytesPerSample
         let componentPixelCount = descriptor.rows * descriptor.columns
         let componentByteCount = componentPixelCount * bytesPerSample
+
+        guard frameData.count >= expectedBytes else {
+            throw DICOMError.parsingFailed("Frame data too short for JPEG 2000 encoding")
+        }
+
+        // DICOM Explicit VR LE pixel data is already little-endian. Pass it to
+        // J2KSwift verbatim and signal the byte order so the encoder does not
+        // run its statistical inference — this also saves us the O(N) manual
+        // swap we used to do before v4.0's `sampleByteOrder` hint existed.
+        let byteOrderHint: J2KComponent.ByteOrder? = (bytesPerSample == 2) ? .littleEndian : nil
 
         let colorSpace: J2KColorSpace = descriptor.samplesPerPixel == 1 ? .grayscale : .sRGB
         let components: [J2KComponent]
 
         switch descriptor.samplesPerPixel {
         case 1:
-            let componentData = normalizeEndianForJ2K(input, bytesPerSample: bytesPerSample)
+            let componentData: Data
+            if frameData.count == expectedBytes {
+                componentData = frameData
+            } else {
+                componentData = frameData.subdata(in: frameData.startIndex..<frameData.startIndex + expectedBytes)
+            }
             components = [
                 J2KComponent(
                     index: 0,
@@ -202,36 +220,29 @@ private extension J2KSwiftCodec {
                     signed: descriptor.isSigned,
                     width: descriptor.columns,
                     height: descriptor.rows,
-                    data: componentData
+                    data: componentData,
+                    sampleByteOrder: byteOrderHint
                 )
             ]
 
         case 3:
-            var planes = [Data(), Data(), Data()]
-            planes = planes.map { _ in Data(capacity: componentByteCount) }
-
-            if descriptor.planarConfiguration == 0 {
-                let bytesPerPixel = bytesPerSample * 3
-                for offset in stride(from: 0, to: min(input.count, componentPixelCount * bytesPerPixel), by: bytesPerPixel) {
-                    for componentIndex in 0..<3 {
-                        let start = offset + componentIndex * bytesPerSample
-                        let end = start + bytesPerSample
-                        guard end <= input.count else {
-                            throw DICOMError.parsingFailed("RGB frame data ended unexpectedly while building J2K components")
-                        }
-                        planes[componentIndex].append(contentsOf: normalizeEndianForJ2K(input[start..<end], bytesPerSample: bytesPerSample))
-                    }
-                }
-            } else {
-                guard input.count >= componentByteCount * 3 else {
+            let planes: [Data]
+            if descriptor.planarConfiguration == 1 {
+                guard frameData.count >= componentByteCount * 3 else {
                     throw DICOMError.parsingFailed("Planar RGB frame data too short for JPEG 2000 encoding")
                 }
-
-                for componentIndex in 0..<3 {
-                    let start = componentIndex * componentByteCount
+                planes = (0..<3).map { componentIndex in
+                    let start = frameData.startIndex + componentIndex * componentByteCount
                     let end = start + componentByteCount
-                    planes[componentIndex] = normalizeEndianForJ2K(input[start..<end], bytesPerSample: bytesPerSample)
+                    return frameData.subdata(in: start..<end)
                 }
+            } else {
+                planes = try deinterleaveRGB(
+                    frameData: frameData,
+                    bytesPerSample: bytesPerSample,
+                    componentPixelCount: componentPixelCount,
+                    componentByteCount: componentByteCount
+                )
             }
 
             components = (0..<3).map { componentIndex in
@@ -241,7 +252,8 @@ private extension J2KSwiftCodec {
                     signed: descriptor.isSigned,
                     width: descriptor.columns,
                     height: descriptor.rows,
-                    data: planes[componentIndex]
+                    data: planes[componentIndex],
+                    sampleByteOrder: byteOrderHint
                 )
             }
 
@@ -257,6 +269,48 @@ private extension J2KSwiftCodec {
         )
     }
 
+    /// De-interleaves a chunky RGB buffer into three planar Data components.
+    /// Faster than the previous iterator-based build because it preallocates
+    /// each plane and writes bytes via UnsafeMutableBufferPointer.
+    static func deinterleaveRGB(
+        frameData: Data,
+        bytesPerSample: Int,
+        componentPixelCount: Int,
+        componentByteCount: Int
+    ) throws -> [Data] {
+        let bytesPerPixel = bytesPerSample * 3
+        guard frameData.count >= componentPixelCount * bytesPerPixel else {
+            throw DICOMError.parsingFailed("RGB frame data ended unexpectedly while building J2K components")
+        }
+        var r = Data(count: componentByteCount)
+        var g = Data(count: componentByteCount)
+        var b = Data(count: componentByteCount)
+        frameData.withUnsafeBytes { src in
+            let srcBase = src.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            r.withUnsafeMutableBytes { rBuf in
+                g.withUnsafeMutableBytes { gBuf in
+                    b.withUnsafeMutableBytes { bBuf in
+                        let rp = rBuf.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                        let gp = gBuf.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                        let bp = bBuf.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                        var srcOff = 0
+                        var dstOff = 0
+                        for _ in 0..<componentPixelCount {
+                            for k in 0..<bytesPerSample {
+                                rp[dstOff + k] = srcBase[srcOff + k]
+                                gp[dstOff + k] = srcBase[srcOff + bytesPerSample + k]
+                                bp[dstOff + k] = srcBase[srcOff + 2 * bytesPerSample + k]
+                            }
+                            srcOff += bytesPerPixel
+                            dstOff += bytesPerSample
+                        }
+                    }
+                }
+            }
+        }
+        return [r, g, b]
+    }
+
     static func packPixels(from image: J2KImage, descriptor: PixelDataDescriptor) throws -> Data {
         let bytesPerSample = descriptor.bytesPerSample
         let expectedComponentByteCount = descriptor.rows * descriptor.columns * bytesPerSample
@@ -265,14 +319,16 @@ private extension J2KSwiftCodec {
             guard let component = image.components.first else {
                 throw DICOMError.parsingFailed("Decoded JPEG 2000 image contains no components")
             }
-
-            let normalized = normalizeEndianForDICOM(component.data, bytesPerSample: bytesPerSample)
-            guard normalized.count >= expectedComponentByteCount else {
+            guard component.data.count >= expectedComponentByteCount else {
                 throw DICOMError.parsingFailed(
-                    "Decoded component data too short: expected \(expectedComponentByteCount) bytes, got \(normalized.count)"
+                    "Decoded component data too short: expected \(expectedComponentByteCount) bytes, got \(component.data.count)"
                 )
             }
-            return Data(normalized.prefix(expectedComponentByteCount))
+            var output = component.data.count == expectedComponentByteCount
+                ? component.data
+                : component.data.subdata(in: component.data.startIndex..<component.data.startIndex + expectedComponentByteCount)
+            swapBytesInPlaceIfNeeded(&output, bytesPerSample: bytesPerSample)
+            return output
         }
 
         guard image.components.count == descriptor.samplesPerPixel else {
@@ -281,53 +337,90 @@ private extension J2KSwiftCodec {
             )
         }
 
-        let components = try image.components.prefix(descriptor.samplesPerPixel).map { component in
-            let normalized = normalizeEndianForDICOM(component.data, bytesPerSample: bytesPerSample)
-            guard normalized.count >= expectedComponentByteCount else {
+        var components: [Data] = []
+        components.reserveCapacity(descriptor.samplesPerPixel)
+        for component in image.components.prefix(descriptor.samplesPerPixel) {
+            guard component.data.count >= expectedComponentByteCount else {
                 throw DICOMError.parsingFailed(
-                    "Decoded RGB component data too short: expected \(expectedComponentByteCount) bytes, got \(normalized.count)"
+                    "Decoded RGB component data too short: expected \(expectedComponentByteCount) bytes, got \(component.data.count)"
                 )
             }
-            return Data(normalized.prefix(expectedComponentByteCount))
+            var plane = component.data.count == expectedComponentByteCount
+                ? component.data
+                : component.data.subdata(in: component.data.startIndex..<component.data.startIndex + expectedComponentByteCount)
+            swapBytesInPlaceIfNeeded(&plane, bytesPerSample: bytesPerSample)
+            components.append(plane)
         }
 
         if descriptor.planarConfiguration == 1 {
-            return components.reduce(into: Data(capacity: expectedComponentByteCount * descriptor.samplesPerPixel)) { result, plane in
-                result.append(plane)
-            }
+            var packed = Data(capacity: expectedComponentByteCount * descriptor.samplesPerPixel)
+            for plane in components { packed.append(plane) }
+            return packed
         }
 
-        var packed = Data(capacity: expectedComponentByteCount * descriptor.samplesPerPixel)
-        let pixelCount = descriptor.rows * descriptor.columns
-        for pixelIndex in 0..<pixelCount {
-            let byteOffset = pixelIndex * bytesPerSample
-            for componentData in components {
-                let end = byteOffset + bytesPerSample
-                packed.append(componentData.subdata(in: byteOffset..<end))
+        return interleaveRGB(
+            planes: components,
+            bytesPerSample: bytesPerSample,
+            pixelCount: descriptor.rows * descriptor.columns
+        )
+    }
+
+    /// Interleaves R/G/B planar buffers back into chunky RGB layout.
+    static func interleaveRGB(planes: [Data], bytesPerSample: Int, pixelCount: Int) -> Data {
+        let totalBytes = pixelCount * bytesPerSample * 3
+        var packed = Data(count: totalBytes)
+        packed.withUnsafeMutableBytes { dst in
+            let dstBase = dst.baseAddress!.assumingMemoryBound(to: UInt8.self)
+            planes[0].withUnsafeBytes { r in
+                planes[1].withUnsafeBytes { g in
+                    planes[2].withUnsafeBytes { b in
+                        let rp = r.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                        let gp = g.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                        let bp = b.baseAddress!.assumingMemoryBound(to: UInt8.self)
+                        var srcOff = 0
+                        var dstOff = 0
+                        for _ in 0..<pixelCount {
+                            for k in 0..<bytesPerSample {
+                                dstBase[dstOff + k] = rp[srcOff + k]
+                                dstBase[dstOff + bytesPerSample + k] = gp[srcOff + k]
+                                dstBase[dstOff + 2 * bytesPerSample + k] = bp[srcOff + k]
+                            }
+                            srcOff += bytesPerSample
+                            dstOff += bytesPerSample * 3
+                        }
+                    }
+                }
             }
         }
         return packed
     }
     #endif
 
-    static func normalizeEndianForJ2K<S: DataProtocol>(_ bytes: S, bytesPerSample: Int) -> Data {
-        guard bytesPerSample == 2 else {
-            return Data(bytes)
+    /// In-place 16-bit byte swap using Accelerate's vImage (NEON on Apple Silicon,
+    /// SSE on x86). Falls back to a UInt16 `.byteSwapped` loop when Accelerate is
+    /// unavailable; that loop autovectorizes with the ARM REV16 instruction at -O.
+    /// No-op for bytesPerSample != 2.
+    @inline(__always)
+    static func swapBytesInPlaceIfNeeded(_ data: inout Data, bytesPerSample: Int) {
+        guard bytesPerSample == 2 else { return }
+        let byteCount = data.count
+        guard byteCount >= 2, byteCount % 2 == 0 else { return }
+        data.withUnsafeMutableBytes { rawBuffer in
+            guard let base = rawBuffer.baseAddress else { return }
+            #if canImport(Accelerate)
+            var src = vImage_Buffer(
+                data: base,
+                height: 1,
+                width: vImagePixelCount(byteCount / 2),
+                rowBytes: byteCount
+            )
+            var dst = src  // in-place
+            _ = vImageByteSwap_Planar16U(&src, &dst, vImage_Flags(kvImageNoFlags))
+            #else
+            let ptr = base.assumingMemoryBound(to: UInt16.self)
+            let count = byteCount / 2
+            for i in 0..<count { ptr[i] = ptr[i].byteSwapped }
+            #endif
         }
-
-        var normalized = Data(capacity: bytes.count)
-        var iterator = bytes.makeIterator()
-        while let low = iterator.next() {
-            guard let high = iterator.next() else {
-                break
-            }
-            normalized.append(high)
-            normalized.append(low)
-        }
-        return normalized
-    }
-
-    static func normalizeEndianForDICOM(_ data: Data, bytesPerSample: Int) -> Data {
-        normalizeEndianForJ2K(data, bytesPerSample: bytesPerSample)
     }
 }
