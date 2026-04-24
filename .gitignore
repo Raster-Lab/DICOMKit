@@ -42,3 +42,7 @@ build/
 
 # Claude Code per-project memory (not source)
 memory/
+
+# Claude Code local-only settings and runtime state
+.claude/settings.local.json
+.claude/*.lock
