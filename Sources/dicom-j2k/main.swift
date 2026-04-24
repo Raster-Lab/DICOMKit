@@ -462,6 +462,12 @@ extension DICOMJ2K {
             var encConfig = J2KEncodingConfiguration()
             encConfig.lossless = isLossless
             encConfig.useHTJ2K = useHTJ2K
+            // ISO/IEC 15444-15 conformant wire format for DICOM HTJ2K transfer syntaxes —
+            // interop with OpenJPH and Part-15 PACS decoders. Requires J2KSwift 5.1.1+
+            // (decoder dispatch + pixel-0 K_max fix for CT/MR 16-bit lossless round-trip).
+            if useHTJ2K {
+                encConfig.htj2kBlockFormat = .conformant
+            }
 
             let encoder = J2KEncoder(encodingConfiguration: encConfig)
             var newFragments = [Data]()

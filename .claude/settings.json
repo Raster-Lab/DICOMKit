@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(swift build *)",
+      "Bash(swift test *)",
+      "Bash(swift package *)",
+      "Bash(brew list *)",
+      "Bash(pkg-config *)",
+      "Bash(/opt/homebrew/bin/pkg-config *)",
+      "Bash(xcodebuild *)",
+      "Bash(ojph_compress *)",
+      "Bash(ojph_expand *)",
+      "Read(/opt/homebrew/**)",
+      "Read(/usr/local/**)"
+    ]
+  }
+}
