@@ -2,6 +2,9 @@ import Foundation
 import Testing
 @testable import DICOMCore
 @testable import DICOMKit
+#if canImport(J2KCodec)
+import J2KCodec
+#endif
 
 /// Compares DICOMKit's HTJ2K path (J2KSwift `.conformant` Part-15) against
 /// the reference OpenJPH implementation (`ojph_expand`). Skipped when
@@ -210,5 +213,60 @@ struct HTJ2KOpenJPHComparisonTests {
                 "J2KSwift and OpenJPH decoded byte counts differ — Part-15 bitstream mismatch")
         #expect(mismatches == 0,
                 "J2KSwift/OpenJPH decoded pixel mismatch — \(mismatches)/\(minLen) bytes differ, first at offset \(firstMismatchOffset)")
+    }
+
+    @Test("HTJ2K decode time breakdown: wrapper vs J2KSwift core")
+    func decodeTimeBreakdown() throws {
+        #if canImport(J2KCodec)
+        let sample = try realSample(modality: "mr")
+        let descriptor = sample.pixelData.descriptor
+        let original = sample.pixelData.data
+        let codec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.htj2kLossless.uid)
+        let codestream = try codec.encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: .lossless)
+
+        // Warmups
+        _ = try codec.decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+        let warmSem = DispatchSemaphore(value: 0)
+        Task.detached { _ = try? await J2KDecoder().decodeGPU(codestream); warmSem.signal() }
+        warmSem.wait()
+
+        // Full wrapper decode (includes async bridge, pack/unpack, endian swap).
+        var wrapperTimes: [Double] = []
+        for _ in 0..<5 {
+            let t = CFAbsoluteTimeGetCurrent()
+            _ = try codec.decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+            wrapperTimes.append((CFAbsoluteTimeGetCurrent() - t) * 1000.0)
+        }
+
+        // Raw J2KSwift core — what we'd time if we could drop the Swift wrapper to zero.
+        final class ResultBox: @unchecked Sendable { var ms: Double = 0 }
+        var coreTimes: [Double] = []
+        for _ in 0..<5 {
+            let s = DispatchSemaphore(value: 0)
+            let box = ResultBox()
+            let streamCopy = codestream
+            Task.detached {
+                let t = CFAbsoluteTimeGetCurrent()
+                _ = try? await J2KDecoder().decodeGPU(streamCopy)
+                box.ms = (CFAbsoluteTimeGetCurrent() - t) * 1000.0
+                s.signal()
+            }
+            s.wait()
+            coreTimes.append(box.ms)
+        }
+
+        let wm = median(wrapperTimes)
+        let cm = median(coreTimes)
+        print("""
+
+        Decode time breakdown (medians over 5 runs)
+          sample:              \(sample.url.lastPathComponent)
+          J2KSwiftCodec wrap:  \(String(format: "%.3f", wm)) ms
+          J2KDecoder core:     \(String(format: "%.3f", cm)) ms  [may be Task-scheduling dominated when run after other detached-Task tests]
+          wrapper overhead:    \(String(format: "%.3f", wm - cm)) ms  (async bridge + pack/unpack + endian swap)
+        """)
+        // No assertion — this is a diagnostic / profiling test. Cross-test
+        // Task.detached scheduling occasionally flips wrapper vs core ordering.
+        #endif
     }
 }
