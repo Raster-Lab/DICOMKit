@@ -123,10 +123,13 @@ private extension J2KSwiftCodec {
         let useHTJ2K = targetSyntax?.isHTJ2K ?? false
         let useRPCL = transferSyntaxUID == TransferSyntax.htj2kRPCLLossless.uid
 
-        // Part 2 uses the same encoding pipeline as Part 1. The built-in RCT/ICT
-        // transforms apply automatically for multi-component images. Explicit
-        // array-based MCT or arbitrary wavelet kernels can be exposed later when
-        // per-image decorrelation matrices are needed.
+        // DICOM HTJ2K transfer syntaxes (PS3.5 A.4.6) reference ISO/IEC 15444-15;
+        // emit the Part-15 conformant block layout so codestreams interoperate with
+        // OpenJPH and other Part-15 PACS decoders. J2KSwift 5.1.1 fixed the pixel-0
+        // K_max off-by-one that previously corrupted CT/MR 16-bit lossless round-trip
+        // (upstream now regression-tests the DICOMKit scenario via
+        // J2KHTConformantMedicalRoundTripTests).
+        let htj2kBlockFormat: HTBlockFormat = useHTJ2K ? .conformant : .custom
 
         return J2KEncodingConfiguration(
             quality: isLossless ? 1.0 : configuration.quality.value,
@@ -135,7 +138,8 @@ private extension J2KSwiftCodec {
             qualityLayers: 1,
             progressionOrder: useRPCL ? .rpcl : .lrcp,
             useHTJ2K: useHTJ2K,
-            useReversibleFilter: isLossless
+            useReversibleFilter: isLossless,
+            htj2kBlockFormat: htj2kBlockFormat
         )
     }
 
