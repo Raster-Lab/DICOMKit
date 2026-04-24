@@ -277,7 +277,11 @@ let package = Package(
         ),
         .testTarget(
             name: "DICOMCoreTests",
-            dependencies: ["DICOMCore", "DICOMKit"]
+            dependencies: [
+                "DICOMCore",
+                "DICOMKit",
+                .product(name: "J2KCodec", package: "J2KSwift")
+            ]
         ),
         .testTarget(
             name: "DICOMDictionaryTests",
