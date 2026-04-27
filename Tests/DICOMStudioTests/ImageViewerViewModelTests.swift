@@ -9,6 +9,7 @@ import Foundation
 import DICOMCore
 
 @Suite("ImageViewerViewModel Tests")
+@MainActor
 struct ImageViewerViewModelTests {
 
     // MARK: - Initialization

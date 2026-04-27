@@ -7,6 +7,7 @@ import Foundation
 import Testing
 @testable import DICOMStudio
 @testable import DICOMCore
+@testable import DICOMKit
 
 // MARK: - ProgressiveDecodeLevelTests
 
@@ -287,6 +288,7 @@ struct ImageDecodingServiceProgressiveTests {
 // MARK: - ProgressiveDecodeViewModel tests
 
 @Suite("ImageViewerViewModel progressive")
+@MainActor
 struct ImageViewerViewModelProgressiveTests {
 
     @Test("initial progressiveDecodeState is idle")
