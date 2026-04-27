@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import DICOMCore
+@testable import DICOMKit
 
 @Suite("JP3DCodec Tests")
 struct JP3DCodecTests {
@@ -277,5 +278,95 @@ struct JP3DCodecTests {
         #expect(throws: DICOMError.self) {
             _ = try codec.decodeFrame(compressed, descriptor: desc, frameIndex: 10)
         }
+    }
+
+    // MARK: - Real-DICOM Volume Round-Trip
+
+    private func localDatasetsRoot() -> URL {
+        URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("LocalDatasets/medical-dicom-organized", isDirectory: true)
+    }
+
+    /// Loads up to `count` consecutive image-bearing CT slices and concatenates
+    /// their decoded pixel data into a frame-major volume buffer.
+    private func loadCTVolumeSlices(
+        relativeStudy: String = "ct/study_002",
+        count: Int = 16,
+        minFileSize: Int = 400_000
+    ) throws -> (descriptor: PixelDataDescriptor, data: Data, sourceCount: Int) {
+        let dir = localDatasetsRoot().appendingPathComponent(relativeStudy, isDirectory: true)
+        let urls = try FileManager.default
+            .contentsOfDirectory(at: dir, includingPropertiesForKeys: [.fileSizeKey])
+            .filter { $0.pathExtension.lowercased() == "dcm" }
+            .filter { (try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 >= minFileSize }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+            .prefix(count)
+
+        guard !urls.isEmpty else {
+            throw DICOMError.parsingFailed("No image-bearing DICOM files found in \(relativeStudy)")
+        }
+
+        var firstDescriptor: PixelDataDescriptor?
+        var combined = Data()
+        for url in urls {
+            let file = try DICOMFile.read(from: url)
+            let pixel = try file.tryPixelData()
+            if firstDescriptor == nil {
+                firstDescriptor = pixel.descriptor
+            } else if let d = firstDescriptor,
+                      d.rows != pixel.descriptor.rows ||
+                      d.columns != pixel.descriptor.columns ||
+                      d.bitsAllocated != pixel.descriptor.bitsAllocated {
+                throw DICOMError.parsingFailed("Heterogeneous slice geometry encountered in \(relativeStudy)")
+            }
+            combined.append(pixel.data)
+        }
+
+        let base = firstDescriptor!
+        let volumeDescriptor = PixelDataDescriptor(
+            rows: base.rows,
+            columns: base.columns,
+            numberOfFrames: urls.count,
+            bitsAllocated: base.bitsAllocated,
+            bitsStored: base.bitsStored,
+            highBit: base.highBit,
+            isSigned: base.isSigned,
+            samplesPerPixel: base.samplesPerPixel,
+            photometricInterpretation: base.photometricInterpretation
+        )
+        return (volumeDescriptor, combined, urls.count)
+    }
+
+    @Test("JP3DCodec lossless round-trip on real CT volume from LocalDatasets")
+    func test_realCTVolume_losslessRoundTrip() async throws {
+        let sample = try loadCTVolumeSlices(relativeStudy: "ct/study_002", count: 16)
+        let codec = JP3DCodec(compressionMode: .lossless)
+
+        #expect(codec.canEncode(with: .lossless, descriptor: sample.descriptor))
+
+        let compressed = try await codec.encodeVolume(sample.data, descriptor: sample.descriptor)
+        let decoded = try await codec.decodeVolume(compressed, descriptor: sample.descriptor)
+
+        let originalBytes = sample.data.count
+        let compressedBytes = compressed.count
+        let ratio = Double(originalBytes) / Double(max(compressedBytes, 1))
+
+        print("""
+
+        JP3D real-CT lossless round-trip
+          source study:    ct/study_002
+          slices loaded:   \(sample.sourceCount)
+          dimensions:      \(sample.descriptor.columns)×\(sample.descriptor.rows)×\(sample.descriptor.numberOfFrames) @ \(sample.descriptor.bitsAllocated)-bit
+          original bytes:  \(originalBytes)
+          compressed:      \(compressedBytes)
+          ratio:           \(String(format: "%.2fx", ratio))
+        """)
+
+        #expect(compressed.isEmpty == false)
+        #expect(decoded.count == sample.data.count)
+        #expect(decoded == sample.data, "JP3D lossless must be bit-exact on real CT slices")
     }
 }
