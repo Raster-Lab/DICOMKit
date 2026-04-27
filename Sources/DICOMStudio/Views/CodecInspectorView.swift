@@ -167,7 +167,7 @@ public struct CodecInspectorView: View {
 
 // MARK: - Preview
 
-#if DEBUG
+#if DEBUG && !SWIFT_PACKAGE
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 #Preview("Decoded") {
     let vm = CodecInspectorViewModel()

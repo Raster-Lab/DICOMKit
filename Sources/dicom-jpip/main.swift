@@ -485,7 +485,7 @@ private func formatBytes(_ bytes: Int) -> String {
 @available(macOS 10.15, *)
 private func waitForTask<T>(_ task: Task<T, Error>) throws -> T {
     let sema = DispatchSemaphore(value: 0)
-    var result: Result<T, Error>?
+    nonisolated(unsafe) var result: Result<T, Error>?
     Task {
         do {
             let value = try await task.value

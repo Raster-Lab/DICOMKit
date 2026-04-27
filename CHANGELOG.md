@@ -7,7 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added — J2KSwift v3.2.0 Integration (Phases 1–9)
+### Added — DICOMCLITools shared library & CLI Workshop fixes
+
+- **`DICOMCLITools` shared library** (`Sources/DICOMCLITools/`): Extracted `HexDumper`, `MetadataPresenter`, `TagEditor`, and `DICOMComparer` from their per-tool source trees into a single shared library. All four CLI products (`dicom-dump`, `dicom-info`, `dicom-tags`, `dicom-diff`) and DICOMStudio now link against this library, eliminating code duplication.
+
+- **`HexDumper` improvements**:
+  - `dump(data:startOffset:dicomFile:highlightTag:fileBytes:)` — new `fileBytes` parameter allows dumping a slice while resolving highlight/annotation maps against the full file. Slice is re-based internally so 0-based arithmetic never crashes on non-zero `startIndex` Data values.
+  - `public static func findElementRange(in:tag:)` — linear Explicit-VR scan for locating any element's on-disk byte range; used as a reliable highlight/annotation fallback when the position-map walker does not reach the target tag.
+  - `buildTagPositionMap` rewritten: validates VR bytes against the full Explicit-VR VR set instead of a heuristic element-number filter, handles `0xFFFE` item/delimiter markers, and re-synchronizes on drift via a 1-byte advance when VR bytes are not valid.
+  - Highlight rendered with `[XX]` brackets (plain mode) or yellow ANSI (color mode). Annotations now scan the entire 16-byte line and join multiple tags with ` · `.
+
+- **`MetadataPresenter` improvements**:
+  - `normalizeFilterTokens(_:)` made `public` so GUI and CLI share identical multi-tag parsing.
+  - Multi-tag filter now accepts `--tag 0010,0010,Modality` (comma-separated mixed form) and space-separated forms.
+
+- **`TagEditor` improvement**: When `outputPath` is an existing directory, the input filename is automatically appended so `--output /some/dir` writes `dir/<input>.dcm` instead of failing with "couldn't be saved in the folder".
+
+- **`dicom-dump`**: `dumpTag()` now passes `annotate: annotate` (was hard-coded `false`) and `fileBytes: fileData` to `HexDumper.dump`, fixing `--annotate` and `--highlight` in `--tag` mode. Uses `findElementRange` for reliable tag location.
+
+- **`dicom-diff`**: `parseIgnoreTags` splits each `--ignore-tag` value on whitespace before parsing, allowing `--ignore-tag '0010,0010 0010,0040'` from GUI passthrough.
+
+- **`dicom-tags`**: Built as a separate product (was missing from default build). Directory-aware output path. Operation dropdown in CLI Workshop replaces four separate boxes.
+
+- **CLI Workshop — `dicom-tags`**: Operation (set / delete / delete-private / copy-from) is now a single dropdown. Only the relevant input field is shown per operation via `visibleWhen` conditions. Reduces UI clutter from 9 fields to 4–5.
+
+- **CLI Workshop — `dicom-diff`**: `ignore-tag` field now emits `--ignore-tag X --ignore-tag Y` (one flag per token) in the command preview, matching ArgumentParser's repeatable-flag contract. GUI execution resolves tags via `normalizeFilterTokens` so `0010,0020` is not split into two invalid tokens.
+
+- **`Scripts/install-cli-tools.sh`**: Resolves `SCRIPT_DIR` from `BASH_SOURCE[0]`, validates `Package.swift`, builds all tools including `dicom-gateway` and `dicom-jpip`.
+
+### Fixed
+
+- **`dicom-dump --tag --annotate` crash** (EXC_BAD_ACCESS / trace trap): `Data` slice with non-zero `startIndex` caused `loadUnaligned` to read from offset 0 of the original buffer. Fixed by re-basing slice in `dump()`.
+- **`--highlight` not marking main-dataset tags**: Position-map walker used `isValidTagPattern` which rejected elements with `element < 0x0010` (e.g. `ImageType` `(0008,0008)`), drifting the walker so no main-dataset tags were indexed. Fixed with VR-validated scan.
+- **`--annotate` only showing File Meta annotations**: Same root cause as above.
+- **GUI dicom-tags output error**: "The file 'Output' couldn't be saved in the folder 'DICOMKit_Testing_Files'" when Browse selected a directory. Fixed by auto-appending input filename in `TagEditor.processFile` and `executeDicomTags`.
+- **GUI dicom-diff `ignore-tag` not working**: `splitMultiValue` split `0010,0020` on the comma, producing `["0010","0020"]`. Fixed with `normalizeFilterTokens`.
+- **`dicom-jpip` Swift 6 Sendable error**: `nonisolated(unsafe)` added to `var result` capture in `waitForTask`.
+
+
 
 - **J2KSwift v3.2.0 codec stack** (`Sources/DICOMCore/J2KSwiftCodec.swift`, `HTJ2KCodec.swift`, `JP3DCodec.swift`): Replaces Apple ImageIO as the primary JPEG 2000 path on all platforms, enabling full Linux support via a pure-Swift scalar backend.
   - `J2KSwiftCodec`: Handles JPEG 2000 Lossless (`.90`), JPEG 2000 Lossy (`.91`), Part 2 Lossless (`.92`), Part 2 Lossy (`.93`) with 8/12/16-bit grayscale and RGB support.

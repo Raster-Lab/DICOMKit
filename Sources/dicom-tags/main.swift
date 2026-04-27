@@ -3,6 +3,7 @@ import ArgumentParser
 import DICOMCore
 import DICOMKit
 import DICOMDictionary
+import DICOMCLITools
 
 @available(macOS 10.15, *)
 struct DICOMTags: ParsableCommand {
@@ -70,7 +71,7 @@ struct DICOMTags: ParsableCommand {
         }
         
         let editor = TagEditor()
-        try editor.processFile(
+        let logLines = try editor.processFile(
             inputPath: input,
             outputPath: output,
             sets: set,
@@ -81,8 +82,25 @@ struct DICOMTags: ParsableCommand {
             verbose: verbose,
             dryRun: dryRun
         )
-        
-        let outputDescription = output ?? input
+        for line in logLines {
+            fprintln(line)
+        }
+
+        let outputDescription: String
+        if let output = output {
+            // Mirror TagEditor's directory-detection so the printed path
+            // matches the file actually written.
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: output, isDirectory: &isDir),
+               isDir.boolValue {
+                outputDescription = (output as NSString)
+                    .appendingPathComponent((input as NSString).lastPathComponent)
+            } else {
+                outputDescription = output
+            }
+        } else {
+            outputDescription = input
+        }
         if dryRun {
             fprintln("Dry run complete — no files modified.")
         } else {

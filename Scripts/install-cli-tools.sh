@@ -1,6 +1,6 @@
 #!/bin/bash
 # DICOMKit CLI Tools Installation Script
-# This script builds and installs all 29 CLI tools locally
+# This script builds and installs all CLI tools locally
 
 set -e
 
@@ -13,6 +13,20 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}DICOMKit CLI Tools Installer${NC}"
 echo "=================================="
 echo ""
+
+# Resolve and switch to the Swift package root (parent of Scripts/) so that
+# `.build/release/` is found regardless of where the script is invoked from.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PACKAGE_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+if [ ! -f "$PACKAGE_ROOT/Package.swift" ]; then
+    echo -e "${RED}Error: Package.swift not found at $PACKAGE_ROOT${NC}"
+    echo "This script must live in <package-root>/Scripts/install-cli-tools.sh."
+    exit 1
+fi
+
+cd "$PACKAGE_ROOT"
+echo -e "${GREEN}Package root:${NC} $PACKAGE_ROOT"
 
 # Check for Swift
 if ! command -v swift &> /dev/null; then
@@ -41,10 +55,14 @@ echo ""
 
 # Build CLI tools
 echo "Building CLI tools (this may take a few minutes)..."
-swift build -c release --disable-sandbox
-
-if [ $? -ne 0 ]; then
+if ! swift build -c release --disable-sandbox; then
     echo -e "${RED}Build failed!${NC}"
+    exit 1
+fi
+
+if [ ! -d ".build/release" ]; then
+    echo -e "${RED}Error: .build/release directory was not produced.${NC}"
+    echo "Please run 'swift build -c release' manually from $PACKAGE_ROOT to diagnose."
     exit 1
 fi
 
@@ -82,6 +100,8 @@ CLI_TOOLS=(
     "dicom-compress"
     "dicom-study"
     "dicom-script"
+    "dicom-gateway"
+    "dicom-jpip"
 )
 
 # Install tools

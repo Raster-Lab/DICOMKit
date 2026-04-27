@@ -3,6 +3,7 @@ import ArgumentParser
 import DICOMKit
 import DICOMCore
 import DICOMDictionary
+import DICOMCLITools
 
 struct DICOMInfo: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -26,7 +27,7 @@ struct DICOMInfo: ParsableCommand {
     @Option(name: .shortAndLong, help: "Output format: text, json, csv")
     var format: OutputFormat = .text
     
-    @Option(name: .shortAndLong, help: "Filter by specific tag names (can be used multiple times)")
+    @Option(name: .shortAndLong, help: "Filter by tag name, keyword, or (GGGG,EEEE). Repeat the flag, or pass comma/space-separated values.")
     var tag: [String] = []
     
     @Flag(name: .long, help: "Include private tags in output")
@@ -60,12 +61,9 @@ struct DICOMInfo: ParsableCommand {
     }
 }
 
-enum OutputFormat: String, ExpressibleByArgument {
-    case text
-    case json
-    case csv
-    
-    var defaultValueDescription: String {
+// Allow `MetadataOutputFormat` to be used directly as a `@Option` value.
+extension MetadataOutputFormat: ExpressibleByArgument {
+    public var defaultValueDescription: String {
         switch self {
         case .text: return "plain text (default)"
         case .json: return "JSON format"
@@ -73,5 +71,7 @@ enum OutputFormat: String, ExpressibleByArgument {
         }
     }
 }
+
+typealias OutputFormat = MetadataOutputFormat
 
 DICOMInfo.main()

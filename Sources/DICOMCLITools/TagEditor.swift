@@ -1,18 +1,26 @@
+// TagEditor.swift
+// DICOMCLITools
+//
+// Shared tag-editing logic for `dicom-tags`. Used by both the CLI executable
+// and the DICOMStudio GUI's CLI Workshop. The function returns log messages
+// (instead of printing them directly) so callers can route them to stderr,
+// stdout, or a GUI console as appropriate.
+
 import Foundation
 import DICOMCore
 import DICOMKit
 import DICOMDictionary
 
-/// Errors for tag editing operations
-enum TagEditorError: Error, LocalizedError {
+/// Errors for tag editing operations.
+public enum TagEditorError: Error, LocalizedError {
     case fileNotFound(String)
     case invalidTagFormat(String)
     case invalidSetFormat(String)
     case unknownTagName(String)
     case noOperationsSpecified
     case writeError(String)
-    
-    var errorDescription: String? {
+
+    public var errorDescription: String? {
         switch self {
         case .fileNotFound(let path):
             return "File not found: \(path)"
@@ -30,10 +38,12 @@ enum TagEditorError: Error, LocalizedError {
     }
 }
 
-/// Core tag editing logic
-struct TagEditor {
-    
-    /// Canonical tag name entries
+/// Core tag editing logic shared between the `dicom-tags` CLI and DICOMStudio.
+public struct TagEditor: Sendable {
+
+    public init() {}
+
+    /// Canonical tag name entries.
     private static let tagEntries: [(String, Tag)] = [
         ("PatientName", .patientName),
         ("PatientID", .patientID),
@@ -67,8 +77,7 @@ struct TagEditor {
         ("ContentDate", .contentDate),
         ("ContentTime", .contentTime),
     ]
-    
-    /// Well-known tag name mapping (case-insensitive lookup)
+
     private static let tagNameMap: [String: Tag] = {
         var map: [String: Tag] = [:]
         for (name, tag) in tagEntries {
@@ -76,8 +85,7 @@ struct TagEditor {
         }
         return map
     }()
-    
-    /// Reverse lookup: Tag -> display name
+
     private static let tagDisplayName: [Tag: String] = {
         var map: [Tag: String] = [:]
         for (name, tag) in tagEntries {
@@ -85,8 +93,7 @@ struct TagEditor {
         }
         return map
     }()
-    
-    /// VR defaults for well-known tags
+
     private static let tagVRMap: [Tag: VR] = [
         .patientName: .PN,
         .patientID: .LO,
@@ -120,11 +127,16 @@ struct TagEditor {
         .contentDate: .DA,
         .contentTime: .TM,
     ]
-    
+
     // MARK: - Public API
-    
-    /// Process a DICOM file with the specified tag operations
-    func processFile(
+
+    /// Process a DICOM file with the specified tag operations.
+    ///
+    /// Returns log lines describing each change, plus a trailing
+    /// "N change(s) applied." line when verbose or dry-run is requested.
+    /// Callers (CLI or GUI) decide where to display them.
+    @discardableResult
+    public func processFile(
         inputPath: String,
         outputPath: String?,
         sets: [String],
@@ -134,13 +146,12 @@ struct TagEditor {
         copyTags: [String]?,
         verbose: Bool,
         dryRun: Bool
-    ) throws {
+    ) throws -> [String] {
         let inputURL = URL(fileURLWithPath: inputPath)
         let fileData = try Data(contentsOf: inputURL)
         let dicomFile = try DICOMFile.read(from: fileData)
         var dataSet = dicomFile.dataSet
-        
-        // Load source file for copy operations
+
         var sourceDataSet: DataSet?
         if let copyFromPath = copyFromPath {
             let sourceURL = URL(fileURLWithPath: copyFromPath)
@@ -148,7 +159,7 @@ struct TagEditor {
             let sourceFile = try DICOMFile.read(from: sourceData)
             sourceDataSet = sourceFile.dataSet
         }
-        
+
         let changes = try applyChanges(
             to: &dataSet,
             sets: sets,
@@ -159,31 +170,48 @@ struct TagEditor {
             verbose: verbose,
             dryRun: dryRun
         )
-        
+
+        var logLines: [String] = []
         if verbose || dryRun {
-            for change in changes {
-                fprintln(change)
-            }
-            fprintln("\(changes.count) change(s) applied.")
+            logLines.append(contentsOf: changes)
+            logLines.append("\(changes.count) change(s) applied.")
         }
-        
+
         if !dryRun {
             let modifiedFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: dataSet)
             let outputData = try modifiedFile.write()
-            let destURL = URL(fileURLWithPath: outputPath ?? inputPath)
+            // If `outputPath` points at an existing directory, write the
+            // modified file inside that directory using the input's filename
+            // instead of trying to overwrite the directory itself (which
+            // produces the cryptic "couldn't be saved in the folder …"
+            // error). When `outputPath` is nil, overwrite the input.
+            let destPath: String
+            if let outputPath = outputPath {
+                var isDir: ObjCBool = false
+                if FileManager.default.fileExists(atPath: outputPath, isDirectory: &isDir),
+                   isDir.boolValue {
+                    destPath = (outputPath as NSString)
+                        .appendingPathComponent(inputURL.lastPathComponent)
+                } else {
+                    destPath = outputPath
+                }
+            } else {
+                destPath = inputPath
+            }
+            let destURL = URL(fileURLWithPath: destPath)
             try outputData.write(to: destURL)
         }
+
+        return logLines
     }
-    
+
     // MARK: - Tag Parsing
-    
-    /// Parse a tag specifier: "PatientName" or "0010,0010" or "(0010,0010)"
-    func parseTagSpecifier(_ spec: String) throws -> Tag {
+
+    public func parseTagSpecifier(_ spec: String) throws -> Tag {
         let trimmed = spec.trimmingCharacters(in: .whitespaces)
             .replacingOccurrences(of: "(", with: "")
             .replacingOccurrences(of: ")", with: "")
-        
-        // Try comma-separated hex format: 0010,0010
+
         if trimmed.contains(",") {
             let parts = trimmed.split(separator: ",")
             if parts.count == 2,
@@ -192,26 +220,20 @@ struct TagEditor {
                 return Tag(group: group, element: element)
             }
         }
-        
-        // Try 8-digit hex without comma: 00100010
+
         if trimmed.count == 8, trimmed.allSatisfy({ $0.isHexDigit }),
            let value = UInt32(trimmed, radix: 16) {
             let group = UInt16((value >> 16) & 0xFFFF)
             let element = UInt16(value & 0xFFFF)
             return Tag(group: group, element: element)
         }
-        
-        // Try name lookup
+
         return try resolveTagByName(spec.trimmingCharacters(in: .whitespaces))
     }
-    
-    /// Parse "TagName=Value" or "GGGG,EEEE=Value" format
-    func parseTagValue(_ setSpec: String) throws -> (Tag, String) {
-        // Handle hex format with comma: "0010,0010=VALUE"
-        // Find the = that separates tag from value
+
+    public func parseTagValue(_ setSpec: String) throws -> (Tag, String) {
         let parts: (String, String)
-        
-        // For hex format like "0010,0010=Value", we need to split at the correct =
+
         if let eqRange = setSpec.range(of: "=") {
             let tagPart = String(setSpec[setSpec.startIndex..<eqRange.lowerBound])
             let valuePart = String(setSpec[eqRange.upperBound...])
@@ -219,24 +241,22 @@ struct TagEditor {
         } else {
             throw TagEditorError.invalidSetFormat(setSpec)
         }
-        
+
         let tag = try parseTagSpecifier(parts.0)
         return (tag, parts.1)
     }
-    
-    /// Resolve a tag name (case-insensitive) to a Tag
-    func resolveTagByName(_ name: String) throws -> Tag {
+
+    public func resolveTagByName(_ name: String) throws -> Tag {
         let key = name.lowercased()
         guard let tag = Self.tagNameMap[key] else {
             throw TagEditorError.unknownTagName(name)
         }
         return tag
     }
-    
+
     // MARK: - Apply Changes
-    
-    /// Apply all tag changes to a DataSet, returning descriptions of each change
-    func applyChanges(
+
+    public func applyChanges(
         to dataSet: inout DataSet,
         sets: [String],
         deletes: [String],
@@ -247,7 +267,7 @@ struct TagEditor {
         dryRun: Bool
     ) throws -> [String] {
         var descriptions: [String] = []
-        
+
         // 1. Delete specified tags
         for deleteSpec in deletes {
             let tag = try parseTagSpecifier(deleteSpec)
@@ -261,7 +281,7 @@ struct TagEditor {
                 descriptions.append("DELETE \(label) (not present, skipped)")
             }
         }
-        
+
         // 2. Delete private tags
         if deletePrivate {
             var removed = 0
@@ -281,7 +301,7 @@ struct TagEditor {
                 descriptions.append("DELETE \(removed) private tag(s)")
             }
         }
-        
+
         // 3. Copy tags from source
         if let sourceDataSet = sourceDataSet {
             let tagsToCopy: [Tag]
@@ -290,7 +310,7 @@ struct TagEditor {
             } else {
                 tagsToCopy = sourceDataSet.tags
             }
-            
+
             for tag in tagsToCopy {
                 if let element = sourceDataSet[tag] {
                     let label = tagLabel(tag)
@@ -302,7 +322,7 @@ struct TagEditor {
                 }
             }
         }
-        
+
         // 4. Set tag values (applied last so they override copies)
         for setSpec in sets {
             let (tag, value) = try parseTagValue(setSpec)
@@ -313,21 +333,19 @@ struct TagEditor {
             }
             descriptions.append("SET \(label) = \(value)")
         }
-        
+
         return descriptions
     }
-    
+
     // MARK: - Helpers
-    
-    /// Determine the VR for a tag, preferring the existing element's VR, then the known default
+
     private func vrForTag(_ tag: Tag, in dataSet: DataSet) -> VR {
         if let existing = dataSet[tag] {
             return existing.vr
         }
         return Self.tagVRMap[tag] ?? .LO
     }
-    
-    /// Human-readable label for a tag
+
     private func tagLabel(_ tag: Tag) -> String {
         let hex = "(\(hexGroup(tag.group)),\(hexElement(tag.element)))"
         if let name = Self.tagDisplayName[tag] {
@@ -335,16 +353,12 @@ struct TagEditor {
         }
         return hex
     }
-    
+
     private func hexGroup(_ value: UInt16) -> String {
         String(format: "%04X", value)
     }
-    
+
     private func hexElement(_ value: UInt16) -> String {
         String(format: "%04X", value)
     }
-}
-
-private func fprintln(_ message: String) {
-    FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }

@@ -8,8 +8,15 @@ import SwiftUI
 
 // MARK: - FocusedValues key
 
+private struct ImageViewerViewModelFocusedValueKey: FocusedValueKey {
+    typealias Value = ImageViewerViewModel
+}
+
 extension FocusedValues {
-    @Entry var imageViewerViewModel: ImageViewerViewModel? = nil
+    var imageViewerViewModel: ImageViewerViewModel? {
+        get { self[ImageViewerViewModelFocusedValueKey.self] }
+        set { self[ImageViewerViewModelFocusedValueKey.self] = newValue }
+    }
 }
 
 // MARK: - ViewerCommands

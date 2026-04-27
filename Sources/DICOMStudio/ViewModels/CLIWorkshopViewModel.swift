@@ -9,6 +9,7 @@ import DICOMCore
 import DICOMKit
 import DICOMNetwork
 import DICOMWeb
+import DICOMCLITools
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -1019,6 +1020,14 @@ public final class CLIWorkshopViewModel {
             await executeDicomUPS()
         case "dicom-convert":
             await executeDicomConvert()
+        case "dicom-info":
+            await executeDicomInfo()
+        case "dicom-dump":
+            await executeDicomDump()
+        case "dicom-tags":
+            await executeDicomTags()
+        case "dicom-diff":
+            await executeDicomDiff()
         default:
             appendConsoleOutput("⚠ Command execution not yet supported for \(tool.name).\n")
             consoleStatus = .idle
@@ -1609,6 +1618,498 @@ public final class CLIWorkshopViewModel {
 
         guard !host.isEmpty else { return nil }
         return (host, port)
+    }
+
+    // MARK: - dicom-info / dicom-dump / dicom-tags / dicom-diff Execution
+    //
+    // These four tools all use shared rendering logic from the `DICOMCLITools`
+    // SwiftPM library, so the GUI's CLI Workshop produces byte-identical
+    // output to the corresponding command-line executable.
+
+    /// Resolves an input file path to a security-scoped URL when available.
+    private func resolveInputURL(parameterID: String, rawPath: String) -> (URL, Bool) {
+        if let scoped = securityScopedURLs[parameterID] {
+            let accessing = scoped.startAccessingSecurityScopedResource()
+            return (scoped, accessing)
+        }
+        return (URL(fileURLWithPath: rawPath), false)
+    }
+
+    /// Splits a comma- or whitespace-separated string into trimmed non-empty tokens.
+    private func splitMultiValue(_ raw: String) -> [String] {
+        raw.split(whereSeparator: { $0 == "," || $0.isWhitespace })
+            .map { String($0).trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
+
+    /// Parses a tag specifier string ("GGGG,EEEE" or DICOM keyword) to a `Tag`.
+    private func parseTagSpec(_ spec: String) -> Tag? {
+        let trimmed = spec.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return nil }
+        let parts = trimmed.split(separator: ",")
+        if parts.count == 2,
+           let g = UInt16(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
+           let e = UInt16(parts[1].trimmingCharacters(in: .whitespaces), radix: 16) {
+            return Tag(group: g, element: e)
+        }
+        return DataElementDictionary.lookup(keyword: trimmed)?.tag
+    }
+
+    /// Runs the same rendering pipeline as the `dicom-info` CLI.
+    private func executeDicomInfo() async {
+        let inputPath = paramValue("filePath")
+        let formatRaw = paramValue("format").isEmpty ? "text" : paramValue("format")
+        let tagFilter = splitMultiValue(paramValue("tag"))
+        let showPrivate = paramValue("show-private") == "true"
+        let showStats = paramValue("statistics") == "true"
+        let force = paramValue("force") == "true"
+
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: A DICOM file path is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-info", command: commandPreview, exitCode: 1, output: "Missing input")
+            return
+        }
+
+        guard let format = MetadataOutputFormat(rawValue: formatRaw) else {
+            appendConsoleOutput("Error: Unknown format '\(formatRaw)'. Valid: text, json, csv.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-info", command: commandPreview, exitCode: 1, output: "Bad format")
+            return
+        }
+
+        let (inputURL, accessing) = resolveInputURL(parameterID: "filePath", rawPath: inputPath)
+        defer { if accessing { inputURL.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let data = try Data(contentsOf: inputURL)
+            let dicomFile = try DICOMFile.read(from: data, force: force)
+            let presenter = MetadataPresenter(
+                file: dicomFile,
+                filterTags: tagFilter,
+                includePrivate: showPrivate,
+                showStats: showStats
+            )
+            let output = try presenter.render(format: format)
+            appendConsoleOutput(output)
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-info", command: commandPreview, exitCode: 0, output: output)
+        } catch {
+            appendConsoleOutput("Error: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-info", command: commandPreview, exitCode: 1, output: error.localizedDescription)
+        }
+    }
+
+    /// Runs the same rendering pipeline as the `dicom-dump` CLI.
+    private func executeDicomDump() async {
+        let inputPath = paramValue("filePath")
+        let tagSpec = paramValue("tag")
+        let offsetStr = paramValue("offset")
+        let lengthStr = paramValue("length")
+        let bytesPerLineStr = paramValue("bytes-per-line")
+        let highlightSpec = paramValue("highlight")
+        // The CLI Workshop console renders plain text and does not interpret
+        // ANSI escape sequences. Always disable color in the GUI path so the
+        // dump is readable regardless of the --no-color toggle state.
+        let useColor = false
+        let annotate = paramValue("annotate") == "true"
+        let verbose = paramValue("verbose") == "true"
+        let force = paramValue("force") == "true"
+
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: A DICOM file path is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-dump", command: commandPreview, exitCode: 1, output: "Missing input")
+            return
+        }
+
+        let bytesPerLine = Int(bytesPerLineStr) ?? 16
+
+        let (inputURL, accessing) = resolveInputURL(parameterID: "filePath", rawPath: inputPath)
+        defer { if accessing { inputURL.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let fileData = try Data(contentsOf: inputURL)
+            let dicomFile = try? DICOMFile.read(from: fileData, force: force)
+
+            // Determine slice of bytes to dump (mirrors dicom-dump CLI logic).
+            var startOffset = 0
+            if !offsetStr.isEmpty {
+                if offsetStr.hasPrefix("0x") || offsetStr.hasPrefix("0X") {
+                    startOffset = Int(offsetStr.dropFirst(2), radix: 16) ?? 0
+                } else {
+                    startOffset = Int(offsetStr) ?? 0
+                }
+            }
+
+            let dumpData: Data
+            // Track an absolute file offset so the printed offset column and
+            // any `highlightTag` resolution match the CLI's behavior.
+            var dumpAbsoluteStart = startOffset
+            // When the user specified a `--tag`, render the same Tag/Name/VR/
+            // Offset/Length header that the CLI prints so GUI and terminal
+            // output match exactly.
+            var tagHeader: String? = nil
+            if !tagSpec.isEmpty, let dicomFile = dicomFile {
+                let parts = tagSpec.split(separator: ",")
+                if parts.count == 2,
+                   let group = UInt16(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
+                   let element = UInt16(parts[1].trimmingCharacters(in: .whitespaces), radix: 16),
+                   let elementValue = dicomFile.dataSet[Tag(group: group, element: element)],
+                   let range = HexDumper.findElementRange(in: fileData, tag: Tag(group: group, element: element))
+                {
+                    let tagObj = Tag(group: group, element: element)
+                    let tagStr = String(format: "(%04X,%04X)", group, element)
+                    let keyword = DataElementDictionary.lookup(tag: tagObj)?.keyword ?? "Unknown"
+                    let length = range.upperBound - range.lowerBound
+                    tagHeader = """
+                        Tag: \(tagStr)
+                        Name: \(keyword)
+                        VR: \(elementValue.vr.rawValue)
+                        Offset: 0x\(String(range.lowerBound, radix: 16, uppercase: true))
+                        Length: \(length) bytes
+
+                        """
+                    dumpData = Data(fileData[range])
+                    dumpAbsoluteStart = range.lowerBound
+                } else {
+                    appendConsoleOutput("Error: Tag '\(tagSpec)' not found or invalid.\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    addToHistory(toolName: "dicom-dump", command: commandPreview, exitCode: 1, output: "Bad tag")
+                    return
+                }
+            } else {
+                let upperBound: Int
+                if let len = Int(lengthStr), len > 0 {
+                    upperBound = min(startOffset + len, fileData.count)
+                } else {
+                    upperBound = fileData.count
+                }
+                let safeStart = min(startOffset, fileData.count)
+                dumpData = fileData.subdata(in: safeStart..<upperBound)
+                dumpAbsoluteStart = safeStart
+            }
+
+            // Hex-dumping a multi-MB file with --annotate produces tens of
+            // thousands of lines. Doing the work on the main actor — and then
+            // rendering that mega-string in a single SwiftUI Text — locks the
+            // UI for many seconds and looks like a hang. Compute off-main and
+            // cap the rendered text so the console stays responsive.
+            let highlight = parseTagSpec(highlightSpec)
+            let dumpDataCopy = dumpData
+            let fileDataCopy = fileData
+            let dicomFileCopy = dicomFile
+            let dumpStart = dumpAbsoluteStart
+            let bpl = bytesPerLine
+            let useColorCopy = useColor
+            let annotateCopy = annotate
+            let verboseCopy = verbose
+
+            let output: String = await Task.detached(priority: .userInitiated) {
+                let dumper = HexDumper(
+                    bytesPerLine: bpl,
+                    useColor: useColorCopy,
+                    annotate: annotateCopy,
+                    verbose: verboseCopy
+                )
+                return dumper.dump(
+                    data: dumpDataCopy,
+                    startOffset: dumpStart,
+                    dicomFile: dicomFileCopy,
+                    highlightTag: highlight,
+                    fileBytes: fileDataCopy
+                )
+            }.value
+
+            // Prepend the CLI-style header (Tag/Name/VR/Offset/Length) when a
+            // specific tag was requested so GUI output matches the terminal.
+            let combinedOutput = (tagHeader ?? "") + output
+
+            // Cap the GUI-displayed output. SwiftUI's Text view scales poorly
+            // past ~10k lines / a few hundred KB; render a head slice with a
+            // truncation notice and keep the full text in command history.
+            let displayLineCap = 5_000
+            let displayCharCap = 200_000
+            var displayed = combinedOutput
+            var truncated = false
+            if displayed.count > displayCharCap {
+                let idx = displayed.index(displayed.startIndex, offsetBy: displayCharCap)
+                displayed = String(displayed[..<idx])
+                truncated = true
+            }
+            var lineCount = 0
+            var lineCapIndex: String.Index? = nil
+            for (i, ch) in displayed.enumerated() where ch == "\n" {
+                lineCount += 1
+                if lineCount >= displayLineCap {
+                    lineCapIndex = displayed.index(displayed.startIndex, offsetBy: i + 1)
+                    break
+                }
+            }
+            if let capIdx = lineCapIndex {
+                displayed = String(displayed[..<capIdx])
+                truncated = true
+            }
+            appendConsoleOutput(displayed)
+            if !displayed.hasSuffix("\n") { appendConsoleOutput("\n") }
+            if truncated {
+                appendConsoleOutput("…\n[Output truncated for display. Full dump (\(combinedOutput.count) chars) preserved in command history; use Copy to retrieve it.]\n")
+            }
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-dump", command: commandPreview, exitCode: 0, output: combinedOutput)
+        } catch {
+            appendConsoleOutput("Error: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-dump", command: commandPreview, exitCode: 1, output: error.localizedDescription)
+        }
+    }
+
+    /// Runs the same tag editor as the `dicom-tags` CLI.
+    private func executeDicomTags() async {
+        let inputPath = paramValue("input")
+        let outputPath = paramValue("output")
+        // The UI shows only one operation-specific field at a time (driven by
+        // the "operation" dropdown). Use that selection as the source of
+        // truth so a value left over in a hidden field is never applied.
+        let operation = paramValue("operation").isEmpty ? "set" : paramValue("operation")
+        let setSpecs: [String]
+        let deleteSpecs: [String]
+        let deletePrivate: Bool
+        let copyFrom: String
+        let copyTagsRaw: String
+        switch operation {
+        case "set":
+            setSpecs = paramValue("set")
+                .split(separator: ";")
+                .map { String($0).trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            deleteSpecs = []
+            deletePrivate = false
+            copyFrom = ""
+            copyTagsRaw = ""
+        case "delete":
+            setSpecs = []
+            deleteSpecs = splitMultiValue(paramValue("delete"))
+            deletePrivate = false
+            copyFrom = ""
+            copyTagsRaw = ""
+        case "delete-private":
+            setSpecs = []
+            deleteSpecs = []
+            deletePrivate = paramValue("delete-private") != "false"  // default true when selected
+            copyFrom = ""
+            copyTagsRaw = ""
+        case "copy-from":
+            setSpecs = []
+            deleteSpecs = []
+            deletePrivate = false
+            copyFrom = paramValue("copy-from")
+            copyTagsRaw = paramValue("tags")
+        default:
+            setSpecs = []
+            deleteSpecs = []
+            deletePrivate = false
+            copyFrom = ""
+            copyTagsRaw = ""
+        }
+        let verbose = paramValue("verbose") == "true"
+        let dryRun = paramValue("dry-run") == "true"
+
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: An input DICOM file path is required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-tags", command: commandPreview, exitCode: 1, output: "Missing input")
+            return
+        }
+        guard !setSpecs.isEmpty || !deleteSpecs.isEmpty || deletePrivate || !copyFrom.isEmpty else {
+            appendConsoleOutput("Error: No operation arguments provided. Fill in the field for the selected operation.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-tags", command: commandPreview, exitCode: 1, output: "No operations")
+            return
+        }
+
+        let (inputURL, accessingInput) = resolveInputURL(parameterID: "input", rawPath: inputPath)
+        defer { if accessingInput { inputURL.stopAccessingSecurityScopedResource() } }
+
+        let outputScopedURL = securityScopedURLs["output"]
+        let accessingOutput = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() } }
+        let resolvedOutputPath: String?
+        if outputPath.isEmpty {
+            resolvedOutputPath = nil
+        } else {
+            // The output picker is configured as a folder picker
+            // (`parameterType: .outputPath`). When the user selects a
+            // directory, append the input file's name so we write a real
+            // file inside that folder rather than trying to overwrite the
+            // directory itself (which causes "couldn't be saved in the
+            // folder …" errors).
+            let candidate = outputScopedURL?.path ?? outputPath
+            var isDir: ObjCBool = false
+            let exists = FileManager.default.fileExists(atPath: candidate, isDirectory: &isDir)
+            if exists && isDir.boolValue {
+                resolvedOutputPath = (candidate as NSString)
+                    .appendingPathComponent(inputURL.lastPathComponent)
+            } else if !exists && (candidate.hasSuffix("/") || (candidate as NSString).pathExtension.isEmpty) {
+                // User typed a path that looks like a folder but doesn't
+                // exist yet — create it and write inside.
+                try? FileManager.default.createDirectory(
+                    atPath: candidate, withIntermediateDirectories: true
+                )
+                resolvedOutputPath = (candidate as NSString)
+                    .appendingPathComponent(inputURL.lastPathComponent)
+            } else {
+                resolvedOutputPath = candidate
+            }
+        }
+
+        let copyScopedURL = securityScopedURLs["copy-from"]
+        let accessingCopy = copyScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessingCopy { copyScopedURL?.stopAccessingSecurityScopedResource() } }
+        let resolvedCopyPath: String? = copyFrom.isEmpty
+            ? nil
+            : (copyScopedURL?.path ?? copyFrom)
+
+        let copyTags: [String]? = copyTagsRaw.isEmpty ? nil : splitMultiValue(copyTagsRaw)
+
+        do {
+            let editor = TagEditor()
+            let log = try editor.processFile(
+                inputPath: inputURL.path,
+                outputPath: resolvedOutputPath,
+                sets: setSpecs,
+                deletes: deleteSpecs,
+                deletePrivate: deletePrivate,
+                copyFromPath: resolvedCopyPath,
+                copyTags: copyTags,
+                verbose: verbose,
+                dryRun: dryRun
+            )
+            for line in log {
+                appendConsoleOutput(line + "\n")
+            }
+            let destDescription = resolvedOutputPath ?? inputURL.path
+            if dryRun {
+                appendConsoleOutput("Dry run complete \u{2014} no files modified.\n")
+            } else {
+                appendConsoleOutput("Output written to: \(destDescription)\n")
+            }
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-tags", command: commandPreview, exitCode: 0, output: log.joined(separator: "\n"))
+        } catch {
+            appendConsoleOutput("Error: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-tags", command: commandPreview, exitCode: 1, output: error.localizedDescription)
+        }
+    }
+
+    /// Runs the same comparer as the `dicom-diff` CLI.
+    private func executeDicomDiff() async {
+        let path1 = paramValue("file1")
+        let path2 = paramValue("file2")
+        let formatRaw = paramValue("format").isEmpty ? "text" : paramValue("format")
+        // The "Ignore Tag" field accepts space- or comma-separated tokens.
+        // A bare DICOM tag uses the form "GGGG,EEEE", which contains a
+        // comma — naively splitting on commas tears that apart into two
+        // 4-hex pieces and the tag never matches. Use the shared
+        // `normalizeFilterTokens` helper which merges adjacent 4-hex
+        // pieces back into "GGGG,EEEE".
+        let ignoreTags = MetadataPresenter.normalizeFilterTokens(
+            splitMultiValue(paramValue("ignore-tag"))
+        )
+        let ignorePrivate = paramValue("ignore-private") == "true"
+        let comparePixels = paramValue("compare-pixels") == "true"
+        let toleranceStr = paramValue("tolerance")
+        let quick = paramValue("quick") == "true"
+        let showIdentical = paramValue("show-identical") == "true"
+        let verbose = paramValue("verbose") == "true"
+
+        guard !path1.isEmpty, !path2.isEmpty else {
+            appendConsoleOutput("Error: Two DICOM file paths are required.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: 1, output: "Missing files")
+            return
+        }
+        guard let format = DiffOutputFormat(rawValue: formatRaw) else {
+            appendConsoleOutput("Error: Unknown format '\(formatRaw)'. Valid: text, json, summary.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: 1, output: "Bad format")
+            return
+        }
+
+        let (url1, accessing1) = resolveInputURL(parameterID: "file1", rawPath: path1)
+        defer { if accessing1 { url1.stopAccessingSecurityScopedResource() } }
+        let (url2, accessing2) = resolveInputURL(parameterID: "file2", rawPath: path2)
+        defer { if accessing2 { url2.stopAccessingSecurityScopedResource() } }
+
+        do {
+            let data1 = try Data(contentsOf: url1)
+            let data2 = try Data(contentsOf: url2)
+            let dicom1 = try DICOMFile.read(from: data1)
+            let dicom2 = try DICOMFile.read(from: data2)
+
+            if verbose {
+                appendConsoleOutput("Comparing: \(url1.lastPathComponent)\n")
+                appendConsoleOutput("     with: \(url2.lastPathComponent)\n\n")
+            }
+
+            // Resolve ignore tags: accept either GGGG,EEEE or DICOM keyword.
+            var tagSet = Set<Tag>()
+            for spec in ignoreTags {
+                let parts = spec.split(separator: ",")
+                if parts.count == 2,
+                   let g = UInt16(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
+                   let e = UInt16(parts[1].trimmingCharacters(in: .whitespaces), radix: 16) {
+                    tagSet.insert(Tag(group: g, element: e))
+                } else if let entry = DataElementDictionary.lookup(keyword: spec) {
+                    tagSet.insert(entry.tag)
+                }
+            }
+
+            let tolerance = Double(toleranceStr) ?? 0.0
+            let comparer = DICOMComparer(
+                file1: dicom1,
+                file2: dicom2,
+                tagsToIgnore: tagSet,
+                ignorePrivate: ignorePrivate,
+                comparePixels: comparePixels && !quick,
+                pixelTolerance: tolerance,
+                showIdentical: showIdentical
+            )
+            let result = try comparer.compare()
+            let formatter = DiffOutputFormatter(
+                file1Path: url1.path,
+                file2Path: url2.path,
+                showIdentical: showIdentical
+            )
+            let output = try formatter.format(result, format: format)
+            appendConsoleOutput(output)
+            if !output.hasSuffix("\n") { appendConsoleOutput("\n") }
+            let exitCode = result.hasDifferences ? 1 : 0
+            consoleStatus = .success
+            service.setConsoleStatus(.success)
+            addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: exitCode, output: output)
+        } catch {
+            appendConsoleOutput("Error: \(error.localizedDescription)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: 1, output: error.localizedDescription)
+        }
     }
 
     /// Performs a real C-ECHO against the server configured in the parameter fields.

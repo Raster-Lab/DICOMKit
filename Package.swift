@@ -321,14 +321,24 @@ let package = Package(
             path: "Tests/DICOMToolsTests",
             sources: ["DICOMViewerTests.swift"]
         ),
+        .target(
+            name: "DICOMCLITools",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                .product(name: "J2KCore", package: "J2KSwift"),
+                .product(name: "J2KCodec", package: "J2KSwift")
+            ],
+            path: "Sources/DICOMCLITools"
+        ),
         .executableTarget(
             name: "dicom-info",
             dependencies: [
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMDictionary",
-                .product(name: "J2KCore", package: "J2KSwift"),
-                .product(name: "J2KCodec", package: "J2KSwift"),
+                "DICOMCLITools",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-info",
@@ -374,6 +384,7 @@ let package = Package(
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMDictionary",
+                "DICOMCLITools",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-dump",
@@ -405,6 +416,7 @@ let package = Package(
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMDictionary",
+                "DICOMCLITools",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-diff",
@@ -600,6 +612,7 @@ let package = Package(
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMDictionary",
+                "DICOMCLITools",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-tags",
@@ -768,7 +781,8 @@ let package = Package(
                 "DICOMCore",
                 "DICOMDictionary",
                 "DICOMNetwork",
-                "DICOMWeb"
+                "DICOMWeb",
+                "DICOMCLITools"
             ],
             path: "Sources/DICOMStudio",
             exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]

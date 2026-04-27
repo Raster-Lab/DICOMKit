@@ -626,7 +626,7 @@ public struct JP3DVolumeComparisonView: View {
 
 // MARK: - Preview
 
-#if DEBUG
+#if DEBUG && !SWIFT_PACKAGE
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 #Preview("Empty Drop Zone") {
     JP3DVolumeComparisonView(viewModel: JP3DVolumeComparisonViewModel())

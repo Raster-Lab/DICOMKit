@@ -3,6 +3,7 @@ import ArgumentParser
 import DICOMKit
 import DICOMCore
 import DICOMDictionary
+import DICOMCLITools
 
 struct DICOMDump: ParsableCommand {
     static let configuration = CommandConfiguration(
@@ -103,7 +104,8 @@ struct DICOMDump: ParsableCommand {
             data: dataToShow,
             startOffset: startOffset,
             dicomFile: dicomFile,
-            highlightTag: try parseHighlightTag()
+            highlightTag: try parseHighlightTag(),
+            fileBytes: fileData
         )
         
         print(output)
@@ -159,20 +161,20 @@ struct DICOMDump: ParsableCommand {
     private func dumpTag(fileData: Data, tagString: String) throws {
         let targetTag = try parseTag(tagString)
         let dicomFile = try DICOMFile.read(from: fileData, force: force)
-        
-        // Find tag in dataset
+
+        // Find tag in dataset (presence check + name/VR for the header).
         guard let element = dicomFile.dataSet[targetTag] else {
             throw ValidationError("Tag \(formatTag(targetTag)) not found in file")
         }
-        
-        // Calculate tag position in file
-        // This is a simplified approach - finding the tag's byte range
-        let tagInfo = findTagInRawData(fileData: fileData, tag: targetTag)
-        
-        guard let (tagOffset, tagLength) = tagInfo else {
+
+        // Locate the element's exact byte range in the on-disk file using the
+        // shared linear scanner (handles short- and long-form Explicit VR).
+        guard let range = HexDumper.findElementRange(in: fileData, tag: targetTag) else {
             throw ValidationError("Could not locate tag \(formatTag(targetTag)) in raw file data")
         }
-        
+        let tagOffset = range.lowerBound
+        let tagLength = range.upperBound - range.lowerBound
+
         print("Tag: \(formatTag(targetTag))")
         if let entry = DataElementDictionary.lookup(tag: targetTag) {
             print("Name: \(entry.keyword)")
@@ -181,23 +183,26 @@ struct DICOMDump: ParsableCommand {
         print("Offset: 0x\(String(tagOffset, radix: 16, uppercase: true))")
         print("Length: \(tagLength) bytes")
         print()
-        
-        let dataToShow = fileData[tagOffset..<min(tagOffset + tagLength, fileData.count)]
-        
+
+        // Copy the slice into a fresh 0-indexed Data so HexDumper.dump can
+        // safely use 0-based arithmetic.
+        let dataToShow = Data(fileData[tagOffset..<min(tagOffset + tagLength, fileData.count)])
+
         let dumper = HexDumper(
             bytesPerLine: bytesPerLine,
             useColor: !noColor,
-            annotate: false,
+            annotate: annotate,
             verbose: verbose
         )
-        
+
         let output = dumper.dump(
             data: dataToShow,
             startOffset: tagOffset,
             dicomFile: dicomFile,
-            highlightTag: targetTag
+            highlightTag: targetTag,
+            fileBytes: fileData
         )
-        
+
         print(output)
     }
     
@@ -222,7 +227,7 @@ struct DICOMDump: ParsableCommand {
                 let lengthStart = tagStart + 6
                 if lengthStart + 2 <= fileData.count {
                     let lengthBytes = fileData[lengthStart..<lengthStart + 2]
-                    let length = lengthBytes.withUnsafeBytes { $0.load(as: UInt16.self) }
+                    let length = lengthBytes.withUnsafeBytes { $0.loadUnaligned(as: UInt16.self) }
                     
                     // Total includes tag header (4) + VR (2) + length (2) + value
                     return (tagStart, Int(length) + 8)
