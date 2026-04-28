@@ -565,16 +565,20 @@ extension DICOMFile {
     
     // MARK: - ImageIO Codec Detection
     
-    /// Transfer syntaxes decoded by Apple's ImageIO framework (via NativeJPEGCodec / NativeJPEG2000Codec).
+    /// Transfer syntaxes decoded by Apple's ImageIO framework (via NativeJPEGCodec).
     /// These codecs use CGContext.draw with CGColorSpaceCreateDeviceRGB which automatically
     /// converts YCbCr colour data to RGB during decompression.
+    ///
+    /// Note: JPEG 2000 transfer syntaxes are intentionally NOT included here.
+    /// They are decoded by `J2KSwiftCodec`, which preserves the source photometric
+    /// interpretation (no implicit YBR→RGB conversion). The pixel-data renderer
+    /// performs the YBR→RGB conversion itself when the descriptor reports a YBR
+    /// photometric interpretation.
     private static let imageIODecodedTransferSyntaxes: Set<String> = [
         TransferSyntax.jpegBaseline.uid,      // 1.2.840.10008.1.2.4.50
         TransferSyntax.jpegExtended.uid,      // 1.2.840.10008.1.2.4.51
         TransferSyntax.jpegLossless.uid,      // 1.2.840.10008.1.2.4.57
         TransferSyntax.jpegLosslessSV1.uid,   // 1.2.840.10008.1.2.4.70
-        TransferSyntax.jpeg2000Lossless.uid,  // 1.2.840.10008.1.2.4.90
-        TransferSyntax.jpeg2000.uid,          // 1.2.840.10008.1.2.4.91
     ]
     
     /// Whether the given transfer syntax UID is decoded by an ImageIO-based codec

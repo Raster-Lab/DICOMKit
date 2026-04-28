@@ -107,10 +107,24 @@ public final class ImportService: Sendable {
                 ? url.lastPathComponent
                 : instance.sopInstanceUID + ".dcm"
             let dest = studyDir.appendingPathComponent(safeName)
-            if !fm.fileExists(atPath: dest.path) {
+
+            // Decide whether to (re)write the cached copy. We must overwrite
+            // when the existing cached bytes differ from the bytes just read,
+            // otherwise re-importing a transcoded variant of the same SOP
+            // Instance UID (e.g. JPEG2000Lossless → ImplicitVRLittleEndian)
+            // would silently keep the old file on disk, and the Viewer /
+            // Inspector would then show the *previous* transfer syntax even
+            // though the user just imported a different one.
+            var shouldWrite = true
+            if fm.fileExists(atPath: dest.path) {
+                if let existing = try? Data(contentsOf: dest), existing == data {
+                    shouldWrite = false
+                }
+            }
+            if shouldWrite {
                 do {
                     try data.write(to: dest, options: .atomic)
-                    logger.info("importFile: Copied to \(dest.lastPathComponent)")
+                    logger.info("importFile: Cached \(dest.lastPathComponent) (\(data.count) bytes)")
                 } catch {
                     logger.warning("importFile: Copy failed — \(error.localizedDescription)")
                 }

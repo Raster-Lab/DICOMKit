@@ -302,6 +302,47 @@ public struct DICOMWriter: Sendable {
             return data
         }
         
+        // Handle encapsulated pixel data (undefined-length item-encoded value).
+        // The value consists of a Basic Offset Table item followed by zero or
+        // more Fragment items, terminated by a Sequence Delimitation item.
+        if element.length == 0xFFFFFFFF, let fragments = element.encapsulatedFragments {
+            data.append(serializeElementHeader(tag: element.tag, vr: element.vr, length: 0xFFFFFFFF))
+
+            // Basic Offset Table item (FFFE,E000) — empty by convention unless
+            // explicit offsets are supplied. Empty BOT is fully spec-compliant.
+            let offsets = element.encapsulatedOffsetTable ?? []
+            data.append(serializeUInt16(0xFFFE))
+            data.append(serializeUInt16(0xE000))
+            if offsets.isEmpty {
+                data.append(serializeUInt32(0))
+            } else {
+                data.append(serializeUInt32(UInt32(offsets.count * 4)))
+                for offset in offsets {
+                    data.append(serializeUInt32(offset))
+                }
+            }
+
+            // Fragment items (FFFE,E000) — each fragment must be padded to an
+            // even number of bytes per PS3.5 Section A.4.
+            for fragment in fragments {
+                var payload = fragment
+                if payload.count % 2 != 0 {
+                    payload.append(0x00)
+                }
+                data.append(serializeUInt16(0xFFFE))
+                data.append(serializeUInt16(0xE000))
+                data.append(serializeUInt32(UInt32(payload.count)))
+                data.append(payload)
+            }
+
+            // Sequence Delimitation Item (FFFE,E0DD)
+            data.append(serializeUInt16(0xFFFE))
+            data.append(serializeUInt16(0xE0DD))
+            data.append(serializeUInt32(0))
+
+            return data
+        }
+
         // Write header
         data.append(serializeElementHeader(tag: element.tag, vr: element.vr, length: element.length))
         

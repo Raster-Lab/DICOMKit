@@ -1454,6 +1454,10 @@ public final class CLIWorkshopViewModel {
             return .jpeg2000Lossless
         case "jpeg2000", "jpeg2000-lossy", "j2k":
             return .jpeg2000
+        case "jpeg2000part2lossless", "jpeg2000-part2-lossless", "j2k-part2-lossless":
+            return .jpeg2000Part2Lossless
+        case "jpeg2000part2", "jpeg2000-part2", "j2k-part2":
+            return .jpeg2000Part2
         case "htj2klossless", "htj2k-lossless":
             return .htj2kLossless
         case "htj2krpcllossless", "htj2k-rpcl", "htj2k-lossless-rpcl":
@@ -6621,7 +6625,15 @@ enum ConvertError: LocalizedError {
         case .missingTransferSyntax:
             return "Transfer syntax is required for DICOM output format"
         case .unknownTransferSyntax(let name):
-            return "Unknown transfer syntax: \(name). Use: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, or DEFLATE"
+            return """
+                Unknown transfer syntax: \(name).
+                Available syntaxes:
+                  Uncompressed: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE
+                  JPEG:         JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1
+                  JPEG 2000:    JPEG2000Lossless, JPEG2000, JPEG2000Part2Lossless, JPEG2000Part2, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K
+                  JPEG-LS:      JPEGLSLossless, JPEGLSNearLossless
+                  RLE:          RLELossless
+                """
         case .invalidFrame(let requested, let total):
             return "Invalid frame \(requested). File has \(total) frame(s) (0-\(total - 1))"
         case .renderFailed:

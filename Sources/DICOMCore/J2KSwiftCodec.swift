@@ -74,13 +74,14 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         let encoder = J2KEncoder(
             encodingConfiguration: Self.makeEncodingConfiguration(
                 from: configuration,
-                transferSyntaxUID: encodingTransferSyntaxUID
+                transferSyntaxUID: encodingTransferSyntaxUID,
+                descriptor: descriptor
             )
         )
         let encoded = try Self.awaitJ2KResult {
             try await encoder.encode(image)
         }
-        try Self.verifyEncodedRoundTrip(encoded, original: frameData, descriptor: descriptor, configuration: configuration)
+        try Self.verifyEncodedRoundTrip(encoded, original: frameData, descriptor: descriptor, configuration: configuration, transferSyntaxUID: encodingTransferSyntaxUID)
         return encoded
         #else
         throw DICOMError.unsupportedTransferSyntax("JPEG 2000 encoding requires J2KSwift support in this build")
@@ -120,7 +121,8 @@ private extension J2KSwiftCodec {
 
     static func makeEncodingConfiguration(
         from configuration: CompressionConfiguration,
-        transferSyntaxUID: String?
+        transferSyntaxUID: String?,
+        descriptor: PixelDataDescriptor? = nil
     ) -> J2KEncodingConfiguration {
         let targetSyntax = transferSyntaxUID.flatMap(TransferSyntax.from(uid:))
         let isLossless = targetSyntax?.isLossless ?? (configuration.preferLossless || configuration.quality.isLossless)
@@ -135,12 +137,35 @@ private extension J2KSwiftCodec {
         // J2KHTConformantMedicalRoundTripTests).
         let htj2kBlockFormat: HTBlockFormat = useHTJ2K ? .conformant : .custom
 
+        // For HTJ2K Lossy at high bit depths (e.g. 12-bit medical images), the
+        // upstream quality→BPP map (quality 0.90 → 1.2 bpp) collapses dynamic
+        // range and produces visually-blank reconstructions for bitsStored ≥ 10.
+        // Anchor the bitrate to the source bit depth so a typical 12-bit X-ray
+        // is encoded at ≥ 4 bpp, preserving diagnostic contrast while still
+        // achieving meaningful compression.
+        let bitrateMode: J2KBitrateMode
+        if isLossless {
+            bitrateMode = .lossless
+        } else if useHTJ2K,
+                  let bitsStored = descriptor?.bitsStored,
+                  bitsStored >= 9 {
+            // Map quality preset to a fraction of the source bit depth.
+            // .high (0.90) → 0.50, .medium (0.75) → 0.40, .low (0.60) → 0.30, custom scales linearly.
+            let q = configuration.quality.value
+            let fraction = max(0.20, min(0.75, q * 0.55 + 0.005))
+            let bpp = max(2.0, Double(bitsStored) * fraction)
+            bitrateMode = .constantBitrate(bitsPerPixel: bpp)
+        } else {
+            bitrateMode = .constantQuality
+        }
+
         return J2KEncodingConfiguration(
             quality: isLossless ? 1.0 : configuration.quality.value,
             lossless: isLossless,
-            decompositionLevels: 0,
+            decompositionLevels: useHTJ2K ? 0 : 5,
             qualityLayers: 1,
             progressionOrder: useRPCL ? .rpcl : .lrcp,
+            bitrateMode: bitrateMode,
             useHTJ2K: useHTJ2K,
             useReversibleFilter: isLossless,
             htj2kBlockFormat: htj2kBlockFormat
@@ -151,27 +176,47 @@ private extension J2KSwiftCodec {
         _ encoded: Data,
         original: Data,
         descriptor: PixelDataDescriptor,
-        configuration: CompressionConfiguration
+        configuration: CompressionConfiguration,
+        transferSyntaxUID: String?
     ) throws {
-        let decoded = try decodeWithJ2KSwift(encoded, descriptor: descriptor)
+        // J2KSwift's GPU decoder path has a known mismatch with the Part-1
+        // reversible (5/3) transform that produces non-bit-exact output for
+        // unsigned high-bit-depth grayscale (e.g. 12-bit DX images). The CPU
+        // decoder reconstructs lossless data correctly, so prefer it for
+        // verification of Part-1 lossless encodes; HTJ2K and lossy paths use
+        // the faster GPU decoder.
+        let isLossless = configuration.preferLossless || configuration.quality.isLossless
+        let useHTJ2K = transferSyntaxUID
+            .flatMap(TransferSyntax.from(uid:))
+            .map(\.isHTJ2K) ?? false
+        let preferCPUDecoder = isLossless && !useHTJ2K
+        let decoded = try decodeWithJ2KSwift(encoded, descriptor: descriptor, preferCPUDecoder: preferCPUDecoder)
         guard decoded.count == descriptor.bytesPerFrame else {
             throw DICOMError.parsingFailed(
                 "Decoded byte count \(decoded.count) does not match expected \(descriptor.bytesPerFrame)"
             )
         }
 
-        if configuration.preferLossless || configuration.quality.isLossless {
+        if isLossless {
             guard decoded == original else {
                 throw DICOMError.parsingFailed("J2KSwift lossless round-trip validation failed")
             }
         }
     }
 
-    static func decodeWithJ2KSwift(_ frameData: Data, descriptor: PixelDataDescriptor) throws -> Data {
+    static func decodeWithJ2KSwift(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        preferCPUDecoder: Bool = false
+    ) throws -> Data {
         let image: J2KImage
         do {
             image = try Self.awaitJ2KResult {
-                try await J2KDecoder().decodeGPU(frameData)
+                if preferCPUDecoder {
+                    return try await J2KDecoder().decode(frameData)
+                } else {
+                    return try await J2KDecoder().decodeGPU(frameData)
+                }
             }
         } catch {
             throw DICOMError.parsingFailed("J2KSwift decode failed: \(error)")

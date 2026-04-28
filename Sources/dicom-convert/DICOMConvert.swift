@@ -37,7 +37,7 @@ struct DICOMConvert: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String
     
-    @Option(name: .long, help: "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, RLELossless")
+    @Option(name: .long, help: "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, JPEG2000Part2Lossless, JPEG2000Part2, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, RLELossless")
     var transferSyntax: String?
     
     @Option(name: .long, help: "Output format for image export: png, jpeg, tiff, dicom (default: dicom)")
@@ -72,17 +72,51 @@ struct DICOMConvert: AsyncParsableCommand {
     
     mutating func run() async throws {
         let inputURL = URL(fileURLWithPath: inputPath)
-        let outputURL = URL(fileURLWithPath: output)
-        
+        var outputURL = URL(fileURLWithPath: output)
+
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: inputPath, isDirectory: &isDirectory) else {
             throw ValidationError("Input path not found: \(inputPath)")
         }
-        
+
+        // Print conversion header (mirrors DICOMStudio CLI Workshop output so the
+        // GUI and terminal experiences are identical).
+        print("Input:  \(inputURL.path)")
+        print("Output: \(outputURL.path)")
+        print("Format: \(format.rawValue)")
+        if format == .dicom, let ts = transferSyntax, !ts.isEmpty {
+            print("Transfer Syntax: \(ts)")
+        }
+        print("")
+
         if isDirectory.boolValue {
             try convertDirectory(input: inputURL, output: outputURL)
         } else {
+            // When converting a single file and the output path is (or was chosen
+            // as) a directory, write the result *inside* that directory using the
+            // input filename. Mirrors the CLI Workshop behaviour so the GUI and
+            // terminal produce identical results.
+            var outputIsDirectory: ObjCBool = false
+            let outputExists = FileManager.default.fileExists(atPath: outputURL.path, isDirectory: &outputIsDirectory)
+            let treatAsDir = (outputExists && outputIsDirectory.boolValue)
+                || (!outputExists && outputURL.pathExtension.isEmpty)
+            if treatAsDir {
+                try? FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
+                let stem = inputURL.deletingPathExtension().lastPathComponent
+                let ext: String
+                switch format {
+                case .png:  ext = "png"
+                case .jpeg: ext = "jpg"
+                case .tiff: ext = "tiff"
+                case .dicom: ext = "dcm"
+                }
+                outputURL = outputURL.appendingPathComponent("\(stem).\(ext)")
+            } else if !outputExists {
+                let parentDir = outputURL.deletingLastPathComponent()
+                try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
+            }
             try convertFile(input: inputURL, output: outputURL)
+            print("\n✅ Conversion completed successfully.")
         }
     }
     
@@ -139,10 +173,13 @@ struct DICOMConvert: AsyncParsableCommand {
     
     private func convertFile(input: URL, output: URL) throws {
         let fileData = try Data(contentsOf: input)
-        
+
         // Read DICOM file
         let dicomFile = try DICOMFile.read(from: fileData, force: force)
-        
+
+        let inputSize = fileData.count
+        print("  Read \(input.lastPathComponent) (\(ByteCountFormatter.string(fromByteCount: Int64(inputSize), countStyle: .file)))")
+
         // Process based on output format
         switch format {
         case .dicom:
@@ -150,11 +187,12 @@ struct DICOMConvert: AsyncParsableCommand {
         case .png, .jpeg, .tiff:
             try exportImage(dicomFile: dicomFile, output: output)
         }
-        
+
         // Validate if requested
         if validate && format == .dicom {
             let outputData = try Data(contentsOf: output)
             _ = try DICOMFile.read(from: outputData, force: false)
+            print("  ✓ Output validation passed")
         }
     }
     
@@ -235,10 +273,12 @@ struct DICOMConvert: AsyncParsableCommand {
         outputData.append(result.data)
         
         try outputData.write(to: output)
-        
+
+        let lossInfo = result.isLossless ? "lossless" : "lossy"
+        print("  Wrote \(output.lastPathComponent) (\(ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)))")
+        print("  Transfer Syntax: \(targetSyntax.uid) (\(lossInfo))")
         if result.wasTranscoded {
-            let lossInfo = result.isLossless ? "lossless" : "lossy"
-            print("Transcoded from \(sourceSyntax.uid) to \(targetSyntax.uid) (\(lossInfo))")
+            print("  Transcoded from \(sourceSyntax.uid)")
         }
     }
     
@@ -350,6 +390,10 @@ struct DICOMConvert: AsyncParsableCommand {
             return .jpeg2000Lossless
         case "jpeg2000", "jpeg2000-lossy", "j2k":
             return .jpeg2000
+        case "jpeg2000part2lossless", "jpeg2000-part2-lossless", "j2k-part2-lossless":
+            return .jpeg2000Part2Lossless
+        case "jpeg2000part2", "jpeg2000-part2", "j2k-part2":
+            return .jpeg2000Part2
         case "htj2klossless", "htj2k-lossless":
             return .htj2kLossless
         case "htj2krpcllossless", "htj2k-rpcl", "htj2k-lossless-rpcl":
@@ -370,7 +414,7 @@ struct DICOMConvert: AsyncParsableCommand {
                 Available syntaxes:
                   Uncompressed: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE
                   JPEG:         JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1
-                  JPEG 2000:    JPEG2000Lossless, JPEG2000, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K
+                  JPEG 2000:    JPEG2000Lossless, JPEG2000, JPEG2000Part2Lossless, JPEG2000Part2, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K
                   JPEG-LS:      JPEGLSLossless, JPEGLSNearLossless
                   RLE:          RLELossless
                 """)

@@ -123,9 +123,7 @@ public struct ImageViewerView: View {
             viewerToolbar
         }
         .sheet(isPresented: $viewModel.showDICOMInspector) {
-            if let file = viewModel.dicomFile {
-                DICOMInspectorView(dicomFile: file)
-            }
+            DICOMInspectorView(viewModel: viewModel)
         }
         .sheet(isPresented: Bindable(viewModel).showJ2KTesting) {
             J2KTestingView(viewModel: viewModel)
@@ -407,24 +405,58 @@ public struct ImageViewerView: View {
 
 #if os(macOS)
 /// Zero-size NSView that installs a local NSEvent monitor for scroll-wheel events.
+///
+/// The monitor only forwards events whose hit-test location is inside this
+/// view's own bounds *and* whose target window matches. This prevents scroll
+/// gestures over modal sheets (e.g. the DICOM Inspector) from being
+/// interpreted as image-zoom events.
 private struct ScrollWheelHandler: NSViewRepresentable {
     let onScroll: (CGFloat) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            onScroll(event.deltaY)
+        context.coordinator.targetView = view
+        context.coordinator.onScroll = onScroll
+        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak coordinator = context.coordinator] event in
+            guard let coordinator else { return event }
+            guard let target = coordinator.targetView,
+                  let window = target.window,
+                  event.window === window
+            else {
+                return event
+            }
+            // Reject events when a sheet/modal is in front of our window.
+            if window.attachedSheet != nil { return event }
+            // Convert to the target view's local coordinates and ignore events
+            // that are not directly over the image area.
+            let pointInWindow = event.locationInWindow
+            let pointInView = target.convert(pointInWindow, from: nil)
+            guard target.bounds.contains(pointInView) else { return event }
+            // Also confirm the actual hit-tested view belongs to our subtree;
+            // this rejects scrolls that land on overlapping siblings (lists,
+            // popovers attached to the same window, etc.).
+            if let hit = window.contentView?.hitTest(pointInWindow),
+               hit !== target,
+               !hit.isDescendant(of: target),
+               !target.isDescendant(of: hit) {
+                return event
+            }
+            coordinator.onScroll?(event.deltaY)
             return event
         }
         return view
     }
 
-    func updateNSView(_ nsView: NSView, context: Context) {}
+    func updateNSView(_ nsView: NSView, context: Context) {
+        context.coordinator.onScroll = onScroll
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     final class Coordinator {
         var monitor: Any?
+        weak var targetView: NSView?
+        var onScroll: ((CGFloat) -> Void)?
         deinit {
             if let m = monitor { NSEvent.removeMonitor(m) }
         }

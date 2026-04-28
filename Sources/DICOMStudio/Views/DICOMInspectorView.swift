@@ -110,14 +110,48 @@ public enum DICOMInspectorHelpers: Sendable {
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 public struct DICOMInspectorView: View {
-    public let dicomFile: DICOMFile
+    /// Static file mode — used when the inspector is shown for a one-off file.
+    private let staticFile: DICOMFile?
+
+    /// Live mode — observes the viewer's currently loaded file so the
+    /// inspector always reflects what is on screen, even when the user
+    /// scrolls through a series or loads a different study while the
+    /// inspector is open.
+    @Bindable private var viewModelOrNil: ImageViewerViewModel
+    private let useViewModel: Bool
 
     @State private var searchText: String = ""
     @State private var showFMI: Bool = true
     @Environment(\.dismiss) private var dismiss
 
+    /// Currently active DICOM file resolved from either the static file
+    /// argument or the bound view model.
+    private var dicomFile: DICOMFile? {
+        useViewModel ? viewModelOrNil.dicomFile : staticFile
+    }
+
+    /// Stable identity for SwiftUI so the row list refreshes when the
+    /// underlying file changes (e.g. user navigates to next image in
+    /// the series).
+    private var fileIdentity: String {
+        dicomFile?.dataSet.string(for: .sopInstanceUID)
+            ?? dicomFile?.fileMetaInformation.string(for: .sopInstanceUID)
+            ?? "no-file"
+    }
+
     public init(dicomFile: DICOMFile) {
-        self.dicomFile = dicomFile
+        self.staticFile = dicomFile
+        self.viewModelOrNil = ImageViewerViewModel()
+        self.useViewModel = false
+    }
+
+    /// Creates an inspector that follows the currently displayed file in
+    /// the given image viewer view model. The inspector updates
+    /// automatically as the viewer navigates between files.
+    public init(viewModel: ImageViewerViewModel) {
+        self.staticFile = nil
+        self.viewModelOrNil = viewModel
+        self.useViewModel = true
     }
 
     // Flattened list of rows to display, including sequence children
@@ -126,10 +160,33 @@ public struct DICOMInspectorView: View {
 
         var result: [InspectorRow] = []
 
-        let ds = dicomFile.dataSet
+        guard let file = dicomFile else {
+            result.append(.sectionHeader("No DICOM file loaded"))
+            return result
+        }
+
+        let ds = file.dataSet
+
+        // File summary header — surfaces the actually-loaded transfer syntax
+        // so users can verify the inspector content matches the file currently
+        // displayed in the viewer.
+        let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID)
+            ?? ds.string(for: .transferSyntaxUID)
+            ?? file.transferSyntaxUID
+            ?? ""
+        let tsLabel = ImageMetadataHelpers.transferSyntaxLabel(for: tsUID)
+        let summaryText: String
+        if tsUID.isEmpty {
+            summaryText = "Transfer Syntax: <not present>"
+        } else if tsLabel == tsUID {
+            summaryText = "Transfer Syntax: \(tsUID)"
+        } else {
+            summaryText = "Transfer Syntax: \(tsLabel) (\(tsUID))"
+        }
+        result.append(.sectionHeader(summaryText))
 
         // File Meta Information
-        let fmiElements = dicomFile.fileMetaInformation.allElements
+        let fmiElements = file.fileMetaInformation.allElements
             .sorted { $0.tag < $1.tag }
         if !fmiElements.isEmpty {
             result.append(.sectionHeader("File Meta Information (\(fmiElements.count) elements)"))
@@ -226,6 +283,7 @@ public struct DICOMInspectorView: View {
                 }
             }
             .listStyle(.plain)
+            .id(fileIdentity)
         }
         .frame(minWidth: 540, minHeight: 480)
         .accessibilityLabel("DICOM tag inspector")

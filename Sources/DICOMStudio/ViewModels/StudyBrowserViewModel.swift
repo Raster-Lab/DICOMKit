@@ -142,9 +142,16 @@ public final class StudyBrowserViewModel {
         var updatedLibrary = library
         var importedCount = 0
         var updatedCount = 0
+        var lastImportedStudyUID: String?
+        var lastUpdatedStudyUID: String?
         for result in results where result.succeeded {
             if let study = result.study {
                 updatedLibrary.addStudy(study)
+                if result.isDuplicate {
+                    lastUpdatedStudyUID = study.studyInstanceUID
+                } else {
+                    lastImportedStudyUID = study.studyInstanceUID
+                }
             }
             if let series = result.series {
                 updatedLibrary.addSeries(series)
@@ -162,6 +169,19 @@ public final class StudyBrowserViewModel {
         // Single atomic assignment — triggers one @Observable change.
         library = updatedLibrary
         isImporting = false
+
+        // Highlight the most recently imported (or updated) study so the user
+        // can see the result of their action without having to search for it.
+        if let studyUID = lastImportedStudyUID ?? lastUpdatedStudyUID {
+            // Clear active filters that might hide the imported study from the
+            // list, then select it. SwiftUI's List binds to selectedStudyUID
+            // and renders the row in its selected/highlighted style.
+            if !displayStudies.contains(where: { $0.studyInstanceUID == studyUID }) {
+                clearFilters()
+            }
+            selectedStudyUID = studyUID
+            selectedSeriesUID = nil
+        }
 
         // Report failures so the user can see what went wrong.
         let failedResults = results.filter { !$0.succeeded }

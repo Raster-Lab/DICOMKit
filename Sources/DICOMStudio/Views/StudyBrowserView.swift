@@ -186,51 +186,61 @@ public struct StudyBrowserView: View {
     }
 
     private var studyList: some View {
-        List(viewModel.displayStudies, selection: $viewModel.selectedStudyUID) { study in
-            StudyRowView(
-                study: study,
-                seriesCount: viewModel.library.seriesForStudy(study.studyInstanceUID).count,
-                instanceCount: viewModel.library.instancesForSeries(study.studyInstanceUID).count
-            )
-            .tag(study.studyInstanceUID)
-            .contextMenu {
-                Button {
-                    viewModel.openStudyInViewer(study.studyInstanceUID)
-                } label: {
-                    Label("Open in Viewer", systemImage: "photo")
+        ScrollViewReader { proxy in
+            List(viewModel.displayStudies, selection: $viewModel.selectedStudyUID) { study in
+                StudyRowView(
+                    study: study,
+                    seriesCount: viewModel.library.seriesForStudy(study.studyInstanceUID).count,
+                    instanceCount: viewModel.library.instancesForSeries(study.studyInstanceUID).count
+                )
+                .tag(study.studyInstanceUID)
+                .contextMenu {
+                    Button {
+                        viewModel.openStudyInViewer(study.studyInstanceUID)
+                    } label: {
+                        Label("Open in Viewer", systemImage: "photo")
+                    }
+                    Divider()
+                    Button {
+                        viewModel.toggleFavorite(study.studyInstanceUID)
+                    } label: {
+                        Label(
+                            study.isFavorite ? "Unfavorite" : "Favorite",
+                            systemImage: study.isFavorite ? "star.slash" : "star.fill"
+                        )
+                    }
+                    Button(role: .destructive) {
+                        viewModel.removeStudy(study.studyInstanceUID)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
-                Divider()
-                Button {
-                    viewModel.toggleFavorite(study.studyInstanceUID)
-                } label: {
-                    Label(
-                        study.isFavorite ? "Unfavorite" : "Favorite",
-                        systemImage: study.isFavorite ? "star.slash" : "star.fill"
-                    )
+                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                    Button(role: .destructive) {
+                        viewModel.removeStudy(study.studyInstanceUID)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                 }
-                Button(role: .destructive) {
-                    viewModel.removeStudy(study.studyInstanceUID)
-                } label: {
-                    Label("Delete", systemImage: "trash")
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    Button {
+                        viewModel.toggleFavorite(study.studyInstanceUID)
+                    } label: {
+                        Label(
+                            study.isFavorite ? "Unfavorite" : "Favorite",
+                            systemImage: study.isFavorite ? "star.slash" : "star.fill"
+                        )
+                    }
+                    .tint(.yellow)
                 }
             }
-            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                Button(role: .destructive) {
-                    viewModel.removeStudy(study.studyInstanceUID)
-                } label: {
-                    Label("Delete", systemImage: "trash")
+            // Scroll the highlighted (selected) study into view so a freshly
+            // imported study is visible without manual scrolling/searching.
+            .onChange(of: viewModel.selectedStudyUID) { _, newValue in
+                guard let uid = newValue else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    proxy.scrollTo(uid, anchor: .center)
                 }
-            }
-            .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                Button {
-                    viewModel.toggleFavorite(study.studyInstanceUID)
-                } label: {
-                    Label(
-                        study.isFavorite ? "Unfavorite" : "Favorite",
-                        systemImage: study.isFavorite ? "star.slash" : "star.fill"
-                    )
-                }
-                .tint(.yellow)
             }
         }
     }
