@@ -125,22 +125,23 @@ private extension J2KSwiftCodec {
         let targetSyntax = transferSyntaxUID.flatMap(TransferSyntax.from(uid:))
         let isLossless = targetSyntax?.isLossless ?? (configuration.preferLossless || configuration.quality.isLossless)
         let useHTJ2K = targetSyntax?.isHTJ2K ?? false
-        let useRPCL = transferSyntaxUID == TransferSyntax.htj2kRPCLLossless.uid
 
         // DICOM HTJ2K transfer syntaxes (PS3.5 A.4.6) reference ISO/IEC 15444-15;
         // emit the Part-15 conformant block layout so codestreams interoperate with
-        // OpenJPH and other Part-15 PACS decoders. J2KSwift 5.1.1 fixed the pixel-0
-        // K_max off-by-one that previously corrupted CT/MR 16-bit lossless round-trip
-        // (upstream now regression-tests the DICOMKit scenario via
-        // J2KHTConformantMedicalRoundTripTests).
+        // OpenJPH and other Part-15 PACS decoders.
         let htj2kBlockFormat: HTBlockFormat = useHTJ2K ? .conformant : .custom
 
+        // Match J2KSwift library / CLI lossless defaults: 5 decomposition levels,
+        // 5 quality layers, RPCL progression. The previous (0, 1, .lrcp) tuple
+        // crippled compression — single-resolution wavelet means no multi-band
+        // refinement, and HTJ2K in particular collapsed to ~1.24× ratios on
+        // 16-bit MG mammograms vs ~6× from the same library via its CLI. RPCL
+        // is required for `htj2kRPCLLossless` (PS3.5 §A.4.6) and is what
+        // J2KSwift's CLI uses everywhere else.
         return J2KEncodingConfiguration(
             quality: isLossless ? 1.0 : configuration.quality.value,
             lossless: isLossless,
-            decompositionLevels: 0,
-            qualityLayers: 1,
-            progressionOrder: useRPCL ? .rpcl : .lrcp,
+            progressionOrder: .rpcl,
             useHTJ2K: useHTJ2K,
             useReversibleFilter: isLossless,
             htj2kBlockFormat: htj2kBlockFormat
@@ -168,10 +169,16 @@ private extension J2KSwiftCodec {
     }
 
     static func decodeWithJ2KSwift(_ frameData: Data, descriptor: PixelDataDescriptor) throws -> Data {
+        // Use the CPU `decode` path: it's what J2KSwift's own CLI uses, and
+        // exercises the same code as upstream's bit-exact pipeline tests
+        // (`J2KEndToEndPipelineTests`). The Metal-accelerated `decodeGPU`
+        // path doesn't bit-exactly round-trip CLI-default lossless codestreams
+        // (≥5 decomposition levels, 5 quality layers, RPCL progression),
+        // so using it here would force us to handicap the encoder to match.
         let image: J2KImage
         do {
             image = try Self.awaitJ2KResult {
-                try await J2KDecoder().decodeGPU(frameData)
+                try await J2KDecoder().decode(frameData)
             }
         } catch {
             throw DICOMError.parsingFailed("J2KSwift decode failed: \(error)")
