@@ -1081,11 +1081,36 @@ public final class CLIWorkshopViewModel {
         let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
         var outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
 
+        // Resolve user-selected JPEG 2000 codec backend (default: J2KSwift). The
+        // CLI Workshop and the dicom-convert command-line tool share this enum
+        // via DICOMCore.JPEG2000Backend so behaviour is identical across both
+        // surfaces.
+        let backendID = paramValue("codec-backend")
+        let backend: JPEG2000Backend = (backendID == "openjpeg") ? .openJPEG : .j2kSwift
+
+        // If the target is a JPEG 2000 family transfer syntax, ensure the chosen
+        // backend can handle it (e.g. OpenJPEG cannot do HTJ2K). Alert and abort
+        // before we touch the file system.
+        if format == "dicom" && !transferSyntax.isEmpty {
+            if let target = try? parseTransferSyntax(transferSyntax),
+               JPEG2000Backend.appliesTo(transferSyntaxUID: target.uid),
+               !backend.canHandle(transferSyntaxUID: target.uid) {
+                let reason = backend.incompatibilityReason(forTransferSyntaxUID: target.uid)
+                    ?? "\(backend.displayName) does not support transfer syntax \(target.uid)."
+                appendConsoleOutput("Error: \(reason)\n")
+                consoleStatus = .error
+                service.setConsoleStatus(.error)
+                addToHistory(toolName: "dicom-convert", command: commandPreview, exitCode: 1, output: reason)
+                return
+            }
+        }
+
         appendConsoleOutput("Input:  \(inputURL.path)\n")
         appendConsoleOutput("Output: \(outputURL.path)\n")
         appendConsoleOutput("Format: \(format)\n")
         if format == "dicom" && !transferSyntax.isEmpty {
             appendConsoleOutput("Transfer Syntax: \(transferSyntax)\n")
+            appendConsoleOutput("Codec: \(backend.displayName)\n")
         }
         appendConsoleOutput("\n")
 
@@ -1220,11 +1245,15 @@ public final class CLIWorkshopViewModel {
             let compressionConfig: DICOMCore.CompressionConfiguration = targetSyntax.isLossless
                 ? .lossless
                 : .default
+            // Read the picker each call so the directory loop honours late changes.
+            let backendID = paramValue("codec-backend")
+            let backend: JPEG2000Backend = (backendID == "openjpeg") ? .openJPEG : .j2kSwift
             let converter = TransferSyntaxConverter(
                 configuration: TranscodingConfiguration(
                     preferredSyntaxes: [targetSyntax],
                     allowLossyCompression: !targetSyntax.isLossless,
-                    preservePixelDataFidelity: targetSyntax.isLossless
+                    preservePixelDataFidelity: targetSyntax.isLossless,
+                    jpeg2000Backend: backend
                 ),
                 compressionConfiguration: compressionConfig
             )

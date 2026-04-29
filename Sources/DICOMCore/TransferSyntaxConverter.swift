@@ -22,7 +22,14 @@ public struct TranscodingConfiguration: Sendable, Hashable {
     /// When true, the converter will verify that transcoding maintains
     /// pixel data integrity for lossless conversions.
     public let preservePixelDataFidelity: Bool
-    
+
+    /// Which JPEG 2000 implementation to use for JPEG 2000 family transfer
+    /// syntaxes (Part 1 `.4.90/.91`, Part 2 `.4.92/.93`, HTJ2K `.4.201/.202/.203`).
+    ///
+    /// Ignored for non-JPEG 2000 transfer syntaxes. Default is
+    /// ``JPEG2000Backend/j2kSwift``.
+    public let jpeg2000Backend: JPEG2000Backend
+
     /// Default configuration preferring Explicit VR Little Endian
     public static let `default` = TranscodingConfiguration(
         preferredSyntaxes: [
@@ -68,11 +75,13 @@ public struct TranscodingConfiguration: Sendable, Hashable {
     public init(
         preferredSyntaxes: [TransferSyntax],
         allowLossyCompression: Bool = false,
-        preservePixelDataFidelity: Bool = true
+        preservePixelDataFidelity: Bool = true,
+        jpeg2000Backend: JPEG2000Backend = .default
     ) {
         self.preferredSyntaxes = preferredSyntaxes
         self.allowLossyCompression = allowLossyCompression
         self.preservePixelDataFidelity = preservePixelDataFidelity
+        self.jpeg2000Backend = jpeg2000Backend
     }
 }
 
@@ -533,30 +542,54 @@ public struct TransferSyntaxConverter: Sendable {
         from source: TransferSyntax,
         to target: TransferSyntax
     ) throws -> Data {
-        // For encapsulated data, we need a codec to decompress
-        guard let codec = CodecRegistry.shared.codec(for: source.uid) else {
-            throw TranscodingError.unsupportedSourceSyntax(source.uid)
+        // Resolve a JPEG 2000 backend override when the source UID is JPEG 2000
+        // family AND the user picked a non-default backend. Falls back to the
+        // CodecRegistry codec for everything else.
+        let useOpenJPEGForDecode = source.isJPEG2000
+            && configuration.jpeg2000Backend == .openJPEG
+            && configuration.jpeg2000Backend.canHandle(transferSyntaxUID: source.uid)
+
+        let codec: ImageCodec?
+        if !useOpenJPEGForDecode {
+            guard let registryCodec = CodecRegistry.shared.codec(for: source.uid) else {
+                throw TranscodingError.unsupportedSourceSyntax(source.uid)
+            }
+            codec = registryCodec
+        } else {
+            codec = nil   // OpenJPEG path used below
         }
-        
+
         // Parse elements including the encapsulated pixel data
         let elements = try parseDataElements(from: dataSetData, transferSyntax: source)
-        
+
         // Find pixel data element and decompress if present
         var outputElements: [DataElement] = []
-        
+
         for element in elements {
             if element.tag == .pixelData && element.isEncapsulated,
                let fragments = element.encapsulatedFragments {
                 // Get pixel data descriptor from surrounding elements
                 let descriptor = try extractPixelDataDescriptor(from: elements)
-                
+
                 // Decompress each frame
                 var decompressedData = Data()
                 for (index, fragment) in fragments.enumerated() {
-                    let frameData = try codec.decodeFrame(fragment, descriptor: descriptor, frameIndex: index)
+                    let frameData: Data
+                    if useOpenJPEGForDecode {
+                        frameData = try Self.decodeFrameUsingOpenJPEG(
+                            fragment,
+                            descriptor: descriptor
+                        )
+                    } else {
+                        frameData = try codec!.decodeFrame(
+                            fragment,
+                            descriptor: descriptor,
+                            frameIndex: index
+                        )
+                    }
                     decompressedData.append(frameData)
                 }
-                
+
                 // Create new uncompressed pixel data element
                 let newElement = DataElement(
                     tag: element.tag,
@@ -569,15 +602,15 @@ public struct TransferSyntaxConverter: Sendable {
                 outputElements.append(element)
             }
         }
-        
+
         // Write elements in target transfer syntax
         let writer = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
         var outputData = Data()
-        
+
         for element in outputElements {
             outputData.append(writer.serializeElement(element))
         }
-        
+
         return outputData
     }
     
@@ -587,9 +620,38 @@ public struct TransferSyntaxConverter: Sendable {
         from source: TransferSyntax,
         to target: TransferSyntax
     ) throws -> Data {
-        // Get encoder for target syntax
-        guard let encoder = CodecRegistry.shared.encoder(for: target.uid) else {
-            throw TranscodingError.unsupportedTargetSyntax(target.uid)
+        // Resolve JPEG 2000 backend override for the encode side. When the user
+        // picked OpenJPEG and the target is a JPEG 2000 family UID it supports,
+        // we bypass CodecRegistry and call OpenJPEGCodec directly.
+        let useOpenJPEGForEncode = target.isJPEG2000
+            && configuration.jpeg2000Backend == .openJPEG
+            && configuration.jpeg2000Backend.canHandle(transferSyntaxUID: target.uid)
+
+        let encoder: ImageEncoder?
+        if !useOpenJPEGForEncode {
+            guard let registryEncoder = CodecRegistry.shared.encoder(for: target.uid) else {
+                throw TranscodingError.unsupportedTargetSyntax(target.uid)
+            }
+            encoder = registryEncoder
+        } else {
+            encoder = nil
+        }
+
+        // Encode capability + per-frame encode helpers that pick between the
+        // registry encoder and OpenJPEG based on `useOpenJPEGForEncode`.
+        let canEncode: (CompressionConfiguration, PixelDataDescriptor) -> Bool = { cfg, desc in
+            if useOpenJPEGForEncode {
+                return Self.openJPEGCanEncode(descriptor: desc)
+            } else {
+                return encoder!.canEncode(with: cfg, descriptor: desc)
+            }
+        }
+        let encodeAllFrames: (Data, PixelDataDescriptor, CompressionConfiguration) throws -> [Data] = { data, desc, cfg in
+            if useOpenJPEGForEncode {
+                return try Self.encodeAllFramesUsingOpenJPEG(data, descriptor: desc, configuration: cfg)
+            } else {
+                return try encoder!.encode(data, descriptor: desc, configuration: cfg)
+            }
         }
         
         // Parse elements from source
@@ -603,7 +665,7 @@ public struct TransferSyntaxConverter: Sendable {
         var needsBitReduction = false
         if elements.contains(where: { $0.tag == .pixelData && !$0.isEncapsulated }) {
             let descriptor = try extractPixelDataDescriptor(from: elements)
-            if !encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) {
+            if !canEncode(compressionConfiguration, descriptor) {
                 if descriptor.bitsAllocated == 16 && descriptor.samplesPerPixel <= 3 {
                     let test8Descriptor = PixelDataDescriptor(
                         rows: descriptor.rows,
@@ -617,7 +679,7 @@ public struct TransferSyntaxConverter: Sendable {
                         photometricInterpretation: descriptor.photometricInterpretation,
                         planarConfiguration: descriptor.planarConfiguration
                     )
-                    if encoder.canEncode(with: compressionConfiguration, descriptor: test8Descriptor) {
+                    if canEncode(compressionConfiguration, test8Descriptor) {
                         needsBitReduction = true
                     }
                 }
@@ -655,7 +717,7 @@ public struct TransferSyntaxConverter: Sendable {
                 }
                 
                 // Verify the encoder can handle the (possibly reduced) configuration
-                if !encoder.canEncode(with: compressionConfiguration, descriptor: descriptor) {
+                if !canEncode(compressionConfiguration, descriptor) {
                     throw TranscodingError.encodingFailed(
                         "Encoder does not support the given pixel data configuration "
                         + "(bitsAllocated=\(descriptor.bitsAllocated), "
@@ -665,10 +727,10 @@ public struct TransferSyntaxConverter: Sendable {
                 
                 // Compress the pixel data
                 let effectiveCompressionConfiguration = target.isLossless ? .lossless : compressionConfiguration
-                let compressedFrames = try encoder.encode(
+                let compressedFrames = try encodeAllFrames(
                     pixelBytes,
-                    descriptor: descriptor,
-                    configuration: effectiveCompressionConfiguration
+                    descriptor,
+                    effectiveCompressionConfiguration
                 )
                 
                 // Create new encapsulated pixel data element
@@ -1447,5 +1509,75 @@ public struct TransferSyntaxConverter: Sendable {
             // For unknown tags, return UN (Unknown)
             return .UN
         }
+    }
+
+    // MARK: - OpenJPEG backend bridges
+
+    /// Decodes a single JPEG 2000 frame using `OpenJPEGCodec` when available,
+    /// falling back to a clear error on platforms where OpenJPEG isn't built in.
+    fileprivate static func decodeFrameUsingOpenJPEG(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor
+    ) throws -> Data {
+        #if canImport(COpenJPEG) && os(macOS)
+        return try OpenJPEGCodec().decodeFrame(frameData, descriptor: descriptor)
+        #else
+        throw TranscodingError.unsupportedSourceSyntax(
+            "OpenJPEG backend is only available on macOS with libopenjpeg installed."
+        )
+        #endif
+    }
+
+    /// Returns whether OpenJPEG can encode the given descriptor.
+    fileprivate static func openJPEGCanEncode(descriptor: PixelDataDescriptor) -> Bool {
+        #if canImport(COpenJPEG) && os(macOS)
+        guard descriptor.bitsAllocated == 8 || descriptor.bitsAllocated == 16 else {
+            return false
+        }
+        guard descriptor.samplesPerPixel == 1 || descriptor.samplesPerPixel == 3 else {
+            return false
+        }
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    /// Encodes every frame in `data` using OpenJPEG.
+    fileprivate static func encodeAllFramesUsingOpenJPEG(
+        _ data: Data,
+        descriptor: PixelDataDescriptor,
+        configuration: CompressionConfiguration
+    ) throws -> [Data] {
+        #if canImport(COpenJPEG) && os(macOS)
+        let codec = OpenJPEGCodec()
+        let bytesPerFrame = descriptor.bytesPerFrame
+        let numberOfFrames = max(1, descriptor.numberOfFrames)
+
+        var compressedFrames: [Data] = []
+        compressedFrames.reserveCapacity(numberOfFrames)
+
+        for frameIndex in 0..<numberOfFrames {
+            let frameStart = frameIndex * bytesPerFrame
+            let frameEnd = min(frameStart + bytesPerFrame, data.count)
+            guard frameStart < data.count else {
+                throw TranscodingError.encodingFailed(
+                    "OpenJPEG: frame \(frameIndex) starts beyond pixel data bounds"
+                )
+            }
+            let frameData = data.subdata(in: frameStart..<frameEnd)
+            let encoded = try codec.encodeFrame(
+                frameData,
+                descriptor: descriptor,
+                configuration: configuration
+            )
+            compressedFrames.append(encoded)
+        }
+        return compressedFrames
+        #else
+        throw TranscodingError.unsupportedTargetSyntax(
+            "OpenJPEG backend is only available on macOS with libopenjpeg installed."
+        )
+        #endif
     }
 }

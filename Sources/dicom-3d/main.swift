@@ -889,20 +889,24 @@ struct InspectCommand: ParsableCommand {
 
 // MARK: - Async bridge
 
+private final class AsyncResultBox<T>: @unchecked Sendable {
+    var result: Result<T, Error>?
+}
+
 private func waitForTask<T>(_ task: Task<T, Error>) throws -> T {
     let sema = DispatchSemaphore(value: 0)
-    var result: Result<T, Error>?
+    let box = AsyncResultBox<T>()
     Task {
         do {
             let value = try await task.value
-            result = .success(value)
+            box.result = .success(value)
         } catch {
-            result = .failure(error)
+            box.result = .failure(error)
         }
         sema.signal()
     }
     sema.wait()
-    switch result! {
+    switch box.result! {
     case .success(let value): return value
     case .failure(let error): throw error
     }

@@ -37,7 +37,7 @@ struct DICOMConvert: AsyncParsableCommand {
     @Option(name: .shortAndLong, help: "Output file or directory path")
     var output: String
     
-    @Option(name: .long, help: "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, JPEG2000Part2Lossless, JPEG2000Part2, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, RLELossless")
+    @Option(name: .long, help: "Target transfer syntax shortform: evle, ivle, evbe, deflate, jpeg-baseline, jpeg-extended, jpeg-lossless, jpeg-lossless-sv1, j2k-lossless, j2k, j2k-part2-lossless, j2k-part2, htj2k-lossless, htj2k-rpcl, htj2k, jpegls, jpegls-near, rle. Long names (e.g. ExplicitVRLittleEndian, JPEG2000Lossless) are also accepted.")
     var transferSyntax: String?
     
     @Option(name: .long, help: "Output format for image export: png, jpeg, tiff, dicom (default: dicom)")
@@ -69,6 +69,27 @@ struct DICOMConvert: AsyncParsableCommand {
     
     @Flag(name: .long, help: "Force parsing of files without DICM prefix")
     var force: Bool = false
+
+    @Flag(name: .long, help: "Use the J2KSwift JPEG 2000 codec (default).")
+    var j2kswift: Bool = false
+
+    @Flag(name: .long, help: "Use OpenJPEG for JPEG 2000 encoding/decoding (macOS only). Cannot be combined with --j2kswift.")
+    var openjpeg: Bool = false
+
+    /// Resolves and validates the user's JPEG 2000 backend selection.
+    private func resolveJPEG2000Backend() throws -> JPEG2000Backend {
+        if j2kswift && openjpeg {
+            throw ValidationError("Cannot specify both --j2kswift and --openjpeg")
+        }
+        if openjpeg {
+            #if !(canImport(COpenJPEG) && os(macOS))
+            throw ValidationError("--openjpeg is only available on macOS builds with libopenjpeg.")
+            #else
+            return .openJPEG
+            #endif
+        }
+        return .j2kSwift
+    }
     
     mutating func run() async throws {
         let inputURL = URL(fileURLWithPath: inputPath)
@@ -79,6 +100,22 @@ struct DICOMConvert: AsyncParsableCommand {
             throw ValidationError("Input path not found: \(inputPath)")
         }
 
+        // Resolve and validate JPEG 2000 backend selection up-front so any
+        // misconfiguration aborts before we touch the file system.
+        let backend = try resolveJPEG2000Backend()
+
+        // If the target is a JPEG 2000 family transfer syntax, ensure the chosen
+        // backend supports it (e.g. OpenJPEG cannot do HTJ2K).
+        if format == .dicom, let tsName = transferSyntax, !tsName.isEmpty {
+            let target = try parseTransferSyntax(tsName)
+            if JPEG2000Backend.appliesTo(transferSyntaxUID: target.uid),
+               !backend.canHandle(transferSyntaxUID: target.uid) {
+                let reason = backend.incompatibilityReason(forTransferSyntaxUID: target.uid)
+                    ?? "\(backend.displayName) does not support transfer syntax \(target.uid)."
+                throw ValidationError(reason)
+            }
+        }
+
         // Print conversion header (mirrors DICOMStudio CLI Workshop output so the
         // GUI and terminal experiences are identical).
         print("Input:  \(inputURL.path)")
@@ -86,6 +123,7 @@ struct DICOMConvert: AsyncParsableCommand {
         print("Format: \(format.rawValue)")
         if format == .dicom, let ts = transferSyntax, !ts.isEmpty {
             print("Transfer Syntax: \(ts)")
+            print("Codec: \(backend.displayName)")
         }
         print("")
 
@@ -231,7 +269,8 @@ struct DICOMConvert: AsyncParsableCommand {
             configuration: TranscodingConfiguration(
                 preferredSyntaxes: [targetSyntax],
                 allowLossyCompression: !targetSyntax.isLossless,
-                preservePixelDataFidelity: targetSyntax.isLossless
+                preservePixelDataFidelity: targetSyntax.isLossless,
+                jpeg2000Backend: try resolveJPEG2000Backend()
             ),
             compressionConfiguration: compressionConfig
         )

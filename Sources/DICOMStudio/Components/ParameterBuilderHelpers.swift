@@ -136,13 +136,47 @@ public enum ParameterCatalogHelpers {
     }
 
     private static func dicomConvert() -> ToolParameterConfig {
-        ToolParameterConfig(
+        // Transfer-syntax picker: human-readable label in the UI, but a stable
+        // shortform value flows through to the CLI command preview and the
+        // backend (DICOMCore) via `paramValue("transfer-syntax")`. Keep the
+        // shortforms aligned with `parseTransferSyntax(_:)` in
+        // `CLIWorkshopViewModel` and the `dicom-convert` command-line tool.
+        let transferSyntaxOptions: [PickerOption] = [
+            PickerOption(id: "evle",               displayName: "Explicit VR Little Endian",          cliValue: "evle"),
+            PickerOption(id: "ivle",               displayName: "Implicit VR Little Endian",          cliValue: "ivle"),
+            PickerOption(id: "evbe",               displayName: "Explicit VR Big Endian",             cliValue: "evbe"),
+            PickerOption(id: "deflate",            displayName: "Deflated Explicit VR Little Endian", cliValue: "deflate"),
+            PickerOption(id: "jpeg-baseline",      displayName: "JPEG Baseline (Lossy)",              cliValue: "jpeg-baseline"),
+            PickerOption(id: "jpeg-extended",      displayName: "JPEG Extended (Lossy)",              cliValue: "jpeg-extended"),
+            PickerOption(id: "jpeg-lossless",      displayName: "JPEG Lossless",                      cliValue: "jpeg-lossless"),
+            PickerOption(id: "jpeg-lossless-sv1",  displayName: "JPEG Lossless SV1",                  cliValue: "jpeg-lossless-sv1"),
+            PickerOption(id: "j2k-lossless",       displayName: "JPEG 2000 Lossless",                 cliValue: "j2k-lossless"),
+            PickerOption(id: "j2k",                displayName: "JPEG 2000 (Lossy)",                  cliValue: "j2k"),
+            PickerOption(id: "j2k-part2-lossless", displayName: "JPEG 2000 Part 2 Lossless",          cliValue: "j2k-part2-lossless"),
+            PickerOption(id: "j2k-part2",          displayName: "JPEG 2000 Part 2 (Lossy)",           cliValue: "j2k-part2"),
+            PickerOption(id: "htj2k-lossless",     displayName: "HTJ2K Lossless",                     cliValue: "htj2k-lossless"),
+            PickerOption(id: "htj2k-rpcl",         displayName: "HTJ2K RPCL Lossless",                cliValue: "htj2k-rpcl"),
+            PickerOption(id: "htj2k",              displayName: "HTJ2K (Lossy)",                      cliValue: "htj2k"),
+            PickerOption(id: "jpegls",             displayName: "JPEG-LS Lossless",                   cliValue: "jpegls"),
+            PickerOption(id: "jpegls-near",        displayName: "JPEG-LS Near-Lossless",              cliValue: "jpegls-near"),
+            PickerOption(id: "rle",                displayName: "RLE Lossless",                       cliValue: "rle"),
+        ]
+
+        return ToolParameterConfig(
             toolName: "dicom-convert",
             parameters: [
                 param("--input", "Input File", "Source DICOM file.", type: .filePath(allowedExtensions: ["dcm", "dicom"]), required: true),
                 param("--output", "Output File", "Destination file path.", type: .outputPath(defaultExtension: "dcm")),
-                param("--transfer-syntax", "Transfer Syntax", "Target transfer syntax.",
-                      type: .picker(options: options(["explicit-vr-le", "jpeg-baseline", "jpeg2000", "rle-lossless", "deflate"]))),
+                param("--transfer-syntax", "Transfer Syntax",
+                      "Target transfer syntax (shortform value passed to the CLI).",
+                      type: .picker(options: transferSyntaxOptions)),
+                param("--codec-backend", "JPEG 2000 Codec",
+                      "Codec for JPEG 2000 family transfer syntaxes. J2KSwift is the default and supports HTJ2K; OpenJPEG handles Part 1 / Part 2 only.",
+                      type: .picker(options: [
+                          PickerOption(id: "j2kswift", displayName: "J2KSwift (default)", cliValue: "--j2kswift"),
+                          PickerOption(id: "openjpeg", displayName: "OpenJPEG", cliValue: "--openjpeg")
+                      ]),
+                      defaultValue: .string("j2kswift")),
                 param("--force", "Force", "Overwrite existing output file.", type: .toggle)
             ],
             subcommands: []

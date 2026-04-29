@@ -268,6 +268,13 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     public var isInternal: Bool
     public var defaultValue: String
     public var allowedValues: [String]
+    /// Optional friendly display labels for entries in `allowedValues`.
+    /// When a value has a label here, the picker shows the label to the user
+    /// while the underlying value (used in the CLI command preview and in
+    /// backend execution) remains the raw `allowedValues` entry. Lets the UI
+    /// surface long human-readable names while the command stays a stable
+    /// shortform such as `evle` or `j2k`.
+    public var valueLabels: [String: String]
     public var minValue: Int?
     public var maxValue: Int?
     /// When set, this parameter is only visible if the referenced parameter
@@ -293,6 +300,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         isInternal: Bool = false,
         defaultValue: String = "",
         allowedValues: [String] = [],
+        valueLabels: [String: String] = [:],
         minValue: Int? = nil,
         maxValue: Int? = nil,
         visibleWhen: CLIParameterVisibilityCondition? = nil,
@@ -309,6 +317,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         self.isInternal = isInternal
         self.defaultValue = defaultValue
         self.allowedValues = allowedValues
+        self.valueLabels = valueLabels
         self.minValue = minValue
         self.maxValue = maxValue
         self.visibleWhen = visibleWhen

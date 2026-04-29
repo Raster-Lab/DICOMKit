@@ -550,7 +550,16 @@ public struct CLIWorkshopView: View {
             HStack(spacing: 6) {
                 Picker("", selection: parameterBinding(for: param.id)) {
                     ForEach(param.allowedValues, id: \.self) { value in
-                        Text(value.isEmpty ? "Any" : value).tag(value)
+                        // Prefer human-readable label when provided so the picker
+                        // can display "Explicit VR Little Endian" while the
+                        // underlying CLI value stays a shortform like `evle`.
+                        let label: String = {
+                            if let mapped = param.valueLabels[value], !mapped.isEmpty {
+                                return mapped
+                            }
+                            return value.isEmpty ? "Any" : value
+                        }()
+                        Text(label).tag(value)
                     }
                 }
                 .labelsHidden()

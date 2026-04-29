@@ -89,20 +89,25 @@ private func j2kCodestream(from dicom: DICOMFile, frameIndex: Int = 0) -> Data? 
     return fragments[frameIndex]
 }
 
+/// Sync/async bridge result box — avoids mutation-of-captured-var in @Sendable closures.
+private final class AsyncResultBox<T: Sendable>: @unchecked Sendable {
+    var result: Result<T, Error>?
+}
+
 /// Synchronously runs an async throwing closure and returns its result.
 /// Used to bridge ParsableCommand.run() (synchronous) with async J2KSwift APIs.
 @available(macOS 10.15, *)
 @discardableResult
 private func runAsync<T: Sendable>(_ block: @escaping @Sendable () async throws -> T) throws -> T {
+    let box = AsyncResultBox<T>()
     let sema = DispatchSemaphore(value: 0)
-    var result: Result<T, Error>?
     Task {
-        do { result = .success(try await block()) }
-        catch { result = .failure(error) }
+        do { box.result = .success(try await block()) }
+        catch { box.result = .failure(error) }
         sema.signal()
     }
     sema.wait()
-    switch result! {
+    switch box.result! {
     case .success(let v): return v
     case .failure(let e): throw e
     }

@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — JPEG 2000 codec selector, transfer syntax shortforms, OpenJPEG backend
+
+- **`JPEG2000Backend` enum** (`Sources/DICOMCore/JPEG2000Backend.swift`): New shared enum with two cases — `.j2kSwift` (default, supports all JPEG 2000 / HTJ2K transfer syntaxes) and `.openJPEG` (Part 1 / Part 2 only, CPU-only via `COpenJPEG`). Includes `canHandle(transferSyntaxUID:)`, `appliesTo(transferSyntaxUID:)`, and `incompatibilityReason()` helpers used by both CLI and GUI layers.
+
+- **`OpenJPEGCodec`** (`Sources/DICOMCore/OpenJPEGCodec.swift`): Full JPEG 2000 encoder and decoder backed by the system `libopenjp2` (Homebrew `openjpeg-2.5`, imported via `COpenJPEG`). Decoder handles both bare J2K codestreams (`FF 4F`) and full JP2 files. Encoder supports lossless (`irreversible=0`, rate=0) and lossy (irreversible=1 with quality-derived rate). Multi-component images use `tcp_mct=1` (ICT). Available on macOS only via `#if canImport(COpenJPEG) && os(macOS)`.
+
+- **`dicom-convert` JPEG 2000 codec flags**: `--j2kswift` and `--openjpeg` flags added to `dicom-convert` (`Sources/dicom-convert/DICOMConvert.swift`). Mutually exclusive; defaults to J2KSwift. Pre-flight check emits a clear error when the selected backend does not support the requested transfer syntax (e.g. `--openjpeg` + `--transfer-syntax htj2k-lossless`). Help text lists transfer syntax shortforms first with the full UID name in parentheses.
+
+- **`TransferSyntaxConverter` backend routing** (`Sources/DICOMCore/TransferSyntaxConverter.swift`): `TranscodingConfiguration` gains a `jpeg2000Backend: JPEG2000Backend` field (default `.j2kSwift`). `transcodeFromEncapsulated` and `transcodeToEncapsulated` route JPEG 2000 decode/encode through `OpenJPEGCodec` when `backend == .openJPEG` and `canHandle` returns `true`; fall through to `J2KSwiftCodec` otherwise.
+
+- **Transfer syntax shortforms in `dicom-convert`**: `--transfer-syntax` now accepts 18 shortform aliases (`evle`, `ivle`, `evbe`, `deflate`, `jpeg-baseline`, `jpeg-extended`, `jpeg-lossless`, `jpeg-lossless-sv1`, `j2k-lossless`, `j2k`, `j2k-part2-lossless`, `j2k-part2`, `htj2k-lossless`, `htj2k-rpcl`, `htj2k`, `jpegls`, `jpegls-near`, `rle`) so users don't need to type UIDs. The CLI help text and DICOMStudio command preview both use these shortforms.
+
+- **DICOMStudio CLI Workshop — codec backend picker**: `CLIWorkshopHelpers` runtime config and `ParameterBuilderHelpers` design-time config for `dicom-convert` now include a "JPEG 2000 Codec" `flagPicker` control. Selecting `J2KSwift` appends `--j2kswift`; selecting `OpenJPEG` appends `--openjpeg` to the generated command. Default is J2KSwift.
+
+- **DICOMStudio CLI Workshop — friendly transfer syntax labels**: `CLIWorkshopModel.CLIParameterDefinition` gains a `valueLabels: [String: String]` map. The `enumPickerField` renderer in `CLIWorkshopView` substitutes the human-readable label (e.g. "JPEG 2000 Lossless") while binding the shortform value (`j2k-lossless`) so the command preview and backend execution both receive the correct shortform.
+
+- **`CLIWorkshopViewModel` JPEG 2000 backend validation**: `executeDicomConvert` reads the `codec-backend` parameter, resolves the `JPEG2000Backend`, and calls `JPEG2000Backend.canHandle(transferSyntaxUID:)` before executing — surfaces an actionable error in the GUI when an incompatible codec/syntax combination is selected.
+
 ### Added — dicom-convert parity, Inspector fixes, JPEG 2000 Part 2 / HTJ2K support
 
 - **`dicom-convert` verbose output parity**: Terminal and GUI CLI Workshop now print identical headers (`Input`, `Output`, `Format`, `Transfer Syntax`) and footers (`Read`, `Wrote`, `Transfer Syntax`, `Transcoded from`, `✅ Conversion completed successfully.`) so both surfaces are distinguishable only by their binary (debug vs release), not by content.
