@@ -127,22 +127,23 @@ private extension J2KSwiftCodec {
         let targetSyntax = transferSyntaxUID.flatMap(TransferSyntax.from(uid:))
         let isLossless = targetSyntax?.isLossless ?? (configuration.preferLossless || configuration.quality.isLossless)
         let useHTJ2K = targetSyntax?.isHTJ2K ?? false
-        let useRPCL = transferSyntaxUID == TransferSyntax.htj2kRPCLLossless.uid
 
         // DICOM HTJ2K transfer syntaxes (PS3.5 A.4.6) reference ISO/IEC 15444-15;
         // emit the Part-15 conformant block layout so codestreams interoperate with
-        // OpenJPH and other Part-15 PACS decoders. J2KSwift 5.1.1 fixed the pixel-0
-        // K_max off-by-one that previously corrupted CT/MR 16-bit lossless round-trip
-        // (upstream now regression-tests the DICOMKit scenario via
-        // J2KHTConformantMedicalRoundTripTests).
+        // OpenJPH and other Part-15 PACS decoders.
         let htj2kBlockFormat: HTBlockFormat = useHTJ2K ? .conformant : .custom
 
+        // Match J2KSwift library / CLI lossless defaults: RPCL progression,
+        // letting J2KSwift choose decomposition levels and quality layers.
+        // The previous (0, 1, .lrcp) tuple crippled compression — single-resolution
+        // wavelet means no multi-band refinement, and HTJ2K in particular collapsed
+        // to ~1.24× ratios on 16-bit MG mammograms vs ~6× from the same library via
+        // its CLI. RPCL is required for `htj2kRPCLLossless` (PS3.5 §A.4.6).
+        //
         // For HTJ2K Lossy at high bit depths (e.g. 12-bit medical images), the
-        // upstream quality→BPP map (quality 0.90 → 1.2 bpp) collapses dynamic
-        // range and produces visually-blank reconstructions for bitsStored ≥ 10.
-        // Anchor the bitrate to the source bit depth so a typical 12-bit X-ray
-        // is encoded at ≥ 4 bpp, preserving diagnostic contrast while still
-        // achieving meaningful compression.
+        // upstream quality→BPP map collapses dynamic range and produces visually-blank
+        // reconstructions for bitsStored ≥ 10. Anchor the bitrate to the source bit
+        // depth so a typical 12-bit X-ray is encoded at ≥ 4 bpp.
         let bitrateMode: J2KBitrateMode
         if isLossless {
             bitrateMode = .lossless
@@ -162,9 +163,7 @@ private extension J2KSwiftCodec {
         return J2KEncodingConfiguration(
             quality: isLossless ? 1.0 : configuration.quality.value,
             lossless: isLossless,
-            decompositionLevels: useHTJ2K ? 0 : 5,
-            qualityLayers: 1,
-            progressionOrder: useRPCL ? .rpcl : .lrcp,
+            progressionOrder: .rpcl,
             bitrateMode: bitrateMode,
             useHTJ2K: useHTJ2K,
             useReversibleFilter: isLossless,
@@ -209,6 +208,11 @@ private extension J2KSwiftCodec {
         descriptor: PixelDataDescriptor,
         preferCPUDecoder: Bool = false
     ) throws -> Data {
+        // The CPU `decode` path matches J2KSwift's CLI bit-exact pipeline tests.
+        // The Metal-accelerated `decodeGPU` path doesn't bit-exactly round-trip
+        // CLI-default lossless codestreams (RPCL, ≥5 decomp levels, ≥5 quality
+        // layers). Use `preferCPUDecoder: true` (set by verifyEncodedRoundTrip for
+        // lossless non-HTJ2K encodes) to guarantee round-trip correctness.
         let image: J2KImage
         do {
             image = try Self.awaitJ2KResult {
