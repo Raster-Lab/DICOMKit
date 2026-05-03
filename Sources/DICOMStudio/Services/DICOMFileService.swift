@@ -50,14 +50,30 @@ public final class DICOMFileService: Sendable {
         // Try standard Part 10 first, then fall back to force-parsing
         // for legacy DICOM files without the Part 10 preamble.
         let dicomFile: DICOMFile
+        var usedForceFallback = false
         do {
             dicomFile = try DICOMFile.read(from: data)
         } catch {
             logger.info("Standard parse failed (\(error.localizedDescription)), retrying with force=true")
             dicomFile = try DICOMFile.read(from: data, force: true)
+            usedForceFallback = true
         }
         let ds  = dicomFile.dataSet
         let fmi = dicomFile.fileMetaInformation
+
+        // The legacy/force path uses a lenient "looks like DICOM" heuristic that
+        // accepts any data whose first two bytes form an even uint16 < 0x7FFF —
+        // which matches a lot of plain ASCII text. Reject force-parsed results
+        // that carry none of the identifying UIDs every real instance has.
+        if usedForceFallback {
+            let hasIdentifyingTag = ds.string(for: .sopInstanceUID) != nil
+                || ds.string(for: .sopClassUID) != nil
+                || ds.string(for: .studyInstanceUID) != nil
+                || ds.string(for: .seriesInstanceUID) != nil
+            if !hasIdentifyingTag {
+                throw DICOMError.parsingFailed("Force-parsed data lacks any DICOM identifying UID")
+            }
+        }
 
         // --- Transfer Syntax UID lives in File Meta Information (0002,0010) ---
         let transferSyntaxUID = fmi.string(for: .transferSyntaxUID)

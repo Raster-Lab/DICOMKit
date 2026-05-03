@@ -9,6 +9,19 @@ import Foundation
 @MainActor
 struct DICOMwebViewModelTests {
 
+    // MARK: - Test Helpers
+
+    /// Builds a DICOMwebViewModel backed by a fresh tmp directory so each test
+    /// starts with an empty profile store and never reads the user's real
+    /// `~/Library/Application Support/DICOMStudio/dicomweb-server-profiles.json`.
+    private func makeIsolatedViewModel(service: DICOMwebService = DICOMwebService()) -> DICOMwebViewModel {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("DICOMwebVMTest-\(UUID().uuidString)", isDirectory: true)
+        let storage = StorageService(baseDirectory: tempDir)
+        let profileStorage = DICOMwebServerProfileStorageService(storageService: storage)
+        return DICOMwebViewModel(service: service, profileStorage: profileStorage)
+    }
+
     // MARK: - Navigation
 
     @Test("default activeTab is serverConfig")
@@ -23,7 +36,7 @@ struct DICOMwebViewModelTests {
     @Test("addServerProfile increases serverProfiles count")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testAddServerProfileIncreasesCount() {
-        let vm = DICOMwebViewModel()
+        let vm = makeIsolatedViewModel()
         vm.addServerProfile(DICOMwebServerProfile(name: "PACS1"))
         #expect(vm.serverProfiles.count == 1)
     }
@@ -31,7 +44,7 @@ struct DICOMwebViewModelTests {
     @Test("removeServerProfile decreases count and clears selection")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testRemoveServerProfileDecreasesCountAndClearsSelection() {
-        let vm = DICOMwebViewModel()
+        let vm = makeIsolatedViewModel()
         let profile = DICOMwebServerProfile(name: "Test")
         vm.addServerProfile(profile)
         vm.selectedServerProfileID = profile.id
@@ -43,7 +56,7 @@ struct DICOMwebViewModelTests {
     @Test("updateServerProfile updates name")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testUpdateServerProfileUpdatesName() {
-        let vm = DICOMwebViewModel()
+        let vm = makeIsolatedViewModel()
         var profile = DICOMwebServerProfile(name: "Old")
         vm.addServerProfile(profile)
         profile.name = "New"
@@ -102,7 +115,7 @@ struct DICOMwebViewModelTests {
     @Test("testConnection for unconfigured profile sets offline")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testConnectionUnconfiguredSetsOffline() async {
-        let vm = DICOMwebViewModel()
+        let vm = makeIsolatedViewModel()
         let profile = DICOMwebServerProfile(name: "NoURL", baseURL: "")
         vm.addServerProfile(profile)
         await vm.testConnection(profileID: profile.id)
@@ -112,8 +125,14 @@ struct DICOMwebViewModelTests {
     @Test("testConnection for unreachable profile sets error")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testConnectionUnreachableSetsError() async {
-        let vm = DICOMwebViewModel()
-        let profile = DICOMwebServerProfile(name: "WithURL", baseURL: "https://pacs.example.com")
+        let vm = makeIsolatedViewModel()
+        // Use the RFC 2606 .invalid TLD — guaranteed to NXDOMAIN, no risk of
+        // accidentally hitting whatever pacs.example.com may resolve to in the
+        // future. NOTE: this test is still slow (~1208 s) because URLSession
+        // burns the full resourceTimeout × HTTPClient retry count even on
+        // NXDOMAIN; a real fix needs a DICOMwebService mock or a tunable
+        // timeouts parameter on DICOMwebClientFactory. See commit message.
+        let profile = DICOMwebServerProfile(name: "WithURL", baseURL: "https://pacs.invalid")
         vm.addServerProfile(profile)
         await vm.testConnection(profileID: profile.id)
         #expect(vm.serverProfiles.first?.connectionStatus == .error)

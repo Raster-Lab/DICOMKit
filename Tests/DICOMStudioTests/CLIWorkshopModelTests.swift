@@ -12,9 +12,9 @@ struct CLIWorkshopModelTests {
 
     // MARK: - CLIWorkshopTab
 
-    @Test("CLIWorkshopTab has 6 cases")
+    @Test("CLIWorkshopTab has 7 cases")
     func testTabCaseCount() {
-        #expect(CLIWorkshopTab.allCases.count == 6)
+        #expect(CLIWorkshopTab.allCases.count == 7)
     }
 
     @Test("CLIWorkshopTab all cases have non-empty display names")
@@ -163,9 +163,9 @@ struct CLIWorkshopModelTests {
 
     // MARK: - CLIParameterType
 
-    @Test("CLIParameterType has 11 cases")
+    @Test("CLIParameterType has 12 cases")
     func testParameterTypeCaseCount() {
-        #expect(CLIParameterType.allCases.count == 11)
+        #expect(CLIParameterType.allCases.count == 12)
     }
 
     @Test("CLIParameterType all cases have non-empty display names")

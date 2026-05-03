@@ -259,7 +259,7 @@ public enum ToolCatalogHelpers: Sendable {
     }
 
     /// Returns the total count of tools.
-    public static var totalToolCount: Int { 33 }
+    public static var totalToolCount: Int { 32 }
 
     // MARK: - Tool Purpose Descriptions
 
