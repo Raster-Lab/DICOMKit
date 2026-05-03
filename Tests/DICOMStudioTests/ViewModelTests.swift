@@ -11,10 +11,24 @@ import Foundation
 @MainActor
 struct MainViewModelTests {
 
+    /// Builds a MainViewModel whose persistent stores live in a fresh tmp
+    /// directory so library/profile state from prior runs doesn't bleed in.
+    private func makeIsolatedMainViewModel(settingsService: SettingsService = SettingsService()) -> MainViewModel {
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("MainVMTest-\(UUID().uuidString)", isDirectory: true)
+        let storage = StorageService(baseDirectory: tempDir)
+        let libraryStorage = LibraryStorageService(storageService: storage)
+        return MainViewModel(
+            settingsService: settingsService,
+            storageService: storage,
+            libraryStorageService: libraryStorage
+        )
+    }
+
     @Test("Default state")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testDefaultState() {
-        let vm = MainViewModel()
+        let vm = makeIsolatedMainViewModel()
         #expect(vm.selectedDestination == .library)
         #expect(vm.isInspectorVisible == false)
         #expect(vm.searchText == "")

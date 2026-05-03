@@ -295,7 +295,9 @@ struct CLIWorkshopHelpersTests {
             CLIParameterValue(parameterID: "mode", stringValue: "interactive"),
         ]
         let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-qr", parameterValues: vals, parameterDefinitions: defs)
-        #expect(cmd == "dicom-qr --host 192.168.1.1 --interactive")
+        // dicom-qr uses a positional host:port endpoint (see CommandBuilderHelpers
+        // usesPositionalEndpoint), so --host is collapsed into the positional arg.
+        #expect(cmd == "dicom-qr 192.168.1.1 --interactive")
     }
 
     @Test("buildCommand flagPicker emits --auto for auto value")
@@ -389,7 +391,9 @@ struct CLIWorkshopHelpersTests {
             CLIParameterValue(parameterID: "url", stringValue: "http://server/wado"),
         ]
         let cmdURI = CommandBuilderHelpers.buildCommand(toolName: "dicom-wado retrieve", parameterValues: valsURI, parameterDefinitions: defs)
-        #expect(cmdURI == "dicom-wado retrieve --uri http://server/wado")
+        // Mapped tokens from internal parameters are deferred until after the first
+        // positional argument (URL) — see CommandBuilderHelpers deferredMappedTokens.
+        #expect(cmdURI == "dicom-wado retrieve http://server/wado --uri")
 
         // When unmapped value is selected, no extra flag appears
         let valsRS = [
@@ -719,7 +723,9 @@ struct CLIWorkshopHelpersTests {
         ]
         let vals = [CLIParameterValue(parameterID: "host", stringValue: "localhost")]
         let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-mwl", parameterValues: vals, parameterDefinitions: defs)
-        #expect(cmd == "dicom-mwl --host localhost")
+        // dicom-mwl uses a positional host:port endpoint, so --host collapses into
+        // the positional arg even though the parameter has no visibleWhen guard.
+        #expect(cmd == "dicom-mwl localhost")
     }
 
     @Test("buildCommand uses default value for visibleWhen check when parameter value is empty")

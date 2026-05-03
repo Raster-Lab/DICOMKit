@@ -48,13 +48,16 @@ struct NavigationServiceTests {
         #expect(primary.count == NavigationDestination.allCases.count - 1)
     }
 
-    @Test("All eleven destinations exist")
+    @Test("All sixteen destinations exist")
     func testAllDestinationsExist() {
         let allCases = NavigationDestination.allCases
-        #expect(allCases.count == 11)
+        #expect(allCases.count == 16)
         #expect(allCases.contains(.library))
         #expect(allCases.contains(.viewer))
+        #expect(allCases.contains(.volumeViewer))
+        #expect(allCases.contains(.jp3dComparison))
         #expect(allCases.contains(.networking))
+        #expect(allCases.contains(.dicomWeb))
         #expect(allCases.contains(.reporting))
         #expect(allCases.contains(.tools))
         #expect(allCases.contains(.security))
@@ -62,6 +65,8 @@ struct NavigationServiceTests {
         #expect(allCases.contains(.performanceTools))
         #expect(allCases.contains(.macOSEnhancements))
         #expect(allCases.contains(.polishRelease))
+        #expect(allCases.contains(.fileOperations))
+        #expect(allCases.contains(.integrationTesting))
         #expect(allCases.contains(.settings))
     }
 

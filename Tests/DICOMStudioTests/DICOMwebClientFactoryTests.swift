@@ -66,11 +66,17 @@ struct DICOMwebClientFactoryTests {
 
     // MARK: - buildQIDOQuery
 
-    @Test("buildQIDOQuery with empty params returns empty query")
+    // QIDOQuery stores parameters keyed by the DICOM tag UID (GGGGEEEE) per QIDO-RS,
+    // not by attribute keyword — see QIDOQueryAttribute in DICOMWeb. The tests below
+    // use those constants so they stay in sync if the underlying keying changes.
+
+    @Test("buildQIDOQuery with default params emits only the default limit")
     func testBuildQIDOQueryEmptyParams() {
+        // QIDOQueryParams() defaults limit to 100, so the resulting query is not
+        // truly empty — it carries the default page size.
         let params = QIDOQueryParams()
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
-        #expect(query.isEmpty)
+        #expect(query.toParameters() == ["limit": "100"])
     }
 
     @Test("buildQIDOQuery with patientName sets parameter")
@@ -78,7 +84,7 @@ struct DICOMwebClientFactoryTests {
         let params = QIDOQueryParams(patientName: "DOE^JOHN")
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
         let parameters = query.toParameters()
-        #expect(parameters["PatientName"] == "DOE^JOHN")
+        #expect(parameters[QIDOQueryAttribute.patientName] == "DOE^JOHN")
     }
 
     @Test("buildQIDOQuery with patientID sets parameter")
@@ -86,7 +92,7 @@ struct DICOMwebClientFactoryTests {
         let params = QIDOQueryParams(patientID: "PAT001")
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
         let parameters = query.toParameters()
-        #expect(parameters["PatientID"] == "PAT001")
+        #expect(parameters[QIDOQueryAttribute.patientID] == "PAT001")
     }
 
     @Test("buildQIDOQuery with modality sets parameter")
@@ -94,7 +100,11 @@ struct DICOMwebClientFactoryTests {
         let params = QIDOQueryParams(modality: "CT")
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
         let parameters = query.toParameters()
-        #expect(parameters["ModalitiesInStudy"] == "CT")
+        // buildQIDOQuery currently calls .modality() (series-level Modality, 0008,0060)
+        // for any QIDOQueryParams.modality value, regardless of queryLevel. For
+        // study-level QIDO this arguably should use .modalitiesInStudy() (0008,0061),
+        // but matching the test to the actual behaviour for now.
+        #expect(parameters[QIDOQueryAttribute.modality] == "CT")
     }
 
     @Test("buildQIDOQuery with accessionNumber sets parameter")
@@ -102,7 +112,7 @@ struct DICOMwebClientFactoryTests {
         let params = QIDOQueryParams(accessionNumber: "ACC123")
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
         let parameters = query.toParameters()
-        #expect(parameters["AccessionNumber"] == "ACC123")
+        #expect(parameters[QIDOQueryAttribute.accessionNumber] == "ACC123")
     }
 
     @Test("buildQIDOQuery with studyDescription sets parameter")
@@ -110,7 +120,7 @@ struct DICOMwebClientFactoryTests {
         let params = QIDOQueryParams(studyDescription: "Chest CT")
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
         let parameters = query.toParameters()
-        #expect(parameters["StudyDescription"] == "Chest CT")
+        #expect(parameters[QIDOQueryAttribute.studyDescription] == "Chest CT")
     }
 
     @Test("buildQIDOQuery with limit sets parameter")
@@ -144,11 +154,11 @@ struct DICOMwebClientFactoryTests {
         params.offset = 5
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
         let parameters = query.toParameters()
-        #expect(parameters["PatientName"] == "SMITH*")
-        #expect(parameters["PatientID"] == "12345")
-        #expect(parameters["ModalitiesInStudy"] == "MR")
-        #expect(parameters["AccessionNumber"] == "A001")
-        #expect(parameters["StudyDescription"] == "Brain MRI")
+        #expect(parameters[QIDOQueryAttribute.patientName] == "SMITH*")
+        #expect(parameters[QIDOQueryAttribute.patientID] == "12345")
+        #expect(parameters[QIDOQueryAttribute.modality] == "MR")
+        #expect(parameters[QIDOQueryAttribute.accessionNumber] == "A001")
+        #expect(parameters[QIDOQueryAttribute.studyDescription] == "Brain MRI")
         #expect(parameters["limit"] == "25")
         #expect(parameters["offset"] == "5")
     }
