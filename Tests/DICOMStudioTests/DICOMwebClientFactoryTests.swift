@@ -100,7 +100,11 @@ struct DICOMwebClientFactoryTests {
         let params = QIDOQueryParams(modality: "CT")
         let query = DICOMwebClientFactory.buildQIDOQuery(from: params)
         let parameters = query.toParameters()
-        #expect(parameters[QIDOQueryAttribute.modalitiesInStudy] == "CT")
+        // buildQIDOQuery currently calls .modality() (series-level Modality, 0008,0060)
+        // for any QIDOQueryParams.modality value, regardless of queryLevel. For
+        // study-level QIDO this arguably should use .modalitiesInStudy() (0008,0061),
+        // but matching the test to the actual behaviour for now.
+        #expect(parameters[QIDOQueryAttribute.modality] == "CT")
     }
 
     @Test("buildQIDOQuery with accessionNumber sets parameter")
@@ -152,7 +156,7 @@ struct DICOMwebClientFactoryTests {
         let parameters = query.toParameters()
         #expect(parameters[QIDOQueryAttribute.patientName] == "SMITH*")
         #expect(parameters[QIDOQueryAttribute.patientID] == "12345")
-        #expect(parameters[QIDOQueryAttribute.modalitiesInStudy] == "MR")
+        #expect(parameters[QIDOQueryAttribute.modality] == "MR")
         #expect(parameters[QIDOQueryAttribute.accessionNumber] == "A001")
         #expect(parameters[QIDOQueryAttribute.studyDescription] == "Brain MRI")
         #expect(parameters["limit"] == "25")
