@@ -126,9 +126,13 @@ struct DICOMwebViewModelTests {
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testConnectionUnreachableSetsError() async {
         let vm = makeIsolatedViewModel()
-        // Use a port-1 loopback URL — connection refused is immediate, so the
-        // test fails fast instead of waiting on a real-internet TCP/TLS timeout.
-        let profile = DICOMwebServerProfile(name: "WithURL", baseURL: "http://127.0.0.1:1")
+        // Use the RFC 2606 .invalid TLD — guaranteed to NXDOMAIN, no risk of
+        // accidentally hitting whatever pacs.example.com may resolve to in the
+        // future. NOTE: this test is still slow (~1208 s) because URLSession
+        // burns the full resourceTimeout × HTTPClient retry count even on
+        // NXDOMAIN; a real fix needs a DICOMwebService mock or a tunable
+        // timeouts parameter on DICOMwebClientFactory. See commit message.
+        let profile = DICOMwebServerProfile(name: "WithURL", baseURL: "https://pacs.invalid")
         vm.addServerProfile(profile)
         await vm.testConnection(profileID: profile.id)
         #expect(vm.serverProfiles.first?.connectionStatus == .error)
