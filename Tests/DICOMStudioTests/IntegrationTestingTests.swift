@@ -550,7 +550,7 @@ struct IntegrationTestingHelpersTests {
     @Test("E2ETestHelpers generateTestCases creates correct count for networking")
     func test_e2eHelpers_generateTestCases_networking() {
         let cases = E2ETestHelpers.generateTestCases(for: .networking)
-        #expect(cases.count == 11)
+        #expect(cases.count == 14)
     }
 
     @Test("E2ETestHelpers generateTestCases all have pending status")
@@ -755,7 +755,7 @@ struct IntegrationTestingServiceTests {
         service.initializeTestSuites()
         let suites = service.getTestSuites()
         let totalTests = suites.reduce(0) { $0 + $1.totalCount }
-        #expect(totalTests == 38)
+        #expect(totalTests == 41)
     }
 
     @Test("Service runAllTests sets all to running")
