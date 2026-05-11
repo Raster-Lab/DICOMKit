@@ -157,14 +157,292 @@ struct CompressionManager {
         let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
         let file = try DICOMFile.read(from: data)
 
+        // Resolve the source transfer syntax so we can decide whether this
+        // call is an actual compression, a recompression (transcode), a
+        // decompression, or just a UID rewrite for two uncompressed forms.
+        let sourceSyntax = CompressionManager.resolveSourceTransferSyntax(file: file)
+
+        var workingDataSet = file.dataSet
+
+        // Actually invoke the codec when the target requires encapsulated
+        // (compressed) pixel data. The prior implementation only ever
+        // rewrote the Transfer Syntax UID, leaving uncompressed bytes in
+        // place — every `--codec` flag was silently a no-op for 13/13
+        // codecs (output size ≈ input size). See dicom-compress bug
+        // report (2026-05-11).
+        if targetSyntax.isEncapsulated && !sourceSyntax.isEncapsulated {
+            try CompressionManager.encodePixelDataInPlace(
+                dataSet: &workingDataSet,
+                targetSyntax: targetSyntax,
+                quality: quality
+            )
+        } else if targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated
+                  && targetSyntax.uid != sourceSyntax.uid {
+            // Recompression: decompress source then encode to target.
+            try CompressionManager.transcodeEncapsulatedInPlace(
+                dataSet: &workingDataSet,
+                sourceSyntax: sourceSyntax,
+                targetSyntax: targetSyntax,
+                quality: quality
+            )
+        } else if !targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated {
+            // Decompress: decode pixel data into uncompressed bytes.
+            // Callers wanting decompression should generally use the
+            // `decompress` subcommand, but `compress --codec explicit-le`
+            // (and similar) reach here and must do the right thing.
+            try CompressionManager.decodePixelDataInPlace(
+                dataSet: &workingDataSet,
+                sourceSyntax: sourceSyntax,
+                targetSyntax: targetSyntax
+            )
+        }
+        // else: both source and target are uncompressed (or syntaxes are
+        // identical) — UID rewrite via TransferSyntaxHelper is correct.
+
         let converter = TransferSyntaxHelper()
         let outputData = try converter.convert(
-            dataSet: file.dataSet,
+            dataSet: workingDataSet,
             to: targetSyntax,
             preservePixelData: true
         )
 
         try outputData.write(to: URL(fileURLWithPath: outputPath))
+    }
+
+    // MARK: - Codec dispatch helpers (v9.1 fix)
+
+    /// Resolves the source transfer syntax from a parsed DICOM file's
+    /// File Meta Information. Falls back to Explicit VR Little Endian
+    /// when the UID is missing (matches DICOMFile.read's default).
+    static func resolveSourceTransferSyntax(file: DICOMFile) -> TransferSyntax {
+        let sourceUID = file.fileMetaInformation.string(for: .transferSyntaxUID)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+            ?? TransferSyntax.explicitVRLittleEndian.uid
+
+        // Try to find the canonical TransferSyntax by UID. If the UID
+        // isn't one of the known constants, build a synthetic one with
+        // sensible defaults — encapsulated flag is critical for branching
+        // so we infer it from the standard UID prefix conventions.
+        if let known = TransferSyntax.fromKnownUID(sourceUID) {
+            return known
+        }
+        let isEncap = !TransferSyntax.uncompressedUIDs.contains(sourceUID)
+        return TransferSyntax(
+            uid: sourceUID,
+            isExplicitVR: true,
+            byteOrder: .littleEndian,
+            isEncapsulated: isEncap
+        )
+    }
+
+    /// Compresses uncompressed pixel data using the encoder registered
+    /// for the target transfer syntax UID, then replaces the data set's
+    /// PixelData element with an encapsulated pixel data element holding
+    /// the compressed fragments.
+    ///
+    /// Bug-fix for the previous behaviour where compressFile only
+    /// rewrote the Transfer Syntax UID without invoking any encoder.
+    static func encodePixelDataInPlace(
+        dataSet: inout DataSet,
+        targetSyntax: TransferSyntax,
+        quality: CompressionQuality?
+    ) throws {
+        guard let encoder = CodecRegistry.shared.encoder(for: targetSyntax.uid) else {
+            throw CompressionError.encoderNotAvailable(targetSyntax.uid)
+        }
+        guard let pixelDataElement = dataSet[.pixelData] else {
+            throw CompressionError.noPixelData
+        }
+        // Source pixel data must be uncompressed bytes here (caller
+        // guarantees source !isEncapsulated). The encoder takes the
+        // contiguous byte buffer for all frames concatenated.
+        let uncompressedBytes = pixelDataElement.valueData
+
+        let descriptor = try buildPixelDataDescriptor(from: dataSet)
+
+        let configuration: CompressionConfiguration = {
+            if targetSyntax.isLossless {
+                return .lossless
+            }
+            // For lossy paths honour the user's --quality if supplied.
+            if let q = quality {
+                return CompressionConfiguration(quality: q, speed: .balanced)
+            }
+            return .default
+        }()
+
+        guard encoder.canEncode(with: configuration, descriptor: descriptor) else {
+            throw CompressionError.unsupportedPixelDataConfiguration(
+                "Encoder for \(targetSyntax.uid) cannot handle "
+                + "bitsAllocated=\(descriptor.bitsAllocated), "
+                + "samplesPerPixel=\(descriptor.samplesPerPixel), "
+                + "photometricInterpretation=\(descriptor.photometricInterpretation.rawValue)"
+            )
+        }
+
+        let compressedFrames = try encoder.encode(
+            uncompressedBytes,
+            descriptor: descriptor,
+            configuration: configuration
+        )
+
+        let offsetTable = buildBasicOffsetTable(for: compressedFrames)
+        dataSet[.pixelData] = DataElement(
+            tag: .pixelData,
+            vr: .OB,                         // Encapsulated pixel data is always OB
+            length: 0xFFFFFFFF,              // Undefined length sentinel
+            valueData: Data(),
+            encapsulatedFragments: compressedFrames,
+            encapsulatedOffsetTable: offsetTable
+        )
+    }
+
+    /// Decodes encapsulated pixel data back into uncompressed bytes,
+    /// then replaces the PixelData element with an un-encapsulated form
+    /// suitable for the (uncompressed) target syntax.
+    static func decodePixelDataInPlace(
+        dataSet: inout DataSet,
+        sourceSyntax: TransferSyntax,
+        targetSyntax: TransferSyntax
+    ) throws {
+        guard let codec = CodecRegistry.shared.codec(for: sourceSyntax.uid) else {
+            throw CompressionError.decoderNotAvailable(sourceSyntax.uid)
+        }
+        guard let pixelDataElement = dataSet[.pixelData] else {
+            throw CompressionError.noPixelData
+        }
+        guard let fragments = pixelDataElement.encapsulatedFragments else {
+            throw CompressionError.conversionFailed(
+                "Source declares encapsulated transfer syntax \(sourceSyntax.uid) "
+                + "but PixelData element has no encapsulated fragments"
+            )
+        }
+
+        let descriptor = try buildPixelDataDescriptor(from: dataSet)
+
+        // Decode each frame, concatenate. Most codecs produce one fragment
+        // per frame, but the spec permits multi-fragment frames; we
+        // delegate that responsibility to the codec via decode(...) which
+        // handles both cases.
+        var combined = Data()
+        combined.reserveCapacity(descriptor.totalBytes)
+        if fragments.count == descriptor.numberOfFrames {
+            for (frameIndex, frame) in fragments.enumerated() {
+                let frameBytes = try codec.decodeFrame(
+                    frame,
+                    descriptor: descriptor,
+                    frameIndex: frameIndex
+                )
+                combined.append(frameBytes)
+            }
+        } else {
+            // Fall back to the multi-frame decode entry point with the
+            // contiguous concatenation of all fragments.
+            var concatenated = Data()
+            for frame in fragments { concatenated.append(frame) }
+            combined = try codec.decode(concatenated, descriptor: descriptor)
+        }
+
+        // Even byte length padding per DICOM PS3.5 Section 7.1.
+        if combined.count % 2 != 0 {
+            combined.append(0x00)
+        }
+
+        dataSet[.pixelData] = DataElement(
+            tag: .pixelData,
+            vr: descriptor.bitsAllocated > 8 ? .OW : .OB,
+            length: UInt32(combined.count),
+            valueData: combined
+        )
+    }
+
+    /// Recompression path — decode then re-encode. Operates only on
+    /// the PixelData element in-place.
+    static func transcodeEncapsulatedInPlace(
+        dataSet: inout DataSet,
+        sourceSyntax: TransferSyntax,
+        targetSyntax: TransferSyntax,
+        quality: CompressionQuality?
+    ) throws {
+        // Step 1: decode to uncompressed bytes.
+        try decodePixelDataInPlace(
+            dataSet: &dataSet,
+            sourceSyntax: sourceSyntax,
+            targetSyntax: TransferSyntax.explicitVRLittleEndian
+        )
+        // Step 2: encode to target.
+        try encodePixelDataInPlace(
+            dataSet: &dataSet,
+            targetSyntax: targetSyntax,
+            quality: quality
+        )
+    }
+
+    /// Builds a PixelDataDescriptor from a parsed DataSet. Mirrors
+    /// DICOMCore.TransferSyntaxConverter.extractPixelDataDescriptor
+    /// (which is private to that type).
+    static func buildPixelDataDescriptor(from dataSet: DataSet) throws -> PixelDataDescriptor {
+        guard let rows = dataSet.uint16(for: .rows),
+              let columns = dataSet.uint16(for: .columns),
+              let bitsAllocated = dataSet.uint16(for: .bitsAllocated),
+              let bitsStored = dataSet.uint16(for: .bitsStored),
+              let highBit = dataSet.uint16(for: .highBit) else {
+            throw CompressionError.conversionFailed(
+                "Missing required pixel data attributes "
+                + "(rows / columns / bitsAllocated / bitsStored / highBit)"
+            )
+        }
+        let pixelRepresentation = dataSet.uint16(for: .pixelRepresentation) ?? 0
+        let samplesPerPixel = dataSet.uint16(for: .samplesPerPixel) ?? 1
+        let planarConfiguration = dataSet.uint16(for: .planarConfiguration) ?? 0
+
+        let numberOfFrames: Int
+        if let nfStr = dataSet.string(for: .numberOfFrames)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")),
+           let nfVal = Int(nfStr), nfVal > 0 {
+            numberOfFrames = nfVal
+        } else {
+            numberOfFrames = 1
+        }
+
+        let piRaw = dataSet.string(for: .photometricInterpretation)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+        let photometricInterpretation: PhotometricInterpretation = {
+            if let raw = piRaw, let pi = PhotometricInterpretation(rawValue: raw) {
+                return pi
+            }
+            return samplesPerPixel == 1 ? .monochrome2 : .rgb
+        }()
+
+        return PixelDataDescriptor(
+            rows: Int(rows),
+            columns: Int(columns),
+            numberOfFrames: numberOfFrames,
+            bitsAllocated: Int(bitsAllocated),
+            bitsStored: Int(bitsStored),
+            highBit: Int(highBit),
+            isSigned: pixelRepresentation == 1,
+            samplesPerPixel: Int(samplesPerPixel),
+            photometricInterpretation: photometricInterpretation,
+            planarConfiguration: Int(planarConfiguration)
+        )
+    }
+
+    /// Builds a Basic Offset Table (BOT) for an encapsulated pixel data
+    /// element. Per DICOM PS3.5 A.4, the BOT is an array of UInt32
+    /// offsets from the first byte of the first fragment (i.e. just
+    /// after the BOT item) to the first byte of each frame's first
+    /// fragment. We emit one offset per frame.
+    static func buildBasicOffsetTable(for fragments: [Data]) -> [UInt32] {
+        var offsets: [UInt32] = []
+        offsets.reserveCapacity(fragments.count)
+        var current: UInt32 = 0
+        for fragment in fragments {
+            offsets.append(current)
+            // 8 bytes for the Item tag + length, then the fragment bytes.
+            current = current &+ 8 &+ UInt32(fragment.count)
+        }
+        return offsets
     }
 
     // MARK: - Decompress
@@ -177,9 +455,23 @@ struct CompressionManager {
         let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
         let file = try DICOMFile.read(from: data)
 
+        let sourceSyntax = CompressionManager.resolveSourceTransferSyntax(file: file)
+        var workingDataSet = file.dataSet
+
+        if sourceSyntax.isEncapsulated && !syntax.isEncapsulated {
+            // Source compressed → target uncompressed: actually decode.
+            try CompressionManager.decodePixelDataInPlace(
+                dataSet: &workingDataSet,
+                sourceSyntax: sourceSyntax,
+                targetSyntax: syntax
+            )
+        }
+        // else: source already uncompressed OR target is encapsulated
+        // (caller misuse) — UID rewrite via TransferSyntaxHelper.
+
         let converter = TransferSyntaxHelper()
         let outputData = try converter.convert(
-            dataSet: file.dataSet,
+            dataSet: workingDataSet,
             to: syntax,
             preservePixelData: true
         )
@@ -361,8 +653,83 @@ struct TransferSyntaxHelper {
         var output = Data()
         for tag in dataSet.tags.sorted() {
             guard let element = dataSet[tag] else { continue }
+            // v9.1 fix: serialise encapsulated pixel data with its
+            // BOT + Item-tagged fragments + Sequence Delimitation
+            // structure rather than dumping the empty `valueData`.
+            if element.tag == .pixelData
+                && element.encapsulatedFragments != nil {
+                output.append(serializeEncapsulatedPixelData(element, writer: writer))
+                continue
+            }
             output.append(try writeElement(element, writer: writer))
         }
+        return output
+    }
+
+    /// Serialises an encapsulated PixelData element per DICOM PS3.5 A.4
+    /// (Encapsulation of Encoded Pixel Data). Layout:
+    ///
+    ///   (7FE0,0010) OB  undefined-length
+    ///   (FFFE,E000) Item  <BOT length>  <BOT bytes>
+    ///   (FFFE,E000) Item  <frag-1 length>  <frag-1 bytes>
+    ///   ...
+    ///   (FFFE,E000) Item  <frag-N length>  <frag-N bytes>
+    ///   (FFFE,E0DD) Sequence Delimitation Item, length 0
+    ///
+    /// All length fields are 4-byte little-endian unsigned. Encapsulated
+    /// pixel data is always written with Explicit VR Little Endian per
+    /// PS3.5; the `writer` byte order is honoured for completeness.
+    private func serializeEncapsulatedPixelData(
+        _ element: DataElement,
+        writer: DICOMWriter
+    ) -> Data {
+        var output = Data()
+
+        // PixelData element header: tag(7FE0,0010) + VR(OB) + 2 reserved
+        // + undefined length (0xFFFFFFFF).
+        output.append(writer.serializeUInt16(element.tag.group))
+        output.append(writer.serializeUInt16(element.tag.element))
+        output.append(contentsOf: "OB".utf8)
+        output.append(contentsOf: [0x00, 0x00])
+        output.append(writer.serializeUInt32(0xFFFFFFFF))
+
+        // Basic Offset Table (BOT) Item: (FFFE,E000) + length + offsets.
+        let offsetTable = element.encapsulatedOffsetTable ?? []
+        var botBytes = Data()
+        for offset in offsetTable {
+            botBytes.append(writer.serializeUInt32(offset))
+        }
+        output.append(writer.serializeUInt16(0xFFFE))
+        output.append(writer.serializeUInt16(0xE000))
+        output.append(writer.serializeUInt32(UInt32(botBytes.count)))
+        output.append(botBytes)
+
+        // Fragment items.
+        if let fragments = element.encapsulatedFragments {
+            for fragment in fragments {
+                output.append(writer.serializeUInt16(0xFFFE))
+                output.append(writer.serializeUInt16(0xE000))
+                // Fragment bytes must be even-length per PS3.5; pad
+                // with a trailing 0x00 if the codec returned odd-sized
+                // data (rare but spec-required).
+                let padded: Data
+                if fragment.count % 2 != 0 {
+                    var p = fragment
+                    p.append(0x00)
+                    padded = p
+                } else {
+                    padded = fragment
+                }
+                output.append(writer.serializeUInt32(UInt32(padded.count)))
+                output.append(padded)
+            }
+        }
+
+        // Sequence Delimitation Item (FFFE,E0DD) length 0.
+        output.append(writer.serializeUInt16(0xFFFE))
+        output.append(writer.serializeUInt16(0xE0DD))
+        output.append(writer.serializeUInt32(0))
+
         return output
     }
 
@@ -402,6 +769,9 @@ enum CompressionError: Error, CustomStringConvertible {
     case directoryNotFound(String)
     case noPixelData
     case conversionFailed(String)
+    case encoderNotAvailable(String)
+    case decoderNotAvailable(String)
+    case unsupportedPixelDataConfiguration(String)
 
     var description: String {
         switch self {
@@ -415,6 +785,40 @@ enum CompressionError: Error, CustomStringConvertible {
             return "No pixel data found in DICOM file"
         case .conversionFailed(let reason):
             return "Conversion failed: \(reason)"
+        case .encoderNotAvailable(let uid):
+            return "No encoder registered for transfer syntax \(uid). "
+                + "The codec may be decode-only or unsupported on this platform."
+        case .decoderNotAvailable(let uid):
+            return "No decoder registered for transfer syntax \(uid). "
+                + "Cannot decompress source pixel data."
+        case .unsupportedPixelDataConfiguration(let detail):
+            return "Encoder rejected pixel-data configuration: \(detail)"
         }
+    }
+}
+
+// MARK: - TransferSyntax convenience for source-UID resolution
+
+extension TransferSyntax {
+    /// UIDs of the three uncompressed transfer syntaxes per DICOM PS3.5.
+    /// Used to decide whether a parsed file's transfer syntax is
+    /// encapsulated when only the UID string is available.
+    fileprivate static let uncompressedUIDs: Set<String> = [
+        TransferSyntax.implicitVRLittleEndian.uid,
+        TransferSyntax.explicitVRLittleEndian.uid,
+        TransferSyntax.explicitVRBigEndian.uid,
+        TransferSyntax.deflatedExplicitVRLittleEndian.uid,
+    ]
+
+    /// Returns the canonical TransferSyntax instance for a given UID
+    /// string, if it matches one of the standard transfer syntaxes that
+    /// the dicom-compress codec map recognises. Looks up via the
+    /// CompressionManager's codecMap entries so this stays in sync with
+    /// supported codecs.
+    fileprivate static func fromKnownUID(_ uid: String) -> TransferSyntax? {
+        for entry in CompressionManager.codecMap where entry.syntax.uid == uid {
+            return entry.syntax
+        }
+        return nil
     }
 }
