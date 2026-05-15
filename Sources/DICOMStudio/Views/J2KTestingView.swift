@@ -396,6 +396,42 @@ public struct J2KTestingView: View {
                     #if os(macOS)
                     .frame(maxWidth: 180)
                     #endif
+
+                    Toggle(isOn: Bindable(viewModel.j2kTesting).comparisonWarmup) {
+                        Text("Warm-up").font(.callout)
+                    }
+                    .help("Run each codec with 2 untimed warmups + 7 timed runs and report the median of 7. Matches CROSS_HOST_M2_M4_inproc.md methodology. When off, reports a single cold decode.")
+                    #if os(macOS)
+                    .toggleStyle(.checkbox)
+                    #endif
+                    .disabled(viewModel.j2kTesting.isRunning)
+
+                    Text("Encode:").font(.callout)
+                    Picker("", selection: Bindable(viewModel.j2kTesting).j2kSwiftEncodeMode) {
+                        ForEach(J2KSwiftEncodeMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .help("Which J2KSwift encode API produces the reference bitstream for the comparison. Other codecs decode whatever this produces; only J2KSwift's encode time is reported.")
+                    #if os(macOS)
+                    .frame(maxWidth: 150)
+                    #endif
+                    .disabled(viewModel.j2kTesting.isRunning)
+
+                    Text("Decode:").font(.callout)
+                    Picker("", selection: Bindable(viewModel.j2kTesting).j2kSwiftDecodeMode) {
+                        ForEach(J2KSwiftDecodeMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .help("Which J2KSwift decode API the J2KSwift row exercises. The viewer's production decode path is unaffected.")
+                    #if os(macOS)
+                    .frame(maxWidth: 180)
+                    #endif
+                    .disabled(viewModel.j2kTesting.isRunning)
+
                     Spacer()
                     Button { if let f = viewModel.dicomFile { viewModel.j2kTesting.runCodecComparison(file: f) } } label: {
                         Label("Compare", systemImage: "arrow.left.arrow.right")
@@ -408,6 +444,11 @@ public struct J2KTestingView: View {
                             .disabled(viewModel.j2kTesting.isRunning)
                     }
                 }
+
+                Text("Each mode pins the J2KSwift row to the named decode API; the value reported in the J2K Dec column is the median of 7 timed runs after 2 untimed warmups (steady-state) or a single cold decode (when warm-up is off).")
+                    .font(.system(size: StudioTypography.captionSize - 1))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 #if DEBUG
                 debugWarning
@@ -429,10 +470,12 @@ public struct J2KTestingView: View {
     @ViewBuilder
     private var compareTableView: some View {
         VStack(alignment: .leading, spacing: 6) {
+            codestreamSummary
+
             HStack(spacing: 0) {
                 Text("Codec").frame(minWidth: 180, alignment: .leading)
+                Text("Encode").frame(minWidth: 80, alignment: .trailing)
                 Text("Decode").frame(minWidth: 80, alignment: .trailing)
-                Text("Bytes").frame(minWidth: 80, alignment: .trailing)
                 Text("vs J2KSwift").frame(minWidth: 90, alignment: .trailing)
                 Spacer()
             }
@@ -458,6 +501,17 @@ public struct J2KTestingView: View {
                 }
             }
             #endif
+
+            HStack(alignment: .top, spacing: 6) {
+                Image(systemName: "info.circle")
+                    .foregroundStyle(.secondary)
+                    .font(.system(size: StudioTypography.captionSize - 1))
+                Text("Single fixture, in-process decode. CLI codecs include process spawn + temp-file I/O. For corpus-level performance see Scripts/benchmarks/cross_codec_warm_bench.py.")
+                    .font(.system(size: StudioTypography.captionSize - 1))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 6)
         }
         .padding(.vertical, 4)
     }
@@ -465,9 +519,20 @@ public struct J2KTestingView: View {
     @ViewBuilder
     private func compareRow(_ entry: CodecComparisonEntry) -> some View {
         HStack(spacing: 0) {
-            Text(entry.codecName)
-                .font(.system(size: StudioTypography.captionSize, design: .monospaced))
-                .lineLimit(1).frame(minWidth: 180, alignment: .leading)
+            HStack(spacing: 6) {
+                Text(entry.codecName)
+                    .font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                    .lineLimit(1)
+                if case .complete(let r) = entry.state, let route = r.route {
+                    Text(route)
+                        .font(.system(size: StudioTypography.captionSize - 2, weight: .semibold))
+                        .padding(.horizontal, 5).padding(.vertical, 1)
+                        .background(Color.blue.opacity(0.18))
+                        .clipShape(Capsule())
+                        .foregroundStyle(.blue)
+                }
+            }
+            .frame(minWidth: 180, alignment: .leading)
 
             switch entry.state {
             case .idle: EmptyView()
@@ -477,10 +542,11 @@ public struct J2KTestingView: View {
                     Text("Decoding…").font(.caption).foregroundStyle(.secondary)
                 }.frame(minWidth: 250, alignment: .leading)
             case .complete(let r):
-                Text(formatMs(r.decodeMs))
+                Text(r.encodeMs.map(formatMs) ?? "—")
                     .font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                    .foregroundStyle(r.encodeMs == nil ? .secondary : .primary)
                     .frame(minWidth: 80, alignment: .trailing)
-                Text(formatBytes(r.outputBytes))
+                Text(formatMs(r.decodeMs))
                     .font(.system(size: StudioTypography.captionSize, design: .monospaced))
                     .frame(minWidth: 80, alignment: .trailing)
                 HStack(spacing: 4) {
@@ -503,6 +569,50 @@ public struct J2KTestingView: View {
                 Label(msg, systemImage: "exclamationmark.triangle")
                     .font(.caption).foregroundStyle(.red).frame(minWidth: 250, alignment: .leading)
             }
+        }
+    }
+
+    // MARK: - Codestream Summary
+
+    /// Compressed codestream size + ratio for the most recent comparison run.
+    /// This is the headline number for a codec comparison — all decoders produce
+    /// the same raw pixel buffer, so the per-row "Decoded" size is uniform.
+    @ViewBuilder
+    private var codestreamSummary: some View {
+        let cs = viewModel.j2kTesting.comparisonCodestreamBytes
+        let raw = viewModel.j2kTesting.comparisonRawBytes
+        if cs > 0 && raw > 0 {
+            let ratio = Double(raw) / Double(cs)
+            HStack(spacing: 14) {
+                Label {
+                    Text("Codestream ").foregroundStyle(.secondary) +
+                    Text(formatBytes(cs)).font(.system(size: StudioTypography.captionSize, design: .monospaced).weight(.semibold))
+                } icon: {
+                    Image(systemName: "doc.zipper").foregroundStyle(.blue)
+                }
+                .font(.system(size: StudioTypography.captionSize))
+
+                Label {
+                    Text("Raw ").foregroundStyle(.secondary) +
+                    Text(formatBytes(raw)).font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                } icon: {
+                    Image(systemName: "doc").foregroundStyle(.secondary)
+                }
+                .font(.system(size: StudioTypography.captionSize))
+
+                Label {
+                    Text("Ratio ").foregroundStyle(.secondary) +
+                    Text(String(format: "%.2f×", ratio))
+                        .font(.system(size: StudioTypography.captionSize, design: .monospaced).weight(.semibold))
+                        .foregroundStyle(.green)
+                } icon: {
+                    Image(systemName: "arrow.down.right.and.arrow.up.left").foregroundStyle(.green)
+                }
+                .font(.system(size: StudioTypography.captionSize))
+
+                Spacer()
+            }
+            .padding(.vertical, 2)
         }
     }
 
