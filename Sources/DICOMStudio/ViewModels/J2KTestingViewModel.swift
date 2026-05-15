@@ -139,6 +139,29 @@ public final class J2KTestingViewModel {
     /// Whether the codec comparison is currently running.
     public private(set) var isComparisonRunning: Bool = false
 
+    /// Codestream byte count from the most recent comparison run (J2K-encoded payload).
+    public private(set) var comparisonCodestreamBytes: Int = 0
+
+    /// Raw frame byte count from the most recent comparison run (decoded pixel buffer size).
+    public private(set) var comparisonRawBytes: Int = 0
+
+    /// When true, each codec runs 2 untimed warmups + 7 timed runs and the median
+    /// of the 7 timed samples is reported. Matches the published J2KSwift cross-host
+    /// bench methodology (`Documentation/Benchmarks/CROSS_HOST_M2_M4_inproc.md`):
+    /// `--in-proc --runs 7 --warmups 2`, `DispatchTime` clock.
+    public var comparisonWarmup: Bool = true
+
+    /// Which J2KSwift decode API the J2K Compare panel exercises for the
+    /// J2KSwift row. Defaults to `.cpu` to match the published bench. The viewer's
+    /// production decode path is unaffected; it always uses the runtime size router.
+    public var j2kSwiftDecodeMode: J2KSwiftDecodeMode = .cpu
+
+    /// Which J2KSwift encode API the J2K Compare panel uses to produce the
+    /// reference bitstream. Defaults to `.cpu` to match the published bench.
+    /// Other codecs decode whatever J2KSwift produced; only the J2KSwift row's
+    /// encode time is reported (the other codecs aren't asked to encode).
+    public var j2kSwiftEncodeMode: J2KSwiftEncodeMode = .cpu
+
     #if canImport(CoreGraphics)
     /// Decoded preview images from the comparison run, keyed by codec name.
     public private(set) var comparisonImages: [String: CGImage] = [:]
@@ -230,6 +253,8 @@ public final class J2KTestingViewModel {
         benchmarkState = .idle
         roundTripResults = []
         comparisonResults = []
+        comparisonCodestreamBytes = 0
+        comparisonRawBytes = 0
         #if canImport(CoreGraphics)
         comparisonImages = [:]
         #endif
@@ -244,21 +269,30 @@ public final class J2KTestingViewModel {
     public func runCodecComparison(file: DICOMFile) {
         guard !isRunning else { return }
         isComparisonRunning = true
-        #if canImport(COpenJPEG) && os(macOS)
-        let entries: [CodecComparisonEntry] = [
-            CodecComparisonEntry(codecName: "J2KSwift",  state: .running),
-            CodecComparisonEntry(codecName: "OpenJPEG \(OpenJPEGCodec.version)", state: .running)
-        ]
-        #else
-        let entries: [CodecComparisonEntry] = [
+        var entries: [CodecComparisonEntry] = [
             CodecComparisonEntry(codecName: "J2KSwift", state: .running)
         ]
+        #if canImport(COpenJPEG) && os(macOS)
+        entries.append(CodecComparisonEntry(codecName: "OpenJPEG \(OpenJPEGCodec.version)", state: .running))
+        #endif
+        #if os(macOS)
+        if KakaduCLICodec.binaryPath != nil {
+            entries.append(CodecComparisonEntry(codecName: "Kakadu (CLI)", state: .running))
+        }
+        if GrokCLICodec.binaryPath != nil {
+            entries.append(CodecComparisonEntry(codecName: "Grok (CLI)", state: .running))
+        }
         #endif
         comparisonResults = entries
         let uid = selectedRoundTripUID
+        let warmup = comparisonWarmup
+        let decMode = j2kSwiftDecodeMode
+        let encMode = j2kSwiftEncodeMode
         Task {
-            let output = await Self.performComparison(file: file, targetUID: uid)
+            let output = await Self.performComparison(file: file, targetUID: uid, warmup: warmup, j2kSwiftDecodeMode: decMode, j2kSwiftEncodeMode: encMode)
             comparisonResults = output.entries
+            comparisonCodestreamBytes = output.codestreamBytes
+            comparisonRawBytes = output.rawBytes
             #if canImport(CoreGraphics)
             if rawImage == nil { rawImage = output.rawImage }
             for (name, img) in output.images { comparisonImages[name] = img }
@@ -523,6 +557,21 @@ public struct CodecComparisonResult: Sendable {
     public let matchesReference: Bool
     /// Peak signal-to-noise ratio vs J2KSwift output (nil when outputs are different sizes).
     public let psnrDb: Double?
+    /// J2KSwift decode route picked for this geometry (`"CPU"`, `"decodeGPU"`,
+    /// `"decodeWithGPUHT"`). Populated only for the J2KSwift row; nil for others.
+    public let route: String?
+    /// Encode time in ms. Populated only for the J2KSwift row (it's the only
+    /// codec asked to encode); nil for OpenJPEG / Kakadu / Grok decode-only rows.
+    public let encodeMs: Double?
+
+    public init(decodeMs: Double, outputBytes: Int, matchesReference: Bool, psnrDb: Double?, route: String? = nil, encodeMs: Double? = nil) {
+        self.decodeMs = decodeMs
+        self.outputBytes = outputBytes
+        self.matchesReference = matchesReference
+        self.psnrDb = psnrDb
+        self.route = route
+        self.encodeMs = encodeMs
+    }
 }
 
 // MARK: - Comparison Background Worker
@@ -532,20 +581,37 @@ extension J2KTestingViewModel {
     /// Output bundle returned by `performComparison`.
     fileprivate struct ComparisonOutput: @unchecked Sendable {
         let entries: [CodecComparisonEntry]
+        let codestreamBytes: Int
+        let rawBytes: Int
         #if canImport(CoreGraphics)
         let rawImage: CGImage?
         let images: [String: CGImage]
-        init(entries: [CodecComparisonEntry], rawImage: CGImage? = nil, images: [String: CGImage] = [:]) {
-            self.entries = entries; self.rawImage = rawImage; self.images = images
+        init(entries: [CodecComparisonEntry],
+             codestreamBytes: Int = 0,
+             rawBytes: Int = 0,
+             rawImage: CGImage? = nil,
+             images: [String: CGImage] = [:]) {
+            self.entries = entries
+            self.codestreamBytes = codestreamBytes
+            self.rawBytes = rawBytes
+            self.rawImage = rawImage
+            self.images = images
         }
         #else
-        init(entries: [CodecComparisonEntry]) { self.entries = entries }
+        init(entries: [CodecComparisonEntry], codestreamBytes: Int = 0, rawBytes: Int = 0) {
+            self.entries = entries
+            self.codestreamBytes = codestreamBytes
+            self.rawBytes = rawBytes
+        }
         #endif
     }
 
     fileprivate static func performComparison(
         file: DICOMFile,
-        targetUID: String
+        targetUID: String,
+        warmup: Bool,
+        j2kSwiftDecodeMode: J2KSwiftDecodeMode,
+        j2kSwiftEncodeMode: J2KSwiftEncodeMode
     ) async -> ComparisonOutput {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -563,27 +629,37 @@ extension J2KTestingViewModel {
                 }
                 let descriptor = pixData.descriptor
                 let rawImage = makePreviewImage(pixels: frame0, descriptor: descriptor)
+                let rawBytes = frame0.count
 
-                // 2. Encode with J2KSwift to produce the reference bitstream
+                // 2. Encode with J2KSwift via the user-selected API (`j2kSwiftEncodeMode`)
+                //    and time it with the same warmup methodology as decode.
                 let isLossless = !targetUID.hasSuffix(".91")
                     && !targetUID.hasSuffix(".93")
                     && !targetUID.hasSuffix(".203")
-                let encoder = J2KSwiftCodec(encodingTransferSyntaxUID: targetUID)
-                let encoded: Data
-                do {
-                    encoded = try encoder.encodeFrame(
-                        frame0,
-                        descriptor: descriptor,
-                        frameIndex: 0,
-                        configuration: CompressionConfiguration(
-                            quality: isLossless ? .maximum : .medium,
-                            speed: .balanced,
-                            progressive: false,
-                            preferLossless: isLossless
-                        )
-                    )
-                } catch {
-                    let failed = failedEntries("Encode failed: \(error.localizedDescription)")
+                let encConfig = CompressionConfiguration(
+                    quality: isLossless ? .maximum : .medium,
+                    speed: .balanced,
+                    progressive: false,
+                    preferLossless: isLossless
+                )
+                // Reuse one J2KEncoder across all warmup + timed iterations (matches
+                // the upstream InProcBench.swift methodology). Creating a fresh
+                // encoder per iteration can race against
+                // `HTBlockEncoderConformant.useNEONHotPath`'s dispatch_once init
+                // and crash inside `applyEntropyCodingHTJ2KFused` on HT-J2K targets.
+                let encWarmups = warmup ? 2 : 0
+                let encRuns = warmup ? 7 : 1
+                let encResult = J2KSwiftCodec.benchEncode(
+                    frame0,
+                    descriptor: descriptor,
+                    transferSyntaxUID: targetUID,
+                    configuration: encConfig,
+                    mode: j2kSwiftEncodeMode,
+                    warmups: encWarmups,
+                    runs: encRuns
+                )
+                guard let encoded = encResult.data, !encResult.samples.isEmpty else {
+                    let failed = failedEntries("Encode failed: \(encResult.error ?? "unknown")")
                     #if canImport(CoreGraphics)
                     continuation.resume(returning: ComparisonOutput(entries: failed, rawImage: rawImage))
                     #else
@@ -591,6 +667,8 @@ extension J2KTestingViewModel {
                     #endif
                     return
                 }
+                let sortedEnc = encResult.samples.sorted()
+                let encodeMs = sortedEnc[sortedEnc.count / 2]
 
                 var entries: [CodecComparisonEntry] = []
                 #if canImport(CoreGraphics)
@@ -598,81 +676,183 @@ extension J2KTestingViewModel {
                 #endif
                 var referenceOutput: Data? = nil
 
-                // 3. Decode with J2KSwift
-                let j2kDecoder = J2KSwiftCodec()
-                let t0 = Date()
-                let j2kResult: Data?
-                do {
-                    j2kResult = try j2kDecoder.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
-                } catch {
-                    j2kResult = nil
-                }
-                let j2kMs = Date().timeIntervalSince(t0) * 1_000
-
-                if let out = j2kResult {
+                // 3. Decode with J2KSwift — user-selectable API (`j2kSwiftDecodeMode`).
+                //    Default `.cpu` matches the published cross-host bench
+                //    (`CROSS_HOST_M2_M4_inproc.md`). `.decodeGPU` / `.decodeWithGPUHT`
+                //    pin to the respective GPU API. The viewer's production decode path
+                //    is unaffected by this selection.
+                let j2kRoute = j2kSwiftDecodeMode.label
+                // Same reuse-one-decoder pattern as encode above.
+                let decWarmups = warmup ? 2 : 0
+                let decRuns = warmup ? 7 : 1
+                let decResult = J2KSwiftCodec.benchDecode(
+                    encoded,
+                    descriptor: descriptor,
+                    mode: j2kSwiftDecodeMode,
+                    warmups: decWarmups,
+                    runs: decRuns
+                )
+                let j2k: (data: Data?, ms: Double, error: String?) = {
+                    if let d = decResult.data, !decResult.samples.isEmpty {
+                        let sorted = decResult.samples.sorted()
+                        return (d, sorted[sorted.count / 2], nil)
+                    }
+                    return (nil, 0, decResult.error)
+                }()
+                if let out = j2k.data {
                     referenceOutput = out
-                    let result = CodecComparisonResult(
-                        decodeMs: j2kMs,
-                        outputBytes: out.count,
-                        matchesReference: true,
-                        psnrDb: nil
-                    )
-                    entries.append(CodecComparisonEntry(codecName: "J2KSwift", state: .complete(result)))
+                    entries.append(CodecComparisonEntry(codecName: "J2KSwift",
+                        state: .complete(CodecComparisonResult(
+                            decodeMs: j2k.ms, outputBytes: out.count,
+                            matchesReference: true, psnrDb: nil,
+                            route: j2kRoute, encodeMs: encodeMs))))
                     #if canImport(CoreGraphics)
                     if let img = makePreviewImage(pixels: out, descriptor: descriptor) {
                         images["J2KSwift"] = img
                     }
                     #endif
                 } else {
-                    entries.append(CodecComparisonEntry(codecName: "J2KSwift", state: .failed("Decode failed")))
+                    entries.append(CodecComparisonEntry(codecName: "J2KSwift", state: .failed(j2k.error ?? "Decode failed")))
                 }
 
                 // 4. Decode with OpenJPEG (macOS only)
                 #if canImport(COpenJPEG) && os(macOS)
                 let opjName = "OpenJPEG \(OpenJPEGCodec.version)"
                 let opjDecoder = OpenJPEGCodec()
-                let t1 = Date()
-                let opjResult: Data?
-                do {
-                    opjResult = try opjDecoder.decodeFrame(encoded, descriptor: descriptor)
-                } catch {
-                    opjResult = nil
+                let opj = timedDecode(warmup: warmup) {
+                    try opjDecoder.decodeFrame(encoded, descriptor: descriptor)
                 }
-                let opjMs = Date().timeIntervalSince(t1) * 1_000
+                entries.append(makeEntry(name: opjName, result: opj, reference: referenceOutput, descriptor: descriptor))
+                #if canImport(CoreGraphics)
+                if let out = opj.data, let img = makePreviewImage(pixels: out, descriptor: descriptor) {
+                    images[opjName] = img
+                }
+                #endif
+                #endif
 
-                if let out = opjResult {
-                    let matches = out.count == (referenceOutput?.count ?? -1)
-                    let psnr: Double? = matches ? computePSNR(out, referenceOutput!, descriptor: descriptor) : nil
-                    let result = CodecComparisonResult(
-                        decodeMs: opjMs,
-                        outputBytes: out.count,
-                        matchesReference: matches,
-                        psnrDb: psnr
-                    )
-                    entries.append(CodecComparisonEntry(codecName: opjName, state: .complete(result)))
+                // 5. Decode with Kakadu CLI (macOS only, when installed)
+                #if os(macOS)
+                if KakaduCLICodec.binaryPath != nil {
+                    let name = "Kakadu (CLI)"
+                    let r = timedDecode(warmup: warmup) {
+                        try KakaduCLICodec().decodeFrame(encoded, descriptor: descriptor)
+                    }
+                    entries.append(makeEntry(name: name, result: r, reference: referenceOutput, descriptor: descriptor))
                     #if canImport(CoreGraphics)
-                    if let img = makePreviewImage(pixels: out, descriptor: descriptor) {
-                        images[opjName] = img
+                    if let out = r.data, let img = makePreviewImage(pixels: out, descriptor: descriptor) {
+                        images[name] = img
                     }
                     #endif
-                } else {
-                    entries.append(CodecComparisonEntry(codecName: opjName, state: .failed("Decode failed")))
+                }
+
+                // 6. Decode with Grok CLI (macOS only, when installed)
+                if GrokCLICodec.binaryPath != nil {
+                    let name = "Grok (CLI)"
+                    let r = timedDecode(warmup: warmup) {
+                        try GrokCLICodec().decodeFrame(encoded, descriptor: descriptor)
+                    }
+                    entries.append(makeEntry(name: name, result: r, reference: referenceOutput, descriptor: descriptor))
+                    #if canImport(CoreGraphics)
+                    if let out = r.data, let img = makePreviewImage(pixels: out, descriptor: descriptor) {
+                        images[name] = img
+                    }
+                    #endif
                 }
                 #endif
 
                 #if canImport(CoreGraphics)
-                continuation.resume(returning: ComparisonOutput(entries: entries, rawImage: rawImage, images: images))
+                continuation.resume(returning: ComparisonOutput(
+                    entries: entries,
+                    codestreamBytes: encoded.count,
+                    rawBytes: rawBytes,
+                    rawImage: rawImage,
+                    images: images))
                 #else
-                continuation.resume(returning: ComparisonOutput(entries: entries))
+                continuation.resume(returning: ComparisonOutput(
+                    entries: entries,
+                    codestreamBytes: encoded.count,
+                    rawBytes: rawBytes))
                 #endif
             }
         }
+    }
+
+    /// Times a decode closure using `DispatchTime` (ns precision). Matches the
+    /// J2KSwift cross-host bench methodology: 2 untimed warmups + 7 timed runs,
+    /// median of 7 reported. `warmup: false` falls back to a single timed call
+    /// (no warmups) for the quick path.
+    private static func timedDecode(
+        warmup: Bool,
+        _ decode: () throws -> Data
+    ) -> (data: Data?, ms: Double, error: String?) {
+        if !warmup {
+            let t0 = DispatchTime.now()
+            do {
+                let out = try decode()
+                let ms = Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000.0
+                return (out, ms, nil)
+            } catch {
+                return (nil, 0, error.localizedDescription)
+            }
+        }
+
+        var lastOut: Data? = nil
+        // 2 untimed warmups — pay per-shape cache / JIT / Metal-pipeline costs.
+        for _ in 0..<2 {
+            do {
+                lastOut = try decode()
+            } catch {
+                return (nil, 0, error.localizedDescription)
+            }
+        }
+
+        var samples: [Double] = []
+        samples.reserveCapacity(7)
+        for _ in 0..<7 {
+            let t0 = DispatchTime.now()
+            do {
+                lastOut = try decode()
+            } catch {
+                return (nil, 0, error.localizedDescription)
+            }
+            samples.append(Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000.0)
+        }
+        samples.sort()
+        // Median of 7 = the 4th element (0-indexed: samples[3]).
+        return (lastOut, samples[3], nil)
+    }
+
+    /// Builds a CodecComparisonEntry from a `timedDecode` result, comparing against the reference.
+    private static func makeEntry(
+        name: String,
+        result: (data: Data?, ms: Double, error: String?),
+        reference: Data?,
+        descriptor: PixelDataDescriptor
+    ) -> CodecComparisonEntry {
+        guard let out = result.data else {
+            return CodecComparisonEntry(codecName: name, state: .failed(result.error ?? "Decode failed"))
+        }
+        let matches = out.count == (reference?.count ?? -1)
+        let psnr: Double? = matches ? computePSNR(out, reference!, descriptor: descriptor) : nil
+        return CodecComparisonEntry(
+            codecName: name,
+            state: .complete(CodecComparisonResult(
+                decodeMs: result.ms, outputBytes: out.count,
+                matchesReference: matches, psnrDb: psnr)))
     }
 
     private static func failedEntries(_ msg: String) -> [CodecComparisonEntry] {
         var entries = [CodecComparisonEntry(codecName: "J2KSwift", state: .failed(msg))]
         #if canImport(COpenJPEG) && os(macOS)
         entries.append(CodecComparisonEntry(codecName: "OpenJPEG", state: .failed(msg)))
+        #endif
+        #if os(macOS)
+        if KakaduCLICodec.binaryPath != nil {
+            entries.append(CodecComparisonEntry(codecName: "Kakadu (CLI)", state: .failed(msg)))
+        }
+        if GrokCLICodec.binaryPath != nil {
+            entries.append(CodecComparisonEntry(codecName: "Grok (CLI)", state: .failed(msg)))
+        }
         #endif
         return entries
     }

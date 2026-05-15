@@ -20,6 +20,9 @@ public struct ImageMetadataOverlayView: View {
 
     public var body: some View {
         VStack(alignment: .leading, spacing: 4) {
+            if let path = viewModel.filePath {
+                filePathRow(path: path)
+            }
             metadataRow(label: "Dimensions", value: viewModel.dimensionsText)
             metadataRow(
                 label: "Bits (Alloc/Stored/High)",
@@ -70,6 +73,20 @@ public struct ImageMetadataOverlayView: View {
                 .foregroundStyle(.gray)
                 .frame(minWidth: 120, alignment: .trailing)
             Text(value)
+        }
+    }
+
+    private func filePathRow(path: String) -> some View {
+        HStack(spacing: 8) {
+            Text("File:")
+                .foregroundStyle(.gray)
+                .frame(minWidth: 120, alignment: .trailing)
+            Text(path)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: 360, alignment: .leading)
+                .textSelection(.enabled)
+                .help(path)
         }
     }
 }

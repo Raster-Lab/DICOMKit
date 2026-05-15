@@ -9,6 +9,47 @@ import J2KCodec
 import Accelerate
 #endif
 
+/// Selects which J2KSwift decode API the J2K Compare panel exercises.
+/// The viewer's production decode path is unaffected — it always uses the
+/// runtime size router via `J2KSwiftCodec.decodeFrame`.
+public enum J2KSwiftDecodeMode: String, Sendable, CaseIterable, Identifiable {
+    /// `J2KDecoder.decode(...)` — pure-CPU path. Matches the methodology of
+    /// J2KSwift's `CROSS_HOST_*_inproc.md` benchmark reports.
+    case cpu
+    /// `J2KDecoder.decodeGPU(...)` — CPU HT entropy + GPU IDWT.
+    case decodeGPU
+    /// `J2KDecoder.decodeWithGPUHT(...)` — full GPU pipeline (HT entropy on GPU).
+    case decodeWithGPUHT
+
+    public var id: String { rawValue }
+
+    /// Short label suitable for a Picker / row tag.
+    public var label: String {
+        switch self {
+        case .cpu:              return "CPU `decode`"
+        case .decodeGPU:        return "`decodeGPU`"
+        case .decodeWithGPUHT:  return "`decodeWithGPUHT`"
+        }
+    }
+}
+
+/// Selects which J2KSwift encode API the J2K Compare panel exercises.
+/// J2KSwift exposes no `recommendedEncodeAPI` router, so the choice is binary.
+public enum J2KSwiftEncodeMode: String, Sendable, CaseIterable, Identifiable {
+    /// `J2KEncoder.encode(...)` — CPU path. Matches the published bench.
+    case cpu
+    /// `J2KEncoder.encodeGPU(...)` — GPU-accelerated encode.
+    case gpu
+
+    public var id: String { rawValue }
+    public var label: String {
+        switch self {
+        case .cpu: return "CPU `encode`"
+        case .gpu: return "`encodeGPU`"
+        }
+    }
+}
+
 /// JPEG 2000 codec adapter backed directly by J2KSwift.
 ///
 /// This provides the Phase 1 pure-Swift JPEG 2000 path for DICOMKit and establishes
@@ -30,6 +71,180 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
 
     public init(encodingTransferSyntaxUID: String? = nil) {
         self.encodingTransferSyntaxUID = encodingTransferSyntaxUID
+    }
+
+    /// Explicit J2KSwift decode entry point selectable by mode. Bypasses the
+    /// size-based router used by `decodeFrame`. Used by the J2K Compare panel
+    /// to switch between the CPU `decode(...)`, `decodeGPU(...)`, and
+    /// `decodeWithGPUHT(...)` APIs, or to fall back to the runtime auto-router.
+    /// Production decode in the viewer should continue using `decodeFrame`.
+    public static func decode(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        mode: J2KSwiftDecodeMode
+    ) throws -> Data {
+        #if canImport(J2KCore) && canImport(J2KCodec)
+        let decoder = J2KDecoder()
+        let image: J2KImage
+        do {
+            image = try Self.awaitJ2KResult {
+                switch mode {
+                case .cpu:             return try await decoder.decode(frameData)
+                case .decodeGPU:       return try await decoder.decodeGPU(frameData)
+                case .decodeWithGPUHT: return try await decoder.decodeWithGPUHT(frameData)
+                }
+            }
+        } catch {
+            throw DICOMError.parsingFailed("J2KSwift decode failed: \(error)")
+        }
+        guard image.width == descriptor.columns, image.height == descriptor.rows else {
+            throw DICOMError.parsingFailed(
+                "Decoded image dimensions (\(image.width)x\(image.height)) do not match expected (\(descriptor.columns)x\(descriptor.rows))"
+            )
+        }
+        return try packPixels(from: image, descriptor: descriptor)
+        #else
+        throw DICOMError.unsupportedTransferSyntax("JPEG 2000 requires J2KSwift support in this build")
+        #endif
+    }
+
+    /// Explicit J2KSwift encode entry point selectable by mode. Mirrors the
+    /// `J2KEncoder.encode(...)` (CPU) and `J2KEncoder.encodeGPU(...)` APIs.
+    /// Used by the J2K Compare panel; production encode in DICOMKit still goes
+    /// through `encodeFrame` on a `J2KSwiftCodec` instance.
+    public static func encode(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        transferSyntaxUID: String,
+        configuration: CompressionConfiguration,
+        mode: J2KSwiftEncodeMode
+    ) throws -> Data {
+        #if canImport(J2KCore) && canImport(J2KCodec)
+        let image = try Self.makeJ2KImage(from: frameData, descriptor: descriptor)
+        let encoder = J2KEncoder(
+            encodingConfiguration: Self.makeEncodingConfiguration(
+                from: configuration,
+                transferSyntaxUID: transferSyntaxUID
+            )
+        )
+        return try Self.awaitJ2KResult {
+            switch mode {
+            case .cpu: return try await encoder.encode(image)
+            case .gpu: return try await encoder.encodeGPU(image)
+            }
+        }
+        #else
+        throw DICOMError.unsupportedTransferSyntax("JPEG 2000 encoding requires J2KSwift support in this build")
+        #endif
+    }
+
+    /// Benchmark-style encode: holds **one** `J2KEncoder` and image across all
+    /// warmups + timed iterations, mirroring `J2KSwift/Sources/J2KCLI/InProcBench.swift`.
+    /// Creating a fresh encoder per iteration can race against
+    /// `HTBlockEncoderConformant.useNEONHotPath`'s `dispatch_once` init under
+    /// HT-J2K configs and crash inside `applyEntropyCodingHTJ2KFused`.
+    ///
+    /// Returns the encoded payload (last iteration), all timed-sample ms, and
+    /// an optional error string. `samples` has `runs` entries on success.
+    public static func benchEncode(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        transferSyntaxUID: String,
+        configuration: CompressionConfiguration,
+        mode: J2KSwiftEncodeMode,
+        warmups: Int,
+        runs: Int
+    ) -> (data: Data?, samples: [Double], error: String?) {
+        #if canImport(J2KCore) && canImport(J2KCodec)
+        let image: J2KImage
+        do {
+            image = try Self.makeJ2KImage(from: frameData, descriptor: descriptor)
+        } catch {
+            return (nil, [], error.localizedDescription)
+        }
+        let encoder = J2KEncoder(
+            encodingConfiguration: Self.makeEncodingConfiguration(
+                from: configuration,
+                transferSyntaxUID: transferSyntaxUID
+            )
+        )
+        do {
+            let output = try Self.awaitJ2KResult { () -> (Data?, [Double]) in
+                var lastOut: Data? = nil
+                var samples: [Double] = []
+                samples.reserveCapacity(runs)
+                for _ in 0..<warmups {
+                    switch mode {
+                    case .cpu: lastOut = try await encoder.encode(image)
+                    case .gpu: lastOut = try await encoder.encodeGPU(image)
+                    }
+                }
+                for _ in 0..<runs {
+                    let t0 = DispatchTime.now()
+                    switch mode {
+                    case .cpu: lastOut = try await encoder.encode(image)
+                    case .gpu: lastOut = try await encoder.encodeGPU(image)
+                    }
+                    samples.append(Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000.0)
+                }
+                return (lastOut, samples)
+            }
+            return (output.0, output.1, nil)
+        } catch {
+            return (nil, [], error.localizedDescription)
+        }
+        #else
+        return (nil, [], "JPEG 2000 encoding requires J2KSwift support in this build")
+        #endif
+    }
+
+    /// Benchmark-style decode: holds **one** `J2KDecoder` across all warmups
+    /// + timed iterations. `mode` selects the decode API explicitly.
+    public static func benchDecode(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        mode: J2KSwiftDecodeMode,
+        warmups: Int,
+        runs: Int
+    ) -> (data: Data?, samples: [Double], error: String?) {
+        #if canImport(J2KCore) && canImport(J2KCodec)
+        let decoder = J2KDecoder()
+        let output: (J2KImage?, [Double])
+        do {
+            output = try Self.awaitJ2KResult { () -> (J2KImage?, [Double]) in
+                @inline(__always) func runOne() async throws -> J2KImage {
+                    switch mode {
+                    case .cpu:             return try await decoder.decode(frameData)
+                    case .decodeGPU:       return try await decoder.decodeGPU(frameData)
+                    case .decodeWithGPUHT: return try await decoder.decodeWithGPUHT(frameData)
+                    }
+                }
+                var lastImage: J2KImage? = nil
+                var samples: [Double] = []
+                samples.reserveCapacity(runs)
+                for _ in 0..<warmups { lastImage = try await runOne() }
+                for _ in 0..<runs {
+                    let t0 = DispatchTime.now()
+                    lastImage = try await runOne()
+                    samples.append(Double(DispatchTime.now().uptimeNanoseconds - t0.uptimeNanoseconds) / 1_000_000.0)
+                }
+                return (lastImage, samples)
+            }
+        } catch {
+            return (nil, [], error.localizedDescription)
+        }
+        guard let image = output.0 else { return (nil, [], "no decode produced") }
+        guard image.width == descriptor.columns, image.height == descriptor.rows else {
+            return (nil, [], "decoded \(image.width)x\(image.height) ≠ expected \(descriptor.columns)x\(descriptor.rows)")
+        }
+        do {
+            return (try Self.packPixels(from: image, descriptor: descriptor), output.1, nil)
+        } catch {
+            return (nil, [], error.localizedDescription)
+        }
+        #else
+        return (nil, [], "JPEG 2000 requires J2KSwift support in this build")
+        #endif
     }
 
     public func decodeFrame(_ frameData: Data, descriptor: PixelDataDescriptor, frameIndex: Int) throws -> Data {
@@ -169,12 +384,9 @@ private extension J2KSwiftCodec {
     }
 
     static func decodeWithJ2KSwift(_ frameData: Data, descriptor: PixelDataDescriptor) throws -> Data {
-        // Use the CPU `decode` path: it's what J2KSwift's own CLI uses, and
-        // exercises the same code as upstream's bit-exact pipeline tests
-        // (`J2KEndToEndPipelineTests`). The Metal-accelerated `decodeGPU`
-        // path doesn't bit-exactly round-trip CLI-default lossless codestreams
-        // (≥5 decomposition levels, 5 quality layers, RPCL progression),
-        // so using it here would force us to handicap the encoder to match.
+        // Viewer path: CPU `J2KDecoder.decode(...)`. The J2K Compare panel
+        // overrides per-call via `J2KSwiftCodec.decode(...,mode:)` to pin the
+        // GPU paths for benchmarking.
         let image: J2KImage
         do {
             image = try Self.awaitJ2KResult {
