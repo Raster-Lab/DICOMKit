@@ -21,6 +21,10 @@ public struct DICOMStudioApp: App {
             MainView(viewModel: viewModel)
         }
         .defaultSize(width: 1200, height: 800)
+        // Window can shrink to the content's minimum and grow without limit,
+        // so the app adapts to any display from a small laptop to an
+        // ultrawide. `.contentMinSize` keeps only the lower bound enforced.
+        .windowResizability(.contentMinSize)
         .commands { ViewerCommands() }
 
         #if os(macOS)

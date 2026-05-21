@@ -54,7 +54,7 @@ public struct J2KTestingView: View {
             }
             .navigationTitle("J2KSwift Testing — \(selectedTab.rawValue)")
             #if os(macOS)
-            .frame(minWidth: 780, minHeight: 560)
+            .frame(minWidth: 600, minHeight: 440)
             #endif
             .toolbar {
                 ToolbarItemGroup(placement: .automatic) {
@@ -188,7 +188,7 @@ public struct J2KTestingView: View {
                             Stepper("\(viewModel.j2kTesting.benchmarkIterations)",
                                     value: Bindable(viewModel.j2kTesting).benchmarkIterations,
                                     in: 1...100)
-                            .frame(width: 120)
+                            .frame(maxWidth: .infinity)
                             Spacer()
                             Button {
                                 if let file = viewModel.dicomFile {

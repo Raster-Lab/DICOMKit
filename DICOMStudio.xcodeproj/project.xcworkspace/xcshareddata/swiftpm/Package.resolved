@@ -2,12 +2,21 @@
   "originHash" : "6c95539b72cef6518a2af9e1f7c4cf0fb95bc881782b652776522f3a11a040c7",
   "pins" : [
     {
+      "identity" : "compressionfamily",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Raster-Lab/CompressionFamily.git",
+      "state" : {
+        "revision" : "30fd74b6df841cf79b1a0247534a723f5e7ab4ba",
+        "version" : "1.0.0"
+      }
+    },
+    {
       "identity" : "j2kswift",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/J2KSwift.git",
       "state" : {
-        "revision" : "1a5c080e1874c3465cb64184a2de22955862b183",
-        "version" : "5.2.0"
+        "revision" : "78492e68bd4ec8c93267b733ad44bedc07d87878",
+        "version" : "10.9.3"
       }
     },
     {

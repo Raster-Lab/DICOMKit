@@ -62,7 +62,7 @@ public struct CodecImageComparisonView: View {
             }
             .navigationTitle("Codec Image Comparison")
             #if os(macOS)
-            .frame(minWidth: 960, minHeight: 600)
+            .frame(minWidth: 600, minHeight: 440)
             .navigationSubtitle(selectedEntry?.shortName ?? "")
             #endif
             .toolbar {

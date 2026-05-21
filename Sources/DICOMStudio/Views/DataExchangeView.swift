@@ -458,7 +458,7 @@ public struct DataExchangeView: View {
                         Text(mode.rawValue).tag(mode)
                     }
                 }
-                .frame(width: 200)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("PDF encapsulation mode")
             }
             .padding()

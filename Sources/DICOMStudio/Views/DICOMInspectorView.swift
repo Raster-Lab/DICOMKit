@@ -227,7 +227,7 @@ public struct DICOMInspectorView: View {
             }
             .listStyle(.plain)
         }
-        .frame(minWidth: 540, minHeight: 480)
+        .frame(minWidth: 540, minHeight: 440)
         .accessibilityLabel("DICOM tag inspector")
     }
 }

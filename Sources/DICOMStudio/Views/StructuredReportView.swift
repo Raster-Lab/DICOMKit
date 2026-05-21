@@ -122,7 +122,7 @@ public struct StructuredReportView: View {
                     Text("Narrative").tag(SRViewerMode.narrative)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 200)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("View mode")
 
                 Button {
@@ -224,7 +224,7 @@ public struct StructuredReportView: View {
                     Text("Import").tag(SRBuilderMode.importExisting)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 240)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Builder mode")
 
                 Button("Validate") {
@@ -274,7 +274,7 @@ public struct StructuredReportView: View {
                         Text(scope.rawValue).tag(scope)
                     }
                 }
-                .frame(width: 150)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Terminology search scope")
             }
             .padding()
@@ -361,7 +361,7 @@ public struct StructuredReportView: View {
                     Text("Min Confidence:")
                         .font(.caption)
                     Slider(value: $viewModel.cadMinConfidence, in: 0...1)
-                        .frame(width: 120)
+                        .frame(maxWidth: .infinity)
                         .accessibilityLabel("Minimum confidence threshold")
                     Text(String(format: "%.0f%%", viewModel.cadMinConfidence * 100))
                         .font(.caption.monospaced())

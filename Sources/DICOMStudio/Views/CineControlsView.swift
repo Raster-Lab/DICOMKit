@@ -123,7 +123,7 @@ public struct CineControlsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 180)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Playback mode")
 
                 Divider()

@@ -127,9 +127,6 @@ public struct ImageViewerView: View {
                 DICOMInspectorView(dicomFile: file)
             }
         }
-        .sheet(isPresented: Bindable(viewModel).showJ2KTesting) {
-            J2KTestingView(viewModel: viewModel)
-        }
         .fileImporter(
             isPresented: $viewModel.isFileImporterPresented,
             allowedContentTypes: [.data],
@@ -389,12 +386,6 @@ public struct ImageViewerView: View {
                     Label("DICOM Tag Inspector", systemImage: "list.bullet.rectangle")
                 }
                 .disabled(viewModel.dicomFile == nil)
-                Divider()
-                Button {
-                    viewModel.showJ2KTesting = true
-                } label: {
-                    Label("J2KSwift Testing…", systemImage: "staroflife.circle")
-                }
             } label: {
                 Image(systemName: "square.stack.3d.up")
             }

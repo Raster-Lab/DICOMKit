@@ -30,7 +30,7 @@ struct GeneralSettingsView: View {
                     Text("Window Center")
                     Spacer()
                     TextField("Center", value: $viewModel.defaultWindowCenter, format: .number)
-                        .frame(width: 80)
+                        .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.trailing)
                         .accessibilityLabel("Default window center value")
                 }
@@ -38,7 +38,7 @@ struct GeneralSettingsView: View {
                     Text("Window Width")
                     Spacer()
                     TextField("Width", value: $viewModel.defaultWindowWidth, format: .number)
-                        .frame(width: 80)
+                        .frame(maxWidth: .infinity)
                         .multilineTextAlignment(.trailing)
                         .accessibilityLabel("Default window width value")
                 }

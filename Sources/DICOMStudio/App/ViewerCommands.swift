@@ -72,11 +72,6 @@ struct ViewerCommands: Commands {
                 set: { viewModel?.showDICOMInspector = $0 }
             ))
             .disabled(!hasFile)
-
-            Button("J2KSwift Testing…") {
-                viewModel?.showJ2KTesting = true
-            }
-            .disabled(viewModel == nil)
         }
 
         // Image menu — transform and inversion

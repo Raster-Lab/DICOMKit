@@ -5,6 +5,20 @@
 
 import Foundation
 
+/// Top-level grouping for sidebar navigation destinations.
+///
+/// DICOM Studio is imaging-first: the `imaging` group stays expanded by
+/// default while the others collapse, so the sidebar reads as a viewer with
+/// supporting tools rather than a flat list of sixteen equal features.
+public enum NavigationCategory: String, CaseIterable, Identifiable, Sendable {
+    case imaging   = "Imaging"
+    case network   = "Network"
+    case dataTools = "Data & Tools"
+    case system    = "System"
+
+    public var id: String { rawValue }
+}
+
 /// Sidebar navigation destinations in DICOM Studio.
 public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable {
     case library          = "Library"
@@ -22,6 +36,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case polishRelease      = "Polish & Release"
     case fileOperations       = "File Operations"
     case integrationTesting   = "Integration Testing"
+    case j2kTestBench         = "J2K Test Bench"
     case settings             = "Settings"
 
     public var id: String { rawValue }
@@ -44,6 +59,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .polishRelease:     return "paintbrush.pointed"
         case .fileOperations:    return "doc.badge.arrow.up"
         case .integrationTesting: return "checklist"
+        case .j2kTestBench:     return "testtube.2"
         case .settings:         return "gear"
         }
     }
@@ -66,7 +82,23 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .polishRelease:     return "Polish, Accessibility & Release"
         case .fileOperations:    return "File Operations & Drag-and-Drop"
         case .integrationTesting: return "Integration Testing & Polish"
+        case .j2kTestBench:     return "J2K Codec Test Bench"
         case .settings:         return "Application Settings"
+        }
+    }
+
+    /// The sidebar category this destination is grouped under.
+    public var category: NavigationCategory {
+        switch self {
+        case .library, .viewer, .volumeViewer, .jp3dComparison:
+            return .imaging
+        case .networking, .dicomWeb:
+            return .network
+        case .reporting, .tools, .cliWorkshop, .fileOperations:
+            return .dataTools
+        case .security, .performanceTools, .macOSEnhancements,
+             .polishRelease, .integrationTesting, .j2kTestBench, .settings:
+            return .system
         }
     }
 }

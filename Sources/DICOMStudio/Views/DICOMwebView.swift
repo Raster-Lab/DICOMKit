@@ -1008,7 +1008,7 @@ public struct DICOMwebView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 120)
+                .frame(minHeight: 120, maxHeight: .infinity)
             }
         }
     }
@@ -1113,7 +1113,7 @@ public struct DICOMwebView: View {
                         }
                     }
                 }
-                .frame(maxHeight: 320)
+                .frame(minHeight: 320, maxHeight: .infinity)
             }
         }
     }
@@ -1776,7 +1776,7 @@ struct DICOMwebServerFormSheet: View {
             }
         }
         .padding()
-        .frame(minWidth: 450, minHeight: 500)
+        .frame(minWidth: 450, minHeight: 440)
     }
 
     private var isEditing: Bool {

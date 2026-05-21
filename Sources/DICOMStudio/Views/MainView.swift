@@ -86,6 +86,8 @@ public struct MainView: View {
             FileOperationsView(viewModel: FileOperationsViewModel())
         case .integrationTesting:
             IntegrationTestingView(viewModel: IntegrationTestingViewModel())
+        case .j2kTestBench:
+            J2KTestBenchView(viewModel: viewModel.j2kTestBenchViewModel)
         case .settings:
             SettingsView(viewModel: SettingsViewModel(settingsService: viewModel.settingsService))
         }

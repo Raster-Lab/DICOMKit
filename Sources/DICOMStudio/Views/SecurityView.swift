@@ -109,7 +109,7 @@ public struct SecurityView: View {
                         Text(mode.rawValue).tag(mode)
                     }
                 }
-                .frame(width: 200)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Global TLS mode")
             }
             .padding()
@@ -217,7 +217,7 @@ public struct SecurityView: View {
                         Text(profile.rawValue).tag(profile)
                     }
                 }
-                .frame(width: 200)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Anonymization profile")
 
                 Button {
@@ -372,12 +372,12 @@ public struct SecurityView: View {
             HStack(spacing: 12) {
                 TextField("User", text: $viewModel.auditFilterUser)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 120)
+                    .frame(maxWidth: .infinity)
                     .accessibilityLabel("Filter by user")
 
                 TextField("Reference", text: $viewModel.auditFilterReference)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 120)
+                    .frame(maxWidth: .infinity)
                     .accessibilityLabel("Filter by reference")
 
                 Button("Clear Filters") {
@@ -744,7 +744,7 @@ struct AuditExportSheet: View {
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .frame(minHeight: 150, maxHeight: 250)
+                            .frame(minHeight: 150, maxHeight: .infinity)
                         }
                     }
                 }
