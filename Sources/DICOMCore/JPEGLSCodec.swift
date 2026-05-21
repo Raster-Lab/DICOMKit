@@ -633,34 +633,36 @@ final class JPEGLSDecoder {
     // MARK: - Golomb-Rice Coding
 
     private func decodeGolombRice(reader: JPEGLSBitReader, k: Int) throws -> Int {
-        // Count leading zeros (unary part)
-        var unary = 0
+        // Limited-length Golomb code (ITU-T T.87 A.5.3). Counterpart of
+        // `JPEGLSEncoder.encodeGolombRice` — the two must agree exactly:
+        //   • escape threshold = `limit - qbpp - 1` zero bits, then a '1'
+        //   • normal:   mapped = (zeros << k) | k-bit remainder
+        //   • overflow: mapped read directly as a (qbpp + 1)-bit field
+        let escapeThreshold = max(1, limit - qbpp - 1)
+
+        var zeros = 0
         while try reader.readBit() == 0 {
-            unary += 1
-            if unary > limit {
-                // Overflow: read bpp bits as the magnitude directly
-                let value = try reader.readBits(bpp)
-                return value
-            }
+            zeros += 1
+            if zeros >= escapeThreshold { break }   // the next bit is the '1'
         }
-
-        // Read k bits (binary part)
-        var remainder = 0
-        if k > 0 {
-            remainder = try reader.readBits(k)
+        // After the loop `zeros` is the run of leading zeros. When it reached
+        // the escape threshold the terminating '1' has not been consumed yet.
+        let mapped: Int
+        if zeros < escapeThreshold {
+            var remainder = 0
+            if k > 0 { remainder = try reader.readBits(k) }
+            mapped = (zeros << k) | remainder
+        } else {
+            _ = try reader.readBit()   // consume the terminating '1'
+            mapped = try reader.readBits(qbpp + 1)
         }
-
-        let mapped = (unary << k) | remainder
 
         // Inverse mapping from non-negative to signed
-        let errVal: Int
         if mapped % 2 == 0 {
-            errVal = mapped / 2
+            return mapped / 2
         } else {
-            errVal = -(mapped + 1) / 2
+            return -(mapped + 1) / 2
         }
-
-        return errVal
     }
 
     // MARK: - Context Operations
@@ -983,31 +985,42 @@ final class JPEGLSEncoder {
     }
 
     private func encodeRunLength(writer: JPEGLSBitWriter, runLen: Int, maxRun: Int) {
+        // ITU-T T.87 A.7.1.2 run-length coding. Emits a '1' bit per full run
+        // segment (length 1<<J[RUNindex], RUNindex advancing), then a
+        // terminating '0' followed by the J[RUNindex]-bit remainder.
+        //
+        // Two subtleties this must honour to stay in sync with the decoder's
+        // `decodeRunLength`:
+        //   • A zero-length run still emits the terminating '0' (the previous
+        //     implementation wrote nothing for runLen == 0, desyncing the
+        //     bitstream from the first flat pixel onward).
+        //   • When full segments sum to exactly `maxRun` the run filled the
+        //     line; the decoder stops on `runLen == maxRun` so no terminating
+        //     bit is appended.
         let jTable = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 9, 10, 11, 12, 13, 14, 15]
         var remaining = runLen
         var rk = 0
 
-        while remaining > 0 {
+        while true {
             let jVal = rk < jTable.count ? jTable[rk] : 15
             let increment = 1 << jVal
 
-            if remaining >= increment && remaining < maxRun {
+            if remaining >= increment {
                 writer.writeBit(1)  // Full run segment
                 remaining -= increment
                 if rk < jTable.count - 1 { rk += 1 }
-            } else {
-                if remaining >= increment && runLen == maxRun {
-                    // End of line reached
-                    writer.writeBit(1)
-                    remaining -= increment
-                    if rk < jTable.count - 1 { rk += 1 }
-                } else {
-                    writer.writeBit(0)
-                    if jVal > 0 {
-                        writer.writeBits(remaining, count: jVal)
-                    }
-                    remaining = 0
+                // Whole run consumed by full segments and it reaches the end of
+                // the line — decoder terminates on `runLen == maxRun`.
+                if remaining == 0 && runLen == maxRun {
+                    return
                 }
+            } else {
+                // Terminating '0' + J[RUNindex]-bit remainder (0 bits when J == 0).
+                writer.writeBit(0)
+                if jVal > 0 {
+                    writer.writeBits(remaining, count: jVal)
+                }
+                return
             }
         }
     }
@@ -1055,7 +1068,10 @@ final class JPEGLSEncoder {
     // MARK: - Golomb-Rice Encoding
 
     private func encodeGolombRice(writer: JPEGLSBitWriter, errVal: Int, k: Int) {
-        // Map signed error to non-negative
+        // Limited-length Golomb code (ITU-T T.87 A.5.3). Counterpart of
+        // `JPEGLSDecoder.decodeGolombRice` — see that function for the shared
+        // contract. `mapped` is bounded by 2·maxVal, so it always fits the
+        // (qbpp + 1)-bit escape field.
         let mapped: Int
         if errVal >= 0 {
             mapped = 2 * errVal
@@ -1063,26 +1079,22 @@ final class JPEGLSEncoder {
             mapped = 2 * abs(errVal) - 1
         }
 
+        let escapeThreshold = max(1, limit - qbpp - 1)
         let unary = mapped >> k
-        let remainder = mapped & ((1 << k) - 1)
 
-        if unary < limit {
-            // Write unary zeros + 1
-            for _ in 0..<unary {
-                writer.writeBit(0)
-            }
+        if unary < escapeThreshold {
+            // Normal: `unary` zeros, terminating '1', k-bit remainder.
+            for _ in 0..<unary { writer.writeBit(0) }
             writer.writeBit(1)
-            // Write k-bit remainder
             if k > 0 {
-                writer.writeBits(remainder, count: k)
+                writer.writeBits(mapped & ((1 << k) - 1), count: k)
             }
         } else {
-            // Overflow: write (limit) zeros + 1 + bpp-bit value
-            for _ in 0..<limit {
-                writer.writeBit(0)
-            }
+            // Overflow: `escapeThreshold` zeros, terminating '1', then the
+            // full mapped value in a (qbpp + 1)-bit field.
+            for _ in 0..<escapeThreshold { writer.writeBit(0) }
             writer.writeBit(1)
-            writer.writeBits(mapped - 1, count: bpp)
+            writer.writeBits(mapped, count: qbpp + 1)
         }
     }
 

@@ -68,22 +68,29 @@ struct HTJ2KTests {
         }
     }
 
-    @Test("HTJ2K lossy 16-bit real payload currently exposes an upstream issue")
-    func htj2kLossyRealPayloadCurrentlyThrows() throws {
+    @Test("HTJ2K lossy 16-bit real payload round-trips without error")
+    func htj2kLossyRealPayloadRoundTrips() throws {
+        // Historical note: this previously asserted `#expect(throws:)` to
+        // document an upstream J2KSwift defect that crashed/threw on HTJ2K
+        // lossy 16-bit payloads. J2KSwift v10.9.1 resolved it — HTJ2K lossy
+        // now encodes + decodes cleanly, so the test verifies the round-trip.
         let sample = try realSample()
         let descriptor = sample.pixelData.descriptor
         let original = sample.pixelData.data
 
         let codec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.htj2kLossy.uid)
 
-        #expect(throws: DICOMError.self) {
-            let encoded = try codec.encodeFrame(
-                original,
-                descriptor: descriptor,
-                frameIndex: 0,
-                configuration: CompressionConfiguration(quality: .high, speed: .balanced, progressive: false, preferLossless: false)
-            )
-            _ = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
-        }
+        let encoded = try codec.encodeFrame(
+            original,
+            descriptor: descriptor,
+            frameIndex: 0,
+            configuration: CompressionConfiguration(quality: .high, speed: .balanced, progressive: false, preferLossless: false)
+        )
+        let decoded = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
+
+        #expect(encoded.isEmpty == false)
+        // Lossy: decoded values differ from the original, but the decoded
+        // buffer must match the original frame's byte count.
+        #expect(decoded.count == original.count)
     }
 }

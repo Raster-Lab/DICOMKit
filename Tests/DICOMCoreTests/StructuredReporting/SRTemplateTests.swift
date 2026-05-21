@@ -313,30 +313,44 @@ struct TemplateRegistryTests {
         #expect(templates.contains(.languageOfContent))
     }
     
+    // NOTE: `TemplateRegistry.template(...)` returns `(any SRTemplate.Type)?`
+    // — an optional existential metatype. Passing that expression *directly*
+    // into `#expect(...)` makes the swift-testing macro instantiate its
+    // generic `__checkBinaryOperation` over the existential-metatype optional,
+    // which crashes the Swift runtime's metadata cache (EXC_BAD_ACCESS in
+    // `__swift_instantiateCanonicalPrespecializedGenericMetadata`). Binding the
+    // result to plain `Bool` / `TemplateIdentifier?` locals first keeps the
+    // existential metatype out of the macro and sidesteps the runtime bug.
+
     @Test("Lookup template by identifier")
     func testLookupByIdentifier() {
         let registry = TemplateRegistry.shared
-        
+
         let template = registry.template(for: .measurement)
-        #expect(template != nil)
-        #expect(template?.identifier == .measurement)
+        let found = template != nil
+        #expect(found)
+        let identifier = template?.identifier
+        #expect(identifier == .measurement)
     }
-    
+
     @Test("Lookup template by TID")
     func testLookupByTID() {
         let registry = TemplateRegistry.shared
-        
+
         let template = registry.template(tid: 300)
-        #expect(template != nil)
-        #expect(template?.identifier.templateID == "300")
+        let found = template != nil
+        #expect(found)
+        let templateID = template?.identifier.templateID
+        #expect(templateID == "300")
     }
-    
+
     @Test("Lookup unknown template returns nil")
     func testLookupUnknownTemplate() {
         let registry = TemplateRegistry.shared
-        
+
         let template = registry.template(tid: 99999)
-        #expect(template == nil)
+        let isAbsent = template == nil
+        #expect(isAbsent)
     }
 }
 
