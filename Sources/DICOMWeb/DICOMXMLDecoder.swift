@@ -113,8 +113,13 @@ public struct DICOMXMLDecoder: Sendable {
             var nameSuffix: String?
             
             func toString() -> String {
-                let parts = [familyName, givenName, middleName, namePrefix, nameSuffix]
+                // DICOM PS3.5 PN: trailing empty components are dropped, so a
+                // family+given name serialises as "Doe^John", not "Doe^John^^^".
+                var parts = [familyName, givenName, middleName, namePrefix, nameSuffix]
                     .map { $0 ?? "" }
+                while let last = parts.last, last.isEmpty {
+                    parts.removeLast()
+                }
                 return parts.joined(separator: "^")
             }
         }

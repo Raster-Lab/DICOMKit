@@ -13,7 +13,9 @@ final class PrivateTagAllocatorTests: XCTestCase {
         XCTAssertEqual(creator?.creatorID, "TEST")
         XCTAssertEqual(creator?.group, 0x0009)
         XCTAssertEqual(creator?.element, 0x0010)
-        XCTAssertEqual(creator?.blockNumber, 0x00)
+        // Block number is the creator element's low byte (DICOM PS3.5 §7.8.1):
+        // creator element 0x0010 reserves data block 0x10 → (gggg,1000)-(gggg,10FF).
+        XCTAssertEqual(creator?.blockNumber, 0x10)
     }
     
     func test_allocateBlock_allocatesMultipleBlocks() async throws {

@@ -18,8 +18,8 @@ public struct PrivateCreator: Sendable, Hashable, Equatable {
     
     /// Private creator element number (0x0010 - 0x00FF)
     ///
-    /// The block number is computed as (element - 0x0010).
-    /// Private data elements use (group, block*256 + nn) where nn is 0x10-0xFF.
+    /// The block number (see ``blockNumber``) is the low byte of this element.
+    /// Private data elements use (group, block*256 + nn) where nn is 0x00-0xFF.
     public let element: UInt16
     
     /// Block number (0x10 - 0xFF)
