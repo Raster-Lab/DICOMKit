@@ -202,9 +202,6 @@ public final class ImageViewerViewModel {
     /// J2KSwift implementation testing state (benchmark, round-trip, platform probe).
     public var j2kTesting = J2KTestingViewModel()
 
-    /// Whether the J2KSwift testing sheet is presented.
-    public var showJ2KTesting: Bool = false
-
     // MARK: - JPIP Streaming (Phase 8)
 
     /// JPIP server URL string for remote streaming.

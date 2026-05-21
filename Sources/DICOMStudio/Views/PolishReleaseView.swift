@@ -92,7 +92,7 @@ public struct PolishReleaseView: View {
                         Text(lang.displayName).tag(lang)
                     }
                 }
-                .frame(width: 200)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Select language")
             }
             .padding()
@@ -198,7 +198,7 @@ public struct PolishReleaseView: View {
                         Text(cat.displayName).tag(cat as AccessibilityCheckCategory?)
                     }
                 }
-                .frame(width: 180)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Accessibility check category")
             }
             .padding()

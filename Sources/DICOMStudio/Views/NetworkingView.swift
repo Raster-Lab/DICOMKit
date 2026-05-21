@@ -565,7 +565,7 @@ public struct NetworkingView: View {
                             .padding(.horizontal)
                             .textSelection(.enabled)
                     }
-                    .frame(maxHeight: 200)
+                    .frame(minHeight: 200, maxHeight: .infinity)
                 }
             }
         }
@@ -851,7 +851,7 @@ struct ServerProfileFormSheet: View {
                 loadFromMode()
             }
         }
-        .frame(minWidth: 420, minHeight: 480)
+        .frame(minWidth: 420, minHeight: 440)
     }
 
     private func loadFromMode() {
@@ -1182,7 +1182,7 @@ struct NewPrintJobSheet: View {
                 break
             }
         }
-        .frame(minWidth: 480, minHeight: 600)
+        .frame(minWidth: 480, minHeight: 440)
         #if canImport(CoreGraphics)
         .onChange(of: selectedImageURLs) { _, newURLs in
             loadPreviewImages(for: newURLs)

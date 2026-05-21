@@ -182,7 +182,7 @@ public struct PerformanceToolsView: View {
                         Text(type.rawValue).tag(type)
                     }
                 }
-                .frame(width: 180)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Select cache type")
 
                 Button("Clear Selected") {
@@ -505,7 +505,7 @@ public struct PerformanceToolsView: View {
                         Text(category.rawValue).tag(category)
                     }
                 }
-                .frame(width: 200)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Filter by service category")
             }
             .padding()

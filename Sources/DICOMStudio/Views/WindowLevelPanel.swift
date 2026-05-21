@@ -36,7 +36,7 @@ public struct WindowLevelPanel: View {
                     format: .number
                 )
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 100)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Window center value")
                 .onSubmit { viewModel.renderCurrentFrame() }
 
@@ -68,7 +68,7 @@ public struct WindowLevelPanel: View {
                     format: .number
                 )
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 100)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Window width value")
                 .onSubmit { viewModel.renderCurrentFrame() }
 

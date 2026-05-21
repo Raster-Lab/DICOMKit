@@ -7,6 +7,7 @@ import Foundation
 import Observation
 import DICOMKit
 import DICOMCore
+import J2KCore
 
 #if canImport(CoreGraphics)
 import CoreGraphics
@@ -98,6 +99,11 @@ public final class J2KTestingViewModel {
     public let availableBackends: [CodecBackend] = CodecBackendProbe.availableBackends
     public let bestBackend: CodecBackend = CodecBackendProbe.bestAvailable
     public let supportMatrix: [J2KSupportEntry] = J2KTestingViewModel.buildSupportMatrix()
+
+    /// Display name for the J2KSwift codec, including its library version
+    /// (e.g. "J2KSwift 10.7.0"). Sourced from `J2KCore.getVersion()` so the
+    /// comparison UI always shows the J2KSwift build under test.
+    public static let j2kSwiftCodecName = "J2KSwift \(J2KCore.getVersion())"
 
     // MARK: - Benchmark
 
@@ -270,7 +276,7 @@ public final class J2KTestingViewModel {
         guard !isRunning else { return }
         isComparisonRunning = true
         var entries: [CodecComparisonEntry] = [
-            CodecComparisonEntry(codecName: "J2KSwift", state: .running)
+            CodecComparisonEntry(codecName: Self.j2kSwiftCodecName, state: .running)
         ]
         #if canImport(COpenJPEG) && os(macOS)
         entries.append(CodecComparisonEntry(codecName: "OpenJPEG \(OpenJPEGCodec.version)", state: .running))
@@ -701,18 +707,18 @@ extension J2KTestingViewModel {
                 }()
                 if let out = j2k.data {
                     referenceOutput = out
-                    entries.append(CodecComparisonEntry(codecName: "J2KSwift",
+                    entries.append(CodecComparisonEntry(codecName: j2kSwiftCodecName,
                         state: .complete(CodecComparisonResult(
                             decodeMs: j2k.ms, outputBytes: out.count,
                             matchesReference: true, psnrDb: nil,
                             route: j2kRoute, encodeMs: encodeMs))))
                     #if canImport(CoreGraphics)
                     if let img = makePreviewImage(pixels: out, descriptor: descriptor) {
-                        images["J2KSwift"] = img
+                        images[j2kSwiftCodecName] = img
                     }
                     #endif
                 } else {
-                    entries.append(CodecComparisonEntry(codecName: "J2KSwift", state: .failed(j2k.error ?? "Decode failed")))
+                    entries.append(CodecComparisonEntry(codecName: j2kSwiftCodecName, state: .failed(j2k.error ?? "Decode failed")))
                 }
 
                 // 4. Decode with OpenJPEG (macOS only)
@@ -842,7 +848,7 @@ extension J2KTestingViewModel {
     }
 
     private static func failedEntries(_ msg: String) -> [CodecComparisonEntry] {
-        var entries = [CodecComparisonEntry(codecName: "J2KSwift", state: .failed(msg))]
+        var entries = [CodecComparisonEntry(codecName: j2kSwiftCodecName, state: .failed(msg))]
         #if canImport(COpenJPEG) && os(macOS)
         entries.append(CodecComparisonEntry(codecName: "OpenJPEG", state: .failed(msg)))
         #endif

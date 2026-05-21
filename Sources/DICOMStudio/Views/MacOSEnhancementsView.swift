@@ -174,7 +174,7 @@ public struct MacOSEnhancementsView: View {
                         Text(cat.displayName).tag(cat)
                     }
                 }
-                .frame(width: 140)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Menu category")
             }
             .padding()
@@ -238,7 +238,7 @@ public struct MacOSEnhancementsView: View {
                         Text(scope.displayName).tag(scope)
                     }
                 }
-                .frame(width: 140)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Shortcut scope filter")
 
                 Button("Reset Defaults") {
@@ -405,7 +405,7 @@ public struct MacOSEnhancementsView: View {
                                         .font(.caption.monospaced())
                                         .textSelection(.enabled)
                                 }
-                                .frame(maxHeight: 120)
+                                .frame(minHeight: 120, maxHeight: .infinity)
                             }
                             .padding(.top, 4)
                         }

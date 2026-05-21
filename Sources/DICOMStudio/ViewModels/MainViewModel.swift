@@ -18,6 +18,10 @@ public final class MainViewModel {
     /// Currently selected sidebar navigation destination.
     public var selectedDestination: NavigationDestination?
 
+    /// Sidebar categories that are currently expanded. Imaging starts open;
+    /// the others collapse so the app presents as an imaging tool first.
+    public var expandedCategories: Set<NavigationCategory> = [.imaging]
+
     /// Whether the inspector panel is visible.
     public var isInspectorVisible: Bool
 
@@ -81,6 +85,9 @@ public final class MainViewModel {
     /// Persistent CLI Workshop ViewModel — survives tab switches.
     public var cliWorkshopViewModel: CLIWorkshopViewModel
 
+    /// Persistent J2K Test Bench ViewModel — survives tab switches.
+    public var j2kTestBenchViewModel: J2KTestBenchViewModel
+
     /// Creates the main ViewModel with dependency-injected services.
     public init(
         settingsService: SettingsService = SettingsService(),
@@ -131,6 +138,7 @@ public final class MainViewModel {
         self.dicomWebViewModel = DICOMwebViewModel()
 
         self.cliWorkshopViewModel = CLIWorkshopViewModel()
+        self.j2kTestBenchViewModel = J2KTestBenchViewModel(storageService: storageService)
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
 
@@ -181,9 +189,11 @@ public final class MainViewModel {
         selectedDestination = .viewer
     }
 
-    /// Navigates to the specified destination.
+    /// Navigates to the specified destination, revealing its sidebar
+    /// category if it was collapsed.
     public func navigate(to destination: NavigationDestination) {
         selectedDestination = destination
+        expandedCategories.insert(destination.category)
     }
 
     /// Opens the first displayable instance of the given study in the viewer.
@@ -215,6 +225,12 @@ public final class MainViewModel {
         return primaryDestinations.filter {
             $0.rawValue.localizedCaseInsensitiveContains(searchText)
         }
+    }
+
+    /// Search-aware destinations belonging to a single sidebar category,
+    /// in canonical order.
+    public func filteredDestinations(in category: NavigationCategory) -> [NavigationDestination] {
+        filteredDestinations.filter { $0.category == category }
     }
 
     /// Updates the status message.
