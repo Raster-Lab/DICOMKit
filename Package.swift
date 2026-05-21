@@ -5,9 +5,9 @@ import PackageDescription
 let package = Package(
     name: "DICOMKit",
     platforms: [
-        .iOS(.v17),
-        // macOS baseline bumped to 15 to satisfy J2KSwift (pure-Swift JPEG 2000 codec).
-        // See J2KSWIFT_INTEGRATION_PLAN.md Phase 1.
+        // iOS/macOS baselines track J2KSwift's deployment targets
+        // (J2KSwift v10.x requires iOS 18 / macOS 15).
+        .iOS(.v18),
         .macOS(.v15),
         .visionOS(.v1)
     ],
@@ -209,9 +209,10 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
         // Phase 1 scope: exclude aws-sdk-swift because it is unrelated to JPEG 2000 verification.
         // .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.6.0"),
-        // J2KSwift — pure-Swift JPEG 2000 / HTJ2K / JP3D / JPIP codec
-        // See J2KSWIFT_INTEGRATION_PLAN.md for the phased integration.
-        .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "5.21.0")
+        // J2KSwift — pure-Swift JPEG 2000 / HTJ2K / JP3D / JPIP codec.
+        // URL-consumable as of v10.9.3 (Raster-Lab/J2KSwift#438): its manifest
+        // always resolves CompressionFamily from its public Git URL.
+        .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "10.9.3")
     ],
     targets: [
         // OpenJPEG 2.x system library (https://www.openjpeg.org)
