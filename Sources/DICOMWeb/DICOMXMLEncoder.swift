@@ -82,10 +82,17 @@ public struct DICOMXMLEncoder: Sendable {
         xml += "<NativeDicomModel xmlns=\"http://dicom.nema.org/PS3.19/models/NativeDICOM\">\n"
         
         for element in elements {
-            if !configuration.includeEmptyValues && element.valueData.isEmpty {
+            // An SQ element carries its content in `sequenceItems`, not
+            // `valueData` — `valueData` is always empty for sequences. Treat
+            // an element as empty only when it has neither value bytes nor
+            // sequence items, otherwise non-empty sequences get dropped.
+            let hasSequenceItems = !(element.sequenceItems?.isEmpty ?? true)
+            if !configuration.includeEmptyValues
+                && element.valueData.isEmpty
+                && !hasSequenceItems {
                 continue
             }
-            
+
             let elementXML = try encodeElement(element, indent: configuration.prettyPrinted ? "  " : "")
             xml += elementXML
         }

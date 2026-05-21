@@ -436,14 +436,24 @@ final class WorkitemBuilderTests: XCTestCase {
     }
     
     func testParseInputOutputSequences() {
+        // Per PS3.3 Table 10-3a, an Input/Output Information item carries its
+        // SOP Class/Instance UIDs nested inside a Referenced SOP Sequence
+        // (0008,1199), not at the item top level.
         let json: [String: Any] = [
             UPSTag.sopInstanceUID: ["vr": "UI", "Value": ["1.2.3"]],
             UPSTag.inputInformationSequence: [
                 "vr": "SQ",
                 "Value": [
                     [
-                        UPSTag.referencedSOPClassUID: ["vr": "UI", "Value": ["1.2.840.10008.5.1.4.1.1.2"]],
-                        UPSTag.referencedSOPInstanceUID: ["vr": "UI", "Value": ["4.5.6.7.8"]]
+                        UPSTag.referencedSOPSequence: [
+                            "vr": "SQ",
+                            "Value": [
+                                [
+                                    UPSTag.referencedSOPClassUID: ["vr": "UI", "Value": ["1.2.840.10008.5.1.4.1.1.2"]],
+                                    UPSTag.referencedSOPInstanceUID: ["vr": "UI", "Value": ["4.5.6.7.8"]]
+                                ]
+                            ]
+                        ]
                     ]
                 ]
             ],
@@ -451,8 +461,15 @@ final class WorkitemBuilderTests: XCTestCase {
                 "vr": "SQ",
                 "Value": [
                     [
-                        UPSTag.referencedSOPClassUID: ["vr": "UI", "Value": ["1.2.840.10008.5.1.4.1.1.7"]],
-                        UPSTag.referencedSOPInstanceUID: ["vr": "UI", "Value": ["9.10.11.12"]]
+                        UPSTag.referencedSOPSequence: [
+                            "vr": "SQ",
+                            "Value": [
+                                [
+                                    UPSTag.referencedSOPClassUID: ["vr": "UI", "Value": ["1.2.840.10008.5.1.4.1.1.7"]],
+                                    UPSTag.referencedSOPInstanceUID: ["vr": "UI", "Value": ["9.10.11.12"]]
+                                ]
+                            ]
+                        ]
                     ]
                 ]
             ]

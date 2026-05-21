@@ -1286,8 +1286,15 @@ extension Workitem {
             return nil
         }
         let instances = items.compactMap { item -> ReferencedInstance? in
-            guard let sopClassUID = extractString(from: item, tag: UPSTag.referencedSOPClassUID),
-                  let sopInstanceUID = extractString(from: item, tag: UPSTag.referencedSOPInstanceUID) else {
+            // SOP Class/Instance UIDs are nested inside the Referenced SOP
+            // Sequence (0008,1199) per PS3.3 Table 10-3a — matching how
+            // `referencedInstanceToJSON` writes them. (The previous code read
+            // them from the item top level, so every round-trip yielded nil.)
+            guard let sopSequence = item[UPSTag.referencedSOPSequence] as? [String: Any],
+                  let sopItems = sopSequence["Value"] as? [[String: Any]],
+                  let sopItem = sopItems.first,
+                  let sopClassUID = extractString(from: sopItem, tag: UPSTag.referencedSOPClassUID),
+                  let sopInstanceUID = extractString(from: sopItem, tag: UPSTag.referencedSOPInstanceUID) else {
                 return nil
             }
             return ReferencedInstance(
