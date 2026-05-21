@@ -503,13 +503,26 @@ final class DICOMViewerTests: XCTestCase {
 
     func testPGMDataFormat() {
         let pgmData = createPGMData(pixels: [0.0, 0.5, 1.0, 0.75], width: 2, height: 2)
-        let headerString = String(data: pgmData.prefix(20), encoding: .ascii) ?? ""
+        // A binary "P5" PGM is three ASCII header lines (magic, dimensions,
+        // maxval) followed by raw pixel bytes. Pixel bytes >= 0x80 are not
+        // valid ASCII, so decode only up to the third newline — feeding the
+        // pixel data to an ASCII decoder yields nil.
+        var newlineCount = 0
+        var headerLength = 0
+        for byte in pgmData {
+            headerLength += 1
+            if byte == 0x0A {
+                newlineCount += 1
+                if newlineCount == 3 { break }
+            }
+        }
+        let headerString = String(decoding: pgmData.prefix(headerLength), as: UTF8.self)
         XCTAssertTrue(headerString.hasPrefix("P5\n"))
         XCTAssertTrue(headerString.contains("2 2"))
         XCTAssertTrue(headerString.contains("255"))
-        // Header + 4 pixel bytes
-        let headerEnd = headerString.range(of: "255\n")
-        XCTAssertNotNil(headerEnd)
+        XCTAssertTrue(headerString.hasSuffix("255\n"))
+        // Header + one byte per pixel.
+        XCTAssertEqual(pgmData.count, headerLength + 4)
     }
 
     func testPGMDataPixelValues() {

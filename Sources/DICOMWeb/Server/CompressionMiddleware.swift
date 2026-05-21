@@ -370,16 +370,12 @@ public struct CompressionMiddleware: Sendable {
             0xff         // OS (unknown)
         ])
         
-        // Compressed data (without zlib header/trailer)
-        // Skip first 2 bytes (zlib header) and last 4 bytes (zlib checksum)
-        let zlibHeaderSize = 2
-        let zlibTrailerSize = 4
-        if compressedSize > zlibHeaderSize + zlibTrailerSize {
-            gzipData.append(contentsOf: destinationBuffer[zlibHeaderSize..<(compressedSize - zlibTrailerSize)])
-        } else {
-            // If data is too small, just use the raw compressed data
-            gzipData.append(contentsOf: destinationBuffer[0..<compressedSize])
-        }
+        // Apple's COMPRESSION_ZLIB emits a *raw* DEFLATE stream (RFC 1951) —
+        // there is no zlib header/trailer to strip. Append the deflate stream
+        // verbatim between the gzip header and trailer. (The previous code
+        // stripped a non-existent 2-byte header + 4-byte trailer, corrupting
+        // the stream.)
+        gzipData.append(contentsOf: destinationBuffer[0..<compressedSize])
         
         // Gzip trailer: CRC32 (4 bytes) + original size (4 bytes)
         let crc = crc32(data: data)
@@ -535,12 +531,10 @@ extension CompressionMiddleware {
                           (Int(data[data.count - 2]) << 16) |
                           (Int(data[data.count - 1]) << 24)
         
-        // Wrap compressed data with zlib header for decompression
-        var zlibData = Data([0x78, 0x9c]) // Default zlib header
-        zlibData.append(contentsOf: compressedData)
-        
-        // Decompress
-        return decompressZlib(data: zlibData, expectedSize: expectedSize)
+        // The gzip payload is a raw DEFLATE stream. COMPRESSION_ZLIB consumes
+        // raw DEFLATE directly — prepending a zlib header (0x78 0x9c) would
+        // corrupt the input. Decode the payload as-is.
+        return decompressZlib(data: Data(compressedData), expectedSize: expectedSize)
     }
     
     /// Decompresses deflate (zlib) data
@@ -552,27 +546,37 @@ extension CompressionMiddleware {
         return decompressZlib(data: data, expectedSize: data.count * 10)
     }
     
-    /// Decompresses zlib data
+    /// Decompresses a raw DEFLATE stream (RFC 1951) via COMPRESSION_ZLIB.
+    ///
+    /// `compression_decode_buffer` gives no "destination too small" signal — it
+    /// fills the buffer and returns the byte count. A result that exactly fills
+    /// the buffer therefore means the output was *probably* truncated, so the
+    /// buffer is grown and the decode retried. `expectedSize` is only a starting
+    /// hint (exact for gzip via the ISIZE trailer, a guess for bare deflate).
     private func decompressZlib(data: Data, expectedSize: Int) -> Data? {
-        let destinationBufferSize = max(expectedSize, data.count * 4)
-        var destinationBuffer = [UInt8](repeating: 0, count: destinationBufferSize)
-        
-        var sourceBuffer = [UInt8](data)
-        
-        let decompressedSize = compression_decode_buffer(
-            &destinationBuffer,
-            destinationBufferSize,
-            &sourceBuffer,
-            data.count,
-            nil,
-            COMPRESSION_ZLIB
-        )
-        
-        guard decompressedSize > 0 else {
-            return nil
+        let sourceBuffer = [UInt8](data)
+        guard !sourceBuffer.isEmpty else { return nil }
+        var capacity = max(expectedSize + 1, sourceBuffer.count * 4, 1024)
+
+        for _ in 0..<12 {
+            var destinationBuffer = [UInt8](repeating: 0, count: capacity)
+            var src = sourceBuffer
+            let decompressedSize = compression_decode_buffer(
+                &destinationBuffer,
+                capacity,
+                &src,
+                sourceBuffer.count,
+                nil,
+                COMPRESSION_ZLIB
+            )
+            guard decompressedSize > 0 else { return nil }
+            if decompressedSize < capacity {
+                return Data(destinationBuffer[0..<decompressedSize])
+            }
+            // Buffer filled exactly — output may be truncated; grow and retry.
+            capacity *= 4
         }
-        
-        return Data(destinationBuffer[0..<decompressedSize])
+        return nil
     }
     #endif
 }
