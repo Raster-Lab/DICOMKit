@@ -61,14 +61,24 @@ public struct MainView: View {
             DICOMVolumeViewerView(viewModel: viewModel.volumeViewerViewModel)
         case .jp3dComparison:
             JP3DComparisonView(viewModel: viewModel.jp3dComparisonViewModel)
+        case .aiAnalysis:
+            AIAnalysisView(viewModel: viewModel.aiAnalysisViewModel)
         case .networking:
             NetworkingView(viewModel: viewModel.networkingViewModel)
         case .dicomWeb:
             DICOMwebView(viewModel: viewModel.dicomWebViewModel)
+        case .cloudIntegration:
+            CloudIntegrationView(viewModel: viewModel.cloudIntegrationViewModel)
+        case .gateway:
+            GatewayView(viewModel: viewModel.gatewayViewModel)
         case .reporting:
             StructuredReportView(viewModel: StructuredReportViewModel())
         case .tools:
             DataExchangeView(viewModel: DataExchangeViewModel())
+        case .validation:
+            ValidationView(viewModel: viewModel.validationViewModel)
+        case .archiveManagement:
+            ArchiveManagementView(viewModel: viewModel.archiveManagementViewModel)
         case .cliWorkshop:
             CLIWorkshopView(viewModel: viewModel.cliWorkshopViewModel)
                 .onAppear {

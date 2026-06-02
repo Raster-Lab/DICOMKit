@@ -89,11 +89,8 @@ struct MetadataPresenter {
             
             let valueStr = formatElementValue(element)
             let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-            let line = String(format: "%@ %-40s VR=%@ %s",
-                             tag.description,
-                             tagName,
-                             element.vr.rawValue,
-                             valueStr)
+            let paddedName = tagName.padding(toLength: max(tagName.count, 40), withPad: " ", startingAt: 0)
+            let line = "\(tag.description) \(paddedName) VR=\(element.vr.rawValue) \(valueStr)"
             lines.append(line)
         }
         
@@ -241,7 +238,51 @@ struct MetadataPresenter {
             }
             return stringValue
         }
-        
+
+        // Numeric VRs — decode to human-readable form
+        switch element.vr {
+        case .US:
+            if let vals = element.uint16Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .SS:
+            if let vals = element.int16Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .UL:
+            if let vals = element.uint32Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .SL:
+            if let vals = element.int32Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .FL:
+            if let vals = element.float32Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .FD:
+            if let vals = element.float64Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .AT:
+            // Attribute Tag: pairs of UInt16 groups/elements
+            if element.length >= 4 {
+                let data = element.valueData
+                var tags: [String] = []
+                var offset = data.startIndex
+                while data.distance(from: offset, to: data.endIndex) >= 4 {
+                    let g = UInt16(data[offset]) | (UInt16(data[data.index(offset, offsetBy: 1)]) << 8)
+                    let e = UInt16(data[data.index(offset, offsetBy: 2)]) | (UInt16(data[data.index(offset, offsetBy: 3)]) << 8)
+                    tags.append(String(format: "(%04X,%04X)", g, e))
+                    offset = data.index(offset, offsetBy: 4)
+                }
+                if !tags.isEmpty { return tags.joined(separator: "\\") }
+            }
+        default:
+            break
+        }
+
         let valueLength = element.length
         if valueLength > 1024 {
             let mb = Double(valueLength) / 1_048_576.0
@@ -249,7 +290,7 @@ struct MetadataPresenter {
         } else if valueLength > 0 {
             return "<Binary data: \(valueLength) bytes>"
         }
-        
+
         return ""
     }
     

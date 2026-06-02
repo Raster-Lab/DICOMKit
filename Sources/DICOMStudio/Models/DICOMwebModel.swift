@@ -16,16 +16,18 @@ public enum DICOMwebTab: String, Sendable, Equatable, Hashable, CaseIterable {
     case wadoRS              = "WADO_RS"
     case stowRS              = "STOW_RS"
     case upsRS               = "UPS_RS"
+    case jpipStreaming        = "JPIP_STREAMING"
     case performanceDashboard = "PERFORMANCE_DASHBOARD"
 
     /// Human-readable display name.
     public var displayName: String {
         switch self {
         case .serverConfig:         return "Server Config"
-        case .qidoRS:               return "dicom-wado query"
-        case .wadoRS:               return "dicom-wado retrieve"
-        case .stowRS:               return "dicom-wado store"
-        case .upsRS:                return "dicom-wado ups"
+        case .qidoRS:               return "QIDO-RS"
+        case .wadoRS:               return "WADO-RS"
+        case .stowRS:               return "STOW-RS"
+        case .upsRS:                return "UPS-RS"
+        case .jpipStreaming:         return "JPIP"
         case .performanceDashboard: return "Performance"
         }
     }
@@ -38,6 +40,7 @@ public enum DICOMwebTab: String, Sendable, Equatable, Hashable, CaseIterable {
         case .wadoRS:               return "arrow.down.circle"
         case .stowRS:               return "arrow.up.circle"
         case .upsRS:                return "list.bullet.clipboard"
+        case .jpipStreaming:         return "arrow.down.to.line"
         case .performanceDashboard: return "chart.bar"
         }
     }

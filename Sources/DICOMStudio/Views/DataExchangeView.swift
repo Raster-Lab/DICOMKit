@@ -109,6 +109,10 @@ public struct DataExchangeView: View {
             pdfContent
         case .batchOperations:
             batchContent
+        case .compression:
+            compressionContent
+        case .secondaryCapture:
+            secondaryCaptureContent
         }
     }
 
@@ -499,6 +503,209 @@ public struct DataExchangeView: View {
         }
     }
 
+    // MARK: - Compression
+
+    private var compressionContent: some View {
+        HSplitView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("DICOM Compression")
+                    .font(.headline)
+
+                GroupBox("Input") {
+                    HStack {
+                        TextField("DICOM file or directory path", text: $viewModel.compressionInputPath)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Compression input path")
+                        Button("Browse") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseFiles = true
+                            panel.canChooseDirectories = true
+                            if panel.runModal() == .OK {
+                                viewModel.compressionInputPath = panel.url?.path ?? ""
+                            }
+                        }
+                    }
+                }
+
+                GroupBox("Algorithm") {
+                    Picker("Transfer Syntax", selection: $viewModel.compressionAlgorithm) {
+                        ForEach(CompressionAlgorithmHelpers.algorithms, id: \.cli) { alg in
+                            Text(alg.label).tag(alg.cli)
+                        }
+                    }
+                    .accessibilityLabel("Compression algorithm")
+
+                    if CompressionAlgorithmHelpers.isLossy(viewModel.compressionAlgorithm) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Lossy Quality: \(Int(viewModel.compressionQuality))")
+                                .font(.caption)
+                            Slider(value: $viewModel.compressionQuality, in: 1...100, step: 1)
+                                .accessibilityLabel("Compression quality slider")
+                        }
+                    }
+                }
+
+                GroupBox("Output") {
+                    HStack {
+                        TextField("Output directory path", text: $viewModel.compressionOutputPath)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Compression output directory")
+                        Button("Browse") {
+                            let panel = NSOpenPanel()
+                            panel.canChooseDirectories = true
+                            panel.canChooseFiles = false
+                            if panel.runModal() == .OK {
+                                viewModel.compressionOutputPath = panel.url?.path ?? ""
+                            }
+                        }
+                    }
+                }
+
+                Button("Run Compression") {
+                    viewModel.runCompression()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.compressionInputPath.isEmpty || viewModel.compressionOutputPath.isEmpty)
+                .accessibilityLabel("Run DICOM compression")
+
+                Spacer()
+            }
+            .padding()
+            .frame(minWidth: 280)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Output", systemImage: "terminal")
+                        .font(.headline)
+                    Spacer()
+                    if !viewModel.compressionResult.isEmpty {
+                        Button("Clear") { viewModel.compressionResult = "" }
+                            .font(.caption)
+                    }
+                }
+                ScrollView {
+                    Text(viewModel.compressionResult.isEmpty ? "Results will appear here." : viewModel.compressionResult)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(viewModel.compressionResult.isEmpty ? .secondary : .primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .padding()
+            .frame(minWidth: 220)
+        }
+    }
+
+    // MARK: - Secondary Capture
+
+    private var secondaryCaptureContent: some View {
+        HSplitView {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Secondary Capture")
+                    .font(.headline)
+
+                GroupBox("Input Image") {
+                    HStack {
+                        TextField("Image file (PNG, JPEG, TIFF, BMP)", text: $viewModel.secondaryCaptureInputPath)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Input image path for secondary capture")
+                        Button("Browse") {
+                            let panel = NSOpenPanel()
+                            panel.allowedContentTypes = [.png, .jpeg, .tiff, .bmp]
+                            if panel.runModal() == .OK {
+                                viewModel.secondaryCaptureInputPath = panel.url?.path ?? ""
+                            }
+                        }
+                    }
+                }
+
+                GroupBox("Patient / Study Metadata") {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
+                        GridRow {
+                            Text("Patient Name")
+                                .gridColumnAlignment(.trailing)
+                            TextField("LAST^FIRST^MIDDLE", text: $viewModel.secondaryCapturePatientName)
+                                .textFieldStyle(.roundedBorder)
+                                .accessibilityLabel("Patient name")
+                        }
+                        GridRow {
+                            Text("Patient ID")
+                                .gridColumnAlignment(.trailing)
+                            TextField("Patient identifier", text: $viewModel.secondaryCapturePatientID)
+                                .textFieldStyle(.roundedBorder)
+                                .accessibilityLabel("Patient ID")
+                        }
+                        GridRow {
+                            Text("Study Date")
+                                .gridColumnAlignment(.trailing)
+                            TextField("YYYYMMDD", text: $viewModel.secondaryCaptureStudyDate)
+                                .textFieldStyle(.roundedBorder)
+                                .accessibilityLabel("Study date")
+                        }
+                        GridRow {
+                            Text("Modality")
+                                .gridColumnAlignment(.trailing)
+                            TextField("SC", text: $viewModel.secondaryCaptureModality)
+                                .textFieldStyle(.roundedBorder)
+                                .accessibilityLabel("Modality")
+                        }
+                    }
+                }
+
+                GroupBox("Output") {
+                    HStack {
+                        TextField("Output DICOM path (.dcm)", text: $viewModel.secondaryCaptureOutputPath)
+                            .textFieldStyle(.roundedBorder)
+                            .accessibilityLabel("Output DICOM file path")
+                        Button("Browse") {
+                            let panel = NSSavePanel()
+                            panel.allowedContentTypes = [.init(filenameExtension: "dcm")!]
+                            if panel.runModal() == .OK {
+                                viewModel.secondaryCaptureOutputPath = panel.url?.path ?? ""
+                            }
+                        }
+                    }
+                }
+
+                Button("Create Secondary Capture") {
+                    viewModel.runSecondaryCapture()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.secondaryCaptureInputPath.isEmpty || viewModel.secondaryCaptureOutputPath.isEmpty)
+                .accessibilityLabel("Create Secondary Capture DICOM file")
+
+                Spacer()
+            }
+            .padding()
+            .frame(minWidth: 280)
+
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Label("Output", systemImage: "terminal")
+                        .font(.headline)
+                    Spacer()
+                    if !viewModel.secondaryCaptureResult.isEmpty {
+                        Button("Clear") { viewModel.secondaryCaptureResult = "" }
+                            .font(.caption)
+                    }
+                }
+                ScrollView {
+                    Text(viewModel.secondaryCaptureResult.isEmpty ? "Results will appear here." : viewModel.secondaryCaptureResult)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(viewModel.secondaryCaptureResult.isEmpty ? .secondary : .primary)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .background(Color(nsColor: .textBackgroundColor))
+                .clipShape(RoundedRectangle(cornerRadius: 6))
+            }
+            .padding()
+            .frame(minWidth: 220)
+        }
+    }
+
     // MARK: - Batch Operations
 
     private var batchContent: some View {
@@ -817,6 +1024,26 @@ struct AddBatchJobSheet: View {
             }
         }
         .frame(minWidth: 420, minHeight: 380)
+    }
+}
+
+// MARK: - Compression Algorithms Helpers
+
+/// Platform-independent compression algorithm mapping for DataExchangeView.
+public enum CompressionAlgorithmHelpers: Sendable {
+    public static let algorithms: [(label: String, cli: String)] = [
+        ("RLE Lossless (1.2.840.10008.1.2.5)", "rle"),
+        ("JPEG Baseline (1.2.840.10008.1.2.4.50)", "jpeg-baseline"),
+        ("JPEG Lossless (1.2.840.10008.1.2.4.70)", "jpeg-lossless"),
+        ("JPEG-LS Lossless (1.2.840.10008.1.2.4.80)", "jpeg-ls-lossless"),
+        ("JPEG-LS Near-Lossless (1.2.840.10008.1.2.4.81)", "jpeg-ls"),
+        ("JPEG 2000 Lossless (1.2.840.10008.1.2.4.90)", "j2k-lossless"),
+        ("JPEG 2000 Lossy (1.2.840.10008.1.2.4.91)", "j2k"),
+        ("High-Throughput J2K (1.2.840.10008.1.2.4.202)", "htj2k"),
+    ]
+
+    public static func isLossy(_ cliToken: String) -> Bool {
+        return cliToken == "jpeg-baseline" || cliToken == "jpeg-ls" || cliToken == "j2k" || cliToken == "htj2k"
     }
 }
 #endif

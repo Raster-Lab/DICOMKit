@@ -88,6 +88,21 @@ public final class MainViewModel {
     /// Persistent J2K Test Bench ViewModel — survives tab switches.
     public var j2kTestBenchViewModel: J2KTestBenchViewModel
 
+    /// Persistent AI Analysis ViewModel — survives tab switches.
+    public var aiAnalysisViewModel: AIAnalysisViewModel
+
+    /// Persistent Cloud Integration ViewModel — survives tab switches.
+    public var cloudIntegrationViewModel: CloudIntegrationViewModel
+
+    /// Persistent DICOM Gateway ViewModel — survives tab switches.
+    public var gatewayViewModel: GatewayViewModel
+
+    /// Persistent Archive Management ViewModel — survives tab switches.
+    public var archiveManagementViewModel: ArchiveManagementViewModel
+
+    /// Persistent Validation ViewModel (dicom-validate parity) — survives tab switches.
+    public var validationViewModel: ValidationViewModel
+
     /// Creates the main ViewModel with dependency-injected services.
     public init(
         settingsService: SettingsService = SettingsService(),
@@ -139,6 +154,11 @@ public final class MainViewModel {
 
         self.cliWorkshopViewModel = CLIWorkshopViewModel()
         self.j2kTestBenchViewModel = J2KTestBenchViewModel(storageService: storageService)
+        self.aiAnalysisViewModel = AIAnalysisViewModel()
+        self.cloudIntegrationViewModel = CloudIntegrationViewModel()
+        self.gatewayViewModel = GatewayViewModel()
+        self.archiveManagementViewModel = ArchiveManagementViewModel()
+        self.validationViewModel = ValidationViewModel()
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
 

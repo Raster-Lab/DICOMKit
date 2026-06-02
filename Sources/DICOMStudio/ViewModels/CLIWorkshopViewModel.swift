@@ -1019,6 +1019,18 @@ public final class CLIWorkshopViewModel {
             await executeDicomUPS()
         case "dicom-convert":
             await executeDicomConvert()
+        case "dicom-validate":
+            await executeDicomValidate()
+        case "dicom-anon":
+            await executeDicomAnon()
+        case "dicom-info":
+            await executeDicomInfo()
+        case "dicom-dump":
+            await executeDicomDump()
+        case "dicom-tags":
+            await executeDicomTags()
+        case "dicom-diff":
+            await executeDicomDiff()
         default:
             appendConsoleOutput("⚠ Command execution not yet supported for \(tool.name).\n")
             consoleStatus = .idle
@@ -1609,6 +1621,1035 @@ public final class CLIWorkshopViewModel {
 
         guard !host.isEmpty else { return nil }
         return (host, port)
+    }
+
+    // MARK: - dicom-validate Execution
+
+    /// Validates DICOM files for IOD conformance, matching dicom-validate CLI output exactly.
+    private func executeDicomValidate() async {
+        let inputPath = paramValue("inputPath")
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: Input path is required.\n")
+            addToHistory(toolName: "dicom-validate", command: commandPreview, exitCode: 1, output: "Missing input path")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            return
+        }
+
+        let levelStr  = paramValue("level")
+        let level     = Int(levelStr) ?? 3
+        let iod       = paramValue("iod")
+        let detailed  = paramValue("detailed") == "true"
+        let recursive = paramValue("recursive") == "true"
+        let strict    = paramValue("strict") == "true"
+        let format    = paramValue("format").isEmpty ? "text" : paramValue("format")
+        let outputPath = paramValue("output")
+        let force     = paramValue("force") == "true"
+
+        // Gain sandbox access via security-scoped URLs registered by the file picker.
+        let inputScopedURL  = securityScopedURLs["inputPath"]
+        let outputScopedURL = securityScopedURLs["output"]
+        let accessingInput  = inputScopedURL?.startAccessingSecurityScopedResource()  ?? false
+        let accessingOutput = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if accessingInput  { inputScopedURL?.stopAccessingSecurityScopedResource() }
+            if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() }
+        }
+
+        // Delegate to ValidationViewModel's engine via the shared helpers.
+        // Pass the scoped URLs so it can re-acquire the scope in its own Task.
+        let vm = ValidationViewModel()
+        vm.inputPath   = (inputScopedURL ?? URL(fileURLWithPath: inputPath)).path
+        vm.level       = level
+        vm.iod         = iod
+        vm.detailed    = detailed
+        vm.recursive   = recursive
+        vm.strict      = strict
+        vm.format      = format == "json" ? .json : .text
+        vm.outputPath  = outputPath
+        vm.force       = force
+        vm.inputScopedURL  = inputScopedURL
+        vm.outputScopedURL = outputScopedURL
+
+        vm.runValidation()
+
+        // Wait for the async operation to complete
+        var waited = 0
+        while vm.isRunning && waited < 30 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            waited += 1
+        }
+
+        let output = vm.validationOutput
+        appendConsoleOutput(output)
+
+        let hasErrors   = vm.lastResults.contains { !$0.errors.isEmpty }
+        let hasWarnings = vm.lastResults.contains { !$0.warnings.isEmpty }
+        let code: Int = hasErrors ? 1 : (strict && hasWarnings ? 2 : 0)
+
+        // ValidationViewModel already writes the file if outputPath is set.
+        // No duplicate write needed here.
+
+        addToHistory(toolName: "dicom-validate", command: commandPreview, exitCode: code, output: output)
+        consoleStatus = code == 0 ? .success : .error
+        service.setConsoleStatus(code == 0 ? .success : .error)
+    }
+
+    // MARK: - dicom-anon Execution
+
+    /// Anonymizes DICOM files, matching dicom-anon CLI output exactly.
+    private func executeDicomAnon() async {
+        let inputPath = paramValue("inputPath")
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: Input path is required.\n")
+            addToHistory(toolName: "dicom-anon", command: commandPreview, exitCode: 1, output: "Missing input path")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            return
+        }
+
+        let outputPath     = paramValue("output")
+        let profileStr     = paramValue("profile").isEmpty ? "basic" : paramValue("profile")
+        let shiftDaysStr   = paramValue("shift-dates")
+        let regenUIDs      = paramValue("regenerate-uids") == "true"
+        let removeTagsRaw  = paramValue("remove")
+        let replaceRaw     = paramValue("replace")
+        let keepTagsRaw    = paramValue("keep")
+        let recursive      = paramValue("recursive") == "true"
+        let dryRun         = paramValue("dry-run") == "true"
+        let backup         = paramValue("backup") == "true"
+        let auditLogPath   = paramValue("audit-log")
+        let force          = paramValue("force") == "true"
+        let verbose        = paramValue("verbose") == "true"
+
+        // Gain sandbox access via security-scoped URLs registered by the file picker.
+        let inputScopedURL  = securityScopedURLs["inputPath"]
+        let outputScopedURL = securityScopedURLs["output"]
+        let accessingInput  = inputScopedURL?.startAccessingSecurityScopedResource()  ?? false
+        let accessingOutput = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if accessingInput  { inputScopedURL?.stopAccessingSecurityScopedResource() }
+            if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() }
+        }
+
+        // Map CLI profile string to model enum
+        let profile: AnonymizationProfile
+        switch profileStr {
+        case "clinical-trial": profile = .clinicalTrial
+        case "research":       profile = .research
+        default:               profile = .basic
+        }
+
+        let shiftDays = Int(shiftDaysStr)
+
+        // Parse comma-separated tag lists
+        let removeTags  = removeTagsRaw.isEmpty ? [] : removeTagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let replacePairs = replaceRaw.isEmpty  ? [] : replaceRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let keepTags    = keepTagsRaw.isEmpty  ? [] : keepTagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+
+        // Build a SecurityViewModel scoped just for this run.
+        // Resolve a sandbox-writable output path: scoped URL → ~/Downloads path → fallback.
+        let (resolvedOutputPath, outputRedirectNote) = SecurityViewModel.resolveWritableOutput(
+            path: outputScopedURL?.path ?? outputPath,
+            scopedURL: outputScopedURL
+        )
+        if let note = outputRedirectNote { appendConsoleOutput(note) }
+
+        let secVM = SecurityViewModel()
+        secVM.anonInputPath       = (inputScopedURL ?? URL(fileURLWithPath: inputPath)).path
+        secVM.anonOutputPath      = resolvedOutputPath
+        secVM.anonProfile         = profile
+        secVM.anonShiftDatesEnabled = shiftDays != nil
+        secVM.anonShiftDays       = shiftDays ?? 0
+        secVM.anonRegenerateUIDs  = regenUIDs
+        secVM.anonRemoveTags      = removeTags
+        secVM.anonReplacePairs    = replacePairs
+        secVM.anonKeepTags        = keepTags
+        secVM.anonRecursive       = recursive
+        secVM.anonDryRun          = dryRun
+        secVM.anonBackup          = backup
+        secVM.anonAuditLogPath    = auditLogPath
+        secVM.anonForce           = force
+        secVM.anonVerbose         = verbose
+        secVM.anonInputScopedURL  = inputScopedURL
+        secVM.anonOutputScopedURL = outputScopedURL
+
+        secVM.runAnonymization()
+
+        var waited = 0
+        while secVM.anonIsRunning && waited < 300 {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+            waited += 1
+        }
+
+        let output = secVM.anonOutput
+        appendConsoleOutput(output)
+
+        let exitCode: Int = output.contains("Failed: 0") || output.contains("Total files: 0") ? 0 :
+                              output.lowercased().contains("error") ? 1 : 0
+        addToHistory(toolName: "dicom-anon", command: commandPreview, exitCode: exitCode, output: output)
+        consoleStatus = exitCode == 0 ? .success : .error
+        service.setConsoleStatus(exitCode == 0 ? .success : .error)
+    }
+
+    // MARK: - dicom-info Execution
+
+    /// Displays DICOM file metadata — output matches `dicom-info` CLI tool exactly.
+    private func executeDicomInfo() async {
+        let inputPath = paramValue("inputPath")
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: Input file path is required.\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-info", command: commandPreview, exitCode: 1, output: "Missing input path")
+            return
+        }
+
+        let format      = paramValue("format").isEmpty ? "text" : paramValue("format")
+        let tagFilters  = paramValue("tag").isEmpty ? [String]() :
+                          paramValue("tag").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let showPrivate = paramValue("show-private") == "true"
+        let statistics  = paramValue("statistics") == "true"
+        let force       = paramValue("force") == "true"
+
+        let inputScopedURL = securityScopedURLs["inputPath"]
+        let accessing = inputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessing { inputScopedURL?.stopAccessingSecurityScopedResource() } }
+
+        let fileURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
+            do {
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    return ("Error: File not found: \(fileURL.path)\n", 1)
+                }
+                let data = try Data(contentsOf: fileURL)
+                let dicomFile = try DICOMFile.read(from: data, force: force)
+                let rendered = Self.renderInfoOutput(
+                    dicomFile: dicomFile, format: format,
+                    tagFilters: tagFilters, showPrivate: showPrivate, statistics: statistics
+                )
+                return (rendered, 0)
+            } catch {
+                return ("Error: \(error.localizedDescription)\n", 1)
+            }
+        }.value
+
+        appendConsoleOutput(output)
+        addToHistory(toolName: "dicom-info", command: commandPreview, exitCode: exitCode, output: output)
+        consoleStatus = exitCode == 0 ? .success : .error
+        service.setConsoleStatus(exitCode == 0 ? .success : .error)
+    }
+
+    /// Renders dicom-info output matching MetadataPresenter exactly.
+    nonisolated private static func renderInfoOutput(
+        dicomFile: DICOMFile,
+        format: String,
+        tagFilters: [String],
+        showPrivate: Bool,
+        statistics: Bool
+    ) -> String {
+        switch format {
+        case "json": return renderInfoJSON(dicomFile: dicomFile, tagFilters: tagFilters, showPrivate: showPrivate, statistics: statistics)
+        case "csv":  return renderInfoCSV(dicomFile: dicomFile, tagFilters: tagFilters, showPrivate: showPrivate)
+        default:     return renderInfoText(dicomFile: dicomFile, tagFilters: tagFilters, showPrivate: showPrivate, statistics: statistics)
+        }
+    }
+
+    nonisolated private static func renderInfoText(dicomFile: DICOMFile, tagFilters: [String], showPrivate: Bool, statistics: Bool) -> String {
+        var out = ""
+        if statistics {
+            out += "=== File Statistics ===\n"
+            if let ts = dicomFile.fileMetaInformation.string(for: .transferSyntaxUID) { out += "Transfer Syntax: \(ts)\n" }
+            if let sop = dicomFile.dataSet.string(for: .sopClassUID)                  { out += "SOP Class: \(sop)\n" }
+            if let mod = dicomFile.dataSet.string(for: .modality)                     { out += "Modality: \(mod)\n" }
+            out += "\n"
+        }
+        out += "=== File Meta Information ===\n"
+        out += renderInfoDataSetText(dicomFile.fileMetaInformation, tagFilters: tagFilters, showPrivate: showPrivate)
+        out += "\n=== Main Data Set ===\n"
+        out += renderInfoDataSetText(dicomFile.dataSet, tagFilters: tagFilters, showPrivate: showPrivate)
+        return out
+    }
+
+    nonisolated private static func renderInfoDataSetText(_ dataSet: DataSet, tagFilters: [String], showPrivate: Bool) -> String {
+        var lines: [String] = []
+        for tag in dataSet.tags {
+            guard let element = dataSet[tag] else { continue }
+            if tag.isPrivate && !showPrivate { continue }
+            if !tagFilters.isEmpty {
+                let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? ""
+                let matched = tagFilters.contains {
+                    tagName.localizedCaseInsensitiveContains($0) ||
+                    tag.description.localizedCaseInsensitiveContains($0)
+                }
+                guard matched else { continue }
+            }
+            let name  = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
+            let value = infoFormatValue(element)
+            let paddedName = name.padding(toLength: max(name.count, 40), withPad: " ", startingAt: 0)
+            lines.append("\(tag.description) \(paddedName) VR=\(element.vr.rawValue) \(value)")
+        }
+        return lines.joined(separator: "\n") + "\n"
+    }
+
+    nonisolated private static func renderInfoJSON(dicomFile: DICOMFile, tagFilters: [String], showPrivate: Bool, statistics: Bool) -> String {
+        var root: [String: Any] = [:]
+        if statistics {
+            var stats: [String: String] = [:]
+            if let ts  = dicomFile.fileMetaInformation.string(for: .transferSyntaxUID) { stats["transferSyntax"] = ts }
+            if let sop = dicomFile.dataSet.string(for: .sopClassUID)                   { stats["sopClass"] = sop }
+            if let mod = dicomFile.dataSet.string(for: .modality)                      { stats["modality"] = mod }
+            root["statistics"] = stats
+        }
+        root["fileMetaInformation"] = infoDataSetToJSON(dicomFile.fileMetaInformation, tagFilters: tagFilters, showPrivate: showPrivate)
+        root["dataSet"] = infoDataSetToJSON(dicomFile.dataSet, tagFilters: tagFilters, showPrivate: showPrivate)
+        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else { return "{}\n" }
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
+    }
+
+    nonisolated private static func infoDataSetToJSON(_ dataSet: DataSet, tagFilters: [String], showPrivate: Bool) -> [[String: Any]] {
+        var elements: [[String: Any]] = []
+        for tag in dataSet.tags {
+            guard let element = dataSet[tag] else { continue }
+            if tag.isPrivate && !showPrivate { continue }
+            if !tagFilters.isEmpty {
+                let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? ""
+                let matched = tagFilters.contains { tagName.localizedCaseInsensitiveContains($0) || tag.description.localizedCaseInsensitiveContains($0) }
+                guard matched else { continue }
+            }
+            var dict: [String: Any] = [
+                "tag": tag.description,
+                "name": DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown",
+                "vr": element.vr.rawValue,
+            ]
+            if let v = element.stringValue { dict["value"] = v }
+            elements.append(dict)
+        }
+        return elements
+    }
+
+    nonisolated private static func renderInfoCSV(dicomFile: DICOMFile, tagFilters: [String], showPrivate: Bool) -> String {
+        var csv = "Tag,Name,VR,Value\n"
+        for ds in [dicomFile.fileMetaInformation, dicomFile.dataSet] {
+            for tag in ds.tags {
+                guard let element = ds[tag] else { continue }
+                if tag.isPrivate && !showPrivate { continue }
+                if !tagFilters.isEmpty {
+                    let name2 = DataElementDictionary.lookup(tag: tag)?.name ?? ""
+                    let matched = tagFilters.contains { name2.localizedCaseInsensitiveContains($0) || tag.description.localizedCaseInsensitiveContains($0) }
+                    guard matched else { continue }
+                }
+                let name  = (DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown").replacingOccurrences(of: "\"", with: "\"\"")
+                let value = infoFormatValue(element).replacingOccurrences(of: "\"", with: "\"\"")
+                csv += "\"\(tag.description)\",\"\(name)\",\"\(element.vr.rawValue)\",\"\(value)\"\n"
+            }
+        }
+        return csv
+    }
+
+    nonisolated private static func infoFormatValue(_ element: DataElement) -> String {
+        if let s = element.stringValue {
+            return s.count > 80 ? String(s.prefix(77)) + "..." : s
+        }
+
+        // Numeric VRs — decode to human-readable form
+        switch element.vr {
+        case .US:
+            if let vals = element.uint16Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .SS:
+            if let vals = element.int16Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .UL:
+            if let vals = element.uint32Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .SL:
+            if let vals = element.int32Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .FL:
+            if let vals = element.float32Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .FD:
+            if let vals = element.float64Values, !vals.isEmpty {
+                return vals.map { String($0) }.joined(separator: "\\")
+            }
+        case .AT:
+            if element.length >= 4 {
+                let data = element.valueData
+                var tags: [String] = []
+                var offset = data.startIndex
+                while data.distance(from: offset, to: data.endIndex) >= 4 {
+                    let g = UInt16(data[offset]) | (UInt16(data[data.index(offset, offsetBy: 1)]) << 8)
+                    let e = UInt16(data[data.index(offset, offsetBy: 2)]) | (UInt16(data[data.index(offset, offsetBy: 3)]) << 8)
+                    tags.append(String(format: "(%04X,%04X)", g, e))
+                    offset = data.index(offset, offsetBy: 4)
+                }
+                if !tags.isEmpty { return tags.joined(separator: "\\") }
+            }
+        default:
+            break
+        }
+
+        let len = Int(element.length)
+        if len > 1_048_576 { return String(format: "<Binary data: %.2f MB>", Double(len) / 1_048_576.0) }
+        if len > 0 { return "<Binary data: \(len) bytes>" }
+        return "<empty>"
+    }
+
+    // MARK: - dicom-dump Execution
+
+    /// Hex-dumps a DICOM file — output matches `dicom-dump` CLI tool exactly.
+    private func executeDicomDump() async {
+        let inputPath = paramValue("inputPath")
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: Input file path is required.\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-dump", command: commandPreview, exitCode: 1, output: "Missing input path")
+            return
+        }
+
+        let tagFilter    = paramValue("tag")
+        let offsetStr    = paramValue("offset")
+        let lengthStr    = paramValue("length")
+        let bplStr       = paramValue("bytes-per-line")
+        let highlightTag = paramValue("highlight")
+        let annotate     = paramValue("annotate") == "true"
+        let verbose      = paramValue("verbose") == "true"
+        let force        = paramValue("force") == "true"
+        let bytesPerLine = Int(bplStr) ?? 16
+
+        let inputScopedURL = securityScopedURLs["inputPath"]
+        let accessing = inputScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer { if accessing { inputScopedURL?.stopAccessingSecurityScopedResource() } }
+
+        let fileURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
+            do {
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    return ("Error: File not found: \(fileURL.path)\n", 1)
+                }
+                let fileData = try Data(contentsOf: fileURL)
+
+                // --tag: dump only the value bytes of that tag
+                if !tagFilter.isEmpty {
+                    let dicomFile = try DICOMFile.read(from: fileData, force: force)
+                    guard let tag = Self.parseDumpTagStr(tagFilter) else {
+                        return ("Error: Invalid tag format '\(tagFilter)'. Use GGGG,EEEE (e.g. 7FE0,0010).\n", 1)
+                    }
+                    guard let element = dicomFile.dataSet[tag] ?? dicomFile.fileMetaInformation[tag] else {
+                        return ("Tag \(tag.description) not found in file.\n", 1)
+                    }
+                    let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
+                    var header = "Tag: \(tag.description)  \(name)  VR=\(element.vr.rawValue)  Length=\(element.length)\n"
+                    if verbose { header += "Value: \(Self.infoFormatValue(element))\n" }
+                    header += "\n"
+                    let dump = Self.hexDump(data: element.valueData, startOffset: 0, bytesPerLine: bytesPerLine, annotate: false, highlight: nil, verbose: verbose)
+                    return (header + dump, 0)
+                }
+
+                // Parse start offset
+                let startOffset: Int
+                if offsetStr.lowercased().hasPrefix("0x") {
+                    startOffset = Int(offsetStr.dropFirst(2), radix: 16) ?? 0
+                } else {
+                    startOffset = Int(offsetStr) ?? 0
+                }
+
+                let requestedLength = Int(lengthStr) ?? (fileData.count - startOffset)
+                let endOffset = min(startOffset + requestedLength, fileData.count)
+                guard startOffset < fileData.count else {
+                    return ("Error: Offset \(startOffset) is past end of file (\(fileData.count) bytes).\n", 1)
+                }
+                let dataSlice = fileData[startOffset..<endOffset]
+
+                let dicomFile: DICOMFile? = annotate ? (try? DICOMFile.read(from: fileData, force: force)) : nil
+                let highlightTagObj: Tag? = highlightTag.isEmpty ? nil : Self.parseDumpTagStr(highlightTag)
+
+                var header = "File: \(fileURL.lastPathComponent)  Size: \(fileData.count) bytes\n"
+                if startOffset > 0 || requestedLength < fileData.count {
+                    header += "Showing bytes \(startOffset)–\(endOffset - 1) of \(fileData.count)\n"
+                }
+                header += "\n"
+
+                let dump = Self.hexDump(
+                    data: Data(dataSlice), startOffset: startOffset,
+                    bytesPerLine: bytesPerLine, annotate: annotate,
+                    dicomFile: dicomFile, fileData: fileData,
+                    highlight: highlightTagObj, verbose: verbose
+                )
+                return (header + dump, 0)
+            } catch {
+                return ("Error: \(error.localizedDescription)\n", 1)
+            }
+        }.value
+
+        appendConsoleOutput(output)
+        addToHistory(toolName: "dicom-dump", command: commandPreview, exitCode: exitCode, output: output)
+        consoleStatus = exitCode == 0 ? .success : .error
+        service.setConsoleStatus(exitCode == 0 ? .success : .error)
+    }
+
+    /// Parses a GGGG,EEEE or GGGGEEEE tag string.
+    nonisolated private static func parseDumpTagStr(_ s: String) -> Tag? {
+        let t = s.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "")
+        if t.contains(",") {
+            let parts = t.split(separator: ",")
+            if parts.count == 2,
+               let g = UInt16(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
+               let e = UInt16(parts[1].trimmingCharacters(in: .whitespaces), radix: 16) {
+                return Tag(group: g, element: e)
+            }
+        } else if t.count == 8, let v = UInt32(t, radix: 16) {
+            return Tag(group: UInt16((v >> 16) & 0xFFFF), element: UInt16(v & 0xFFFF))
+        }
+        return nil
+    }
+
+    /// Produces a hex dump string matching HexDumper output (plain/no-color).
+    nonisolated private static func hexDump(
+        data: Data, startOffset: Int, bytesPerLine: Int,
+        annotate: Bool, dicomFile: DICOMFile? = nil, fileData: Data? = nil,
+        highlight: Tag? = nil, verbose: Bool = false
+    ) -> String {
+        // Build tag boundary annotations when annotate is on
+        var tagAnnotations: [Int: String] = [:]
+        if annotate, let df = dicomFile, let fd = fileData {
+            tagAnnotations = buildHexAnnotations(fileData: fd, dicomFile: df, verbose: verbose)
+        }
+
+        var out = ""
+        var dataIndex = 0
+        var currentOffset = startOffset
+
+        while dataIndex < data.count {
+            let lineEnd = min(dataIndex + bytesPerLine, data.count)
+            let lineData = data[dataIndex..<lineEnd]
+
+            out += String(format: "%08X  ", currentOffset)
+
+            var hexPart = ""
+            var asciiPart = ""
+            for (i, byte) in lineData.enumerated() {
+                hexPart += String(format: "%02X ", byte)
+                if i == bytesPerLine / 2 - 1 { hexPart += " " }  // extra gap at midpoint
+                asciiPart += (byte >= 32 && byte <= 126) ? String(UnicodeScalar(byte)) : "."
+            }
+            let padding = bytesPerLine - lineData.count
+            hexPart += String(repeating: "   ", count: padding)
+            if padding > 0 && (bytesPerLine - padding) <= bytesPerLine / 2 { hexPart += " " }
+
+            out += hexPart
+            out += " |\(asciiPart)|"
+
+            if let annotation = tagAnnotations[currentOffset] {
+                out += "  <- \(annotation)"
+            }
+            out += "\n"
+
+            currentOffset += lineData.count
+            dataIndex = lineEnd
+        }
+        return out
+    }
+
+    /// Builds offset→annotation map from a parsed DICOM file for hex dump.
+    nonisolated private static func buildHexAnnotations(fileData: Data, dicomFile: DICOMFile, verbose: Bool) -> [Int: String] {
+        var annotations: [Int: String] = [:]
+        let data = fileData
+        guard data.count > 132 else { return annotations }
+
+        var offset = 132  // skip 128-byte preamble + 4-byte "DICM"
+        while offset + 4 <= data.count {
+            guard let g = data.readUInt16LE(at: offset),
+                  let e = data.readUInt16LE(at: offset + 2) else { break }
+            let tag = Tag(group: g, element: e)
+            let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
+
+            // Stop at sequence delimiters to avoid parsing noise
+            if g == 0xFFFE { break }
+
+            let annotation: String
+            if verbose, offset + 6 <= data.count {
+                let vr1 = data[data.index(data.startIndex, offsetBy: offset + 4)]
+                let vr2 = data[data.index(data.startIndex, offsetBy: offset + 5)]
+                if let vrStr = String(bytes: [vr1, vr2], encoding: .ascii),
+                   vrStr.allSatisfy({ $0.isLetter }) {
+                    annotation = "\(tag.description) \(name) VR=\(vrStr)"
+                } else {
+                    annotation = "\(tag.description) \(name)"
+                }
+            } else {
+                annotation = "\(tag.description) \(name)"
+            }
+
+            annotations[offset] = annotation
+
+            // Advance by at least 8 bytes to avoid infinite loop
+            offset += 8
+        }
+        return annotations
+    }
+
+    // MARK: - dicom-tags Execution
+
+    /// Adds, modifies, or deletes tags in a DICOM file — output matches `dicom-tags` CLI tool.
+    private func executeDicomTags() async {
+        let inputPath = paramValue("inputPath")
+        guard !inputPath.isEmpty else {
+            appendConsoleOutput("Error: Input file path is required.\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-tags", command: commandPreview, exitCode: 1, output: "Missing input path")
+            return
+        }
+
+        let outputPath     = paramValue("output")
+        let setRaw         = paramValue("set")
+        let deleteRaw      = paramValue("delete")
+        let deletePrivate  = paramValue("delete-private") == "true"
+        let copyFromPath   = paramValue("copy-from")
+        let tagsRaw        = paramValue("tags")
+        let verbose        = paramValue("verbose") == "true"
+        let dryRun         = paramValue("dry-run") == "true"
+
+        let sets    = setRaw.isEmpty    ? [String]() : setRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let deletes = deleteRaw.isEmpty ? [String]() : deleteRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let copyTags = tagsRaw.isEmpty ? [String]() : tagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+
+        guard !sets.isEmpty || !deletes.isEmpty || deletePrivate || !copyFromPath.isEmpty else {
+            appendConsoleOutput("Error: No operations specified. Use --set, --delete, --delete-private, or --copy-from.\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-tags", command: commandPreview, exitCode: 1, output: "No operations")
+            return
+        }
+
+        // Sandbox access for input, output, copy-from
+        let inputScopedURL    = securityScopedURLs["inputPath"]
+        let outputScopedURL   = securityScopedURLs["output"]
+        let copyFromScopedURL = securityScopedURLs["copy-from"]
+        let accessIn  = inputScopedURL?.startAccessingSecurityScopedResource()    ?? false
+        let accessOut = outputScopedURL?.startAccessingSecurityScopedResource()   ?? false
+        let accessCF  = copyFromScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if accessIn  { inputScopedURL?.stopAccessingSecurityScopedResource() }
+            if accessOut { outputScopedURL?.stopAccessingSecurityScopedResource() }
+            if accessCF  { copyFromScopedURL?.stopAccessingSecurityScopedResource() }
+        }
+
+        let fileURL      = inputScopedURL ?? URL(fileURLWithPath: inputPath)
+        let copyFromURL  = copyFromPath.isEmpty ? nil : (copyFromScopedURL ?? URL(fileURLWithPath: copyFromPath))
+
+        // Resolve writable output path
+        let (resolvedOutputPath, redirectNote) = SecurityViewModel.resolveWritableOutput(
+            path: outputScopedURL?.path ?? outputPath,
+            scopedURL: outputScopedURL
+        )
+        if let note = redirectNote { appendConsoleOutput(note) }
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
+            do {
+                guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                    return ("Error: File not found: \(fileURL.path)\n", 1)
+                }
+                let fileData = try Data(contentsOf: fileURL)
+                let dicomFile = try DICOMFile.read(from: fileData)
+                var dataSet = dicomFile.dataSet
+
+                // Load copy-from file if requested
+                var sourceDataSet: DataSet?
+                if let cfURL = copyFromURL {
+                    let cfData = try Data(contentsOf: cfURL)
+                    let cfFile = try DICOMFile.read(from: cfData)
+                    sourceDataSet = cfFile.dataSet
+                }
+
+                var descriptions: [String] = []
+
+                // 1. Deletes
+                for deleteSpec in deletes {
+                    if let tag = Self.tagsParseSpecifier(deleteSpec) {
+                        let name = DataElementDictionary.lookup(tag: tag)?.name
+                        let label = Self.tagsLabel(tag, name: name)
+                        if dataSet[tag] != nil {
+                            if !dryRun { dataSet.remove(tag: tag) }
+                            descriptions.append("DELETE \(label)")
+                        } else {
+                            descriptions.append("DELETE \(label) (not present, skipped)")
+                        }
+                    } else {
+                        descriptions.append("DELETE \(deleteSpec) (unknown tag, skipped)")
+                    }
+                }
+
+                // 2. Delete private
+                if deletePrivate {
+                    var removed = 0
+                    for tag in dataSet.tags where tag.isPrivate {
+                        if !dryRun { dataSet.remove(tag: tag) }
+                        removed += 1
+                        if verbose {
+                            let name = DataElementDictionary.lookup(tag: tag)?.name
+                            descriptions.append("DELETE private tag \(Self.tagsLabel(tag, name: name))")
+                        }
+                    }
+                    if !verbose { descriptions.append("DELETE \(removed) private tag(s)") }
+                }
+
+                // 3. Copy-from
+                if let source = sourceDataSet {
+                    let tagsToCopy: [Tag]
+                    if copyTags.isEmpty {
+                        tagsToCopy = source.tags
+                    } else {
+                        tagsToCopy = copyTags.compactMap { Self.tagsParseSpecifier($0) }
+                    }
+                    for tag in tagsToCopy {
+                        if let element = source[tag] {
+                            let name = DataElementDictionary.lookup(tag: tag)?.name
+                            let label = Self.tagsLabel(tag, name: name)
+                            if !dryRun { dataSet[tag] = element }
+                            let v = element.stringValue ?? "<binary>"
+                            descriptions.append("COPY \(label) = \(v)")
+                        }
+                    }
+                }
+
+                // 4. Sets (applied last so they override copies)
+                for setSpec in sets {
+                    if let eqRange = setSpec.range(of: "=") {
+                        let tagPart   = String(setSpec[..<eqRange.lowerBound])
+                        let valuePart = String(setSpec[eqRange.upperBound...])
+                        if let tag = Self.tagsParseSpecifier(tagPart) {
+                            let name = DataElementDictionary.lookup(tag: tag)?.name
+                            let label = Self.tagsLabel(tag, name: name)
+                            let vr = dataSet[tag]?.vr ?? Self.tagsDefaultVR(tag)
+                            if !dryRun { dataSet.setString(valuePart, for: tag, vr: vr) }
+                            descriptions.append("SET \(label) = \(valuePart)")
+                        } else {
+                            descriptions.append("SET \(tagPart) (unknown tag, skipped)")
+                        }
+                    } else {
+                        descriptions.append("SET \(setSpec) (invalid format, expected TagName=Value)")
+                    }
+                }
+
+                // Build output text
+                var out = ""
+                if verbose || dryRun {
+                    for desc in descriptions { out += desc + "\n" }
+                    out += "\(descriptions.count) change(s) applied.\n"
+                    if dryRun { out += "Dry run complete — no files modified.\n" }
+                } else {
+                    out += "\(descriptions.count) change(s) applied.\n"
+                }
+
+                // Write output
+                if !dryRun {
+                    let modifiedFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: dataSet)
+                    let outData = try modifiedFile.write()
+                    let destPath = resolvedOutputPath.isEmpty ? fileURL.path : resolvedOutputPath
+                    let destURL  = URL(fileURLWithPath: destPath)
+                    try outData.write(to: destURL)
+                    out += "Saved: \(destURL.path)\n"
+                }
+
+                return (out, 0)
+            } catch {
+                return ("Error: \(error.localizedDescription)\n", 1)
+            }
+        }.value
+
+        appendConsoleOutput(output)
+        addToHistory(toolName: "dicom-tags", command: commandPreview, exitCode: exitCode, output: output)
+        consoleStatus = exitCode == 0 ? .success : .error
+        service.setConsoleStatus(exitCode == 0 ? .success : .error)
+    }
+
+    nonisolated private static func tagsParseSpecifier(_ spec: String) -> Tag? {
+        let t = spec.trimmingCharacters(in: .whitespaces)
+            .replacingOccurrences(of: "(", with: "").replacingOccurrences(of: ")", with: "")
+        if t.contains(",") {
+            let parts = t.split(separator: ",")
+            if parts.count == 2,
+               let g = UInt16(parts[0].trimmingCharacters(in: .whitespaces), radix: 16),
+               let e = UInt16(parts[1].trimmingCharacters(in: .whitespaces), radix: 16) {
+                return Tag(group: g, element: e)
+            }
+        } else if t.count == 8, t.allSatisfy({ $0.isHexDigit }), let v = UInt32(t, radix: 16) {
+            return Tag(group: UInt16((v >> 16) & 0xFFFF), element: UInt16(v & 0xFFFF))
+        }
+        // Try tag name lookup via DICOMDictionary
+        return DataElementDictionary.lookup(keyword: t)?.tag
+    }
+
+    nonisolated private static func tagsLabel(_ tag: Tag, name: String?) -> String {
+        let hex = tag.description
+        return name != nil ? "\(hex) \(name!)" : hex
+    }
+
+    nonisolated private static func tagsDefaultVR(_ tag: Tag) -> VR {
+        DataElementDictionary.lookup(tag: tag)?.vr.first ?? .LO
+    }
+
+    // MARK: - dicom-diff Execution
+
+    /// Compares two DICOM files — output matches `dicom-diff` CLI tool exactly.
+    private func executeDicomDiff() async {
+        let file1Path = paramValue("file1")
+        let file2Path = paramValue("file2")
+        guard !file1Path.isEmpty else {
+            appendConsoleOutput("Error: File 1 path is required.\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: 1, output: "Missing file1")
+            return
+        }
+        guard !file2Path.isEmpty else {
+            appendConsoleOutput("Error: File 2 path is required.\n")
+            consoleStatus = .error; service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: 1, output: "Missing file2")
+            return
+        }
+
+        let format         = paramValue("format").isEmpty ? "text" : paramValue("format")
+        let ignoreTagsRaw  = paramValue("ignore-tag")
+        let ignorePrivate  = paramValue("ignore-private") == "true"
+        let comparePixels  = paramValue("compare-pixels") == "true"
+        let toleranceStr   = paramValue("tolerance")
+        let quick          = paramValue("quick") == "true"
+        let showIdentical  = paramValue("show-identical") == "true"
+        let verbose        = paramValue("verbose") == "true"
+
+        let tolerance = Double(toleranceStr) ?? 0.0
+        let ignoreTags = ignoreTagsRaw.isEmpty ? [String]() :
+                         ignoreTagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+
+        let file1ScopedURL = securityScopedURLs["file1"]
+        let file2ScopedURL = securityScopedURLs["file2"]
+        let access1 = file1ScopedURL?.startAccessingSecurityScopedResource() ?? false
+        let access2 = file2ScopedURL?.startAccessingSecurityScopedResource() ?? false
+        defer {
+            if access1 { file1ScopedURL?.stopAccessingSecurityScopedResource() }
+            if access2 { file2ScopedURL?.stopAccessingSecurityScopedResource() }
+        }
+
+        let url1 = file1ScopedURL ?? URL(fileURLWithPath: file1Path)
+        let url2 = file2ScopedURL ?? URL(fileURLWithPath: file2Path)
+
+        let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
+            do {
+                guard FileManager.default.fileExists(atPath: url1.path) else {
+                    return ("Error: File not found: \(url1.path)\n", 1)
+                }
+                guard FileManager.default.fileExists(atPath: url2.path) else {
+                    return ("Error: File not found: \(url2.path)\n", 1)
+                }
+
+                if verbose {
+                    let _ = "Comparing: \(url1.lastPathComponent)\n     with: \(url2.lastPathComponent)\n\n"
+                }
+
+                let data1 = try Data(contentsOf: url1)
+                let data2 = try Data(contentsOf: url2)
+                let df1   = try DICOMFile.read(from: data1)
+                let df2   = try DICOMFile.read(from: data2)
+
+                let ignoreTagSet = Set(ignoreTags.compactMap { Self.parseDumpTagStr($0) })
+                let result = Self.diffCompare(
+                    file1: df1, file2: df2,
+                    file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent,
+                    tagsToIgnore: ignoreTagSet, ignorePrivate: ignorePrivate,
+                    comparePixels: comparePixels && !quick,
+                    pixelTolerance: tolerance, showIdentical: showIdentical
+                )
+
+                let rendered: String
+                switch format {
+                case "json":    rendered = (try? Self.diffFormatJSON(result: result, file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent)) ?? "{}\n"
+                case "summary": rendered = Self.diffFormatSummary(result: result)
+                default:        rendered = Self.diffFormatText(result: result, file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent, showIdentical: showIdentical)
+                }
+
+                return (rendered, result.hasDifferences ? 1 : 0)
+            } catch {
+                return ("Error: \(error.localizedDescription)\n", 1)
+            }
+        }.value
+
+        appendConsoleOutput(output)
+        addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: exitCode, output: output)
+        consoleStatus = exitCode == 0 ? .success : .error
+        service.setConsoleStatus(exitCode == 0 ? .success : .error)
+    }
+
+    // MARK: - dicom-diff engine (matches DICOMComparer in dicom-diff/main.swift)
+
+    private struct DiffResult {
+        var totalTags: Int = 0
+        var differenceCount: Int = 0
+        var onlyInFile1: [(tag: Tag, element: DataElement)] = []
+        var onlyInFile2: [(tag: Tag, element: DataElement)] = []
+        var modified: [(tag: Tag, value1: DataElement, value2: DataElement)] = []
+        var identical: [Tag] = []
+        var pixelsCompared: Bool = false
+        var pixelsDifferent: Bool = false
+        var maxPixelDiff: Double = 0
+        var meanPixelDiff: Double = 0
+        var diffPixelCount: Int = 0
+        var totalPixels: Int = 0
+        var hasDifferences: Bool { differenceCount > 0 || pixelsDifferent }
+    }
+
+    nonisolated private static func diffCompare(
+        file1: DICOMFile, file2: DICOMFile,
+        file1Name: String, file2Name: String,
+        tagsToIgnore: Set<Tag>, ignorePrivate: Bool,
+        comparePixels: Bool, pixelTolerance: Double, showIdentical: Bool
+    ) -> DiffResult {
+        var result = DiffResult()
+        let ds1 = file1.dataSet
+        let ds2 = file2.dataSet
+        let allTags = Set(ds1.tags).union(Set(ds2.tags)).sorted()
+
+        for tag in allTags {
+            if tagsToIgnore.contains(tag) { continue }
+            if ignorePrivate && tag.isPrivate { continue }
+            if comparePixels && tag == Tag(group: 0x7FE0, element: 0x0010) { continue }
+
+            result.totalTags += 1
+            let e1 = ds1[tag], e2 = ds2[tag]
+            switch (e1, e2) {
+            case (nil, let e?):
+                result.onlyInFile2.append((tag, e)); result.differenceCount += 1
+            case (let e?, nil):
+                result.onlyInFile1.append((tag, e)); result.differenceCount += 1
+            case (let e1?, let e2?):
+                if diffElementsEqual(e1, e2) { result.identical.append(tag) }
+                else { result.modified.append((tag, e1, e2)); result.differenceCount += 1 }
+            default: break
+            }
+        }
+
+        if comparePixels {
+            result.pixelsCompared = true
+            let pixelTag = Tag(group: 0x7FE0, element: 0x0010)
+            if let pd1 = ds1[pixelTag]?.valueData, let pd2 = ds2[pixelTag]?.valueData {
+                var maxDiff = 0.0, totalDiff = 0.0, diffCount = 0
+                let minLen = min(pd1.count, pd2.count)
+                for i in 0..<minLen {
+                    let d = abs(Double(pd1[i]) - Double(pd2[i]))
+                    if d > 0 { maxDiff = max(maxDiff, d); totalDiff += d; diffCount += 1 }
+                }
+                if pd1.count != pd2.count { diffCount += abs(pd1.count - pd2.count) }
+                result.totalPixels = max(pd1.count, pd2.count)
+                result.maxPixelDiff = maxDiff
+                result.meanPixelDiff = diffCount > 0 ? totalDiff / Double(diffCount) : 0
+                result.diffPixelCount = diffCount
+                result.pixelsDifferent = maxDiff > pixelTolerance
+            }
+        }
+        return result
+    }
+
+    nonisolated private static func diffElementsEqual(_ e1: DataElement, _ e2: DataElement) -> Bool {
+        guard e1.vr == e2.vr else { return false }
+        if e1.vr == .SQ {
+            guard let s1 = e1.sequenceItems, let s2 = e2.sequenceItems, s1.count == s2.count else { return false }
+            return zip(s1, s2).allSatisfy { i1, i2 in
+                let k1 = Set(i1.elements.keys), k2 = Set(i2.elements.keys)
+                guard k1 == k2 else { return false }
+                return k1.allSatisfy { diffElementsEqual(i1.elements[$0]!, i2.elements[$0]!) }
+            }
+        }
+        return e1.valueData == e2.valueData
+    }
+
+    nonisolated private static func diffFormatValue(_ e: DataElement) -> String {
+        if e.vr == .SQ { return "<Sequence with \(e.sequenceItems?.count ?? 0) items>" }
+        if e.vr == .OB || e.vr == .OW || e.vr == .OF || e.vr == .OD { return "<Binary data, \(e.valueData.count) bytes>" }
+        return e.stringValue ?? "<empty>"
+    }
+
+    nonisolated private static func diffFormatText(result: DiffResult, file1Name: String, file2Name: String, showIdentical: Bool) -> String {
+        var out = "=== DICOM Comparison Results ===\n\n"
+        out += "Total tags compared: \(result.totalTags)\n"
+        out += "Differences found: \(result.differenceCount)\n"
+        out += "Tags only in file 1: \(result.onlyInFile1.count)\n"
+        out += "Tags only in file 2: \(result.onlyInFile2.count)\n"
+        out += "Modified tags: \(result.modified.count)\n"
+        if result.pixelsCompared {
+            out += "\nPixel Data: \(result.pixelsDifferent ? "DIFFERENT" : "IDENTICAL")\n"
+            if result.totalPixels > 0 {
+                out += "  Max difference: \(result.maxPixelDiff)\n"
+                out += "  Mean difference: \(String(format: "%.2f", result.meanPixelDiff))\n"
+                out += "  Different pixels: \(result.diffPixelCount) / \(result.totalPixels)\n"
+            }
+        }
+        out += "\n"
+        if !result.onlyInFile1.isEmpty {
+            out += "\n--- Tags only in \(file1Name) ---\n"
+            for (tag, elem) in result.onlyInFile1.sorted(by: { $0.tag < $1.tag }) {
+                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
+                out += "[\(tag)] \(name): \(diffFormatValue(elem))\n"
+            }
+        }
+        if !result.onlyInFile2.isEmpty {
+            out += "\n--- Tags only in \(file2Name) ---\n"
+            for (tag, elem) in result.onlyInFile2.sorted(by: { $0.tag < $1.tag }) {
+                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
+                out += "[\(tag)] \(name): \(diffFormatValue(elem))\n"
+            }
+        }
+        if !result.modified.isEmpty {
+            out += "\n--- Modified Tags ---\n"
+            for (tag, v1, v2) in result.modified.sorted(by: { $0.tag < $1.tag }) {
+                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
+                out += "\n[\(tag)] \(name)\n"
+                out += "  File 1: \(diffFormatValue(v1))\n"
+                out += "  File 2: \(diffFormatValue(v2))\n"
+            }
+        }
+        if showIdentical && !result.identical.isEmpty {
+            out += "\n--- Identical Tags (\(result.identical.count)) ---\n"
+            for tag in result.identical.sorted() {
+                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
+                out += "[\(tag)] \(name)\n"
+            }
+        }
+        out += "\n=== End of Comparison ===\n"
+        return out
+    }
+
+    nonisolated private static func diffFormatSummary(result: DiffResult) -> String {
+        var out = "Files: \(result.hasDifferences ? "DIFFERENT" : "IDENTICAL")\n"
+        out += "Differences: \(result.differenceCount)\n"
+        out += "  Only in file 1: \(result.onlyInFile1.count)\n"
+        out += "  Only in file 2: \(result.onlyInFile2.count)\n"
+        out += "  Modified: \(result.modified.count)\n"
+        if result.pixelsCompared { out += "Pixel data: \(result.pixelsDifferent ? "DIFFERENT" : "IDENTICAL")\n" }
+        return out
+    }
+
+    nonisolated private static func diffFormatJSON(result: DiffResult, file1Name: String, file2Name: String) throws -> String {
+        let json: [String: Any] = [
+            "files": ["file1": file1Name, "file2": file2Name],
+            "summary": ["totalTags": result.totalTags, "differences": result.differenceCount, "hasDifferences": result.hasDifferences] as [String: Any],
+            "onlyInFile1": result.onlyInFile1.map { ["tag": $0.tag.description, "value": diffFormatValue($0.element)] },
+            "onlyInFile2": result.onlyInFile2.map { ["tag": $0.tag.description, "value": diffFormatValue($0.element)] },
+            "modified": result.modified.map {
+                ["tag": $0.tag.description,
+                 "tagName": DataElementDictionary.lookup(tag: $0.tag)?.name ?? "Unknown",
+                 "value1": diffFormatValue($0.value1),
+                 "value2": diffFormatValue($0.value2)] as [String: Any]
+            },
+        ]
+        let data = try JSONSerialization.data(withJSONObject: json, options: .prettyPrinted)
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
     }
 
     /// Performs a real C-ECHO against the server configured in the parameter fields.

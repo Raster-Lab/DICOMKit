@@ -280,6 +280,10 @@ public enum ToolCatalogHelpers: Sendable {
             return "Displays all DICOM tags, pixel statistics, and file metadata from a DICOM file or directory."
         case "dicom-dump":
             return "Prints a hex dump of a DICOM file annotated with tag names and VR information."
+        case "dicom-tags":
+            return "Adds, modifies, or deletes tags in a DICOM file using set/delete/copy-from operations."
+        case "dicom-diff":
+            return "Compares two DICOM files and reports tag differences, added/removed tags, and optionally pixel data differences."
         case "dicom-validate":
             return "Checks a DICOM file for conformance against the matching IOD and returns a structured report."
         case "dicom-anon":
@@ -1804,6 +1808,352 @@ public enum ToolCatalogHelpers: Sendable {
                     isAdvanced: true
                 ),
             ]
+        case "dicom-validate":
+            return [
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File/Directory",
+                    parameterType: .filePath, placeholder: "Path to DICOM file or directory",
+                    helpText: "DICOM file or directory to validate",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "level", flag: "--level", displayName: "Validation Level",
+                    parameterType: .enumPicker, placeholder: "3",
+                    helpText: "Validation strictness: 1=minimal … 5=exhaustive (default: 3)",
+                    defaultValue: "3",
+                    allowedValues: ["1", "2", "3", "4", "5"]
+                ),
+                CLIParameterDefinition(
+                    id: "iod", flag: "--iod", displayName: "IOD Override",
+                    parameterType: .textField, placeholder: "e.g. CTImageStorage",
+                    helpText: "Force a specific IOD name instead of auto-detecting from SOP Class UID",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "detailed", flag: "--detailed", displayName: "Detailed",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show per-issue detail (tag, message, severity) in the report"
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Process all DICOM files in a directory and its sub-directories"
+                ),
+                CLIParameterDefinition(
+                    id: "strict", flag: "--strict", displayName: "Strict Mode",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Exit with code 2 when warnings (not just errors) are found"
+                ),
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Output format for the validation report",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json"]
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Save Report To",
+                    parameterType: .outputPath, placeholder: "Optional output file path",
+                    helpText: "Write the validation report to a file instead of (or in addition to) the console",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "force", flag: "--force", displayName: "Force Parse",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Attempt to parse files that lack the standard DICM preamble",
+                    isAdvanced: true
+                ),
+            ]
+        case "dicom-anon":
+            return [
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File/Directory",
+                    parameterType: .filePath, placeholder: "Path to DICOM file or directory",
+                    helpText: "DICOM file or directory to anonymize",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output Path",
+                    parameterType: .outputPath, placeholder: "Output file or directory path",
+                    helpText: "Destination file or directory for anonymized output"
+                ),
+                CLIParameterDefinition(
+                    id: "profile", flag: "--profile", displayName: "Profile",
+                    parameterType: .enumPicker, placeholder: "basic",
+                    helpText: "Anonymization profile: basic removes 18 HIPAA identifiers; clinical-trial also strips dates; research removes minimum set",
+                    defaultValue: "basic",
+                    allowedValues: ["basic", "clinical-trial", "research"]
+                ),
+                CLIParameterDefinition(
+                    id: "shift-dates", flag: "--shift-dates", displayName: "Shift Dates (days)",
+                    parameterType: .integerField, placeholder: "0",
+                    helpText: "Shift all date tags by this many days (positive or negative)",
+                    isAdvanced: true,
+                    minValue: -36500, maxValue: 36500
+                ),
+                CLIParameterDefinition(
+                    id: "regenerate-uids", flag: "--regenerate-uids", displayName: "Regenerate UIDs",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Regenerate all UIDs (StudyInstanceUID, SeriesInstanceUID, SOPInstanceUID)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "remove", flag: "--remove", displayName: "Remove Tag",
+                    parameterType: .textField, placeholder: "e.g. 0010,0040 or PatientSex",
+                    helpText: "Additional tag to remove (can be specified multiple times; comma-separate multiple tags here)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "replace", flag: "--replace", displayName: "Replace Tag",
+                    parameterType: .textField, placeholder: "e.g. 0010,0010=ANON",
+                    helpText: "Replace a tag with a fixed value in tag=value format (comma-separate multiple pairs)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "keep", flag: "--keep", displayName: "Keep Tag",
+                    parameterType: .textField, placeholder: "e.g. 0008,0060 or Modality",
+                    helpText: "Preserve a tag that the profile would otherwise remove (comma-separate multiple tags)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Process all DICOM files in a directory and its sub-directories"
+                ),
+                CLIParameterDefinition(
+                    id: "dry-run", flag: "--dry-run", displayName: "Dry Run",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Preview changes without writing any files to disk"
+                ),
+                CLIParameterDefinition(
+                    id: "backup", flag: "--backup", displayName: "Backup Originals",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Keep a .backup copy of each original file",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "audit-log", flag: "--audit-log", displayName: "Audit Log Path",
+                    parameterType: .outputPath, placeholder: "Optional audit log file path",
+                    helpText: "Write an anonymization audit log to the specified file",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "force", flag: "--force", displayName: "Force Parse",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Attempt to parse files that lack the standard DICM preamble",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show per-file progress and tag changes in the console"
+                ),
+            ]
+        case "dicom-info":
+            return [
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File",
+                    parameterType: .filePath, placeholder: "Path to DICOM file",
+                    helpText: "DICOM file to inspect",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Output format: text (default), json, or csv",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json", "csv"]
+                ),
+                CLIParameterDefinition(
+                    id: "tag", flag: "--tag", displayName: "Filter Tag(s)",
+                    parameterType: .textField, placeholder: "e.g. PatientName,StudyDate",
+                    helpText: "Comma-separated tag names or IDs to display (default: all tags)"
+                ),
+                CLIParameterDefinition(
+                    id: "show-private", flag: "--show-private", displayName: "Show Private Tags",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Include odd-group private tags in the output"
+                ),
+                CLIParameterDefinition(
+                    id: "statistics", flag: "--statistics", displayName: "File Statistics",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show file-level statistics (transfer syntax, modality, SOP class)"
+                ),
+                CLIParameterDefinition(
+                    id: "force", flag: "--force", displayName: "Force Parse",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Attempt to parse files that lack the standard DICM preamble",
+                    isAdvanced: true
+                ),
+            ]
+        case "dicom-dump":
+            return [
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File",
+                    parameterType: .filePath, placeholder: "Path to DICOM file",
+                    helpText: "DICOM file to hex-dump",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "tag", flag: "--tag", displayName: "Dump Tag",
+                    parameterType: .textField, placeholder: "e.g. 7FE0,0010",
+                    helpText: "Dump only the value bytes of the specified tag (format: GGGG,EEEE)"
+                ),
+                CLIParameterDefinition(
+                    id: "offset", flag: "--offset", displayName: "Start Offset",
+                    parameterType: .textField, placeholder: "e.g. 0x1000 or 4096",
+                    helpText: "Start byte offset into the file (hex or decimal)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "length", flag: "--length", displayName: "Length (bytes)",
+                    parameterType: .integerField, placeholder: "256",
+                    helpText: "Number of bytes to dump from the start offset",
+                    isAdvanced: true,
+                    minValue: 1, maxValue: 10_000_000
+                ),
+                CLIParameterDefinition(
+                    id: "bytes-per-line", flag: "--bytes-per-line", displayName: "Bytes / Line",
+                    parameterType: .enumPicker, placeholder: "16",
+                    helpText: "Number of hex bytes shown per output line",
+                    isAdvanced: true,
+                    defaultValue: "16",
+                    allowedValues: ["8", "16", "32"]
+                ),
+                CLIParameterDefinition(
+                    id: "highlight", flag: "--highlight", displayName: "Highlight Tag",
+                    parameterType: .textField, placeholder: "e.g. 0010,0010",
+                    helpText: "Mark rows that correspond to the specified tag",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "annotate", flag: "--annotate", displayName: "Annotate Tags",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Append tag name annotations at tag-boundary rows"
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show VR and length details alongside each tag boundary"
+                ),
+                CLIParameterDefinition(
+                    id: "force", flag: "--force", displayName: "Force Parse",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Attempt to parse files that lack the standard DICM preamble",
+                    isAdvanced: true
+                ),
+            ]
+        case "dicom-tags":
+            return [
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File",
+                    parameterType: .filePath, placeholder: "Path to DICOM file",
+                    helpText: "DICOM file to modify",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output File",
+                    parameterType: .outputPath, placeholder: "Output DICOM file path (overwrites input if omitted)",
+                    helpText: "Write modified DICOM to this path instead of overwriting the input file"
+                ),
+                CLIParameterDefinition(
+                    id: "set", flag: "--set", displayName: "Set Tag(s)",
+                    parameterType: .textField, placeholder: "e.g. PatientName=DOE^JOHN,0008,0090=DR.SMITH",
+                    helpText: "Comma-separated list of TagName=Value or GGGG,EEEE=Value assignments"
+                ),
+                CLIParameterDefinition(
+                    id: "delete", flag: "--delete", displayName: "Delete Tag(s)",
+                    parameterType: .textField, placeholder: "e.g. PatientBirthDate,AccessionNumber",
+                    helpText: "Comma-separated list of tags to remove (by name or GGGG,EEEE)"
+                ),
+                CLIParameterDefinition(
+                    id: "delete-private", flag: "--delete-private", displayName: "Delete Private Tags",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Remove all private tags (odd-group elements)"
+                ),
+                CLIParameterDefinition(
+                    id: "copy-from", flag: "--copy-from", displayName: "Copy From File",
+                    parameterType: .filePath, placeholder: "Source DICOM file path",
+                    helpText: "Copy tags from this DICOM file into the input file",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "tags", flag: "--tags", displayName: "Tags to Copy",
+                    parameterType: .textField, placeholder: "e.g. PatientName,PatientID",
+                    helpText: "Comma-separated list of tags to copy from --copy-from file (default: all)",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show each tag operation as it is applied"
+                ),
+                CLIParameterDefinition(
+                    id: "dry-run", flag: "--dry-run", displayName: "Dry Run",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Preview all changes without writing any files"
+                ),
+            ]
+        case "dicom-diff":
+            return [
+                CLIParameterDefinition(
+                    id: "file1", flag: "", displayName: "File 1",
+                    parameterType: .filePath, placeholder: "First DICOM file to compare",
+                    helpText: "First DICOM file (reference)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "file2", flag: "", displayName: "File 2",
+                    parameterType: .filePath, placeholder: "Second DICOM file to compare",
+                    helpText: "Second DICOM file (target)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Output format: text (default), json, or summary",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json", "summary"]
+                ),
+                CLIParameterDefinition(
+                    id: "ignore-tag", flag: "--ignore-tag", displayName: "Ignore Tag(s)",
+                    parameterType: .textField, placeholder: "e.g. SOPInstanceUID,0008,0012",
+                    helpText: "Comma-separated tags to exclude from comparison"
+                ),
+                CLIParameterDefinition(
+                    id: "ignore-private", flag: "--ignore-private", displayName: "Ignore Private Tags",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Exclude all private (odd-group) tags from comparison"
+                ),
+                CLIParameterDefinition(
+                    id: "compare-pixels", flag: "--compare-pixels", displayName: "Compare Pixels",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Compare pixel data in addition to metadata tags"
+                ),
+                CLIParameterDefinition(
+                    id: "tolerance", flag: "--tolerance", displayName: "Pixel Tolerance",
+                    parameterType: .integerField, placeholder: "0",
+                    helpText: "Maximum allowed per-byte pixel difference before flagging as different",
+                    isAdvanced: true,
+                    defaultValue: "0", minValue: 0, maxValue: 255
+                ),
+                CLIParameterDefinition(
+                    id: "quick", flag: "--quick", displayName: "Quick Mode",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Metadata-only comparison; skips pixel data even if --compare-pixels is set"
+                ),
+                CLIParameterDefinition(
+                    id: "show-identical", flag: "--show-identical", displayName: "Show Identical Tags",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "List tags whose values are identical across both files",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verbose output with detailed tag information"
+                ),
+            ]
         default:
             return []
         }
@@ -2149,6 +2499,57 @@ public enum EducationalHelpers: Sendable {
                 CLIExamplePreset(toolID: toolID, title: "JSON Output with Statistics",
                                  presetDescription: "Output metadata as JSON with file statistics",
                                  commandString: "dicom-info --format json --statistics scan.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Filter Specific Tags",
+                                 presetDescription: "Show only PatientName and StudyDate",
+                                 commandString: "dicom-info --tag PatientName --tag StudyDate scan.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "CSV Export",
+                                 presetDescription: "Export all tags (including private) as CSV",
+                                 commandString: "dicom-info --format csv --show-private scan.dcm"),
+            ]
+        case "dicom-dump":
+            return [
+                CLIExamplePreset(toolID: toolID, title: "Full Hex Dump",
+                                 presetDescription: "Dump entire file with tag annotations",
+                                 commandString: "dicom-dump file.dcm --annotate"),
+                CLIExamplePreset(toolID: toolID, title: "Dump Specific Tag",
+                                 presetDescription: "Dump only the pixel data element bytes",
+                                 commandString: "dicom-dump file.dcm --tag 7FE0,0010"),
+                CLIExamplePreset(toolID: toolID, title: "Dump with Offset & Length",
+                                 presetDescription: "Dump 256 bytes starting at offset 0x1000",
+                                 commandString: "dicom-dump file.dcm --offset 0x1000 --length 256"),
+                CLIExamplePreset(toolID: toolID, title: "Verbose Annotated Dump",
+                                 presetDescription: "Full dump with VR and length details",
+                                 commandString: "dicom-dump file.dcm --annotate --verbose"),
+            ]
+        case "dicom-tags":
+            return [
+                CLIExamplePreset(toolID: toolID, title: "Set Patient Name",
+                                 presetDescription: "Modify PatientName tag and save to new file",
+                                 commandString: "dicom-tags file.dcm --set PatientName=DOE^JOHN --output modified.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Delete Tags",
+                                 presetDescription: "Remove PatientBirthDate and AccessionNumber",
+                                 commandString: "dicom-tags file.dcm --delete PatientBirthDate --delete AccessionNumber"),
+                CLIExamplePreset(toolID: toolID, title: "Delete Private Tags",
+                                 presetDescription: "Strip all private (odd-group) tags",
+                                 commandString: "dicom-tags file.dcm --delete-private --output clean.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Dry Run Preview",
+                                 presetDescription: "Preview changes without writing files",
+                                 commandString: "dicom-tags file.dcm --set StudyDescription=Research --delete AccessionNumber --dry-run"),
+            ]
+        case "dicom-diff":
+            return [
+                CLIExamplePreset(toolID: toolID, title: "Basic Comparison",
+                                 presetDescription: "Compare metadata of two DICOM files",
+                                 commandString: "dicom-diff file1.dcm file2.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Compare with Pixels",
+                                 presetDescription: "Compare both metadata and pixel data",
+                                 commandString: "dicom-diff --compare-pixels --tolerance 5 original.dcm processed.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "JSON Output",
+                                 presetDescription: "Output differences as JSON, ignoring instance UIDs",
+                                 commandString: "dicom-diff --ignore-tag SOPInstanceUID --format json file1.dcm file2.dcm"),
+                CLIExamplePreset(toolID: toolID, title: "Quick Summary",
+                                 presetDescription: "Fast metadata-only summary comparison",
+                                 commandString: "dicom-diff --quick --format summary file1.dcm file2.dcm"),
             ]
         case "dicom-echo":
             return [

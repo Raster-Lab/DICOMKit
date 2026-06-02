@@ -58,6 +58,22 @@ public final class DataExchangeViewModel {
     public var batchTagModifications: [BatchTagModification] = []
     public var isAddBatchJobSheetPresented: Bool = false
 
+    // 12.8 Compression
+    public var compressionInputPath: String = ""
+    public var compressionAlgorithm: String = "j2k-lossless"
+    public var compressionQuality: Double = 80
+    public var compressionOutputPath: String = ""
+    public var compressionResult: String = ""
+
+    // 12.9 Secondary Capture
+    public var secondaryCaptureInputPath: String = ""
+    public var secondaryCapturePatientName: String = ""
+    public var secondaryCapturePatientID: String = ""
+    public var secondaryCaptureStudyDate: String = ""
+    public var secondaryCaptureModality: String = "SC"
+    public var secondaryCaptureOutputPath: String = ""
+    public var secondaryCaptureResult: String = ""
+
     public init(service: DataExchangeService = DataExchangeService()) {
         self.service = service
         loadFromService()
@@ -243,5 +259,39 @@ public final class DataExchangeViewModel {
     public func removeBatchTagModification(id: UUID) {
         batchTagModifications.removeAll { $0.id == id }
         service.removeBatchTagModification(id: id)
+    }
+
+    // MARK: - 12.8 Compression
+
+    public func runCompression() {
+        var cmd = "dicom-compress"
+        cmd += " --input \"\(compressionInputPath)\""
+        cmd += " --output \"\(compressionOutputPath)\""
+        cmd += " --algorithm \(compressionAlgorithm)"
+        if CompressionAlgorithmHelpers.isLossy(compressionAlgorithm) {
+            cmd += " --quality \(Int(compressionQuality))"
+        }
+        compressionResult = "Command:\n\(cmd)\n\n(Run this in CLI Workshop or Terminal to execute.)"
+    }
+
+    // MARK: - 12.9 Secondary Capture
+
+    public func runSecondaryCapture() {
+        var cmd = "dicom-image secondary-capture"
+        cmd += " --input \"\(secondaryCaptureInputPath)\""
+        cmd += " --output \"\(secondaryCaptureOutputPath)\""
+        if !secondaryCapturePatientName.isEmpty {
+            cmd += " --patient-name \"\(secondaryCapturePatientName)\""
+        }
+        if !secondaryCapturePatientID.isEmpty {
+            cmd += " --patient-id \"\(secondaryCapturePatientID)\""
+        }
+        if !secondaryCaptureStudyDate.isEmpty {
+            cmd += " --study-date \(secondaryCaptureStudyDate)"
+        }
+        if !secondaryCaptureModality.isEmpty {
+            cmd += " --modality \(secondaryCaptureModality)"
+        }
+        secondaryCaptureResult = "Command:\n\(cmd)\n\n(Run this in CLI Workshop or Terminal to execute.)"
     }
 }

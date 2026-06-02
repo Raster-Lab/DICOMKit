@@ -99,6 +99,8 @@ public struct DICOMwebView: View {
             stowContent
         case .upsRS:
             upsContent
+        case .jpipStreaming:
+            jpipContent
         case .performanceDashboard:
             performanceDashboardContent
         }
@@ -1338,6 +1340,14 @@ public struct DICOMwebView: View {
 
     // MARK: - 6. Performance Dashboard
 
+    // MARK: - JPIP Streaming
+
+    private var jpipContent: some View {
+        JPIPContentView()
+    }
+
+    // MARK: - Performance Dashboard
+
     private var performanceDashboardContent: some View {
         VStack(spacing: 0) {
             HStack {
@@ -1819,6 +1829,228 @@ struct DICOMwebServerFormSheet: View {
         } else {
             validationMessages = errors
         }
+    }
+}
+
+// MARK: - JPIP Streaming View
+
+/// Embedded view for JPIP (JPEG 2000 Interactive Protocol) streaming — dicom-jpip.
+/// Reference: DICOM PS3.18 §10.4 — JPIP Referenced Transfer Syntax
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct JPIPContentView: View {
+    @State private var fetchServerURL: String = ""
+    @State private var fetchImageID: String = ""
+    @State private var fetchRegion: String = ""
+    @State private var fetchLayers: String = ""
+    @State private var fetchResult: String = ""
+    @State private var uriFilePath: String = ""
+    @State private var uriResult: String = ""
+    @State private var servePort: String = "8080"
+    @State private var serveDirectory: String = ""
+    @State private var serveResult: String = ""
+    @State private var infoServerURL: String = ""
+    @State private var infoResult: String = ""
+    @State private var activeOperation: JPIPOperation = .fetch
+
+    enum JPIPOperation: String, CaseIterable, Identifiable {
+        case fetch = "Fetch Image"
+        case uri   = "Extract URI"
+        case serve = "Serve Files"
+        case info  = "Server Info"
+        var id: String { rawValue }
+        var sfSymbol: String {
+            switch self {
+            case .fetch: return "arrow.down.to.line"
+            case .uri:   return "link"
+            case .serve: return "server.rack"
+            case .info:  return "info.circle"
+            }
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Header
+            HStack {
+                Label("JPIP Streaming", systemImage: "arrow.down.to.line")
+                    .font(.headline)
+                Spacer()
+                Text("Transfer Syntax: 1.2.840.10008.1.2.4.94 / .95")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+            .padding()
+            Divider()
+
+            // Operation picker
+            Picker("Operation", selection: $activeOperation) {
+                ForEach(JPIPOperation.allCases) { op in
+                    Label(op.rawValue, systemImage: op.sfSymbol).tag(op)
+                }
+            }
+            .pickerStyle(.segmented)
+            .padding()
+
+            ScrollView {
+                switch activeOperation {
+                case .fetch: fetchPanel
+                case .uri:   uriPanel
+                case .serve: servePanel
+                case .info:  infoPanel
+                }
+            }
+        }
+    }
+
+    // MARK: - Fetch
+
+    private var fetchPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Fetch image from a JPIP server. Only the requested region and quality layers are transferred, reducing bandwidth for large datasets.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            GroupBox("Server") {
+                TextField("JPIP server URL (e.g. http://pacs.example.com:8080)", text: $fetchServerURL)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("JPIP server URL")
+                TextField("Image ID / SOP Instance UID", text: $fetchImageID)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Image ID")
+            }
+
+            GroupBox("Region (optional)") {
+                TextField("x,y,width,height (pixels)", text: $fetchRegion)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Region of interest")
+                TextField("Quality layers (e.g. 2)", text: $fetchLayers)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("Quality layers")
+            }
+
+            Button("Build Command") {
+                var cmd = "dicom-jpip fetch \(fetchServerURL) --image \"\(fetchImageID)\""
+                if !fetchRegion.isEmpty { cmd += " --region \(fetchRegion)" }
+                if !fetchLayers.isEmpty { cmd += " --layers \(fetchLayers)" }
+                fetchResult = cmd
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel("Build JPIP fetch command")
+
+            if !fetchResult.isEmpty {
+                GroupBox("Command") {
+                    Text(fetchResult)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - Extract URI
+
+    private var uriPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Extract the JPIP URI embedded in a DICOM file (tag (0008,1190) RETRIEVE URL).")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            GroupBox("Input") {
+                TextField("DICOM file path", text: $uriFilePath)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("DICOM file path")
+            }
+
+            Button("Build Command") {
+                uriResult = "dicom-jpip uri \"\(uriFilePath)\""
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel("Build JPIP URI command")
+
+            if !uriResult.isEmpty {
+                GroupBox("Command") {
+                    Text(uriResult)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - Serve
+
+    private var servePanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Start an embedded JPIP server serving local DICOM files.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            GroupBox("Configuration") {
+                HStack {
+                    Text("Port")
+                    Spacer()
+                    TextField("8080", text: $servePort)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 80)
+                        .accessibilityLabel("JPIP server port")
+                }
+                TextField("DICOM files directory", text: $serveDirectory)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("DICOM files directory")
+            }
+
+            Button("Build Command") {
+                serveResult = "dicom-jpip serve --port \(servePort) --directory \"\(serveDirectory)\""
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel("Build JPIP serve command")
+
+            if !serveResult.isEmpty {
+                GroupBox("Command") {
+                    Text(serveResult)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding()
+    }
+
+    // MARK: - Server Info
+
+    private var infoPanel: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Query a JPIP server for its capabilities and statistics.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            GroupBox("Server") {
+                TextField("JPIP server URL", text: $infoServerURL)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel("JPIP server URL for info")
+            }
+
+            Button("Build Command") {
+                infoResult = "dicom-jpip info \(infoServerURL)"
+            }
+            .buttonStyle(.borderedProminent)
+            .accessibilityLabel("Build JPIP info command")
+
+            if !infoResult.isEmpty {
+                GroupBox("Command") {
+                    Text(infoResult)
+                        .font(.system(.caption, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .padding()
     }
 }
 #endif
