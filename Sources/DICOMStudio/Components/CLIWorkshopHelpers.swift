@@ -324,7 +324,7 @@ public enum ToolCatalogHelpers: Sendable {
     }
 
     /// Returns M16-style parameter definitions for a tool by ID.
-    public static func parameterDefinitions(for toolID: String) -> [CLIParameterDefinition] {
+    static func rawParameterDefinitions(for toolID: String) -> [CLIParameterDefinition] {
         switch toolID {
         case "dicom-echo":
             return [
@@ -2027,6 +2027,11 @@ public enum ToolCatalogHelpers: Sendable {
                     isAdvanced: true
                 ),
                 CLIParameterDefinition(
+                    id: "no-color", flag: "--no-color", displayName: "No Color",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Disable ANSI color in the hex dump (plain text output)"
+                ),
+                CLIParameterDefinition(
                     id: "annotate", flag: "--annotate", displayName: "Annotate Tags",
                     parameterType: .booleanToggle, placeholder: "",
                     helpText: "Append tag name annotations at tag-boundary rows"
@@ -2154,8 +2159,1450 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Verbose output with detailed tag information"
                 ),
             ]
+        case "dicom-split":
+            return [
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File",
+                    parameterType: .filePath, placeholder: "Path to multi-frame DICOM file",
+                    helpText: "Multi-frame DICOM file (or directory with --recursive) to split into per-frame files",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output Directory",
+                    parameterType: .outputPath, placeholder: "Output directory",
+                    helpText: "Directory to write the split frames into"
+                ),
+                CLIParameterDefinition(
+                    id: "frames", flag: "--frames", displayName: "Frames",
+                    parameterType: .textField, placeholder: "e.g. 1-5,8,10",
+                    helpText: "Frame selection (ranges/list); omit for all frames"
+                ),
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "dicom",
+                    helpText: "Output format for each extracted frame",
+                    defaultValue: "dicom", allowedValues: ["dicom", "png", "jpeg", "tiff"]
+                ),
+                CLIParameterDefinition(
+                    id: "apply-window", flag: "--apply-window", displayName: "Apply Window",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Apply window center/width when rendering to image formats"
+                ),
+                CLIParameterDefinition(
+                    id: "window-center", flag: "--window-center", displayName: "Window Center",
+                    parameterType: .textField, placeholder: "e.g. 40",
+                    helpText: "Window center used for image rendering", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "window-width", flag: "--window-width", displayName: "Window Width",
+                    parameterType: .textField, placeholder: "e.g. 400",
+                    helpText: "Window width used for image rendering", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "pattern", flag: "--pattern", displayName: "Filename Pattern",
+                    parameterType: .textField, placeholder: "e.g. frame_{n}",
+                    helpText: "Output filename pattern", isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Recurse into directories"
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verbose output"
+                ),
+            ]
+        case "dicom-merge":
+            return [
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File(s)",
+                    parameterType: .filePath, placeholder: "DICOM file or directory",
+                    helpText: "Input DICOM file(s) or directory to merge (use --recursive for directories)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output File",
+                    parameterType: .outputPath, placeholder: "Merged output DICOM path",
+                    helpText: "Path to write the merged multi-frame DICOM"
+                ),
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Merge Format",
+                    parameterType: .enumPicker, placeholder: "standard",
+                    helpText: "Merged object format",
+                    defaultValue: "standard",
+                    allowedValues: ["standard", "enhanced-ct", "enhanced-mr", "enhanced-xa"]
+                ),
+                CLIParameterDefinition(
+                    id: "level", flag: "--level", displayName: "Merge Level",
+                    parameterType: .enumPicker, placeholder: "file",
+                    helpText: "Grouping level for the merge",
+                    defaultValue: "file", allowedValues: ["file", "series", "study"]
+                ),
+                CLIParameterDefinition(
+                    id: "sort-by", flag: "--sort-by", displayName: "Sort By",
+                    parameterType: .enumPicker, placeholder: "InstanceNumber",
+                    helpText: "Attribute used to order frames",
+                    defaultValue: "InstanceNumber",
+                    allowedValues: ["InstanceNumber", "ImagePositionPatient", "AcquisitionTime", "none"]
+                ),
+                CLIParameterDefinition(
+                    id: "order", flag: "--order", displayName: "Sort Order",
+                    parameterType: .enumPicker, placeholder: "ascending",
+                    helpText: "Sort order",
+                    defaultValue: "ascending", allowedValues: ["ascending", "descending"]
+                ),
+                CLIParameterDefinition(
+                    id: "validate", flag: "--validate", displayName: "Validate",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Validate consistency of inputs before merging"
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Recurse into directories"
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verbose output"
+                ),
+            ]
+        case "dicom-archive":
+            return [
+                CLIParameterDefinition(
+                    id: "subcommand", flag: "", displayName: "Operation",
+                    parameterType: .subcommand, placeholder: "list",
+                    helpText: "Archive operation to perform",
+                    defaultValue: "list",
+                    allowedValues: ["init", "import", "query", "list", "export", "check", "stats"]
+                ),
+                CLIParameterDefinition(
+                    id: "archive", flag: "--archive", displayName: "Archive Path",
+                    parameterType: .filePath, placeholder: "Path to archive directory",
+                    helpText: "Archive directory to operate on",
+                    visibleWhen: CLIParameterVisibilityCondition(
+                        parameterId: "subcommand",
+                        values: ["import", "query", "list", "export", "check", "stats"])
+                ),
+                CLIParameterDefinition(
+                    id: "path", flag: "--path", displayName: "New Archive Path",
+                    parameterType: .outputPath, placeholder: "Directory to create the archive at",
+                    helpText: "Location for the new archive",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["init"])
+                ),
+                CLIParameterDefinition(
+                    id: "force", flag: "--force", displayName: "Force",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Overwrite an existing archive",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["init"])
+                ),
+                CLIParameterDefinition(
+                    id: "files", flag: "", displayName: "Files to Import",
+                    parameterType: .filePath, placeholder: "DICOM file or directory",
+                    helpText: "Files/directories to import into the archive",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["import"])
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Recurse into directories when importing",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["import"])
+                ),
+                CLIParameterDefinition(
+                    id: "skip-duplicates", flag: "--skip-duplicates", displayName: "Skip Duplicates",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Skip instances already present in the archive",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["import"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "e.g. DOE^JOHN",
+                    helpText: "Filter by patient name",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["query"])
+                ),
+                CLIParameterDefinition(
+                    id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "e.g. 12345",
+                    helpText: "Filter by patient ID",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["query", "export"])
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study UID",
+                    parameterType: .textField, placeholder: "Study Instance UID",
+                    helpText: "Filter/select by Study Instance UID",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["query", "export"])
+                ),
+                CLIParameterDefinition(
+                    id: "series-uid", flag: "--series-uid", displayName: "Series UID",
+                    parameterType: .textField, placeholder: "Series Instance UID",
+                    helpText: "Select by Series Instance UID",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["export"])
+                ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .textField, placeholder: "e.g. CT",
+                    helpText: "Filter by modality",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["query"])
+                ),
+                CLIParameterDefinition(
+                    id: "study-date", flag: "--study-date", displayName: "Study Date",
+                    parameterType: .textField, placeholder: "YYYYMMDD",
+                    helpText: "Filter by study date",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["query"])
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Export Output",
+                    parameterType: .outputPath, placeholder: "Export destination directory",
+                    helpText: "Directory to export selected instances into",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["export"])
+                ),
+                CLIParameterDefinition(
+                    id: "flatten", flag: "--flatten", displayName: "Flatten",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Export into a flat directory (no patient/study/series folders)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["export"])
+                ),
+                CLIParameterDefinition(
+                    id: "show-instances", flag: "--show-instances", displayName: "Show Instances",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Include instance-level entries in the listing",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["list"])
+                ),
+                CLIParameterDefinition(
+                    id: "verify-files", flag: "--verify-files", displayName: "Verify Files",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verify that referenced files exist and are readable",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["check"])
+                ),
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "table",
+                    helpText: "Output format for query/list/stats",
+                    defaultValue: "table", allowedValues: ["table", "tree", "text", "json"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["query", "list", "stats"])
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verbose output",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["import", "export", "check"])
+                ),
+            ]
+case "dicom-json":
+    return [
+        CLIParameterDefinition(
+            id: "inputPath", flag: "", displayName: "Input File",
+            parameterType: .filePath, placeholder: "Path to DICOM or JSON file",
+            helpText: "Input file (DICOM or JSON). With --reverse this is a JSON file converted back to DICOM.",
+            isRequired: true
+        ),
+        CLIParameterDefinition(
+            id: "output", flag: "--output", displayName: "Output File",
+            parameterType: .outputPath, placeholder: "Output file path",
+            helpText: "Output file path. If omitted, the result is printed to the console (DICOM->JSON only).",
+            isRequired: false
+        ),
+        CLIParameterDefinition(
+            id: "reverse", flag: "--reverse", displayName: "Reverse (JSON -> DICOM)",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Convert from JSON back to a DICOM Part-10 file instead of DICOM -> JSON."
+        ),
+        CLIParameterDefinition(
+            id: "format", flag: "--format", displayName: "JSON Format",
+            parameterType: .enumPicker, placeholder: "standard",
+            helpText: "JSON format flavor: standard DICOM JSON Model or DICOMweb JSON.",
+            defaultValue: "standard",
+            allowedValues: ["standard", "dicomweb"],
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "pretty", flag: "--pretty", displayName: "Pretty Print",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Pretty-print the JSON output with indentation.",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "no-sort-keys", flag: "--no-sort-keys", displayName: "Do Not Sort Keys",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Do not sort JSON keys alphabetically (keys are sorted by default).",
+            isAdvanced: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "include-empty", flag: "--include-empty", displayName: "Include Empty Values",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Include empty values in the JSON output.",
+            isAdvanced: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "metadata-only", flag: "--metadata-only", displayName: "Metadata Only",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Only include metadata; exclude PixelData (7FE0,0010) from the JSON output.",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "inline-threshold", flag: "--inline-threshold", displayName: "Inline Binary Threshold (bytes)",
+            parameterType: .integerField, placeholder: "1024",
+            helpText: "Inline binary data up to this size in bytes as Base64. Use 0 to always emit BulkDataURIs.",
+            isAdvanced: true,
+            defaultValue: "1024", minValue: 0, maxValue: 1073741824,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "bulk-data-url", flag: "--bulk-data-url", displayName: "Bulk Data Base URL",
+            parameterType: .textField, placeholder: "https://example.org/bulk",
+            helpText: "Base URL used to generate BulkDataURI references for bulk data.",
+            isAdvanced: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "filter-tag", flag: "--filter-tag", displayName: "Filter Tags",
+            parameterType: .arrayField, placeholder: "PatientName or 0010,0010",
+            helpText: "Filter to specific tags by keyword (e.g. PatientName) or hex (e.g. 0010,0010). One per line.",
+            isAdvanced: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+        ),
+        CLIParameterDefinition(
+            id: "stream", flag: "--stream", displayName: "Streaming",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Use streaming for large files (no effect on in-process conversion).",
+            isAdvanced: true
+        ),
+        CLIParameterDefinition(
+            id: "verbose", flag: "--verbose", displayName: "Verbose",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Print detailed progress and timing information."
+        ),
+    ]
+        case "dicom-xml":
+            return [
+                CLIParameterDefinition(
+                    id: "input", flag: "", displayName: "Input File",
+                    parameterType: .filePath, placeholder: "Path to DICOM or XML file",
+                    helpText: "Input file (DICOM when converting to XML, XML when --reverse is set)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output File",
+                    parameterType: .outputPath, placeholder: "Output file path (auto if omitted)",
+                    helpText: "Output file path. Defaults to the input name with .xml (or .dcm when --reverse)."
+                ),
+                CLIParameterDefinition(
+                    id: "reverse", flag: "--reverse", displayName: "Reverse (XML → DICOM)",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Convert from XML back to a DICOM file instead of DICOM → XML"
+                ),
+                CLIParameterDefinition(
+                    id: "pretty", flag: "--pretty", displayName: "Pretty Print",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Indent the generated XML for readability",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+                ),
+                CLIParameterDefinition(
+                    id: "no-keywords", flag: "--no-keywords", displayName: "No Keywords",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Omit keyword= attributes from the XML output",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+                ),
+                CLIParameterDefinition(
+                    id: "include-empty", flag: "--include-empty", displayName: "Include Empty Values",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Emit DicomAttribute elements even when they have no value",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+                ),
+                CLIParameterDefinition(
+                    id: "inline-threshold", flag: "--inline-threshold", displayName: "Inline Binary Threshold",
+                    parameterType: .integerField, placeholder: "1024",
+                    helpText: "Inline binary data up to this many bytes (0 to always use bulk-data URIs)",
+                    isAdvanced: true,
+                    defaultValue: "1024", minValue: 0, maxValue: 1_000_000_000,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+                ),
+                CLIParameterDefinition(
+                    id: "bulk-data-url", flag: "--bulk-data-url", displayName: "Bulk Data Base URL",
+                    parameterType: .textField, placeholder: "https://example.org/bulkdata",
+                    helpText: "Base URL used to generate bulk-data URIs for large binary values",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+                ),
+                CLIParameterDefinition(
+                    id: "metadata-only", flag: "--metadata-only", displayName: "Metadata Only",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Exclude PixelData (7FE0,0010) from the XML output",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+                ),
+                CLIParameterDefinition(
+                    id: "filter-tag", flag: "--filter-tag", displayName: "Filter Tag(s)",
+                    parameterType: .arrayField, placeholder: "e.g. PatientName, 0010,0010",
+                    helpText: "Keep only these tags (keyword or GGGG,EEEE). Multiple values allowed.",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Print timing and element-count diagnostics"
+                ),
+            ]
+case "dicom-uid":
+    return [
+        // Subcommand selector (positional, ArgumentParser subcommand)
+        CLIParameterDefinition(
+            id: "subcommand", flag: "", displayName: "Operation",
+            parameterType: .subcommand, placeholder: "generate",
+            helpText: "UID operation: generate new UIDs, validate UIDs for PS3.5 compliance, look up UIDs in the registry, or regenerate UIDs in a DICOM file",
+            isRequired: true,
+            defaultValue: "generate",
+            allowedValues: ["generate", "validate", "lookup", "regenerate"]
+        ),
+
+        // ----- generate -----
+        CLIParameterDefinition(
+            id: "count", flag: "--count", displayName: "Count",
+            parameterType: .integerField, placeholder: "1",
+            helpText: "Number of UIDs to generate (1-1000, default: 1)",
+            defaultValue: "1", minValue: 1, maxValue: 1000,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["generate"])
+        ),
+        CLIParameterDefinition(
+            id: "type", flag: "--type", displayName: "UID Type",
+            parameterType: .enumPicker, placeholder: "generic",
+            helpText: "UID type suffix: study, series, instance/sop, or generic (default)",
+            defaultValue: "generic",
+            allowedValues: ["generic", "study", "series", "instance", "sop"],
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["generate"])
+        ),
+        CLIParameterDefinition(
+            id: "root", flag: "--root", displayName: "UID Root",
+            parameterType: .textField, placeholder: "1.2.276.0.7230010.3",
+            helpText: "Custom UID root prefix (default: 1.2.276.0.7230010.3)",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["generate", "regenerate"])
+        ),
+        CLIParameterDefinition(
+            id: "json", flag: "--json", displayName: "JSON Output",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Output results as JSON",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["generate", "validate", "lookup"])
+        ),
+
+        // ----- validate -----
+        CLIParameterDefinition(
+            id: "uids", flag: "", displayName: "UIDs",
+            parameterType: .arrayField, placeholder: "1.2.840.10008.1.2.1",
+            helpText: "One or more UIDs to validate (space/comma separated)",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
+        ),
+        CLIParameterDefinition(
+            id: "file", flag: "--file", displayName: "DICOM File",
+            parameterType: .filePath, placeholder: "study.dcm",
+            helpText: "Validate all UID (VR=UI) elements in a DICOM file",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
+        ),
+        CLIParameterDefinition(
+            id: "check-registry", flag: "--check-registry", displayName: "Check Registry",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Annotate valid UIDs with their DICOM registry name",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
+        ),
+
+        // ----- lookup -----
+        CLIParameterDefinition(
+            id: "lookup-uid", flag: "", displayName: "UID",
+            parameterType: .textField, placeholder: "1.2.840.10008.1.2.1",
+            helpText: "A single UID to look up in the DICOM registry",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["lookup"])
+        ),
+        CLIParameterDefinition(
+            id: "list-all", flag: "--list-all", displayName: "List All",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "List all known UIDs in the registry",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["lookup"])
+        ),
+        CLIParameterDefinition(
+            id: "lookup-type", flag: "--type", displayName: "Type Filter",
+            parameterType: .enumPicker, placeholder: "Any",
+            helpText: "Filter listed UIDs by type",
+            allowedValues: ["", "transfer-syntax", "sop-class"],
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["lookup"])
+        ),
+        CLIParameterDefinition(
+            id: "search", flag: "--search", displayName: "Search",
+            parameterType: .textField, placeholder: "CT",
+            helpText: "Search registry UIDs by name or UID keyword",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["lookup"])
+        ),
+
+        // ----- regenerate -----
+        CLIParameterDefinition(
+            id: "inputPath", flag: "", displayName: "Input File",
+            parameterType: .filePath, placeholder: "file.dcm",
+            helpText: "Input DICOM file whose instance UIDs will be regenerated",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
+        ),
+        CLIParameterDefinition(
+            id: "output", flag: "--output", displayName: "Output File",
+            parameterType: .outputPath, placeholder: "new.dcm",
+            helpText: "Output DICOM file path (defaults to overwriting the input)",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
+        ),
+        CLIParameterDefinition(
+            id: "export-map", flag: "--export-map", displayName: "Export Mapping",
+            parameterType: .outputPath, placeholder: "mapping.json",
+            helpText: "Export the old to new UID mapping to a JSON file",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
+        ),
+        CLIParameterDefinition(
+            id: "dry-run", flag: "--dry-run", displayName: "Dry Run",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Show which UIDs would be regenerated without writing files",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
+        ),
+        CLIParameterDefinition(
+            id: "verbose", flag: "--verbose", displayName: "Verbose",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Show each UID that was changed",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
+        ),
+    ]
+case "dicom-dcmdir":
+            return [
+                CLIParameterDefinition(
+                    id: "subcommand", flag: "", displayName: "Subcommand",
+                    parameterType: .subcommand, placeholder: "create",
+                    helpText: "DICOMDIR operation: create a DICOMDIR from a folder, validate an existing one, dump its structure, or update (not yet implemented)",
+                    isRequired: true,
+                    defaultValue: "create",
+                    allowedValues: ["create", "validate", "dump", "update"]
+                ),
+
+                // ----- create -----
+                CLIParameterDefinition(
+                    id: "inputDirectory", flag: "", displayName: "Input Directory",
+                    parameterType: .filePath, placeholder: "folder containing DICOM files",
+                    helpText: "Directory containing DICOM files to index (positional argument)",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output DICOMDIR",
+                    parameterType: .outputPath, placeholder: "DICOMDIR",
+                    helpText: "Output DICOMDIR path (default: DICOMDIR inside the input directory)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "fileSetID", flag: "--file-set-id", displayName: "File-set ID",
+                    parameterType: .textField, placeholder: "derived from directory name",
+                    helpText: "File-set ID (default: derived from the input directory name)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "profile", flag: "--profile", displayName: "Application Profile",
+                    parameterType: .enumPicker, placeholder: "STD-GEN-CD",
+                    helpText: "Media application profile (PS3.11)",
+                    defaultValue: "STD-GEN-CD",
+                    allowedValues: ["STD-GEN-CD", "STD-GEN-DVD", "STD-GEN-USB"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Recursively scan subdirectories for DICOM files (default: on)",
+                    defaultValue: "true",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "strict", flag: "--strict", displayName: "Strict",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Include only valid DICOM files (do not force-parse non-conformant files)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "createVerbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verbose output during creation",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
+                ),
+
+                // ----- validate -----
+                CLIParameterDefinition(
+                    id: "dicomdirPath", flag: "", displayName: "DICOMDIR Path",
+                    parameterType: .filePath, placeholder: "path to DICOMDIR",
+                    helpText: "Path to the DICOMDIR file (positional argument)",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate", "dump", "update"])
+                ),
+                CLIParameterDefinition(
+                    id: "checkFiles", flag: "--check-files", displayName: "Check Files",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Check whether referenced files exist",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
+                ),
+                CLIParameterDefinition(
+                    id: "detailed", flag: "--detailed", displayName: "Detailed",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Detailed validation output (record-type breakdown)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
+                ),
+
+                // ----- dump -----
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "tree",
+                    helpText: "Output format for the dump",
+                    defaultValue: "tree",
+                    allowedValues: ["tree", "json", "text"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["dump"])
+                ),
+                CLIParameterDefinition(
+                    id: "dumpVerbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show all attributes for each record",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["dump"])
+                ),
+
+                // ----- update -----
+                CLIParameterDefinition(
+                    id: "add", flag: "--add", displayName: "Add Directory",
+                    parameterType: .filePath, placeholder: "directory with new files",
+                    helpText: "Directory with new DICOM files to add (update is not yet implemented)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["update"])
+                ),
+                CLIParameterDefinition(
+                    id: "updateVerbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Verbose output",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["update"])
+                ),
+            ]
+case "dicom-pdf":
+    return [
+        CLIParameterDefinition(
+            id: "inputPath",
+            flag: "",
+            displayName: "Input",
+            parameterType: .filePath,
+            placeholder: "report.dcm or report.pdf",
+            helpText: "Input file (DICOM to extract from, or a document to encapsulate). Directory input requires --recursive.",
+            isRequired: true,
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "output",
+            flag: "--output",
+            displayName: "Output",
+            parameterType: .outputPath,
+            placeholder: "report.pdf or report.dcm",
+            helpText: "Output file or directory path. Auto-generated next to the input if omitted.",
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "extract",
+            flag: "--extract",
+            displayName: "Extract Mode",
+            parameterType: .booleanToggle,
+            helpText: "Extract the embedded document out of a DICOM Encapsulated Document file.",
+            defaultValue: "false"
+        ),
+        CLIParameterDefinition(
+            id: "patient-name",
+            flag: "--patient-name",
+            displayName: "Patient Name",
+            parameterType: .textField,
+            placeholder: "DOE^JOHN",
+            helpText: "Patient Name (required for encapsulation mode).",
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "patient-id",
+            flag: "--patient-id",
+            displayName: "Patient ID",
+            parameterType: .textField,
+            placeholder: "12345",
+            helpText: "Patient ID (required for encapsulation mode).",
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "title",
+            flag: "--title",
+            displayName: "Document Title",
+            parameterType: .textField,
+            placeholder: "Radiology Report",
+            helpText: "Document Title (encapsulation mode).",
+            isAdvanced: true,
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "study-uid",
+            flag: "--study-uid",
+            displayName: "Study Instance UID",
+            parameterType: .textField,
+            placeholder: "1.2.3.4.5 (auto if blank)",
+            helpText: "Study Instance UID (auto-generated if not provided).",
+            isAdvanced: true,
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "series-uid",
+            flag: "--series-uid",
+            displayName: "Series Instance UID",
+            parameterType: .textField,
+            placeholder: "1.2.3.4.5.6 (auto if blank)",
+            helpText: "Series Instance UID (auto-generated if not provided).",
+            isAdvanced: true,
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "modality",
+            flag: "--modality",
+            displayName: "Modality",
+            parameterType: .textField,
+            placeholder: "DOC (M3D for 3D models)",
+            helpText: "Modality (default: DOC for documents, M3D for 3D models).",
+            isAdvanced: true,
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "series-description",
+            flag: "--series-description",
+            displayName: "Series Description",
+            parameterType: .textField,
+            placeholder: "Encapsulated PDF",
+            helpText: "Series Description (encapsulation mode).",
+            isAdvanced: true,
+            defaultValue: ""
+        ),
+        CLIParameterDefinition(
+            id: "series-number",
+            flag: "--series-number",
+            displayName: "Series Number",
+            parameterType: .integerField,
+            placeholder: "1",
+            helpText: "Series Number (encapsulation mode).",
+            isAdvanced: true,
+            defaultValue: "",
+            minValue: 0,
+            maxValue: 999999
+        ),
+        CLIParameterDefinition(
+            id: "instance-number",
+            flag: "--instance-number",
+            displayName: "Instance Number",
+            parameterType: .integerField,
+            placeholder: "1",
+            helpText: "Instance Number (encapsulation mode).",
+            isAdvanced: true,
+            defaultValue: "",
+            minValue: 0,
+            maxValue: 999999
+        ),
+        CLIParameterDefinition(
+            id: "recursive",
+            flag: "--recursive",
+            displayName: "Recursive",
+            parameterType: .booleanToggle,
+            helpText: "Process directories recursively (requires a directory input).",
+            isAdvanced: true,
+            defaultValue: "false"
+        ),
+        CLIParameterDefinition(
+            id: "show-metadata",
+            flag: "--show-metadata",
+            displayName: "Show Metadata",
+            parameterType: .booleanToggle,
+            helpText: "Show document metadata (extract mode).",
+            isAdvanced: true,
+            defaultValue: "false"
+        ),
+        CLIParameterDefinition(
+            id: "verbose",
+            flag: "--verbose",
+            displayName: "Verbose",
+            parameterType: .booleanToggle,
+            helpText: "Verbose output.",
+            isAdvanced: true,
+            defaultValue: "false"
+        )
+    ]
+case "dicom-pixedit":
+    return [
+        CLIParameterDefinition(
+            id: "inputPath", flag: "", displayName: "Input File",
+            parameterType: .filePath, placeholder: "Path to DICOM file",
+            helpText: "Input DICOM file whose pixel data will be edited",
+            isRequired: true
+        ),
+        CLIParameterDefinition(
+            id: "output", flag: "--output", displayName: "Output File",
+            parameterType: .outputPath, placeholder: "Output DICOM file path",
+            helpText: "Destination path for the edited DICOM file",
+            isRequired: true
+        ),
+        CLIParameterDefinition(
+            id: "mask-region", flag: "--mask-region", displayName: "Mask Region",
+            parameterType: .textField, placeholder: "x,y,width,height",
+            helpText: "Rectangular region (x,y,width,height) to set to the fill value — e.g. for masking burned-in annotations"
+        ),
+        CLIParameterDefinition(
+            id: "fill-value", flag: "--fill-value", displayName: "Fill Value",
+            parameterType: .integerField, placeholder: "0",
+            helpText: "Pixel value written into the masked region (default: 0)",
+            defaultValue: "0", minValue: 0, maxValue: 65535,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "mask-region", values: [])
+        ),
+        CLIParameterDefinition(
+            id: "crop", flag: "--crop", displayName: "Crop Region",
+            parameterType: .textField, placeholder: "x,y,width,height",
+            helpText: "Crop the image to the rectangular region (x,y,width,height); updates Rows/Columns"
+        ),
+        CLIParameterDefinition(
+            id: "window-center", flag: "--window-center", displayName: "Window Center",
+            parameterType: .textField, placeholder: "e.g. 40",
+            helpText: "Window center for permanent window/level application (requires --apply-window)"
+        ),
+        CLIParameterDefinition(
+            id: "window-width", flag: "--window-width", displayName: "Window Width",
+            parameterType: .textField, placeholder: "e.g. 400",
+            helpText: "Window width for permanent window/level application (requires --apply-window)"
+        ),
+        CLIParameterDefinition(
+            id: "apply-window", flag: "--apply-window", displayName: "Apply Window/Level",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Bake the window center/width transform into the pixel data (PS3.3 C.11.2.1.2)"
+        ),
+        CLIParameterDefinition(
+            id: "invert", flag: "--invert", displayName: "Invert",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Invert all pixel values (maxValue - value)"
+        ),
+        CLIParameterDefinition(
+            id: "verbose", flag: "--verbose", displayName: "Verbose",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Show verbose progress output",
+            isAdvanced: true
+        ),
+    ]
+        case "dicom-image":
+            return [
+                CLIParameterDefinition(
+                    id: "input", flag: "", displayName: "Input Image/Directory",
+                    parameterType: .filePath, placeholder: "Path to image file or directory",
+                    helpText: "Standard image file (JPEG, PNG, TIFF, BMP, GIF) or a directory of images to convert to DICOM Secondary Capture",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output File/Directory",
+                    parameterType: .outputPath, placeholder: "Output file or directory path",
+                    helpText: "Destination .dcm file (single image) or directory (batch / split-pages). Defaults next to the input if omitted.",
+                    isRequired: false
+                ),
+                CLIParameterDefinition(
+                    id: "patient-name", flag: "--patient-name", displayName: "Patient Name",
+                    parameterType: .textField, placeholder: "DOE^JOHN",
+                    helpText: "Patient Name in DICOM PN format (e.g. 'DOE^JOHN'). Required for conversion.",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "patient-id", flag: "--patient-id", displayName: "Patient ID",
+                    parameterType: .textField, placeholder: "12345",
+                    helpText: "Patient ID. Required for conversion.",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "study-description", flag: "--study-description", displayName: "Study Description",
+                    parameterType: .textField, placeholder: "Clinical Photography",
+                    helpText: "Study Description (0008,1030). Falls back to EXIF description when --use-exif is set."
+                ),
+                CLIParameterDefinition(
+                    id: "series-description", flag: "--series-description", displayName: "Series Description",
+                    parameterType: .textField, placeholder: "Clinical Photos",
+                    helpText: "Series Description (0008,103E)."
+                ),
+                CLIParameterDefinition(
+                    id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
+                    parameterType: .textField, placeholder: "auto-generated",
+                    helpText: "Study Instance UID (auto-generated if not provided).",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",
+                    parameterType: .textField, placeholder: "auto-generated",
+                    helpText: "Series Instance UID (auto-generated if not provided).",
+                    isAdvanced: true
+                ),
+                CLIParameterDefinition(
+                    id: "series-number", flag: "--series-number", displayName: "Series Number",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: "Series Number (0020,0011).",
+                    isAdvanced: true, minValue: 0, maxValue: 999999
+                ),
+                CLIParameterDefinition(
+                    id: "instance-number", flag: "--instance-number", displayName: "Instance Number",
+                    parameterType: .integerField, placeholder: "1",
+                    helpText: "Instance Number (starting value for batch / split-pages).",
+                    isAdvanced: true, minValue: 0, maxValue: 999999
+                ),
+                CLIParameterDefinition(
+                    id: "modality", flag: "--modality", displayName: "Modality",
+                    parameterType: .textField, placeholder: "OT",
+                    helpText: "Modality (0008,0060). Default: OT (Other).",
+                    defaultValue: "OT"
+                ),
+                CLIParameterDefinition(
+                    id: "use-exif", flag: "--use-exif", displayName: "Use EXIF Metadata",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Extract EXIF metadata (acquisition date/time, DPI pixel spacing, description) from the image."
+                ),
+                CLIParameterDefinition(
+                    id: "split-pages", flag: "--split-pages", displayName: "Split Multi-page TIFF",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Split a multi-page TIFF into one DICOM file per page (frame_0001.dcm …)."
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive Directory",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Process directories recursively (required when the input is a directory)."
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose Output",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Print per-file conversion progress.",
+                    isAdvanced: true
+                ),
+            ]
+case "dicom-export":
+            return [
+                CLIParameterDefinition(
+                    id: "operation", flag: "", displayName: "Operation",
+                    parameterType: .subcommand, placeholder: "single",
+                    helpText: "Export operation: single image, contact sheet, animated GIF, or bulk directory export",
+                    isRequired: true,
+                    defaultValue: "single",
+                    allowedValues: ["single", "contact-sheet", "animate", "bulk"]
+                ),
+                CLIParameterDefinition(
+                    id: "inputPath", flag: "", displayName: "Input File/Directory",
+                    parameterType: .filePath, placeholder: "Path to DICOM file or directory",
+                    helpText: "DICOM file (single/animate) or directory of DICOM files (contact-sheet/bulk)",
+                    isRequired: true
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output Path",
+                    parameterType: .outputPath, placeholder: "Output file or directory path",
+                    helpText: "Destination image, GIF, or directory for exported files",
+                    isRequired: true
+                ),
+                // --- single ---
+                CLIParameterDefinition(
+                    id: "format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "jpeg",
+                    helpText: "Image format for the exported frame",
+                    defaultValue: "jpeg",
+                    allowedValues: ["png", "jpeg", "tiff"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single"])
+                ),
+                CLIParameterDefinition(
+                    id: "quality", flag: "--quality", displayName: "JPEG Quality",
+                    parameterType: .integerField, placeholder: "90",
+                    helpText: "JPEG compression quality (1–100, default: 90)",
+                    defaultValue: "90", minValue: 1, maxValue: 100,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single", "contact-sheet", "bulk"])
+                ),
+                CLIParameterDefinition(
+                    id: "embed-metadata", flag: "--embed-metadata", displayName: "Embed Metadata",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Embed DICOM metadata as EXIF/TIFF tags in the output image",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single", "bulk"])
+                ),
+                CLIParameterDefinition(
+                    id: "exif-fields", flag: "--exif-fields", displayName: "EXIF Fields",
+                    parameterType: .textField, placeholder: "PatientName,StudyDate,Modality",
+                    helpText: "Comma-separated DICOM fields to embed (e.g. PatientName,StudyDate,Modality)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single"])
+                ),
+                CLIParameterDefinition(
+                    id: "frame", flag: "--frame", displayName: "Frame Number",
+                    parameterType: .integerField, placeholder: "0",
+                    helpText: "Frame number to export from multi-frame files (0-indexed)",
+                    minValue: 0, maxValue: 99999,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single"])
+                ),
+                // --- windowing (shared) ---
+                CLIParameterDefinition(
+                    id: "apply-window", flag: "--apply-window", displayName: "Apply Window/Level",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Apply window center/width during rendering",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single", "contact-sheet", "animate", "bulk"])
+                ),
+                CLIParameterDefinition(
+                    id: "window-center", flag: "--window-center", displayName: "Window Center",
+                    parameterType: .textField, placeholder: "e.g. 40",
+                    helpText: "Window center value (Hounsfield units for CT)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single", "animate"])
+                ),
+                CLIParameterDefinition(
+                    id: "window-width", flag: "--window-width", displayName: "Window Width",
+                    parameterType: .textField, placeholder: "e.g. 400",
+                    helpText: "Window width value for controlling brightness range",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["single", "animate"])
+                ),
+                // --- contact-sheet ---
+                CLIParameterDefinition(
+                    id: "columns", flag: "--columns", displayName: "Columns",
+                    parameterType: .integerField, placeholder: "4",
+                    helpText: "Number of thumbnail columns",
+                    defaultValue: "4", minValue: 1, maxValue: 64,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["contact-sheet"])
+                ),
+                CLIParameterDefinition(
+                    id: "thumbnail-size", flag: "--thumbnail-size", displayName: "Thumbnail Size",
+                    parameterType: .integerField, placeholder: "256",
+                    helpText: "Thumbnail size in pixels",
+                    defaultValue: "256", minValue: 16, maxValue: 2048,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["contact-sheet"])
+                ),
+                CLIParameterDefinition(
+                    id: "spacing", flag: "--spacing", displayName: "Spacing",
+                    parameterType: .integerField, placeholder: "4",
+                    helpText: "Spacing between thumbnails in pixels",
+                    defaultValue: "4", minValue: 0, maxValue: 256,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["contact-sheet"])
+                ),
+                CLIParameterDefinition(
+                    id: "labels", flag: "--labels", displayName: "Filename Labels",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Reserve label space below thumbnails",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["contact-sheet"])
+                ),
+                CLIParameterDefinition(
+                    id: "sheet-format", flag: "--format", displayName: "Sheet Format",
+                    parameterType: .enumPicker, placeholder: "png",
+                    helpText: "Contact sheet image format",
+                    defaultValue: "png",
+                    allowedValues: ["png", "jpeg"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["contact-sheet"])
+                ),
+                // --- animate ---
+                CLIParameterDefinition(
+                    id: "fps", flag: "--fps", displayName: "Frames Per Second",
+                    parameterType: .textField, placeholder: "10",
+                    helpText: "Animation frame rate (frames per second)",
+                    defaultValue: "10",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["animate"])
+                ),
+                CLIParameterDefinition(
+                    id: "loop-count", flag: "--loop-count", displayName: "Loop Count",
+                    parameterType: .integerField, placeholder: "0",
+                    helpText: "Number of loops (0 = infinite)",
+                    defaultValue: "0", minValue: 0, maxValue: 65535,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["animate"])
+                ),
+                CLIParameterDefinition(
+                    id: "start-frame", flag: "--start-frame", displayName: "Start Frame",
+                    parameterType: .integerField, placeholder: "0",
+                    helpText: "First frame to include (0-indexed)",
+                    defaultValue: "0", minValue: 0, maxValue: 99999,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["animate"])
+                ),
+                CLIParameterDefinition(
+                    id: "end-frame", flag: "--end-frame", displayName: "End Frame",
+                    parameterType: .integerField, placeholder: "last frame",
+                    helpText: "Last frame to include (default: last frame)",
+                    minValue: 0, maxValue: 99999,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["animate"])
+                ),
+                CLIParameterDefinition(
+                    id: "scale", flag: "--scale", displayName: "Scale Factor",
+                    parameterType: .textField, placeholder: "1.0",
+                    helpText: "Scale factor (0.1–2.0)",
+                    defaultValue: "1.0",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["animate"])
+                ),
+                // --- bulk ---
+                CLIParameterDefinition(
+                    id: "bulk-format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "png",
+                    helpText: "Image format for bulk export",
+                    defaultValue: "png",
+                    allowedValues: ["png", "jpeg", "tiff"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["bulk"])
+                ),
+                CLIParameterDefinition(
+                    id: "organize-by", flag: "--organize-by", displayName: "Organize By",
+                    parameterType: .enumPicker, placeholder: "flat",
+                    helpText: "Directory organization scheme for bulk output",
+                    defaultValue: "flat",
+                    allowedValues: ["flat", "patient", "study", "series"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["bulk"])
+                ),
+                CLIParameterDefinition(
+                    id: "recursive", flag: "--recursive", displayName: "Recursive",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Process subdirectories recursively",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["bulk"])
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Print per-file progress",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["bulk"])
+                ),
+            ]
+case "dicom-compress":
+    return [
+        CLIParameterDefinition(
+            id: "operation", flag: "", displayName: "Operation",
+            parameterType: .subcommand, placeholder: "info",
+            helpText: "info: show compression details · compress: encode to a codec · decompress: decode to uncompressed · batch: process a directory · backends: list hardware backends",
+            isRequired: true,
+            defaultValue: "info",
+            allowedValues: ["info", "compress", "decompress", "batch", "backends"]
+        ),
+
+        // ----- info / compress / decompress: single input file -----
+        CLIParameterDefinition(
+            id: "input", flag: "", displayName: "Input File",
+            parameterType: .filePath, placeholder: "input.dcm",
+            helpText: "Input DICOM file path",
+            isRequired: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["info", "compress", "decompress"])
+        ),
+        CLIParameterDefinition(
+            id: "json", flag: "--json", displayName: "JSON Output",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Output as JSON (info / backends)",
+            defaultValue: "false",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["info", "backends"])
+        ),
+
+        // ----- batch: input directory -----
+        CLIParameterDefinition(
+            id: "inputDir", flag: "", displayName: "Input Directory",
+            parameterType: .filePath, placeholder: "input_dir/",
+            helpText: "Input directory containing DICOM files",
+            isRequired: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["batch"])
+        ),
+
+        // ----- output (compress / decompress = file, batch = directory) -----
+        CLIParameterDefinition(
+            id: "output", flag: "--output", displayName: "Output File",
+            parameterType: .outputPath, placeholder: "output.dcm",
+            helpText: "Output DICOM file path",
+            isRequired: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compress", "decompress"])
+        ),
+        CLIParameterDefinition(
+            id: "outputDir", flag: "--output", displayName: "Output Directory",
+            parameterType: .outputPath, placeholder: "output_dir/",
+            helpText: "Output directory path",
+            isRequired: true,
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["batch"])
+        ),
+
+        // ----- codec (compress; optional for batch) -----
+        CLIParameterDefinition(
+            id: "codec", flag: "--codec", displayName: "Codec",
+            parameterType: .enumPicker, placeholder: "jpeg-lossless",
+            helpText: "Target codec / transfer syntax",
+            isRequired: true,
+            defaultValue: "jpeg-lossless",
+            allowedValues: ["jpeg", "jpeg-baseline", "jpeg-extended", "jpeg-lossless", "jpeg-lossless-sv1", "jpeg2000", "j2k", "jpeg2000-lossless", "j2k-lossless", "j2k-part2", "j2k-part2-lossless", "htj2k", "htj2k-lossy", "htj2k-lossless", "htj2k-rpcl", "htj2k-lossless-rpcl", "rle", "deflate", "explicit-le", "implicit-le"],
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compress"])
+        ),
+        CLIParameterDefinition(
+            id: "batchCodec", flag: "--codec", displayName: "Codec",
+            parameterType: .enumPicker, placeholder: "jpeg-lossless",
+            helpText: "Target codec for compression (omit and enable Decompress to decode)",
+            defaultValue: "",
+            allowedValues: ["", "jpeg", "jpeg-baseline", "jpeg-extended", "jpeg-lossless", "jpeg-lossless-sv1", "jpeg2000", "j2k", "jpeg2000-lossless", "j2k-lossless", "j2k-part2", "j2k-part2-lossless", "htj2k", "htj2k-lossy", "htj2k-lossless", "htj2k-rpcl", "htj2k-lossless-rpcl", "rle", "deflate", "explicit-le", "implicit-le"],
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["batch"])
+        ),
+
+        // ----- quality (compress / batch lossy) -----
+        CLIParameterDefinition(
+            id: "quality", flag: "--quality", displayName: "Quality",
+            parameterType: .textField, placeholder: "high / 0.0-1.0",
+            helpText: "Quality: maximum, high, medium, low, or a value 0.0-1.0 (lossy codecs only)",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compress", "batch"])
+        ),
+
+        // ----- syntax (decompress / batch decompress) -----
+        CLIParameterDefinition(
+            id: "syntax", flag: "--syntax", displayName: "Target Syntax",
+            parameterType: .enumPicker, placeholder: "explicit-le",
+            helpText: "Uncompressed target syntax for decompression",
+            defaultValue: "explicit-le",
+            allowedValues: ["explicit-le", "implicit-le"],
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["decompress", "batch"])
+        ),
+
+        // ----- batch flags -----
+        CLIParameterDefinition(
+            id: "decompress", flag: "--decompress", displayName: "Decompress",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Decompress files instead of compressing",
+            defaultValue: "false",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["batch"])
+        ),
+        CLIParameterDefinition(
+            id: "recursive", flag: "--recursive", displayName: "Recursive",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Process subdirectories recursively",
+            defaultValue: "false",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["batch"])
+        ),
+
+        // ----- compress backend -----
+        CLIParameterDefinition(
+            id: "backend", flag: "--backend", displayName: "Backend",
+            parameterType: .enumPicker, placeholder: "auto",
+            helpText: "Hardware backend: auto (default), metal, accelerate, scalar",
+            defaultValue: "auto",
+            allowedValues: ["auto", "metal", "accelerate", "scalar"],
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compress"])
+        ),
+
+        // ----- verbose (compress / decompress / batch) -----
+        CLIParameterDefinition(
+            id: "verbose", flag: "--verbose", displayName: "Verbose",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Show verbose output (sizes, ratio, per-file results)",
+            defaultValue: "false",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compress", "decompress", "batch"])
+        ),
+    ]
+case "dicom-study":
+            return [
+                CLIParameterDefinition(
+                    id: "operation", flag: "", displayName: "Operation",
+                    parameterType: .subcommand, placeholder: "organize",
+                    helpText: "Study operation: organize files into study/series folders, summarize metadata, check completeness, compute statistics, or compare two studies",
+                    isRequired: true,
+                    defaultValue: "organize",
+                    allowedValues: ["organize", "summary", "check", "stats", "compare"]
+                ),
+
+                // ----- organize -----
+                CLIParameterDefinition(
+                    id: "input", flag: "", displayName: "Input Directory",
+                    parameterType: .filePath, placeholder: "files/",
+                    helpText: "Input directory containing DICOM files",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
+                ),
+                CLIParameterDefinition(
+                    id: "output", flag: "--output", displayName: "Output Directory",
+                    parameterType: .outputPath, placeholder: "organized/",
+                    helpText: "Output directory for organized files",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
+                ),
+                CLIParameterDefinition(
+                    id: "pattern", flag: "--pattern", displayName: "Naming Pattern",
+                    parameterType: .enumPicker, placeholder: "descriptive",
+                    helpText: "Folder naming pattern: 'descriptive' (PatientName_Desc_UIDsuffix) or 'uid' (full UIDs)",
+                    defaultValue: "descriptive",
+                    allowedValues: ["descriptive", "uid"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
+                ),
+                CLIParameterDefinition(
+                    id: "copy", flag: "--copy", displayName: "Copy Files",
+                    parameterType: .booleanToggle, placeholder: "false",
+                    helpText: "Copy files instead of moving them",
+                    defaultValue: "true",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
+                ),
+
+                // ----- summary -----
+                CLIParameterDefinition(
+                    id: "path", flag: "", displayName: "Study Path",
+                    parameterType: .filePath, placeholder: "study/",
+                    helpText: "Study directory or single DICOM file",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["summary", "check", "stats"])
+                ),
+                CLIParameterDefinition(
+                    id: "summary-format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "table",
+                    helpText: "Summary output format: table, json, or csv",
+                    defaultValue: "table",
+                    allowedValues: ["table", "json", "csv"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["summary"])
+                ),
+
+                // ----- check -----
+                CLIParameterDefinition(
+                    id: "expected-series", flag: "--expected-series", displayName: "Expected Series",
+                    parameterType: .integerField, placeholder: "5",
+                    helpText: "Expected number of series in the study",
+                    minValue: 0, maxValue: 100000,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["check"])
+                ),
+                CLIParameterDefinition(
+                    id: "expected-instances", flag: "--expected-instances", displayName: "Expected Instances/Series",
+                    parameterType: .integerField, placeholder: "120",
+                    helpText: "Expected number of instances per series",
+                    minValue: 0, maxValue: 100000,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["check"])
+                ),
+                CLIParameterDefinition(
+                    id: "report", flag: "--report", displayName: "Report File",
+                    parameterType: .outputPath, placeholder: "missing.txt",
+                    helpText: "Optional output report file path for detected issues",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["check"])
+                ),
+
+                // ----- stats -----
+                CLIParameterDefinition(
+                    id: "detailed", flag: "--detailed", displayName: "Detailed",
+                    parameterType: .booleanToggle, placeholder: "false",
+                    helpText: "Show detailed per-series statistics",
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["stats"])
+                ),
+                CLIParameterDefinition(
+                    id: "stats-format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Statistics output format: text or json",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["stats"])
+                ),
+
+                // ----- compare -----
+                CLIParameterDefinition(
+                    id: "path1", flag: "", displayName: "Study 1",
+                    parameterType: .filePath, placeholder: "study1/",
+                    helpText: "First study directory",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
+                ),
+                CLIParameterDefinition(
+                    id: "path2", flag: "", displayName: "Study 2",
+                    parameterType: .filePath, placeholder: "study2/",
+                    helpText: "Second study directory",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
+                ),
+                CLIParameterDefinition(
+                    id: "compare-format", flag: "--format", displayName: "Output Format",
+                    parameterType: .enumPicker, placeholder: "text",
+                    helpText: "Comparison output format: text or json",
+                    defaultValue: "text",
+                    allowedValues: ["text", "json"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
+                ),
+
+                // ----- shared verbose (organize/summary/check/compare) -----
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "false",
+                    helpText: "Show verbose output",
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize", "summary", "check", "compare"])
+                )
+            ]
+case "dicom-script":
+            return [
+                CLIParameterDefinition(
+                    id: "operation", flag: "", displayName: "Operation",
+                    parameterType: .subcommand, placeholder: "run",
+                    helpText: "run: execute a workflow script; validate: check a script for errors; template: generate a starter script",
+                    isRequired: true,
+                    defaultValue: "run",
+                    allowedValues: ["run", "validate", "template"]
+                ),
+                // ----- run / validate: script file -----
+                CLIParameterDefinition(
+                    id: "scriptPath", flag: "", displayName: "Script File",
+                    parameterType: .filePath, placeholder: "workflow.dcmscript",
+                    helpText: "Path to the DICOM Script Language (.dcmscript) file to execute or validate",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["run", "validate"])
+                ),
+                // ----- run: variables -----
+                CLIParameterDefinition(
+                    id: "variables", flag: "--variables", displayName: "Variables",
+                    parameterType: .arrayField, placeholder: "KEY=VALUE",
+                    helpText: "Variable substitutions in KEY=VALUE format (e.g. PATIENT_ID=12345)",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["run"])
+                ),
+                CLIParameterDefinition(
+                    id: "parallel", flag: "--parallel", displayName: "Parallel Execution",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Enable parallel execution where possible",
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["run"])
+                ),
+                CLIParameterDefinition(
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show verbose execution output",
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["run", "validate"])
+                ),
+                CLIParameterDefinition(
+                    id: "dryRun", flag: "--dry-run", displayName: "Dry Run",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Dry run — show what would be executed without running any commands",
+                    defaultValue: "false",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["run"])
+                ),
+                CLIParameterDefinition(
+                    id: "log", flag: "--log", displayName: "Log File",
+                    parameterType: .outputPath, placeholder: "run.log",
+                    helpText: "Optional log file path for execution output",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["run"])
+                ),
+                // ----- template: name -----
+                CLIParameterDefinition(
+                    id: "templateName", flag: "", displayName: "Template",
+                    parameterType: .enumPicker, placeholder: "workflow",
+                    helpText: "Starter template to generate",
+                    isRequired: true,
+                    defaultValue: "workflow",
+                    allowedValues: ["workflow", "pipeline", "query", "archive", "anonymize"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["template"])
+                ),
+            ]
         default:
             return []
+        }
+    }
+
+    // MARK: - Default input/output paths (CLI Workshop testing convenience)
+
+    /// Default DICOM input file pre-filled into file-input fields across the
+    /// CLI Workshop tools.
+    public static let defaultInputFilePath = "/Users/raster/Desktop/DICOM_Input/CT.dcm"
+    /// Default output directory pre-filled into output-path fields.
+    public static let defaultOutputDirectory = "/Users/raster/Desktop/DICOM_Output/"
+
+    /// Parameter ids that represent a primary input DICOM file.
+    private static let inputFileParameterIDs: Set<String> =
+        ["inputPath", "input", "filePath", "file1", "file2", "files", "inputs"]
+
+    /// Public catalog accessor. Returns the raw definitions with the default
+    /// input/output testing paths pre-filled (input files -> CT.dcm, output
+    /// paths -> DICOM_Output) when a parameter has no other default.
+    public static func parameterDefinitions(for toolID: String) -> [CLIParameterDefinition] {
+        rawParameterDefinitions(for: toolID).map { def in
+            guard def.defaultValue.isEmpty else { return def }
+            var d = def
+            if def.parameterType == .filePath, inputFileParameterIDs.contains(def.id) {
+                d.defaultValue = defaultInputFilePath
+            } else if def.parameterType == .outputPath {
+                d.defaultValue = defaultOutputDirectory
+            }
+            return d
         }
     }
 }

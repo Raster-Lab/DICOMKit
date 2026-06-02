@@ -43,6 +43,13 @@ build/
 # CLI parity harness (Scripts/cli-parity.sh) — local venv for openpyxl
 .venv-cli-parity/
 
+# CLI Automation Testing — bundled data derived from real DICOM inputs may
+# contain PHI (patient metadata in golden output). Generate locally with
+# `swift run cli-parity-gen`; only the PHI-free CLIContracts.json is committed.
+Sources/DICOMStudio/Resources/CLIParity/fixtures/
+Sources/DICOMStudio/Resources/CLIParity/goldens.json
+Sources/DICOMStudio/Resources/CLIParity/fixture.dcm
+
 # Claude Code per-project memory (not source)
 memory/
 

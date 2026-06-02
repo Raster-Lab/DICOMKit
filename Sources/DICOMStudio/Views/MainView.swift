@@ -84,6 +84,8 @@ public struct MainView: View {
                 .onAppear {
                     viewModel.cliWorkshopViewModel.savedServerProfiles = viewModel.networkingViewModel.serverProfiles
                 }
+        case .cliAutomationTesting:
+            CLIAutomationTestingView(viewModel: viewModel.cliAutomationTestingViewModel)
         case .security:
             SecurityView(viewModel: SecurityViewModel())
         case .performanceTools:

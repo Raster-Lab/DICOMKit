@@ -22,6 +22,37 @@ CLI by hand:
 Both drift silently from the real swift-argument-parser commands. This harness
 catches that drift mechanically.
 
+## Two ways to use it
+
+1. **Standalone Excel report** (this folder) — `Scripts/cli-parity.sh` builds an
+   `.xlsx` for CI / offline review. Uses Python.
+2. **In-app screen** — DICOMStudio → sidebar → **CLI Automation Testing**. A
+   100% Swift-native screen (no Process / no Python at runtime) that lists every
+   tool, shows the param mismatch, and verifies input/output data for local-file
+   tools. It reads **bundled generated data** produced by the Swift dev tool:
+
+   ```bash
+   swift run cli-parity-gen      # regenerates Sources/DICOMStudio/Resources/CLIParity/
+   ```
+
+   That writes `CLIContracts.json` (all `--experimental-dump-help`), copies real
+   input DICOM files into `fixtures/`, and writes `goldens.json` (real CLI stdout
+   per file). The app compares these against the in-process Studio catalog /
+   `CommandBuilderHelpers.buildCommand` / `executeCommand()`.
+
+   **Input files.** `cli-parity-gen` takes its DICOM inputs from (in order):
+   `$DICOM_INPUT_DIR`, arg 3, or the default `/Users/raster/Desktop/DICOM_Input`.
+   It picks ONE random valid DICOM file (≤5 MB) from anywhere in that directory,
+   so output verification runs on a real file. If the folder is empty/missing it
+   falls back to a synthetic fixture.
+
+   **PHI.** Golden output and the copied fixtures can contain patient metadata,
+   so `fixtures/` and `goldens.json` are git-ignored — only the PHI-free
+   `CLIContracts.json` is committed. Each developer runs `cli-parity-gen` locally.
+
+   **Tool order.** The screen lists tools grouped by CLI Workshop tab in the same
+   order as the CLI Workshop, for easy cross-reference.
+
 ## What it checks
 
 **Tier 1 — input-contract parity (implemented).** For every CLI command:

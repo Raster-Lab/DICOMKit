@@ -103,6 +103,9 @@ public final class MainViewModel {
     /// Persistent Validation ViewModel (dicom-validate parity) — survives tab switches.
     public var validationViewModel: ValidationViewModel
 
+    /// Persistent CLI Automation Testing ViewModel — survives tab switches.
+    public var cliAutomationTestingViewModel: CLIAutomationTestingViewModel
+
     /// Creates the main ViewModel with dependency-injected services.
     public init(
         settingsService: SettingsService = SettingsService(),
@@ -159,6 +162,7 @@ public final class MainViewModel {
         self.gatewayViewModel = GatewayViewModel()
         self.archiveManagementViewModel = ArchiveManagementViewModel()
         self.validationViewModel = ValidationViewModel()
+        self.cliAutomationTestingViewModel = CLIAutomationTestingViewModel()
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
 

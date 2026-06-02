@@ -36,6 +36,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case archiveManagement = "Archive"
     case security         = "Security"
     case cliWorkshop      = "CLI Workshop"
+    case cliAutomationTesting = "CLI Automation Testing"
     case performanceTools   = "Performance Tools"
     case macOSEnhancements  = "macOS Enhancements"
     case polishRelease      = "Polish & Release"
@@ -64,6 +65,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .archiveManagement:  return "archivebox"
         case .security:           return "lock.shield"
         case .cliWorkshop:        return "terminal"
+        case .cliAutomationTesting: return "terminal.badge.circle"
         case .performanceTools:   return "speedometer"
         case .macOSEnhancements:  return "macwindow"
         case .polishRelease:      return "paintbrush.pointed"
@@ -92,6 +94,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .archiveManagement:  return "DICOM Archive Management"
         case .security:           return "Security & Privacy Center"
         case .cliWorkshop:        return "CLI Tools Workshop"
+        case .cliAutomationTesting: return "CLI Automation Testing Suite"
         case .performanceTools:   return "Performance & Developer Tools"
         case .macOSEnhancements:  return "macOS-Specific Enhancements"
         case .polishRelease:      return "Polish, Accessibility & Release"
@@ -109,7 +112,8 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
             return .imaging
         case .networking, .dicomWeb, .cloudIntegration, .gateway:
             return .network
-        case .reporting, .tools, .validation, .archiveManagement, .cliWorkshop, .fileOperations:
+        case .reporting, .tools, .validation, .archiveManagement, .cliWorkshop,
+             .cliAutomationTesting, .fileOperations:
             return .dataTools
         case .security, .performanceTools, .macOSEnhancements,
              .polishRelease, .integrationTesting, .j2kTestBench, .settings:
