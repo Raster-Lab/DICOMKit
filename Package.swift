@@ -794,6 +794,13 @@ let package = Package(
             path: "Sources/DICOMStudio",
             exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]
         ),
+        // Developer tool (not shipped): dumps the Studio CLI Workshop tool
+        // catalog to JSON for the CLI parity harness (Scripts/cli-parity.sh).
+        .executableTarget(
+            name: "studio-cli-introspect",
+            dependencies: ["DICOMStudio"],
+            path: "Sources/studio-cli-introspect"
+        ),
         .testTarget(
             name: "DICOMStudioTests",
             dependencies: ["DICOMStudio"]

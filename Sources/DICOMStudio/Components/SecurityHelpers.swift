@@ -129,6 +129,20 @@ public enum AnonymizationHelpers: Sendable {
                     action: .remove
                 )
             }
+        case .clinicalTrial:
+            return hipaaDirectIdentifierTags.map { tagPair in
+                AnonymizationTagRule(
+                    tag: tagPair.tag,
+                    tagName: tagPair.name,
+                    action: .remove
+                )
+            }
+        case .research:
+            return [
+                AnonymizationTagRule(tag: "0010,0010", tagName: "Patient Name", action: .remove),
+                AnonymizationTagRule(tag: "0010,0020", tagName: "Patient ID", action: .remove),
+                AnonymizationTagRule(tag: "0010,0030", tagName: "Patient Birth Date", action: .remove),
+            ]
         case .custom:
             return []
         }

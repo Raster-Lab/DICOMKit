@@ -1,5 +1,5 @@
 {
-  "originHash" : "6c95539b72cef6518a2af9e1f7c4cf0fb95bc881782b652776522f3a11a040c7",
+  "originHash" : "e329712bacd3e8f41b95e1ccbd8a47485e95d56a973c8d10ae5c1741ddb11f1e",
   "pins" : [
     {
       "identity" : "compressionfamily",
@@ -15,35 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/J2KSwift.git",
       "state" : {
-        "revision" : "22100c180eaf40064559484490cc3962223bbe40",
-        "version" : "10.24.2"
-      }
-    },
-    {
-      "identity" : "jliswift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Raster-Lab/JLISwift.git",
-      "state" : {
-        "revision" : "f50ae2247b588e52a17323880595782765235aa3",
-        "version" : "0.4.0"
-      }
-    },
-    {
-      "identity" : "jlswift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Raster-Lab/JLSwift.git",
-      "state" : {
-        "revision" : "bcf00ebbe3ded9d0cdd376fe18101be42a60d85a",
-        "version" : "0.8.0"
-      }
-    },
-    {
-      "identity" : "jxlswift",
-      "kind" : "remoteSourceControl",
-      "location" : "https://github.com/Raster-Lab/JXLSwift.git",
-      "state" : {
-        "revision" : "2dd7c38702ce5bab4dbc0795501214940c94e08f",
-        "version" : "1.0.1"
+        "revision" : "9156d846f30878abf8cd6efc37c50d1f55a53d39",
+        "version" : "10.24.0"
       }
     },
     {
@@ -51,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-argument-parser.git",
       "state" : {
-        "revision" : "626b5b7b2f45e1b0b1c6f4a309296d1d21d7311b",
-        "version" : "1.7.1"
+        "revision" : "ca37474853a4b5f59a22c74bfdd449b1f6bc4cc2",
+        "version" : "1.8.1"
       }
     }
   ],

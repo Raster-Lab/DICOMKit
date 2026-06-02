@@ -243,16 +243,31 @@ public extension SecurityCertificateStatus {
 /// Standard anonymization profile.
 /// Reference: DICOM PS3.15 Annex E – Attribute Confidentiality Profiles
 public enum AnonymizationProfile: String, Sendable, Equatable, Hashable, CaseIterable {
-    case basic       = "BASIC"
+    case basic            = "BASIC"
+    case clinicalTrial    = "CLINICAL_TRIAL"
+    case research         = "RESEARCH"
     case hipaaeSafeHarbor = "HIPAA_SAFE_HARBOR"
-    case custom      = "CUSTOM"
+    case custom           = "CUSTOM"
 
     /// Human-readable display name.
     public var displayName: String {
         switch self {
         case .basic:            return "Basic (Remove Direct Identifiers)"
+        case .clinicalTrial:    return "Clinical Trial (Remove + Dates)"
+        case .research:         return "Research (Minimal Removal)"
         case .hipaaeSafeHarbor: return "HIPAA Safe Harbor"
         case .custom:           return "Custom Rules"
+        }
+    }
+
+    /// CLI flag value for --profile (matches dicom-anon).
+    public var cliFlag: String {
+        switch self {
+        case .basic:            return "basic"
+        case .clinicalTrial:    return "clinical-trial"
+        case .research:         return "research"
+        case .hipaaeSafeHarbor: return "basic"   // HIPAA Safe Harbor uses basic profile in CLI
+        case .custom:           return "basic"
         }
     }
 
@@ -260,6 +275,8 @@ public enum AnonymizationProfile: String, Sendable, Equatable, Hashable, CaseIte
     public var shortDescription: String {
         switch self {
         case .basic:            return "Removes 18 HIPAA direct identifiers from DICOM metadata."
+        case .clinicalTrial:    return "Removes direct identifiers plus study/acquisition dates."
+        case .research:         return "Minimal removal: PatientName, PatientID, PatientBirthDate only."
         case .hipaaeSafeHarbor: return "Applies HIPAA Safe Harbor de-identification (45 CFR §164.514(b)(2))."
         case .custom:           return "Apply user-defined tag-level anonymization rules."
         }
@@ -835,5 +852,75 @@ public struct PHIDetectionResult: Identifiable, Sendable, Equatable, Hashable {
 
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+    }
+}
+
+
+// MARK: - Anonymization Builder Helpers (matches dicom-anon CLI)
+
+/// Platform-independent helpers for dicom-anon command building.
+/// CLI reference: dicom-anon <path> [options]
+public enum AnonHelpers: Sendable {
+
+    /// Builds the exact dicom-anon CLI command from SecurityViewModel anon-builder state.
+    public static func buildCommand(
+        inputPath: String,
+        outputPath: String,
+        profile: AnonymizationProfile,
+        shiftDates: Int?,
+        regenerateUIDs: Bool,
+        removeTags: [String],
+        replacePairs: [String],
+        keepTags: [String],
+        recursive: Bool,
+        dryRun: Bool,
+        backup: Bool,
+        auditLogPath: String,
+        force: Bool,
+        verbose: Bool
+    ) -> String {
+        guard !inputPath.isEmpty else { return "dicom-anon <input>" }
+        var cmd = "dicom-anon \"\(inputPath)\""
+        if !outputPath.isEmpty { cmd += " --output \"\(outputPath)\"" }
+        if profile != .basic { cmd += " --profile \(profile.cliFlag)" }
+        if let days = shiftDates { cmd += " --shift-dates \(days)" }
+        if regenerateUIDs { cmd += " --regenerate-uids" }
+        for tag in removeTags  where !tag.isEmpty { cmd += " --remove \(tag)" }
+        for pair in replacePairs where !pair.isEmpty { cmd += " --replace \(pair)" }
+        for tag in keepTags    where !tag.isEmpty { cmd += " --keep \(tag)" }
+        if recursive   { cmd += " --recursive" }
+        if dryRun      { cmd += " --dry-run" }
+        if backup      { cmd += " --backup" }
+        if !auditLogPath.isEmpty { cmd += " --audit-log \"\(auditLogPath)\"" }
+        if force       { cmd += " --force" }
+        if verbose     { cmd += " --verbose" }
+        return cmd
+    }
+
+    /// Renders anonymization summary text matching dicom-anon printSummary().
+    public static func renderSummary(
+        totalFiles: Int,
+        successful: Int,
+        failed: Int,
+        dryRun: Bool,
+        warnings: [String],
+        modifiedTags: [String],
+        verbose: Bool
+    ) -> String {
+        var out = "\nAnonymization Summary:\n"
+        out += "  Total files: \(totalFiles)\n"
+        out += "  Successful: \(successful)\n"
+        out += "  Failed: \(failed)\n"
+        if dryRun { out += "  (DRY RUN - no files modified)\n" }
+        if !warnings.isEmpty {
+            out += "\nWarnings:\n"
+            for w in warnings.prefix(10) { out += "  ⚠️  \(w)\n" }
+            if warnings.count > 10 { out += "  ... and \(warnings.count - 10) more warnings\n" }
+        }
+        if verbose && !modifiedTags.isEmpty {
+            out += "\nModified tags (\(modifiedTags.count)):\n"
+            for tag in modifiedTags.sorted().prefix(20) { out += "  - \(tag)\n" }
+        }
+        return out
     }
 }

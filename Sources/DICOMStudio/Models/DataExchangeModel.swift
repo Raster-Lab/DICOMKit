@@ -16,6 +16,8 @@ public enum DataExchangeTab: String, Sendable, Equatable, Hashable, CaseIterable
     case xmlConversion     = "XML_CONVERSION"
     case imageExport       = "IMAGE_EXPORT"
     case transferSyntax    = "TRANSFER_SYNTAX"
+    case compression       = "COMPRESSION"
+    case secondaryCapture  = "SECONDARY_CAPTURE"
     case dicomdir          = "DICOMDIR"
     case pdfEncapsulation  = "PDF_ENCAPSULATION"
     case batchOperations   = "BATCH_OPERATIONS"
@@ -23,13 +25,15 @@ public enum DataExchangeTab: String, Sendable, Equatable, Hashable, CaseIterable
     /// Human-readable display name.
     public var displayName: String {
         switch self {
-        case .jsonConversion:   return "JSON Conversion"
-        case .xmlConversion:    return "XML Conversion"
+        case .jsonConversion:   return "JSON"
+        case .xmlConversion:    return "XML"
         case .imageExport:      return "Image Export"
         case .transferSyntax:   return "Transfer Syntax"
+        case .compression:      return "Compression"
+        case .secondaryCapture: return "Secondary Capture"
         case .dicomdir:         return "DICOMDIR"
-        case .pdfEncapsulation: return "PDF Encapsulation"
-        case .batchOperations:  return "Batch Operations"
+        case .pdfEncapsulation: return "PDF"
+        case .batchOperations:  return "Batch"
         }
     }
 
@@ -40,6 +44,8 @@ public enum DataExchangeTab: String, Sendable, Equatable, Hashable, CaseIterable
         case .xmlConversion:    return "chevron.left.forwardslash.chevron.right"
         case .imageExport:      return "photo.on.rectangle.angled"
         case .transferSyntax:   return "arrow.triangle.2.circlepath"
+        case .compression:      return "square.and.arrow.down.on.square"
+        case .secondaryCapture: return "photo.badge.plus"
         case .dicomdir:         return "folder.badge.plus"
         case .pdfEncapsulation: return "doc.richtext"
         case .batchOperations:  return "square.stack.3d.up"

@@ -40,6 +40,9 @@ LocalDatasets/
 # Xcode build output (SwiftPM uses .build/; Xcode schemes emit build/)
 build/
 
+# CLI parity harness (Scripts/cli-parity.sh) — local venv for openpyxl
+.venv-cli-parity/
+
 # Claude Code per-project memory (not source)
 memory/
 

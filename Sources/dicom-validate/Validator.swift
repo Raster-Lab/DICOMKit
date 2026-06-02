@@ -85,7 +85,7 @@ public struct DICOMValidator {
     }
     
     private func validateFileMetaInformation(dicomFile: DICOMFile, errors: inout [ValidationIssue], warnings: inout [ValidationIssue]) {
-        let dataSet = dicomFile.dataSet
+        let dataSet = dicomFile.fileMetaInformation
         
         // Required File Meta Information elements
         let requiredMetaTags: [(Tag, String)] = [

@@ -206,142 +206,304 @@ public struct SecurityView: View {
 
     // MARK: - Anonymization
 
+    /// Full dicom-anon UI — mirrors all CLI options.
     private var anonymizationContent: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("DICOM Anonymization")
-                    .font(.headline)
-                Spacer()
-                Picker("Profile", selection: $viewModel.selectedProfile) {
-                    ForEach(AnonymizationProfile.allCases, id: \.self) { profile in
-                        Text(profile.rawValue).tag(profile)
-                    }
-                }
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel("Anonymization profile")
+        HSplitView {
+            anonOptionsPanel
+                .frame(minWidth: 290, maxWidth: 380)
+            anonOutputPanel
+                .frame(minWidth: 300)
+        }
+    }
 
-                Button {
-                    viewModel.isNewJobSheetPresented = true
-                } label: {
-                    Label("New Job", systemImage: "plus")
-                }
-                .accessibilityLabel("Create new anonymization job")
+    // MARK: Options Panel
+
+    private var anonOptionsPanel: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                anonInputSection
+                anonProfileSection
+                anonOptionsSection
+                anonTagsSection
+                anonRunSection
             }
             .padding()
+        }
+        .background(Color(nsColor: .controlBackgroundColor))
+    }
 
-            Divider()
-
-            HSplitView {
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Tag Rules")
-                            .font(.subheadline.bold())
-                        Spacer()
-                        Text("\(viewModel.customRules.count) rules")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding()
-
-                    if viewModel.customRules.isEmpty {
-                        ContentUnavailableView(
-                            "Default Profile",
-                            systemImage: "person.crop.circle.badge.minus",
-                            description: Text("Using standard anonymization profile. Add custom rules to modify specific tags.")
-                        )
-                    } else {
-                        List(viewModel.customRules, id: \.id) { rule in
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(rule.tagName)
-                                        .font(.body)
-                                    Text(rule.action.rawValue)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                            }
+    private var anonInputSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Input / Output")
+                    .font(.subheadline.bold())
+                HStack {
+                    TextField("DICOM file or directory (required)", text: $viewModel.anonInputPath)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Anonymization input path")
+                    Button("Browse") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseFiles = true; panel.canChooseDirectories = true
+                        if panel.runModal() == .OK {
+                            viewModel.anonInputPath = panel.url?.path ?? ""
+                            viewModel.anonInputScopedURL = panel.url
                         }
                     }
                 }
-                .frame(minWidth: 250)
-
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Anonymization Jobs")
-                            .font(.subheadline.bold())
-                        Spacer()
-                    }
-                    .padding()
-
-                    if viewModel.anonymizationJobs.isEmpty {
-                        ContentUnavailableView(
-                            "No Jobs",
-                            systemImage: "briefcase",
-                            description: Text("Create anonymization jobs to de-identify DICOM files.")
-                        )
-                    } else {
-                        List(viewModel.anonymizationJobs, id: \.id, selection: $viewModel.selectedJobID) { job in
-                            HStack {
-                                Image(systemName: job.status == .completed ? "checkmark.circle.fill" : "circle")
-                                    .foregroundStyle(job.status == .completed ? .green : .orange)
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text(job.profile.rawValue)
-                                        .font(.body)
-                                    Text("\(job.totalFiles) files • \(job.profile.rawValue)")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                Spacer()
-                                if job.progress > 0 && job.progress < 1.0 {
-                                    ProgressView(value: job.progress)
-                                        .frame(width: 60)
-                                }
-                            }
+                HStack {
+                    TextField("Output path (--output)", text: $viewModel.anonOutputPath)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Anonymization output path")
+                    Button("Browse") {
+                        let panel = NSOpenPanel()
+                        panel.canChooseDirectories = true
+                        panel.canChooseFiles = false
+                        panel.canCreateDirectories = true   // user can create a new output folder
+                        panel.prompt = "Select Output Folder"
+                        panel.message = "Choose or create the folder that will receive anonymized files."
+                        if panel.runModal() == .OK {
+                            viewModel.anonOutputPath = panel.url?.path ?? ""
+                            viewModel.anonOutputScopedURL = panel.url
                         }
                     }
                 }
             }
+        }
+    }
 
-            if viewModel.isPHIScanRunning || !viewModel.phiDetectionResults.isEmpty {
+    private var anonProfileSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    Text("Profile")
+                        .font(.subheadline.bold())
+                    Spacer()
+                    Text("--profile \(viewModel.anonProfile.cliFlag)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+                Picker("Profile", selection: $viewModel.anonProfile) {
+                    ForEach([AnonymizationProfile.basic, .clinicalTrial, .research], id: \.self) { p in
+                        Text(p.displayName).tag(p)
+                    }
+                }
+                .pickerStyle(.radioGroup)
+                .accessibilityLabel("Anonymization profile")
+                Text(viewModel.anonProfile.shortDescription)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var anonOptionsSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Options")
+                    .font(.subheadline.bold())
+                Toggle("--recursive  Process directories recursively", isOn: $viewModel.anonRecursive)
+                    .accessibilityLabel("Process recursively")
+                Toggle("--dry-run  Preview without writing files", isOn: $viewModel.anonDryRun)
+                    .accessibilityLabel("Dry run mode")
+                Toggle("--backup  Keep backup of originals", isOn: $viewModel.anonBackup)
+                    .accessibilityLabel("Create backup files")
+                Toggle("--regenerate-uids  Regenerate all UIDs", isOn: $viewModel.anonRegenerateUIDs)
+                    .accessibilityLabel("Regenerate UIDs")
+                Toggle("--force  Parse without DICM prefix check", isOn: $viewModel.anonForce)
+                    .accessibilityLabel("Force parse")
+                Toggle("--verbose  Show per-file progress", isOn: $viewModel.anonVerbose)
+                    .accessibilityLabel("Verbose output")
+
                 Divider()
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("PHI Detection")
-                            .font(.caption.bold())
-                        if viewModel.isPHIScanRunning {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                        Spacer()
-                        Text("\(viewModel.phiDetectionResults.count) findings")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
 
-                    if !viewModel.phiDetectionResults.isEmpty {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 6) {
-                                ForEach(viewModel.phiDetectionResults.prefix(10), id: \.id) { result in
-                                    HStack(spacing: 4) {
-                                        Image(systemName: result.hasPHI ? "exclamationmark.triangle" : "checkmark.circle")
-                                            .foregroundStyle(result.hasPHI ? .orange : .green)
-                                            .font(.caption2)
-                                        Text(result.filePath)
-                                            .font(.caption2)
-                                            .lineLimit(1)
-                                    }
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(result.hasPHI ? .orange.opacity(0.1) : .green.opacity(0.1))
-                                    .clipShape(Capsule())
-                                }
-                            }
-                        }
+                // Date shifting
+                HStack {
+                    Toggle("--shift-dates", isOn: $viewModel.anonShiftDatesEnabled)
+                        .accessibilityLabel("Enable date shifting")
+                    if viewModel.anonShiftDatesEnabled {
+                        Stepper("\(viewModel.anonShiftDays) days", value: $viewModel.anonShiftDays, in: -36500...36500)
+                            .accessibilityLabel("Date shift in days")
                     }
                 }
-                .padding()
+
+                // Audit log
+                HStack {
+                    TextField("--audit-log path (optional)", text: $viewModel.anonAuditLogPath)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel("Audit log output path")
+                    if !viewModel.anonAuditLogPath.isEmpty {
+                        Button { viewModel.anonAuditLogPath = "" } label: {
+                            Image(systemName: "xmark.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Clear audit log path")
+                    }
+                }
             }
+        }
+    }
+
+    private var anonTagsSection: some View {
+        GroupBox {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Custom Tag Actions")
+                    .font(.subheadline.bold())
+
+                // Remove tags
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("--remove  Tags to remove")
+                        .font(.caption.bold())
+                    ForEach(viewModel.anonRemoveTags, id: \.self) { tag in
+                        HStack {
+                            Text(tag)
+                                .font(.caption)
+                                .monospacedDigit()
+                            Spacer()
+                            Button { viewModel.removeRemoveTag(tag) } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove tag \(tag) from list")
+                        }
+                    }
+                    HStack {
+                        TextField("0010,0010 or PatientName", text: $viewModel.anonNewRemoveTag)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .accessibilityLabel("Tag to remove")
+                        Button("Add") { viewModel.addRemoveTag() }
+                            .accessibilityLabel("Add remove tag")
+                    }
+                }
+
+                Divider()
+
+                // Replace pairs
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("--replace  Tag=Value")
+                        .font(.caption.bold())
+                    ForEach(viewModel.anonReplacePairs, id: \.self) { pair in
+                        HStack {
+                            Text(pair).font(.caption).monospacedDigit()
+                            Spacer()
+                            Button { viewModel.removeReplacePair(pair) } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove replace pair \(pair)")
+                        }
+                    }
+                    HStack(spacing: 4) {
+                        TextField("0010,0010", text: $viewModel.anonNewReplaceTag)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .accessibilityLabel("Tag to replace")
+                        Text("=").font(.caption)
+                        TextField("ANON", text: $viewModel.anonNewReplaceValue)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .accessibilityLabel("Replacement value")
+                        Button("Add") { viewModel.addReplacePair() }
+                            .accessibilityLabel("Add replace pair")
+                    }
+                }
+
+                Divider()
+
+                // Keep tags
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("--keep  Tags to preserve")
+                        .font(.caption.bold())
+                    ForEach(viewModel.anonKeepTags, id: \.self) { tag in
+                        HStack {
+                            Text(tag).font(.caption).monospacedDigit()
+                            Spacer()
+                            Button { viewModel.removeKeepTag(tag) } label: {
+                                Image(systemName: "minus.circle")
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Remove keep tag \(tag)")
+                        }
+                    }
+                    HStack {
+                        TextField("0008,0060 or Modality", text: $viewModel.anonNewKeepTag)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .accessibilityLabel("Tag to keep")
+                        Button("Add") { viewModel.addKeepTag() }
+                            .accessibilityLabel("Add keep tag")
+                    }
+                }
+            }
+        }
+    }
+
+    private var anonRunSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GroupBox("CLI Command") {
+                Text(viewModel.anonCLICommand)
+                    .font(.system(.caption, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(4)
+                    .background(Color(nsColor: .textBackgroundColor))
+                    .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .accessibilityLabel("dicom-anon CLI command preview")
+            }
+
+            HStack {
+                Button {
+                    viewModel.runAnonymization()
+                } label: {
+                    Label(viewModel.anonIsRunning ? "Anonymizing…" : "Run Anonymization",
+                          systemImage: "person.crop.circle.badge.minus")
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(viewModel.anonInputPath.isEmpty || viewModel.anonIsRunning)
+                .accessibilityLabel("Run DICOM anonymization")
+
+                if viewModel.anonIsRunning {
+                    ProgressView().controlSize(.small)
+                }
+                Spacer()
+                Button("Clear") { viewModel.clearAnonOutput() }
+                    .disabled(viewModel.anonOutput.isEmpty)
+                    .accessibilityLabel("Clear anonymization output")
+            }
+        }
+    }
+
+    // MARK: Output Panel
+
+    private var anonOutputPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Label("Output", systemImage: "terminal")
+                    .font(.headline)
+                Spacer()
+                if viewModel.anonDryRun {
+                    Text("DRY RUN")
+                        .font(.caption.bold())
+                        .padding(.horizontal, 8).padding(.vertical, 2)
+                        .background(Color.orange.opacity(0.15))
+                        .foregroundStyle(.orange)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding()
+            Divider()
+            ScrollView {
+                Text(viewModel.anonOutput.isEmpty
+                     ? "Run anonymization to see results.\n\nOutput matches dicom-anon CLI output exactly."
+                     : viewModel.anonOutput)
+                    .font(.system(.body, design: .monospaced))
+                    .foregroundStyle(viewModel.anonOutput.isEmpty ? .secondary : .primary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding()
+            }
+            .background(Color(nsColor: .textBackgroundColor))
         }
     }
 
