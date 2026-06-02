@@ -15,8 +15,35 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/J2KSwift.git",
       "state" : {
-        "revision" : "78492e68bd4ec8c93267b733ad44bedc07d87878",
-        "version" : "10.9.3"
+        "revision" : "22100c180eaf40064559484490cc3962223bbe40",
+        "version" : "10.24.2"
+      }
+    },
+    {
+      "identity" : "jliswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Raster-Lab/JLISwift.git",
+      "state" : {
+        "revision" : "f50ae2247b588e52a17323880595782765235aa3",
+        "version" : "0.4.0"
+      }
+    },
+    {
+      "identity" : "jlswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Raster-Lab/JLSwift.git",
+      "state" : {
+        "revision" : "bcf00ebbe3ded9d0cdd376fe18101be42a60d85a",
+        "version" : "0.8.0"
+      }
+    },
+    {
+      "identity" : "jxlswift",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/Raster-Lab/JXLSwift.git",
+      "state" : {
+        "revision" : "2dd7c38702ce5bab4dbc0795501214940c94e08f",
+        "version" : "1.0.1"
       }
     },
     {
