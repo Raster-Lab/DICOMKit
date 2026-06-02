@@ -250,10 +250,24 @@ public struct J2KTestBenchView: View {
         GroupBox {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 6) {
-                    sectionCaption("Transfer syntaxes")
+                    sectionCaption("Codec family")
+                    Picker("Codec family", selection: $viewModel.plan.format) {
+                        ForEach(J2KBenchFormat.allCases) { format in
+                            Label(format.rawValue, systemImage: format.systemImage).tag(format)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .disabled(viewModel.isRunning)
+                    Text("\(viewModel.plan.format.referenceCodec.rawValue) is the reference encoder; same-family codecs decode its output.")
+                        .font(.caption2).foregroundStyle(.tertiary)
+                }
+                Divider()
+                VStack(alignment: .leading, spacing: 6) {
+                    sectionCaption(viewModel.plan.format == .jpeg2000 ? "Transfer syntaxes" : "Modes")
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 200), spacing: 8)],
                               alignment: .leading, spacing: 8) {
-                        ForEach(J2KBenchSyntax.all) { syntax in
+                        ForEach(J2KBenchSyntax.all(for: viewModel.plan.format)) { syntax in
                             syntaxChip(syntax)
                         }
                     }
@@ -263,7 +277,7 @@ public struct J2KTestBenchView: View {
                     sectionCaption("Codecs")
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 170), spacing: 8)],
                               alignment: .leading, spacing: 8) {
-                        ForEach(J2KBenchCodec.allCases) { codec in
+                        ForEach(viewModel.plan.format.codecs) { codec in
                             codecChip(codec)
                         }
                     }
@@ -314,7 +328,7 @@ public struct J2KTestBenchView: View {
                     .foregroundStyle(!installed ? .secondary
                                      : (enabled ? Color.accentColor : .secondary))
                 Text(codec.rawValue).font(.caption)
-                if codec == .j2kSwift {
+                if codec.encodes {
                     Text("reference").font(.caption2).foregroundStyle(.tertiary)
                 } else if !installed {
                     Text("not installed").font(.caption2).foregroundStyle(.tertiary)
@@ -325,7 +339,7 @@ public struct J2KTestBenchView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(viewModel.isRunning || !installed || codec == .j2kSwift)
+        .disabled(viewModel.isRunning || !installed || codec.encodes)
     }
 
     private var methodologyControls: some View {
@@ -333,21 +347,24 @@ public struct J2KTestBenchView: View {
             sectionCaption("Methodology")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 12)],
                       alignment: .leading, spacing: 8) {
-                labeledControl("Encode API") {
-                    Picker("", selection: $viewModel.plan.encodeMode) {
-                        ForEach(J2KSwiftEncodeMode.allCases) { mode in
-                            Text(plainLabel(mode.label)).tag(mode)
+                // Encode/decode API modes (CPU/GPU/HT) are J2KSwift-specific.
+                if viewModel.plan.format == .jpeg2000 {
+                    labeledControl("Encode API") {
+                        Picker("", selection: $viewModel.plan.encodeMode) {
+                            ForEach(J2KSwiftEncodeMode.allCases) { mode in
+                                Text(plainLabel(mode.label)).tag(mode)
+                            }
                         }
+                        .labelsHidden()
                     }
-                    .labelsHidden()
-                }
-                labeledControl("Decode API") {
-                    Picker("", selection: $viewModel.plan.decodeMode) {
-                        ForEach(J2KSwiftDecodeMode.allCases) { mode in
-                            Text(plainLabel(mode.label)).tag(mode)
+                    labeledControl("Decode API") {
+                        Picker("", selection: $viewModel.plan.decodeMode) {
+                            ForEach(J2KSwiftDecodeMode.allCases) { mode in
+                                Text(plainLabel(mode.label)).tag(mode)
+                            }
                         }
+                        .labelsHidden()
                     }
-                    .labelsHidden()
                 }
                 Stepper("Warmups: \(viewModel.plan.warmups)",
                         value: $viewModel.plan.warmups, in: 0...5)
@@ -568,7 +585,8 @@ public struct J2KTestBenchView: View {
 
     @ViewBuilder
     private func groupSubheader(_ group: J2KTestBenchViewModel.ResultGroup) -> some View {
-        let reference = group.cells.first { $0.codec == .j2kSwift }
+        // The reference codec varies by format (J2KSwift, JLISwift, JLSwift, JXLSwift).
+        let reference = group.cells.first { $0.codec.encodes } ?? group.cells.first
         HStack(spacing: 12) {
             if let reference {
                 if let bytes = reference.encodedBytes {
@@ -996,19 +1014,23 @@ public struct J2KTestBenchView: View {
 
     private func isCodecEnabled(_ codec: J2KBenchCodec) -> Bool {
         switch codec {
-        case .j2kSwift: return true
+        case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: return true   // reference codecs
         case .openJPEG: return viewModel.plan.includeOpenJPEG
         case .kakadu:   return viewModel.plan.includeKakadu
         case .grok:     return viewModel.plan.includeGrok
+        case .djpeg:    return viewModel.plan.includeDjpeg
+        case .djxl:     return viewModel.plan.includeDjxl
         }
     }
 
     private func toggleCodec(_ codec: J2KBenchCodec) {
         switch codec {
-        case .j2kSwift: break
+        case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: break   // reference codecs are always on
         case .openJPEG: viewModel.plan.includeOpenJPEG.toggle()
         case .kakadu:   viewModel.plan.includeKakadu.toggle()
         case .grok:     viewModel.plan.includeGrok.toggle()
+        case .djpeg:    viewModel.plan.includeDjpeg.toggle()
+        case .djxl:     viewModel.plan.includeDjxl.toggle()
         }
     }
 

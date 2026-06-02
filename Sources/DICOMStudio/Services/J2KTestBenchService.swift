@@ -17,8 +17,10 @@ public enum J2KTestBenchService {
 
     // MARK: - Encode
 
-    /// Encodes a frame with J2KSwift to produce the reference codestream that
-    /// every codec in the matrix then decodes.
+    /// Encodes a frame with the syntax's reference codec to produce the
+    /// reference codestream that every codec in that format's matrix then
+    /// decodes. JPEG 2000 uses J2KSwift's mode-aware bench encoder; the other
+    /// formats use their pure-Swift codec's synchronous `encodeFrame`.
     public static func encodeReference(
         frame: Data,
         descriptor: PixelDataDescriptor,
@@ -33,19 +35,40 @@ public enum J2KTestBenchService {
             progressive: false,
             preferLossless: syntax.isLossless
         )
-        let result = J2KSwiftCodec.benchEncode(
-            frame,
-            descriptor: descriptor,
-            transferSyntaxUID: syntax.uid,
-            configuration: configuration,
-            mode: mode,
-            warmups: max(0, warmups),
-            runs: max(1, runs)
-        )
-        guard let data = result.data, !result.samples.isEmpty else {
-            return .failure(J2KBenchError(result.error ?? "encode produced no output"))
+        switch syntax.format {
+        case .jpeg2000:
+            let result = J2KSwiftCodec.benchEncode(
+                frame,
+                descriptor: descriptor,
+                transferSyntaxUID: syntax.uid,
+                configuration: configuration,
+                mode: mode,
+                warmups: max(0, warmups),
+                runs: max(1, runs)
+            )
+            guard let data = result.data, !result.samples.isEmpty else {
+                return .failure(J2KBenchError(result.error ?? "encode produced no output"))
+            }
+            return .success((data, median(result.samples)))
+
+        case .jpeg:
+            return timedEncode(warmups: warmups, runs: runs) {
+                try JLICodec().encodeFrame(frame, descriptor: descriptor,
+                                           frameIndex: 0, configuration: configuration)
+            }.map { (codestream: $0.data, encodeMs: $0.ms) }
+
+        case .jpegLS:
+            return timedEncode(warmups: warmups, runs: runs) {
+                try JPEGLSCodec().encodeFrame(frame, descriptor: descriptor,
+                                              frameIndex: 0, configuration: configuration)
+            }.map { (codestream: $0.data, encodeMs: $0.ms) }
+
+        case .jpegXL:
+            return timedEncode(warmups: warmups, runs: runs) {
+                try JXLCodec().encodeFrame(frame, descriptor: descriptor,
+                                           frameIndex: 0, configuration: configuration)
+            }.map { (codestream: $0.data, encodeMs: $0.ms) }
         }
-        return .success((data, median(result.samples)))
     }
 
     // MARK: - Decode + score
@@ -119,6 +142,60 @@ public enum J2KTestBenchService {
             #else
             return (nil, nil, .skipped("Grok unavailable on this platform"), nil)
             #endif
+
+        case .jliSwift:
+            switch timedDecode(warmups: warmups, runs: runs, {
+                try JLICodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+            }) {
+            case .failure(let message): return (nil, nil, .error(message.message), nil)
+            case .success(let timed): decoded = timed.data; decodeMs = timed.ms
+            }
+
+        case .djpeg:
+            #if os(macOS)
+            guard DjpegCLICodec.binaryPath != nil else {
+                return (nil, nil, .skipped("djpeg CLI not installed"), nil)
+            }
+            switch timedDecode(warmups: warmups, runs: runs, {
+                try DjpegCLICodec().decodeFrame(codestream, descriptor: descriptor)
+            }) {
+            case .failure(let message): return (nil, nil, .error(message.message), nil)
+            case .success(let timed): decoded = timed.data; decodeMs = timed.ms
+            }
+            #else
+            return (nil, nil, .skipped("djpeg unavailable on this platform"), nil)
+            #endif
+
+        case .jlSwift:
+            switch timedDecode(warmups: warmups, runs: runs, {
+                try JPEGLSCodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+            }) {
+            case .failure(let message): return (nil, nil, .error(message.message), nil)
+            case .success(let timed): decoded = timed.data; decodeMs = timed.ms
+            }
+
+        case .jxlSwift:
+            switch timedDecode(warmups: warmups, runs: runs, {
+                try JXLCodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+            }) {
+            case .failure(let message): return (nil, nil, .error(message.message), nil)
+            case .success(let timed): decoded = timed.data; decodeMs = timed.ms
+            }
+
+        case .djxl:
+            #if os(macOS)
+            guard DjxlCLICodec.binaryPath != nil else {
+                return (nil, nil, .skipped("djxl CLI not installed"), nil)
+            }
+            switch timedDecode(warmups: warmups, runs: runs, {
+                try DjxlCLICodec().decodeFrame(codestream, descriptor: descriptor)
+            }) {
+            case .failure(let message): return (nil, nil, .error(message.message), nil)
+            case .success(let timed): decoded = timed.data; decodeMs = timed.ms
+            }
+            #else
+            return (nil, nil, .skipped("djxl unavailable on this platform"), nil)
+            #endif
         }
 
         let scored = score(decoded: decoded, original: original,
@@ -188,6 +265,33 @@ public enum J2KTestBenchService {
             for _ in 0..<timed {
                 let start = DispatchTime.now()
                 last = try decode()
+                let ns = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
+                samples.append(Double(ns) / 1_000_000.0)
+            }
+            return .success((last, median(samples)))
+        } catch {
+            return .failure(J2KBenchError(error.localizedDescription))
+        }
+    }
+
+    /// Encode counterpart of `timedDecode`: warmups + median-timed encode runs,
+    /// returning the last produced bitstream and the median wall-clock time.
+    /// Used for the non-J2KSwift reference encoders (JLISwift / JLSwift / JXLSwift),
+    /// whose `encodeFrame` is synchronous (J2KSwift has its own benchEncode).
+    private static func timedEncode(
+        warmups: Int,
+        runs: Int,
+        _ encode: () throws -> Data
+    ) -> Result<(data: Data, ms: Double), J2KBenchError> {
+        do {
+            var last = Data()
+            for _ in 0..<max(0, warmups) { last = try encode() }
+            var samples: [Double] = []
+            let timed = max(1, runs)
+            samples.reserveCapacity(timed)
+            for _ in 0..<timed {
+                let start = DispatchTime.now()
+                last = try encode()
                 let ns = DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds
                 samples.append(Double(ns) / 1_000_000.0)
             }
@@ -272,6 +376,24 @@ public enum J2KTestBenchService {
         case .grok:
             #if os(macOS)
             return try? GrokCLICodec().decodeFrame(codestream, descriptor: descriptor)
+            #else
+            return nil
+            #endif
+        case .jliSwift:
+            return try? JLICodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+        case .jlSwift:
+            return try? JPEGLSCodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+        case .jxlSwift:
+            return try? JXLCodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+        case .djpeg:
+            #if os(macOS)
+            return try? DjpegCLICodec().decodeFrame(codestream, descriptor: descriptor)
+            #else
+            return nil
+            #endif
+        case .djxl:
+            #if os(macOS)
+            return try? DjxlCLICodec().decodeFrame(codestream, descriptor: descriptor)
             #else
             return nil
             #endif

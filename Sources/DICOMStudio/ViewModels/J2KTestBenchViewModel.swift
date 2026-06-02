@@ -133,7 +133,9 @@ public final class J2KTestBenchViewModel {
 
     // MARK: - Codecs
 
-    /// Codecs available on this machine — J2KSwift always, the rest if found.
+    /// Codecs available on this machine. The pure-Swift reference codecs
+    /// (J2KSwift, JLISwift, JLSwift, JXLSwift) are always available; the
+    /// comparison peers depend on a bundled library or an installed CLI binary.
     public var installedCodecs: [J2KBenchCodec] {
         var codecs: [J2KBenchCodec] = [.j2kSwift]
         #if canImport(COpenJPEG) && os(macOS)
@@ -143,17 +145,27 @@ public final class J2KTestBenchViewModel {
         if KakaduCLICodec.binaryPath != nil { codecs.append(.kakadu) }
         if GrokCLICodec.binaryPath != nil { codecs.append(.grok) }
         #endif
+        // JPEG / JPEG-LS / JPEG XL reference codecs are pure-Swift, in-process.
+        codecs.append(contentsOf: [.jliSwift, .jlSwift, .jxlSwift])
+        #if os(macOS)
+        if DjpegCLICodec.binaryPath != nil { codecs.append(.djpeg) }
+        if DjxlCLICodec.binaryPath != nil { codecs.append(.djxl) }
+        #endif
         return codecs
     }
 
-    /// Installed codecs the current plan has enabled.
+    /// Codecs in the active format that are installed and enabled. Each format's
+    /// reference codec is always on; the same-family peers are toggleable.
     public var activeCodecs: [J2KBenchCodec] {
-        installedCodecs.filter { codec in
+        plan.format.codecs.filter { codec in
+            guard installedCodecs.contains(codec) else { return false }
             switch codec {
-            case .j2kSwift: return true
+            case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: return true   // reference
             case .openJPEG: return plan.includeOpenJPEG
             case .kakadu:   return plan.includeKakadu
             case .grok:     return plan.includeGrok
+            case .djpeg:    return plan.includeDjpeg
+            case .djxl:     return plan.includeDjxl
             }
         }
     }
@@ -290,7 +302,10 @@ public final class J2KTestBenchViewModel {
         for standing in speedStandings {
             if let median = standing.medianDecodeMs { medians[standing.codec] = median }
         }
-        guard let reference = medians[.j2kSwift], reference > 0 else { return [] }
+        // Anchor to the displayed run's reference codec (J2KSwift for JPEG 2000,
+        // JLISwift/JLSwift/JXLSwift for the other formats).
+        let referenceCodec = displayedCells.first?.codec.format.referenceCodec ?? .j2kSwift
+        guard let reference = medians[referenceCodec], reference > 0 else { return [] }
         return J2KBenchCodec.allCases.compactMap { codec in
             guard let median = medians[codec] else { return nil }
             return RelativeSpeed(codec: codec.rawValue, ratio: median / reference)
@@ -300,7 +315,9 @@ public final class J2KTestBenchViewModel {
     /// Median compression ratio achieved per transfer syntax.
     public var compressionBySyntax: [CompressionStat] {
         var ratios: [String: [Double]] = [:]
-        for cell in displayedCells where cell.codec == .j2kSwift {
+        // Compression is a property of the reference codestream each format's
+        // encoder produces, so attribute it to the reference codec's cells.
+        for cell in displayedCells where cell.codec.encodes {
             if let ratio = cell.compressionRatio {
                 ratios[cell.syntaxName, default: []].append(ratio)
             }
