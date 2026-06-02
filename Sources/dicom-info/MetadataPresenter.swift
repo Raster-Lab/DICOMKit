@@ -233,10 +233,11 @@ struct MetadataPresenter {
     
     private func formatElementValue(_ element: DataElement) -> String {
         if let stringValue = element.stringValue {
-            if stringValue.count > 80 {
-                return String(stringValue.prefix(77)) + "..."
-            }
-            return stringValue
+            let s = stringValue
+                .replacingOccurrences(of: "\r\n", with: " ")
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: " ")
+            return s.count > 80 ? String(s.prefix(77)) + "..." : s
         }
 
         // Numeric VRs — decode to human-readable form
@@ -283,15 +284,29 @@ struct MetadataPresenter {
             break
         }
 
-        let valueLength = element.length
-        if valueLength > 1024 {
-            let mb = Double(valueLength) / 1_048_576.0
-            return String(format: "<Binary data: %.2f MB>", mb)
-        } else if valueLength > 0 {
-            return "<Binary data: \(valueLength) bytes>"
+        // Otherwise show the raw value itself: readable text when the bytes are
+        // printable, else a hex preview — always a single, truncated line.
+        let data = element.valueData
+        let len = data.count
+        if len == 0 { return "" }
+        let sample = Data(data.prefix(4096))
+        let printable = sample.filter { ($0 >= 0x20 && $0 <= 0x7E) || $0 == 0x09 || $0 == 0x0A || $0 == 0x0D }.count
+        if !sample.isEmpty, Double(printable) / Double(sample.count) >= 0.85,
+           let text = String(data: Data(data.prefix(256)), encoding: .utf8)
+                   ?? String(data: Data(data.prefix(256)), encoding: .isoLatin1) {
+            let collapsed = text
+                .replacingOccurrences(of: "\r\n", with: " ")
+                .replacingOccurrences(of: "\n", with: " ")
+                .replacingOccurrences(of: "\r", with: " ")
+                .replacingOccurrences(of: "\u{0}", with: "")
+                .trimmingCharacters(in: .whitespaces)
+            if !collapsed.isEmpty {
+                return collapsed.count > 80 ? String(collapsed.prefix(77)) + "..." : collapsed
+            }
         }
-
-        return ""
+        let hexBytes = 24
+        let hex = data.prefix(hexBytes).map { String(format: "%02X", $0) }.joined(separator: " ")
+        return len > hexBytes ? "\(hex) ... (\(len) bytes)" : hex
     }
     
     // MARK: - JPEG 2000 Metadata

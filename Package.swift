@@ -792,7 +792,13 @@ let package = Package(
                 "DICOMWeb"
             ],
             path: "Sources/DICOMStudio",
-            exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]
+            exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"],
+            resources: [
+                // Bundled CLI-parity data read by the in-app CLI Automation
+                // Testing screen (Swift-native, no runtime exec).
+                // Regenerate with: swift run cli-parity-gen
+                .copy("Resources/CLIParity")
+            ]
         ),
         // Developer tool (not shipped): dumps the Studio CLI Workshop tool
         // catalog to JSON for the CLI parity harness (Scripts/cli-parity.sh).
@@ -800,6 +806,13 @@ let package = Package(
             name: "studio-cli-introspect",
             dependencies: ["DICOMStudio"],
             path: "Sources/studio-cli-introspect"
+        ),
+        // Developer tool (not shipped): regenerates the bundled CLI-parity data
+        // (CLIContracts.json, fixture.dcm, goldens.json) read by the in-app
+        // CLI Automation Testing screen. See Scripts/CLI-PARITY-README.md.
+        .executableTarget(
+            name: "cli-parity-gen",
+            path: "Sources/cli-parity-gen"
         ),
         .testTarget(
             name: "DICOMStudioTests",

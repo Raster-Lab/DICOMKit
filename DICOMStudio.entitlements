@@ -14,5 +14,13 @@
 	<true/>
 	<key>com.apple.security.files.downloads.read-write</key>
 	<true/>
+	<!-- CLI Workshop testing folders: grant the sandboxed app read/write to the
+	     default DICOM input/output directories so typed/default paths work
+	     without a manual open-panel selection. (Development convenience.) -->
+	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
+	<array>
+		<string>/Users/raster/Desktop/DICOM_Input/</string>
+		<string>/Users/raster/Desktop/DICOM_Output/</string>
+	</array>
 </dict>
 </plist>
