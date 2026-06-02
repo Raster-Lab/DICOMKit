@@ -398,38 +398,8 @@ struct JPEGLSCodecRegistryTests {
     }
 }
 
-@Suite("JPEG-LS Preset Parameters Tests")
-struct JPEGLSPresetParametersTests {
-    
-    @Test("Default parameters for 8-bit lossless")
-    func testDefaultParams8Bit() {
-        let params = JPEGLSPresetParameters.defaultParameters(maxVal: 255, near: 0)
-        
-        #expect(params.maxVal == 255)
-        #expect(params.t1 >= 1)
-        #expect(params.t2 >= params.t1)
-        #expect(params.t3 >= params.t2)
-        #expect(params.reset == 64)
-    }
-    
-    @Test("Default parameters for 12-bit lossless")
-    func testDefaultParams12Bit() {
-        let params = JPEGLSPresetParameters.defaultParameters(maxVal: 4095, near: 0)
-        
-        #expect(params.maxVal == 4095)
-        #expect(params.t1 >= 1)
-        #expect(params.t2 >= params.t1)
-        #expect(params.t3 >= params.t2)
-        #expect(params.reset == 64)
-    }
-    
-    @Test("Default parameters for near-lossless")
-    func testDefaultParamsNearLossless() {
-        let params = JPEGLSPresetParameters.defaultParameters(maxVal: 255, near: 3)
-        
-        #expect(params.maxVal == 255)
-        #expect(params.t1 >= 4) // near + 1
-        #expect(params.t2 >= params.t1)
-        #expect(params.t3 >= params.t2)
-    }
-}
+// NOTE: The "JPEG-LS Preset Parameters Tests" suite was removed when the
+// in-tree JPEG-LS implementation (and its internal JPEGLSPresetParameters
+// type) was retired in favour of the JLSwift `JPEGLS` package. Preset-parameter
+// behaviour is now owned and tested by JLSwift; DICOMCore validates JPEG-LS only
+// through the public JPEGLSCodec encode/decode round-trips above.
