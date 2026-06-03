@@ -6,6 +6,7 @@ import Testing
 import Foundation
 
 @Suite("Security ViewModel Tests")
+@MainActor
 struct SecurityViewModelTests {
 
     // MARK: - Navigation

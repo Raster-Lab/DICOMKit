@@ -68,11 +68,21 @@ struct DICOMDump: ParsableCommand {
         
         // Parse offset if provided
         let startOffset = try parseOffset()
-        let dumpLength = length ?? (fileData.count - startOffset)
-        
+        guard startOffset >= 0, startOffset <= fileData.count else {
+            throw ValidationError("Offset \(startOffset) is out of range (file is \(fileData.count) bytes)")
+        }
+
+        // When no explicit --length is given, cap the dump so that dumping a whole
+        // (possibly very large) file does not build a huge string and exhaust
+        // memory. Pass --length to dump more.
+        let defaultDumpCap = 65_536
+        let dumpLength = length ?? min(defaultDumpCap, fileData.count - startOffset)
+
         // Ensure we don't go past end of file
         let endOffset = min(startOffset + dumpLength, fileData.count)
-        let dataToShow = fileData[startOffset..<endOffset]
+        // Re-base to 0-based indices: a Data slice keeps its parent's indices,
+        // which crashes the 0-based dump loop whenever startOffset > 0.
+        let dataToShow = Data(fileData[startOffset..<endOffset])
         
         // Create dumper
         let dumper = HexDumper(
@@ -99,13 +109,17 @@ struct DICOMDump: ParsableCommand {
         }
         
         // Dump the data
-        let output = dumper.dump(
+        var output = dumper.dump(
             data: dataToShow,
             startOffset: startOffset,
             dicomFile: dicomFile,
             highlightTag: try parseHighlightTag()
         )
-        
+
+        if length == nil && endOffset < fileData.count {
+            output += "\n… showing first \(endOffset - startOffset) of \(fileData.count) bytes — pass --length to dump more.\n"
+        }
+
         print(output)
     }
     
@@ -159,83 +173,23 @@ struct DICOMDump: ParsableCommand {
     private func dumpTag(fileData: Data, tagString: String) throws {
         let targetTag = try parseTag(tagString)
         let dicomFile = try DICOMFile.read(from: fileData, force: force)
-        
-        // Find tag in dataset
-        guard let element = dicomFile.dataSet[targetTag] else {
-            throw ValidationError("Tag \(formatTag(targetTag)) not found in file")
-        }
-        
-        // Calculate tag position in file
-        // This is a simplified approach - finding the tag's byte range
-        let tagInfo = findTagInRawData(fileData: fileData, tag: targetTag)
-        
-        guard let (tagOffset, tagLength) = tagInfo else {
-            throw ValidationError("Could not locate tag \(formatTag(targetTag)) in raw file data")
-        }
-        
-        print("Tag: \(formatTag(targetTag))")
-        if let entry = DataElementDictionary.lookup(tag: targetTag) {
-            print("Name: \(entry.keyword)")
-        }
-        print("VR: \(element.vr.rawValue)")
-        print("Offset: 0x\(String(tagOffset, radix: 16, uppercase: true))")
-        print("Length: \(tagLength) bytes")
-        print()
-        
-        let dataToShow = fileData[tagOffset..<min(tagOffset + tagLength, fileData.count)]
-        
-        let dumper = HexDumper(
+
+        // Render via the shared core helper — same output as DICOMStudio, and it
+        // uses the parsed element's value bytes (no raw-offset slicing, so it can't
+        // crash). Returns nil if the tag isn't present.
+        guard let output = HexDumper.tagDump(
+            tag: targetTag,
+            in: dicomFile,
             bytesPerLine: bytesPerLine,
             useColor: !noColor,
-            annotate: false,
             verbose: verbose
-        )
-        
-        let output = dumper.dump(
-            data: dataToShow,
-            startOffset: tagOffset,
-            dicomFile: dicomFile,
-            highlightTag: targetTag
-        )
-        
-        print(output)
-    }
-    
-    private func findTagInRawData(fileData: Data, tag: Tag) -> (offset: Int, length: Int)? {
-        // Search for tag in raw data
-        // Tags are stored as group (2 bytes) + element (2 bytes)
-        let groupBytes = withUnsafeBytes(of: tag.group.littleEndian) { Data($0) }
-        let elementBytes = withUnsafeBytes(of: tag.element.littleEndian) { Data($0) }
-        var searchData = Data()
-        searchData.append(groupBytes)
-        searchData.append(elementBytes)
-        
-        // Simple search for the tag
-        if let range = fileData.range(of: searchData) {
-            // Found the tag, now try to determine its length
-            let tagStart = range.lowerBound
-            
-            // Assume explicit VR - skip tag (4 bytes) to read VR (2 bytes)
-            if tagStart + 8 <= fileData.count {
-                // Read length (varies by VR type)
-                // Simplified: assume standard length field at offset +6
-                let lengthStart = tagStart + 6
-                if lengthStart + 2 <= fileData.count {
-                    let lengthBytes = fileData[lengthStart..<lengthStart + 2]
-                    let length = lengthBytes.withUnsafeBytes { $0.load(as: UInt16.self) }
-                    
-                    // Total includes tag header (4) + VR (2) + length (2) + value
-                    return (tagStart, Int(length) + 8)
-                }
-            }
-            
-            // Fallback: just return reasonable chunk
-            return (tagStart, min(256, fileData.count - tagStart))
+        ) else {
+            throw ValidationError("Tag \(formatTag(targetTag)) not found in file")
         }
-        
-        return nil
+
+        print(output, terminator: "")
     }
-    
+
     private func formatTag(_ tag: Tag) -> String {
         String(format: "(%04X,%04X)", tag.group, tag.element)
     }

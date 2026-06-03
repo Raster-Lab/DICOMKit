@@ -191,6 +191,12 @@ public final class CLIWorkshopViewModel {
     public var consoleOutput: String = ""
     public var commandPreview: String = ""
 
+    // ⚠️ TESTING-ONLY — terminal-vs-app parity check for the selected tool (see
+    // CLIToolTerminalCompare.swift). Requires the App Sandbox to be disabled.
+    // REMOVE BEFORE PRODUCTION (memory: dicom-info-terminal-compare-testonly).
+    var isRunningTerminalCompare: Bool = false
+    var terminalCompareResult: CLIToolCompareResult?
+
     // 16.6 Command History
     public var commandHistory: [CLICommandHistoryEntry] = []
 
@@ -361,6 +367,18 @@ public final class CLIWorkshopViewModel {
 
     // MARK: - 16.2 Tool Selection
 
+    /// Switches to a category tab and refreshes the UI by selecting that
+    /// category's first tool — so the parameter form, command preview, and
+    /// console all update to the new selection (rather than showing stale state).
+    public func selectCategory(_ tab: CLIWorkshopTab) {
+        activeTab = tab
+        if tab == .listener {
+            selectTool(id: nil)
+        } else {
+            selectTool(id: toolsForActiveTab().first?.id)
+        }
+    }
+
     /// Selects a tool by ID.
     public func selectTool(id: String?) {
         selectedToolID = id
@@ -374,6 +392,10 @@ public final class CLIWorkshopViewModel {
         service.setConsoleOutput("")
         consoleStatus = .idle
         service.setConsoleStatus(.idle)
+        // Refresh the output side: drop any TESTING-ONLY terminal-compare result
+        // from the previously selected tool.
+        terminalCompareResult = nil
+        isRunningTerminalCompare = false
         // Clear security-scoped URLs from previous tool
         securityScopedURLs.removeAll()
         // Load parameter definitions and apply defaults for the selected tool
@@ -895,14 +917,26 @@ public final class CLIWorkshopViewModel {
         case .advanced:
             base = parameterDefinitions
         }
-        return base.filter { param in
-            guard let condition = param.visibleWhen else { return true }
-            let currentValue = paramValue(condition.parameterId)
-            let effectiveValue = currentValue.isEmpty
-                ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
-                : currentValue
-            return condition.values.contains(effectiveValue)
-        }
+        return base.filter { satisfiesVisibility($0) }
+    }
+
+    /// Advanced parameters that are kept out of the main grid in Beginner mode so
+    /// they can be shown in a collapsible "Advanced options" section — this keeps
+    /// every available flag reachable in the UI without cluttering the default
+    /// view. Empty in Advanced mode, where all parameters already appear.
+    public func advancedParameters() -> [CLIParameterDefinition] {
+        guard experienceMode == .beginner else { return [] }
+        return parameterDefinitions.filter { $0.isAdvanced && satisfiesVisibility($0) }
+    }
+
+    /// Evaluates a parameter's `visibleWhen` condition against the current values.
+    private func satisfiesVisibility(_ param: CLIParameterDefinition) -> Bool {
+        guard let condition = param.visibleWhen else { return true }
+        let currentValue = paramValue(condition.parameterId)
+        let effectiveValue = currentValue.isEmpty
+            ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
+            : currentValue
+        return condition.values.contains(effectiveValue)
     }
 
     // MARK: - 16.4 File Drop Zone
@@ -7476,8 +7510,7 @@ case "dicom-study":
         }
 
         let format      = paramValue("format").isEmpty ? "text" : paramValue("format")
-        let tagFilters  = paramValue("tag").isEmpty ? [String]() :
-                          paramValue("tag").split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let tagFilters  = CommandBuilderHelpers.splitMultiValue(paramValue("tag"))
         let showPrivate = paramValue("show-private") == "true"
         let statistics  = paramValue("statistics") == "true"
         let force       = paramValue("force") == "true"
@@ -7495,10 +7528,13 @@ case "dicom-study":
                 }
                 let data = try Data(contentsOf: fileURL)
                 let dicomFile = try DICOMFile.read(from: data, force: force)
-                let rendered = Self.renderInfoOutput(
-                    dicomFile: dicomFile, format: format,
-                    tagFilters: tagFilters, showPrivate: showPrivate, statistics: statistics
+                // Render via the shared DICOMKit.MetadataPresenter — the exact same
+                // code the `dicom-info` CLI uses — so UI and CLI output cannot drift.
+                let presenter = MetadataPresenter(
+                    file: dicomFile, filterTags: tagFilters,
+                    includePrivate: showPrivate, showStats: statistics
                 )
+                let rendered = try presenter.render(format: MetadataOutputFormat(rawValue: format) ?? .text)
                 return (rendered, 0)
             } catch {
                 return ("Error: \(error.localizedDescription)\n", 1)
@@ -7511,189 +7547,105 @@ case "dicom-study":
         service.setConsoleStatus(exitCode == 0 ? .success : .error)
     }
 
-    /// Renders dicom-info output matching MetadataPresenter exactly.
-    nonisolated private static func renderInfoOutput(
-        dicomFile: DICOMFile,
-        format: String,
-        tagFilters: [String],
-        showPrivate: Bool,
-        statistics: Bool
-    ) -> String {
-        switch format {
-        case "json": return renderInfoJSON(dicomFile: dicomFile, tagFilters: tagFilters, showPrivate: showPrivate, statistics: statistics)
-        case "csv":  return renderInfoCSV(dicomFile: dicomFile, tagFilters: tagFilters, showPrivate: showPrivate)
-        default:     return renderInfoText(dicomFile: dicomFile, tagFilters: tagFilters, showPrivate: showPrivate, statistics: statistics)
-        }
+    // MARK: - ⚠️ TESTING-ONLY: terminal-vs-app parity check (all tools)
+    //
+    // Runs the REAL `dicom-*` binary for the selected tool as a subprocess and
+    // compares its output to the app's in-process output, shown side-by-side in
+    // the console. Requires the App Sandbox to be DISABLED. REMOVE BEFORE
+    // PRODUCTION — see CLIToolTerminalCompare.swift and memory
+    // `dicom-info-terminal-compare-testonly`.
+
+    /// Clears the active terminal-compare result (returns the console to normal).
+    public func clearTerminalCompare() {
+        terminalCompareResult = nil
     }
 
-    nonisolated private static func renderInfoText(dicomFile: DICOMFile, tagFilters: [String], showPrivate: Bool, statistics: Bool) -> String {
-        var out = ""
-        if statistics {
-            out += "=== File Statistics ===\n"
-            if let ts = dicomFile.fileMetaInformation.string(for: .transferSyntaxUID) { out += "Transfer Syntax: \(ts)\n" }
-            if let sop = dicomFile.dataSet.string(for: .sopClassUID)                  { out += "SOP Class: \(sop)\n" }
-            if let mod = dicomFile.dataSet.string(for: .modality)                     { out += "Modality: \(mod)\n" }
-            out += "\n"
+    /// TESTING-ONLY. Runs the selected tool in-process AND via its real binary
+    /// (argv taken verbatim from the command preview), then stores a side-by-side
+    /// comparison. Works for any tool.
+    public func runTerminalCompare() async {
+        #if os(macOS)
+        guard let tool = selectedToolID, !commandPreview.isEmpty else { return }
+
+        isRunningTerminalCompare = true
+        terminalCompareResult = nil
+        defer { isRunningTerminalCompare = false }
+
+        // 1. App (in-process) output — drive the real Studio code path.
+        clearConsoleOutput()
+        await executeCommand()
+        let appOutput = consoleOutput
+
+        // 2. argv from the exact command preview (single source of truth).
+        let argv = CLIToolTerminalCompare.shellSplit(commandPreview)
+        guard let executable = argv.first else { return }
+        let arguments = Array(argv.dropFirst())
+
+        // 3. Grant file access (sandbox-off test build), then run the binary AND
+        //    compute the comparison entirely off the main actor. A large dump can
+        //    be thousands of lines, so use a cheap O(n) line comparison — an
+        //    O(n·m) LCS on the main thread would freeze the UI (the compare view
+        //    shows raw side-by-side text, not a line-level diff).
+        let basename = compareFixtureBasename()
+        let scopedURLs = securityScopedURLs.values.map { ($0, $0.startAccessingSecurityScopedResource()) }
+        let computed = await Task.detached { () -> (CLIToolTerminalCompare.Outcome, Int) in
+            let oc = CLIToolTerminalCompare.run(tool: executable, arguments: arguments)
+            let appLines  = CLIParityEngine.normalize(appOutput, fixtureBasename: basename)
+            let termLines = CLIParityEngine.normalize(oc.stdout, fixtureBasename: basename)
+            var diffCount = abs(appLines.count - termLines.count)
+            for (a, b) in zip(appLines, termLines) where a != b { diffCount += 1 }
+            return (oc, diffCount)
+        }.value
+        for (url, ok) in scopedURLs where ok { url.stopAccessingSecurityScopedResource() }
+
+        // 4. Verdict from the cheap comparison.
+        let outcome = computed.0
+        let differing = computed.1
+        let matched = outcome.launchError == nil && outcome.exitCode == 0 && differing == 0
+
+        let note: String
+        if let err = outcome.launchError {
+            note = err
+        } else if outcome.exitCode != 0 {
+            note = "\(tool) exited with code \(outcome.exitCode)" + (outcome.stderr.isEmpty ? "" : ": \(outcome.stderr)")
+        } else if matched {
+            note = "✓ Terminal output matches the app output."
+        } else {
+            note = "⚠ \(differing) line(s) differ between terminal and app output."
         }
-        out += "=== File Meta Information ===\n"
-        out += renderInfoDataSetText(dicomFile.fileMetaInformation, tagFilters: tagFilters, showPrivate: showPrivate)
-        out += "\n=== Main Data Set ===\n"
-        out += renderInfoDataSetText(dicomFile.dataSet, tagFilters: tagFilters, showPrivate: showPrivate)
-        return out
+
+        let terminalText: String = {
+            if let err = outcome.launchError { return err }
+            if !outcome.stdout.isEmpty { return outcome.stdout }
+            return outcome.stderr
+        }()
+
+        terminalCompareResult = CLIToolCompareResult(
+            toolName: tool,
+            appOutput: appOutput,
+            terminalOutput: terminalText,
+            binaryPath: outcome.binaryPath,
+            commandLine: commandPreview,
+            matched: matched,
+            differingLineCount: differing,
+            note: note)
+        #endif
     }
 
-    nonisolated private static func renderInfoDataSetText(_ dataSet: DataSet, tagFilters: [String], showPrivate: Bool) -> String {
-        var lines: [String] = []
-        for tag in dataSet.tags {
-            guard let element = dataSet[tag] else { continue }
-            if tag.isPrivate && !showPrivate { continue }
-            if !tagFilters.isEmpty {
-                let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? ""
-                let matched = tagFilters.contains {
-                    tagName.localizedCaseInsensitiveContains($0) ||
-                    tag.description.localizedCaseInsensitiveContains($0)
-                }
-                guard matched else { continue }
-            }
-            let name  = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-            let value = infoFormatValue(element)
-            let paddedName = name.padding(toLength: max(name.count, 40), withPad: " ", startingAt: 0)
-            lines.append("\(tag.description) \(paddedName) VR=\(element.vr.rawValue) \(value)")
+    /// Best-effort fixture basename (from the first file-ish parameter) used to
+    /// canonicalize absolute paths when diffing terminal vs app output.
+    private func compareFixtureBasename() -> String {
+        for key in ["inputPath", "input", "filePath", "file1", "file"] {
+            let v = paramValue(key)
+            if !v.isEmpty { return (v as NSString).lastPathComponent }
         }
-        return lines.joined(separator: "\n") + "\n"
+        return ""
     }
 
-    nonisolated private static func renderInfoJSON(dicomFile: DICOMFile, tagFilters: [String], showPrivate: Bool, statistics: Bool) -> String {
-        var root: [String: Any] = [:]
-        if statistics {
-            var stats: [String: String] = [:]
-            if let ts  = dicomFile.fileMetaInformation.string(for: .transferSyntaxUID) { stats["transferSyntax"] = ts }
-            if let sop = dicomFile.dataSet.string(for: .sopClassUID)                   { stats["sopClass"] = sop }
-            if let mod = dicomFile.dataSet.string(for: .modality)                      { stats["modality"] = mod }
-            root["statistics"] = stats
-        }
-        root["fileMetaInformation"] = infoDataSetToJSON(dicomFile.fileMetaInformation, tagFilters: tagFilters, showPrivate: showPrivate)
-        root["dataSet"] = infoDataSetToJSON(dicomFile.dataSet, tagFilters: tagFilters, showPrivate: showPrivate)
-        guard let data = try? JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys]) else { return "{}\n" }
-        return (String(data: data, encoding: .utf8) ?? "") + "\n"
-    }
-
-    nonisolated private static func infoDataSetToJSON(_ dataSet: DataSet, tagFilters: [String], showPrivate: Bool) -> [[String: Any]] {
-        var elements: [[String: Any]] = []
-        for tag in dataSet.tags {
-            guard let element = dataSet[tag] else { continue }
-            if tag.isPrivate && !showPrivate { continue }
-            if !tagFilters.isEmpty {
-                let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? ""
-                let matched = tagFilters.contains { tagName.localizedCaseInsensitiveContains($0) || tag.description.localizedCaseInsensitiveContains($0) }
-                guard matched else { continue }
-            }
-            var dict: [String: Any] = [
-                "tag": tag.description,
-                "name": DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown",
-                "vr": element.vr.rawValue,
-            ]
-            if let v = element.stringValue { dict["value"] = v }
-            elements.append(dict)
-        }
-        return elements
-    }
-
-    nonisolated private static func renderInfoCSV(dicomFile: DICOMFile, tagFilters: [String], showPrivate: Bool) -> String {
-        var csv = "Tag,Name,VR,Value\n"
-        for ds in [dicomFile.fileMetaInformation, dicomFile.dataSet] {
-            for tag in ds.tags {
-                guard let element = ds[tag] else { continue }
-                if tag.isPrivate && !showPrivate { continue }
-                if !tagFilters.isEmpty {
-                    let name2 = DataElementDictionary.lookup(tag: tag)?.name ?? ""
-                    let matched = tagFilters.contains { name2.localizedCaseInsensitiveContains($0) || tag.description.localizedCaseInsensitiveContains($0) }
-                    guard matched else { continue }
-                }
-                let name  = (DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown").replacingOccurrences(of: "\"", with: "\"\"")
-                let value = infoFormatValue(element).replacingOccurrences(of: "\"", with: "\"\"")
-                csv += "\"\(tag.description)\",\"\(name)\",\"\(element.vr.rawValue)\",\"\(value)\"\n"
-            }
-        }
-        return csv
-    }
-
-    nonisolated private static func infoFormatValue(_ element: DataElement) -> String {
-        if let s0 = element.stringValue {
-            let s = s0
-                .replacingOccurrences(of: "\r\n", with: " ")
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\r", with: " ")
-            return s.count > 80 ? String(s.prefix(77)) + "..." : s
-        }
-
-        // Numeric VRs — decode to human-readable form
-        switch element.vr {
-        case .US:
-            if let vals = element.uint16Values, !vals.isEmpty {
-                return vals.map { String($0) }.joined(separator: "\\")
-            }
-        case .SS:
-            if let vals = element.int16Values, !vals.isEmpty {
-                return vals.map { String($0) }.joined(separator: "\\")
-            }
-        case .UL:
-            if let vals = element.uint32Values, !vals.isEmpty {
-                return vals.map { String($0) }.joined(separator: "\\")
-            }
-        case .SL:
-            if let vals = element.int32Values, !vals.isEmpty {
-                return vals.map { String($0) }.joined(separator: "\\")
-            }
-        case .FL:
-            if let vals = element.float32Values, !vals.isEmpty {
-                return vals.map { String($0) }.joined(separator: "\\")
-            }
-        case .FD:
-            if let vals = element.float64Values, !vals.isEmpty {
-                return vals.map { String($0) }.joined(separator: "\\")
-            }
-        case .AT:
-            if element.length >= 4 {
-                let data = element.valueData
-                var tags: [String] = []
-                var offset = data.startIndex
-                while data.distance(from: offset, to: data.endIndex) >= 4 {
-                    let g = UInt16(data[offset]) | (UInt16(data[data.index(offset, offsetBy: 1)]) << 8)
-                    let e = UInt16(data[data.index(offset, offsetBy: 2)]) | (UInt16(data[data.index(offset, offsetBy: 3)]) << 8)
-                    tags.append(String(format: "(%04X,%04X)", g, e))
-                    offset = data.index(offset, offsetBy: 4)
-                }
-                if !tags.isEmpty { return tags.joined(separator: "\\") }
-            }
-        default:
-            break
-        }
-
-        // Otherwise show the raw value itself: readable text when the bytes are
-        // printable, else a hex preview — always a single, truncated line.
-        let data = element.valueData
-        let len = data.count
-        if len == 0 { return "" }
-        let sample = Data(data.prefix(4096))
-        let printable = sample.filter { ($0 >= 0x20 && $0 <= 0x7E) || $0 == 0x09 || $0 == 0x0A || $0 == 0x0D }.count
-        if !sample.isEmpty, Double(printable) / Double(sample.count) >= 0.85,
-           let text = String(data: Data(data.prefix(256)), encoding: .utf8)
-                   ?? String(data: Data(data.prefix(256)), encoding: .isoLatin1) {
-            let collapsed = text
-                .replacingOccurrences(of: "\r\n", with: " ")
-                .replacingOccurrences(of: "\n", with: " ")
-                .replacingOccurrences(of: "\r", with: " ")
-                .replacingOccurrences(of: "\u{0}", with: "")
-                .trimmingCharacters(in: .whitespaces)
-            if !collapsed.isEmpty {
-                return collapsed.count > 80 ? String(collapsed.prefix(77)) + "..." : collapsed
-            }
-        }
-        let hexBytes = 24
-        let hex = data.prefix(hexBytes).map { String(format: "%02X", $0) }.joined(separator: " ")
-        return len > hexBytes ? "\(hex) ... (\(len) bytes)" : hex
-    }
+    // dicom-info and dicom-dump now render through shared DICOMKit code
+    // (`MetadataPresenter`, `HexDumper`/`HexDumper.tagDump`), so the previous
+    // in-app renderers and value formatter were removed — one code path per tool
+    // for UI and CLI.
 
     // MARK: - dicom-dump Execution
 
@@ -7730,21 +7682,20 @@ case "dicom-study":
                 }
                 let fileData = try Data(contentsOf: fileURL)
 
-                // --tag: dump only the value bytes of that tag
+                // --tag: dump only the value bytes of that tag (shared core helper,
+                // identical to the dicom-dump CLI).
                 if !tagFilter.isEmpty {
                     let dicomFile = try DICOMFile.read(from: fileData, force: force)
                     guard let tag = Self.parseDumpTagStr(tagFilter) else {
                         return ("Error: Invalid tag format '\(tagFilter)'. Use GGGG,EEEE (e.g. 7FE0,0010).\n", 1)
                     }
-                    guard let element = dicomFile.dataSet[tag] ?? dicomFile.fileMetaInformation[tag] else {
+                    guard let dump = HexDumper.tagDump(
+                        tag: tag, in: dicomFile,
+                        bytesPerLine: bytesPerLine, useColor: false, verbose: verbose
+                    ) else {
                         return ("Tag \(tag.description) not found in file.\n", 1)
                     }
-                    let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-                    var header = "Tag: \(tag.description)  \(name)  VR=\(element.vr.rawValue)  Length=\(element.length)\n"
-                    if verbose { header += "Value: \(Self.infoFormatValue(element))\n" }
-                    header += "\n"
-                    let dump = Self.hexDump(data: element.valueData, startOffset: 0, bytesPerLine: bytesPerLine, annotate: false, highlight: nil, verbose: verbose)
-                    return (header + dump, 0)
+                    return (dump, 0)
                 }
 
                 // Parse start offset
@@ -7755,29 +7706,35 @@ case "dicom-study":
                     startOffset = Int(offsetStr) ?? 0
                 }
 
-                let requestedLength = Int(lengthStr) ?? (fileData.count - startOffset)
-                let endOffset = min(startOffset + requestedLength, fileData.count)
-                guard startOffset < fileData.count else {
-                    return ("Error: Offset \(startOffset) is past end of file (\(fileData.count) bytes).\n", 1)
+                guard startOffset >= 0, startOffset <= fileData.count else {
+                    return ("Error: Offset \(startOffset) is out of range (file is \(fileData.count) bytes).\n", 1)
                 }
+                // When no explicit --length is given, cap the dump so a whole
+                // (possibly large) file doesn't build a huge string and freeze
+                // the UI. Pass --length to dump more.
+                let defaultDumpCap = 65_536
+                let lengthGiven = Int(lengthStr) != nil
+                let requestedLength = Int(lengthStr) ?? min(defaultDumpCap, fileData.count - startOffset)
+                let endOffset = min(startOffset + requestedLength, max(startOffset, fileData.count))
                 let dataSlice = fileData[startOffset..<endOffset]
 
                 let dicomFile: DICOMFile? = annotate ? (try? DICOMFile.read(from: fileData, force: force)) : nil
                 let highlightTagObj: Tag? = highlightTag.isEmpty ? nil : Self.parseDumpTagStr(highlightTag)
 
-                var header = "File: \(fileURL.lastPathComponent)  Size: \(fileData.count) bytes\n"
-                if startOffset > 0 || requestedLength < fileData.count {
-                    header += "Showing bytes \(startOffset)–\(endOffset - 1) of \(fileData.count)\n"
-                }
-                header += "\n"
-
-                let dump = Self.hexDump(
+                // Render via the shared DICOMKit.HexDumper — the same engine the
+                // `dicom-dump` CLI uses — with color off for the plain console, so
+                // the Compare-CLI view matches (ANSI is stripped in the diff).
+                var dumpOut = HexDumper(
+                    bytesPerLine: bytesPerLine, useColor: false,
+                    annotate: annotate, verbose: verbose
+                ).dump(
                     data: Data(dataSlice), startOffset: startOffset,
-                    bytesPerLine: bytesPerLine, annotate: annotate,
-                    dicomFile: dicomFile, fileData: fileData,
-                    highlight: highlightTagObj, verbose: verbose
+                    dicomFile: dicomFile, highlightTag: highlightTagObj
                 )
-                return (header + dump, 0)
+                if !lengthGiven && endOffset < fileData.count {
+                    dumpOut += "\n… showing first \(endOffset - startOffset) of \(fileData.count) bytes — pass --length to dump more.\n"
+                }
+                return (dumpOut, 0)
             } catch {
                 return ("Error: \(error.localizedDescription)\n", 1)
             }
@@ -7806,90 +7763,9 @@ case "dicom-study":
         return nil
     }
 
-    /// Produces a hex dump string matching HexDumper output (plain/no-color).
-    nonisolated private static func hexDump(
-        data: Data, startOffset: Int, bytesPerLine: Int,
-        annotate: Bool, dicomFile: DICOMFile? = nil, fileData: Data? = nil,
-        highlight: Tag? = nil, verbose: Bool = false
-    ) -> String {
-        // Build tag boundary annotations when annotate is on
-        var tagAnnotations: [Int: String] = [:]
-        if annotate, let df = dicomFile, let fd = fileData {
-            tagAnnotations = buildHexAnnotations(fileData: fd, dicomFile: df, verbose: verbose)
-        }
-
-        var out = ""
-        var dataIndex = 0
-        var currentOffset = startOffset
-
-        while dataIndex < data.count {
-            let lineEnd = min(dataIndex + bytesPerLine, data.count)
-            let lineData = data[dataIndex..<lineEnd]
-
-            out += String(format: "%08X  ", currentOffset)
-
-            var hexPart = ""
-            var asciiPart = ""
-            for (i, byte) in lineData.enumerated() {
-                hexPart += String(format: "%02X ", byte)
-                if i == bytesPerLine / 2 - 1 { hexPart += " " }  // extra gap at midpoint
-                asciiPart += (byte >= 32 && byte <= 126) ? String(UnicodeScalar(byte)) : "."
-            }
-            let padding = bytesPerLine - lineData.count
-            hexPart += String(repeating: "   ", count: padding)
-            if padding > 0 && (bytesPerLine - padding) <= bytesPerLine / 2 { hexPart += " " }
-
-            out += hexPart
-            out += " |\(asciiPart)|"
-
-            if let annotation = tagAnnotations[currentOffset] {
-                out += "  <- \(annotation)"
-            }
-            out += "\n"
-
-            currentOffset += lineData.count
-            dataIndex = lineEnd
-        }
-        return out
-    }
-
-    /// Builds offset→annotation map from a parsed DICOM file for hex dump.
-    nonisolated private static func buildHexAnnotations(fileData: Data, dicomFile: DICOMFile, verbose: Bool) -> [Int: String] {
-        var annotations: [Int: String] = [:]
-        let data = fileData
-        guard data.count > 132 else { return annotations }
-
-        var offset = 132  // skip 128-byte preamble + 4-byte "DICM"
-        while offset + 4 <= data.count {
-            guard let g = data.readUInt16LE(at: offset),
-                  let e = data.readUInt16LE(at: offset + 2) else { break }
-            let tag = Tag(group: g, element: e)
-            let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-
-            // Stop at sequence delimiters to avoid parsing noise
-            if g == 0xFFFE { break }
-
-            let annotation: String
-            if verbose, offset + 6 <= data.count {
-                let vr1 = data[data.index(data.startIndex, offsetBy: offset + 4)]
-                let vr2 = data[data.index(data.startIndex, offsetBy: offset + 5)]
-                if let vrStr = String(bytes: [vr1, vr2], encoding: .ascii),
-                   vrStr.allSatisfy({ $0.isLetter }) {
-                    annotation = "\(tag.description) \(name) VR=\(vrStr)"
-                } else {
-                    annotation = "\(tag.description) \(name)"
-                }
-            } else {
-                annotation = "\(tag.description) \(name)"
-            }
-
-            annotations[offset] = annotation
-
-            // Advance by at least 8 bytes to avoid infinite loop
-            offset += 8
-        }
-        return annotations
-    }
+    // dicom-dump now renders through the shared `DICOMKit.HexDumper` (see
+    // executeDicomDump), so the previous in-app hexDump/buildHexAnnotations
+    // reimplementations were removed — there is one dump engine for UI and CLI.
 
     // MARK: - dicom-tags Execution
 
@@ -7912,8 +7788,13 @@ case "dicom-study":
         let verbose        = paramValue("verbose") == "true"
         let dryRun         = paramValue("dry-run") == "true"
 
-        let sets    = setRaw.isEmpty    ? [String]() : setRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        let deletes = deleteRaw.isEmpty ? [String]() : deleteRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        // --set / --delete are repeatable array options in the CLI; split
+        // hex-tag aware so `0008,0090=...` survives and the values match the
+        // repeated flags emitted in the command preview.
+        let sets    = CommandBuilderHelpers.splitMultiValue(setRaw)
+        let deletes = CommandBuilderHelpers.splitMultiValue(deleteRaw)
+        // --tags (copy) is a single option the CLI itself comma-splits, so plain
+        // comma splitting matches the CLI exactly here.
         let copyTags = tagsRaw.isEmpty ? [String]() : tagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
 
         guard !sets.isEmpty || !deletes.isEmpty || deletePrivate || !copyFromPath.isEmpty else {
@@ -8120,8 +8001,7 @@ case "dicom-study":
         let verbose        = paramValue("verbose") == "true"
 
         let tolerance = Double(toleranceStr) ?? 0.0
-        let ignoreTags = ignoreTagsRaw.isEmpty ? [String]() :
-                         ignoreTagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        let ignoreTags = CommandBuilderHelpers.splitMultiValue(ignoreTagsRaw)
 
         let file1ScopedURL = securityScopedURLs["file1"]
         let file2ScopedURL = securityScopedURLs["file2"]
@@ -8144,16 +8024,14 @@ case "dicom-study":
                     return ("Error: File not found: \(url2.path)\n", 1)
                 }
 
-                if verbose {
-                    let _ = "Comparing: \(url1.lastPathComponent)\n     with: \(url2.lastPathComponent)\n\n"
-                }
-
                 let data1 = try Data(contentsOf: url1)
                 let data2 = try Data(contentsOf: url2)
                 let df1   = try DICOMFile.read(from: data1)
                 let df2   = try DICOMFile.read(from: data2)
 
-                let ignoreTagSet = Set(ignoreTags.compactMap { Self.parseDumpTagStr($0) })
+                // Resolve each ignore-tag by hex (GGGG,EEEE / GGGGEEEE) or by
+                // keyword name (e.g. SOPInstanceUID) — matching the CLI's parseTag.
+                let ignoreTagSet = Set(ignoreTags.compactMap { Self.tagsParseSpecifier($0) })
                 let result = Self.diffCompare(
                     file1: df1, file2: df2,
                     file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent,
@@ -8162,11 +8040,16 @@ case "dicom-study":
                     pixelTolerance: tolerance, showIdentical: showIdentical
                 )
 
-                let rendered: String
+                var rendered: String
                 switch format {
                 case "json":    rendered = (try? Self.diffFormatJSON(result: result, file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent)) ?? "{}\n"
                 case "summary": rendered = Self.diffFormatSummary(result: result)
                 default:        rendered = Self.diffFormatText(result: result, file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent, showIdentical: showIdentical)
+                }
+
+                // --verbose prints a comparison header before the results (matches CLI).
+                if verbose {
+                    rendered = "Comparing: \(url1.lastPathComponent)\n     with: \(url2.lastPathComponent)\n\n" + rendered
                 }
 
                 return (rendered, result.hasDifferences ? 1 : 0)

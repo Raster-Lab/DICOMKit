@@ -20,12 +20,20 @@ public struct CLIWorkshopView: View {
     @State private var fileImporterParamID: String = ""
     @State private var fileImporterIsDirectory = false
 
+    /// Tracks which copy button most recently fired, so we can show a transient
+    /// "Copied!" confirmation in place of its copy icon. The token guards against
+    /// an earlier copy's delayed reset clearing a more recent one.
+    @State private var copiedTarget: CopyTarget?
+    @State private var copyFeedbackToken = 0
+    private enum CopyTarget: Equatable { case command, console }
+
     public init(viewModel: CLIWorkshopViewModel) {
         self.viewModel = viewModel
     }
 
     public var body: some View {
         VStack(spacing: 0) {
+            // Category tabs (File Inspection, File Processing, …)
             tabPicker
             Divider()
 
@@ -33,10 +41,18 @@ public struct CLIWorkshopView: View {
                 // Listener tab: full-width panel, no command/console area
                 LocalListenerView(viewModel: viewModel)
             } else {
+                // Tools shown as a horizontal tab row, like the categories above
+                toolTabBar
+                Divider()
+                // Parameters/filters on the LEFT, command preview + console on the RIGHT.
+                // Keep the combined minimum modest so the panel doesn't force itself
+                // wider than the window — otherwise the top tab rows overflow and the
+                // rightmost tabs get clipped with no way to scroll to them.
                 HSplitView {
-                    toolSelectionPanel
-                        .frame(minWidth: 250, idealWidth: 300, maxWidth: 350)
-                    commandAndConsolePanel
+                    upperPanel
+                        .frame(minWidth: 240, idealWidth: 380, maxWidth: 620)
+                    lowerPanel
+                        .frame(minWidth: 260, idealWidth: 520, maxWidth: .infinity)
                 }
             }
         }
@@ -52,162 +68,179 @@ public struct CLIWorkshopView: View {
     // MARK: - Tab Picker
 
     private var tabPicker: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(CLIWorkshopTab.allCases) { tab in
-                    Button {
-                        viewModel.activeTab = tab
-                    } label: {
-                        VStack(spacing: 2) {
-                            Label(tab.displayName, systemImage: tab.sfSymbol)
-                                .font(.body)
-                            Text(tab.tabDescription)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(viewModel.activeTab == tab ? Color.accentColor.opacity(0.15) : Color.clear)
-                        .clipShape(RoundedRectangle(cornerRadius: 6))
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(tab.displayName)
-                    .accessibilityHint(tab.tabDescription)
+        // Wrap categories to multiple lines (same as the tool tabs) so none get
+        // hidden regardless of window width.
+        FlowLayout(spacing: 6) {
+            ForEach(CLIWorkshopTab.allCases) { tab in
+                categoryTab(tab)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.gray.opacity(0.06))
+    }
+
+    /// A single category tab — accent-tinted card when selected.
+    private func categoryTab(_ tab: CLIWorkshopTab) -> some View {
+        let selected = viewModel.activeTab == tab
+        return Button {
+            // Switch category AND refresh the selection to the new category's
+            // first tool (clears stale form/preview/console).
+            viewModel.selectCategory(tab)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: tab.sfSymbol)
+                    .font(.title3)
+                    .foregroundStyle(selected ? Color.accentColor : .secondary)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(tab.displayName)
+                        .font(.body.weight(selected ? .semibold : .regular))
+                    Text(tab.tabDescription)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 6)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(selected ? Color.accentColor.opacity(0.15) : Color.clear)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(selected ? Color.accentColor.opacity(0.55) : Color.clear, lineWidth: 1)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 8))
         }
+        .buttonStyle(.plain)
+        .accessibilityLabel(tab.displayName)
+        .accessibilityHint(tab.tabDescription)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    // MARK: - Tool Selection Panel
+    // MARK: - Tool Tab Bar
 
-    private var toolSelectionPanel: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Tools")
-                    .font(.headline)
-                Spacer()
-                Button {
-                    viewModel.toggleExperienceMode()
-                } label: {
-                    Label(
-                        viewModel.experienceMode == .beginner ? "Beginner" : "Advanced",
-                        systemImage: viewModel.experienceMode == .beginner ? "graduationcap" : "wrench.and.screwdriver"
-                    )
-                    .font(.callout)
-                }
-                .accessibilityLabel("Toggle experience mode")
-            }
-            .padding()
-
-            Divider()
-
-            let tools = viewModel.toolsForActiveTab()
+    /// Tools for the active category, shown as a horizontal tab row (styled like
+    /// the category tabs). A tooltip carries each tool's description, and the
+    /// experience-mode toggle sits at the trailing edge.
+    private var toolTabBar: some View {
+        let tools = viewModel.toolsForActiveTab()
+        return HStack(alignment: .top, spacing: 8) {
             if tools.isEmpty {
-                ContentUnavailableView(
-                    "No Tools",
-                    systemImage: "terminal",
-                    description: Text("No CLI tools available for this category.")
-                )
-            } else if viewModel.activeTab == .networkOperations {
-                List(selection: $viewModel.selectedToolID) {
-                    ForEach(viewModel.groupedNetworkTools(), id: \.group) { section in
-                        Section {
-                            ForEach(section.tools) { tool in
-                                toolRow(tool)
-                            }
-                        } header: {
-                            Label(section.group.displayName, systemImage: section.group.sfSymbol)
-                        }
+                Text("No tools available for this category")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 4)
+                Spacer()
+            } else {
+                // Wrap tools to multiple lines so none ever get hidden, regardless
+                // of window width (replaces the horizontal scroll that could clip).
+                FlowLayout(spacing: 6) {
+                    ForEach(tools, id: \.id) { tool in
+                        toolTab(tool)
                     }
                 }
-                .onChange(of: viewModel.selectedToolID) { _, newValue in
-                    viewModel.selectTool(id: newValue)
-                }
-            } else {
-                List(tools, id: \.id, selection: $viewModel.selectedToolID) { tool in
-                    toolRow(tool)
-                }
-                .onChange(of: viewModel.selectedToolID) { _, newValue in
-                    viewModel.selectTool(id: newValue)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+
+            experienceToggleButton
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 7)
+        .background(Color.gray.opacity(0.04))
     }
 
-    // MARK: - Tool Row
-
-    private func toolRow(_ tool: CLIToolDefinition) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+    /// A single tool "pill" tab — filled accent when selected.
+    private func toolTab(_ tool: CLIToolDefinition) -> some View {
+        let selected = viewModel.selectedToolID == tool.id
+        return Button {
+            viewModel.selectTool(id: tool.id)
+        } label: {
+            HStack(spacing: 6) {
                 Image(systemName: "terminal")
-                    .foregroundStyle(.green)
+                    .foregroundStyle(selected ? Color.white : .green)
                 Text(tool.name)
-                    .font(.body.monospaced())
+                    .font(.callout.monospaced().weight(selected ? .semibold : .regular))
+                    .foregroundStyle(selected ? Color.white : .primary)
             }
-            Text(tool.briefDescription)
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .lineLimit(2)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule().fill(selected ? Color.accentColor : Color.gray.opacity(0.15))
+            )
+            .contentShape(Capsule())
         }
-        .padding(.vertical, 2)
+        .buttonStyle(.plain)
+        .help(tool.briefDescription)
         .accessibilityLabel(tool.name)
         .accessibilityHint(tool.briefDescription)
+        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
-    // MARK: - Command and Console Panel
-
-    private var commandAndConsolePanel: some View {
-        GeometryReader { geo in
-            VStack(spacing: 0) {
-                // ── Top half: tool header + server + parameters ──
-                upperPanel
-                    .frame(height: geo.size.height * 0.5)
-
-                Divider()
-
-                // ── Bottom half: command preview + console + history ──
-                lowerPanel
-                    .frame(height: geo.size.height * 0.5)
-            }
+    /// Beginner/Advanced toggle, pinned at the trailing edge of the tool tab bar.
+    private var experienceToggleButton: some View {
+        Button {
+            viewModel.toggleExperienceMode()
+        } label: {
+            Label(
+                viewModel.experienceMode == .beginner ? "Beginner" : "Advanced",
+                systemImage: viewModel.experienceMode == .beginner ? "graduationcap" : "wrench.and.screwdriver"
+            )
+            .font(.callout)
         }
+        .buttonStyle(.bordered)
+        .fixedSize()
+        .help("Toggle between Beginner and Advanced parameter sets")
+        .accessibilityLabel("Toggle experience mode")
     }
 
-    /// Upper half — tool purpose header, server selector, and parameter fields (scrollable).
+    // MARK: - Left Panel (filters) & Right Panel (output)
+    //
+    // The left/right split is provided by the `HSplitView` in `body` (its
+    // divider is draggable). `upperPanel` is the left-hand parameters/filters
+    // panel; `lowerPanel` is the right-hand command-preview + console panel.
+
+    /// Left panel — tool purpose header, server selector, and parameter fields
+    /// (scrollable), with the Run / Compare action buttons pinned at the bottom.
     private var upperPanel: some View {
         Group {
             if let tool = viewModel.selectedTool() {
-                ScrollView(.vertical, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        toolPurposeHeader(tool: tool)
-                        Divider()
+                VStack(spacing: 0) {
+                    ScrollView(.vertical, showsIndicators: true) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            toolPurposeHeader(tool: tool)
+                            Divider()
 
-                        VStack(alignment: .leading, spacing: 8) {
-                            if viewModel.isNetworkToolSelected {
-                                if viewModel.isDICOMwebToolSelected {
-                                    dicomwebServerSelectionSection
-                                } else {
-                                    serverSelectionSection
+                            VStack(alignment: .leading, spacing: 8) {
+                                if viewModel.isNetworkToolSelected {
+                                    if viewModel.isDICOMwebToolSelected {
+                                        dicomwebServerSelectionSection
+                                    } else {
+                                        serverSelectionSection
+                                    }
+                                    Divider()
                                 }
-                                Divider()
+
+                                Text("Parameters")
+                                    .font(.title3.bold())
+
+                                parameterGrid
                             }
-
-                            Text("Parameters")
-                                .font(.title3.bold())
-
-                            parameterGrid
+                            .padding()
                         }
-                        .padding()
                     }
+
+                    Divider()
+                    actionFooter
                 }
             } else {
                 VStack(spacing: 8) {
                     Image(systemName: "terminal")
                         .font(.system(size: 36))
                         .foregroundStyle(.tertiary)
-                    Text("Select a tool from the list")
+                    Text("Select a tool from the tabs above")
                         .font(.body)
                         .foregroundStyle(.secondary)
                 }
@@ -216,7 +249,34 @@ public struct CLIWorkshopView: View {
         }
     }
 
-    /// Lower half — command preview, console output, and history (scrollable console).
+    /// Run button pinned at the bottom of the filters panel (after all filters).
+    /// (The TESTING-ONLY "Compare CLI" button lives at the top of the right panel.)
+    private var actionFooter: some View {
+        HStack(spacing: 10) {
+            if viewModel.isCommandValid {
+                Label("Ready", systemImage: "checkmark.circle.fill")
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(.green)
+                    .help("Command is valid")
+            }
+            Spacer()
+
+            Button {
+                Task { await viewModel.executeCommand() }
+            } label: {
+                Label("Run", systemImage: "play.fill")
+                    .font(.body)
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(!viewModel.isCommandValid || viewModel.consoleStatus == .running)
+            .accessibilityLabel("Run command")
+            .accessibilityHint("Executes the constructed DICOM command")
+        }
+        .padding(.horizontal)
+        .padding(.vertical, 8)
+    }
+
+    /// Right panel — command preview, console output, and history (scrollable console).
     private var lowerPanel: some View {
         VStack(spacing: 0) {
             // Command Preview (pinned at top of lower half)
@@ -225,21 +285,43 @@ public struct CLIWorkshopView: View {
                     HStack {
                         Text("Command Preview")
                             .font(.headline.bold())
-                        Spacer()
                         if viewModel.isCommandValid {
-                            Image(systemName: "checkmark.circle.fill")
+                            Label("Valid", systemImage: "checkmark.circle.fill")
+                                .font(.caption)
                                 .foregroundStyle(.green)
-                                .font(.body)
                         }
+                        Spacer()
+                        // ⚠️ TESTING-ONLY: run the real dicom-* binary for this tool and
+                        // compare side-by-side (pinned at the top of the right panel).
+                        // Requires the App Sandbox to be disabled. Remove before
+                        // production (see CLIToolTerminalCompare.swift).
+                        #if os(macOS)
                         Button {
-                            Task { await viewModel.executeCommand() }
-                        } label:{
-                            Label("Run", systemImage: "play.fill")
-                                .font(.body)
+                            Task { await viewModel.runTerminalCompare() }
+                        } label: {
+                            HStack(spacing: 6) {
+                                if viewModel.isRunningTerminalCompare {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                    Text("Comparing…")
+                                } else {
+                                    Image(systemName: "exclamationmark.triangle.fill")
+                                    Text("Compare CLI")
+                                    Text("TEST")
+                                        .font(.caption2.weight(.heavy))
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 1)
+                                        .background(Capsule().fill(Color.white.opacity(0.25)))
+                                }
+                            }
+                            .font(.callout.weight(.semibold))
                         }
-                        .disabled(!viewModel.isCommandValid || viewModel.consoleStatus == .running)
-                        .accessibilityLabel("Run command")
-                        .accessibilityHint("Executes the constructed DICOM command")
+                        .buttonStyle(.borderedProminent)
+                        .tint(.orange)
+                        .disabled(!viewModel.isCommandValid || viewModel.isRunningTerminalCompare || viewModel.consoleStatus == .running)
+                        .help("TESTING ONLY: runs the real CLI binary for this tool and shows its output side-by-side. Requires the sandbox to be disabled.")
+                        .accessibilityLabel("Compare with terminal CLI (testing only)")
+                        #endif
                     }
 
                     HStack {
@@ -255,12 +337,19 @@ public struct CLIWorkshopView: View {
                             Button {
                                 copyCommandToClipboard()
                             } label: {
-                                Image(systemName: "doc.on.doc")
-                                    .font(.body)
-                                    .foregroundStyle(Color(white: 0.6))
+                                if copiedTarget == .command {
+                                    Label("Copied!", systemImage: "checkmark.circle.fill")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.green)
+                                } else {
+                                    Image(systemName: "doc.on.doc")
+                                        .font(.body)
+                                        .foregroundStyle(Color(white: 0.6))
+                                }
                             }
                             .buttonStyle(.borderless)
-                            .accessibilityLabel("Copy command")
+                            .help("Copy command to clipboard")
+                            .accessibilityLabel(copiedTarget == .command ? "Command copied" : "Copy command")
                             .accessibilityHint("Copies the command to the clipboard")
                         }
                     }
@@ -286,11 +375,18 @@ public struct CLIWorkshopView: View {
                     Button {
                         copyConsoleToClipboard()
                     } label: {
-                        Image(systemName: "doc.on.doc")
-                            .font(.body)
+                        if copiedTarget == .console {
+                            Label("Copied!", systemImage: "checkmark.circle.fill")
+                                .font(.caption.bold())
+                                .foregroundStyle(.green)
+                        } else {
+                            Image(systemName: "doc.on.doc")
+                                .font(.body)
+                        }
                     }
                     .buttonStyle(.borderless)
-                    .accessibilityLabel("Copy console output")
+                    .help("Copy console output to clipboard")
+                    .accessibilityLabel(copiedTarget == .console ? "Console output copied" : "Copy console output")
                     .accessibilityHint("Copies the console output to the clipboard")
                 }
 
@@ -319,7 +415,10 @@ public struct CLIWorkshopView: View {
             Divider()
 
             // Console body (scrollable, fills remaining space)
-            if viewModel.consoleOutput.isEmpty {
+            if let compare = viewModel.terminalCompareResult {
+                // ⚠️ TESTING-ONLY side-by-side terminal-vs-app parity view.
+                terminalCompareView(compare)
+            } else if viewModel.consoleOutput.isEmpty {
                 HStack(spacing: 8) {
                     Image(systemName: "terminal")
                         .font(.title2)
@@ -371,6 +470,78 @@ public struct CLIWorkshopView: View {
                 }
             }
         }
+    }
+
+    // MARK: - ⚠️ TESTING-ONLY: terminal parity side-by-side (all tools)
+    //
+    // Shows the real `dicom-*` CLI output next to the app's in-process output.
+    // Remove before production (see CLIToolTerminalCompare.swift).
+
+    @ViewBuilder
+    private func terminalCompareView(_ result: CLIToolCompareResult) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Label("TESTING — Terminal Parity", systemImage: "exclamationmark.triangle.fill")
+                    .font(.callout.bold())
+                    .foregroundStyle(.orange)
+                if result.matched {
+                    Label("Match", systemImage: "checkmark.circle.fill")
+                        .font(.caption.bold()).foregroundStyle(.green)
+                } else {
+                    Label("\(result.differingLineCount) differ", systemImage: "exclamationmark.circle.fill")
+                        .font(.caption.bold()).foregroundStyle(.orange)
+                }
+                Spacer()
+                Button("Close") { viewModel.clearTerminalCompare() }
+                    .font(.callout)
+            }
+            .padding(.horizontal)
+            .padding(.vertical, 6)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(result.note)
+                    .font(.caption)
+                    .foregroundStyle(result.matched ? .green : .orange)
+                if let path = result.binaryPath {
+                    Text("binary: \(path)")
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal)
+            .padding(.bottom, 4)
+
+            Divider()
+
+            HStack(spacing: 0) {
+                compareColumn(title: "App (in-process)", systemImage: "app.badge", text: result.appOutput, accent: .blue)
+                Divider()
+                compareColumn(title: "Terminal (\(result.toolName) CLI)", systemImage: "terminal", text: result.terminalOutput, accent: .orange)
+            }
+        }
+    }
+
+    private func compareColumn(title: String, systemImage: String, text: String, accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Highlighted, color-coded column label.
+            Label(title, systemImage: systemImage)
+                .font(.callout.bold())
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(accent)
+            ScrollView([.vertical, .horizontal]) {
+                Text(text.isEmpty ? "(no output)" : text)
+                    .font(.system(.body, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(10)
+            }
+            .background(Color.black.opacity(0.05))
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Tool Purpose Header
@@ -446,43 +617,140 @@ public struct CLIWorkshopView: View {
     /// Parameter grid (no scroll — parent handles scrolling).
     private var parameterGrid: some View {
         let params = viewModel.visibleParameters()
-        let columns = [
-            GridItem(.flexible(), spacing: 12),
-            GridItem(.flexible(), spacing: 12),
-        ]
+        // In Beginner mode, advanced flags are surfaced in a collapsible section
+        // (instead of being hidden) so every available flag stays reachable.
+        let advanced = viewModel.advancedParameters()
         return Group {
-            if params.isEmpty {
+            if params.isEmpty && advanced.isEmpty {
                 Text("No configurable parameters")
-                    .font(.callout)
+                    .font(.body)
                     .foregroundStyle(.secondary)
             } else {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
-                    ForEach(params, id: \.id) { param in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(param.displayName)
-                                .font(.body.bold())
-                            if (param.parameterType == .enumPicker || param.parameterType == .flagPicker || (param.parameterType == .subcommand && !param.allowedValues.isEmpty)) && !param.allowedValues.isEmpty {
-                                enumPickerField(param: param)
-                            } else if param.parameterType == .filePath || param.parameterType == .outputPath {
-                                filePathField(param: param)
-                            } else if param.parameterType == .booleanToggle {
-                                booleanToggleField(param: param)
-                            } else {
-                                TextField(param.placeholder, text: parameterBinding(for: param.id))
-                                    .textFieldStyle(.roundedBorder)
-                                    .font(.body)
-                                    .accessibilityLabel(param.displayName)
-                            }
-                            if !param.helpText.isEmpty {
-                                Text(param.helpText)
-                                    .font(.callout)
-                                    .foregroundStyle(.secondary)
-                            }
+                VStack(alignment: .leading, spacing: 14) {
+                    if !params.isEmpty { parameterSections(params) }
+                    if !advanced.isEmpty {
+                        DisclosureGroup {
+                            parameterSections(advanced)
+                                .padding(.top, 8)
+                        } label: {
+                            Label("Advanced options (\(advanced.count))", systemImage: "slider.horizontal.3")
+                                .font(.headline)
                         }
+                        .accessibilityHint("Shows additional flags for this tool")
                     }
                 }
             }
         }
+    }
+
+    /// Groups a parameter list into Input / Parameters / Options / Output cards,
+    /// each in a titled rounded section (booleans render as checkbox rows).
+    @ViewBuilder
+    private func parameterSections(_ params: [CLIParameterDefinition]) -> some View {
+        let input   = params.filter { $0.parameterType == .filePath }
+        let output  = params.filter { $0.parameterType == .outputPath }
+        let options = params.filter { $0.parameterType == .booleanToggle }
+        let main    = params.filter {
+            $0.parameterType != .filePath && $0.parameterType != .outputPath && $0.parameterType != .booleanToggle
+        }
+        VStack(alignment: .leading, spacing: 14) {
+            if !input.isEmpty {
+                filterSection("Input") { ForEach(input, id: \.id) { valueParameterRow($0) } }
+            }
+            if !main.isEmpty {
+                filterSection("Parameters") { ForEach(main, id: \.id) { valueParameterRow($0) } }
+            }
+            if !options.isEmpty {
+                filterSection("Options") {
+                    VStack(alignment: .leading, spacing: 10) {
+                        ForEach(options, id: \.id) { booleanCheckboxRow($0) }
+                    }
+                }
+            }
+            if !output.isEmpty {
+                filterSection("Output") { ForEach(output, id: \.id) { valueParameterRow($0) } }
+            }
+        }
+    }
+
+    /// A titled, lightly-tinted rounded section card.
+    @ViewBuilder
+    private func filterSection<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(Color.gray.opacity(0.10), in: RoundedRectangle(cornerRadius: 10))
+    }
+
+    /// A value-bearing parameter: bold label + flag hint, the control, and help text.
+    @ViewBuilder
+    private func valueParameterRow(_ param: CLIParameterDefinition) -> some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(alignment: .firstTextBaseline) {
+                Text(param.displayName)
+                    .font(.body.weight(.semibold))
+                Spacer()
+                if !param.flag.isEmpty {
+                    Text(param.flag)
+                        .font(.callout.monospaced())
+                        .foregroundStyle(.secondary)
+                }
+            }
+            controlForParameter(param)
+            if !param.helpText.isEmpty {
+                Text(param.helpText)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The input control for a non-boolean parameter.
+    @ViewBuilder
+    private func controlForParameter(_ param: CLIParameterDefinition) -> some View {
+        if (param.parameterType == .enumPicker || param.parameterType == .flagPicker || (param.parameterType == .subcommand && !param.allowedValues.isEmpty)) && !param.allowedValues.isEmpty {
+            enumPickerField(param: param)
+        } else if param.parameterType == .filePath || param.parameterType == .outputPath {
+            filePathField(param: param)
+        } else {
+            TextField(param.placeholder, text: parameterBinding(for: param.id))
+                .textFieldStyle(.roundedBorder)
+                .font(.body)
+                .accessibilityLabel(param.displayName)
+        }
+    }
+
+    /// A boolean flag as a checkbox row: ☑ --flag  description.
+    private func booleanCheckboxRow(_ param: CLIParameterDefinition) -> some View {
+        let isOn = Binding<Bool>(
+            get: {
+                let val = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? "false"
+                return val == "true"
+            },
+            set: { newValue in
+                viewModel.updateParameterValue(parameterID: param.id, value: newValue ? "true" : "false")
+            }
+        )
+        return Toggle(isOn: isOn) {
+            HStack(spacing: 8) {
+                if !param.flag.isEmpty {
+                    Text(param.flag)
+                        .font(.body.monospaced().weight(.semibold))
+                }
+                Text(param.helpText.isEmpty ? param.displayName : param.helpText)
+                    .font(.body)
+                    .foregroundStyle(.primary)
+            }
+        }
+        #if os(macOS)
+        .toggleStyle(.checkbox)
+        #endif
+        .accessibilityLabel(param.displayName)
     }
 
     /// A file/directory path field with a Browse button and file importer.
@@ -526,37 +794,24 @@ public struct CLIWorkshopView: View {
         }
     }
 
-    /// A boolean toggle field rendered as a toggle switch.
-    private func booleanToggleField(param: CLIParameterDefinition) -> some View {
-        let isOn = Binding<Bool>(
-            get: {
-                let val = viewModel.parameterValues.first(where: { $0.parameterID == param.id })?.stringValue ?? "false"
-                return val == "true"
-            },
-            set: { newValue in
-                viewModel.updateParameterValue(parameterID: param.id, value: newValue ? "true" : "false")
-            }
-        )
-        return Toggle(isOn: isOn) {
-            EmptyView()
-        }
-        .toggleStyle(.switch)
-        .accessibilityLabel(param.displayName)
-    }
-
-    /// A picker that offers preset values.
+    /// A picker that offers preset values — segmented for small sets, menu otherwise.
+    @ViewBuilder
     private func enumPickerField(param: CLIParameterDefinition) -> some View {
-        return VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 6) {
-                Picker("", selection: parameterBinding(for: param.id)) {
-                    ForEach(param.allowedValues, id: \.self) { value in
-                        Text(value.isEmpty ? "Any" : value).tag(value)
-                    }
-                }
-                .labelsHidden()
-                .font(.body)
-                .accessibilityLabel(param.displayName)
+        let values = param.allowedValues
+        let useSegmented = values.count >= 2 && values.count <= 6 && !values.contains("")
+        let picker = Picker("", selection: parameterBinding(for: param.id)) {
+            ForEach(values, id: \.self) { value in
+                Text(value.isEmpty ? "Any" : value).tag(value)
             }
+        }
+        .labelsHidden()
+        .font(.body)
+        .accessibilityLabel(param.displayName)
+
+        if useSegmented {
+            picker.pickerStyle(.segmented)
+        } else {
+            picker.pickerStyle(.menu)
         }
     }
 
@@ -1023,10 +1278,12 @@ public struct CLIWorkshopView: View {
 
     private func copyCommandToClipboard() {
         copyToClipboard(viewModel.commandPreview)
+        showCopiedFeedback(for: .command)
     }
 
     private func copyConsoleToClipboard() {
         copyToClipboard(viewModel.consoleOutput)
+        showCopiedFeedback(for: .console)
     }
 
     private func copyToClipboard(_ text: String) {
@@ -1036,6 +1293,21 @@ public struct CLIWorkshopView: View {
         #elseif canImport(UIKit)
         UIPasteboard.general.string = text
         #endif
+    }
+
+    /// Shows a transient "Copied!" confirmation on the given copy button, then
+    /// reverts to the copy icon after a short delay. Token-guarded so a rapid
+    /// second copy doesn't get cleared early by the first one's pending reset.
+    private func showCopiedFeedback(for target: CopyTarget) {
+        copyFeedbackToken += 1
+        let token = copyFeedbackToken
+        withAnimation(.easeInOut(duration: 0.15)) { copiedTarget = target }
+        Task {
+            try? await Task.sleep(for: .seconds(1.6))
+            if copyFeedbackToken == token {
+                withAnimation(.easeInOut(duration: 0.2)) { copiedTarget = nil }
+            }
+        }
     }
 
 }

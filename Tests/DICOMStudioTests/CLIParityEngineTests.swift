@@ -16,10 +16,14 @@ final class CLIParityEngineTests: XCTestCase {
     }
 
     func testFixtureAndGoldensBundled() throws {
-        XCTAssertNotNil(CLIParityEngine.fixtureURL(), "fixture.dcm should be bundled")
         let goldens = CLIParityEngine.loadGoldens()
         XCTAssertFalse(goldens.isEmpty, "goldens.json should contain scenarios")
         XCTAssertTrue(goldens.contains { $0.toolId == "dicom-info" })
+        // The fixture referenced by the goldens must actually be bundled. Derive
+        // the name from the goldens rather than hardcoding it, so the test stays
+        // correct as fixtures are renamed/added.
+        let fixtureName = try XCTUnwrap(goldens.first?.fixtureFile, "golden scenario should name a fixture file")
+        XCTAssertNotNil(CLIParityEngine.fixtureURL(named: fixtureName), "\(fixtureName) should be bundled")
     }
 
     func testCompareAllCoversCatalogAndHasNoFalseDrift() throws {

@@ -126,7 +126,10 @@ struct CLIWorkshopViewModelTests {
         vm.parameterValues = [CLIParameterValue(parameterID: "x", stringValue: "y")]
         vm.consoleOutput = "old output"
         vm.selectTool(id: "dicom-info")
-        #expect(vm.parameterValues.isEmpty)
+        // The previous tool's parameters are cleared...
+        #expect(!vm.parameterValues.contains { $0.parameterID == "x" })
+        // ...and replaced by the new tool's pre-populated defaults (e.g. --format text).
+        #expect(vm.parameterValues.contains { $0.parameterID == "format" && $0.stringValue == "text" })
         #expect(vm.consoleOutput == "")
         #expect(vm.consoleStatus == .idle)
     }

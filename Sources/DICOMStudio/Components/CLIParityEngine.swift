@@ -318,6 +318,9 @@ public enum CLIParityEngine {
         let escaped = NSRegularExpression.escapedPattern(for: fixtureBasename)
         var lines: [String] = []
         for var line in raw.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
+            // Strip ANSI color escape sequences — the CLI colorizes (e.g. dicom-dump)
+            // while the app renders plain text; they should compare equal.
+            line = line.replacingOccurrences(of: "\u{001B}\\[[0-9;]*m", with: "", options: .regularExpression)
             // Drop the command-echo line Studio prepends.
             if line.hasPrefix("$ ") { continue }
             // Canonicalize any absolute path ending in the fixture basename.
