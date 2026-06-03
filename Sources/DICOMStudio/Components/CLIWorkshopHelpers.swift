@@ -1966,8 +1966,9 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "tag", flag: "--tag", displayName: "Filter Tag(s)",
-                    parameterType: .textField, placeholder: "e.g. PatientName,StudyDate",
-                    helpText: "Comma-separated tag names or IDs to display (default: all tags)"
+                    parameterType: .textField, placeholder: "e.g. Patient's Name; 0008,0060",
+                    helpText: "Show only these tags (name or number). Separate with “ ; ”. Default: all tags.",
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "show-private", flag: "--show-private", displayName: "Show Private Tags",
@@ -2063,13 +2064,15 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "set", flag: "--set", displayName: "Set Tag(s)",
-                    parameterType: .textField, placeholder: "e.g. PatientName=DOE^JOHN,0008,0090=DR.SMITH",
-                    helpText: "Comma-separated list of TagName=Value or GGGG,EEEE=Value assignments"
+                    parameterType: .textField, placeholder: "e.g. PatientName=DOE^JOHN; 0008,0090=DR.SMITH",
+                    helpText: "TagName=Value or GGGG,EEEE=Value. Separate with “ ; ”.",
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "delete", flag: "--delete", displayName: "Delete Tag(s)",
-                    parameterType: .textField, placeholder: "e.g. PatientBirthDate,AccessionNumber",
-                    helpText: "Comma-separated list of tags to remove (by name or GGGG,EEEE)"
+                    parameterType: .textField, placeholder: "e.g. PatientBirthDate; 0010,0020",
+                    helpText: "Tags to remove (name or GGGG,EEEE). Separate with “ ; ”.",
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "delete-private", flag: "--delete-private", displayName: "Delete Private Tags",
@@ -2122,8 +2125,9 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "ignore-tag", flag: "--ignore-tag", displayName: "Ignore Tag(s)",
-                    parameterType: .textField, placeholder: "e.g. SOPInstanceUID,0008,0012",
-                    helpText: "Comma-separated tags to exclude from comparison"
+                    parameterType: .textField, placeholder: "e.g. SOPInstanceUID; 0008,0012",
+                    helpText: "Tags to skip (name or GGGG,EEEE). Separate with “ ; ”.",
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "ignore-private", flag: "--ignore-private", displayName: "Ignore Private Tags",
@@ -3731,6 +3735,17 @@ public enum CommandBuilderHelpers: Sendable {
                         parts.append(contentsOf: deferredMappedTokens)
                         deferredMappedTokens.removeAll()
                     }
+                } else if def.isRepeatable {
+                    // Repeatable CLI option: the real CLI declares this as an
+                    // array and consumes one value per flag occurrence. The UI
+                    // collects several values in one semicolon-separated field;
+                    // expand it into `--flag A --flag B` so the previewed command
+                    // behaves identically when pasted into a terminal — and
+                    // matches the in-app executor, which splits the same way.
+                    for item in splitMultiValue(value.stringValue) {
+                        parts.append(def.flag)
+                        parts.append(shellEscape(item))
+                    }
                 } else {
                     parts.append(def.flag)
                     parts.append(shellEscape(value.stringValue))
@@ -3740,6 +3755,31 @@ public enum CommandBuilderHelpers: Sendable {
         // Append any remaining deferred tokens (if no positional arg was seen)
         parts.append(contentsOf: deferredMappedTokens)
         return parts.joined(separator: " ")
+    }
+
+    /// The delimiter that separates multiple values in a repeatable-option UI
+    /// field. A **semicolon** is used rather than a comma because DICOM values
+    /// already contain commas and spaces: a tag *number* is written `GGGG,EEEE`
+    /// (the comma is part of the value) and a tag *name* contains spaces and
+    /// apostrophes (e.g. `Patient's Name`). A semicolon appears in none of those,
+    /// so each value can be typed verbatim without being mis-split.
+    public static let multiValueSeparator: Character = ";"
+
+    /// Splits a semicolon-separated multi-value UI field into individual values,
+    /// trimming surrounding whitespace and dropping empties.
+    ///
+    /// Shared by `buildCommand()` (to emit one repeated flag per value) and by
+    /// the in-app executor (to parse the same field), so the command preview and
+    /// the in-app result always agree with the real CLI's repeated-flag contract.
+    ///
+    /// Examples:
+    /// - `"Patient's Name; 0008,0060"`          -> `["Patient's Name", "0008,0060"]`
+    /// - `"SOPInstanceUID; 0008,0012"`          -> `["SOPInstanceUID", "0008,0012"]`
+    /// - `"Name=DOE^JOHN; 0008,0090=DR.SMITH"`  -> `["Name=DOE^JOHN", "0008,0090=DR.SMITH"]`
+    public static func splitMultiValue(_ raw: String) -> [String] {
+        raw.split(separator: multiValueSeparator)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 
     /// Shell-escapes a file path.

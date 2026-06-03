@@ -55,7 +55,7 @@ struct DICOMInfo: ParsableCommand {
             showStats: statistics
         )
         
-        let output = try presenter.render(format: format)
+        let output = try presenter.render(format: MetadataOutputFormat(rawValue: format.rawValue) ?? .text)
         print(output, terminator: "")
     }
 }

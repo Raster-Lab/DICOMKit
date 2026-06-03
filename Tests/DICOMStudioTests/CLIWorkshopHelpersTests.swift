@@ -281,6 +281,71 @@ struct CLIWorkshopHelpersTests {
         #expect(cmdFalse == "dicom-info")
     }
 
+    @Test("buildCommand expands repeatable options into repeated flags")
+    func testBuildCommandRepeatableFlag() {
+        let defs = [
+            CLIParameterDefinition(id: "tag", flag: "--tag", displayName: "Filter Tag(s)",
+                                   parameterType: .textField, isRepeatable: true)
+        ]
+        // Values are separated by a semicolon in the UI field.
+        let vals = [CLIParameterValue(parameterID: "tag", stringValue: "PatientName;Modality")]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-info", parameterValues: vals, parameterDefinitions: defs)
+        // Must match the real CLI's repeated-flag contract, not a single joined flag.
+        #expect(cmd == "dicom-info --tag PatientName --tag Modality")
+    }
+
+    @Test("buildCommand repeatable option keeps a hex tag's comma intact")
+    func testBuildCommandRepeatableKeepsHexComma() {
+        let defs = [
+            CLIParameterDefinition(id: "tag", flag: "--tag", displayName: "Filter Tag(s)",
+                                   parameterType: .textField, isRepeatable: true)
+        ]
+        // A tag number contains a comma; the semicolon separator keeps it whole.
+        let vals = [CLIParameterValue(parameterID: "tag", stringValue: "Patient's Name; 0008,0060")]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-info", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd == "dicom-info --tag 'Patient'\\''s Name' --tag 0008,0060")
+    }
+
+    @Test("buildCommand keeps non-repeatable comma values as a single flag")
+    func testBuildCommandNonRepeatableKeepsComma() {
+        let defs = [
+            CLIParameterDefinition(id: "tags", flag: "--tags", displayName: "Tags to Copy",
+                                   parameterType: .textField)   // isRepeatable defaults to false
+        ]
+        let vals = [CLIParameterValue(parameterID: "tags", stringValue: "PatientName,PatientID")]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-tags", parameterValues: vals, parameterDefinitions: defs)
+        // dicom-tags --tags is comma-split by the CLI itself, so it stays joined.
+        #expect(cmd == "dicom-tags --tags PatientName,PatientID")
+    }
+
+    @Test("splitMultiValue splits on semicolons and preserves commas/spaces in values")
+    func testSplitMultiValueSemicolon() {
+        // Tag numbers keep their comma; names keep spaces and apostrophes.
+        #expect(CommandBuilderHelpers.splitMultiValue("Patient's Name; 0008,0060") == ["Patient's Name", "0008,0060"])
+        #expect(CommandBuilderHelpers.splitMultiValue("SOPInstanceUID; 0008,0012") == ["SOPInstanceUID", "0008,0012"])
+        #expect(CommandBuilderHelpers.splitMultiValue("0010,0010; 0008,0018") == ["0010,0010", "0008,0018"])
+        #expect(CommandBuilderHelpers.splitMultiValue("PatientName=DOE^JOHN; 0008,0090=DR.SMITH")
+                == ["PatientName=DOE^JOHN", "0008,0090=DR.SMITH"])
+        // Single value with a comma is NOT split.
+        #expect(CommandBuilderHelpers.splitMultiValue("0008,0060") == ["0008,0060"])
+        // Empties and stray separators are dropped.
+        #expect(CommandBuilderHelpers.splitMultiValue("") == [])
+        #expect(CommandBuilderHelpers.splitMultiValue(" ; Modality ; ") == ["Modality"])
+    }
+
+    @Test("dicom-diff ignore-tag emits repeated flags for two hex tags")
+    func testBuildCommandDiffIgnoreTagRepeated() {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: "dicom-diff")
+        let vals = [
+            CLIParameterValue(parameterID: "file1", stringValue: "a.dcm"),
+            CLIParameterValue(parameterID: "file2", stringValue: "b.dcm"),
+            CLIParameterValue(parameterID: "ignore-tag", stringValue: "0010,0010; 0008,0018"),
+        ]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-diff", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd.contains("--ignore-tag 0010,0010"))
+        #expect(cmd.contains("--ignore-tag 0008,0018"))
+    }
+
     @Test("buildCommand handles flagPicker by emitting --value")
     func testBuildCommandFlagPicker() {
         let defs = [

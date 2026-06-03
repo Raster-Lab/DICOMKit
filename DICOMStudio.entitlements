@@ -2,8 +2,17 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- ╔══════════════════════════════════════════════════════════════════╗
+	     ║  ⚠️  TESTING-ONLY: App Sandbox is DISABLED (set to <false/>).      ║
+	     ║  This is required so the CLI Workshop can spawn the real           ║
+	     ║  `dicom-info` binary for the dicom-info "Compare CLI (TEST)"        ║
+	     ║  side-by-side parity check (see DicomInfoTerminalCompare.swift).    ║
+	     ║  BEFORE PRODUCTION: set this back to <true/> and remove the         ║
+	     ║  terminal-compare feature. Memory: dicom-info-terminal-compare-     ║
+	     ║  testonly.                                                          ║
+	     ╚══════════════════════════════════════════════════════════════════╝ -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.network.client</key>
 	<true/>
 	<key>com.apple.security.network.server</key>

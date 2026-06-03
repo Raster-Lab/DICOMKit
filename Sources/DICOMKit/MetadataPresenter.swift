@@ -1,18 +1,43 @@
 import Foundation
-import DICOMKit
 import DICOMCore
 import DICOMDictionary
 import J2KCore
 import J2KCodec
 
-/// Presents DICOM metadata in various output formats
-struct MetadataPresenter {
-    let file: DICOMFile
-    let filterTags: [String]
-    let includePrivate: Bool
-    let showStats: Bool
-    
-    func render(format: OutputFormat) throws -> String {
+/// Output format for ``MetadataPresenter``.
+///
+/// Defined in the framework (rather than in the `dicom-info` CLI target) so the
+/// CLI and DICOMStudio's in-app tool render through the exact same code path,
+/// eliminating any chance of output drift between them.
+public enum MetadataOutputFormat: String, Sendable, CaseIterable {
+    case text
+    case json
+    case csv
+}
+
+/// Presents DICOM metadata in various output formats.
+///
+/// Shared by the `dicom-info` CLI and DICOMStudio's CLI Workshop so both produce
+/// byte-identical output from the same parsed ``DICOMFile``.
+public struct MetadataPresenter {
+    public let file: DICOMFile
+    public let filterTags: [String]
+    public let includePrivate: Bool
+    public let showStats: Bool
+
+    public init(
+        file: DICOMFile,
+        filterTags: [String] = [],
+        includePrivate: Bool = false,
+        showStats: Bool = false
+    ) {
+        self.file = file
+        self.filterTags = filterTags
+        self.includePrivate = includePrivate
+        self.showStats = showStats
+    }
+
+    public func render(format: MetadataOutputFormat) throws -> String {
         switch format {
         case .text:
             return renderPlainText()
@@ -22,61 +47,61 @@ struct MetadataPresenter {
             return renderCSV()
         }
     }
-    
+
     // MARK: - Plain Text Output
-    
+
     private func renderPlainText() -> String {
         var output = ""
-        
+
         if showStats {
             output += renderFileStatistics()
             output += "\n"
-            
+
             let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
             if isJ2KTransferSyntax(tsUID) {
                 output += renderJ2KSection(tsUID: tsUID)
                 output += "\n"
             }
         }
-        
+
         output += "=== File Meta Information ===\n"
         output += renderDataSetAsText(file.fileMetaInformation)
         output += "\n=== Main Data Set ===\n"
         output += renderDataSetAsText(file.dataSet)
-        
+
         return output
     }
-    
+
     private func renderFileStatistics() -> String {
         var stats = "=== File Statistics ===\n"
-        
+
         if let transferSyntax = file.fileMetaInformation.string(for: .transferSyntaxUID) {
             stats += "Transfer Syntax: \(transferSyntax)\n"
         }
-        
+
         if let sopClass = file.dataSet.string(for: .sopClassUID) {
             stats += "SOP Class: \(sopClass)\n"
         }
-        
+
         if let modality = file.dataSet.string(for: .modality) {
             stats += "Modality: \(modality)\n"
         }
-        
+
         return stats
     }
-    
+
     private func renderDataSetAsText(_ dataSet: DataSet) -> String {
         var lines: [String] = []
         let allTags = dataSet.tags
-        
+
         for tag in allTags {
             guard let element = dataSet[tag] else { continue }
-            
+
             // Skip private tags unless requested
             if tag.isPrivate && !includePrivate {
                 continue
             }
-            
+
             // Filter by tag name if specified
             if !filterTags.isEmpty {
                 let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? ""
@@ -86,48 +111,48 @@ struct MetadataPresenter {
                 }
                 guard matches else { continue }
             }
-            
-            let valueStr = formatElementValue(element)
+
+            let valueStr = Self.formatElementValue(element)
             let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
             let paddedName = tagName.padding(toLength: max(tagName.count, 40), withPad: " ", startingAt: 0)
             let line = "\(tag.description) \(paddedName) VR=\(element.vr.rawValue) \(valueStr)"
             lines.append(line)
         }
-        
+
         return lines.joined(separator: "\n") + "\n"
     }
-    
+
     // MARK: - JSON Output
-    
+
     private func renderJSON() throws -> String {
         var jsonDict: [String: Any] = [:]
-        
+
         if showStats {
             jsonDict["statistics"] = buildStatisticsDict()
         }
-        
+
         jsonDict["fileMetaInformation"] = buildDataSetDict(file.fileMetaInformation)
         jsonDict["dataSet"] = buildDataSetDict(file.dataSet)
-        
+
         let jsonData = try JSONSerialization.data(withJSONObject: jsonDict, options: [.prettyPrinted, .sortedKeys])
         return String(data: jsonData, encoding: .utf8) ?? ""
     }
-    
+
     private func buildStatisticsDict() -> [String: String] {
         var stats: [String: String] = [:]
-        
+
         if let transferSyntax = file.fileMetaInformation.string(for: .transferSyntaxUID) {
             stats["transferSyntax"] = transferSyntax
         }
-        
+
         if let sopClass = file.dataSet.string(for: .sopClassUID) {
             stats["sopClass"] = sopClass
         }
-        
+
         if let modality = file.dataSet.string(for: .modality) {
             stats["modality"] = modality
         }
-        
+
         // Add J2K metadata when transfer syntax is JPEG 2000
         let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
         if isJ2KTransferSyntax(tsUID) {
@@ -136,21 +161,21 @@ struct MetadataPresenter {
                 stats["j2k_\(key)"] = value
             }
         }
-        
+
         return stats
     }
-    
+
     private func buildDataSetDict(_ dataSet: DataSet) -> [[String: Any]] {
         var elements: [[String: Any]] = []
         let allTags = dataSet.tags
-        
+
         for tag in allTags {
             guard let element = dataSet[tag] else { continue }
-            
+
             if tag.isPrivate && !includePrivate {
                 continue
             }
-            
+
             if !filterTags.isEmpty {
                 let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? ""
                 let matches = filterTags.contains { filter in
@@ -159,67 +184,67 @@ struct MetadataPresenter {
                 }
                 guard matches else { continue }
             }
-            
+
             var elementDict: [String: Any] = [
                 "tag": tag.description,
                 "name": DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown",
                 "vr": element.vr.rawValue
             ]
-            
+
             if let stringValue = element.stringValue {
                 elementDict["value"] = stringValue
             }
-            
+
             elements.append(elementDict)
         }
-        
+
         return elements
     }
-    
+
     // MARK: - CSV Output
-    
+
     private func renderCSV() -> String {
         var csv = "Tag,Name,VR,Value\n"
-        
+
         let allElements = collectAllElements()
-        
+
         for (tag, element) in allElements {
-            let valueStr = formatElementValue(element).replacingOccurrences(of: "\"", with: "\"\"")
+            let valueStr = Self.formatElementValue(element).replacingOccurrences(of: "\"", with: "\"\"")
             let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
             let line = "\"\(tag.description)\",\"\(tagName)\",\"\(element.vr.rawValue)\",\"\(valueStr)\"\n"
             csv += line
         }
-        
+
         return csv
     }
-    
+
     // MARK: - Helper Methods
-    
+
     private func collectAllElements() -> [(Tag, DataElement)] {
         var results: [(Tag, DataElement)] = []
-        
+
         for tag in file.fileMetaInformation.tags {
             guard let element = file.fileMetaInformation[tag] else { continue }
             if shouldIncludeElement(tag: tag) {
                 results.append((tag, element))
             }
         }
-        
+
         for tag in file.dataSet.tags {
             guard let element = file.dataSet[tag] else { continue }
             if shouldIncludeElement(tag: tag) {
                 results.append((tag, element))
             }
         }
-        
+
         return results
     }
-    
+
     private func shouldIncludeElement(tag: Tag) -> Bool {
         if tag.isPrivate && !includePrivate {
             return false
         }
-        
+
         if !filterTags.isEmpty {
             let tagName = DataElementDictionary.lookup(tag: tag)?.name ?? ""
             return filterTags.contains { filter in
@@ -227,11 +252,11 @@ struct MetadataPresenter {
                 tag.description.localizedCaseInsensitiveContains(filter)
             }
         }
-        
+
         return true
     }
-    
-    private func formatElementValue(_ element: DataElement) -> String {
+
+    public static func formatElementValue(_ element: DataElement) -> String {
         if let stringValue = element.stringValue {
             let s = stringValue
                 .replacingOccurrences(of: "\r\n", with: " ")
@@ -308,9 +333,9 @@ struct MetadataPresenter {
         let hex = data.prefix(hexBytes).map { String(format: "%02X", $0) }.joined(separator: " ")
         return len > hexBytes ? "\(hex) ... (\(len) bytes)" : hex
     }
-    
+
     // MARK: - JPEG 2000 Metadata
-    
+
     private static let j2kTransferSyntaxUIDs: Set<String> = [
         "1.2.840.10008.1.2.4.90",   // JPEG 2000 Lossless
         "1.2.840.10008.1.2.4.91",   // JPEG 2000 (Lossy or Lossless)
@@ -321,11 +346,11 @@ struct MetadataPresenter {
         "1.2.840.10008.1.2.4.203",  // HTJ2K RPCL Lossless
         "1.2.840.10008.1.2.4.204"   // HTJ2K (Lossy)
     ]
-    
+
     private func isJ2KTransferSyntax(_ uid: String) -> Bool {
         MetadataPresenter.j2kTransferSyntaxUIDs.contains(uid)
     }
-    
+
     private func j2kTransferSyntaxLabel(_ uid: String) -> String {
         switch uid {
         case "1.2.840.10008.1.2.4.90": return "JPEG 2000 Image Compression (Lossless Only)"
@@ -339,7 +364,7 @@ struct MetadataPresenter {
         default: return "JPEG 2000 (unknown variant)"
         }
     }
-    
+
     private func firstEncapsulatedFragment() -> Data? {
         guard let pixelElement = file.dataSet[.pixelData],
               let fragments = pixelElement.encapsulatedFragments,
@@ -348,18 +373,18 @@ struct MetadataPresenter {
         }
         return first
     }
-    
+
     private func renderJ2KSection(tsUID: String) -> String {
         var lines = ["=== JPEG 2000 Codestream Info ==="]
         lines.append("Transfer Syntax : \(j2kTransferSyntaxLabel(tsUID))")
         lines.append("UID             : \(tsUID)")
-        
+
         let isHTJ2K = tsUID.hasPrefix("1.2.840.10008.1.2.4.20")
         lines.append("HTJ2K           : \(isHTJ2K ? "Yes" : "No")")
-        
+
         if let fragment = firstEncapsulatedFragment() {
             lines.append("First fragment  : \(fragment.count) bytes")
-            
+
             // Quick HTJ2K capability check via marker inspection
             let capResult = J2KHTInteroperabilityValidator()
                 .validateCapabilitySignaling(codestream: fragment)
@@ -373,7 +398,7 @@ struct MetadataPresenter {
         } else {
             lines.append("Pixel data      : Not found or uncompressed")
         }
-        
+
         if let frameStr = file.dataSet.string(for: .numberOfFrames) {
             lines.append("Frames          : \(frameStr)")
         }
@@ -386,15 +411,15 @@ struct MetadataPresenter {
         if let bitsAlloc = file.dataSet.string(for: .bitsAllocated) {
             lines.append("Bits Allocated  : \(bitsAlloc)")
         }
-        
+
         return lines.joined(separator: "\n") + "\n"
     }
-    
+
     private func buildJ2KMetadataDict(tsUID: String) -> [String: String] {
         var info: [String: String] = [:]
         info["transferSyntaxLabel"] = j2kTransferSyntaxLabel(tsUID)
         info["isHTJ2K"] = tsUID.hasPrefix("1.2.840.10008.1.2.4.20") ? "true" : "false"
-        
+
         if let fragment = firstEncapsulatedFragment() {
             let capResult = J2KHTInteroperabilityValidator()
                 .validateCapabilitySignaling(codestream: fragment)
@@ -402,7 +427,7 @@ struct MetadataPresenter {
             info["isMixedMode"] = capResult.isMixedMode ? "true" : "false"
             info["firstFragmentBytes"] = "\(fragment.count)"
         }
-        
+
         return info
     }
 }

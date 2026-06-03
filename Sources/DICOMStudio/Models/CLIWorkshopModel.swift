@@ -266,6 +266,17 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     /// still appear in the UI form but will be excluded from
     /// `buildCommand()` output.
     public var isInternal: Bool
+    /// When `true`, this parameter maps to a **repeatable** CLI option that
+    /// the real CLI declares as an array (e.g. `--tag`, `--set`, `--delete`,
+    /// `--ignore-tag`).  The UI still presents a single comma-separated text
+    /// field, but `buildCommand()` expands it into one `--flag value` token
+    /// per value — matching how the CLI actually consumes the option — instead
+    /// of emitting a single comma-joined flag (which the CLI would treat as one
+    /// literal value).  Splitting is hex-tag aware via
+    /// ``CommandBuilderHelpers/splitMultiValue(_:)`` so `GGGG,EEEE` tags stay
+    /// intact.  Leave `false` for options the CLI itself comma-splits (e.g.
+    /// `dicom-tags --tags`).
+    public var isRepeatable: Bool
     public var defaultValue: String
     public var allowedValues: [String]
     public var minValue: Int?
@@ -291,6 +302,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         isRequired: Bool = false,
         isAdvanced: Bool = false,
         isInternal: Bool = false,
+        isRepeatable: Bool = false,
         defaultValue: String = "",
         allowedValues: [String] = [],
         minValue: Int? = nil,
@@ -307,6 +319,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         self.isRequired = isRequired
         self.isAdvanced = isAdvanced
         self.isInternal = isInternal
+        self.isRepeatable = isRepeatable
         self.defaultValue = defaultValue
         self.allowedValues = allowedValues
         self.minValue = minValue
