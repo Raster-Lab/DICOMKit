@@ -43,12 +43,22 @@ public struct CLIContracts: Decodable {
 public enum CLIParityEngine {
 
     /// Tool ids whose output CLIWorkshopViewModel.executeCommand() produces.
-    /// Source: Sources/DICOMStudio/ViewModels/CLIWorkshopViewModel.swift switch.
+    /// Source: Sources/DICOMStudio/ViewModels/CLIWorkshopViewModel.swift switch
+    /// (must stay in sync with the 32 `case "dicom-…"` labels there).
     public static let executeSupported: Set<String> = [
+        // Network / DIMSE + DICOMweb
         "dicom-echo", "dicom-query", "dicom-send", "dicom-retrieve", "dicom-qr",
         "dicom-mwl", "dicom-mpps", "dicom-qido", "dicom-wado", "dicom-stow",
-        "dicom-ups", "dicom-convert", "dicom-validate", "dicom-anon", "dicom-info",
+        "dicom-ups",
+        // Local — original set
+        "dicom-convert", "dicom-validate", "dicom-anon", "dicom-info",
         "dicom-dump", "dicom-tags", "dicom-diff",
+        // Local — also wired in executeCommand() (were missing here, so their
+        // output verification was silently reported UNAVAILABLE).
+        "dicom-json", "dicom-xml", "dicom-uid", "dicom-dcmdir", "dicom-pdf",
+        "dicom-pixedit", "dicom-split", "dicom-merge", "dicom-archive",
+        "dicom-compress", "dicom-study", "dicom-image", "dicom-export",
+        "dicom-script",
     ]
 
     static let frameworkFlags: Set<String> = ["--help", "-h", "--version", "--experimental-dump-help"]
@@ -73,25 +83,36 @@ public enum CLIParityEngine {
         return try? JSONDecoder().decode(CLIContracts.self, from: data)
     }
 
+    /// Loads bundled goldens. Prefers the full `goldens.json` (git-ignored local
+    /// superset incl. real-fixture scenarios); falls back to the committed,
+    /// PHI-free `goldens.synthetic.json` so the harness runs from a clean checkout.
     public static func loadGoldens() -> [GoldenScenario] {
-        guard let url = bundledURL("goldens", "json"),
-              let data = try? Data(contentsOf: url),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let scenarios = obj["scenarios"] else { return [] }
-        guard let sdata = try? JSONSerialization.data(withJSONObject: scenarios) else { return [] }
-        return (try? JSONDecoder().decode([GoldenScenario].self, from: sdata)) ?? []
+        for name in ["goldens", "goldens.synthetic"] {
+            guard let url = bundledURL(name, "json"),
+                  let data = try? Data(contentsOf: url),
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let scenarios = obj["scenarios"],
+                  let sdata = try? JSONSerialization.data(withJSONObject: scenarios),
+                  let decoded = try? JSONDecoder().decode([GoldenScenario].self, from: sdata),
+                  !decoded.isEmpty else { continue }
+            return decoded
+        }
+        return []
     }
 
     /// Resolves a bundled fixture file (under CLIParity/fixtures/) by name.
     public static func fixtureURL(named name: String) -> URL? {
         let base = (name as NSString).deletingPathExtension
         let ext = (name as NSString).pathExtension.isEmpty ? "dcm" : (name as NSString).pathExtension
-        if let u = Bundle.module.url(forResource: base, withExtension: ext, subdirectory: "CLIParity/fixtures") {
-            return u
-        }
-        if let res = Bundle.module.resourceURL {
-            let u = res.appendingPathComponent("CLIParity/fixtures/\(name)")
-            if FileManager.default.fileExists(atPath: u.path) { return u }
+        // Real fixtures live under fixtures/ (git-ignored); synthetic under synthetic/ (committed).
+        for sub in ["CLIParity/fixtures", "CLIParity/synthetic"] {
+            if let u = Bundle.module.url(forResource: base, withExtension: ext, subdirectory: sub) {
+                return u
+            }
+            if let res = Bundle.module.resourceURL {
+                let u = res.appendingPathComponent("\(sub)/\(name)")
+                if FileManager.default.fileExists(atPath: u.path) { return u }
+            }
         }
         return nil
     }
@@ -314,8 +335,13 @@ public enum CLIParityEngine {
     /// "$ command" echo and status decoration, canonicalizes the fixture path,
     /// and trims whitespace.
     public static func normalize(_ raw: String, fixtureBasename: String) -> [String] {
+        normalize(raw, fixtureBasenames: fixtureBasename.isEmpty ? [] : [fixtureBasename])
+    }
+
+    /// Multi-fixture variant — canonicalizes every fixture basename's absolute
+    /// path (two-file tools like dicom-diff reference both operands).
+    public static func normalize(_ raw: String, fixtureBasenames: [String]) -> [String] {
         let decorations: Set<Character> = ["✅", "❌", "⚠", "️", "ℹ", "🔹", "▶", "›"]
-        let escaped = NSRegularExpression.escapedPattern(for: fixtureBasename)
         var lines: [String] = []
         for var line in raw.replacingOccurrences(of: "\r\n", with: "\n").split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
             // Strip ANSI color escape sequences — the CLI colorizes (e.g. dicom-dump)
@@ -323,18 +349,64 @@ public enum CLIParityEngine {
             line = line.replacingOccurrences(of: "\u{001B}\\[[0-9;]*m", with: "", options: .regularExpression)
             // Drop the command-echo line Studio prepends.
             if line.hasPrefix("$ ") { continue }
-            // Canonicalize any absolute path ending in the fixture basename.
-            if !fixtureBasename.isEmpty && line.contains(fixtureBasename) {
-                line = line.replacingOccurrences(of: "\\S*" + escaped, with: fixtureBasename, options: .regularExpression)
+            // Canonicalize any absolute path ending in a fixture basename. Match the
+            // path prefix with [^\s"]* (not \S*) so a leading JSON quote isn't consumed
+            // — otherwise "file":"/abs/syn-ct.dcm" → "file":syn-ct.dcm" breaks JSON parsing.
+            for bn in fixtureBasenames where !bn.isEmpty && line.contains(bn) {
+                let escaped = NSRegularExpression.escapedPattern(for: bn)
+                line = line.replacingOccurrences(of: "[^\\s\"]*" + escaped, with: bn, options: .regularExpression)
             }
             line.removeAll { decorations.contains($0) }
             let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // Drop the Studio-appended exit-code trailer (e.g. "Exit code: 0 (success)").
+            // The real CLI conveys exit status via the process code, never on stdout.
+            if trimmed.range(of: "^Exit code: -?[0-9]+\\b", options: .regularExpression) != nil { continue }
+            // Canonicalize horizontal-rule separator lines: the CLI draws them with
+            // box-drawing glyphs (═, ─) while Studio uses ASCII (=, -). Same meaning.
+            if trimmed.count >= 3, trimmed.range(of: "^[═─=_-]+$", options: .regularExpression) != nil {
+                lines.append("───"); continue
+            }
             lines.append(trimmed)
         }
         // Trim leading/trailing blank lines.
         while let f = lines.first, f.isEmpty { lines.removeFirst() }
         while let l = lines.last, l.isEmpty { lines.removeLast() }
+        // Collapse consecutive blank lines — concatenated multi-file dumps can have a
+        // differing blank-run structure between the binary and the in-app re-dump
+        // (the latter's stripped "Exit code:" trailer leaves a trailing blank per file).
+        var collapsed: [String] = []
+        for l in lines where !(l.isEmpty && collapsed.last == "") { collapsed.append(l) }
+        lines = collapsed
+
+        // JSON canonicalization: if the whole block is JSON, re-emit with sorted
+        // keys so non-deterministic key order (on either side) doesn't show as a
+        // diff. Non-JSON output falls through unchanged.
+        let joined = lines.joined(separator: "\n")
+        if let d = joined.data(using: .utf8),
+           let obj = try? JSONSerialization.jsonObject(with: d),
+           let out = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys]),
+           let str = String(data: out, encoding: .utf8) {
+            return str.split(separator: "\n", omittingEmptySubsequences: false)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+        }
         return lines
+    }
+
+    /// Masks the value of volatile DICOM tags in a dicom-info dump (file-write
+    /// metadata that legitimately differs between two writers): file-meta
+    /// implementation + SOP-instance UIDs, instance/study/series UIDs. The data
+    /// lines (the modification under test) are left intact.
+    public static let volatileDumpTags: Set<String> = [
+        "(0002,0003)", "(0002,0012)", "(0002,0013)", "(0002,0016)",
+        "(0008,0018)", "(0020,000d)", "(0020,000e)",
+    ]
+    public static func maskVolatileDumpTags(_ lines: [String]) -> [String] {
+        lines.map { line in
+            let head = String(line.prefix(11)).lowercased()
+            guard volatileDumpTags.contains(head) else { return line }
+            // Keep "(gggg,eeee) Name … VR=XX", replace the value after it.
+            return line.replacingOccurrences(of: "(VR=\\S\\S ).*$", with: "$1<masked>", options: .regularExpression)
+        }
     }
 
     /// LCS-based line diff producing same / cliOnly / studioOnly lines.

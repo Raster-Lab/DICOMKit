@@ -209,9 +209,12 @@ struct DICOMDiff: ParsableCommand {
                 "differences": result.differenceCount,
                 "hasDifferences": result.hasDifferences
             ],
-            "onlyInFile1": result.onlyInFile1.map { ["tag": $0.key.description, "value": formatValue($0.value)] },
-            "onlyInFile2": result.onlyInFile2.map { ["tag": $0.key.description, "value": formatValue($0.value)] },
-            "modified": result.modified.map { [
+            // Sort by tag for deterministic output (onlyInFile*/modified are built
+            // from unordered collections). Matches the Studio reimplementation,
+            // which already emits these arrays in tag order.
+            "onlyInFile1": result.onlyInFile1.sorted { $0.key < $1.key }.map { ["tag": $0.key.description, "value": formatValue($0.value)] },
+            "onlyInFile2": result.onlyInFile2.sorted { $0.key < $1.key }.map { ["tag": $0.key.description, "value": formatValue($0.value)] },
+            "modified": result.modified.sorted { $0.tag < $1.tag }.map { [
                 "tag": $0.tag.description,
                 "tagName": DataElementDictionary.lookup(tag: $0.tag)?.name ?? "Unknown",
                 "value1": formatValue($0.value1),

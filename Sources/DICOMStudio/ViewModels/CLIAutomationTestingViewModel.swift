@@ -147,8 +147,18 @@ public final class CLIAutomationTestingViewModel {
     }
 
     private func compareOutput(scenario: GoldenScenario) async -> OutputComparison {
-        let resolvedArgs = scenario.cliArgs.map { $0 == "FIXTURE" ? scenario.fixtureFile : $0 }
+        let resolvedArgs = scenario.cliArgs.map { tok -> String in
+            if tok == "FIXTURE"  { return scenario.fixtureFile }
+            if tok == "FIXTURE2" { return scenario.fixtureFile2 ?? tok }
+            return tok
+        }
         let inputDesc = ([scenario.toolId] + resolvedArgs).joined(separator: " ")
+
+        func err(_ note: String) -> OutputComparison {
+            OutputComparison(scenarioId: scenario.scenarioId, toolId: scenario.toolId, label: scenario.label,
+                inputDescription: inputDesc, cliOutput: scenario.stdout, studioOutput: "",
+                status: .error, diff: [], note: note)
+        }
 
         // Tools whose output Studio doesn't (yet) produce in-process.
         guard CLIParityEngine.executeSupported.contains(scenario.toolId) else {
@@ -158,27 +168,99 @@ public final class CLIAutomationTestingViewModel {
                 status: .unavailable, diff: [],
                 note: "Studio executeCommand() has no case for \(scenario.toolId); output not produced in-process.")
         }
-        guard let fixture = CLIParityEngine.fixtureURL(named: scenario.fixtureFile) else {
-            return OutputComparison(
-                scenarioId: scenario.scenarioId, toolId: scenario.toolId, label: scenario.label,
-                inputDescription: inputDesc, cliOutput: scenario.stdout, studioOutput: "",
-                status: .error, diff: [],
-                note: "Bundled fixture \(scenario.fixtureFile) not found (run: swift run cli-parity-gen).")
+
+        // Resolve fixtures to bundled paths (primary may be absent for no-file tools).
+        var fixturePath = ""
+        if !scenario.fixtureFile.isEmpty {
+            guard let f = CLIParityEngine.fixtureURL(named: scenario.fixtureFile) else {
+                return err("Bundled fixture \(scenario.fixtureFile) not found (run: swift run cli-parity-gen).")
+            }
+            fixturePath = f.path
         }
-        let fixturePath = fixture.path
+        var fixturePath2: String? = nil
+        if let name2 = scenario.fixtureFile2, !name2.isEmpty {
+            guard let f2 = CLIParityEngine.fixtureURL(named: name2) else {
+                return err("Bundled fixture \(name2) not found (run: swift run cli-parity-gen).")
+            }
+            fixturePath2 = f2.path
+        }
 
         // Drive the real Studio code path in-process.
         let workshop = CLIWorkshopViewModel()
         workshop.selectTool(id: scenario.toolId)
+
+        // Artifact (file-producer) scenarios: the tool writes a file (or a directory
+        // of files) at the OUTPUT placeholder; we compare the produced file(s).
+        let isDicomMulti = scenario.artifactKind == "dicom-multi"
+        var artifactURL: URL? = nil
+        if let art = scenario.artifactName, !art.isEmpty {
+            let dir = FileManager.default.temporaryDirectory
+                .appendingPathComponent("studio-parity-\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            artifactURL = dir.appendingPathComponent(art)
+            if isDicomMulti, let u = artifactURL {   // OUTPUT is a directory the producer fills
+                try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+            }
+        }
+        defer { if let u = artifactURL { try? FileManager.default.removeItem(at: u.deletingLastPathComponent()) } }
+
+        // Clear optional output-path params the scenario didn't set: the catalog
+        // default-fills them (e.g. ~/Desktop/DICOM_Output), but the CLI golden ran
+        // without those flags, so the Studio side must not write spurious files.
+        for def in ToolCatalogHelpers.parameterDefinitions(for: scenario.toolId)
+            where def.parameterType == .outputPath && scenario.studioParams[def.id] == nil {
+            workshop.updateParameterValue(parameterID: def.id, value: "")
+        }
         for (pid, raw) in scenario.studioParams {
-            let value = raw == "FIXTURE" ? fixturePath : raw
+            let value: String
+            if raw == "FIXTURE"       { value = fixturePath }
+            else if raw == "FIXTURE2" { value = fixturePath2 ?? raw }
+            else if raw == "OUTPUT"   { value = artifactURL?.path ?? raw }
+            else                      { value = raw }
             workshop.updateParameterValue(parameterID: pid, value: value)
         }
         await workshop.executeCommand()
-        let studioRaw = workshop.consoleOutput
 
-        let cliLines = CLIParityEngine.normalize(scenario.stdout, fixtureBasename: scenario.fixtureFile)
-        let studioLines = CLIParityEngine.normalize(studioRaw, fixtureBasename: scenario.fixtureFile)
+        // Re-dump a produced .dcm via dicom-info (shared MetadataPresenter) — the
+        // same way the golden was captured.
+        func dump(_ url: URL) async -> String {
+            let info = CLIWorkshopViewModel()
+            info.selectTool(id: "dicom-info")
+            info.updateParameterValue(parameterID: "inputPath", value: url.path)
+            await info.executeCommand()
+            return info.consoleOutput
+        }
+
+        let isDicomArtifact = scenario.artifactKind == "dicom"
+        let studioRaw: String
+        if let u = artifactURL, isDicomMulti {
+            let files = ((try? FileManager.default.contentsOfDirectory(atPath: u.path)) ?? [])
+                .filter { $0.hasSuffix(".dcm") }.sorted()
+            var combined = "Frames: \(files.count)\n"
+            for (i, f) in files.enumerated() {
+                // Normalize each frame to clean tag lines (strips the $ echo / Exit-code
+                // trailer / edge blanks) so per-frame blocks match the generator's trim.
+                let frame = CLIParityEngine.normalize(await dump(u.appendingPathComponent(f)), fixtureBasenames: [])
+                combined += "=== frame \(i) ===\n" + frame.joined(separator: "\n") + "\n"
+            }
+            studioRaw = combined
+        } else if let u = artifactURL, isDicomArtifact {
+            studioRaw = await dump(u)
+        } else if let u = artifactURL {
+            studioRaw = (try? String(contentsOf: u, encoding: .utf8)) ?? ""
+        } else {
+            studioRaw = workshop.consoleOutput
+        }
+
+        var basenames: [String] = []
+        if !scenario.fixtureFile.isEmpty { basenames.append(scenario.fixtureFile) }
+        if let f2 = scenario.fixtureFile2, !f2.isEmpty { basenames.append(f2) }
+        var cliLines = CLIParityEngine.normalize(scenario.stdout, fixtureBasenames: basenames)
+        var studioLines = CLIParityEngine.normalize(studioRaw, fixtureBasenames: basenames)
+        if isDicomArtifact || isDicomMulti {
+            cliLines = CLIParityEngine.maskVolatileDumpTags(cliLines)
+            studioLines = CLIParityEngine.maskVolatileDumpTags(studioLines)
+        }
         let diff = CLIParityEngine.diff(cli: cliLines, studio: studioLines)
         let isMatch = !diff.contains { $0.kind != .same }
 

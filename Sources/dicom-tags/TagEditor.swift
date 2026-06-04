@@ -170,7 +170,12 @@ struct TagEditor {
         if !dryRun {
             let modifiedFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: dataSet)
             let outputData = try modifiedFile.write()
-            let destURL = URL(fileURLWithPath: outputPath ?? inputPath)
+            // When --output is a directory, write <dir>/<inputName> rather than
+            // failing — resolved identically in the app (shared core helper).
+            let destPath = OutputPathResolver.resolveFileOutput(output: outputPath, input: inputPath)
+            let destURL = URL(fileURLWithPath: destPath)
+            try FileManager.default.createDirectory(
+                at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try outputData.write(to: destURL)
         }
     }

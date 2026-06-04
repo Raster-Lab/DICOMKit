@@ -6,6 +6,7 @@ on:
     paths:
       - 'Sources/DICOMStudio/**'
       - 'Tests/DICOMStudioTests/**'
+      - 'Tests/StudioParityTests/**'
       - 'Package.swift'
       - '.github/workflows/dicom-studio-ci.yml'
   pull_request:
@@ -13,6 +14,7 @@ on:
     paths:
       - 'Sources/DICOMStudio/**'
       - 'Tests/DICOMStudioTests/**'
+      - 'Tests/StudioParityTests/**'
       - 'Package.swift'
       - '.github/workflows/dicom-studio-ci.yml'
   workflow_dispatch:
@@ -148,10 +150,37 @@ jobs:
         echo "" >> $GITHUB_STEP_SUMMARY
         echo "✅ DICOMStudio tests completed successfully" >> $GITHUB_STEP_SUMMARY
 
+  parity-gate:
+    name: Tier-2 Output Parity Gate
+    runs-on: macos-15   # drives the Studio reimplementations in-process (CoreGraphics)
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+
+    - name: Cache Swift Package Manager
+      uses: actions/cache@v4
+      with:
+        path: |
+          .build
+          ~/Library/Developer/Xcode/DerivedData
+        key: ${{ runner.os }}-studio-parity-${{ hashFiles('**/Package.resolved') }}
+        restore-keys: |
+          ${{ runner.os }}-studio-parity-
+
+    # Runs against the COMMITTED, PHI-free goldens.synthetic.json (goldens.json is
+    # git-ignored, so loadGoldens falls back to it). No `cli-parity-gen` run and no
+    # dicom-* binaries needed. PARITY_STRICT=1 fails on any DIFFERS not in
+    # parity-allowlist.json, on stale allowlist entries, and on any ERROR/UNAVAILABLE.
+    - name: Run output-parity gate
+      run: PARITY_STRICT=1 swift test --filter StudioParityTests
+
   summary:
     name: DICOMStudio CI Summary
     runs-on: ubuntu-latest
-    needs: [build-and-test, test-coverage]
+    needs: [build-and-test, test-coverage, parity-gate]
     if: always()
 
     steps:
@@ -159,6 +188,10 @@ jobs:
       run: |
         if [ "${{ needs.build-and-test.result }}" != "success" ]; then
           echo "::error::DICOMStudio build or tests failed"
+          exit 1
+        fi
+        if [ "${{ needs.parity-gate.result }}" != "success" ]; then
+          echo "::error::Tier-2 output-parity gate failed (UI↔CLI drift). See parity-gate job + parity-allowlist.json."
           exit 1
         fi
         echo "✅ DICOMStudio CI pipeline completed successfully"

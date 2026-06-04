@@ -303,4 +303,40 @@ public enum ValidationHelpers: Sendable {
         }
         return out
     }
+
+    /// Renders results as JSON matching the CLI's dicom-validate `--format json`
+    /// (Sources/dicom-validate/Report.swift). Keys sorted for stable output.
+    public static func renderJSON(results: [ValidationFileResult]) throws -> String {
+        let report = JSONReport(
+            files: results.map { r in
+                JSONFile(filePath: r.filePath, isValid: r.isValid,
+                         errorCount: r.errors.count, warningCount: r.warnings.count,
+                         errors: r.errors.map(JSONIssue.init(from:)),
+                         warnings: r.warnings.map(JSONIssue.init(from:)))
+            },
+            totalFiles: results.count,
+            validFiles: results.filter { $0.isValid }.count,
+            invalidFiles: results.filter { !$0.isValid }.count,
+            totalErrors: results.reduce(0) { $0 + $1.errors.count },
+            totalWarnings: results.reduce(0) { $0 + $1.warnings.count })
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return String(decoding: try encoder.encode(report), as: UTF8.self)
+    }
+
+    private struct JSONReport: Codable {
+        let files: [JSONFile]
+        let totalFiles, validFiles, invalidFiles, totalErrors, totalWarnings: Int
+    }
+    private struct JSONFile: Codable {
+        let filePath: String
+        let isValid: Bool
+        let errorCount, warningCount: Int
+        let errors, warnings: [JSONIssue]
+    }
+    private struct JSONIssue: Codable {
+        let message: String
+        let tag: String?
+        init(from issue: ValidationIssueEntry) { message = issue.message; tag = issue.tagString }
+    }
 }

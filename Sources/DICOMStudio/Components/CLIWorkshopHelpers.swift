@@ -2382,9 +2382,11 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "format", flag: "--format", displayName: "Output Format",
-                    parameterType: .enumPicker, placeholder: "table",
-                    helpText: "Output format for query/list/stats",
-                    defaultValue: "table", allowedValues: ["table", "tree", "text", "json"],
+                    parameterType: .enumPicker, placeholder: "tree",
+                    // No fixed default: the CLI default is per-subcommand (list→tree,
+                    // query→table). executeDicomArchive applies the right default when
+                    // empty; a hardcoded "table" here forced list to render as a table.
+                    defaultValue: "", allowedValues: ["table", "tree", "text", "json"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["query", "list", "stats"])
                 ),
                 CLIParameterDefinition(

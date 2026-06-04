@@ -818,6 +818,13 @@ let package = Package(
             name: "DICOMStudioTests",
             dependencies: ["DICOMStudio"]
         ),
+        // Tier-2 output-parity harness: drives the in-app Studio reimplementations
+        // (CLIWorkshopViewModel.executeCommand) headlessly against the bundled
+        // CLI goldens and diffs the normalized output. See Scripts/CLI-PARITY-TIER2-PLAN.md.
+        .testTarget(
+            name: "StudioParityTests",
+            dependencies: ["DICOMStudio"]
+        ),
         .testTarget(
             name: "dicom-j2kTests",
             dependencies: [
