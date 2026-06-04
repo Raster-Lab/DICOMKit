@@ -1,0 +1,17 @@
+{
+  "_comment": "Tier-2 output-parity gate allowlist. Each entry is a KNOWN, triaged DIFFERS scenario the gate tolerates. Under PARITY_STRICT=1 the harness fails on any DIFFERS NOT listed here (new drift, or a regression of a fixed bug). To retire an entry: fix the Studio reimplementation so it MATCHES, then delete the line. See Scripts/CLI-PARITY-TIER2-PLAN.md §7 (findings F4–F11).",
+  "schemaVersion": 1,
+  "allow": {
+    "none__dicom-compress-backends": "F4: host-dependent hardware-backend list (excluded from committed set; local-only DIFFERS).",
+    "none__dicom-uid-lookup-listall": "F5 (minor): UID list matches; Studio appends a `N UIDs found` footer.",
+    "syn-studyset__dicom-study-summary-json": "F9 (minor): same data, series array order differs (Studio asc, CLI desc).",
+    "syn-studyset__dicom-study-check": "F10 (minor): Studio prints `[OK] Study is complete`; CLI is silent on stdout.",
+    "syn-studyset__dicom-study-check-expected": "F10 (minor): as above (check with expected counts).",
+    "syn-studyset__dicom-study-compare": "F10 (minor): Studio uses `[OK]` where the CLI uses `✓`.",
+    "syn-ct__dicom-anon-basic": "F13 (bug): Studio's anon REMOVES PatientName/PatientID; the CLI REPLACES them (ANONYMOUS + hashed PatientID). Fix needs the CLI's exact pseudonymization hash.",
+    "syn-ct__dicom-anon-clinical-trial": "F13 (bug): as above (clinical-trial profile).",
+    "CT__dicom-anon-basic": "F13 (bug): as above, real-CT fixture (local-only).",
+    "CT__dicom-anon-clinical-trial": "F13 (bug): as above, real-CT fixture (local-only).",
+    "syn-studyset__dicom-merge-studyset": "F14 (minor): merging a mixed-series directory, Studio inherits SeriesNumber from a different source frame than the CLI (1 vs 2). Local-only (fresh SOP UID)."
+  }
+}

@@ -1,0 +1,1246 @@
+{
+  "scenarios" : [
+    {
+      "cliArgs" : [
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-info-text",
+      "label" : "syn-ct.dcm · text",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-info"
+    },
+    {
+      "cliArgs" : [
+        "--format",
+        "json",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-info-json",
+      "label" : "syn-ct.dcm · json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"dataSet\" : [\n    {\n      \"name\" : \"SOP Class UID\",\n      \"tag\" : \"(0008,0016)\",\n      \"value\" : \"1.2.840.10008.5.1.4.1.1.2\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"SOP Instance UID\",\n      \"tag\" : \"(0008,0018)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.1.1.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Study Date\",\n      \"tag\" : \"(0008,0020)\",\n      \"value\" : \"20200101\",\n      \"vr\" : \"DA\"\n    },\n    {\n      \"name\" : \"Study Time\",\n      \"tag\" : \"(0008,0030)\",\n      \"value\" : \"120000\",\n      \"vr\" : \"TM\"\n    },\n    {\n      \"name\" : \"Modality\",\n      \"tag\" : \"(0008,0060)\",\n      \"value\" : \"CT\",\n      \"vr\" : \"CS\"\n    },\n    {\n      \"name\" : \"Manufacturer\",\n      \"tag\" : \"(0008,0070)\",\n      \"value\" : \"DICOMKit Parity\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Study Description\",\n      \"tag\" : \"(0008,1030)\",\n      \"value\" : \"PARITY SYNTHETIC CT\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Series Description\",\n      \"tag\" : \"(0008,103E)\",\n      \"value\" : \"PARITY SERIES\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Patient's Name\",\n      \"tag\" : \"(0010,0010)\",\n      \"value\" : \"PARITY^SYNTH\",\n      \"vr\" : \"PN\"\n    },\n    {\n      \"name\" : \"Patient ID\",\n      \"tag\" : \"(0010,0020)\",\n      \"value\" : \"SYN-0001\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Patient's Birth Date\",\n      \"tag\" : \"(0010,0030)\",\n      \"value\" : \"19800101\",\n      \"vr\" : \"DA\"\n    },\n    {\n      \"name\" : \"Patient's Sex\",\n      \"tag\" : \"(0010,0040)\",\n      \"value\" : \"O\",\n      \"vr\" : \"CS\"\n    },\n    {\n      \"name\" : \"Study Instance UID\",\n      \"tag\" : \"(0020,000D)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.1.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Series Instance UID\",\n      \"tag\" : \"(0020,000E)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.1.2\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Series Number\",\n      \"tag\" : \"(0020,0011)\",\n      \"value\" : \"1\",\n      \"vr\" : \"IS\"\n    },\n    {\n      \"name\" : \"Instance Number\",\n      \"tag\" : \"(0020,0013)\",\n      \"value\" : \"1\",\n      \"vr\" : \"IS\"\n    },\n    {\n      \"name\" : \"Samples per Pixel\",\n      \"tag\" : \"(0028,0002)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Photometric Interpretation\",\n      \"tag\" : \"(0028,0004)\",\n      \"value\" : \"MONOCHROME2\",\n      \"vr\" : \"CS\"\n    },\n    {\n      \"name\" : \"Rows\",\n      \"tag\" : \"(0028,0010)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Columns\",\n      \"tag\" : \"(0028,0011)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Bits Allocated\",\n      \"tag\" : \"(0028,0100)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Bits Stored\",\n      \"tag\" : \"(0028,0101)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"High Bit\",\n      \"tag\" : \"(0028,0102)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Pixel Representation\",\n      \"tag\" : \"(0028,0103)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Pixel Data\",\n      \"tag\" : \"(7FE0,0010)\",\n      \"vr\" : \"OW\"\n    }\n  ],\n  \"fileMetaInformation\" : [\n    {\n      \"name\" : \"File Meta Information Group Length\",\n      \"tag\" : \"(0002,0000)\",\n      \"vr\" : \"UL\"\n    },\n    {\n      \"name\" : \"Media Storage SOP Class UID\",\n      \"tag\" : \"(0002,0002)\",\n      \"value\" : \"1.2.840.10008.5.1.4.1.1.2\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Media Storage SOP Instance UID\",\n      \"tag\" : \"(0002,0003)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.1.1.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Transfer Syntax UID\",\n      \"tag\" : \"(0002,0010)\",\n      \"value\" : \"1.2.840.10008.1.2.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Implementation Class UID\",\n      \"tag\" : \"(0002,0012)\",\n      \"value\" : \"1.2.276.0.7230010.3.0.3.6.4\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Implementation Version Name\",\n      \"tag\" : \"(0002,0013)\",\n      \"value\" : \"DICOMKITPARITY\",\n      \"vr\" : \"SH\"\n    }\n  ]\n}",
+      "studioParams" : {
+        "format" : "json",
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-info"
+    },
+    {
+      "cliArgs" : [
+        "--format",
+        "csv",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-info-csv",
+      "label" : "syn-ct.dcm · csv",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "Tag,Name,VR,Value\n\"(0002,0000)\",\"File Meta Information Group Length\",\"UL\",\"160\"\n\"(0002,0002)\",\"Media Storage SOP Class UID\",\"UI\",\"1.2.840.10008.5.1.4.1.1.2\"\n\"(0002,0003)\",\"Media Storage SOP Instance UID\",\"UI\",\"1.2.826.0.1.3680043.10.999.1.1.1\"\n\"(0002,0010)\",\"Transfer Syntax UID\",\"UI\",\"1.2.840.10008.1.2.1\"\n\"(0002,0012)\",\"Implementation Class UID\",\"UI\",\"1.2.276.0.7230010.3.0.3.6.4\"\n\"(0002,0013)\",\"Implementation Version Name\",\"SH\",\"DICOMKITPARITY\"\n\"(0008,0016)\",\"SOP Class UID\",\"UI\",\"1.2.840.10008.5.1.4.1.1.2\"\n\"(0008,0018)\",\"SOP Instance UID\",\"UI\",\"1.2.826.0.1.3680043.10.999.1.1.1\"\n\"(0008,0020)\",\"Study Date\",\"DA\",\"20200101\"\n\"(0008,0030)\",\"Study Time\",\"TM\",\"120000\"\n\"(0008,0060)\",\"Modality\",\"CS\",\"CT\"\n\"(0008,0070)\",\"Manufacturer\",\"LO\",\"DICOMKit Parity\"\n\"(0008,1030)\",\"Study Description\",\"LO\",\"PARITY SYNTHETIC CT\"\n\"(0008,103E)\",\"Series Description\",\"LO\",\"PARITY SERIES\"\n\"(0010,0010)\",\"Patient's Name\",\"PN\",\"PARITY^SYNTH\"\n\"(0010,0020)\",\"Patient ID\",\"LO\",\"SYN-0001\"\n\"(0010,0030)\",\"Patient's Birth Date\",\"DA\",\"19800101\"\n\"(0010,0040)\",\"Patient's Sex\",\"CS\",\"O\"\n\"(0020,000D)\",\"Study Instance UID\",\"UI\",\"1.2.826.0.1.3680043.10.999.1.1\"\n\"(0020,000E)\",\"Series Instance UID\",\"UI\",\"1.2.826.0.1.3680043.10.999.1.2\"\n\"(0020,0011)\",\"Series Number\",\"IS\",\"1\"\n\"(0020,0013)\",\"Instance Number\",\"IS\",\"1\"\n\"(0028,0002)\",\"Samples per Pixel\",\"US\",\"1\"\n\"(0028,0004)\",\"Photometric Interpretation\",\"CS\",\"MONOCHROME2\"\n\"(0028,0010)\",\"Rows\",\"US\",\"8\"\n\"(0028,0011)\",\"Columns\",\"US\",\"8\"\n\"(0028,0100)\",\"Bits Allocated\",\"US\",\"16\"\n\"(0028,0101)\",\"Bits Stored\",\"US\",\"12\"\n\"(0028,0102)\",\"High Bit\",\"US\",\"11\"\n\"(0028,0103)\",\"Pixel Representation\",\"US\",\"0\"\n\"(7FE0,0010)\",\"Pixel Data\",\"OW\",\"00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\"\n",
+      "studioParams" : {
+        "format" : "csv",
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-info"
+    },
+    {
+      "cliArgs" : [
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-validate-text",
+      "label" : "syn-ct.dcm · text",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-validate"
+    },
+    {
+      "cliArgs" : [
+        "--format",
+        "json",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-validate-json",
+      "label" : "syn-ct.dcm · json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"files\" : [\n    {\n      \"errorCount\" : 0,\n      \"errors\" : [\n\n      ],\n      \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct.dcm\",\n      \"isValid\" : true,\n      \"warningCount\" : 1,\n      \"warnings\" : [\n        {\n          \"message\" : \"Unexpected VR OW for tag (7FE0,0010) (expected: OB)\",\n          \"tag\" : \"(7FE0,0010)\"\n        }\n      ]\n    }\n  ],\n  \"invalidFiles\" : 0,\n  \"totalErrors\" : 0,\n  \"totalFiles\" : 1,\n  \"totalWarnings\" : 1,\n  \"validFiles\" : 1\n}",
+      "studioParams" : {
+        "format" : "json",
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-validate"
+    },
+    {
+      "cliArgs" : [
+        "--detailed",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-validate-detailed",
+      "label" : "syn-ct.dcm · detailed",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "studioParams" : {
+        "detailed" : "true",
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-validate"
+    },
+    {
+      "cliArgs" : [
+        "--offset",
+        "0",
+        "--length",
+        "256",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-dump-head256",
+      "label" : "syn-ct.dcm · head256",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "\u001b[36m00000000\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000010\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000020\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000030\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000040\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000050\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000060\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000070\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000080\u001b[0m  44 49 43 4D 02 00 00 00 55 4C 04 00 A0 00 00 00  |\u001b[37mDICM....UL......\u001b[0m|\n\u001b[36m00000090\u001b[0m  02 00 10 00 55 49 14 00 31 2E 32 2E 38 34 30 2E  |\u001b[37m....UI..1.2.840.\u001b[0m|\n\u001b[36m000000A0\u001b[0m  31 30 30 30 38 2E 31 2E 32 2E 31 00 02 00 02 00  |\u001b[37m10008.1.2.1.....\u001b[0m|\n\u001b[36m000000B0\u001b[0m  55 49 1A 00 31 2E 32 2E 38 34 30 2E 31 30 30 30  |\u001b[37mUI..1.2.840.1000\u001b[0m|\n\u001b[36m000000C0\u001b[0m  38 2E 35 2E 31 2E 34 2E 31 2E 31 2E 32 00 02 00  |\u001b[37m8.5.1.4.1.1.2...\u001b[0m|\n\u001b[36m000000D0\u001b[0m  03 00 55 49 20 00 31 2E 32 2E 38 32 36 2E 30 2E  |\u001b[37m..UI .1.2.826.0.\u001b[0m|\n\u001b[36m000000E0\u001b[0m  31 2E 33 36 38 30 30 34 33 2E 31 30 2E 39 39 39  |\u001b[37m1.3680043.10.999\u001b[0m|\n\u001b[36m000000F0\u001b[0m  2E 31 2E 31 2E 31 02 00 12 00 55 49 1C 00 31 2E  |\u001b[37m.1.1.1....UI..1.\u001b[0m|\n\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "length" : "256",
+        "offset" : "0"
+      },
+      "toolId" : "dicom-dump"
+    },
+    {
+      "cliArgs" : [
+        "--offset",
+        "0",
+        "--length",
+        "256",
+        "--no-color",
+        "--bytes-per-line",
+        "8",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-dump-head256-nocolor-bpl8",
+      "label" : "syn-ct.dcm · head256-nocolor-bpl8",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "00000000  00 00 00 00 00 00 00 00  |........|\n00000008  00 00 00 00 00 00 00 00  |........|\n00000010  00 00 00 00 00 00 00 00  |........|\n00000018  00 00 00 00 00 00 00 00  |........|\n00000020  00 00 00 00 00 00 00 00  |........|\n00000028  00 00 00 00 00 00 00 00  |........|\n00000030  00 00 00 00 00 00 00 00  |........|\n00000038  00 00 00 00 00 00 00 00  |........|\n00000040  00 00 00 00 00 00 00 00  |........|\n00000048  00 00 00 00 00 00 00 00  |........|\n00000050  00 00 00 00 00 00 00 00  |........|\n00000058  00 00 00 00 00 00 00 00  |........|\n00000060  00 00 00 00 00 00 00 00  |........|\n00000068  00 00 00 00 00 00 00 00  |........|\n00000070  00 00 00 00 00 00 00 00  |........|\n00000078  00 00 00 00 00 00 00 00  |........|\n00000080  44 49 43 4D 02 00 00 00  |DICM....|\n00000088  55 4C 04 00 A0 00 00 00  |UL......|\n00000090  02 00 10 00 55 49 14 00  |....UI..|\n00000098  31 2E 32 2E 38 34 30 2E  |1.2.840.|\n000000A0  31 30 30 30 38 2E 31 2E  |10008.1.|\n000000A8  32 2E 31 00 02 00 02 00  |2.1.....|\n000000B0  55 49 1A 00 31 2E 32 2E  |UI..1.2.|\n000000B8  38 34 30 2E 31 30 30 30  |840.1000|\n000000C0  38 2E 35 2E 31 2E 34 2E  |8.5.1.4.|\n000000C8  31 2E 31 2E 32 00 02 00  |1.1.2...|\n000000D0  03 00 55 49 20 00 31 2E  |..UI .1.|\n000000D8  32 2E 38 32 36 2E 30 2E  |2.826.0.|\n000000E0  31 2E 33 36 38 30 30 34  |1.368004|\n000000E8  33 2E 31 30 2E 39 39 39  |3.10.999|\n000000F0  2E 31 2E 31 2E 31 02 00  |.1.1.1..|\n000000F8  12 00 55 49 1C 00 31 2E  |..UI..1.|\n\n",
+      "studioParams" : {
+        "bytes-per-line" : "8",
+        "inputPath" : "FIXTURE",
+        "length" : "256",
+        "no-color" : "true",
+        "offset" : "0"
+      },
+      "toolId" : "dicom-dump"
+    },
+    {
+      "cliArgs" : [
+        "--tag",
+        "0008,0060",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-dump-tag-modality",
+      "label" : "syn-ct.dcm · tag-modality",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "Tag: (0008,0060)  Modality  VR=CS  Length=2\n\n\u001b[36m00000000\u001b[0m  43 54                                            |\u001b[37mCT\u001b[0m|\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "tag" : "0008,0060"
+      },
+      "toolId" : "dicom-dump"
+    },
+    {
+      "cliArgs" : [
+        "--statistics",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-info-statistics",
+      "label" : "syn-ct.dcm · statistics",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Statistics ===\nTransfer Syntax: 1.2.840.10008.1.2.1\nSOP Class: 1.2.840.10008.5.1.4.1.1.2\nModality: CT\n\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "statistics" : "true"
+      },
+      "toolId" : "dicom-info"
+    },
+    {
+      "cliArgs" : [
+        "--show-private",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-info-show-private",
+      "label" : "syn-ct.dcm · show-private",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "show-private" : "true"
+      },
+      "toolId" : "dicom-info"
+    },
+    {
+      "cliArgs" : [
+        "--offset",
+        "0",
+        "--length",
+        "512",
+        "--annotate",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-dump-annotate",
+      "label" : "syn-ct.dcm · annotate",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "\u001b[36m00000000\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000010\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000020\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000030\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000040\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000050\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000060\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000070\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000080\u001b[0m  44 49 43 4D \u001b[32m02\u001b[0m 00 00 00 55 4C 04 00 A0 00 00 00  |\u001b[37mDICM....UL......\u001b[0m|  \u001b[34m← \u001b[0m(0002,0000) FileMetaInformationGroupLength\n\u001b[36m00000090\u001b[0m  \u001b[32m02\u001b[0m 00 10 00 55 49 14 00 31 2E 32 2E 38 34 30 2E  |\u001b[37m....UI..1.2.840.\u001b[0m|  \u001b[34m← \u001b[0m(0002,0010) TransferSyntaxUID\n\u001b[36m000000A0\u001b[0m  31 30 30 30 38 2E 31 2E 32 2E 31 00 \u001b[32m02\u001b[0m 00 02 00  |\u001b[37m10008.1.2.1.....\u001b[0m|  \u001b[34m← \u001b[0m(0002,0002) MediaStorageSOPClassUID\n\u001b[36m000000B0\u001b[0m  55 49 1A 00 31 2E 32 2E 38 34 30 2E 31 30 30 30  |\u001b[37mUI..1.2.840.1000\u001b[0m|\n\u001b[36m000000C0\u001b[0m  38 2E 35 2E 31 2E 34 2E 31 2E 31 2E 32 00 \u001b[32m02\u001b[0m 00  |\u001b[37m8.5.1.4.1.1.2...\u001b[0m|  \u001b[34m← \u001b[0m(0002,0003) MediaStorageSOPInstanceUID\n\u001b[36m000000D0\u001b[0m  03 00 55 49 20 00 31 2E 32 2E 38 32 36 2E 30 2E  |\u001b[37m..UI .1.2.826.0.\u001b[0m|\n\u001b[36m000000E0\u001b[0m  31 2E 33 36 38 30 30 34 33 2E 31 30 2E 39 39 39  |\u001b[37m1.3680043.10.999\u001b[0m|\n\u001b[36m000000F0\u001b[0m  2E 31 2E 31 2E 31 \u001b[32m02\u001b[0m 00 12 00 55 49 1C 00 31 2E  |\u001b[37m.1.1.1....UI..1.\u001b[0m|  \u001b[34m← \u001b[0m(0002,0012) ImplementationClassUID\n\u001b[36m00000100\u001b[0m  32 2E 32 37 36 2E 30 2E 37 32 33 30 30 31 30 2E  |\u001b[37m2.276.0.7230010.\u001b[0m|\n\u001b[36m00000110\u001b[0m  33 2E 30 2E 33 2E 36 2E 34 00 \u001b[32m02\u001b[0m 00 13 00 53 48  |\u001b[37m3.0.3.6.4.....SH\u001b[0m|  \u001b[34m← \u001b[0m(0002,0013) ImplementationVersionName\n\u001b[36m00000120\u001b[0m  0E 00 44 49 43 4F 4D 4B 49 54 50 41 52 49 54 59  |\u001b[37m..DICOMKITPARITY\u001b[0m|\n\u001b[36m00000130\u001b[0m  \u001b[32m08\u001b[0m 00 16 00 55 49 1A 00 31 2E 32 2E 38 34 30 2E  |\u001b[37m....UI..1.2.840.\u001b[0m|  \u001b[34m← \u001b[0m(0008,0016) SOPClassUID\n\u001b[36m00000140\u001b[0m  31 30 30 30 38 2E 35 2E 31 2E 34 2E 31 2E 31 2E  |\u001b[37m10008.5.1.4.1.1.\u001b[0m|\n\u001b[36m00000150\u001b[0m  32 00 \u001b[32m08\u001b[0m 00 18 00 55 49 20 00 31 2E 32 2E 38 32  |\u001b[37m2.....UI .1.2.82\u001b[0m|  \u001b[34m← \u001b[0m(0008,0018) SOPInstanceUID\n\u001b[36m00000160\u001b[0m  36 2E 30 2E 31 2E 33 36 38 30 30 34 33 2E 31 30  |\u001b[37m6.0.1.3680043.10\u001b[0m|\n\u001b[36m00000170\u001b[0m  2E 39 39 39 2E 31 2E 31 2E 31 \u001b[32m08\u001b[0m 00 20 00 44 41  |\u001b[37m.999.1.1.1.. .DA\u001b[0m|  \u001b[34m← \u001b[0m(0008,0020) StudyDate\n\u001b[36m00000180\u001b[0m  08 00 32 30 32 30 30 31 30 31 \u001b[32m08\u001b[0m 00 30 00 54 4D  |\u001b[37m..20200101..0.TM\u001b[0m|  \u001b[34m← \u001b[0m(0008,0030) StudyTime\n\u001b[36m00000190\u001b[0m  06 00 31 32 30 30 30 30 \u001b[32m08\u001b[0m 00 60 00 43 53 02 00  |\u001b[37m..120000..`.CS..\u001b[0m|  \u001b[34m← \u001b[0m(0008,0060) Modality\n\u001b[36m000001A0\u001b[0m  43 54 \u001b[32m08\u001b[0m 00 70 00 4C 4F 10 00 44 49 43 4F 4D 4B  |\u001b[37mCT..p.LO..DICOMK\u001b[0m|  \u001b[34m← \u001b[0m(0008,0070) Manufacturer\n\u001b[36m000001B0\u001b[0m  69 74 20 50 61 72 69 74 79 20 \u001b[32m08\u001b[0m 00 30 10 4C 4F  |\u001b[37mit Parity ..0.LO\u001b[0m|  \u001b[34m← \u001b[0m(0008,1030) StudyDescription\n\u001b[36m000001C0\u001b[0m  14 00 50 41 52 49 54 59 20 53 59 4E 54 48 45 54  |\u001b[37m..PARITY SYNTHET\u001b[0m|\n\u001b[36m000001D0\u001b[0m  49 43 20 43 54 20 \u001b[32m08\u001b[0m 00 3E 10 4C 4F 0E 00 50 41  |\u001b[37mIC CT ..>.LO..PA\u001b[0m|  \u001b[34m← \u001b[0m(0008,103E) SeriesDescription\n\u001b[36m000001E0\u001b[0m  52 49 54 59 20 53 45 52 49 45 53 20 \u001b[32m10\u001b[0m 00 10 00  |\u001b[37mRITY SERIES ....\u001b[0m|  \u001b[34m← \u001b[0m(0010,0010) PatientName\n\u001b[36m000001F0\u001b[0m  50 4E 0C 00 50 41 52 49 54 59 5E 53 59 4E 54 48  |\u001b[37mPN..PARITY^SYNTH\u001b[0m|\n\n",
+      "studioParams" : {
+        "annotate" : "true",
+        "inputPath" : "FIXTURE",
+        "length" : "512",
+        "offset" : "0"
+      },
+      "toolId" : "dicom-dump"
+    },
+    {
+      "cliArgs" : [
+        "--offset",
+        "0",
+        "--length",
+        "512",
+        "--annotate",
+        "--verbose",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-dump-annotate-verbose",
+      "label" : "syn-ct.dcm · annotate-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "\u001b[36m00000000\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000010\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000020\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000030\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000040\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000050\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000060\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000070\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................\u001b[0m|\n\u001b[36m00000080\u001b[0m  44 49 43 4D \u001b[32m02\u001b[0m 00 00 00 55 4C 04 00 A0 00 00 00  |\u001b[37mDICM....UL......\u001b[0m|  \u001b[34m← \u001b[0m(0002,0000) VR=UL Len=4 FileMetaInformationGroupLength\n\u001b[36m00000090\u001b[0m  \u001b[32m02\u001b[0m 00 10 00 55 49 14 00 31 2E 32 2E 38 34 30 2E  |\u001b[37m....UI..1.2.840.\u001b[0m|  \u001b[34m← \u001b[0m(0002,0010) VR=UI Len=20 TransferSyntaxUID\n\u001b[36m000000A0\u001b[0m  31 30 30 30 38 2E 31 2E 32 2E 31 00 \u001b[32m02\u001b[0m 00 02 00  |\u001b[37m10008.1.2.1.....\u001b[0m|  \u001b[34m← \u001b[0m(0002,0002) VR=UI Len=26 MediaStorageSOPClassUID\n\u001b[36m000000B0\u001b[0m  55 49 1A 00 31 2E 32 2E 38 34 30 2E 31 30 30 30  |\u001b[37mUI..1.2.840.1000\u001b[0m|\n\u001b[36m000000C0\u001b[0m  38 2E 35 2E 31 2E 34 2E 31 2E 31 2E 32 00 \u001b[32m02\u001b[0m 00  |\u001b[37m8.5.1.4.1.1.2...\u001b[0m|  \u001b[34m← \u001b[0m(0002,0003) VR=UI Len=32 MediaStorageSOPInstanceUID\n\u001b[36m000000D0\u001b[0m  03 00 55 49 20 00 31 2E 32 2E 38 32 36 2E 30 2E  |\u001b[37m..UI .1.2.826.0.\u001b[0m|\n\u001b[36m000000E0\u001b[0m  31 2E 33 36 38 30 30 34 33 2E 31 30 2E 39 39 39  |\u001b[37m1.3680043.10.999\u001b[0m|\n\u001b[36m000000F0\u001b[0m  2E 31 2E 31 2E 31 \u001b[32m02\u001b[0m 00 12 00 55 49 1C 00 31 2E  |\u001b[37m.1.1.1....UI..1.\u001b[0m|  \u001b[34m← \u001b[0m(0002,0012) VR=UI Len=28 ImplementationClassUID\n\u001b[36m00000100\u001b[0m  32 2E 32 37 36 2E 30 2E 37 32 33 30 30 31 30 2E  |\u001b[37m2.276.0.7230010.\u001b[0m|\n\u001b[36m00000110\u001b[0m  33 2E 30 2E 33 2E 36 2E 34 00 \u001b[32m02\u001b[0m 00 13 00 53 48  |\u001b[37m3.0.3.6.4.....SH\u001b[0m|  \u001b[34m← \u001b[0m(0002,0013) VR=SH Len=14 ImplementationVersionName\n\u001b[36m00000120\u001b[0m  0E 00 44 49 43 4F 4D 4B 49 54 50 41 52 49 54 59  |\u001b[37m..DICOMKITPARITY\u001b[0m|\n\u001b[36m00000130\u001b[0m  \u001b[32m08\u001b[0m 00 16 00 55 49 1A 00 31 2E 32 2E 38 34 30 2E  |\u001b[37m....UI..1.2.840.\u001b[0m|  \u001b[34m← \u001b[0m(0008,0016) VR=UI Len=26 SOPClassUID\n\u001b[36m00000140\u001b[0m  31 30 30 30 38 2E 35 2E 31 2E 34 2E 31 2E 31 2E  |\u001b[37m10008.5.1.4.1.1.\u001b[0m|\n\u001b[36m00000150\u001b[0m  32 00 \u001b[32m08\u001b[0m 00 18 00 55 49 20 00 31 2E 32 2E 38 32  |\u001b[37m2.....UI .1.2.82\u001b[0m|  \u001b[34m← \u001b[0m(0008,0018) VR=UI Len=32 SOPInstanceUID\n\u001b[36m00000160\u001b[0m  36 2E 30 2E 31 2E 33 36 38 30 30 34 33 2E 31 30  |\u001b[37m6.0.1.3680043.10\u001b[0m|\n\u001b[36m00000170\u001b[0m  2E 39 39 39 2E 31 2E 31 2E 31 \u001b[32m08\u001b[0m 00 20 00 44 41  |\u001b[37m.999.1.1.1.. .DA\u001b[0m|  \u001b[34m← \u001b[0m(0008,0020) VR=DA Len=8 StudyDate\n\u001b[36m00000180\u001b[0m  08 00 32 30 32 30 30 31 30 31 \u001b[32m08\u001b[0m 00 30 00 54 4D  |\u001b[37m..20200101..0.TM\u001b[0m|  \u001b[34m← \u001b[0m(0008,0030) VR=TM Len=6 StudyTime\n\u001b[36m00000190\u001b[0m  06 00 31 32 30 30 30 30 \u001b[32m08\u001b[0m 00 60 00 43 53 02 00  |\u001b[37m..120000..`.CS..\u001b[0m|  \u001b[34m← \u001b[0m(0008,0060) VR=CS Len=2 Modality\n\u001b[36m000001A0\u001b[0m  43 54 \u001b[32m08\u001b[0m 00 70 00 4C 4F 10 00 44 49 43 4F 4D 4B  |\u001b[37mCT..p.LO..DICOMK\u001b[0m|  \u001b[34m← \u001b[0m(0008,0070) VR=LO Len=16 Manufacturer\n\u001b[36m000001B0\u001b[0m  69 74 20 50 61 72 69 74 79 20 \u001b[32m08\u001b[0m 00 30 10 4C 4F  |\u001b[37mit Parity ..0.LO\u001b[0m|  \u001b[34m← \u001b[0m(0008,1030) VR=LO Len=20 StudyDescription\n\u001b[36m000001C0\u001b[0m  14 00 50 41 52 49 54 59 20 53 59 4E 54 48 45 54  |\u001b[37m..PARITY SYNTHET\u001b[0m|\n\u001b[36m000001D0\u001b[0m  49 43 20 43 54 20 \u001b[32m08\u001b[0m 00 3E 10 4C 4F 0E 00 50 41  |\u001b[37mIC CT ..>.LO..PA\u001b[0m|  \u001b[34m← \u001b[0m(0008,103E) VR=LO Len=14 SeriesDescription\n\u001b[36m000001E0\u001b[0m  52 49 54 59 20 53 45 52 49 45 53 20 \u001b[32m10\u001b[0m 00 10 00  |\u001b[37mRITY SERIES ....\u001b[0m|  \u001b[34m← \u001b[0m(0010,0010) VR=PN Len=12 PatientName\n\u001b[36m000001F0\u001b[0m  50 4E 0C 00 50 41 52 49 54 59 5E 53 59 4E 54 48  |\u001b[37mPN..PARITY^SYNTH\u001b[0m|\n\n",
+      "studioParams" : {
+        "annotate" : "true",
+        "inputPath" : "FIXTURE",
+        "length" : "512",
+        "offset" : "0",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-dump"
+    },
+    {
+      "cliArgs" : [
+        "--offset",
+        "0",
+        "--length",
+        "256",
+        "--bytes-per-line",
+        "32",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-dump-bpl32",
+      "label" : "syn-ct.dcm · bpl32",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "\u001b[36m00000000\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................................\u001b[0m|\n\u001b[36m00000020\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................................\u001b[0m|\n\u001b[36m00000040\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................................\u001b[0m|\n\u001b[36m00000060\u001b[0m  00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  |\u001b[37m................................\u001b[0m|\n\u001b[36m00000080\u001b[0m  44 49 43 4D 02 00 00 00 55 4C 04 00 A0 00 00 00 02 00 10 00 55 49 14 00 31 2E 32 2E 38 34 30 2E  |\u001b[37mDICM....UL..........UI..1.2.840.\u001b[0m|\n\u001b[36m000000A0\u001b[0m  31 30 30 30 38 2E 31 2E 32 2E 31 00 02 00 02 00 55 49 1A 00 31 2E 32 2E 38 34 30 2E 31 30 30 30  |\u001b[37m10008.1.2.1.....UI..1.2.840.1000\u001b[0m|\n\u001b[36m000000C0\u001b[0m  38 2E 35 2E 31 2E 34 2E 31 2E 31 2E 32 00 02 00 03 00 55 49 20 00 31 2E 32 2E 38 32 36 2E 30 2E  |\u001b[37m8.5.1.4.1.1.2.....UI .1.2.826.0.\u001b[0m|\n\u001b[36m000000E0\u001b[0m  31 2E 33 36 38 30 30 34 33 2E 31 30 2E 39 39 39 2E 31 2E 31 2E 31 02 00 12 00 55 49 1C 00 31 2E  |\u001b[37m1.3680043.10.999.1.1.1....UI..1.\u001b[0m|\n\n",
+      "studioParams" : {
+        "bytes-per-line" : "32",
+        "inputPath" : "FIXTURE",
+        "length" : "256",
+        "offset" : "0"
+      },
+      "toolId" : "dicom-dump"
+    },
+    {
+      "cliArgs" : [
+        "--level",
+        "5",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-validate-level5",
+      "label" : "syn-ct.dcm · level5",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (2):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n  • Specific Character Set not specified (ISO_IR 100 or UTF-8 recommended) [(0008,0005)]\n\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "level" : "5"
+      },
+      "toolId" : "dicom-validate"
+    },
+    {
+      "cliArgs" : [
+        "--strict",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 2,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-validate-strict",
+      "label" : "syn-ct.dcm · strict",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "strict" : "true"
+      },
+      "toolId" : "dicom-validate"
+    },
+    {
+      "cliArgs" : [
+        "info",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-info",
+      "label" : "syn-ct.dcm · info",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "File: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nTransfer Syntax: Explicit VR Little Endian\nTransfer Syntax UID: 1.2.840.10008.1.2.1\nCompressed: No\nLossless: Yes\nCodec: None (uncompressed)\nPixel Data Size: 128 B\nImage Dimensions: 8 x 8\nBits Allocated: 16\nBits Stored: 12\nSamples Per Pixel: 1\nPhotometric Interpretation: MONOCHROME2\n",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "operation" : "info"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "cliArgs" : [
+        "info",
+        "--json",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-info-json",
+      "label" : "syn-ct.dcm · info-json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"bitsAllocated\" : 16,\n  \"bitsStored\" : 12,\n  \"codec\" : \"None\",\n  \"columns\" : 8,\n  \"compressed\" : false,\n  \"file\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct.dcm\",\n  \"lossless\" : true,\n  \"photometricInterpretation\" : \"MONOCHROME2\",\n  \"pixelDataSize\" : 128,\n  \"rows\" : 8,\n  \"samplesPerPixel\" : 1,\n  \"transferSyntax\" : \"Explicit VR Little Endian\",\n  \"transferSyntaxUID\" : \"1.2.840.10008.1.2.1\"\n}",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "json" : "true",
+        "operation" : "info"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "cliArgs" : [
+        "template",
+        "workflow"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "",
+      "id" : "none__dicom-script-template-workflow",
+      "label" : "dicom-script · template-workflow",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "# DICOM Workflow Script\n# Generated by dicom-script v1.3.5\n\n# Define variables\nINPUT_DIR=\/path\/to\/input\nOUTPUT_DIR=\/path\/to\/output\n\n# Validate input files\ndicom-validate ${INPUT_DIR}\/*.dcm --level 2\n\n# Process files\ndicom-convert ${INPUT_DIR}\/*.dcm --output ${OUTPUT_DIR} --format png\n\n# Generate summary\ndicom-study summary ${INPUT_DIR} --format json > ${OUTPUT_DIR}\/summary.json\n",
+      "studioParams" : {
+        "operation" : "template",
+        "templateName" : "workflow"
+      },
+      "toolId" : "dicom-script"
+    },
+    {
+      "cliArgs" : [
+        "template",
+        "anonymize"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "",
+      "id" : "none__dicom-script-template-anonymize",
+      "label" : "dicom-script · template-anonymize",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "# DICOM Anonymization Script\n# Generated by dicom-script v1.3.5\n\nINPUT_DIR=\/path\/to\/input\nOUTPUT_DIR=\/path\/to\/anonymized\n\n# Anonymize with basic profile\ndicom-anon ${INPUT_DIR}\/*.dcm --profile basic --output ${OUTPUT_DIR}\n\n# Conditional anonymization\nif exists ${INPUT_DIR}\/sensitive.dcm\n    dicom-anon ${INPUT_DIR}\/sensitive.dcm --profile strict --output ${OUTPUT_DIR}\nendif\n\n# Validate anonymized files\ndicom-validate ${OUTPUT_DIR}\/*.dcm --level 2\n",
+      "studioParams" : {
+        "operation" : "template",
+        "templateName" : "anonymize"
+      },
+      "toolId" : "dicom-script"
+    },
+    {
+      "cliArgs" : [
+        "validate",
+        "1.2.840.10008.1.2.1"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "",
+      "id" : "none__dicom-uid-validate",
+      "label" : "dicom-uid · validate",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "✅ 1.2.840.10008.1.2.1\n",
+      "studioParams" : {
+        "subcommand" : "validate",
+        "uids" : "1.2.840.10008.1.2.1"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
+      "cliArgs" : [
+        "validate",
+        "--check-registry",
+        "1.2.840.10008.1.2.1"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "",
+      "id" : "none__dicom-uid-validate-registry",
+      "label" : "dicom-uid · validate-registry",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "✅ 1.2.840.10008.1.2.1 [Explicit VR Little Endian]\n",
+      "studioParams" : {
+        "check-registry" : "true",
+        "subcommand" : "validate",
+        "uids" : "1.2.840.10008.1.2.1"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
+      "cliArgs" : [
+        "validate",
+        "not-a-valid-uid"
+      ],
+      "deterministic" : true,
+      "exitCode" : 1,
+      "fixtureFile" : "",
+      "id" : "none__dicom-uid-validate-invalid",
+      "label" : "dicom-uid · validate-invalid",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "❌ not-a-valid-uid\n   - Contains invalid characters (only digits and periods allowed)\n   - Must have at least 2 components\n",
+      "studioParams" : {
+        "subcommand" : "validate",
+        "uids" : "not-a-valid-uid"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
+      "cliArgs" : [
+        "validate",
+        "--file",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-uid-validate-file",
+      "label" : "syn-ct.dcm · validate-file",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "✅ 1.2.840.10008.5.1.4.1.1.2\n✅ 1.2.826.0.1.3680043.10.999.1.1.1\n✅ 1.2.826.0.1.3680043.10.999.1.1\n✅ 1.2.826.0.1.3680043.10.999.1.2\n",
+      "studioParams" : {
+        "file" : "FIXTURE",
+        "subcommand" : "validate"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
+      "cliArgs" : [
+        "lookup",
+        "1.2.840.10008.1.2.1"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "",
+      "id" : "none__dicom-uid-lookup",
+      "label" : "dicom-uid · lookup",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "UID:  1.2.840.10008.1.2.1\nName: Explicit VR Little Endian\nType: Transfer Syntax\n",
+      "studioParams" : {
+        "lookup-uid" : "1.2.840.10008.1.2.1",
+        "subcommand" : "lookup"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
+      "cliArgs" : [
+        "lookup",
+        "--list-all"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "",
+      "id" : "none__dicom-uid-lookup-listall",
+      "label" : "dicom-uid · lookup-listall",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "\n26 UIDs found\n",
+      "stdout" : "1.2.840.10008.1.2  Implicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.1  Explicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.1.99  Deflated Explicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.2  Explicit VR Big Endian  (Transfer Syntax)\n1.2.840.10008.1.2.4.100  MPEG2 Main Profile \/ Main Level  (Transfer Syntax)\n1.2.840.10008.1.2.4.101  MPEG2 Main Profile \/ High Level  (Transfer Syntax)\n1.2.840.10008.1.2.4.102  MPEG-4 AVC\/H.264 High Profile \/ Level 4.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.103  MPEG-4 AVC\/H.264 BD-compatible High Profile \/ Level 4.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.107  HEVC\/H.265 Main Profile \/ Level 5.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.108  HEVC\/H.265 Main 10 Profile \/ Level 5.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.50  JPEG Baseline (Process 1)  (Transfer Syntax)\n1.2.840.10008.1.2.4.51  JPEG Extended (Process 2 & 4)  (Transfer Syntax)\n1.2.840.10008.1.2.4.57  JPEG Lossless, Non-Hierarchical (Process 14)  (Transfer Syntax)\n1.2.840.10008.1.2.4.70  JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process 14, Selection Value 1)  (Transfer Syntax)\n1.2.840.10008.1.2.4.90  JPEG 2000 Image Compression (Lossless Only)  (Transfer Syntax)\n1.2.840.10008.1.2.4.91  JPEG 2000 Image Compression  (Transfer Syntax)\n1.2.840.10008.1.2.5  RLE Lossless  (Transfer Syntax)\n1.2.840.10008.5.1.4.1.1.1  Computed Radiography Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.128  Positron Emission Tomography Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.2  CT Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.4  MR Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.6.1  Ultrasound Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.7  Secondary Capture Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.1.1  Video Endoscopic Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.2.1  Video Microscopic Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.4.1  Video Photographic Image Storage  (SOP Class)\n",
+      "studioParams" : {
+        "list-all" : "true",
+        "subcommand" : "lookup"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
+      "cliArgs" : [
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-mf.dcm",
+      "id" : "syn-mf__dicom-info-mf-text",
+      "label" : "syn-mf.dcm · mf-text",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.3.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.3.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC MULTIFRAME\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^MULTI\n(0010,0020) Patient ID                               VR=LO SYN-0003\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.3.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.3.2\n(0020,0011) Series Number                            VR=IS 3\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0008) Number of Frames                         VR=IS 4\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (512 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-info"
+    },
+    {
+      "cliArgs" : [
+        "--format",
+        "json",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-mf.dcm",
+      "id" : "syn-mf__dicom-info-mf-json",
+      "label" : "syn-mf.dcm · mf-json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"dataSet\" : [\n    {\n      \"name\" : \"SOP Class UID\",\n      \"tag\" : \"(0008,0016)\",\n      \"value\" : \"1.2.840.10008.5.1.4.1.1.2\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"SOP Instance UID\",\n      \"tag\" : \"(0008,0018)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.3.1.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Study Date\",\n      \"tag\" : \"(0008,0020)\",\n      \"value\" : \"20200101\",\n      \"vr\" : \"DA\"\n    },\n    {\n      \"name\" : \"Study Time\",\n      \"tag\" : \"(0008,0030)\",\n      \"value\" : \"120000\",\n      \"vr\" : \"TM\"\n    },\n    {\n      \"name\" : \"Modality\",\n      \"tag\" : \"(0008,0060)\",\n      \"value\" : \"CT\",\n      \"vr\" : \"CS\"\n    },\n    {\n      \"name\" : \"Manufacturer\",\n      \"tag\" : \"(0008,0070)\",\n      \"value\" : \"DICOMKit Parity\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Study Description\",\n      \"tag\" : \"(0008,1030)\",\n      \"value\" : \"PARITY SYNTHETIC MULTIFRAME\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Series Description\",\n      \"tag\" : \"(0008,103E)\",\n      \"value\" : \"PARITY SERIES\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Patient's Name\",\n      \"tag\" : \"(0010,0010)\",\n      \"value\" : \"PARITY^MULTI\",\n      \"vr\" : \"PN\"\n    },\n    {\n      \"name\" : \"Patient ID\",\n      \"tag\" : \"(0010,0020)\",\n      \"value\" : \"SYN-0003\",\n      \"vr\" : \"LO\"\n    },\n    {\n      \"name\" : \"Patient's Birth Date\",\n      \"tag\" : \"(0010,0030)\",\n      \"value\" : \"19800101\",\n      \"vr\" : \"DA\"\n    },\n    {\n      \"name\" : \"Patient's Sex\",\n      \"tag\" : \"(0010,0040)\",\n      \"value\" : \"O\",\n      \"vr\" : \"CS\"\n    },\n    {\n      \"name\" : \"Study Instance UID\",\n      \"tag\" : \"(0020,000D)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.3.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Series Instance UID\",\n      \"tag\" : \"(0020,000E)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.3.2\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Series Number\",\n      \"tag\" : \"(0020,0011)\",\n      \"value\" : \"3\",\n      \"vr\" : \"IS\"\n    },\n    {\n      \"name\" : \"Instance Number\",\n      \"tag\" : \"(0020,0013)\",\n      \"value\" : \"1\",\n      \"vr\" : \"IS\"\n    },\n    {\n      \"name\" : \"Samples per Pixel\",\n      \"tag\" : \"(0028,0002)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Photometric Interpretation\",\n      \"tag\" : \"(0028,0004)\",\n      \"value\" : \"MONOCHROME2\",\n      \"vr\" : \"CS\"\n    },\n    {\n      \"name\" : \"Number of Frames\",\n      \"tag\" : \"(0028,0008)\",\n      \"value\" : \"4\",\n      \"vr\" : \"IS\"\n    },\n    {\n      \"name\" : \"Rows\",\n      \"tag\" : \"(0028,0010)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Columns\",\n      \"tag\" : \"(0028,0011)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Bits Allocated\",\n      \"tag\" : \"(0028,0100)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Bits Stored\",\n      \"tag\" : \"(0028,0101)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"High Bit\",\n      \"tag\" : \"(0028,0102)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Pixel Representation\",\n      \"tag\" : \"(0028,0103)\",\n      \"vr\" : \"US\"\n    },\n    {\n      \"name\" : \"Pixel Data\",\n      \"tag\" : \"(7FE0,0010)\",\n      \"vr\" : \"OW\"\n    }\n  ],\n  \"fileMetaInformation\" : [\n    {\n      \"name\" : \"File Meta Information Group Length\",\n      \"tag\" : \"(0002,0000)\",\n      \"vr\" : \"UL\"\n    },\n    {\n      \"name\" : \"Media Storage SOP Class UID\",\n      \"tag\" : \"(0002,0002)\",\n      \"value\" : \"1.2.840.10008.5.1.4.1.1.2\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Media Storage SOP Instance UID\",\n      \"tag\" : \"(0002,0003)\",\n      \"value\" : \"1.2.826.0.1.3680043.10.999.3.1.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Transfer Syntax UID\",\n      \"tag\" : \"(0002,0010)\",\n      \"value\" : \"1.2.840.10008.1.2.1\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Implementation Class UID\",\n      \"tag\" : \"(0002,0012)\",\n      \"value\" : \"1.2.276.0.7230010.3.0.3.6.4\",\n      \"vr\" : \"UI\"\n    },\n    {\n      \"name\" : \"Implementation Version Name\",\n      \"tag\" : \"(0002,0013)\",\n      \"value\" : \"DICOMKITPARITY\",\n      \"vr\" : \"SH\"\n    }\n  ]\n}",
+      "studioParams" : {
+        "format" : "json",
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-info"
+    },
+    {
+      "cliArgs" : [
+        "--tag",
+        "0028,0008",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-mf.dcm",
+      "id" : "syn-mf__dicom-dump-mf-tag-frames",
+      "label" : "syn-mf.dcm · mf-tag-frames",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "Tag: (0028,0008)  Number of Frames  VR=IS  Length=2\n\n\u001b[36m00000000\u001b[0m  34 20                                            |\u001b[37m4 \u001b[0m|\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "tag" : "0028,0008"
+      },
+      "toolId" : "dicom-dump"
+    },
+    {
+      "cliArgs" : [
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-mf.dcm",
+      "id" : "syn-mf__dicom-validate-mf-text",
+      "label" : "syn-mf.dcm · mf-text",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-mf.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-validate"
+    },
+    {
+      "cliArgs" : [
+        "FIXTURE",
+        "FIXTURE2"
+      ],
+      "deterministic" : true,
+      "exitCode" : 1,
+      "fixtureFile" : "syn-ct.dcm",
+      "fixtureFile2" : "syn-ct2.dcm",
+      "id" : "syn-ct__dicom-diff-text",
+      "label" : "syn-ct.dcm · text",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== DICOM Comparison Results ===\n\nTotal tags compared: 25\nDifferences found: 7\nTags only in file 1: 0\nTags only in file 2: 0\nModified tags: 7\n\n\n--- Modified Tags ---\n\n[(0008,0018)] SOP Instance UID\n  File 1: 1.2.826.0.1.3680043.10.999.1.1.1\n  File 2: 1.2.826.0.1.3680043.10.999.2.1.1\n\n[(0008,1030)] Study Description\n  File 1: PARITY SYNTHETIC CT\n  File 2: PARITY SYNTHETIC CT TWO\n\n[(0010,0010)] Patient's Name\n  File 1: PARITY^SYNTH\n  File 2: PARITY^SYNTH2\n\n[(0010,0020)] Patient ID\n  File 1: SYN-0001\n  File 2: SYN-0002\n\n[(0020,000D)] Study Instance UID\n  File 1: 1.2.826.0.1.3680043.10.999.1.1\n  File 2: 1.2.826.0.1.3680043.10.999.2.1\n\n[(0020,000E)] Series Instance UID\n  File 1: 1.2.826.0.1.3680043.10.999.1.2\n  File 2: 1.2.826.0.1.3680043.10.999.2.2\n\n[(0020,0011)] Series Number\n  File 1: 1\n  File 2: 2\n\n=== End of Comparison ===\n\n",
+      "studioParams" : {
+        "file1" : "FIXTURE",
+        "file2" : "FIXTURE2"
+      },
+      "toolId" : "dicom-diff"
+    },
+    {
+      "cliArgs" : [
+        "--format",
+        "json",
+        "FIXTURE",
+        "FIXTURE2"
+      ],
+      "deterministic" : true,
+      "exitCode" : 1,
+      "fixtureFile" : "syn-ct.dcm",
+      "fixtureFile2" : "syn-ct2.dcm",
+      "id" : "syn-ct__dicom-diff-json",
+      "label" : "syn-ct.dcm · json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"files\" : {\n    \"file1\" : \"syn-ct.dcm\",\n    \"file2\" : \"syn-ct2.dcm\"\n  },\n  \"modified\" : [\n    {\n      \"tag\" : \"(0008,0018)\",\n      \"tagName\" : \"SOP Instance UID\",\n      \"value1\" : \"1.2.826.0.1.3680043.10.999.1.1.1\",\n      \"value2\" : \"1.2.826.0.1.3680043.10.999.2.1.1\"\n    },\n    {\n      \"tag\" : \"(0008,1030)\",\n      \"tagName\" : \"Study Description\",\n      \"value1\" : \"PARITY SYNTHETIC CT\",\n      \"value2\" : \"PARITY SYNTHETIC CT TWO\"\n    },\n    {\n      \"tag\" : \"(0010,0010)\",\n      \"tagName\" : \"Patient's Name\",\n      \"value1\" : \"PARITY^SYNTH\",\n      \"value2\" : \"PARITY^SYNTH2\"\n    },\n    {\n      \"tag\" : \"(0010,0020)\",\n      \"tagName\" : \"Patient ID\",\n      \"value1\" : \"SYN-0001\",\n      \"value2\" : \"SYN-0002\"\n    },\n    {\n      \"tag\" : \"(0020,000D)\",\n      \"tagName\" : \"Study Instance UID\",\n      \"value1\" : \"1.2.826.0.1.3680043.10.999.1.1\",\n      \"value2\" : \"1.2.826.0.1.3680043.10.999.2.1\"\n    },\n    {\n      \"tag\" : \"(0020,000E)\",\n      \"tagName\" : \"Series Instance UID\",\n      \"value1\" : \"1.2.826.0.1.3680043.10.999.1.2\",\n      \"value2\" : \"1.2.826.0.1.3680043.10.999.2.2\"\n    },\n    {\n      \"tag\" : \"(0020,0011)\",\n      \"tagName\" : \"Series Number\",\n      \"value1\" : \"1\",\n      \"value2\" : \"2\"\n    }\n  ],\n  \"onlyInFile1\" : [\n\n  ],\n  \"onlyInFile2\" : [\n\n  ],\n  \"summary\" : {\n    \"differences\" : 7,\n    \"hasDifferences\" : true,\n    \"totalTags\" : 25\n  }\n}",
+      "studioParams" : {
+        "file1" : "FIXTURE",
+        "file2" : "FIXTURE2",
+        "format" : "json"
+      },
+      "toolId" : "dicom-diff"
+    },
+    {
+      "cliArgs" : [
+        "--format",
+        "summary",
+        "FIXTURE",
+        "FIXTURE2"
+      ],
+      "deterministic" : true,
+      "exitCode" : 1,
+      "fixtureFile" : "syn-ct.dcm",
+      "fixtureFile2" : "syn-ct2.dcm",
+      "id" : "syn-ct__dicom-diff-summary",
+      "label" : "syn-ct.dcm · summary",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "Files: DIFFERENT\nDifferences: 7\n  Only in file 1: 0\n  Only in file 2: 0\n  Modified: 7\n\n",
+      "studioParams" : {
+        "file1" : "FIXTURE",
+        "file2" : "FIXTURE2",
+        "format" : "summary"
+      },
+      "toolId" : "dicom-diff"
+    },
+    {
+      "cliArgs" : [
+        "--ignore-private",
+        "FIXTURE",
+        "FIXTURE2"
+      ],
+      "deterministic" : true,
+      "exitCode" : 1,
+      "fixtureFile" : "syn-ct.dcm",
+      "fixtureFile2" : "syn-ct2.dcm",
+      "id" : "syn-ct__dicom-diff-ignore-private",
+      "label" : "syn-ct.dcm · ignore-private",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== DICOM Comparison Results ===\n\nTotal tags compared: 25\nDifferences found: 7\nTags only in file 1: 0\nTags only in file 2: 0\nModified tags: 7\n\n\n--- Modified Tags ---\n\n[(0008,0018)] SOP Instance UID\n  File 1: 1.2.826.0.1.3680043.10.999.1.1.1\n  File 2: 1.2.826.0.1.3680043.10.999.2.1.1\n\n[(0008,1030)] Study Description\n  File 1: PARITY SYNTHETIC CT\n  File 2: PARITY SYNTHETIC CT TWO\n\n[(0010,0010)] Patient's Name\n  File 1: PARITY^SYNTH\n  File 2: PARITY^SYNTH2\n\n[(0010,0020)] Patient ID\n  File 1: SYN-0001\n  File 2: SYN-0002\n\n[(0020,000D)] Study Instance UID\n  File 1: 1.2.826.0.1.3680043.10.999.1.1\n  File 2: 1.2.826.0.1.3680043.10.999.2.1\n\n[(0020,000E)] Series Instance UID\n  File 1: 1.2.826.0.1.3680043.10.999.1.2\n  File 2: 1.2.826.0.1.3680043.10.999.2.2\n\n[(0020,0011)] Series Number\n  File 1: 1\n  File 2: 2\n\n=== End of Comparison ===\n\n",
+      "studioParams" : {
+        "file1" : "FIXTURE",
+        "file2" : "FIXTURE2",
+        "ignore-private" : "true"
+      },
+      "toolId" : "dicom-diff"
+    },
+    {
+      "cliArgs" : [
+        "summary",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-summary",
+      "label" : "syn-studyset · summary",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "═══════════════════════════════════════════════════════════════\nStudy UID: 1.2.826.0.1.3680043.10.999.41.1\nStudy Date: 20200101\nPatient Name: PARITY^STUDY1\nPatient ID: SYN-STD-1\nDescription: PARITY STUDY SET 1\nSeries Count: 2\nTotal Instances: 4\n\n",
+      "studioParams" : {
+        "operation" : "summary",
+        "path" : "FIXTURE"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "summary",
+        "--format",
+        "json",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-summary-json",
+      "label" : "syn-studyset · summary-json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "[\n  {\n    \"patientID\" : \"SYN-STD-1\",\n    \"patientName\" : \"PARITY^STUDY1\",\n    \"series\" : [\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2\",\n        \"seriesNumber\" : \"2\"\n      },\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1\",\n        \"seriesNumber\" : \"1\"\n      }\n    ],\n    \"studyDate\" : \"20200101\",\n    \"studyDescription\" : \"PARITY STUDY SET 1\",\n    \"studyInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1\",\n    \"studyTime\" : \"120000\"\n  }\n]",
+      "studioParams" : {
+        "operation" : "summary",
+        "path" : "FIXTURE",
+        "summary-format" : "json"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "summary",
+        "--format",
+        "csv",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-summary-csv",
+      "label" : "syn-studyset · summary-csv",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "StudyUID,StudyDate,PatientName,PatientID,SeriesCount,InstanceCount\n1.2.826.0.1.3680043.10.999.41.1,20200101,PARITY^STUDY1,SYN-STD-1,2,4\n",
+      "studioParams" : {
+        "operation" : "summary",
+        "path" : "FIXTURE",
+        "summary-format" : "csv"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "stats",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-stats",
+      "label" : "syn-studyset · stats",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "═══════════════════════════════════════════════════════════════\nStudy Statistics\n═══════════════════════════════════════════════════════════════\nStudy UID: 1.2.826.0.1.3680043.10.999.41.1\nSeries Count: 2\nTotal Instances: 4\nTotal Size: 3.50 KB\nAvg Size\/Instance: 896 bytes\n\nModalities:\n  CT: 2 series\n",
+      "studioParams" : {
+        "operation" : "stats",
+        "path" : "FIXTURE"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "stats",
+        "--detailed",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-stats-detailed",
+      "label" : "syn-studyset · stats-detailed",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "═══════════════════════════════════════════════════════════════\nStudy Statistics\n═══════════════════════════════════════════════════════════════\nStudy UID: 1.2.826.0.1.3680043.10.999.41.1\nSeries Count: 2\nTotal Instances: 4\nTotal Size: 3.50 KB\nAvg Size\/Instance: 896 bytes\n\nModalities:\n  CT: 2 series\n\nInstances per Series:\n  Series 1: 2 instances\n  Series 2: 2 instances\n\nInstance Count Statistics:\n  Min: 2\n  Max: 2\n  Average: 2.0\n",
+      "studioParams" : {
+        "detailed" : "true",
+        "operation" : "stats",
+        "path" : "FIXTURE"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "stats",
+        "--format",
+        "json",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-stats-json",
+      "label" : "syn-studyset · stats-json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"averageSizePerInstance\" : 896,\n  \"instancesPerSeries\" : [\n\n  ],\n  \"modalityCounts\" : {\n    \"CT\" : 2\n  },\n  \"seriesCount\" : 2,\n  \"studyUID\" : \"1.2.826.0.1.3680043.10.999.41.1\",\n  \"totalInstances\" : 4,\n  \"totalSizeBytes\" : 3584\n}",
+      "studioParams" : {
+        "operation" : "stats",
+        "path" : "FIXTURE",
+        "stats-format" : "json"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "check",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-check",
+      "label" : "syn-studyset · check",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "✓ Study is complete\n",
+      "stdout" : "",
+      "studioParams" : {
+        "operation" : "check",
+        "path" : "FIXTURE"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "check",
+        "--expected-series",
+        "2",
+        "--expected-instances",
+        "2",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-check-expected",
+      "label" : "syn-studyset · check-expected",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "✓ Study is complete\n",
+      "stdout" : "",
+      "studioParams" : {
+        "expected-instances" : "2",
+        "expected-series" : "2",
+        "operation" : "check",
+        "path" : "FIXTURE"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "compare",
+        "FIXTURE",
+        "FIXTURE2"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "fixtureFile2" : "syn-studyset2",
+      "id" : "syn-studyset__dicom-study-compare",
+      "label" : "syn-studyset · compare",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "═══════════════════════════════════════════════════════════════\nStudy Comparison\n═══════════════════════════════════════════════════════════════\nStudy 1 UID: 1.2.826.0.1.3680043.10.999.41.1\nStudy 2 UID: 1.2.826.0.1.3680043.10.999.42.1\n\nSeries Counts:\n  Study 1: 2\n  Study 2: 2\n  Common: 0\n  Only in Study 1: 2\n  Only in Study 2: 2\n\nInstance Counts:\n  Study 1: 4\n  Study 2: 4\n\n✓ Studies are structurally identical\n",
+      "studioParams" : {
+        "operation" : "compare",
+        "path1" : "FIXTURE",
+        "path2" : "FIXTURE2"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "compare",
+        "--format",
+        "json",
+        "FIXTURE",
+        "FIXTURE2"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "fixtureFile2" : "syn-studyset2",
+      "id" : "syn-studyset__dicom-study-compare-json",
+      "label" : "syn-studyset · compare-json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"commonSeriesCount\" : 0,\n  \"onlyInStudy1Count\" : 2,\n  \"onlyInStudy2Count\" : 2,\n  \"seriesDifferences\" : [\n\n  ],\n  \"study1InstanceCount\" : 4,\n  \"study1SeriesCount\" : 2,\n  \"study1UID\" : \"1.2.826.0.1.3680043.10.999.41.1\",\n  \"study2InstanceCount\" : 4,\n  \"study2SeriesCount\" : 2,\n  \"study2UID\" : \"1.2.826.0.1.3680043.10.999.42.1\"\n}",
+      "studioParams" : {
+        "compare-format" : "json",
+        "operation" : "compare",
+        "path1" : "FIXTURE",
+        "path2" : "FIXTURE2"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "--metadata-only",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-file-meta",
+      "label" : "syn-ct.dcm · file-meta",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "metadata-only" : "true",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "--metadata-only",
+        "--pretty",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-file-meta-pretty",
+      "label" : "syn-ct.dcm · file-meta-pretty",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "metadata-only" : "true",
+        "output" : "OUTPUT",
+        "pretty" : "true"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.xml",
+      "cliArgs" : [
+        "--metadata-only",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-xml-file-meta",
+      "label" : "syn-ct.dcm · file-meta",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<NativeDicomModel xmlns=\"http:\/\/dicom.nema.org\/PS3.19\/models\/NativeDICOM\">\n<DicomAttribute tag=\"00080016\" vr=\"UI\" keyword=\"SOPClassUID\">\n  <Value number=\"1\">1.2.840.10008.5.1.4.1.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080018\" vr=\"UI\" keyword=\"SOPInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080020\" vr=\"DA\" keyword=\"StudyDate\">\n  <Value number=\"1\">20200101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080030\" vr=\"TM\" keyword=\"StudyTime\">\n  <Value number=\"1\">120000<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080060\" vr=\"CS\" keyword=\"Modality\">\n  <Value number=\"1\">CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080070\" vr=\"LO\" keyword=\"Manufacturer\">\n  <Value number=\"1\">DICOMKit Parity<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00081030\" vr=\"LO\" keyword=\"StudyDescription\">\n  <Value number=\"1\">PARITY SYNTHETIC CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0008103E\" vr=\"LO\" keyword=\"SeriesDescription\">\n  <Value number=\"1\">PARITY SERIES<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100010\" vr=\"PN\" keyword=\"PatientName\">\n  <PersonName number=\"1\">\n    <Alphabetic>\n      <FamilyName>PARITY<\/FamilyName>\n      <GivenName>SYNTH<\/GivenName>\n    <\/Alphabetic>\n  <\/PersonName>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100020\" vr=\"LO\" keyword=\"PatientID\">\n  <Value number=\"1\">SYN-0001<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100030\" vr=\"DA\" keyword=\"PatientBirthDate\">\n  <Value number=\"1\">19800101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100040\" vr=\"CS\" keyword=\"PatientSex\">\n  <Value number=\"1\">O<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000D\" vr=\"UI\" keyword=\"StudyInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000E\" vr=\"UI\" keyword=\"SeriesInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200011\" vr=\"IS\" keyword=\"SeriesNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200013\" vr=\"IS\" keyword=\"InstanceNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280002\" vr=\"US\" keyword=\"SamplesPerPixel\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280004\" vr=\"CS\" keyword=\"PhotometricInterpretation\">\n  <Value number=\"1\">MONOCHROME2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280010\" vr=\"US\" keyword=\"Rows\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280011\" vr=\"US\" keyword=\"Columns\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280100\" vr=\"US\" keyword=\"BitsAllocated\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280101\" vr=\"US\" keyword=\"BitsStored\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280102\" vr=\"US\" keyword=\"HighBit\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280103\" vr=\"US\" keyword=\"PixelRepresentation\">\n<\/DicomAttribute>\n<\/NativeDicomModel>\n",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "metadata-only" : "true",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-xml"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.xml",
+      "cliArgs" : [
+        "--metadata-only",
+        "--pretty",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-xml-file-meta-pretty",
+      "label" : "syn-ct.dcm · file-meta-pretty",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<NativeDicomModel xmlns=\"http:\/\/dicom.nema.org\/PS3.19\/models\/NativeDICOM\">\n  <DicomAttribute tag=\"00080016\" vr=\"UI\" keyword=\"SOPClassUID\">\n    <Value number=\"1\">1.2.840.10008.5.1.4.1.1.2<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00080018\" vr=\"UI\" keyword=\"SOPInstanceUID\">\n    <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1.1<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00080020\" vr=\"DA\" keyword=\"StudyDate\">\n    <Value number=\"1\">20200101<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00080030\" vr=\"TM\" keyword=\"StudyTime\">\n    <Value number=\"1\">120000<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00080060\" vr=\"CS\" keyword=\"Modality\">\n    <Value number=\"1\">CT<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00080070\" vr=\"LO\" keyword=\"Manufacturer\">\n    <Value number=\"1\">DICOMKit Parity<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00081030\" vr=\"LO\" keyword=\"StudyDescription\">\n    <Value number=\"1\">PARITY SYNTHETIC CT<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"0008103E\" vr=\"LO\" keyword=\"SeriesDescription\">\n    <Value number=\"1\">PARITY SERIES<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00100010\" vr=\"PN\" keyword=\"PatientName\">\n    <PersonName number=\"1\">\n      <Alphabetic>\n        <FamilyName>PARITY<\/FamilyName>\n        <GivenName>SYNTH<\/GivenName>\n      <\/Alphabetic>\n    <\/PersonName>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00100020\" vr=\"LO\" keyword=\"PatientID\">\n    <Value number=\"1\">SYN-0001<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00100030\" vr=\"DA\" keyword=\"PatientBirthDate\">\n    <Value number=\"1\">19800101<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00100040\" vr=\"CS\" keyword=\"PatientSex\">\n    <Value number=\"1\">O<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"0020000D\" vr=\"UI\" keyword=\"StudyInstanceUID\">\n    <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"0020000E\" vr=\"UI\" keyword=\"SeriesInstanceUID\">\n    <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.2<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00200011\" vr=\"IS\" keyword=\"SeriesNumber\">\n    <Value number=\"1\">1<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00200013\" vr=\"IS\" keyword=\"InstanceNumber\">\n    <Value number=\"1\">1<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280002\" vr=\"US\" keyword=\"SamplesPerPixel\">\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280004\" vr=\"CS\" keyword=\"PhotometricInterpretation\">\n    <Value number=\"1\">MONOCHROME2<\/Value>\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280010\" vr=\"US\" keyword=\"Rows\">\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280011\" vr=\"US\" keyword=\"Columns\">\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280100\" vr=\"US\" keyword=\"BitsAllocated\">\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280101\" vr=\"US\" keyword=\"BitsStored\">\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280102\" vr=\"US\" keyword=\"HighBit\">\n  <\/DicomAttribute>\n  <DicomAttribute tag=\"00280103\" vr=\"US\" keyword=\"PixelRepresentation\">\n  <\/DicomAttribute>\n<\/NativeDicomModel>\n",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "metadata-only" : "true",
+        "output" : "OUTPUT",
+        "pretty" : "true"
+      },
+      "toolId" : "dicom-xml"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "--set",
+        "PatientName=PARITY^EDIT",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-tags-set-name",
+      "label" : "syn-ct.dcm · set-name",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Output written to: <tmp>\/out.dcm\n",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^EDIT\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "set" : "PatientName=PARITY^EDIT"
+      },
+      "toolId" : "dicom-tags"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "--set",
+        "StudyDescription=PARITY EDITED STUDY",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-tags-set-studydesc",
+      "label" : "syn-ct.dcm · set-studydesc",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Output written to: <tmp>\/out.dcm\n",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY EDITED STUDY\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "set" : "StudyDescription=PARITY EDITED STUDY"
+      },
+      "toolId" : "dicom-tags"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "--delete",
+        "StudyDescription",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-tags-delete-tag",
+      "label" : "syn-ct.dcm · delete-tag",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Output written to: <tmp>\/out.dcm\n",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "delete" : "StudyDescription",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-tags"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "--delete-private",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-tags-delete-private",
+      "label" : "syn-ct.dcm · delete-private",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Output written to: <tmp>\/out.dcm\n",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "delete-private" : "true",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-tags"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "--profile",
+        "basic",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-anon-basic",
+      "label" : "syn-ct.dcm · basic",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN ANONYMOUS\n(0010,0020) Patient ID                               VR=LO EF0DE34F927A9DBF3D8E164BDB50B40B\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "profile" : "basic"
+      },
+      "toolId" : "dicom-anon"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "--profile",
+        "clinical-trial",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-anon-clinical-trial",
+      "label" : "syn-ct.dcm · clinical-trial",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN ANONYMOUS\n(0010,0020) Patient ID                               VR=LO EF0DE34F927A9DBF3D8E164BDB50B40B\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "profile" : "clinical-trial"
+      },
+      "toolId" : "dicom-anon"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--transfer-syntax",
+        "ImplicitVRLittleEndian"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-convert-implicit-le",
+      "label" : "syn-ct.dcm · implicit-le",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 172\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.5\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT_0.5.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "transfer-syntax" : "ImplicitVRLittleEndian"
+      },
+      "toolId" : "dicom-convert"
+    }
+  ],
+  "schemaVersion" : 3
+}

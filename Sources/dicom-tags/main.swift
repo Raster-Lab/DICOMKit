@@ -82,7 +82,7 @@ struct DICOMTags: ParsableCommand {
             dryRun: dryRun
         )
         
-        let outputDescription = output ?? input
+        let outputDescription = OutputPathResolver.resolveFileOutput(output: output, input: input)
         if dryRun {
             fprintln("Dry run complete — no files modified.")
         } else {

@@ -193,8 +193,19 @@ public struct GoldenScenario: Sendable, Identifiable, Decodable, Hashable {
     public let studioParams: [String: String]
     public let stdout: String
     public let exitCode: Int
+    /// Second input fixture for two-file tools (e.g. dicom-diff). Optional (v3+).
+    public let fixtureFile2: String?
+    /// True when the golden was produced from a PHI-free synthetic fixture. Optional (v3+).
+    public let phiSafe: Bool?
+    /// Wave 2: when set, the tool writes this file at the `OUTPUT` placeholder and
+    /// the harness compares that file's content (not console output). Optional.
+    public let artifactName: String?
+    /// "text" (json/xml — compare bytes) or "dicom" (re-dump via dicom-info, mask
+    /// volatile tags, diff tags). Optional; defaults to text when absent.
+    public let artifactKind: String?
 
     private enum CodingKeys: String, CodingKey {
-        case scenarioId = "id", toolId, label, fixtureFile, cliArgs, studioParams, stdout, exitCode
+        case scenarioId = "id", toolId, label, fixtureFile, cliArgs, studioParams,
+             stdout, exitCode, fixtureFile2, phiSafe, artifactName, artifactKind
     }
 }

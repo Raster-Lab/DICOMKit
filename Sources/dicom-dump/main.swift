@@ -176,13 +176,16 @@ struct DICOMDump: ParsableCommand {
 
         // Render via the shared core helper — same output as DICOMStudio, and it
         // uses the parsed element's value bytes (no raw-offset slicing, so it can't
-        // crash). Returns nil if the tag isn't present.
+        // crash). Cap the dump to --length (default 65,536) so a huge value (e.g.
+        // PixelData) doesn't build an enormous string — matches the whole-file path
+        // and keeps the app's SwiftUI console from hanging. Returns nil if absent.
         guard let output = HexDumper.tagDump(
             tag: targetTag,
             in: dicomFile,
             bytesPerLine: bytesPerLine,
             useColor: !noColor,
-            verbose: verbose
+            verbose: verbose,
+            maxBytes: length ?? 65_536
         ) else {
             throw ValidationError("Tag \(formatTag(targetTag)) not found in file")
         }

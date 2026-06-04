@@ -25,12 +25,19 @@ public final class HexDumper {
     /// identical output. Uses the parsed element's value bytes (no raw-offset
     /// slicing), so it can't crash and the header reflects accurate metadata.
     /// Returns `nil` if the tag isn't present.
+    ///
+    /// `maxBytes` caps how many value bytes are dumped (nil = no cap). Dumping a
+    /// large value (e.g. PixelData, which can be many MB) builds a huge string —
+    /// a terminal prints it fine, but DICOMStudio's SwiftUI console hangs in
+    /// CoreText glyph layout on the main thread. Both callers pass `--length`
+    /// (defaulting to 65,536) so the two stay byte-identical and neither blows up.
     public static func tagDump(
         tag: Tag,
         in file: DICOMFile,
         bytesPerLine: Int = 16,
         useColor: Bool = true,
-        verbose: Bool = false
+        verbose: Bool = false,
+        maxBytes: Int? = nil
     ) -> String? {
         guard let element = file.dataSet[tag] ?? file.fileMetaInformation[tag] else { return nil }
         let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
@@ -39,8 +46,18 @@ public final class HexDumper {
             out += "Value: \(MetadataPresenter.formatElementValue(element))\n"
         }
         out += "\n"
+
+        // Cap the dumped bytes. Re-base to a fresh 0-based Data: a `prefix` slice
+        // keeps the parent's indices, which traps the 0-based dump loop.
+        let fullData = element.valueData
+        let shown = maxBytes.map { max(0, min($0, fullData.count)) } ?? fullData.count
+        let dumpData = (shown < fullData.count) ? Data(fullData.prefix(shown)) : fullData
+
         out += HexDumper(bytesPerLine: bytesPerLine, useColor: useColor, annotate: false, verbose: verbose)
-            .dump(data: element.valueData, startOffset: 0, dicomFile: nil, highlightTag: nil)
+            .dump(data: dumpData, startOffset: 0, dicomFile: nil, highlightTag: nil)
+        if shown < fullData.count {
+            out += "\n… showing first \(shown) of \(fullData.count) bytes — pass --length to dump more.\n"
+        }
         return out
     }
 
@@ -121,12 +138,19 @@ public final class HexDumper {
             output += useColor ? color(asciiPart, .white) : asciiPart
             output += "|"
 
-            // Tag-boundary annotation (annotate mode). Same "← " glyph in both
-            // color modes so colored and plain output match once ANSI is stripped.
-            if annotate, let tagInfo = tagPositions[dataIndex] {
-                output += "  "
-                output += useColor ? color("← ", .blue) : "← "
-                output += formatTagAnnotation(tagInfo)
+            // Tag-boundary annotation (annotate mode). A tag can begin at any byte
+            // within the row — tags rarely start exactly on a bytesPerLine boundary
+            // (the first dataset tag sits at offset 132, i.e. 132 % 16 == 4) — so
+            // scan the whole row's byte range, not just its first byte, and label
+            // every tag that starts on this line. Same "← " glyph in both color
+            // modes so colored and plain output match once ANSI is stripped.
+            if annotate {
+                for byteIndex in dataIndex..<lineEnd {
+                    guard let tagInfo = tagPositions[byteIndex] else { continue }
+                    output += "  "
+                    output += useColor ? color("← ", .blue) : "← "
+                    output += formatTagAnnotation(tagInfo)
+                }
             }
             // Highlighted-tag marker on its first line — a plain-text label so
             // --highlight is visible even in no-color output (e.g. the in-app

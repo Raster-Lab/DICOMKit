@@ -104,11 +104,16 @@ public final class ValidationViewModel {
             }
             do {
                 let results = try await validateInput()
-                let output = ValidationHelpers.renderText(
-                    results: results,
-                    detailed: detailed,
-                    strict: strict
-                )
+                let output: String
+                if format == .json {
+                    output = (try? ValidationHelpers.renderJSON(results: results)) ?? ""
+                } else {
+                    output = ValidationHelpers.renderText(
+                        results: results,
+                        detailed: detailed,
+                        strict: strict
+                    )
+                }
                 let hasErrors   = results.contains { !$0.errors.isEmpty }
                 let hasWarnings = results.contains { !$0.warnings.isEmpty }
                 let code: Int32 = hasErrors ? 1 : (strict && hasWarnings ? 2 : 0)
@@ -495,10 +500,17 @@ public final class ValidationViewModel {
             warnings.append(ValidationIssueEntry(level: .warning,
                 message: "Instance Number (0020,0013) is absent — recommended for ordering"))
         }
-        // Check specific character set
-        if dataSet.string(for: .specificCharacterSet) == nil {
+        // Check specific character set (wording/tag match CLI Validator.validateBestPractices).
+        if dataSet[.specificCharacterSet] == nil {
             warnings.append(ValidationIssueEntry(level: .warning,
-                message: "Specific Character Set (0008,0005) not defined — assumes ISO_IR 6"))
+                message: "Specific Character Set not specified (ISO_IR 100 or UTF-8 recommended)",
+                tagString: "(0008,0005)"))
+        }
+        // Private-tag interoperability check (matches CLI Validator.validateBestPractices).
+        let privateTagCount = dataSet.tags.filter { $0.isPrivate }.count
+        if privateTagCount > 10 {
+            warnings.append(ValidationIssueEntry(level: .warning,
+                message: "File contains \(privateTagCount) private tags (may affect interoperability)"))
         }
     }
 
