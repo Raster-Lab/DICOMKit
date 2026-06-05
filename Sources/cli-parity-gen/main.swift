@@ -378,11 +378,21 @@ private func autoValues(_ def: CLIParameterDefinition) -> [String] {
     switch def.parameterType {
     case .integerField, .slider: return [String(def.minValue ?? 1)]
     case .textField, .arrayField:
-        // Heuristic values for common value-bearing options so they get exercised.
-        // A tag present in every fixture (Modality) suits --tag/--ignore-tag/--filter-tag.
+        // Semantic value heuristics for common value-bearing options so they get exercised.
+        // A wrong guess just fails the binary and auto-skips (gen-skip net), so this only
+        // adds coverage, never breakage. Ordered most-specific first.
         let key = (def.id + " " + def.flag).lowercased()
-        if key.contains("tag") { return ["0008,0060"] }
-        return []   // other free-text options need a per-flag value (later wave)
+        if key.contains("tag") || key.contains("highlight") { return ["0008,0060"] }  // a tag in every fixture (Modality)
+        if key.contains("window-center")  { return ["40"] }
+        if key.contains("window-width")   { return ["400"] }
+        if key.contains("shift") || key.contains("days") { return ["30"] }
+        if key.contains("quality")         { return ["85"] }
+        if key.contains("scale")           { return ["0.5"] }
+        if key.contains("fps")             { return ["10"] }
+        if key.contains("frame")           { return ["0"] }
+        if key.contains("crop")            { return ["0,0,8,8"] }   // x,y,w,h on the 8×8 synthetic CT
+        if key.contains("url")             { return ["https://example.org/{uid}"] }
+        return []   // genuinely tool-specific free-text (patterns, AE titles, …) — left to curated
     default: return []
     }
 }

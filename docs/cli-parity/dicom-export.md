@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 
 **Input-contract parity:** 21/21 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 48 scenario(s) — 48 success / 0 drift.
+**Output behavior:** 60 scenario(s) — 60 success / 0 drift.
 
 ## Flags
 
@@ -16,7 +16,7 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 | `--end-frame` | option | ✅ match | ✅ success |
 | `--exif-fields` | option | ✅ match | ⊘ not covered |
 | `--format` | option | ✅ match | ✅ success |
-| `--fps` | option | ✅ match | ⊘ not covered |
+| `--fps` | option | ✅ match | ✅ success |
 | `--frame` | option | ✅ match | ✅ success |
 | `--labels` | flag | ✅ match | ✅ success |
 | `--loop-count` | option | ✅ match | ✅ success |
@@ -24,13 +24,13 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 | `--output` | option | ✅ match | ✅ success |
 | `--quality` | option | ✅ match | ✅ success |
 | `--recursive` | flag | ✅ match | ✅ success |
-| `--scale` | option | ✅ match | ⊘ not covered |
+| `--scale` | option | ✅ match | ✅ success |
 | `--spacing` | option | ✅ match | ✅ success |
 | `--start-frame` | option | ✅ match | ✅ success |
 | `--thumbnail-size` | option | ✅ match | ✅ success |
 | `--verbose` | flag | ✅ match | ✅ success |
-| `--window-center` | option | ✅ match | ⊘ not covered |
-| `--window-width` | option | ✅ match | ⊘ not covered |
+| `--window-center` | option | ✅ match | ✅ success |
+| `--window-width` | option | ✅ match | ✅ success |
 
 ## Output scenarios
 
@@ -38,8 +38,12 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 |---|---|---|
 | CT.dcm · auto-animate-apply-window | `animate FIXTURE --output OUTPUT --apply-window` | ✅ success |
 | CT.dcm · auto-animate-end-frame | `animate FIXTURE --output OUTPUT --end-frame 0` | ✅ success |
+| CT.dcm · auto-animate-fps | `animate FIXTURE --output OUTPUT --fps 10` | ✅ success |
 | CT.dcm · auto-animate-loop-count | `animate FIXTURE --output OUTPUT --loop-count 0` | ✅ success |
+| CT.dcm · auto-animate-scale | `animate FIXTURE --output OUTPUT --scale 0.5` | ✅ success |
 | CT.dcm · auto-animate-start-frame | `animate FIXTURE --output OUTPUT --start-frame 0` | ✅ success |
+| CT.dcm · auto-animate-window-center | `animate FIXTURE --output OUTPUT --window-center 40` | ✅ success |
+| CT.dcm · auto-animate-window-width | `animate FIXTURE --output OUTPUT --window-width 400` | ✅ success |
 | CT.dcm · auto-bulk-apply-window | `bulk FIXTURE --output OUTPUT --apply-window` | ✅ success |
 | CT.dcm · auto-bulk-embed-metadata | `bulk FIXTURE --output OUTPUT --embed-metadata` | ✅ success |
 | CT.dcm · auto-bulk-organize-by-flat | `bulk FIXTURE --output OUTPUT --organize-by flat` | ✅ success |
@@ -59,11 +63,17 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 | CT.dcm · auto-single-embed-metadata | `single FIXTURE --output OUTPUT --format png --embed-metadata` | ✅ success |
 | CT.dcm · auto-single-frame | `single FIXTURE --output OUTPUT --format png --frame 0` | ✅ success |
 | CT.dcm · auto-single-quality | `single FIXTURE --output OUTPUT --format png --quality 1` | ✅ success |
+| CT.dcm · auto-single-window-center | `single FIXTURE --output OUTPUT --format png --window-center 40` | ✅ success |
+| CT.dcm · auto-single-window-width | `single FIXTURE --output OUTPUT --format png --window-width 400` | ✅ success |
 | CT.dcm · single-png | `single FIXTURE --format png --output OUTPUT` | ✅ success |
 | syn-ct.dcm · auto-animate-apply-window | `animate FIXTURE --output OUTPUT --apply-window` | ✅ success |
 | syn-ct.dcm · auto-animate-end-frame | `animate FIXTURE --output OUTPUT --end-frame 0` | ✅ success |
+| syn-ct.dcm · auto-animate-fps | `animate FIXTURE --output OUTPUT --fps 10` | ✅ success |
 | syn-ct.dcm · auto-animate-loop-count | `animate FIXTURE --output OUTPUT --loop-count 0` | ✅ success |
+| syn-ct.dcm · auto-animate-scale | `animate FIXTURE --output OUTPUT --scale 0.5` | ✅ success |
 | syn-ct.dcm · auto-animate-start-frame | `animate FIXTURE --output OUTPUT --start-frame 0` | ✅ success |
+| syn-ct.dcm · auto-animate-window-center | `animate FIXTURE --output OUTPUT --window-center 40` | ✅ success |
+| syn-ct.dcm · auto-animate-window-width | `animate FIXTURE --output OUTPUT --window-width 400` | ✅ success |
 | syn-ct.dcm · auto-bulk-apply-window | `bulk FIXTURE --output OUTPUT --apply-window` | ✅ success |
 | syn-ct.dcm · auto-bulk-embed-metadata | `bulk FIXTURE --output OUTPUT --embed-metadata` | ✅ success |
 | syn-ct.dcm · auto-bulk-organize-by-flat | `bulk FIXTURE --output OUTPUT --organize-by flat` | ✅ success |
@@ -83,6 +93,8 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 | syn-ct.dcm · auto-single-embed-metadata | `single FIXTURE --output OUTPUT --format png --embed-metadata` | ✅ success |
 | syn-ct.dcm · auto-single-frame | `single FIXTURE --output OUTPUT --format png --frame 0` | ✅ success |
 | syn-ct.dcm · auto-single-quality | `single FIXTURE --output OUTPUT --format png --quality 1` | ✅ success |
+| syn-ct.dcm · auto-single-window-center | `single FIXTURE --output OUTPUT --format png --window-center 40` | ✅ success |
+| syn-ct.dcm · auto-single-window-width | `single FIXTURE --output OUTPUT --format png --window-width 400` | ✅ success |
 | syn-ct.dcm · single-png | `single FIXTURE --format png --output OUTPUT` | ✅ success |
 
 ---
