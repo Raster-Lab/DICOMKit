@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-convert` · _category:_ FILE_PROCESSING · _wired in Studio
 
 **Input-contract parity:** 12/12 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 2 scenario(s) — 2 success / 0 drift.
+**Output behavior:** 8 scenario(s) — 8 success / 0 drift.
 
 ## Flags
 
@@ -12,7 +12,7 @@ _CLI binary:_ `dicom-convert` · _category:_ FILE_PROCESSING · _wired in Studio
 |---|---|---|---|
 | `--apply-window` | flag | ✅ match | ⊘ not covered |
 | `--force` | flag | ✅ match | ⊘ not covered |
-| `--format` | option | ✅ match | ⊘ not covered |
+| `--format` | option | ✅ match | ✅ success |
 | `--frame` | option | ✅ match | ⊘ not covered |
 | `--output` | option | ✅ match | ✅ success |
 | `--quality` | option | ✅ match | ⊘ not covered |
@@ -27,7 +27,13 @@ _CLI binary:_ `dicom-convert` · _category:_ FILE_PROCESSING · _wired in Studio
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| CT.dcm · auto-format-jpeg | `FIXTURE --output OUTPUT --format jpeg` | ✅ success |
+| CT.dcm · auto-format-png | `FIXTURE --output OUTPUT --format png` | ✅ success |
+| CT.dcm · auto-format-tiff | `FIXTURE --output OUTPUT --format tiff` | ✅ success |
 | CT.dcm · implicit-le | `FIXTURE --output OUTPUT --transfer-syntax ImplicitVRLittleEndian` | ✅ success |
+| syn-ct.dcm · auto-format-jpeg | `FIXTURE --output OUTPUT --format jpeg` | ✅ success |
+| syn-ct.dcm · auto-format-png | `FIXTURE --output OUTPUT --format png` | ✅ success |
+| syn-ct.dcm · auto-format-tiff | `FIXTURE --output OUTPUT --format tiff` | ✅ success |
 | syn-ct.dcm · implicit-le | `FIXTURE --output OUTPUT --transfer-syntax ImplicitVRLittleEndian` | ✅ success |
 
 ---
