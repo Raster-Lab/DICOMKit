@@ -6,27 +6,36 @@ _CLI binary:_ `dicom-split` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 **Input sub-checks (Phase 3):** ⚠️ 1 default mismatch(es): `--output`.
 
-**Output behavior:** 2 scenario(s) — 2 success / 0 drift.
+**Output behavior:** 11 scenario(s) — 11 success / 0 drift.
 
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--apply-window` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--format` | option | ✅ match | ✓ | ⊘ not covered |
+| `--apply-window` | flag | ✅ match | ✓ | ✅ success |
+| `--format` | option | ✅ match | ✓ | ✅ success |
 | `--frames` | option | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ⚠️ default `.`↔`/Users/raster/Desktop/DICOM_Output/` | ✅ success |
 | `--pattern` | option | ✅ match | ✓ | ⊘ not covered |
-| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--window-center` | option | ✅ match | ✓ | ⊘ not covered |
-| `--window-width` | option | ✅ match | ✓ | ⊘ not covered |
+| `--recursive` | flag | ✅ match | ✓ | ✅ success |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
+| `--window-center` | option | ✅ match | ✓ | ✅ success |
+| `--window-width` | option | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 
 | Scenario | CLI args | Result |
 |---|---|---|
 | syn-mf.dcm · all-frames | `FIXTURE --output OUTPUT` | ✅ success |
+| syn-mf.dcm · auto-apply-window | `FIXTURE --output OUTPUT --apply-window` | ✅ success |
+| syn-mf.dcm · auto-format-dicom | `FIXTURE --output OUTPUT --format dicom` | ✅ success |
+| syn-mf.dcm · auto-format-jpeg | `FIXTURE --output OUTPUT --format jpeg` | ✅ success |
+| syn-mf.dcm · auto-format-png | `FIXTURE --output OUTPUT --format png` | ✅ success |
+| syn-mf.dcm · auto-format-tiff | `FIXTURE --output OUTPUT --format tiff` | ✅ success |
+| syn-mf.dcm · auto-recursive | `FIXTURE --output OUTPUT --recursive` | ✅ success |
+| syn-mf.dcm · auto-verbose | `FIXTURE --output OUTPUT --verbose` | ✅ success |
+| syn-mf.dcm · auto-window-center | `FIXTURE --output OUTPUT --window-center 40` | ✅ success |
+| syn-mf.dcm · auto-window-width | `FIXTURE --output OUTPUT --window-width 400` | ✅ success |
 | syn-mf.dcm · frames-subset | `FIXTURE --frames 1,3 --output OUTPUT` | ✅ success |
 
 ---

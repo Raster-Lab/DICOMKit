@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 
 **Input-contract parity:** 13/13 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 14 scenario(s) — 14 success / 0 drift.
+**Output behavior:** 20 scenario(s) — 20 success / 0 drift.
 
 ## Flags
 
@@ -14,13 +14,13 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 | `--backup` | flag | ✅ match | ✓ | ✅ success |
 | `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered |
 | `--force` | flag | ✅ match | ✓ | ✅ success |
-| `--keep` | option | ✅ match | ✓ | ⊘ not covered |
+| `--keep` | option | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
 | `--profile` | option | ✅ match | ✓ | ✅ success |
 | `--recursive` | flag | ✅ match | ✓ | ✅ success |
 | `--regenerate-uids` | flag | ✅ match | ✓ | ✅ success |
-| `--remove` | option | ✅ match | ✓ | ⊘ not covered |
-| `--replace` | option | ✅ match | ✓ | ⊘ not covered |
+| `--remove` | option | ✅ match | ✓ | ✅ success |
+| `--replace` | option | ✅ match | ✓ | ✅ success |
 | `--shift-dates` | option | ✅ match | ✓ | ⊘ not covered |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
@@ -30,15 +30,21 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 |---|---|---|
 | CT.dcm · auto-backup | `FIXTURE --output OUTPUT --profile basic --backup` | ✅ success |
 | CT.dcm · auto-force | `FIXTURE --output OUTPUT --profile basic --force` | ✅ success |
+| CT.dcm · auto-keep | `FIXTURE --output OUTPUT --profile basic --keep 0010,0010` | ✅ success |
 | CT.dcm · auto-recursive | `FIXTURE --output OUTPUT --profile basic --recursive` | ✅ success |
 | CT.dcm · auto-regenerate-uids | `FIXTURE --output OUTPUT --profile basic --regenerate-uids` | ✅ success |
+| CT.dcm · auto-remove | `FIXTURE --output OUTPUT --profile basic --remove 0010,0010` | ✅ success |
+| CT.dcm · auto-replace | `FIXTURE --output OUTPUT --profile basic --replace 0010,0010=ANONYMIZED` | ✅ success |
 | CT.dcm · auto-verbose | `FIXTURE --output OUTPUT --profile basic --verbose` | ✅ success |
 | CT.dcm · basic | `--profile basic --output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · clinical-trial | `--profile clinical-trial --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · auto-backup | `FIXTURE --output OUTPUT --profile basic --backup` | ✅ success |
 | syn-ct.dcm · auto-force | `FIXTURE --output OUTPUT --profile basic --force` | ✅ success |
+| syn-ct.dcm · auto-keep | `FIXTURE --output OUTPUT --profile basic --keep 0010,0010` | ✅ success |
 | syn-ct.dcm · auto-recursive | `FIXTURE --output OUTPUT --profile basic --recursive` | ✅ success |
 | syn-ct.dcm · auto-regenerate-uids | `FIXTURE --output OUTPUT --profile basic --regenerate-uids` | ✅ success |
+| syn-ct.dcm · auto-remove | `FIXTURE --output OUTPUT --profile basic --remove 0010,0010` | ✅ success |
+| syn-ct.dcm · auto-replace | `FIXTURE --output OUTPUT --profile basic --replace 0010,0010=ANONYMIZED` | ✅ success |
 | syn-ct.dcm · auto-verbose | `FIXTURE --output OUTPUT --profile basic --verbose` | ✅ success |
 | syn-ct.dcm · basic | `--profile basic --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · clinical-trial | `--profile clinical-trial --output OUTPUT FIXTURE` | ✅ success |

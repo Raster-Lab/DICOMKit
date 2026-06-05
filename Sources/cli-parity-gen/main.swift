@@ -334,6 +334,9 @@ private struct AutoTool {
     /// false → not committed (e.g. image-raster-hash, whose CoreGraphics raster isn't yet
     /// validated as cross-machine deterministic); still runs + verifies in the local superset.
     var portable: Bool = true
+    /// Distinguishes multiple configs of the SAME tool (e.g. convert in dicom vs image mode)
+    /// so their auto-labels don't collide. Empty for single-config tools.
+    var configLabel: String = ""
 }
 private let autoTools: [AutoTool] = [
     AutoTool(id: "dicom-diff", fixture: "ctpair", inputKeys: ["file1", "file2"]),
@@ -368,6 +371,21 @@ private let autoTools: [AutoTool] = [
     // Image outputs land local-only (image-raster-hash is portable:false); .dcm outputs commit.
     AutoTool(id: "dicom-convert", fixture: "ct", inputKeys: ["inputPath"],
              outputParam: "output", artifactKind: "auto", artifactExt: "dcm", portable: false),
+    // dicom-convert SECOND config — image mode (baseline --format png) exposes the visibleWhen-gated
+    // image flags (--frame/--quality/--window-center/--window-width/--apply-window) the dicom-mode
+    // config can't reach. Output is a PNG → raster hash (local-only).
+    AutoTool(id: "dicom-convert", fixture: "ct", inputKeys: ["inputPath"],
+             baselineParams: ["format": "png"], outputParam: "output",
+             artifactKind: "image-raster-hash", artifactExt: "png", portable: false, configLabel: "img-"),
+    // NOTE: dicom-merge file-mode is intentionally NOT auto-gen'd. The only multi-file dir
+    // fixture (`studyset`) spans 2 series, so merging it into one file picks a template frame
+    // whose SeriesNumber depends on gather/tie-break order — the CLI itself isn't deterministic
+    // here (F14). Every scenario would be the same SeriesNumber drift, which (per-scenario
+    // allowlisting) would also mask real merge regressions. Needs a single-series dir fixture.
+    // dicom-split frame mode: split a multiframe into per-frame .dcm files in a directory
+    // (dicom-multi compare). Deterministic frame content.
+    AutoTool(id: "dicom-split", fixture: "mf", inputKeys: ["inputPath"],
+             outputParam: "output", artifactKind: "dicom-multi", artifactExt: "dcm", portable: false),
 ]
 
 /// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
@@ -383,6 +401,8 @@ private func autoValues(_ def: CLIParameterDefinition) -> [String] {
         // adds coverage, never breakage. Ordered most-specific first.
         let key = (def.id + " " + def.flag).lowercased()
         if key.contains("tag") || key.contains("highlight") { return ["0008,0060"] }  // a tag in every fixture (Modality)
+        if key.contains("replace")         { return ["0010,0010=ANONYMIZED"] }   // tag=value (before keep/remove)
+        if key.contains("keep") || key.contains("remove") { return ["0010,0010"] }  // tag list
         if key.contains("window-center")  { return ["40"] }
         if key.contains("window-width")   { return ["400"] }
         if key.contains("shift") || key.contains("days") { return ["30"] }
@@ -445,7 +465,7 @@ private func autoTemplates(curated: [Template]) -> [Template] {
                     studioParams[def.id] = value
                     let scPrefix = sc.map { "\($0)-" } ?? ""
                     let suffix = def.allowedValues.count > 1 ? "-\(value)" : ""
-                    out.append(Template(tool: at.id, label: "auto-\(scPrefix)\(def.id)\(suffix)",
+                    out.append(Template(tool: at.id, label: "auto-\(at.configLabel)\(scPrefix)\(def.id)\(suffix)",
                                         cliArgs: toks, studioParams: studioParams, fixture: at.fixture,
                                         portable: at.portable,
                                         artifactName: at.outputParam != nil ? "out.\(at.artifactExt)" : nil,
