@@ -563,9 +563,9 @@ Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/
   `CommandBuilderHelpers.buildCommand` and studioParams from the same `parameterDefinitions` — one
   flag at a time, enum-expanded, curated templates win. Waves landed: (1) 4 flat stdout tools
   (diff/info/dump/validate); (2) a value heuristic for tag-options (`--tag`/`--ignore-tag`);
-  (3) **subcommand tools** (compress/study) — `autoTemplates` iterates the subcommand param's
-  allowedValues and relies on `buildCommand`'s visibleWhen gating to emit only flags valid under
-  each subcommand. **Coverage 15.1% → 18.0%.** A **generator ERROR-skip net** makes widening safe:
+  (3) **subcommand tools** (compress/study/archive) — `autoTemplates` iterates the subcommand
+  param's allowedValues and relies on `buildCommand`'s visibleWhen gating to emit only flags valid
+  under each subcommand. **Coverage 15.1% → 18.5%.** A **generator ERROR-skip net** makes widening safe:
   an auto-scenario the binary rejects (nonzero exit + no stdout — wrong fixture, or a subcommand
   needing an `--output`/`<input>` a stdout scenario doesn't set) is surfaced as a `gen-skip` warning
   and dropped, never a broken golden (103 skipped cleanly in wave 3). Next: **artifact-producer

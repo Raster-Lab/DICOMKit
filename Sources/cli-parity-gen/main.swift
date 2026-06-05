@@ -331,6 +331,9 @@ private let autoTools: [AutoTool] = [
     AutoTool(id: "dicom-validate", fixture: "ct", inputKeys: ["inputPath"]),
     AutoTool(id: "dicom-compress", fixture: "ct", inputKeys: ["input"], subcommandParam: "operation"),
     AutoTool(id: "dicom-study", fixture: "studyset", inputKeys: ["path"], subcommandParam: "operation"),
+    // Archive read subcommands (query/list/check/stats) are stdout against a populated
+    // archive fixture; write subcommands (init/import) need other inputs → auto-skip.
+    AutoTool(id: "dicom-archive", fixture: "archive", inputKeys: ["archive"], subcommandParam: "subcommand"),
 ]
 
 /// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
