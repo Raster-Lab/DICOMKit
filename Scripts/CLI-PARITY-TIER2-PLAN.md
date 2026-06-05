@@ -607,6 +607,13 @@ Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/
   **0 type mismatches** (flag/option type parity confirmed) and **1 advisory default divergence**
   (`dicom-split --output`: CLI `.` vs Studio `~/Desktop/DICOM_Output/` — a benign UX default). Surfaced
   in the matrix docs' new **Type/Default** column; output gate unchanged (226 MATCH / 9 DIFFERS).
+- **Phase 4 — coverage ratchet in CI.** `StudioParityTests` now prints a `COVERAGE=covered/accepted
+  (pct)` line (computed over the SAME golden set it ran — committed `goldens.synthetic.json` in CI) and,
+  when `PARITY_COVERAGE_MIN` is set, fails if coverage drops below the floor. The CI parity-gate runs
+  `PARITY_STRICT=1 PARITY_COVERAGE_MIN=19.8` (committed coverage is **19.8%** = 76/383; local superset is
+  29.2%), so removing a committed scenario or adding a flag without coverage is caught — coverage can
+  only ratchet **up**. Verified: passes at the floor, fails when the floor is set above current. Raise
+  the floor as new committed scenarios land.
 
 Regenerate the matrix + ledger any time with: `swift run cli-parity-docs`.
 

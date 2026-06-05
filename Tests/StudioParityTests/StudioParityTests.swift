@@ -95,6 +95,30 @@ final class StudioParityTests: XCTestCase {
                 "Parity gate — \(stale.count) allowlisted scenario(s) now MATCH; delete them from parity-allowlist.json:\n"
                 + stale.map { "  • \($0.scenarioId)" }.joined(separator: "\n"))
         }
+
+        // --- Coverage ratchet (Phase 4) ---
+        // Output-flag coverage = accepted CLI flags exercised by >=1 golden scenario, over the
+        // SAME golden set the gate ran (in CI that's the committed goldens.synthetic.json). With
+        // PARITY_COVERAGE_MIN set, fail when coverage drops below the floor — so removing a
+        // scenario or adding a flag without coverage is caught, and coverage can only ratchet up.
+        if let contracts = CLIParityEngine.loadContracts() {
+            let results = CLIParityEngine.compareAll(contracts: contracts)
+            let scenariosByTool = Dictionary(grouping: goldens, by: { $0.toolId })
+            var accepted = 0, covered = 0
+            for r in results where r.executeSupported {
+                let scen = scenariosByTool[r.toolId] ?? []
+                for row in r.rows where row.inCLI {
+                    accepted += 1
+                    if scen.contains(where: { $0.cliArgs.contains(row.flag) }) { covered += 1 }
+                }
+            }
+            let pct = accepted > 0 ? (Double(covered) / Double(accepted) * 1000).rounded() / 10 : 0
+            print("--- COVERAGE=\(covered)/\(accepted) (\(pct)%) output-flag ---")
+            if let minStr = ProcessInfo.processInfo.environment["PARITY_COVERAGE_MIN"], let floor = Double(minStr) {
+                XCTAssertGreaterThanOrEqual(pct, floor,
+                    "Output-flag coverage \(pct)% is below the PARITY_COVERAGE_MIN floor of \(floor)% — a covered scenario was removed, or a flag was added without coverage. Add a scenario, or lower the floor deliberately.")
+            }
+        }
     }
 
     /// Loads the committed gate allowlist (scenarioId → reason) from the bundle.
