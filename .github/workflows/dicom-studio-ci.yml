@@ -174,8 +174,11 @@ jobs:
     # git-ignored, so loadGoldens falls back to it). No `cli-parity-gen` run and no
     # dicom-* binaries needed. PARITY_STRICT=1 fails on any DIFFERS not in
     # parity-allowlist.json, on stale allowlist entries, and on any ERROR/UNAVAILABLE.
+    # PARITY_COVERAGE_MIN ratchets output-flag coverage (committed set): the gate fails
+    # if coverage drops below this floor, so it can only go UP. Current committed
+    # coverage is 19.8% (76/383); raise this floor as new committed scenarios land.
     - name: Run output-parity gate
-      run: PARITY_STRICT=1 swift test --filter StudioParityTests
+      run: PARITY_STRICT=1 PARITY_COVERAGE_MIN=19.8 swift test --filter StudioParityTests
 
   summary:
     name: DICOMStudio CI Summary
