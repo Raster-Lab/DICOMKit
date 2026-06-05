@@ -91,11 +91,11 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 88.9,
-      "coveredFlags" : 8,
+      "coveragePct" : 100,
+      "coveredFlags" : 9,
       "toolId" : "dicom-dump",
       "uncoveredFlags" : [
-        "--highlight"
+
       ],
       "wired" : true
     },
@@ -118,15 +118,11 @@
     },
     {
       "acceptedFlags" : 21,
-      "coveragePct" : 76.2,
-      "coveredFlags" : 16,
+      "coveragePct" : 95.2,
+      "coveredFlags" : 20,
       "toolId" : "dicom-export",
       "uncoveredFlags" : [
-        "--exif-fields",
-        "--fps",
-        "--scale",
-        "--window-center",
-        "--window-width"
+        "--exif-fields"
       ],
       "wired" : true
     },
@@ -165,11 +161,10 @@
     },
     {
       "acceptedFlags" : 12,
-      "coveragePct" : 83.3,
-      "coveredFlags" : 10,
+      "coveragePct" : 91.7,
+      "coveredFlags" : 11,
       "toolId" : "dicom-json",
       "uncoveredFlags" : [
-        "--bulk-data-url",
         "--reverse"
       ],
       "wired" : true
@@ -255,12 +250,11 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 44.4,
-      "coveredFlags" : 4,
+      "coveragePct" : 55.6,
+      "coveredFlags" : 5,
       "toolId" : "dicom-pixedit",
       "uncoveredFlags" : [
         "--apply-window",
-        "--crop",
         "--verbose",
         "--window-center",
         "--window-width"
@@ -562,11 +556,10 @@
     },
     {
       "acceptedFlags" : 10,
-      "coveragePct" : 80,
-      "coveredFlags" : 8,
+      "coveragePct" : 90,
+      "coveredFlags" : 9,
       "toolId" : "dicom-xml",
       "uncoveredFlags" : [
-        "--bulk-data-url",
         "--reverse"
       ],
       "wired" : true
@@ -574,8 +567,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 104,
-    "pct" : 27.2,
+    "covered" : 112,
+    "pct" : 29.2,
     "toolsWired" : 32
   }
 }

@@ -4,13 +4,13 @@ _CLI binary:_ `dicom-xml` · _category:_ DATA_EXPORT · _wired in Studio:_ yes �
 
 **Input-contract parity:** 10/10 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 14 scenario(s) — 14 success / 0 drift.
+**Output behavior:** 16 scenario(s) — 16 success / 0 drift.
 
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
 |---|---|---|---|
-| `--bulk-data-url` | option | ✅ match | ⊘ not covered |
+| `--bulk-data-url` | option | ✅ match | ✅ success |
 | `--filter-tag` | option | ✅ match | ✅ success |
 | `--include-empty` | flag | ✅ match | ✅ success |
 | `--inline-threshold` | option | ✅ match | ✅ success |
@@ -25,6 +25,7 @@ _CLI binary:_ `dicom-xml` · _category:_ DATA_EXPORT · _wired in Studio:_ yes �
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| CT.dcm · auto-bulk-data-url | `FIXTURE --output OUTPUT --bulk-data-url https://example.org/{uid}` | ✅ success |
 | CT.dcm · auto-filter-tag | `FIXTURE --output OUTPUT --filter-tag 0008,0060` | ✅ success |
 | CT.dcm · auto-include-empty | `FIXTURE --output OUTPUT --include-empty` | ✅ success |
 | CT.dcm · auto-inline-threshold | `FIXTURE --output OUTPUT --inline-threshold 0` | ✅ success |
@@ -32,6 +33,7 @@ _CLI binary:_ `dicom-xml` · _category:_ DATA_EXPORT · _wired in Studio:_ yes �
 | CT.dcm · auto-verbose | `FIXTURE --output OUTPUT --verbose` | ✅ success |
 | CT.dcm · file-meta | `--metadata-only --output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · file-meta-pretty | `--metadata-only --pretty --output OUTPUT FIXTURE` | ✅ success |
+| syn-ct.dcm · auto-bulk-data-url | `FIXTURE --output OUTPUT --bulk-data-url https://example.org/{uid}` | ✅ success |
 | syn-ct.dcm · auto-filter-tag | `FIXTURE --output OUTPUT --filter-tag 0008,0060` | ✅ success |
 | syn-ct.dcm · auto-include-empty | `FIXTURE --output OUTPUT --include-empty` | ✅ success |
 | syn-ct.dcm · auto-inline-threshold | `FIXTURE --output OUTPUT --inline-threshold 0` | ✅ success |

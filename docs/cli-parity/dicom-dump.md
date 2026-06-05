@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-dump` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 **Input-contract parity:** 9/9 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 15 scenario(s) — 15 success / 0 drift.
+**Output behavior:** 17 scenario(s) — 17 success / 0 drift.
 
 ## Flags
 
@@ -13,7 +13,7 @@ _CLI binary:_ `dicom-dump` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 | `--annotate` | flag | ✅ match | ✅ success |
 | `--bytes-per-line` | option | ✅ match | ✅ success |
 | `--force` | flag | ✅ match | ✅ success |
-| `--highlight` | option | ✅ match | ⊘ not covered |
+| `--highlight` | option | ✅ match | ✅ success |
 | `--length` | option | ✅ match | ✅ success |
 | `--no-color` | flag | ✅ match | ✅ success |
 | `--offset` | option | ✅ match | ✅ success |
@@ -27,6 +27,7 @@ _CLI binary:_ `dicom-dump` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 | CT.dcm · annotate | `--offset 0 --length 512 --annotate FIXTURE` | ✅ success |
 | CT.dcm · annotate-verbose | `--offset 0 --length 512 --annotate --verbose FIXTURE` | ✅ success |
 | CT.dcm · auto-force | `FIXTURE --force` | ✅ success |
+| CT.dcm · auto-highlight | `FIXTURE --highlight 0008,0060` | ✅ success |
 | CT.dcm · bpl32 | `--offset 0 --length 256 --bytes-per-line 32 FIXTURE` | ✅ success |
 | CT.dcm · head256 | `--offset 0 --length 256 FIXTURE` | ✅ success |
 | CT.dcm · head256-nocolor-bpl8 | `--offset 0 --length 256 --no-color --bytes-per-line 8 FIXTURE` | ✅ success |
@@ -34,6 +35,7 @@ _CLI binary:_ `dicom-dump` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 | syn-ct.dcm · annotate | `--offset 0 --length 512 --annotate FIXTURE` | ✅ success |
 | syn-ct.dcm · annotate-verbose | `--offset 0 --length 512 --annotate --verbose FIXTURE` | ✅ success |
 | syn-ct.dcm · auto-force | `FIXTURE --force` | ✅ success |
+| syn-ct.dcm · auto-highlight | `FIXTURE --highlight 0008,0060` | ✅ success |
 | syn-ct.dcm · bpl32 | `--offset 0 --length 256 --bytes-per-line 32 FIXTURE` | ✅ success |
 | syn-ct.dcm · head256 | `--offset 0 --length 256 FIXTURE` | ✅ success |
 | syn-ct.dcm · head256-nocolor-bpl8 | `--offset 0 --length 256 --no-color --bytes-per-line 8 FIXTURE` | ✅ success |

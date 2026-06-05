@@ -574,9 +574,13 @@ Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/
   (5) **per-scenario output-type detection** — `artifactKind: "auto"` makes the generator sniff the
   produced file's magic bytes (`DICM`@128 → dicom; PNG/JPEG/GIF/TIFF → image-raster-hash; else text)
   and stamp the golden's kind, so tools whose output type depends on a flag work. `dicom-convert`
-  landed — `--format png/jpeg/tiff` auto-route to image-raster-hash and MATCH. **Coverage 15.1% →
-  27.2%** (104/383). All output modes now covered; remaining gaps are value-bearing free-text options
-  (need per-flag value heuristics) and network/DIMSE tools (no offline golden → Wave 5). A **generator ERROR-skip net** makes widening safe:
+  landed — `--format png/jpeg/tiff` auto-route to image-raster-hash and MATCH.
+  (6) **value heuristics** — `autoValues` maps common value-bearing options by name to a representative
+  value (`--highlight`/`--*-tag` → a tag, `--window-center/width` → 40/400, `--shift-dates` → 30,
+  `--quality`/`--scale`/`--fps`/`--frame`/`--crop`/`--*url` → literals); a wrong guess just auto-skips.
+  **Coverage 15.1% → 29.2%** (112/383). All output modes covered; remaining offline gaps are genuinely
+  tool-specific free-text (patterns, AE titles) and visibleWhen-gated flags needing a second baseline
+  config. Network/DIMSE tools (no offline golden) are deferred to Wave 5, capping offline coverage. A **generator ERROR-skip net** makes widening safe:
   an auto-scenario the binary rejects (nonzero exit + no stdout — wrong fixture, or a subcommand
   needing an `--output`/`<input>` a stdout scenario doesn't set) is surfaced as a `gen-skip` warning
   and dropped, never a broken golden (103 skipped cleanly in wave 3). Next: **artifact-producer
