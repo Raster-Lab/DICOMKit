@@ -20,6 +20,15 @@
 //   swift run cli-parity-gen <outDir> <binDir> <inputDir>
 
 import Foundation
+import DICOMKit
+import DICOMCore
+import DICOMStudio
+import CryptoKit
+
+#if canImport(ImageIO)
+import ImageIO
+import CoreGraphics
+#endif
 
 // MARK: - Config
 
@@ -159,7 +168,7 @@ struct Template {
 // no-file tools). studioParams keys MUST match ToolCatalogHelpers
 // .parameterDefinitions(for:) ids; "FIXTURE" is substituted with the input path.
 // Flag coverage is one-flag-at-a-time over the deterministic stdout flags.
-let templates: [Template] = [
+let curatedTemplates: [Template] = [
     // dicom-info — format enum coverage
     Template(tool: "dicom-info", label: "text", cliArgs: ["FIXTURE"], studioParams: ["inputPath": "FIXTURE"]),
     Template(tool: "dicom-info", label: "json", cliArgs: ["--format", "json", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "format": "json"]),
@@ -197,6 +206,23 @@ let templates: [Template] = [
     Template(tool: "dicom-compress", label: "info-json", cliArgs: ["info", "--json", "FIXTURE"], studioParams: ["operation": "info", "input": "FIXTURE", "json": "true"]),
     Template(tool: "dicom-compress", label: "backends", cliArgs: ["backends"], studioParams: ["operation": "backends"], fixture: "none", portable: false),
     Template(tool: "dicom-compress", label: "backends-json", cliArgs: ["backends", "--json"], studioParams: ["operation": "backends", "json": "true"], fixture: "none", portable: false),
+    // dicom-compress compress→RLE and decompress→explicit-le. RLE is pure-Swift
+    // (deterministic, host-independent) so these are committable. Compared via
+    // decoded-pixel hash (sha256 of decoded PixelData), robust to encapsulation.
+    Template(tool: "dicom-compress", label: "compress-rle", cliArgs: ["compress", "FIXTURE", "-c", "rle", "--output", "OUTPUT"], studioParams: ["operation": "compress", "input": "FIXTURE", "codec": "rle", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "decoded-pixel-hash"),
+    Template(tool: "dicom-compress", label: "decompress-rle", cliArgs: ["decompress", "FIXTURE", "--output", "OUTPUT", "--syntax", "explicit-le"], studioParams: ["operation": "decompress", "input": "FIXTURE", "output": "OUTPUT", "syntax": "explicit-le"], fixture: "ctrle", artifactName: "out.dcm", artifactKind: "decoded-pixel-hash"),
+    // dicom-export single → PNG. The image FILE carries non-deterministic encoder
+    // metadata (EXIF timestamps), so we compare the decoded RASTER (image-raster-hash:
+    // sha256 of normalized 8-bit gray pixels). Marked local-only (portable:false) until
+    // cross-machine CoreGraphics raster determinism is validated; runs + verifies locally.
+    Template(tool: "dicom-export", label: "single-png", cliArgs: ["single", "FIXTURE", "--format", "png", "--output", "OUTPUT"], studioParams: ["operation": "single", "inputPath": "FIXTURE", "format": "png", "output": "OUTPUT"], portable: false, artifactName: "out.png", artifactKind: "image-raster-hash"),
+    // dicom-pixedit — edits pixel data (mask a region) and rewrites the DICOM.
+    // Deterministic (preserves UIDs/dates); compared via the DICOM-semantic re-dump.
+    Template(tool: "dicom-pixedit", label: "mask-region", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--mask-region", "0,0,4,4", "--fill-value", "0"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "mask-region": "0,0,4,4", "fill-value": "0"], artifactName: "out.dcm", artifactKind: "dicom"),
+    // dicom-pdf encapsulate — wraps a PDF into an Encapsulated PDF DICOM. Study/Series
+    // UIDs fixed via args; the auto SOP Instance UID is volatile → masked at compare
+    // (so this lands local-only via the determinism probe). DICOM-semantic re-dump.
+    Template(tool: "dicom-pdf", label: "encapsulate", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--patient-name", "PARITY^PDF", "--patient-id", "SYN-PDF", "--study-uid", "1.2.826.0.1.3680043.10.999.2.1", "--series-uid", "1.2.826.0.1.3680043.10.999.2.2"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "patient-name": "PARITY^PDF", "patient-id": "SYN-PDF", "study-uid": "1.2.826.0.1.3680043.10.999.2.1", "series-uid": "1.2.826.0.1.3680043.10.999.2.2"], fixture: "pdf", artifactName: "out.dcm", artifactKind: "dicom"),
 
     // dicom-script template — no fixture; canned starter scripts to stdout
     Template(tool: "dicom-script", label: "template-workflow", cliArgs: ["template", "workflow"], studioParams: ["operation": "template", "templateName": "workflow"], fixture: "none"),
@@ -221,6 +247,10 @@ let templates: [Template] = [
     Template(tool: "dicom-diff", label: "json", cliArgs: ["--format", "json", "FIXTURE", "FIXTURE2"], studioParams: ["file1": "FIXTURE", "file2": "FIXTURE2", "format": "json"], fixture: "ctpair"),
     Template(tool: "dicom-diff", label: "summary", cliArgs: ["--format", "summary", "FIXTURE", "FIXTURE2"], studioParams: ["file1": "FIXTURE", "file2": "FIXTURE2", "format": "summary"], fixture: "ctpair"),
     Template(tool: "dicom-diff", label: "ignore-private", cliArgs: ["--ignore-private", "FIXTURE", "FIXTURE2"], studioParams: ["file1": "FIXTURE", "file2": "FIXTURE2", "ignore-private": "true"], fixture: "ctpair"),
+    // Phase 0: --show-identical lists the identical tags WITH their values. Was a silent
+    // gap (untemplated) where Studio printed only the tag name; now fixed to match the CLI.
+    Template(tool: "dicom-diff", label: "show-identical", cliArgs: ["--show-identical", "FIXTURE", "FIXTURE2"], studioParams: ["file1": "FIXTURE", "file2": "FIXTURE2", "show-identical": "true"], fixture: "ctpair"),
+    Template(tool: "dicom-diff", label: "show-identical-json", cliArgs: ["--format", "json", "--show-identical", "FIXTURE", "FIXTURE2"], studioParams: ["file1": "FIXTURE", "file2": "FIXTURE2", "format": "json", "show-identical": "true"], fixture: "ctpair"),
 
     // --- dicom-study (directory input, stdout) — synthetic multi-file study sets ---
     Template(tool: "dicom-study", label: "summary", cliArgs: ["summary", "FIXTURE"], studioParams: ["operation": "summary", "path": "FIXTURE"], fixture: "studyset"),
@@ -275,6 +305,79 @@ let templates: [Template] = [
     Template(tool: "dicom-merge", label: "studyset", cliArgs: ["FIXTURE", "--output", "OUTPUT"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT"], fixture: "studyset", artifactName: "out.dcm", artifactKind: "dicom"),
 ]
 
+// MARK: - Phase 2: contract-driven auto-generation of output scenarios
+//
+// For each UNCOVERED flag of a wired tool, emit one stdout-parity scenario derived from the
+// SAME source of truth Studio uses live — ToolCatalogHelpers.parameterDefinitions +
+// CommandBuilderHelpers.buildCommand — so cliArgs and studioParams cannot skew. One flag at a
+// time, enum-expanded (NOT Cartesian). Curated templates above WIN (auto only fills the gap).
+//
+// Scoped incrementally; this first wave covers flat, deterministic STDOUT tools. Artifact
+// producers (file output) + subcommand tools widen the scope in follow-ups.
+
+/// (toolId, fixture id, positional input param ids in order).
+private struct AutoTool { let id: String; let fixture: String; let inputKeys: [String] }
+private let autoTools: [AutoTool] = [
+    AutoTool(id: "dicom-diff", fixture: "ctpair", inputKeys: ["file1", "file2"]),
+    AutoTool(id: "dicom-info", fixture: "ct", inputKeys: ["inputPath"]),
+    AutoTool(id: "dicom-dump", fixture: "ct", inputKeys: ["inputPath"]),
+    AutoTool(id: "dicom-validate", fixture: "ct", inputKeys: ["inputPath"]),
+]
+
+/// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
+/// (text/array/flagPicker without allowedValues are skipped this wave — they need a per-flag value).
+private func autoValues(_ def: CLIParameterDefinition) -> [String] {
+    if def.parameterType == .booleanToggle { return ["true"] }
+    if !def.allowedValues.isEmpty { return def.allowedValues }   // enum: cover each value
+    switch def.parameterType {
+    case .integerField, .slider: return [String(def.minValue ?? 1)]
+    case .textField, .arrayField:
+        // Heuristic values for common value-bearing options so they get exercised.
+        // A tag present in every fixture (Modality) suits --tag/--ignore-tag/--filter-tag.
+        let key = (def.id + " " + def.flag).lowercased()
+        if key.contains("tag") { return ["0008,0060"] }
+        return []   // other free-text options need a per-flag value (later wave)
+    default: return []
+    }
+}
+
+private func autoTemplates(curated: [Template]) -> [Template] {
+    var out: [Template] = []
+    for at in autoTools {
+        let defs = ToolCatalogHelpers.parameterDefinitions(for: at.id)
+        // Flags any curated scenario already exercises — skip them (auto fills only the gap).
+        let coveredFlags = Set(curated.filter { $0.tool == at.id }.flatMap { $0.cliArgs }.filter { $0.hasPrefix("-") })
+        for def in defs {
+            if def.isInternal || def.flag.isEmpty { continue }          // skip internal + positionals
+            if def.parameterType == .subcommand { continue }
+            if def.parameterType == .filePath || def.parameterType == .outputPath { continue }
+            if coveredFlags.contains(def.flag) { continue }              // already covered by a curated scenario
+            for value in autoValues(def) {
+                // Baseline = inputs as FIXTURE/FIXTURE2 sentinels + only this one flag set.
+                var pv: [CLIParameterValue] = at.inputKeys.enumerated().map {
+                    CLIParameterValue(parameterID: $1, stringValue: $0 == 0 ? "FIXTURE" : "FIXTURE2")
+                }
+                pv.append(CLIParameterValue(parameterID: def.id, stringValue: value))
+                // Derive cliArgs from buildCommand (same call Studio uses) and drop the tool name.
+                let cmd = CommandBuilderHelpers.buildCommand(toolName: at.id, parameterValues: pv, parameterDefinitions: defs)
+                var toks = cmd.split(separator: " ").map(String.init)
+                if !toks.isEmpty { toks.removeFirst() }
+                // Self-check: the flag must actually be emitted (else a visibleWhen gate wasn't opened).
+                guard toks.contains(def.flag) || toks.contains("--\(value)") else { continue }
+                var studioParams: [String: String] = [:]
+                for (i, key) in at.inputKeys.enumerated() { studioParams[key] = i == 0 ? "FIXTURE" : "FIXTURE2" }
+                studioParams[def.id] = value
+                let suffix = def.allowedValues.count > 1 ? "-\(value)" : ""
+                out.append(Template(tool: at.id, label: "auto-\(def.id)\(suffix)",
+                                    cliArgs: toks, studioParams: studioParams, fixture: at.fixture))
+            }
+        }
+    }
+    return out
+}
+
+let templates: [Template] = curatedTemplates + autoTemplates(curated: curatedTemplates)
+
 // MARK: - Discover dicom-* binaries
 
 func discoverBinaries() -> [String] {
@@ -304,6 +407,83 @@ let synCT  = writeSynthetic("syn-ct.dcm",  SyntheticFixtures.singleFrameCT())
 let synCT2 = writeSynthetic("syn-ct2.dcm", SyntheticFixtures.singleFrameCT2())
 let synMF  = writeSynthetic("syn-mf.dcm",  SyntheticFixtures.multiFrameCT())
 errln("→ wrote 3 synthetic fixtures to \(syntheticDir.path)")
+
+// Minimal deterministic PDF — the input document for the dicom-pdf encapsulate
+// scenario. PHI-free, fixed bytes → committable; logical fixture id `pdf`.
+let synDoc = writeSynthetic("syn-doc.pdf", Data("""
+%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 100] >>
+endobj
+trailer
+<< /Root 1 0 R >>
+%%EOF
+""".utf8))
+
+// RLE-compressed copy of syn-ct, the input for the dicom-compress `decompress`
+// scenario. Built by the real dicom-compress binary so it round-trips the same
+// codec path; pure-Swift RLE is deterministic → committable (phiSafe). Skipped
+// if dicom-compress isn't built (the committed fixture then stays as-is).
+let synCtRLE: ConcreteFixture? = {
+    let compressBin = binDir.appendingPathComponent("dicom-compress")
+    guard FileManager.default.isExecutableFile(atPath: compressBin.path) else {
+        errln("→ dicom-compress not built; skipping syn-ct-rle.dcm fixture")
+        return nil
+    }
+    let dest = syntheticDir.appendingPathComponent("syn-ct-rle.dcm")
+    try? FileManager.default.removeItem(at: dest)
+    _ = run(compressBin, ["compress", synCT.path, "-c", "rle", "--output", dest.path])
+    guard FileManager.default.fileExists(atPath: dest.path) else {
+        errln("→ failed to build syn-ct-rle.dcm"); return nil
+    }
+    errln("→ wrote synthetic RLE fixture: syn-ct-rle.dcm")
+    return ConcreteFixture(bundledName: "syn-ct-rle.dcm", path: dest.path, phiSafe: true)
+}()
+
+/// SHA-256 (hex) of a produced DICOM file's fully-decoded PixelData (all frames).
+/// Mirrors `CLIParityEngine.decodedPixelHash` byte-for-byte so the committed golden
+/// hash matches what the Studio reimplementation computes at test time.
+func decodedPixelHash(ofFileAt path: String) -> String? {
+    guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+          let file = try? DICOMFile.read(from: data),
+          let px = file.pixelData() else { return nil }
+    return SHA256.hash(data: px.data).map { String(format: "%02x", $0) }.joined()
+}
+
+/// SHA-256 (hex) of a produced raster image's NORMALIZED pixels (8-bit device-gray).
+/// Mirrors `CLIParityEngine.imageRasterHash` byte-for-byte so the committed golden
+/// hash matches what the Studio reimplementation computes at test time.
+func imageRasterHash(ofFileAt path: String) -> String? {
+    #if canImport(ImageIO)
+    guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil),
+          let image = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
+    let width = image.width, height = image.height
+    guard width > 0, height > 0 else { return nil }
+    var raster = Data(count: width * height)
+    let ok: Bool = raster.withUnsafeMutableBytes { buf in
+        guard let base = buf.baseAddress,
+              let ctx = CGContext(data: base, width: width, height: height,
+                                  bitsPerComponent: 8, bytesPerRow: width,
+                                  space: CGColorSpaceCreateDeviceGray(),
+                                  bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+        return true
+    }
+    guard ok else { return nil }
+    var hasher = SHA256()
+    hasher.update(data: Data("\(width)x\(height):".utf8))
+    hasher.update(data: raster)
+    return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+    #else
+    return nil
+    #endif
+}
 
 // Synthetic directory fixtures (multi-file studies) for dicom-study.
 func writeSyntheticSet(_ dirName: String, _ files: [(name: String, data: Data)]) -> ConcreteFixture {
@@ -363,6 +543,8 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
         if let r = realCT { runs.append((r, nil)) }   // augment locally; not committed
         return runs
     case "mf":       return [(synMF, nil)]
+    case "ctrle":    return synCtRLE.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "pdf":      return [(synDoc, nil)]
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
     case "studypair":return [(synStudy, synStudy2)]
@@ -451,6 +633,16 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
     // Stderr often echoes the (random) temp output path ("Output written to: …"),
     // which would make the stored golden non-deterministic. Canonicalize it.
     let cleanErr = r.err.replacingOccurrences(of: tmp.path, with: "<tmp>")
+    if t.artifactKind == "decoded-pixel-hash" {
+        // Compress/decompress: the golden is sha256(decoded PixelData) so the
+        // comparison is on pixel content, not encapsulated bytes (plan §4b).
+        return (decodedPixelHash(ofFileAt: outPath) ?? "<pixel-decode-failed>", cleanErr, r.code)
+    }
+    if t.artifactKind == "image-raster-hash" {
+        // Image producers (dicom-export): the golden is sha256(decoded raster) so the
+        // comparison is on pixel content, not the metadata-bearing image file (plan §4b).
+        return (imageRasterHash(ofFileAt: outPath) ?? "<image-decode-failed>", cleanErr, r.code)
+    }
     if t.artifactKind == "dicom" {
         // Re-dump the produced DICOM via dicom-info (shared MetadataPresenter) so the
         // comparison is tag-by-tag, not raw bytes. Volatile tags are masked at compare time.

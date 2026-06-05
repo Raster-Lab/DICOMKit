@@ -10,6 +10,10 @@ import Observation
 import DICOMKit
 import DICOMCore
 
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
+
 /// ViewModel for the Security & Privacy Center, managing state for all four sections:
 /// TLS configuration, anonymization tool, audit log viewer, and access control.
 ///
@@ -525,18 +529,25 @@ public final class SecurityViewModel {
                 var dicomFile = try DICOMFile.read(from: data, force: force)
                 var changed: [String] = []
 
-                // Apply profile removals
+                // Apply profile removals. Mirrors dicom-anon's per-tag defaults
+                // (Sources/dicom-anon/Anonymizer.swift `defaultAction`): PatientName is
+                // replaced with "ANONYMOUS" and PatientID with a SHA-256 pseudonym;
+                // every other profile tag is removed.
                 for tagStr in profileTags {
                     if keepTagSet.contains(tagStr) { continue }
-                    if let tag = Self.parseTag(tagStr) {
-                        if dicomFile.dataSet[tag] != nil {
-                            dicomFile = DICOMFile(
-                                fileMetaInformation: dicomFile.fileMetaInformation,
-                                dataSet: { var ds = dicomFile.dataSet; ds[tag] = nil; return ds }()
-                            )
-                            changed.append(tagStr)
-                        }
+                    guard let tag = Self.parseTag(tagStr),
+                          let element = dicomFile.dataSet[tag] else { continue }
+                    var ds = dicomFile.dataSet
+                    if tag == .patientName {
+                        ds.setString("ANONYMOUS", for: tag, vr: element.vr)
+                    } else if tag == .patientID {
+                        let original = element.stringValue ?? "\(element.tag)"
+                        ds.setString(Self.pseudonymize(original), for: tag, vr: element.vr)
+                    } else {
+                        ds[tag] = nil
                     }
+                    dicomFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: ds)
+                    changed.append(tagStr)
                 }
 
                 // Apply custom removals
@@ -597,7 +608,10 @@ public final class SecurityViewModel {
                         try? FileManager.default.copyItem(at: fileURL, to: backupURL)
                     }
                     let outData = try dicomFile.write()
-                    try outData.write(to: destURL)
+                    // Sandbox/TCC-resilient write: the earlier resolveWritableOutput uses POSIX
+                    // checks that miss TCC, so retry at write time and fall back to ~/Downloads.
+                    let wr = try OutputAccess.write(outData, toPath: destURL.path, scopedURL: nil, subfolder: "Anonymized")
+                    if let note = wr.note { warnings.append(note) }
                 }
 
                 successful += 1
@@ -706,6 +720,22 @@ public final class SecurityViewModel {
         let group   = UInt16((value >> 16) & 0xFFFF)
         let element = UInt16(value & 0xFFFF)
         return Tag(group: group, element: element)
+    }
+
+    /// Computes the same PatientID pseudonym dicom-anon uses: the first 32
+    /// uppercase hex characters (128 bits) of the SHA-256 of the original value.
+    /// Mirrors `Anonymizer.hashValue` so the in-process reimplementation matches
+    /// the CLI byte-for-byte. (See Sources/dicom-anon/Anonymizer.swift.)
+    private static func pseudonymize(_ value: String) -> String {
+        #if canImport(CryptoKit)
+        let hash = SHA256.hash(data: Data(value.utf8))
+        let fullHex = hash.map { String(format: "%02x", $0) }.joined().uppercased()
+        return String(fullHex.prefix(32))
+        #else
+        let h1 = UInt64(bitPattern: Int64(value.hashValue))
+        let h2 = UInt64(bitPattern: Int64(String(value.reversed()).hashValue))
+        return String(format: "%016llX%016llX", h1, h2)
+        #endif
     }
 
     private static func shiftDICOMDate(_ dateStr: String, byDays days: Int) -> String? {

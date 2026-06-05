@@ -4,12 +4,17 @@ import Foundation
 ///
 /// Decodes Run-Length Encoded pixel data as specified in DICOM PS3.5 Annex G.
 /// Reference: DICOM PS3.5 Annex G - RLE Transfer Syntax
-public struct RLECodec: ImageCodec, Sendable {
+public struct RLECodec: ImageCodec, ImageEncoder, Sendable {
     /// Supported RLE transfer syntax
     public static let supportedTransferSyntaxes: [String] = [
         TransferSyntax.rleLossless.uid  // 1.2.840.10008.1.2.5
     ]
-    
+
+    /// Supported RLE transfer syntax for encoding (RLE Lossless only)
+    public static let supportedEncodingTransferSyntaxes: [String] = [
+        TransferSyntax.rleLossless.uid  // 1.2.840.10008.1.2.5
+    ]
+
     public init() {}
     
     /// Decodes an RLE-compressed frame
@@ -74,7 +79,134 @@ public struct RLECodec: ImageCodec, Sendable {
         // Interleave segments to form output
         return interleaveSegments(decodedSegments, descriptor: descriptor)
     }
-    
+
+    // MARK: - Encoding
+
+    /// Whether this encoder can produce RLE Lossless for the given pixel layout.
+    ///
+    /// RLE Lossless allows up to 15 segments (`bytesPerSample * samplesPerPixel`)
+    /// and 8- or 16-bit samples. RLE is always lossless, so the quality setting
+    /// is irrelevant. Reference: DICOM PS3.5 Annex G.
+    public func canEncode(with configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) -> Bool {
+        guard descriptor.bitsAllocated == 8 || descriptor.bitsAllocated == 16 else { return false }
+        let segments = descriptor.bytesPerSample * descriptor.samplesPerPixel
+        return segments >= 1 && segments <= 15
+    }
+
+    /// Encodes a single frame to RLE Lossless.
+    ///
+    /// The frame is split into one byte-plane segment per `(sample, byte)` — the
+    /// exact inverse of `interleaveSegments` so encode∘decode is the identity —
+    /// each segment is PackBits-encoded and padded to an even length, then a
+    /// 64-byte RLE header (segment count + offsets, little-endian) is prepended.
+    /// Reference: DICOM PS3.5 Annex G.
+    /// - Throws: `DICOMError` if the layout needs more than 15 segments.
+    public func encodeFrame(_ frameData: Data, descriptor: PixelDataDescriptor, frameIndex: Int, configuration: CompressionConfiguration) throws -> Data {
+        let numberOfSegments = descriptor.bytesPerSample * descriptor.samplesPerPixel
+        guard numberOfSegments >= 1 && numberOfSegments <= 15 else {
+            throw DICOMError.parsingFailed("RLE cannot encode \(numberOfSegments) segments (must be 1...15)")
+        }
+
+        // De-interleave into byte planes, PackBits-encode, pad each to even length
+        // so the next segment starts on an even byte boundary (PS3.5 G.4).
+        let planes = deinterleaveSegments(frameData, descriptor: descriptor, numberOfSegments: numberOfSegments)
+        var encodedSegments: [Data] = []
+        encodedSegments.reserveCapacity(numberOfSegments)
+        for plane in planes {
+            var encoded = encodeRLESegment(plane)
+            if encoded.count % 2 != 0 { encoded.append(0) }
+            encodedSegments.append(encoded)
+        }
+
+        // 64-byte header: first UInt32 = segment count; next fifteen UInt32 = the
+        // byte offset of each segment from the start of the frame (header itself).
+        var frame = Data(count: 64)
+        Self.writeUInt32LE(UInt32(numberOfSegments), into: &frame, at: 0)
+        var offset = 64
+        for (i, seg) in encodedSegments.enumerated() {
+            Self.writeUInt32LE(UInt32(offset), into: &frame, at: 4 + i * 4)
+            offset += seg.count
+        }
+        for seg in encodedSegments { frame.append(seg) }
+        return frame
+    }
+
+    /// Splits a frame into one byte-plane per segment — the exact inverse of
+    /// `interleaveSegments`. Segment order is most-significant byte first within
+    /// each sample, matching the decoder's `segmentIndex` mapping.
+    private func deinterleaveSegments(_ frameData: Data, descriptor: PixelDataDescriptor, numberOfSegments: Int) -> [[UInt8]] {
+        let src = [UInt8](frameData)
+        let bytesPerSample = descriptor.bytesPerSample
+        let samplesPerPixel = descriptor.samplesPerPixel
+        let pixelsPerFrame = descriptor.pixelsPerFrame
+        let byPlane = descriptor.planarConfiguration != 0 && samplesPerPixel > 1
+        let planeSize = pixelsPerFrame * bytesPerSample
+
+        var segments = [[UInt8]](repeating: [UInt8](repeating: 0, count: pixelsPerFrame), count: numberOfSegments)
+
+        for pixelIndex in 0..<pixelsPerFrame {
+            for sampleIndex in 0..<samplesPerPixel {
+                for byteIndex in 0..<bytesPerSample {
+                    // High-order bytes occupy the lower segment indices.
+                    let segmentIndex = sampleIndex * bytesPerSample + (bytesPerSample - 1 - byteIndex)
+                    let inputOffset: Int
+                    if byPlane {
+                        inputOffset = sampleIndex * planeSize + pixelIndex * bytesPerSample + byteIndex
+                    } else {
+                        inputOffset = (pixelIndex * samplesPerPixel + sampleIndex) * bytesPerSample + byteIndex
+                    }
+                    segments[segmentIndex][pixelIndex] = inputOffset < src.count ? src[inputOffset] : 0
+                }
+            }
+        }
+        return segments
+    }
+
+    /// PackBits-encodes one segment — the inverse of `decodeRLESegment`.
+    ///
+    /// Emits replicate packets (`control = -(runLength - 1)`, then the byte) for
+    /// runs of ≥2 identical bytes and literal packets (`control = length - 1`,
+    /// then the bytes) otherwise, each capped at 128 bytes. Reference: PS3.5 G.3.
+    private func encodeRLESegment(_ src: [UInt8]) -> Data {
+        var out = [UInt8]()
+        out.reserveCapacity(src.count / 2 + 16)
+        let n = src.count
+        var i = 0
+        while i < n {
+            // Measure a replicate run starting at i (capped at 128).
+            var runLength = 1
+            while i + runLength < n && src[i + runLength] == src[i] && runLength < 128 {
+                runLength += 1
+            }
+            if runLength >= 2 {
+                out.append(UInt8(bitPattern: Int8(-(runLength - 1))))
+                out.append(src[i])
+                i += runLength
+            } else {
+                // Literal run: copy until a ≥2 run begins, the end, or 128 bytes.
+                let literalStart = i
+                var literalLength = 0
+                while i < n && literalLength < 128 {
+                    if i + 1 < n && src[i] == src[i + 1] { break }
+                    i += 1
+                    literalLength += 1
+                }
+                out.append(UInt8(bitPattern: Int8(literalLength - 1)))
+                out.append(contentsOf: src[literalStart..<(literalStart + literalLength)])
+            }
+        }
+        return Data(out)
+    }
+
+    /// Writes a little-endian UInt32 into `data` at `offset`.
+    private static func writeUInt32LE(_ value: UInt32, into data: inout Data, at offset: Int) {
+        let base = data.startIndex + offset
+        data[base]     = UInt8(value & 0xFF)
+        data[base + 1] = UInt8((value >> 8) & 0xFF)
+        data[base + 2] = UInt8((value >> 16) & 0xFF)
+        data[base + 3] = UInt8((value >> 24) & 0xFF)
+    }
+
     /// Decodes a single RLE segment
     ///
     /// RLE encoding uses a control byte followed by data:

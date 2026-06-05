@@ -132,15 +132,24 @@ public final class ValidationViewModel {
                 )
                 service.addHistory(record)
 
-                // Optionally write to file (use scoped URL so the sandbox allows writing)
+                // Optionally write to file — sandbox/TCC-resilient: prefer the picker's
+                // scoped URL; else try the typed path; on failure (e.g. macOS TCC blocks
+                // ~/Desktop) fall back to ~/Downloads/DICOMStudio and surface a note so the
+                // write never silently fails (the old `try?` swallowed TCC denials).
+                var writeNote: String? = nil
                 if !outputPath.isEmpty {
-                    let url = outputScopedURL ?? URL(fileURLWithPath: outputPath)
-                    try? output.write(to: url, atomically: true, encoding: .utf8)
+                    do {
+                        writeNote = try OutputAccess.writeString(output, toPath: outputPath,
+                                                                 scopedURL: outputScopedURL,
+                                                                 subfolder: "Validate").note
+                    } catch {
+                        writeNote = "⚠ Could not write report to \(outputPath): \(error.localizedDescription)"
+                    }
                 }
 
                 await MainActor.run {
                     self.lastResults = results
-                    self.validationOutput = output
+                    self.validationOutput = writeNote.map { output + "\n" + $0 } ?? output
                     self.runHistory.insert(record, at: 0)
                     self.isRunning = false
                 }
