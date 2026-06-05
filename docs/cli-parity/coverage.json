@@ -3,21 +3,16 @@
   "tools" : [
     {
       "acceptedFlags" : 13,
-      "coveragePct" : 15.4,
-      "coveredFlags" : 2,
+      "coveragePct" : 53.8,
+      "coveredFlags" : 7,
       "toolId" : "dicom-anon",
       "uncoveredFlags" : [
         "--audit-log",
-        "--backup",
         "--dry-run",
-        "--force",
         "--keep",
-        "--recursive",
-        "--regenerate-uids",
         "--remove",
         "--replace",
-        "--shift-dates",
-        "--verbose"
+        "--shift-dates"
       ],
       "wired" : true
     },
@@ -607,8 +602,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 71,
-    "pct" : 18.5,
+    "covered" : 76,
+    "pct" : 19.8,
     "toolsWired" : 32
   }
 }

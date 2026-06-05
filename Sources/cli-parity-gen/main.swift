@@ -323,6 +323,14 @@ let curatedTemplates: [Template] = [
 private struct AutoTool {
     let id: String; let fixture: String; let inputKeys: [String]
     var subcommandParam: String? = nil
+    /// Always-set params (e.g. a required `--profile`) so a one-flag-at-a-time scenario
+    /// runs on top of a working baseline instead of being rejected for a missing arg.
+    var baselineParams: [String: String] = [:]
+    /// Set → artifact producer: the scenario sets this output param to OUTPUT and the
+    /// produced FILE is compared (not stdout), via `artifactKind`.
+    var outputParam: String? = nil
+    var artifactKind: String = "dicom"
+    var artifactExt: String = "dcm"
 }
 private let autoTools: [AutoTool] = [
     AutoTool(id: "dicom-diff", fixture: "ctpair", inputKeys: ["file1", "file2"]),
@@ -334,6 +342,12 @@ private let autoTools: [AutoTool] = [
     // Archive read subcommands (query/list/check/stats) are stdout against a populated
     // archive fixture; write subcommands (init/import) need other inputs → auto-skip.
     AutoTool(id: "dicom-archive", fixture: "archive", inputKeys: ["archive"], subcommandParam: "subcommand"),
+    // --- Artifact producers (compare the produced FILE, not stdout) ---
+    // dicom-anon: one flag at a time on top of a baseline --profile basic; output .dcm
+    // compared via dicom re-dump+mask (so volatile UIDs/group-length don't false-positive).
+    AutoTool(id: "dicom-anon", fixture: "ct", inputKeys: ["inputPath"],
+             baselineParams: ["profile": "basic"], outputParam: "output",
+             artifactKind: "dicom", artifactExt: "dcm"),
 ]
 
 /// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
@@ -372,13 +386,20 @@ private func autoTemplates(curated: [Template]) -> [Template] {
                 if def.isInternal || def.flag.isEmpty { continue }       // skip internal + positionals
                 if def.parameterType == .subcommand || def.id == at.subcommandParam { continue }
                 if def.parameterType == .filePath || def.parameterType == .outputPath { continue }
+                if def.id == at.outputParam || at.baselineParams[def.id] != nil { continue }  // baseline/output, not varied
+                // Artifact producers: skip "preview/no-write" flags (e.g. --dry-run). They
+                // suppress the file write, so comparing a produced file is meaningless — they
+                // belong to a future stdout-routed wave, not the artifact comparator.
+                if at.outputParam != nil && (def.id.lowercased().contains("dry") || def.flag.contains("dry-run")) { continue }
                 if coveredFlags.contains(def.flag) { continue }          // already covered by a curated scenario
                 for value in autoValues(def) {
-                    // Baseline = inputs as FIXTURE/FIXTURE2 + the subcommand (if any) + only this one flag.
+                    // pv = inputs (FIXTURE) + subcommand + baseline params + OUTPUT (artifact) + the one varied flag.
                     var pv: [CLIParameterValue] = at.inputKeys.enumerated().map {
                         CLIParameterValue(parameterID: $1, stringValue: $0 == 0 ? "FIXTURE" : "FIXTURE2")
                     }
                     if let scParam = at.subcommandParam, let sc { pv.append(CLIParameterValue(parameterID: scParam, stringValue: sc)) }
+                    for (k, v) in at.baselineParams { pv.append(CLIParameterValue(parameterID: k, stringValue: v)) }
+                    if let op = at.outputParam { pv.append(CLIParameterValue(parameterID: op, stringValue: "OUTPUT")) }
                     pv.append(CLIParameterValue(parameterID: def.id, stringValue: value))
                     // Derive cliArgs from buildCommand (same call Studio uses) and drop the tool name.
                     let cmd = CommandBuilderHelpers.buildCommand(toolName: at.id, parameterValues: pv, parameterDefinitions: defs)
@@ -389,11 +410,15 @@ private func autoTemplates(curated: [Template]) -> [Template] {
                     var studioParams: [String: String] = [:]
                     for (i, key) in at.inputKeys.enumerated() { studioParams[key] = i == 0 ? "FIXTURE" : "FIXTURE2" }
                     if let scParam = at.subcommandParam, let sc { studioParams[scParam] = sc }
+                    for (k, v) in at.baselineParams { studioParams[k] = v }
+                    if let op = at.outputParam { studioParams[op] = "OUTPUT" }
                     studioParams[def.id] = value
                     let scPrefix = sc.map { "\($0)-" } ?? ""
                     let suffix = def.allowedValues.count > 1 ? "-\(value)" : ""
                     out.append(Template(tool: at.id, label: "auto-\(scPrefix)\(def.id)\(suffix)",
-                                        cliArgs: toks, studioParams: studioParams, fixture: at.fixture))
+                                        cliArgs: toks, studioParams: studioParams, fixture: at.fixture,
+                                        artifactName: at.outputParam != nil ? "out.\(at.artifactExt)" : nil,
+                                        artifactKind: at.artifactKind))
                 }
             }
         }
