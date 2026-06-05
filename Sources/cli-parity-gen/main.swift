@@ -348,6 +348,12 @@ private let autoTools: [AutoTool] = [
     AutoTool(id: "dicom-anon", fixture: "ct", inputKeys: ["inputPath"],
              baselineParams: ["profile": "basic"], outputParam: "output",
              artifactKind: "dicom", artifactExt: "dcm"),
+    AutoTool(id: "dicom-pixedit", fixture: "ct", inputKeys: ["inputPath"],
+             outputParam: "output", artifactKind: "dicom", artifactExt: "dcm"),
+    AutoTool(id: "dicom-json", fixture: "ct", inputKeys: ["inputPath"],
+             outputParam: "output", artifactKind: "text", artifactExt: "json"),
+    AutoTool(id: "dicom-xml", fixture: "ct", inputKeys: ["input"],
+             outputParam: "output", artifactKind: "text", artifactExt: "xml"),
 ]
 
 /// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
