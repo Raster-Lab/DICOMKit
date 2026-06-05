@@ -8,20 +8,20 @@ _CLI binary:_ `dicom-convert` · _category:_ FILE_PROCESSING · _wired in Studio
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--apply-window` | flag | ✅ match | ⊘ not covered |
-| `--force` | flag | ✅ match | ⊘ not covered |
-| `--format` | option | ✅ match | ✅ success |
-| `--frame` | option | ✅ match | ⊘ not covered |
-| `--output` | option | ✅ match | ✅ success |
-| `--quality` | option | ✅ match | ⊘ not covered |
-| `--recursive` | flag | ✅ match | ⊘ not covered |
-| `--strip-private` | flag | ✅ match | ⊘ not covered |
-| `--transfer-syntax` | option | ✅ match | ✅ success |
-| `--validate` | flag | ✅ match | ⊘ not covered |
-| `--window-center` | option | ✅ match | ⊘ not covered |
-| `--window-width` | option | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--apply-window` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--force` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--frame` | option | ✅ match | ✓ | ⊘ not covered |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--quality` | option | ✅ match | ✓ | ⊘ not covered |
+| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--strip-private` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--transfer-syntax` | option | ✅ match | ✓ | ✅ success |
+| `--validate` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--window-center` | option | ✅ match | ✓ | ⊘ not covered |
+| `--window-width` | option | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

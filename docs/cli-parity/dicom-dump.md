@@ -8,17 +8,17 @@ _CLI binary:_ `dicom-dump` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--annotate` | flag | ✅ match | ✅ success |
-| `--bytes-per-line` | option | ✅ match | ✅ success |
-| `--force` | flag | ✅ match | ✅ success |
-| `--highlight` | option | ✅ match | ✅ success |
-| `--length` | option | ✅ match | ✅ success |
-| `--no-color` | flag | ✅ match | ✅ success |
-| `--offset` | option | ✅ match | ✅ success |
-| `--tag` | option | ✅ match | ✅ success |
-| `--verbose` | flag | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--annotate` | flag | ✅ match | ✓ | ✅ success |
+| `--bytes-per-line` | option | ✅ match | ✓ | ✅ success |
+| `--force` | flag | ✅ match | ✓ | ✅ success |
+| `--highlight` | option | ✅ match | ✓ | ✅ success |
+| `--length` | option | ✅ match | ✓ | ✅ success |
+| `--no-color` | flag | ✅ match | ✓ | ✅ success |
+| `--offset` | option | ✅ match | ✓ | ✅ success |
+| `--tag` | option | ✅ match | ✓ | ✅ success |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 

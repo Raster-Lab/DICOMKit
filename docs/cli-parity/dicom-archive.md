@@ -8,25 +8,25 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--archive` | option | ✅ match | ✅ success |
-| `--flatten` | flag | ✅ match | ⊘ not covered |
-| `--force` | flag | ✅ match | ⊘ not covered |
-| `--format` | option | ✅ match | ✅ success |
-| `--modality` | option | ✅ match | ✅ success |
-| `--output` | option | ✅ match | ⊘ not covered |
-| `--path` | option | ✅ match | ⊘ not covered |
-| `--patient-id` | option | ✅ match | ⊘ not covered |
-| `--patient-name` | option | ✅ match | ⊘ not covered |
-| `--recursive` | flag | ✅ match | ⊘ not covered |
-| `--series-uid` | option | ✅ match | ⊘ not covered |
-| `--show-instances` | flag | ✅ match | ✅ success |
-| `--skip-duplicates` | flag | ✅ match | ⊘ not covered |
-| `--study-date` | option | ✅ match | ⊘ not covered |
-| `--study-uid` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ✅ success |
-| `--verify-files` | flag | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--archive` | option | ✅ match | ✓ | ✅ success |
+| `--flatten` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--force` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--modality` | option | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ✓ | ⊘ not covered |
+| `--path` | option | ✅ match | ✓ | ⊘ not covered |
+| `--patient-id` | option | ✅ match | ✓ | ⊘ not covered |
+| `--patient-name` | option | ✅ match | ✓ | ⊘ not covered |
+| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--series-uid` | option | ✅ match | ✓ | ⊘ not covered |
+| `--show-instances` | flag | ✅ match | ✓ | ✅ success |
+| `--skip-duplicates` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--study-date` | option | ✅ match | ✓ | ⊘ not covered |
+| `--study-uid` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
+| `--verify-files` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 

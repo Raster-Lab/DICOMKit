@@ -8,17 +8,17 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--copy` | flag | ✅ match | ⊘ not covered |
-| `--detailed` | flag | ✅ match | ✅ success |
-| `--expected-instances` | option | ✅ match | ❌ DRIFT |
-| `--expected-series` | option | ✅ match | ❌ DRIFT |
-| `--format` | option | ✅ match | ❌ DRIFT |
-| `--output` | option | ✅ match | ⊘ not covered |
-| `--pattern` | option | ✅ match | ⊘ not covered |
-| `--report` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ❌ DRIFT |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--copy` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--detailed` | flag | ✅ match | ✓ | ✅ success |
+| `--expected-instances` | option | ✅ match | ✓ | ❌ DRIFT |
+| `--expected-series` | option | ✅ match | ✓ | ❌ DRIFT |
+| `--format` | option | ✅ match | ✓ | ❌ DRIFT |
+| `--output` | option | ✅ match | ✓ | ⊘ not covered |
+| `--pattern` | option | ✅ match | ✓ | ⊘ not covered |
+| `--report` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ❌ DRIFT |
 
 ## Output scenarios
 

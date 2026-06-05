@@ -30,6 +30,15 @@ private func inputCell(_ s: FlagParityStatus) -> String {
     }
 }
 
+/// Phase 3: the type/default sub-checks for a flag present on both sides ("—" otherwise).
+private func subCheckCell(_ row: ParityFlagRow) -> String {
+    guard row.status == .match else { return "—" }
+    var parts: [String] = []
+    if row.typeCheck == .mismatch { parts.append("⚠️ type") }
+    if row.defaultCheck == .mismatch { parts.append("⚠️ default `\(row.cliDefault)`↔`\(row.studioDefault)`") }
+    return parts.isEmpty ? "✓" : parts.joined(separator: " · ")
+}
+
 /// Output status for one flag, aggregated over the scenarios that exercise it.
 private enum FlagOutput {
     case notWired, notCovered, success, drift, flaky(String)
@@ -88,6 +97,17 @@ private func renderTool(_ r: ToolParityResult,
     if r.extraCount > 0 { md += " · \(r.extraCount) extra in UI (drift)" }
     md += " · status **\(r.status.rawValue)** (\(String(format: "%.0f", r.parityPercent))%)\n\n"
 
+    // Phase 3 input sub-checks: flags present on both sides that disagree on shape.
+    let typeMis = r.rows.filter { $0.typeCheck == .mismatch }
+    let defMis  = r.rows.filter { $0.defaultCheck == .mismatch }
+    if !typeMis.isEmpty || !defMis.isEmpty {
+        md += "**Input sub-checks (Phase 3):** "
+        var s: [String] = []
+        if !typeMis.isEmpty { s.append("⚠️ \(typeMis.count) type mismatch(es): " + typeMis.map { "`\($0.flag)`" }.joined(separator: ", ")) }
+        if !defMis.isEmpty  { s.append("⚠️ \(defMis.count) default mismatch(es): " + defMis.map { "`\($0.flag)`" }.joined(separator: ", ")) }
+        md += s.joined(separator: " · ") + ".\n\n"
+    }
+
     let runScenarios = scenarios.count
     let succ = scenarios.filter { status[$0.scenarioId] == .match }.count
     let drift = scenarios.filter { status[$0.scenarioId] == .differs }.count
@@ -101,13 +121,13 @@ private func renderTool(_ r: ToolParityResult,
 
     // Per-flag matrix
     md += "## Flags\n\n"
-    md += "| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |\n"
-    md += "|---|---|---|---|\n"
+    md += "| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |\n"
+    md += "|---|---|---|---|---|\n"
     for row in r.rows.sorted(by: { $0.flag < $1.flag }) {
         let out = flagOutput(flag: row.flag, wired: r.executeSupported, scenarios: scenarios, status: status)
-        md += "| `\(row.flag)` | \(row.kind) | \(inputCell(row.status)) | \(out.cell) |\n"
+        md += "| `\(row.flag)` | \(row.kind) | \(inputCell(row.status)) | \(subCheckCell(row)) | \(out.cell) |\n"
     }
-    if r.rows.isEmpty { md += "| _(no flag-bearing options)_ | | | |\n" }
+    if r.rows.isEmpty { md += "| _(no flag-bearing options)_ | | | | |\n" }
 
     // Per-scenario output detail (the concrete success/drift evidence)
     if !scenarios.isEmpty {

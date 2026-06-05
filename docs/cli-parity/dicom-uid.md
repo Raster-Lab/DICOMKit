@@ -8,21 +8,21 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--check-registry` | flag | ✅ match | ✅ success |
-| `--count` | option | ✅ match | ⊘ not covered |
-| `--dry-run` | flag | ✅ match | ⊘ not covered |
-| `--export-map` | option | ✅ match | ⊘ not covered |
-| `--file` | option | ✅ match | ✅ success |
-| `--json` | flag | ✅ match | ⊘ not covered |
-| `--list-all` | flag | ✅ match | ❌ DRIFT |
-| `--maintain-relationships` | flag | ⚠️ missing in UI | ⊘ not covered |
-| `--output` | option | ✅ match | ⊘ not covered |
-| `--root` | option | ✅ match | ⊘ not covered |
-| `--search` | option | ✅ match | ⊘ not covered |
-| `--type` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--check-registry` | flag | ✅ match | ✓ | ✅ success |
+| `--count` | option | ✅ match | ✓ | ⊘ not covered |
+| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--export-map` | option | ✅ match | ✓ | ⊘ not covered |
+| `--file` | option | ✅ match | ✓ | ✅ success |
+| `--json` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--list-all` | flag | ✅ match | ✓ | ❌ DRIFT |
+| `--maintain-relationships` | flag | ⚠️ missing in UI | — | ⊘ not covered |
+| `--output` | option | ✅ match | ✓ | ⊘ not covered |
+| `--root` | option | ✅ match | ✓ | ⊘ not covered |
+| `--search` | option | ✅ match | ✓ | ⊘ not covered |
+| `--type` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

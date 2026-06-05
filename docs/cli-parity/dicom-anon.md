@@ -8,21 +8,21 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--audit-log` | option | ✅ match | ⊘ not covered |
-| `--backup` | flag | ✅ match | ✅ success |
-| `--dry-run` | flag | ✅ match | ⊘ not covered |
-| `--force` | flag | ✅ match | ✅ success |
-| `--keep` | option | ✅ match | ⊘ not covered |
-| `--output` | option | ✅ match | ✅ success |
-| `--profile` | option | ✅ match | ✅ success |
-| `--recursive` | flag | ✅ match | ✅ success |
-| `--regenerate-uids` | flag | ✅ match | ✅ success |
-| `--remove` | option | ✅ match | ⊘ not covered |
-| `--replace` | option | ✅ match | ⊘ not covered |
-| `--shift-dates` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--audit-log` | option | ✅ match | ✓ | ⊘ not covered |
+| `--backup` | flag | ✅ match | ✓ | ✅ success |
+| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--force` | flag | ✅ match | ✓ | ✅ success |
+| `--keep` | option | ✅ match | ✓ | ⊘ not covered |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--profile` | option | ✅ match | ✓ | ✅ success |
+| `--recursive` | flag | ✅ match | ✓ | ✅ success |
+| `--regenerate-uids` | flag | ✅ match | ✓ | ✅ success |
+| `--remove` | option | ✅ match | ✓ | ⊘ not covered |
+| `--replace` | option | ✅ match | ✓ | ⊘ not covered |
+| `--shift-dates` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 

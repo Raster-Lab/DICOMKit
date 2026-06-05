@@ -8,43 +8,43 @@ _CLI binary:_ `dicom-wado` · _subcommand:_ `ups` · _category:_ NETWORK_OPERATI
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--accession-number` | option | ✅ match | ⊘ not covered |
-| `--admission-id` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--aet` | option | ✅ match | ⊘ not covered |
-| `--comments` | option | ✅ match | ⊘ not covered |
-| `--create` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--create-workitem` | flag | ✅ match | ⊘ not covered |
-| `--expected-completion` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--filter-state` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--format` | option | ✅ match | ⊘ not covered |
-| `--get` | option | ✅ match | ⊘ not covered |
-| `--label` | option | ✅ match | ⊘ not covered |
-| `--patient-birth-date` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--patient-id` | option | ✅ match | ⊘ not covered |
-| `--patient-name` | option | ✅ match | ⊘ not covered |
-| `--patient-sex` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--performer-name` | option | ✅ match | ⊘ not covered |
-| `--performer-organization` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--priority` | option | ✅ match | ⊘ not covered |
-| `--procedure-id` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--referring-physician` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--scheduled-start` | option | ✅ match | ⊘ not covered |
-| `--scheduled-station` | option | ✅ match | ⊘ not covered |
-| `--search` | flag | ✅ match | ⊘ not covered |
-| `--state` | option | ✅ match | ⊘ not covered |
-| `--station-name` | option | ✅ match | ⊘ not covered |
-| `--step-id` | option | ⚠️ missing in UI | ⊘ not covered |
-| `--study-uid` | option | ✅ match | ⊘ not covered |
-| `--subscribe` | flag | ✅ match | ⊘ not covered |
-| `--token` | option | ✅ match | ⊘ not covered |
-| `--transaction-uid` | option | ✅ match | ⊘ not covered |
-| `--unsubscribe` | flag | ⚠️ missing in UI | ⊘ not covered |
-| `--update` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
-| `--workitem-uid` | option | ✅ match | ⊘ not covered |
-| `--worklist-label` | option | ⚠️ missing in UI | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--accession-number` | option | ✅ match | ✓ | ⊘ not covered |
+| `--admission-id` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--aet` | option | ✅ match | ✓ | ⊘ not covered |
+| `--comments` | option | ✅ match | ✓ | ⊘ not covered |
+| `--create` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--create-workitem` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--expected-completion` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--filter-state` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--format` | option | ✅ match | ✓ | ⊘ not covered |
+| `--get` | option | ✅ match | ✓ | ⊘ not covered |
+| `--label` | option | ✅ match | ✓ | ⊘ not covered |
+| `--patient-birth-date` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--patient-id` | option | ✅ match | ✓ | ⊘ not covered |
+| `--patient-name` | option | ✅ match | ✓ | ⊘ not covered |
+| `--patient-sex` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--performer-name` | option | ✅ match | ✓ | ⊘ not covered |
+| `--performer-organization` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--priority` | option | ✅ match | ✓ | ⊘ not covered |
+| `--procedure-id` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--referring-physician` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--scheduled-start` | option | ✅ match | ✓ | ⊘ not covered |
+| `--scheduled-station` | option | ✅ match | ✓ | ⊘ not covered |
+| `--search` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--state` | option | ✅ match | ✓ | ⊘ not covered |
+| `--station-name` | option | ✅ match | ✓ | ⊘ not covered |
+| `--step-id` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--study-uid` | option | ✅ match | ✓ | ⊘ not covered |
+| `--subscribe` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--token` | option | ✅ match | ✓ | ⊘ not covered |
+| `--transaction-uid` | option | ✅ match | ✓ | ⊘ not covered |
+| `--unsubscribe` | flag | ⚠️ missing in UI | — | ⊘ not covered |
+| `--update` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--workitem-uid` | option | ✅ match | ✓ | ⊘ not covered |
+| `--worklist-label` | option | ⚠️ missing in UI | — | ⊘ not covered |
 
 ---
 _Legend — Input:_ ✅ match · ⚠️ missing in UI · ➕ extra in UI (drift). _Output:_ ✅ success · ❌ drift · ⊘ not covered · — not wired. Generated by `swift run cli-parity-docs` (in-process, from bundled contracts + goldens)._

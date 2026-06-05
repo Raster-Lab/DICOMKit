@@ -8,17 +8,17 @@ _CLI binary:_ `dicom-compress` · _category:_ FILE_PROCESSING · _wired in Studi
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--backend` | option | ✅ match | ⊘ not covered |
-| `--codec` | option | ✅ match | ⊘ not covered |
-| `--decompress` | flag | ✅ match | ⊘ not covered |
-| `--json` | flag | ✅ match | ✅ success |
-| `--output` | option | ✅ match | ✅ success |
-| `--quality` | option | ✅ match | ⊘ not covered |
-| `--recursive` | flag | ✅ match | ⊘ not covered |
-| `--syntax` | option | ✅ match | ✅ success |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--backend` | option | ✅ match | ✓ | ⊘ not covered |
+| `--codec` | option | ✅ match | ✓ | ⊘ not covered |
+| `--decompress` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--json` | flag | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--quality` | option | ✅ match | ✓ | ⊘ not covered |
+| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--syntax` | option | ✅ match | ✓ | ✅ success |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

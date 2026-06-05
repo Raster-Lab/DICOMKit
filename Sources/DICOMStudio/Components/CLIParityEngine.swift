@@ -255,6 +255,40 @@ public enum CLIParityEngine {
         return (parts.first ?? name, parts.count > 1 ? parts[1] : "")
     }
 
+    // MARK: Phase 3 — input sub-checks (type / default) on top of presence
+
+    /// CLI `flag` (bare boolean) must map to a bare-emitting Studio type (`.booleanToggle`);
+    /// CLI `option` (takes a value) must map to a value-bearing Studio type. The dangerous
+    /// mismatches: a CLI flag wired as a value option (Studio emits `--x v` where the binary
+    /// wants bare `--x`) or a CLI option wired as a toggle (Studio emits bare `--x`).
+    static func typeCheckStatus(cliKind: String, studioType: CLIParameterType) -> InputCheckStatus {
+        // .flagPicker emits `--<value>` (a bare flag token) and .subcommand is positional, so
+        // neither is a "value option" for this purpose.
+        let studioIsValue = ![.booleanToggle, .flagPicker, .subcommand].contains(studioType)
+        if cliKind == "flag"   && studioIsValue                      { return .mismatch }
+        if cliKind == "option" && studioType == .booleanToggle       { return .mismatch }
+        return .ok
+    }
+
+    /// Lenient default-value agreement: only flags a MISMATCH when BOTH sides declare a
+    /// (normalized) default and they differ. CLI dump-help often omits defaults, so a
+    /// one-sided default is `.notChecked`, never a false alarm.
+    static func defaultCheckStatus(cli: String, studio: String) -> InputCheckStatus {
+        func norm(_ s: String) -> String {
+            let t = s.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return (t == "nil" || t == "none" || t == "(none)" || t == "<none>") ? "" : t
+        }
+        let a = norm(cli), b = norm(studio)
+        if a.isEmpty || b.isEmpty { return .notChecked }
+        if a == b { return .ok }
+        // Numeric equivalence: CLI dump prints floats ("0.0", "10.0") where Studio stores "0"/"10".
+        if let da = Double(a), let db = Double(b), da == db { return .ok }
+        // CLI `defaultValue` is often a DESCRIPTION ("plain text (default)") rather than the literal
+        // value, so a CLI side with spaces/parens isn't a clean token to compare — don't warn.
+        if a.contains(" ") || a.contains("(") { return .notChecked }
+        return .mismatch
+    }
+
     // MARK: Public compare
 
     public static func compare(tool: CLIToolDefinition, contracts: CLIContracts) -> ToolParityResult {
@@ -283,9 +317,13 @@ public enum CLIParityEngine {
             if let h = hit.sorted().first {
                 nMatch += 1
                 let p = studioLut[h]
+                // Phase 3: present on both sides → refine with type + default sub-checks.
+                let typeChk = p.map { typeCheckStatus(cliKind: g.kind, studioType: $0.parameterType) } ?? .notChecked
+                let defChk = defaultCheckStatus(cli: g.defaultValue, studio: p?.defaultValue ?? "")
                 rows.append(ParityFlagRow(flag: g.primary, kind: g.kind, inCLI: true, inStudio: true,
                     cliDefault: g.defaultValue, studioDefault: p?.defaultValue ?? "",
-                    cliHelp: g.abstract, studioHelp: p?.helpText ?? "", status: .match))
+                    cliHelp: g.abstract, studioHelp: p?.helpText ?? "", status: .match,
+                    typeCheck: typeChk, defaultCheck: defChk))
             } else {
                 nMissing += 1
                 rows.append(ParityFlagRow(flag: g.primary, kind: g.kind, inCLI: true, inStudio: false,
