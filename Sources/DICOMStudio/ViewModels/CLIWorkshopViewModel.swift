@@ -1107,10 +1107,14 @@ public final class CLIWorkshopViewModel {
                     let dicomFile = DICOMFile.create(dataSet: dataSet, transferSyntaxUID: transferSyntaxUID)
                     let dicomData = try dicomFile.write()
 
-                    if let outURL = resolvedOutputURL {
-                        try dicomData.write(to: outURL, options: .atomic)
+                    if hasOutput {
+                        // Sandbox/TCC-resilient: prefer the picker's scoped URL; else try the
+                        // typed path; on failure fall back to ~/Downloads/DICOMStudio + note.
+                        let res = try OutputAccess.write(dicomData, toPath: outputPathParam,
+                                                         scopedURL: outputScopedURL, subfolder: "dicom-json")
                         log += "Wrote DICOM file: \(formatFileSize(dicomData.count))\n"
-                        log += "Output: \(outURL.path)\n"
+                        log += "Output: \(res.url.path)\n"
+                        if let note = res.note { log += note + "\n" }
                         log += "\u{2713} Conversion complete\n"
                     } else {
                         log += "Error: --output is required when converting JSON -> DICOM (binary output cannot be printed to console).\n"
@@ -1159,10 +1163,12 @@ public final class CLIWorkshopViewModel {
                         log += "Encoded to JSON (\(format)): \(formatFileSize(jsonData.count))\n"
                     }
 
-                    if let outURL = resolvedOutputURL {
-                        try jsonData.write(to: outURL, options: .atomic)
+                    if hasOutput {
+                        let res = try OutputAccess.write(jsonData, toPath: outputPathParam,
+                                                         scopedURL: outputScopedURL, subfolder: "dicom-json")
                         log += "Wrote output file: \(formatFileSize(jsonData.count))\n"
-                        log += "Output: \(outURL.path)\n"
+                        log += "Output: \(res.url.path)\n"
+                        if let note = res.note { log += note + "\n" }
                         log += "\u{2713} Conversion complete\n"
                     } else {
                         // No output path: print JSON to the console.
@@ -1239,7 +1245,11 @@ public final class CLIWorkshopViewModel {
         }
 
         let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-        let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
+        // Sandbox/TCC-resilient output: prefer the picker's scoped URL; else probe the
+        // typed path and, if it's not writable (TCC), redirect to ~/Downloads/DICOMStudio.
+        let (outputURL, outRedirectNote) = OutputAccess.resolveWritableURL(
+            forPath: outputPath, scopedURL: outputScopedURL, subfolder: "dicom-xml")
+        if let note = outRedirectNote { appendConsoleOutput(note + "\n") }
 
         if verbose {
             appendConsoleOutput("Input:  \(inputURL.path)\n")
@@ -1753,7 +1763,9 @@ private func executeDicomUIDRegenerate() async {
                 sopClassUID: dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.7"
             )
             let newData = try newFile.write()
-            try newData.write(to: resolvedOutURL)
+            // Sandbox/TCC-resilient write (prefer scoped URL; else fall back to ~/Downloads).
+            let writeRes = try OutputAccess.write(newData, toPath: resolvedOutURL.path,
+                                                  scopedURL: outputScopedURL, subfolder: "UIDRegenerate")
 
             var lines: [String] = []
             if verbose {
@@ -1762,14 +1774,17 @@ private func executeDicomUIDRegenerate() async {
                     lines.append("  \(m.tagName): \(m.oldUID) \u{2192} \(m.newUID)")
                 }
             }
-            lines.append("Wrote: \(resolvedOutDescription) (\(mappings.count) UIDs regenerated)")
+            if let note = writeRes.note { lines.append(note) }
+            lines.append("Wrote: \(writeRes.url.path) (\(mappings.count) UIDs regenerated)")
 
-            if let mapURL = resolvedMapURL {
+            if resolvedMapURL != nil {
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let mapData = try encoder.encode(mappings)
-                try mapData.write(to: mapURL)
-                lines.append("UID mapping exported to: \(mapURL.path)")
+                let mapRes = try OutputAccess.write(mapData, toPath: resolvedMapURL?.path ?? "",
+                                                    scopedURL: mapScopedURL, subfolder: "UIDRegenerate")
+                if let note = mapRes.note { lines.append(note) }
+                lines.append("UID mapping exported to: \(mapRes.url.path)")
             }
 
             return (lines.joined(separator: "\n") + "\n", 0)
@@ -1937,7 +1952,11 @@ private func executeDicomDcmdir() async {
             let directory = builder.build()
 
             do {
-                try DICOMDIRWriter.write(directory, to: outputURL)
+                // Sandbox/TCC-resilient: resolve a writable destination (scoped URL, else
+                // probe the typed path, else ~/Downloads/DICOMStudio) for the library writer.
+                let dest = OutputAccess.resolveWritableURL(forPath: outputURL.path, scopedURL: outputScopedURL, subfolder: "DICOMDIR")
+                if let note = dest.note { out += note + "\n" }
+                try DICOMDIRWriter.write(directory, to: dest.url)
             } catch {
                 return (out + "Error: Failed to write DICOMDIR: \(error.localizedDescription)\n", 1)
             }
@@ -2357,13 +2376,15 @@ private func executeDicomDcmdir() async {
                             .appendingPathComponent("\(baseName).\(ext)").path
                     }
 
-                    try document.documentData.write(to: URL(fileURLWithPath: finalOutputPath))
+                    let writeRes = try OutputAccess.write(document.documentData, toPath: finalOutputPath,
+                                                          scopedURL: outputScopedURL, subfolder: "PDF/Extracted")
+                    if let note = writeRes.note { log += note + "\n" }
 
                     if verbose {
                         log += "✓ Extracted \(document.documentType) (\(formatFileSize(Int64(document.documentData.count))))\n"
-                        log += "  Output: \(finalOutputPath)\n"
+                        log += "  Output: \(writeRes.url.path)\n"
                     } else {
-                        log += "Extracted: \(finalOutputPath)\n"
+                        log += "Extracted: \(writeRes.url.path)\n"
                     }
                     return (log, 0)
                 } catch {
@@ -2441,16 +2462,18 @@ private func executeDicomDcmdir() async {
                             .appendingPathExtension("dcm").path
                     }
 
-                    try dicomData.write(to: URL(fileURLWithPath: finalOutputPath))
+                    let writeRes = try OutputAccess.write(dicomData, toPath: finalOutputPath,
+                                                          scopedURL: outputScopedURL, subfolder: "PDF/Encapsulated")
+                    if let note = writeRes.note { log += note + "\n" }
 
                     if verbose {
                         log += "✓ Encapsulated \(documentType) (\(formatFileSize(Int64(documentData.count))))\n"
                         log += "  DICOM size: \(formatFileSize(Int64(dicomData.count)))\n"
                         log += "  Patient: \(patientName) [\(patientID)]\n"
                         log += "  Study UID: \(finalStudyUID)\n"
-                        log += "  Output: \(finalOutputPath)\n"
+                        log += "  Output: \(writeRes.url.path)\n"
                     } else {
-                        log += "Encapsulated: \(finalOutputPath)\n"
+                        log += "Encapsulated: \(writeRes.url.path)\n"
                     }
                     return (log, 0)
                 } catch {
@@ -2478,9 +2501,13 @@ private func executeDicomDcmdir() async {
 
             func extractFromDirectory(_ dir: URL) -> (String, Int) {
                 var log = ""
-                let outDir: URL = (outURLOrPathString().isEmpty)
+                let outDirRequested: URL = (outURLOrPathString().isEmpty)
                     ? dir.appendingPathComponent("extracted")
                     : URL(fileURLWithPath: outURLOrPathString())
+                // Sandbox/TCC-resilient output directory (else fall back to ~/Downloads/DICOMStudio).
+                let _od = OutputAccess.resolveWritableURL(forPath: outDirRequested.path, scopedURL: outputScopedURL, subfolder: "PDF/Extracted", isDirectory: true)
+                let outDir = _od.url
+                if let note = _od.note { log += note + "\n" }
                 do {
                     try fm.createDirectory(at: outDir, withIntermediateDirectories: true)
                 } catch {
@@ -2522,9 +2549,13 @@ private func executeDicomDcmdir() async {
                 guard !patientID.isEmpty else {
                     return ("Error: Patient ID is required for batch encapsulation (--patient-id)\n", 1)
                 }
-                let outDir: URL = (outURLOrPathString().isEmpty)
+                let outDirRequested: URL = (outURLOrPathString().isEmpty)
                     ? dir.appendingPathComponent("encapsulated")
                     : URL(fileURLWithPath: outURLOrPathString())
+                // Sandbox/TCC-resilient output directory (else fall back to ~/Downloads/DICOMStudio).
+                let _od = OutputAccess.resolveWritableURL(forPath: outDirRequested.path, scopedURL: outputScopedURL, subfolder: "PDF/Encapsulated", isDirectory: true)
+                let outDir = _od.url
+                if let note = _od.note { log += note + "\n" }
                 do {
                     try fm.createDirectory(at: outDir, withIntermediateDirectories: true)
                 } catch {
@@ -2925,11 +2956,11 @@ private func executeDicomDcmdir() async {
 
         if exitCode == 0, let outputData {
             do {
-                let parentDir = outputURL.deletingLastPathComponent()
-                try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-                try outputData.write(to: outputURL, options: .atomic)
+                // Sandbox/TCC-resilient write (prefer scoped URL; else fall back to ~/Downloads).
+                let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "PixEdit")
                 appendConsoleOutput(output)
-                appendConsoleOutput("Written: \(outputURL.path) (\(ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)))\n")
+                if let note = writeRes.note { appendConsoleOutput(note + "\n") }
+                appendConsoleOutput("Written: \(writeRes.url.path) (\(ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)))\n")
                 appendConsoleOutput("\nDone.\n")
                 consoleStatus = .success; service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-pixedit", command: commandPreview, exitCode: 0, output: output)
@@ -3005,7 +3036,10 @@ private func executeDicomSplit() async {
         if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() }
     }
     let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-    let outputBaseURL = outputScopedURL ?? URL(fileURLWithPath: outputDir)
+    // Sandbox/TCC-resilient output directory (frames are written inside it).
+    let _splitOut = OutputAccess.resolveWritableURL(forPath: outputDir, scopedURL: outputScopedURL, subfolder: "SplitFrames", isDirectory: true)
+    let outputBaseURL = _splitOut.url
+    if let note = _splitOut.note { appendConsoleOutput(note + "\n") }
 
     let fm = FileManager.default
     var isDir: ObjCBool = false
@@ -3337,7 +3371,10 @@ private func executeDicomSplit() async {
         }
 
         let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-        let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
+        // Sandbox/TCC-resilient output (series/study modes write a directory; file mode a single file).
+        let (outputURL, outRedirectNote) = OutputAccess.resolveWritableURL(
+            forPath: outputPath, scopedURL: outputScopedURL, subfolder: "Merge", isDirectory: level != "file")
+        if let note = outRedirectNote { appendConsoleOutput(note + "\n") }
 
         if verbose {
             appendConsoleOutput("DICOM Merge Tool\n")
@@ -3629,7 +3666,16 @@ private func executeDicomArchive() async {
         if a3 { filesScopedURL?.stopAccessingSecurityScopedResource() }
     }
 
-    let archiveURL = archiveScopedURL ?? URL(fileURLWithPath: archivePathParam)
+    let archiveURL: URL
+    if sub == "init" || sub == "import" {
+        // Write subcommands: ensure the archive directory is writable (sandbox/TCC).
+        // Read subcommands (list/query/check/stats) must NOT redirect.
+        let r = OutputAccess.resolveWritableURL(forPath: archivePathParam, scopedURL: archiveScopedURL, subfolder: "Archive", isDirectory: true)
+        if let note = r.note { appendConsoleOutput(note + "\n") }
+        archiveURL = r.url
+    } else {
+        archiveURL = archiveScopedURL ?? URL(fileURLWithPath: archivePathParam)
+    }
     let archivePathResolved = archiveURL.path
 
     // Gather parameter values on the main actor before detaching.
@@ -4778,8 +4824,10 @@ private func executeDicomCompressCompress() async {
             }
             let inputData = try Data(contentsOf: inputURL)
             let outputData = try Self.dcCompressTransform(inputData: inputData, codec: codec, quality: quality)
-            try outputData.write(to: outputURL)
-            log += "Compressed: \(inputPath) → \(outputPath)\n"
+            // Sandbox/TCC-resilient write (prefer scoped URL; else fall back to ~/Downloads).
+            let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Compressed")
+            if let note = writeRes.note { log += note + "\n" }
+            log += "Compressed: \(inputPath) → \(writeRes.url.path)\n"
             if verbose {
                 let inSize = inputData.count
                 let outSize = outputData.count
@@ -4852,8 +4900,9 @@ private func executeDicomCompressDecompress() async {
             }
             let inputData = try Data(contentsOf: inputURL)
             let outputData = try Self.dcCompressDecompressTransform(inputData: inputData, syntax: syntax)
-            try outputData.write(to: outputURL)
-            log += "Decompressed: \(inputPath) → \(outputPath)\n"
+            let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Decompressed")
+            if let note = writeRes.note { log += note + "\n" }
+            log += "Decompressed: \(inputPath) → \(writeRes.url.path)\n"
             if verbose {
                 log += "Input size:  \(Self.dcCompressFormatBytes(inputData.count))\n"
                 log += "Output size: \(Self.dcCompressFormatBytes(outputData.count))\n"
@@ -5229,7 +5278,10 @@ private func executeDicomStudy() async {
             if aOut { outputScoped?.stopAccessingSecurityScopedResource() }
         }
         let inputURL = inputScoped ?? URL(fileURLWithPath: input)
-        let outputURL = outputScoped ?? URL(fileURLWithPath: output)
+        // Sandbox/TCC-resilient output directory (organize writes a folder tree).
+        let _orgOut = OutputAccess.resolveWritableURL(forPath: output, scopedURL: outputScoped, subfolder: "StudyOrganize", isDirectory: true)
+        let outputURL = _orgOut.url
+        if let note = _orgOut.note { appendConsoleOutput(note + "\n") }
 
         let (output_, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
             let fm = FileManager.default
@@ -5490,9 +5542,13 @@ private func executeDicomStudy() async {
 
             if let reportURL = reportURL {
                 let report = issues.joined(separator: "\n")
+                // Sandbox/TCC-resilient: prefer the scoped URL; else try the typed path;
+                // on failure fall back to ~/Downloads/DICOMStudio and note the redirect.
                 do {
-                    try report.write(to: reportURL, atomically: true, encoding: .utf8)
-                    out += "Report written to: \(reportURL.path)\n"
+                    let res = try OutputAccess.writeString(report, toPath: reportURL.path,
+                                                           scopedURL: reportScoped, subfolder: "StudyCheck")
+                    out += "Report written to: \(res.url.path)\n"
+                    if let note = res.note { out += note + "\n" }
                 } catch {
                     return (out + "Error: Write error: \(error.localizedDescription)\n", 1)
                 }
@@ -5759,12 +5815,20 @@ private func executeDicomStudy() async {
         defer { if outputAccessing { outputScopedURL?.stopAccessingSecurityScopedResource() } }
 
         let inputURL = inputScopedURL ?? URL(fileURLWithPath: input)
-        // Resolve the output URL: prefer a scoped bookmark, else the typed path.
-        let resolvedOutputURL: URL? = {
-            if let scoped = outputScopedURL { return scoped }
-            if let op = outputPath { return URL(fileURLWithPath: op) }
-            return nil
-        }()
+        // Resolve the output URL: prefer a scoped bookmark; else probe the typed path and
+        // redirect to ~/Downloads/DICOMStudio if it isn't writable (sandbox/TCC).
+        let resolvedOutputURL: URL?
+        if let scoped = outputScopedURL {
+            resolvedOutputURL = scoped
+        } else if let op = outputPath, !op.isEmpty {
+            let r = OutputAccess.resolveWritableURL(forPath: op, scopedURL: nil,
+                                                    subfolder: "ImageConversion",
+                                                    isDirectory: recursive || splitPages)
+            if let note = r.note { appendConsoleOutput(note + "\n") }
+            resolvedOutputURL = r.url
+        } else {
+            resolvedOutputURL = nil
+        }
 
         #if canImport(CoreGraphics)
         let (output, exitCode) = await Task.detached(priority: .userInitiated) {
@@ -6181,7 +6245,10 @@ private func executeDicomStudy() async {
             if accessingOutput { outputScopedURL?.stopAccessingSecurityScopedResource() }
         }
         let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-        let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
+        // Sandbox/TCC-resilient output (single/contact-sheet/animate write a file; bulk a directory).
+        let _exportOut = OutputAccess.resolveWritableURL(forPath: outputPath, scopedURL: outputScopedURL, subfolder: "Export", isDirectory: operation == "bulk")
+        let outputURL = _exportOut.url
+        if let note = _exportOut.note { appendConsoleOutput(note + "\n") }
 
         let exportToolVersion = "1.2.2"
 
@@ -6921,7 +6988,12 @@ case "dicom-study":
         }
 
         let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-        var outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
+        // Sandbox/TCC-resilient output: prefer the picker's scoped URL; else probe the typed
+        // path and redirect to ~/Downloads/DICOMStudio if it isn't writable. Covers both the
+        // DICOM-convert Data write and the image-export CGImageDestination below.
+        let _convOut = OutputAccess.resolveWritableURL(forPath: outputPath, scopedURL: outputScopedURL, subfolder: "dicom-convert")
+        var outputURL = _convOut.url
+        if let note = _convOut.note { appendConsoleOutput(note + "\n") }
 
         appendConsoleOutput("Input:  \(inputURL.path)\n")
         appendConsoleOutput("Output: \(outputURL.path)\n")
@@ -8216,7 +8288,7 @@ case "dicom-study":
         var onlyInFile1: [(tag: Tag, element: DataElement)] = []
         var onlyInFile2: [(tag: Tag, element: DataElement)] = []
         var modified: [(tag: Tag, value1: DataElement, value2: DataElement)] = []
-        var identical: [Tag] = []
+        var identical: [(tag: Tag, element: DataElement)] = []
         var pixelsCompared: Bool = false
         var pixelsDifferent: Bool = false
         var maxPixelDiff: Double = 0
@@ -8250,7 +8322,7 @@ case "dicom-study":
             case (let e?, nil):
                 result.onlyInFile1.append((tag, e)); result.differenceCount += 1
             case (let e1?, let e2?):
-                if diffElementsEqual(e1, e2) { result.identical.append(tag) }
+                if diffElementsEqual(e1, e2) { result.identical.append((tag, e1)) }
                 else { result.modified.append((tag, e1, e2)); result.differenceCount += 1 }
             default: break
             }
@@ -8337,9 +8409,9 @@ case "dicom-study":
         }
         if showIdentical && !result.identical.isEmpty {
             out += "\n--- Identical Tags (\(result.identical.count)) ---\n"
-            for tag in result.identical.sorted() {
+            for (tag, elem) in result.identical.sorted(by: { $0.tag < $1.tag }) {
                 let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-                out += "[\(tag)] \(name)\n"
+                out += "[\(tag)] \(name): \(diffFormatValue(elem))\n"
             }
         }
         out += "\n=== End of Comparison ===\n"

@@ -807,11 +807,21 @@ let package = Package(
             dependencies: ["DICOMStudio"],
             path: "Sources/studio-cli-introspect"
         ),
+        // Developer tool (not shipped): emits a per-tool CLI↔DICOMStudio parity
+        // matrix (docs/cli-parity/<tool>.md) — every flag's input-contract parity
+        // + output-behavior success/drift/coverage — computed in-process from the
+        // bundled CLIContracts.json + goldens (no binary dumping). See the plan.
+        .executableTarget(
+            name: "cli-parity-docs",
+            dependencies: ["DICOMStudio"],
+            path: "Sources/cli-parity-docs"
+        ),
         // Developer tool (not shipped): regenerates the bundled CLI-parity data
         // (CLIContracts.json, fixture.dcm, goldens.json) read by the in-app
         // CLI Automation Testing screen. See Scripts/CLI-PARITY-README.md.
         .executableTarget(
             name: "cli-parity-gen",
+            dependencies: ["DICOMKit", "DICOMCore", "DICOMStudio"],
             path: "Sources/cli-parity-gen"
         ),
         .testTarget(

@@ -8,10 +8,6 @@
     "syn-studyset__dicom-study-check": "F10 (minor): Studio prints `[OK] Study is complete`; CLI is silent on stdout.",
     "syn-studyset__dicom-study-check-expected": "F10 (minor): as above (check with expected counts).",
     "syn-studyset__dicom-study-compare": "F10 (minor): Studio uses `[OK]` where the CLI uses `✓`.",
-    "syn-ct__dicom-anon-basic": "F13 (bug): Studio's anon REMOVES PatientName/PatientID; the CLI REPLACES them (ANONYMOUS + hashed PatientID). Fix needs the CLI's exact pseudonymization hash.",
-    "syn-ct__dicom-anon-clinical-trial": "F13 (bug): as above (clinical-trial profile).",
-    "CT__dicom-anon-basic": "F13 (bug): as above, real-CT fixture (local-only).",
-    "CT__dicom-anon-clinical-trial": "F13 (bug): as above, real-CT fixture (local-only).",
     "syn-studyset__dicom-merge-studyset": "F14 (minor): merging a mixed-series directory, Studio inherits SeriesNumber from a different source frame than the CLI (1 vs 2). Local-only (fresh SOP UID)."
   }
 }

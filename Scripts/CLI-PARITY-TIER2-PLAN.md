@@ -378,11 +378,14 @@ Landed:
 | Headless runner | `StudioParityTests` target — drives `runOutputVerification` over all bundled goldens, PHI-safe report, opt-in JSONL, asserts no ERROR/UNAVAILABLE. |
 | **CI gate** | Under `PARITY_STRICT=1` the test fails on any DIFFERS not in the committed `parity-allowlist.json` (the 9 triaged findings), on stale allowlist entries (a finding that silently went green), and on any ERROR/UNAVAILABLE. Wired as a `parity-gate` job in `.github/workflows/dicom-studio-ci.yml`, running against the committed `goldens.synthetic.json` (no `cli-parity-gen`, no dicom-* binaries). Non-portable scenarios (`compress backends` — host-dependent hardware list) are excluded from the committed set via a `portable` flag. |
 
-Current result (Wave 1 + Wave 2.1/2.2): **85 MATCH / 11 DIFFERS / 0 ERROR / 0 UNAVAILABLE** (96 local
-scenarios; **55 committed deterministic + portable** drive CI). 16 tools across 3 comparison modes;
-json/xml file artifacts (8/8), tags+convert DICOM artifacts (10/10), split multi-file (2/2) match;
-anon (F13) and merge (F14) DIFFER. The gate is **green** (all 11 DIFFERS allowlisted) and verified to
-have teeth (drops an allowlist entry → fails on that scenario).
+Current result (**Wave 2 functionally COMPLETE**): **97 MATCH / 7 DIFFERS / 0 ERROR / 0 UNAVAILABLE** (104
+local scenarios; **58 committed deterministic + portable** drive CI). 19 tools across 5 comparison modes;
+json/xml file artifacts (8/8), tags+convert DICOM artifacts (10/10), split multi-file (2/2), **anon
+(F13) ✅**, **RLE compress/decompress (decoded-pixel-hash) ✅**, **dicom-export → PNG (image-raster-hash,
+local-only) ✅**, **pixedit ✅**, **pdf encapsulate (F15 CLI fix) ✅** match; only merge (F14) DIFFERS among
+the DICOM-semantic producers. The gate is **green** (all 7 DIFFERS allowlisted) and verified to have teeth
+(drops an allowlist entry → fails on that scenario). Producers needing new infra (dicom-image → W4 seed,
+export contact-sheet/animate/bulk, pdf-extract) are scoped forward in §7.
 
 **Findings the harness surfaced (none masked). ✅ = fixed and re-verified green by the harness.**
 
@@ -398,23 +401,28 @@ have teeth (drops an allowlist entry → fails on that scenario).
 | F11 | `archive list` / `list-instances` | bug | CLI renders a **tree**, Studio a flat **table** — Studio's tree renderer existed but the `format` param default-filled `table`, overriding the per-subcommand `tree` default. | **✅ fixed** — removed the wrong `format` default so `executeDicomArchive` applies the CLI's per-subcommand default. |
 | F9 | `study summary --format json` | minor | Same data, **series array order** differs (Studio asc, CLI desc). | open (same class as F6 — sort the CLI array) |
 | F10 | `study check` / `compare` | minor | Studio uses `[OK]` where the CLI uses `✓`; `check` prints a line the CLI omits. | open (cosmetic) |
-| F13 | `anon` (basic / clinical-trial) | bug | Studio's anon **removes** PatientName/PatientID; the CLI **replaces** them (`ANONYMOUS` + a hashed PatientID). | open (needs CLI's pseudonymization hash) |
+| F13 | `anon` (basic / clinical-trial) | bug | Studio's anon **removed** PatientName/PatientID; the CLI **replaces** them (`ANONYMOUS` + a hashed PatientID). | **✅ fixed** — `SecurityViewModel` now replaces PatientName with `ANONYMOUS` and PatientID with the CLI's SHA-256 pseudonym (`Self.pseudonymize`, mirrors `Anonymizer.hashValue`); 4 anon scenarios MATCH, allowlist entries removed. |
 | F14 | `merge` (mixed-series dir) | minor | Studio inherits `SeriesNumber` from a different source frame than the CLI (1 vs 2). | open (cosmetic / ambiguous input) |
+| F15 | `pdf` encapsulate | bug | **CLI bug** — `dicom-pdf` wrote file-meta Media Storage SOP Class UID = `1.1.7` (Secondary Capture) instead of the dataset's Encapsulated-PDF class `1.1.104.1`, violating PS3.10. Studio was correct. | **✅ fixed** — `dicom-pdf/main.swift` now passes `sopClassUID: documentType.sopClassUID` to `DICOMFile.create` (both encapsulate + batch paths); pdf-encapsulate MATCHES. |
 
 *(Latent, not yet tested: Studio's `validateBestPractices` adds an InstanceNumber-absent warning the
 CLI doesn't emit — no current fixture lacks InstanceNumber, so it's untested. Also resolved by
 legitimate harness fixes, not masking: the `═`/`=` separator glyph; `study check` writing to
 `~/Desktop/DICOM_Output`; the `backends --json` key-ordering false positive.)*
 
-**Bugs fixed (all 6 verified green by the harness):** F1/F2/F3/F12 (validate/script) in
+**Bugs fixed (all 8 verified green by the harness):** F1/F2/F3/F12 (validate/script) in
 `ValidationModel.swift`, `ValidationViewModel.swift`, `CLIWorkshopViewModel.swift`; **F6**
 (`dicom-diff/main.swift` sorts its JSON arrays + `CLIParityEngine.normalize` path-regex fix);
-**F11** (`CLIWorkshopHelpers.swift` archive `format` default). MATCH 5 → **65** scenarios.
+**F11** (`CLIWorkshopHelpers.swift` archive `format` default); **F13**
+(`SecurityViewModel.swift` — anon now replaces PatientName/PatientID instead of removing them);
+**F15** (`dicom-pdf/main.swift` — file-meta SOP Class UID now matches the dataset, PS3.10).
+F13 was a Studio bug; **F15 was a real CLI bug the harness caught and we fixed**.
 
-Disposition of the 6 remaining DIFFERS (all allowlisted, gate green): **F4** is host-dependent
+Disposition of the 5 remaining DIFFERS (all allowlisted, gate green): **F4** is host-dependent
 (hardware backend list — excluded from the committed set, local-only); **F5/F9/F10** are
-cosmetic/ordering drift left as a team triage call (match-the-CLI vs accept-as-intentional-UI). F9 is
-the same class as F6 (sort the CLI's series array) if you choose to close it.
+cosmetic/ordering drift left as a team triage call (match-the-CLI vs accept-as-intentional-UI); **F14**
+is a minor mixed-series ambiguity. F9 is the same class as F6 (sort the CLI's series array) if you
+choose to close it.
 
 ### ✅ Wave 1 is functionally COMPLETE
 
@@ -442,9 +450,10 @@ temp-path so committed goldens stay byte-stable. Producers covered:
 
 - **`dicom-tags` write** (set/delete/delete-private) — 8/8 **MATCH**.
 - **`dicom-convert`** (transfer-syntax explicit→implicit LE; pixel bytes unchanged) — 2/2 **MATCH**.
-- **`dicom-anon`** (basic / clinical-trial — deterministic, no UID regen) — **DIFFERS → finding F13**:
-  Studio's anon *removes* PatientName/PatientID, the CLI *replaces* them (`ANONYMOUS` + a hashed
-  PatientID). Real reimplementation gap; allowlisted (fix needs the CLI's exact pseudonymization hash).
+- **`dicom-anon`** (basic / clinical-trial — deterministic, no UID regen) — **2/2 MATCH** (was
+  finding F13, now ✅ fixed): `SecurityViewModel` replaces PatientName with `ANONYMOUS` and PatientID
+  with the CLI's SHA-256 pseudonym (first 32 uppercase hex of SHA-256), matching `Anonymizer.swift`'s
+  per-tag defaults; all other profile tags are removed as before. Allowlist entries removed.
 - **`dicom-split`** (multiframe → **multiple** single-frame files) — **2/2 MATCH**. Added a
   `dicom-multi` artifact kind: `OUTPUT` is a directory, each produced frame is re-dumped and
   concatenated with index headers; per-frame SOP UIDs masked. (Also fixed a `normalize` blank-run
@@ -453,21 +462,118 @@ temp-path so committed goldens stay byte-stable. Producers covered:
   fixture) — **DIFFERS → finding F14** (minor): merging a *mixed-series* directory, Studio inherits
   `SeriesNumber` from a different source frame than the CLI (1 vs 2). Mechanism proven (only 1 tag differs).
 
-Result: **85 MATCH / 11 DIFFERS / 0 ERROR** (96 local, **55 committed**). Three comparison modes:
-stdout, text-file, DICOM-semantic (single + multi-file). Determinism + gate still green.
+Result: **97 MATCH / 7 DIFFERS / 0 ERROR** (104 local, **58 committed**). **Five** comparison modes:
+stdout, text-file, DICOM-semantic (single + multi-file), **decoded-pixel-hash** (sha256 of decoded
+PixelData), and **image-raster-hash** (sha256 of a decoded raster). Determinism + gate still green.
 
-Next in Wave 2: **`compress`/`decompress`** is **blocked on this host** (the RLE encoder isn't
-registered — codec availability is host-dependent, like the backends list — and lossy codecs need
-pixel decode + SSIM); it would be non-portable/local-only. Then **image/PDF** artifacts
-(SSIM/structural). Then **network** (Wave 5) against the DCM4CHEE servers.
+Landed — **W2.3 RLE compress/decompress** (pixel-content parity): a pure-Swift **RLE Lossless encoder**
+now ships in `DICOMCore` — `RLECodec` conforms to `ImageEncoder` (PackBits per PS3.5 Annex G, the exact
+inverse of the existing decoder) and is registered in `CodecRegistry`. Verified byte-lossless by unit
+round-trips (`Tests/DICOMCoreTests/RLEEncoderTests.swift`: 8/16-bit gray, RGB interleaved/planar,
+constant, multiframe) and an end-to-end `dicom-compress` compress→decompress check whose PixelData is
+SHA-256-identical to the source. Two parity scenarios are wired and **MATCH**:
 
-**55 committed scenarios** drive CI from a clean checkout.
+- **`dicom-compress compress -c rle`** (syn-ct → RLE) and **`decompress --syntax explicit-le`**
+  (syn-ct-rle → explicit-le). Both compared via a new **`decoded-pixel-hash`** artifact kind —
+  `CLIParityEngine.decodedPixelHash` / the generator's `decodedPixelHash` both sha256 the fully-decoded
+  PixelData (`DICOMFile.pixelData()`), so the check is on pixel CONTENT, robust to encapsulation /
+  transfer-syntax differences (plan §4b). Because RLE is pure-Swift these are **portable/committable**.
+- New committed fixture **`synthetic/syn-ct-rle.dcm`** (built at gen time by `dicom-compress compress
+  -c rle`) is the deterministic RLE input for the decompress scenario; logical fixture id `ctrle`.
+- `cli-parity-gen` now links `DICOMKit`/`DICOMCore` to decode pixels in-process for the golden hash.
+
+Landed — **W2.4 image producers** (`dicom-export single` → PNG): a new **`image-raster-hash`** artifact
+kind compares the *decoded raster*, not the image file. The image FILE is non-deterministic (EXIF
+timestamps / encoder metadata), but decoding it to **8-bit device-gray** via `CGImageSource` + a fixed
+`CGContext` strips that metadata and leaves pixel content; both sides sha256 the normalized raster
+(`CLIParityEngine.imageRasterHash` / the generator's `imageRasterHash`). One scenario wired and
+**MATCH** (syn-ct + real-CT): `dicom-export single FIXTURE --format png`.
+
+> **Note — `dicom-export single-png` is currently local-only (`portable:false`).** The raster hash is
+> deterministic same-machine (passes the gen determinism probe) but cross-machine CoreGraphics
+> rasterization determinism is not yet validated, so it is excluded from the committed CI set. Promote
+> to committed once verified on a second machine (or switch to an **SSIM ≥ threshold** compare). This is
+> why an SSIM comparator (the documented fallback) is *not* wired here: for Studio↔CLI parity both sides
+> share the exact pure-Swift renderer, so an exact raster hash is both correct and stricter than SSIM
+> (which could mask a real pixel bug). SSIM becomes necessary only for genuinely lossy / cross-impl
+> comparisons (e.g. lossy `compress` where two encoders could differ).
+
+Landed — **W2.5 pixedit + pdf encapsulate** (DICOM-semantic): two more producers via the existing
+re-dump comparator, and **the harness caught a real CLI bug (F15)**.
+
+- **`dicom-pixedit`** (mask a region) — fully deterministic (preserves UIDs/dates) → **committed MATCH**.
+- **`dicom-pdf` encapsulate** (wrap `synthetic/syn-doc.pdf`, a committed minimal PDF; logical fixture
+  `pdf`) — **MATCH** after the F15 fix. Local-only: its auto SOP Instance UID is volatile so the
+  determinism probe excludes it from the committed set (masked at compare time, like split/merge).
+
+### ✅ Wave 2 is functionally COMPLETE
+
+Every **single-input** artifact producer is covered (8 comparison-tool families, 5 comparison modes):
+text-file (json/xml), DICOM-semantic (anon, convert, tags, split, merge, **pixedit**, **pdf**),
+decoded-pixel-hash (compress/decompress RLE), image-raster-hash (export single). Every real
+reimplementation bug found has been fixed and re-verified green (F1/2/3/6/11/12/13 Studio-side, **F15
+CLI-side**); the 7 remaining DIFFERS are triaged-cosmetic and allowlisted; the `parity-gate` CI job
+(58 committed scenarios) protects it.
+
+**Explicitly carried forward (each blocked on new infrastructure, not just wiring):**
+
+| Producer | Blocker | Target |
+|---|---|---|
+| `dicom-image` (image→DICOM) | injects `Date()` StudyDate/Time + random UIDs — needs the seed/clock hook (don't mask dates ad-hoc) | **W4** (§6 seed/clock) |
+| `dicom-export contact-sheet` | input-model mismatch: CLI takes **variadic file paths**, Studio takes one path/dir — the single-`FIXTURE` placeholder can't bridge it | **W2.5+** (multi-arg harness support) |
+| `dicom-export animate` | GIF palette quantization is non-deterministic — needs a per-frame GIF raster comparator | **W2.5+** (GIF comparator) |
+| `dicom-export bulk` | directory of images — needs a directory-manifest comparator | **W2.5+** (dir comparator) |
+| `dicom-pdf` extract | needs a PDF structural-extract comparator (page count/sizes + masked text) | **W2.5+** (PDF parser) |
+| `dicom-export single` → committed | cross-machine CoreGraphics raster determinism unverified | promote after 2nd-machine check |
+| lossy `compress`/`convert` | only needed if two encoders can diverge (shared codec → exact decoded-pixel-hash already covers it); else SSIM/PSNR threshold | when a divergent encoder appears |
+
+Then **Wave 5** (network) against the DCM4CHEE servers.
+
+**57 committed scenarios** drive CI from a clean checkout.
 
 Remaining housekeeping: **commit** the new artifacts (`synthetic/`, `goldens.synthetic.json`,
 `parity-allowlist.json`, `SyntheticFixtures.swift`, `Tests/StudioParityTests/`, the `.github` gate job,
 + the source edits). Optional: close the cosmetic F5/F9/F10; the xlsx "Output Parity" sheet (the in-app
 screen + `swift test` gate already cover reporting + gating). **Wave 2+** (file-producer artifact
 comparison, network via the DCM4CHEE servers) is scoped in §5.
+
+---
+
+## 7b. Exhaustive-flag program — landed so far
+
+Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/`):
+
+- **Per-tool success-vs-drift matrix docs** — new dev tool `cli-parity-docs` (imports DICOMStudio)
+  emits `docs/cli-parity/<tool>.md` + `README.md`, computed in-process from the bundled
+  `CLIContracts.json` (input parity via `CLIParityEngine.compareAll`) + goldens
+  (`runOutputVerification`). One row per flag: input ✅/⚠️/➕ + output ✅/❌/⊘ + per-scenario success/drift.
+- **Coverage ledger** — `cli-parity-docs` also emits `docs/cli-parity/coverage.json` (per tool:
+  accepted vs covered CLI flags + the `uncoveredFlags` list) and a README summary. **Baseline: 58/383
+  CLI flags (15.1%) output-covered across 32 wired tools** — the silent gap is now a tracked number.
+  Phase 2 (contract-driven auto-generation) drives it toward 100%.
+- **F16 — `dicom-diff --show-identical`** (Phase 0 pilot): Studio printed `[tag] name` (no value); the
+  CLI prints `[tag] name: value`. Was an untemplated/silent gap. **✅ fixed** — `DiffResult.identical`
+  now carries the element; `diffFormatText` renders the value. 2 committed scenarios MATCH.
+- **Output-file access (TCC) fix** — `OutputAccess` (`Components/OutputAccess.swift`, unit-tested)
+  applied to **all 19 output-writing tools**: prefer the picker's scoped URL, else try/probe the typed
+  path, else redirect to `~/Downloads/DICOMStudio/…` with a visible note (was a silent `try?` failure).
+  Makes the app sandbox-ready. Gate unchanged at **99 MATCH / 7 DIFFERS** throughout.
+- **Phase 2 auto-generation (started)** — `cli-parity-gen` now depends on `DICOMStudio` and
+  `autoTemplates(curated:)` emits one stdout scenario per UNCOVERED flag, deriving cliArgs from
+  `CommandBuilderHelpers.buildCommand` and studioParams from the same `parameterDefinitions` — one
+  flag at a time, enum-expanded, curated templates win. Two waves landed: 4 flat stdout tools
+  (diff/info/dump/validate) + a value heuristic for tag-options (`--tag`/`--ignore-tag`). **~18 new
+  scenarios, all MATCH; coverage 15.1% → 17.8%** (the four pilot tools jumped to 75–89%). Next:
+  generator ERROR-skip robustness + subcommand tools + artifact producers. (Network/DIMSE tools have
+  no offline golden → inherently deferred to Wave 5, so offline coverage caps below 100%.)
+- **F17 — file-meta group-length leak** (comparator finding, surfaced by auto-gen): `dicom-pdf
+  encapsulate` flipped MATCH↔DIFFERS run-to-run. `maskVolatileDumpTags` masked volatile UID *values*
+  but not **(0002,0000) File Meta Information Group Length**, which is *derived* from them — a fresh
+  random SOP Instance UID whose digit count varies (190↔192 bytes) leaked through it. **✅ fixed** by
+  masking the derived length (no semantic content; real structural diffs show as element lines). Now
+  stable at **114 MATCH / 7 DIFFERS** across repeated runs; robust to any random-UID producer.
+
+Regenerate the matrix + ledger any time with: `swift run cli-parity-docs`.
 
 ---
 

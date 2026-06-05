@@ -232,6 +232,8 @@ public final class CLIAutomationTestingViewModel {
         }
 
         let isDicomArtifact = scenario.artifactKind == "dicom"
+        let isPixelHash = scenario.artifactKind == "decoded-pixel-hash"
+        let isImageRasterHash = scenario.artifactKind == "image-raster-hash"
         let studioRaw: String
         if let u = artifactURL, isDicomMulti {
             let files = ((try? FileManager.default.contentsOfDirectory(atPath: u.path)) ?? [])
@@ -244,6 +246,14 @@ public final class CLIAutomationTestingViewModel {
                 combined += "=== frame \(i) ===\n" + frame.joined(separator: "\n") + "\n"
             }
             studioRaw = combined
+        } else if let u = artifactURL, isPixelHash {
+            // compress/decompress: compare decoded PixelData (sha256), not bytes, so
+            // encapsulation / transfer-syntax differences don't matter (plan §4b).
+            studioRaw = CLIParityEngine.decodedPixelHash(fileURL: u) ?? "<pixel-decode-failed>"
+        } else if let u = artifactURL, isImageRasterHash {
+            // image producers (dicom-export): compare the decoded raster (sha256),
+            // which strips non-deterministic encoder metadata (EXIF/ICC) (plan §4b).
+            studioRaw = CLIParityEngine.imageRasterHash(fileURL: u) ?? "<image-decode-failed>"
         } else if let u = artifactURL, isDicomArtifact {
             studioRaw = await dump(u)
         } else if let u = artifactURL {

@@ -309,6 +309,9 @@ struct DICOMPdf: ParsableCommand {
         // Create DICOM file
         let dicomFile = DICOMFile.create(
             dataSet: dataSet,
+            // F15: the file-meta Media Storage SOP Class UID must equal the dataset's
+            // SOP Class UID (PS3.10), not default to Secondary Capture (1.1.7).
+            sopClassUID: documentType.sopClassUID,
             transferSyntaxUID: "1.2.840.10008.1.2.1" // Explicit VR Little Endian
         )
         
@@ -443,6 +446,7 @@ struct DICOMPdf: ParsableCommand {
                 // Create DICOM file
                 let dicomFile = DICOMFile.create(
                     dataSet: dataSet,
+                    sopClassUID: documentType.sopClassUID,  // F15: match dataset SOP class (PS3.10)
                     transferSyntaxUID: "1.2.840.10008.1.2.1"
                 )
                 

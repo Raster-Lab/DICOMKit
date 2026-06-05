@@ -342,10 +342,13 @@ public struct CodecRegistry: Sendable {
             encoderRegistry[uid] = HTJ2KCodec(targetTransferSyntaxUID: uid)
         }
         
-        // RLE codec (pure Swift implementation - decode only for now)
+        // RLE codec (pure Swift implementation - encode and decode)
         let rleCodec = RLECodec()
         for uid in RLECodec.supportedTransferSyntaxes {
             decoderRegistry[uid] = rleCodec
+        }
+        for uid in RLECodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = rleCodec
         }
         
         // JPEG-LS codec (pure Swift implementation - encode and decode)

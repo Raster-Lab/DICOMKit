@@ -11,6 +11,14 @@
 // Comparison is option-by-option so a long-form match covers its short alias.
 
 import Foundation
+import DICOMKit
+import DICOMCore
+import CryptoKit
+
+#if canImport(ImageIO)
+import ImageIO
+import CoreGraphics
+#endif
 
 // MARK: - Decoded CLI contract (ToolInfoV0 subset)
 
@@ -396,8 +404,16 @@ public enum CLIParityEngine {
     /// metadata that legitimately differs between two writers): file-meta
     /// implementation + SOP-instance UIDs, instance/study/series UIDs. The data
     /// lines (the modification under test) are left intact.
+    ///
+    /// (0002,0000) File Meta Information Group Length is a DERIVED byte-count of the
+    /// file-meta group, so it varies with the byte-length of the (already-masked)
+    /// volatile UIDs above — e.g. a freshly-generated SOP Instance UID whose digit
+    /// count differs run-to-run flips it 190↔192. It carries no semantic content (a
+    /// real structural difference shows up as the element lines themselves), so it is
+    /// masked too; otherwise random-UID producers (e.g. dicom-pdf encapsulate) diff
+    /// intermittently on the length alone.
     public static let volatileDumpTags: Set<String> = [
-        "(0002,0003)", "(0002,0012)", "(0002,0013)", "(0002,0016)",
+        "(0002,0000)", "(0002,0003)", "(0002,0012)", "(0002,0013)", "(0002,0016)",
         "(0008,0018)", "(0020,000d)", "(0020,000e)",
     ]
     public static func maskVolatileDumpTags(_ lines: [String]) -> [String] {
@@ -407,6 +423,52 @@ public enum CLIParityEngine {
             // Keep "(gggg,eeee) Name … VR=XX", replace the value after it.
             return line.replacingOccurrences(of: "(VR=\\S\\S ).*$", with: "$1<masked>", options: .regularExpression)
         }
+    }
+
+    /// SHA-256 (hex) of a produced DICOM file's fully-decoded PixelData (all frames
+    /// concatenated). Backs the "decoded-pixel-hash" artifact kind so compress/
+    /// decompress parity compares pixel CONTENT, not encapsulated bytes — transfer-
+    /// syntax/encapsulation differences don't matter (PS3.5 Annex G; plan §4b).
+    /// Returns nil if pixels are absent or undecodable. MUST stay byte-identical to
+    /// cli-parity-gen's `decodedPixelHash` so the golden and Studio hashes line up.
+    public static func decodedPixelHash(fileURL: URL) -> String? {
+        guard let data = try? Data(contentsOf: fileURL),
+              let file = try? DICOMFile.read(from: data),
+              let px = file.pixelData() else { return nil }
+        return SHA256.hash(data: px.data).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// SHA-256 (hex) of a produced raster image's NORMALIZED pixels — decoded to
+    /// 8-bit device-gray, which strips the encoder metadata (EXIF timestamps, ICC,
+    /// tEXt) that makes the image FILE non-deterministic while leaving pixel content
+    /// intact. Backs the "image-raster-hash" artifact kind for DICOM→image producers
+    /// (e.g. dicom-export single), comparing pixel content rather than file bytes
+    /// (plan §4b). `nil` if the image can't be decoded. MUST stay byte-identical to
+    /// cli-parity-gen's `imageRasterHash` so golden and Studio hashes line up.
+    public static func imageRasterHash(fileURL: URL) -> String? {
+        #if canImport(ImageIO)
+        guard let src = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
+              let image = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
+        let width = image.width, height = image.height
+        guard width > 0, height > 0 else { return nil }
+        var raster = Data(count: width * height)
+        let ok: Bool = raster.withUnsafeMutableBytes { buf in
+            guard let base = buf.baseAddress,
+                  let ctx = CGContext(data: base, width: width, height: height,
+                                      bitsPerComponent: 8, bytesPerRow: width,
+                                      space: CGColorSpaceCreateDeviceGray(),
+                                      bitmapInfo: CGImageAlphaInfo.none.rawValue) else { return false }
+            ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return true
+        }
+        guard ok else { return nil }
+        var hasher = SHA256()
+        hasher.update(data: Data("\(width)x\(height):".utf8))
+        hasher.update(data: raster)
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        #else
+        return nil
+        #endif
     }
 
     /// LCS-based line diff producing same / cliOnly / studioOnly lines.

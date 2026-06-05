@@ -1,0 +1,617 @@
+{
+  "schemaVersion" : 1,
+  "tools" : [
+    {
+      "acceptedFlags" : 13,
+      "coveragePct" : 15.4,
+      "coveredFlags" : 2,
+      "toolId" : "dicom-anon",
+      "uncoveredFlags" : [
+        "--audit-log",
+        "--backup",
+        "--dry-run",
+        "--force",
+        "--keep",
+        "--recursive",
+        "--regenerate-uids",
+        "--remove",
+        "--replace",
+        "--shift-dates",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 17,
+      "coveragePct" : 23.5,
+      "coveredFlags" : 4,
+      "toolId" : "dicom-archive",
+      "uncoveredFlags" : [
+        "--flatten",
+        "--force",
+        "--output",
+        "--path",
+        "--patient-id",
+        "--patient-name",
+        "--recursive",
+        "--series-uid",
+        "--skip-duplicates",
+        "--study-date",
+        "--study-uid",
+        "--verbose",
+        "--verify-files"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 9,
+      "coveragePct" : 33.3,
+      "coveredFlags" : 3,
+      "toolId" : "dicom-compress",
+      "uncoveredFlags" : [
+        "--backend",
+        "--codec",
+        "--decompress",
+        "--quality",
+        "--recursive",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 12,
+      "coveragePct" : 16.7,
+      "coveredFlags" : 2,
+      "toolId" : "dicom-convert",
+      "uncoveredFlags" : [
+        "--apply-window",
+        "--force",
+        "--format",
+        "--frame",
+        "--quality",
+        "--recursive",
+        "--strip-private",
+        "--validate",
+        "--window-center",
+        "--window-width"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 0,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-dcmdir",
+      "uncoveredFlags" : [
+
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 8,
+      "coveragePct" : 100,
+      "coveredFlags" : 8,
+      "toolId" : "dicom-diff",
+      "uncoveredFlags" : [
+
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 9,
+      "coveragePct" : 88.9,
+      "coveredFlags" : 8,
+      "toolId" : "dicom-dump",
+      "uncoveredFlags" : [
+        "--highlight"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 8,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-echo",
+      "uncoveredFlags" : [
+        "--aet",
+        "--called-aet",
+        "--count",
+        "--diagnose",
+        "--port",
+        "--stats",
+        "--timeout",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 21,
+      "coveragePct" : 9.5,
+      "coveredFlags" : 2,
+      "toolId" : "dicom-export",
+      "uncoveredFlags" : [
+        "--apply-window",
+        "--columns",
+        "--embed-metadata",
+        "--end-frame",
+        "--exif-fields",
+        "--fps",
+        "--frame",
+        "--labels",
+        "--loop-count",
+        "--organize-by",
+        "--quality",
+        "--recursive",
+        "--scale",
+        "--spacing",
+        "--start-frame",
+        "--thumbnail-size",
+        "--verbose",
+        "--window-center",
+        "--window-width"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 14,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-image",
+      "uncoveredFlags" : [
+        "--instance-number",
+        "--modality",
+        "--output",
+        "--patient-id",
+        "--patient-name",
+        "--recursive",
+        "--series-description",
+        "--series-number",
+        "--series-uid",
+        "--split-pages",
+        "--study-description",
+        "--study-uid",
+        "--use-exif",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 5,
+      "coveragePct" : 100,
+      "coveredFlags" : 5,
+      "toolId" : "dicom-info",
+      "uncoveredFlags" : [
+
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 12,
+      "coveragePct" : 25,
+      "coveredFlags" : 3,
+      "toolId" : "dicom-json",
+      "uncoveredFlags" : [
+        "--bulk-data-url",
+        "--filter-tag",
+        "--format",
+        "--include-empty",
+        "--inline-threshold",
+        "--no-sort-keys",
+        "--reverse",
+        "--stream",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 8,
+      "coveragePct" : 12.5,
+      "coveredFlags" : 1,
+      "toolId" : "dicom-merge",
+      "uncoveredFlags" : [
+        "--format",
+        "--level",
+        "--order",
+        "--recursive",
+        "--sort-by",
+        "--validate",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 14,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-mpps",
+      "uncoveredFlags" : [
+        "--accession-number",
+        "--aet",
+        "--called-aet",
+        "--image-uid",
+        "--mpps-uid",
+        "--patient-id",
+        "--patient-name",
+        "--port",
+        "--series-uid",
+        "--sps-id",
+        "--status",
+        "--study-uid",
+        "--timeout",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 13,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-mwl",
+      "uncoveredFlags" : [
+        "--accession-number",
+        "--aet",
+        "--called-aet",
+        "--date",
+        "--json",
+        "--modality",
+        "--patient",
+        "--patient-id",
+        "--port",
+        "--sps-status",
+        "--station",
+        "--timeout",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 14,
+      "coveragePct" : 35.7,
+      "coveredFlags" : 5,
+      "toolId" : "dicom-pdf",
+      "uncoveredFlags" : [
+        "--extract",
+        "--instance-number",
+        "--modality",
+        "--recursive",
+        "--series-description",
+        "--series-number",
+        "--show-metadata",
+        "--title",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 9,
+      "coveragePct" : 33.3,
+      "coveredFlags" : 3,
+      "toolId" : "dicom-pixedit",
+      "uncoveredFlags" : [
+        "--apply-window",
+        "--crop",
+        "--invert",
+        "--verbose",
+        "--window-center",
+        "--window-width"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 14,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-qido",
+      "uncoveredFlags" : [
+        "--accession-number",
+        "--format",
+        "--level",
+        "--limit",
+        "--modality",
+        "--offset",
+        "--patient-id",
+        "--patient-name",
+        "--series",
+        "--study",
+        "--study-date",
+        "--study-description",
+        "--token",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 24,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-qr",
+      "uncoveredFlags" : [
+        "--accession-number",
+        "--aet",
+        "--auto",
+        "--called-aet",
+        "--hierarchical",
+        "--interactive",
+        "--method",
+        "--modality",
+        "--move-dest",
+        "--output",
+        "--parallel",
+        "--patient-id",
+        "--patient-name",
+        "--port",
+        "--review",
+        "--save-state",
+        "--state",
+        "--study-date",
+        "--study-description",
+        "--study-uid",
+        "--timeout",
+        "--transfer-syntax",
+        "--validate",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 16,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-query",
+      "uncoveredFlags" : [
+        "--accession-number",
+        "--aet",
+        "--called-aet",
+        "--format",
+        "--level",
+        "--modality",
+        "--patient-id",
+        "--patient-name",
+        "--port",
+        "--referring-physician",
+        "--series-uid",
+        "--study-date",
+        "--study-description",
+        "--study-uid",
+        "--timeout",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 15,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-retrieve",
+      "uncoveredFlags" : [
+        "--aet",
+        "--called-aet",
+        "--hierarchical",
+        "--instance-uid",
+        "--method",
+        "--move-dest",
+        "--output",
+        "--parallel",
+        "--port",
+        "--series-uid",
+        "--study-uid",
+        "--timeout",
+        "--transfer-syntax",
+        "--uid-list",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 5,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-script",
+      "uncoveredFlags" : [
+        "--dry-run",
+        "--log",
+        "--parallel",
+        "--variables",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 11,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-send",
+      "uncoveredFlags" : [
+        "--aet",
+        "--called-aet",
+        "--dry-run",
+        "--port",
+        "--priority",
+        "--recursive",
+        "--retry",
+        "--timeout",
+        "--transfer-syntax",
+        "--verbose",
+        "--verify"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 9,
+      "coveragePct" : 22.2,
+      "coveredFlags" : 2,
+      "toolId" : "dicom-split",
+      "uncoveredFlags" : [
+        "--apply-window",
+        "--format",
+        "--pattern",
+        "--recursive",
+        "--verbose",
+        "--window-center",
+        "--window-width"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 6,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-stow",
+      "uncoveredFlags" : [
+        "--batch",
+        "--continue-on-error",
+        "--input",
+        "--study",
+        "--token",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 9,
+      "coveragePct" : 44.4,
+      "coveredFlags" : 4,
+      "toolId" : "dicom-study",
+      "uncoveredFlags" : [
+        "--copy",
+        "--output",
+        "--pattern",
+        "--report",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 8,
+      "coveragePct" : 50,
+      "coveredFlags" : 4,
+      "toolId" : "dicom-tags",
+      "uncoveredFlags" : [
+        "--copy-from",
+        "--dry-run",
+        "--tags",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 13,
+      "coveragePct" : 23.1,
+      "coveredFlags" : 3,
+      "toolId" : "dicom-uid",
+      "uncoveredFlags" : [
+        "--count",
+        "--dry-run",
+        "--export-map",
+        "--json",
+        "--maintain-relationships",
+        "--output",
+        "--root",
+        "--search",
+        "--type",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 35,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-ups",
+      "uncoveredFlags" : [
+        "--accession-number",
+        "--admission-id",
+        "--aet",
+        "--comments",
+        "--create",
+        "--create-workitem",
+        "--expected-completion",
+        "--filter-state",
+        "--format",
+        "--get",
+        "--label",
+        "--patient-birth-date",
+        "--patient-id",
+        "--patient-name",
+        "--patient-sex",
+        "--performer-name",
+        "--performer-organization",
+        "--priority",
+        "--procedure-id",
+        "--referring-physician",
+        "--scheduled-start",
+        "--scheduled-station",
+        "--search",
+        "--state",
+        "--station-name",
+        "--step-id",
+        "--study-uid",
+        "--subscribe",
+        "--token",
+        "--transaction-uid",
+        "--unsubscribe",
+        "--update",
+        "--verbose",
+        "--workitem-uid",
+        "--worklist-label"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 8,
+      "coveragePct" : 75,
+      "coveredFlags" : 6,
+      "toolId" : "dicom-validate",
+      "uncoveredFlags" : [
+        "--iod",
+        "--output"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 14,
+      "coveragePct" : 0,
+      "coveredFlags" : 0,
+      "toolId" : "dicom-wado",
+      "uncoveredFlags" : [
+        "--content-type",
+        "--format",
+        "--frames",
+        "--instance",
+        "--metadata",
+        "--output",
+        "--rendered",
+        "--series",
+        "--study",
+        "--thumbnail",
+        "--timeout",
+        "--token",
+        "--uri",
+        "--verbose"
+      ],
+      "wired" : true
+    },
+    {
+      "acceptedFlags" : 10,
+      "coveragePct" : 30,
+      "coveredFlags" : 3,
+      "toolId" : "dicom-xml",
+      "uncoveredFlags" : [
+        "--bulk-data-url",
+        "--filter-tag",
+        "--include-empty",
+        "--inline-threshold",
+        "--no-keywords",
+        "--reverse",
+        "--verbose"
+      ],
+      "wired" : true
+    }
+  ],
+  "totals" : {
+    "accepted" : 383,
+    "covered" : 68,
+    "pct" : 17.8,
+    "toolsWired" : 32
+  }
+}
