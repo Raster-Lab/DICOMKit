@@ -8,13 +8,13 @@ _CLI binary:_ `dicom-info` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--force` | flag | ✅ match | ✅ success |
-| `--format` | option | ✅ match | ✅ success |
-| `--show-private` | flag | ✅ match | ✅ success |
-| `--statistics` | flag | ✅ match | ✅ success |
-| `--tag` | option | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--force` | flag | ✅ match | ✓ | ✅ success |
+| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--show-private` | flag | ✅ match | ✓ | ✅ success |
+| `--statistics` | flag | ✅ match | ✓ | ✅ success |
+| `--tag` | option | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 

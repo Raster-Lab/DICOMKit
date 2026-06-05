@@ -8,17 +8,17 @@ _CLI binary:_ `dicom-pixedit` · _category:_ DATA_EXPORT · _wired in Studio:_ y
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--apply-window` | flag | ✅ match | ⊘ not covered |
-| `--crop` | option | ✅ match | ✅ success |
-| `--fill-value` | option | ⚠️ missing in UI | ✅ success |
-| `--invert` | flag | ✅ match | ✅ success |
-| `--mask-region` | option | ✅ match | ✅ success |
-| `--output` | option | ✅ match | ✅ success |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
-| `--window-center` | option | ✅ match | ⊘ not covered |
-| `--window-width` | option | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--apply-window` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--crop` | option | ✅ match | ✓ | ✅ success |
+| `--fill-value` | option | ⚠️ missing in UI | — | ✅ success |
+| `--invert` | flag | ✅ match | ✓ | ✅ success |
+| `--mask-region` | option | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--window-center` | option | ✅ match | ✓ | ⊘ not covered |
+| `--window-width` | option | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

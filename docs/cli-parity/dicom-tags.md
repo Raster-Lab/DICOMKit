@@ -8,16 +8,16 @@ _CLI binary:_ `dicom-tags` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--copy-from` | option | ✅ match | ⊘ not covered |
-| `--delete` | option | ✅ match | ✅ success |
-| `--delete-private` | flag | ✅ match | ✅ success |
-| `--dry-run` | flag | ✅ match | ⊘ not covered |
-| `--output` | option | ✅ match | ✅ success |
-| `--set` | option | ✅ match | ✅ success |
-| `--tags` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--copy-from` | option | ✅ match | ✓ | ⊘ not covered |
+| `--delete` | option | ✅ match | ✓ | ✅ success |
+| `--delete-private` | flag | ✅ match | ✓ | ✅ success |
+| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--set` | option | ✅ match | ✓ | ✅ success |
+| `--tags` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

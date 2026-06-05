@@ -8,16 +8,16 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--format` | option | ✅ match | ⊘ not covered |
-| `--level` | option | ✅ match | ⊘ not covered |
-| `--order` | option | ✅ match | ⊘ not covered |
-| `--output` | option | ✅ match | ❌ DRIFT |
-| `--recursive` | flag | ✅ match | ⊘ not covered |
-| `--sort-by` | option | ✅ match | ⊘ not covered |
-| `--validate` | flag | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--format` | option | ✅ match | ✓ | ⊘ not covered |
+| `--level` | option | ✅ match | ✓ | ⊘ not covered |
+| `--order` | option | ✅ match | ✓ | ⊘ not covered |
+| `--output` | option | ✅ match | ✓ | ❌ DRIFT |
+| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--sort-by` | option | ✅ match | ✓ | ⊘ not covered |
+| `--validate` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

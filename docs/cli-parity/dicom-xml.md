@@ -8,18 +8,18 @@ _CLI binary:_ `dicom-xml` · _category:_ DATA_EXPORT · _wired in Studio:_ yes �
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--bulk-data-url` | option | ✅ match | ✅ success |
-| `--filter-tag` | option | ✅ match | ✅ success |
-| `--include-empty` | flag | ✅ match | ✅ success |
-| `--inline-threshold` | option | ✅ match | ✅ success |
-| `--metadata-only` | flag | ✅ match | ✅ success |
-| `--no-keywords` | flag | ✅ match | ✅ success |
-| `--output` | option | ✅ match | ✅ success |
-| `--pretty` | flag | ✅ match | ✅ success |
-| `--reverse` | flag | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--bulk-data-url` | option | ✅ match | ✓ | ✅ success |
+| `--filter-tag` | option | ✅ match | ✓ | ✅ success |
+| `--include-empty` | flag | ✅ match | ✓ | ✅ success |
+| `--inline-threshold` | option | ✅ match | ✓ | ✅ success |
+| `--metadata-only` | flag | ✅ match | ✓ | ✅ success |
+| `--no-keywords` | flag | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--pretty` | flag | ✅ match | ✓ | ✅ success |
+| `--reverse` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 

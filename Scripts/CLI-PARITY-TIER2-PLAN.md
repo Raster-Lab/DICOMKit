@@ -598,6 +598,15 @@ Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/
   `--filter-tag` value on commas, so `0008,0060` was shredded into `"0008"`+`"0060"`, matched no
   tag, and emitted an empty `NativeDicomModel`. **✅ fixed** — split on newlines only (a tag is
   written `GGGG,EEEE`), matching the JSON path and the CLI. The two xml-filter-tag scenarios now MATCH.
+- **Phase 3 — Tier-1 input sub-checks (type + default)** beyond mere presence. `ParityFlagRow` gains
+  `typeCheck`/`defaultCheck` (`InputCheckStatus`, computed in `CLIParityEngine.compare`'s MATCH branch;
+  additive — the gate-relevant `.match/.missing/.extra` enum is unchanged). **Type:** CLI `flag` (bare)
+  must map to Studio `.booleanToggle`; CLI `option` to a value-bearing type — a flag-vs-value-option
+  wiring would emit a malformed CLI invocation. **Default:** lenient (numeric `0.0`≡`0`; the CLI's
+  descriptive `defaultValue` like "plain text (default)" is skipped, not warned). Result across 32 tools:
+  **0 type mismatches** (flag/option type parity confirmed) and **1 advisory default divergence**
+  (`dicom-split --output`: CLI `.` vs Studio `~/Desktop/DICOM_Output/` — a benign UX default). Surfaced
+  in the matrix docs' new **Type/Default** column; output gate unchanged (226 MATCH / 9 DIFFERS).
 
 Regenerate the matrix + ledger any time with: `swift run cli-parity-docs`.
 

@@ -4,21 +4,23 @@ _CLI binary:_ `dicom-split` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 **Input-contract parity:** 9/9 CLI flags matched · status **OK** (100%)
 
+**Input sub-checks (Phase 3):** ⚠️ 1 default mismatch(es): `--output`.
+
 **Output behavior:** 2 scenario(s) — 2 success / 0 drift.
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--apply-window` | flag | ✅ match | ⊘ not covered |
-| `--format` | option | ✅ match | ⊘ not covered |
-| `--frames` | option | ✅ match | ✅ success |
-| `--output` | option | ✅ match | ✅ success |
-| `--pattern` | option | ✅ match | ⊘ not covered |
-| `--recursive` | flag | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
-| `--window-center` | option | ✅ match | ⊘ not covered |
-| `--window-width` | option | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--apply-window` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--format` | option | ✅ match | ✓ | ⊘ not covered |
+| `--frames` | option | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ⚠️ default `.`↔`/Users/raster/Desktop/DICOM_Output/` | ✅ success |
+| `--pattern` | option | ✅ match | ✓ | ⊘ not covered |
+| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--window-center` | option | ✅ match | ✓ | ⊘ not covered |
+| `--window-width` | option | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

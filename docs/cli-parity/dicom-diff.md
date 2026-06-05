@@ -8,16 +8,16 @@ _CLI binary:_ `dicom-diff` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--compare-pixels` | flag | ✅ match | ✅ success |
-| `--format` | option | ✅ match | ✅ success |
-| `--ignore-private` | flag | ✅ match | ✅ success |
-| `--ignore-tag` | option | ✅ match | ✅ success |
-| `--quick` | flag | ✅ match | ✅ success |
-| `--show-identical` | flag | ✅ match | ✅ success |
-| `--tolerance` | option | ✅ match | ✅ success |
-| `--verbose` | flag | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--compare-pixels` | flag | ✅ match | ✓ | ✅ success |
+| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--ignore-private` | flag | ✅ match | ✓ | ✅ success |
+| `--ignore-tag` | option | ✅ match | ✓ | ✅ success |
+| `--quick` | flag | ✅ match | ✓ | ✅ success |
+| `--show-identical` | flag | ✅ match | ✓ | ✅ success |
+| `--tolerance` | option | ✅ match | ✓ | ✅ success |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 

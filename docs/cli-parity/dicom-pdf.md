@@ -8,22 +8,22 @@ _CLI binary:_ `dicom-pdf` · _category:_ DATA_EXPORT · _wired in Studio:_ yes �
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--extract` | flag | ✅ match | ⊘ not covered |
-| `--instance-number` | option | ✅ match | ⊘ not covered |
-| `--modality` | option | ✅ match | ⊘ not covered |
-| `--output` | option | ✅ match | ✅ success |
-| `--patient-id` | option | ✅ match | ✅ success |
-| `--patient-name` | option | ✅ match | ✅ success |
-| `--recursive` | flag | ✅ match | ⊘ not covered |
-| `--series-description` | option | ✅ match | ⊘ not covered |
-| `--series-number` | option | ✅ match | ⊘ not covered |
-| `--series-uid` | option | ✅ match | ✅ success |
-| `--show-metadata` | flag | ✅ match | ⊘ not covered |
-| `--study-uid` | option | ✅ match | ✅ success |
-| `--title` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--extract` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--instance-number` | option | ✅ match | ✓ | ⊘ not covered |
+| `--modality` | option | ✅ match | ✓ | ⊘ not covered |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--patient-id` | option | ✅ match | ✓ | ✅ success |
+| `--patient-name` | option | ✅ match | ✓ | ✅ success |
+| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--series-description` | option | ✅ match | ✓ | ⊘ not covered |
+| `--series-number` | option | ✅ match | ✓ | ⊘ not covered |
+| `--series-uid` | option | ✅ match | ✓ | ✅ success |
+| `--show-metadata` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--study-uid` | option | ✅ match | ✓ | ✅ success |
+| `--title` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

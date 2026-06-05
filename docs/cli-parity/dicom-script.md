@@ -8,13 +8,13 @@ _CLI binary:_ `dicom-script` · _category:_ AUTOMATION · _wired in Studio:_ yes
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--dry-run` | flag | ✅ match | ⊘ not covered |
-| `--log` | option | ✅ match | ⊘ not covered |
-| `--parallel` | flag | ✅ match | ⊘ not covered |
-| `--variables` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--log` | option | ✅ match | ✓ | ⊘ not covered |
+| `--parallel` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--variables` | option | ✅ match | ✓ | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
 
 ## Output scenarios
 

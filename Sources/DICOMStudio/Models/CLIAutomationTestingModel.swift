@@ -66,6 +66,21 @@ public enum FlagParityStatus: String, Sendable, Hashable {
     }
 }
 
+/// Phase 3: per-flag input SUB-checks layered on top of the presence-based `status`.
+/// Presence (MATCH/MISSING/EXTRA) is the gate-relevant signal; these refine a MATCH
+/// to catch flags that exist on both sides but disagree on shape.
+public enum InputCheckStatus: String, Sendable, Hashable {
+    case ok         = "OK"        // checked and consistent
+    case mismatch   = "MISMATCH"  // checked and INCONSISTENT (drift even though present on both)
+    case notChecked = "—"         // not applicable (flag absent on a side, or no data to compare)
+
+    public var glyph: String {
+        switch self {
+        case .ok: return "✓"; case .mismatch: return "⚠️"; case .notChecked: return "—"
+        }
+    }
+}
+
 public struct ParityFlagRow: Sendable, Identifiable, Hashable {
     public var id: String { flag }
     public let flag: String
@@ -77,15 +92,24 @@ public struct ParityFlagRow: Sendable, Identifiable, Hashable {
     public let cliHelp: String
     public let studioHelp: String
     public let status: FlagParityStatus
+    /// Type shape: CLI `flag` (bare, no value) ↔ Studio `.booleanToggle`; CLI `option`
+    /// (takes a value) ↔ value-bearing Studio type. A `flag` vs value-option mismatch is
+    /// dangerous (Studio would emit `--x value` where the CLI expects bare `--x`, or vice versa).
+    public let typeCheck: InputCheckStatus
+    /// Default-value agreement (lenient/normalized). Advisory (amber), not gate-failing.
+    public let defaultCheck: InputCheckStatus
 
     public init(flag: String, kind: String, inCLI: Bool, inStudio: Bool,
                 cliDefault: String, studioDefault: String,
-                cliHelp: String, studioHelp: String, status: FlagParityStatus) {
+                cliHelp: String, studioHelp: String, status: FlagParityStatus,
+                typeCheck: InputCheckStatus = .notChecked,
+                defaultCheck: InputCheckStatus = .notChecked) {
         self.flag = flag; self.kind = kind
         self.inCLI = inCLI; self.inStudio = inStudio
         self.cliDefault = cliDefault; self.studioDefault = studioDefault
         self.cliHelp = cliHelp; self.studioHelp = studioHelp
         self.status = status
+        self.typeCheck = typeCheck; self.defaultCheck = defaultCheck
     }
 }
 

@@ -8,16 +8,16 @@ _CLI binary:_ `dicom-validate` · _category:_ FILE_PROCESSING · _wired in Studi
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--detailed` | flag | ✅ match | ✅ success |
-| `--force` | flag | ✅ match | ✅ success |
-| `--format` | option | ✅ match | ✅ success |
-| `--iod` | option | ✅ match | ⊘ not covered |
-| `--level` | option | ✅ match | ✅ success |
-| `--output` | option | ✅ match | ⊘ not covered |
-| `--recursive` | flag | ✅ match | ✅ success |
-| `--strict` | flag | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--detailed` | flag | ✅ match | ✓ | ✅ success |
+| `--force` | flag | ✅ match | ✓ | ✅ success |
+| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--iod` | option | ✅ match | ✓ | ⊘ not covered |
+| `--level` | option | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ✓ | ⊘ not covered |
+| `--recursive` | flag | ✅ match | ✓ | ✅ success |
+| `--strict` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 

@@ -8,29 +8,29 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 
 ## Flags
 
-| Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
-|---|---|---|---|
-| `--apply-window` | flag | ✅ match | ✅ success |
-| `--columns` | option | ✅ match | ✅ success |
-| `--embed-metadata` | flag | ✅ match | ✅ success |
-| `--end-frame` | option | ✅ match | ✅ success |
-| `--exif-fields` | option | ✅ match | ⊘ not covered |
-| `--format` | option | ✅ match | ✅ success |
-| `--fps` | option | ✅ match | ✅ success |
-| `--frame` | option | ✅ match | ✅ success |
-| `--labels` | flag | ✅ match | ✅ success |
-| `--loop-count` | option | ✅ match | ✅ success |
-| `--organize-by` | option | ✅ match | ✅ success |
-| `--output` | option | ✅ match | ✅ success |
-| `--quality` | option | ✅ match | ✅ success |
-| `--recursive` | flag | ✅ match | ✅ success |
-| `--scale` | option | ✅ match | ✅ success |
-| `--spacing` | option | ✅ match | ✅ success |
-| `--start-frame` | option | ✅ match | ✅ success |
-| `--thumbnail-size` | option | ✅ match | ✅ success |
-| `--verbose` | flag | ✅ match | ✅ success |
-| `--window-center` | option | ✅ match | ✅ success |
-| `--window-width` | option | ✅ match | ✅ success |
+| Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
+|---|---|---|---|---|
+| `--apply-window` | flag | ✅ match | ✓ | ✅ success |
+| `--columns` | option | ✅ match | ✓ | ✅ success |
+| `--embed-metadata` | flag | ✅ match | ✓ | ✅ success |
+| `--end-frame` | option | ✅ match | ✓ | ✅ success |
+| `--exif-fields` | option | ✅ match | ✓ | ⊘ not covered |
+| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--fps` | option | ✅ match | ✓ | ✅ success |
+| `--frame` | option | ✅ match | ✓ | ✅ success |
+| `--labels` | flag | ✅ match | ✓ | ✅ success |
+| `--loop-count` | option | ✅ match | ✓ | ✅ success |
+| `--organize-by` | option | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--quality` | option | ✅ match | ✓ | ✅ success |
+| `--recursive` | flag | ✅ match | ✓ | ✅ success |
+| `--scale` | option | ✅ match | ✓ | ✅ success |
+| `--spacing` | option | ✅ match | ✓ | ✅ success |
+| `--start-frame` | option | ✅ match | ✓ | ✅ success |
+| `--thumbnail-size` | option | ✅ match | ✓ | ✅ success |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
+| `--window-center` | option | ✅ match | ✓ | ✅ success |
+| `--window-width` | option | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 
