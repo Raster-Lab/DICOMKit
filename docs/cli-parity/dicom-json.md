@@ -4,31 +4,47 @@ _CLI binary:_ `dicom-json` · _category:_ DATA_EXPORT · _wired in Studio:_ yes 
 
 **Input-contract parity:** 12/12 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 4 scenario(s) — 4 success / 0 drift.
+**Output behavior:** 20 scenario(s) — 20 success / 0 drift.
 
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Output (UI vs CLI) |
 |---|---|---|---|
 | `--bulk-data-url` | option | ✅ match | ⊘ not covered |
-| `--filter-tag` | option | ✅ match | ⊘ not covered |
-| `--format` | option | ✅ match | ⊘ not covered |
-| `--include-empty` | flag | ✅ match | ⊘ not covered |
-| `--inline-threshold` | option | ✅ match | ⊘ not covered |
+| `--filter-tag` | option | ✅ match | ✅ success |
+| `--format` | option | ✅ match | ✅ success |
+| `--include-empty` | flag | ✅ match | ✅ success |
+| `--inline-threshold` | option | ✅ match | ✅ success |
 | `--metadata-only` | flag | ✅ match | ✅ success |
-| `--no-sort-keys` | flag | ✅ match | ⊘ not covered |
+| `--no-sort-keys` | flag | ✅ match | ✅ success |
 | `--output` | option | ✅ match | ✅ success |
 | `--pretty` | flag | ✅ match | ✅ success |
 | `--reverse` | flag | ✅ match | ⊘ not covered |
-| `--stream` | flag | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| `--stream` | flag | ✅ match | ✅ success |
+| `--verbose` | flag | ✅ match | ✅ success |
 
 ## Output scenarios
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| CT.dcm · auto-filter-tag | `FIXTURE --output OUTPUT --filter-tag 0008,0060` | ✅ success |
+| CT.dcm · auto-format-dicomweb | `FIXTURE --output OUTPUT --format dicomweb` | ✅ success |
+| CT.dcm · auto-format-standard | `FIXTURE --output OUTPUT --format standard` | ✅ success |
+| CT.dcm · auto-include-empty | `FIXTURE --output OUTPUT --include-empty` | ✅ success |
+| CT.dcm · auto-inline-threshold | `FIXTURE --output OUTPUT --inline-threshold 0` | ✅ success |
+| CT.dcm · auto-no-sort-keys | `FIXTURE --output OUTPUT --no-sort-keys` | ✅ success |
+| CT.dcm · auto-stream | `FIXTURE --output OUTPUT --stream` | ✅ success |
+| CT.dcm · auto-verbose | `FIXTURE --output OUTPUT --verbose` | ✅ success |
 | CT.dcm · file-meta | `--metadata-only --output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · file-meta-pretty | `--metadata-only --pretty --output OUTPUT FIXTURE` | ✅ success |
+| syn-ct.dcm · auto-filter-tag | `FIXTURE --output OUTPUT --filter-tag 0008,0060` | ✅ success |
+| syn-ct.dcm · auto-format-dicomweb | `FIXTURE --output OUTPUT --format dicomweb` | ✅ success |
+| syn-ct.dcm · auto-format-standard | `FIXTURE --output OUTPUT --format standard` | ✅ success |
+| syn-ct.dcm · auto-include-empty | `FIXTURE --output OUTPUT --include-empty` | ✅ success |
+| syn-ct.dcm · auto-inline-threshold | `FIXTURE --output OUTPUT --inline-threshold 0` | ✅ success |
+| syn-ct.dcm · auto-no-sort-keys | `FIXTURE --output OUTPUT --no-sort-keys` | ✅ success |
+| syn-ct.dcm · auto-stream | `FIXTURE --output OUTPUT --stream` | ✅ success |
+| syn-ct.dcm · auto-verbose | `FIXTURE --output OUTPUT --verbose` | ✅ success |
 | syn-ct.dcm · file-meta | `--metadata-only --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · file-meta-pretty | `--metadata-only --pretty --output OUTPUT FIXTURE` | ✅ success |
 

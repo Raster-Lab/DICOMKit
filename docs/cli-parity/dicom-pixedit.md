@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-pixedit` · _category:_ DATA_EXPORT · _wired in Studio:_ y
 
 **Input-contract parity:** 8/9 CLI flags matched · 1 missing in UI · status **INCOMPLETE** (89%)
 
-**Output behavior:** 2 scenario(s) — 2 success / 0 drift.
+**Output behavior:** 4 scenario(s) — 4 success / 0 drift.
 
 ## Flags
 
@@ -13,7 +13,7 @@ _CLI binary:_ `dicom-pixedit` · _category:_ DATA_EXPORT · _wired in Studio:_ y
 | `--apply-window` | flag | ✅ match | ⊘ not covered |
 | `--crop` | option | ✅ match | ⊘ not covered |
 | `--fill-value` | option | ⚠️ missing in UI | ✅ success |
-| `--invert` | flag | ✅ match | ⊘ not covered |
+| `--invert` | flag | ✅ match | ✅ success |
 | `--mask-region` | option | ✅ match | ✅ success |
 | `--output` | option | ✅ match | ✅ success |
 | `--verbose` | flag | ✅ match | ⊘ not covered |
@@ -24,7 +24,9 @@ _CLI binary:_ `dicom-pixedit` · _category:_ DATA_EXPORT · _wired in Studio:_ y
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| CT.dcm · auto-invert | `FIXTURE --output OUTPUT --invert` | ✅ success |
 | CT.dcm · mask-region | `FIXTURE --output OUTPUT --mask-region 0,0,4,4 --fill-value 0` | ✅ success |
+| syn-ct.dcm · auto-invert | `FIXTURE --output OUTPUT --invert` | ✅ success |
 | syn-ct.dcm · mask-region | `FIXTURE --output OUTPUT --mask-region 0,0,4,4 --fill-value 0` | ✅ success |
 
 ---

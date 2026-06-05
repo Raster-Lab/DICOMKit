@@ -1218,11 +1218,13 @@ public final class CLIWorkshopViewModel {
         let bulkDataURLString = paramValue("bulk-data-url")
         let inlineThreshold = Int(paramValue("inline-threshold")) ?? 1024
 
-        // --filter-tag is an array field; values may be entered comma- or
-        // newline-separated. Normalise to a clean list of trimmed tokens.
+        // --filter-tag is an array field; one tag per line. Do NOT split on commas —
+        // a tag is written `GGGG,EEEE`, so comma-splitting `0008,0060` would corrupt it
+        // into "0008"+"0060" and match nothing (the empty-output bug). Matches the
+        // dicom-json path and the CLI, which split on newlines only.
         let filterRaw = paramValue("filter-tag")
         let filterTags: [String] = filterRaw
-            .split(whereSeparator: { $0 == "," || $0 == "\n" })
+            .split(whereSeparator: { $0 == "\n" || $0 == "\r" })
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
 

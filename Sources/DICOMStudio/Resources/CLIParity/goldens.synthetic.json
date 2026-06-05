@@ -1748,6 +1748,362 @@
         "verbose" : "true"
       },
       "toolId" : "dicom-anon"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--invert"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-pixedit-auto-invert",
+      "label" : "syn-ct.dcm · auto-invert",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW FF 0F FE 0F FD 0F FC 0F FB 0F FA 0F F9 0F F8 0F F7 0F F6 0F F5 0F F4 0F ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "invert" : "true",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-pixedit"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--format",
+        "standard"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-format-standard",
+      "label" : "syn-ct.dcm · auto-format-standard",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "format" : "standard",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--format",
+        "dicomweb"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-format-dicomweb",
+      "label" : "syn-ct.dcm · auto-format-dicomweb",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "format" : "dicomweb",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--no-sort-keys"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-no-sort-keys",
+      "label" : "syn-ct.dcm · auto-no-sort-keys",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "no-sort-keys" : "true",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--include-empty"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-include-empty",
+      "label" : "syn-ct.dcm · auto-include-empty",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "include-empty" : "true",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--inline-threshold",
+        "0"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-inline-threshold",
+      "label" : "syn-ct.dcm · auto-inline-threshold",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "inline-threshold" : "0",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--filter-tag",
+        "0008,0060"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-filter-tag",
+      "label" : "syn-ct.dcm · auto-filter-tag",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  }\n}",
+      "studioParams" : {
+        "filter-tag" : "0008,0060",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--stream"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-stream",
+      "label" : "syn-ct.dcm · auto-stream",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "stream" : "true"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.json",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-json-auto-verbose",
+      "label" : "syn-ct.dcm · auto-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-json"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.xml",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--no-keywords"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-xml-auto-no-keywords",
+      "label" : "syn-ct.dcm · auto-no-keywords",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<NativeDicomModel xmlns=\"http:\/\/dicom.nema.org\/PS3.19\/models\/NativeDICOM\">\n<DicomAttribute tag=\"00080016\" vr=\"UI\">\n  <Value number=\"1\">1.2.840.10008.5.1.4.1.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080018\" vr=\"UI\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080020\" vr=\"DA\">\n  <Value number=\"1\">20200101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080030\" vr=\"TM\">\n  <Value number=\"1\">120000<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080060\" vr=\"CS\">\n  <Value number=\"1\">CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080070\" vr=\"LO\">\n  <Value number=\"1\">DICOMKit Parity<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00081030\" vr=\"LO\">\n  <Value number=\"1\">PARITY SYNTHETIC CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0008103E\" vr=\"LO\">\n  <Value number=\"1\">PARITY SERIES<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100010\" vr=\"PN\">\n  <PersonName number=\"1\">\n    <Alphabetic>\n      <FamilyName>PARITY<\/FamilyName>\n      <GivenName>SYNTH<\/GivenName>\n    <\/Alphabetic>\n  <\/PersonName>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100020\" vr=\"LO\">\n  <Value number=\"1\">SYN-0001<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100030\" vr=\"DA\">\n  <Value number=\"1\">19800101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100040\" vr=\"CS\">\n  <Value number=\"1\">O<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000D\" vr=\"UI\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000E\" vr=\"UI\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200011\" vr=\"IS\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200013\" vr=\"IS\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280002\" vr=\"US\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280004\" vr=\"CS\">\n  <Value number=\"1\">MONOCHROME2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280010\" vr=\"US\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280011\" vr=\"US\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280100\" vr=\"US\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280101\" vr=\"US\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280102\" vr=\"US\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280103\" vr=\"US\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"7FE00010\" vr=\"OW\">\n  <InlineBinary>AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=<\/InlineBinary>\n<\/DicomAttribute>\n<\/NativeDicomModel>\n",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "no-keywords" : "true",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-xml"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.xml",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--include-empty"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-xml-auto-include-empty",
+      "label" : "syn-ct.dcm · auto-include-empty",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<NativeDicomModel xmlns=\"http:\/\/dicom.nema.org\/PS3.19\/models\/NativeDICOM\">\n<DicomAttribute tag=\"00080016\" vr=\"UI\" keyword=\"SOPClassUID\">\n  <Value number=\"1\">1.2.840.10008.5.1.4.1.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080018\" vr=\"UI\" keyword=\"SOPInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080020\" vr=\"DA\" keyword=\"StudyDate\">\n  <Value number=\"1\">20200101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080030\" vr=\"TM\" keyword=\"StudyTime\">\n  <Value number=\"1\">120000<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080060\" vr=\"CS\" keyword=\"Modality\">\n  <Value number=\"1\">CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080070\" vr=\"LO\" keyword=\"Manufacturer\">\n  <Value number=\"1\">DICOMKit Parity<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00081030\" vr=\"LO\" keyword=\"StudyDescription\">\n  <Value number=\"1\">PARITY SYNTHETIC CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0008103E\" vr=\"LO\" keyword=\"SeriesDescription\">\n  <Value number=\"1\">PARITY SERIES<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100010\" vr=\"PN\" keyword=\"PatientName\">\n  <PersonName number=\"1\">\n    <Alphabetic>\n      <FamilyName>PARITY<\/FamilyName>\n      <GivenName>SYNTH<\/GivenName>\n    <\/Alphabetic>\n  <\/PersonName>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100020\" vr=\"LO\" keyword=\"PatientID\">\n  <Value number=\"1\">SYN-0001<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100030\" vr=\"DA\" keyword=\"PatientBirthDate\">\n  <Value number=\"1\">19800101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100040\" vr=\"CS\" keyword=\"PatientSex\">\n  <Value number=\"1\">O<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000D\" vr=\"UI\" keyword=\"StudyInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000E\" vr=\"UI\" keyword=\"SeriesInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200011\" vr=\"IS\" keyword=\"SeriesNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200013\" vr=\"IS\" keyword=\"InstanceNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280002\" vr=\"US\" keyword=\"SamplesPerPixel\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280004\" vr=\"CS\" keyword=\"PhotometricInterpretation\">\n  <Value number=\"1\">MONOCHROME2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280010\" vr=\"US\" keyword=\"Rows\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280011\" vr=\"US\" keyword=\"Columns\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280100\" vr=\"US\" keyword=\"BitsAllocated\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280101\" vr=\"US\" keyword=\"BitsStored\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280102\" vr=\"US\" keyword=\"HighBit\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280103\" vr=\"US\" keyword=\"PixelRepresentation\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"7FE00010\" vr=\"OW\" keyword=\"PixelData\">\n  <InlineBinary>AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=<\/InlineBinary>\n<\/DicomAttribute>\n<\/NativeDicomModel>\n",
+      "studioParams" : {
+        "include-empty" : "true",
+        "input" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-xml"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.xml",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--inline-threshold",
+        "0"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-xml-auto-inline-threshold",
+      "label" : "syn-ct.dcm · auto-inline-threshold",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<NativeDicomModel xmlns=\"http:\/\/dicom.nema.org\/PS3.19\/models\/NativeDICOM\">\n<DicomAttribute tag=\"00080016\" vr=\"UI\" keyword=\"SOPClassUID\">\n  <Value number=\"1\">1.2.840.10008.5.1.4.1.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080018\" vr=\"UI\" keyword=\"SOPInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080020\" vr=\"DA\" keyword=\"StudyDate\">\n  <Value number=\"1\">20200101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080030\" vr=\"TM\" keyword=\"StudyTime\">\n  <Value number=\"1\">120000<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080060\" vr=\"CS\" keyword=\"Modality\">\n  <Value number=\"1\">CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080070\" vr=\"LO\" keyword=\"Manufacturer\">\n  <Value number=\"1\">DICOMKit Parity<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00081030\" vr=\"LO\" keyword=\"StudyDescription\">\n  <Value number=\"1\">PARITY SYNTHETIC CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0008103E\" vr=\"LO\" keyword=\"SeriesDescription\">\n  <Value number=\"1\">PARITY SERIES<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100010\" vr=\"PN\" keyword=\"PatientName\">\n  <PersonName number=\"1\">\n    <Alphabetic>\n      <FamilyName>PARITY<\/FamilyName>\n      <GivenName>SYNTH<\/GivenName>\n    <\/Alphabetic>\n  <\/PersonName>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100020\" vr=\"LO\" keyword=\"PatientID\">\n  <Value number=\"1\">SYN-0001<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100030\" vr=\"DA\" keyword=\"PatientBirthDate\">\n  <Value number=\"1\">19800101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100040\" vr=\"CS\" keyword=\"PatientSex\">\n  <Value number=\"1\">O<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000D\" vr=\"UI\" keyword=\"StudyInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000E\" vr=\"UI\" keyword=\"SeriesInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200011\" vr=\"IS\" keyword=\"SeriesNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200013\" vr=\"IS\" keyword=\"InstanceNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280002\" vr=\"US\" keyword=\"SamplesPerPixel\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280004\" vr=\"CS\" keyword=\"PhotometricInterpretation\">\n  <Value number=\"1\">MONOCHROME2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280010\" vr=\"US\" keyword=\"Rows\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280011\" vr=\"US\" keyword=\"Columns\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280100\" vr=\"US\" keyword=\"BitsAllocated\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280101\" vr=\"US\" keyword=\"BitsStored\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280102\" vr=\"US\" keyword=\"HighBit\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280103\" vr=\"US\" keyword=\"PixelRepresentation\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"7FE00010\" vr=\"OW\" keyword=\"PixelData\">\n  <InlineBinary>AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=<\/InlineBinary>\n<\/DicomAttribute>\n<\/NativeDicomModel>\n",
+      "studioParams" : {
+        "inline-threshold" : "0",
+        "input" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-xml"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.xml",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--filter-tag",
+        "0008,0060"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-xml-auto-filter-tag",
+      "label" : "syn-ct.dcm · auto-filter-tag",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<NativeDicomModel xmlns=\"http:\/\/dicom.nema.org\/PS3.19\/models\/NativeDICOM\">\n<DicomAttribute tag=\"00080060\" vr=\"CS\" keyword=\"Modality\">\n  <Value number=\"1\">CT<\/Value>\n<\/DicomAttribute>\n<\/NativeDicomModel>\n",
+      "studioParams" : {
+        "filter-tag" : "0008,0060",
+        "input" : "FIXTURE",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-xml"
+    },
+    {
+      "artifactKind" : "text",
+      "artifactName" : "out.xml",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-xml-auto-verbose",
+      "label" : "syn-ct.dcm · auto-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<NativeDicomModel xmlns=\"http:\/\/dicom.nema.org\/PS3.19\/models\/NativeDICOM\">\n<DicomAttribute tag=\"00080016\" vr=\"UI\" keyword=\"SOPClassUID\">\n  <Value number=\"1\">1.2.840.10008.5.1.4.1.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080018\" vr=\"UI\" keyword=\"SOPInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080020\" vr=\"DA\" keyword=\"StudyDate\">\n  <Value number=\"1\">20200101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080030\" vr=\"TM\" keyword=\"StudyTime\">\n  <Value number=\"1\">120000<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080060\" vr=\"CS\" keyword=\"Modality\">\n  <Value number=\"1\">CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00080070\" vr=\"LO\" keyword=\"Manufacturer\">\n  <Value number=\"1\">DICOMKit Parity<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00081030\" vr=\"LO\" keyword=\"StudyDescription\">\n  <Value number=\"1\">PARITY SYNTHETIC CT<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0008103E\" vr=\"LO\" keyword=\"SeriesDescription\">\n  <Value number=\"1\">PARITY SERIES<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100010\" vr=\"PN\" keyword=\"PatientName\">\n  <PersonName number=\"1\">\n    <Alphabetic>\n      <FamilyName>PARITY<\/FamilyName>\n      <GivenName>SYNTH<\/GivenName>\n    <\/Alphabetic>\n  <\/PersonName>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100020\" vr=\"LO\" keyword=\"PatientID\">\n  <Value number=\"1\">SYN-0001<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100030\" vr=\"DA\" keyword=\"PatientBirthDate\">\n  <Value number=\"1\">19800101<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00100040\" vr=\"CS\" keyword=\"PatientSex\">\n  <Value number=\"1\">O<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000D\" vr=\"UI\" keyword=\"StudyInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"0020000E\" vr=\"UI\" keyword=\"SeriesInstanceUID\">\n  <Value number=\"1\">1.2.826.0.1.3680043.10.999.1.2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200011\" vr=\"IS\" keyword=\"SeriesNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00200013\" vr=\"IS\" keyword=\"InstanceNumber\">\n  <Value number=\"1\">1<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280002\" vr=\"US\" keyword=\"SamplesPerPixel\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280004\" vr=\"CS\" keyword=\"PhotometricInterpretation\">\n  <Value number=\"1\">MONOCHROME2<\/Value>\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280010\" vr=\"US\" keyword=\"Rows\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280011\" vr=\"US\" keyword=\"Columns\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280100\" vr=\"US\" keyword=\"BitsAllocated\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280101\" vr=\"US\" keyword=\"BitsStored\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280102\" vr=\"US\" keyword=\"HighBit\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"00280103\" vr=\"US\" keyword=\"PixelRepresentation\">\n<\/DicomAttribute>\n<DicomAttribute tag=\"7FE00010\" vr=\"OW\" keyword=\"PixelData\">\n  <InlineBinary>AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=<\/InlineBinary>\n<\/DicomAttribute>\n<\/NativeDicomModel>\n",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "output" : "OUTPUT",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-xml"
     }
   ],
   "schemaVersion" : 3

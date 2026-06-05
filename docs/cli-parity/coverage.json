@@ -180,19 +180,12 @@
     },
     {
       "acceptedFlags" : 12,
-      "coveragePct" : 25,
-      "coveredFlags" : 3,
+      "coveragePct" : 83.3,
+      "coveredFlags" : 10,
       "toolId" : "dicom-json",
       "uncoveredFlags" : [
         "--bulk-data-url",
-        "--filter-tag",
-        "--format",
-        "--include-empty",
-        "--inline-threshold",
-        "--no-sort-keys",
-        "--reverse",
-        "--stream",
-        "--verbose"
+        "--reverse"
       ],
       "wired" : true
     },
@@ -277,13 +270,12 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 33.3,
-      "coveredFlags" : 3,
+      "coveragePct" : 44.4,
+      "coveredFlags" : 4,
       "toolId" : "dicom-pixedit",
       "uncoveredFlags" : [
         "--apply-window",
         "--crop",
-        "--invert",
         "--verbose",
         "--window-center",
         "--window-width"
@@ -585,25 +577,20 @@
     },
     {
       "acceptedFlags" : 10,
-      "coveragePct" : 30,
-      "coveredFlags" : 3,
+      "coveragePct" : 80,
+      "coveredFlags" : 8,
       "toolId" : "dicom-xml",
       "uncoveredFlags" : [
         "--bulk-data-url",
-        "--filter-tag",
-        "--include-empty",
-        "--inline-threshold",
-        "--no-keywords",
-        "--reverse",
-        "--verbose"
+        "--reverse"
       ],
       "wired" : true
     }
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 76,
-    "pct" : 19.8,
+    "covered" : 89,
+    "pct" : 23.2,
     "toolsWired" : 32
   }
 }
