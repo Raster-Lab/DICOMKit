@@ -565,7 +565,11 @@ Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/
   (diff/info/dump/validate); (2) a value heuristic for tag-options (`--tag`/`--ignore-tag`);
   (3) **subcommand tools** (compress/study/archive) — `autoTemplates` iterates the subcommand
   param's allowedValues and relies on `buildCommand`'s visibleWhen gating to emit only flags valid
-  under each subcommand. **Coverage 15.1% → 18.5%.** A **generator ERROR-skip net** makes widening safe:
+  under each subcommand; (4) **artifact producers** — an `AutoTool` may carry `baselineParams`
+  (e.g. a required `--profile`), an `outputParam` (set to `OUTPUT`), and an `artifactKind`, so the
+  produced FILE is compared (re-dump+mask / pixel-hash / raster-hash) instead of stdout; no-write
+  preview flags (`--dry-run`) are excluded. `dicom-anon` landed — every auto-gen'd anonymization
+  flag MATCHes. **Coverage 15.1% → 19.8%.** A **generator ERROR-skip net** makes widening safe:
   an auto-scenario the binary rejects (nonzero exit + no stdout — wrong fixture, or a subcommand
   needing an `--output`/`<input>` a stdout scenario doesn't set) is surfaced as a `gen-skip` warning
   and dropped, never a broken golden (103 skipped cleanly in wave 3). Next: **artifact-producer
