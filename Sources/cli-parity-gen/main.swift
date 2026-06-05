@@ -363,6 +363,11 @@ private let autoTools: [AutoTool] = [
     AutoTool(id: "dicom-export", fixture: "ct", inputKeys: ["inputPath"], subcommandParam: "operation",
              baselineParams: ["format": "png"], outputParam: "output",
              artifactKind: "image-raster-hash", artifactExt: "png", portable: false),
+    // dicom-convert: output type depends on --format (dicom vs png/jpeg/tiff), so artifactKind
+    // is "auto" — the generator sniffs the produced file and routes the comparator per scenario.
+    // Image outputs land local-only (image-raster-hash is portable:false); .dcm outputs commit.
+    AutoTool(id: "dicom-convert", fixture: "ct", inputKeys: ["inputPath"],
+             outputParam: "output", artifactKind: "auto", artifactExt: "dcm", portable: false),
 ]
 
 /// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
@@ -657,10 +662,26 @@ func canonicalJSON(_ s: String) -> String {
     return str
 }
 
+/// Sniff a produced file's type from its magic bytes, so a tool whose output type
+/// depends on a flag (e.g. dicom-convert --format) can be routed per scenario:
+/// "dicom" (Part-10 "DICM" at offset 128), "image-raster-hash" (PNG/JPEG/GIF/TIFF),
+/// else "text" (json/xml/plain). nil if the file is missing/empty (producer failed).
+func detectArtifactKind(_ path: String) -> String? {
+    guard let data = FileManager.default.contents(atPath: path), !data.isEmpty else { return nil }
+    let b = [UInt8](data.prefix(132))
+    if b.count >= 132, b[128] == 0x44, b[129] == 0x49, b[130] == 0x43, b[131] == 0x4D { return "dicom" }
+    if b.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "image-raster-hash" }   // PNG
+    if b.starts(with: [0xFF, 0xD8, 0xFF])       { return "image-raster-hash" }   // JPEG
+    if b.starts(with: [0x47, 0x49, 0x46, 0x38]) { return "image-raster-hash" }   // GIF
+    if b.starts(with: [0x49, 0x49, 0x2A, 0x00]) || b.starts(with: [0x4D, 0x4D, 0x00, 0x2A]) { return "image-raster-hash" } // TIFF
+    return "text"
+}
+
 // Produce the comparable output for one (template, fixture) run: stdout for
 // stdout tools, or the written-file content for artifact (file-producer) tools.
-// OUTPUT resolves to a scratch file the binary writes; we read it back.
-func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, secondary: ConcreteFixture?)) -> (out: String, err: String, code: Int32) {
+// OUTPUT resolves to a scratch file the binary writes; we read it back. Returns the
+// effective artifactKind so the caller stamps it (matters when artifactKind == "auto").
+func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, secondary: ConcreteFixture?)) -> (out: String, err: String, code: Int32, kind: String) {
     func resolve(_ outputPath: String) -> [String] {
         t.cliArgs.map { tok in
             if tok == "FIXTURE"  { return rf.primary?.path ?? "" }
@@ -671,7 +692,7 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
     }
     guard let artifact = t.artifactName else {
         let r = run(bin, resolve(""))
-        return (canonicalJSON(r.out), r.err, r.code)
+        return (canonicalJSON(r.out), r.err, r.code, "stdout")
     }
     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("cpg-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
@@ -691,7 +712,7 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
             let d = run(info, [dir.appendingPathComponent(f).path]).out.trimmingCharacters(in: .whitespacesAndNewlines)
             combined += "=== frame \(i) ===\n" + d + "\n"
         }
-        return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code)
+        return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "dicom-multi")
     }
 
     let outPath = tmp.appendingPathComponent(artifact).path
@@ -699,23 +720,26 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
     // Stderr often echoes the (random) temp output path ("Output written to: …"),
     // which would make the stored golden non-deterministic. Canonicalize it.
     let cleanErr = r.err.replacingOccurrences(of: tmp.path, with: "<tmp>")
-    if t.artifactKind == "decoded-pixel-hash" {
+    // "auto" → detect the produced type from the file (the type depends on a flag, e.g.
+    // dicom-convert --format dicom|png|jpeg). Fall back to text if the file is absent.
+    let kind = t.artifactKind == "auto" ? (detectArtifactKind(outPath) ?? "text") : t.artifactKind
+    if kind == "decoded-pixel-hash" {
         // Compress/decompress: the golden is sha256(decoded PixelData) so the
         // comparison is on pixel content, not encapsulated bytes (plan §4b).
-        return (decodedPixelHash(ofFileAt: outPath) ?? "<pixel-decode-failed>", cleanErr, r.code)
+        return (decodedPixelHash(ofFileAt: outPath) ?? "<pixel-decode-failed>", cleanErr, r.code, kind)
     }
-    if t.artifactKind == "image-raster-hash" {
-        // Image producers (dicom-export): the golden is sha256(decoded raster) so the
+    if kind == "image-raster-hash" {
+        // Image producers (dicom-export/convert): the golden is sha256(decoded raster) so the
         // comparison is on pixel content, not the metadata-bearing image file (plan §4b).
-        return (imageRasterHash(ofFileAt: outPath) ?? "<image-decode-failed>", cleanErr, r.code)
+        return (imageRasterHash(ofFileAt: outPath) ?? "<image-decode-failed>", cleanErr, r.code, kind)
     }
-    if t.artifactKind == "dicom" {
+    if kind == "dicom" {
         // Re-dump the produced DICOM via dicom-info (shared MetadataPresenter) so the
         // comparison is tag-by-tag, not raw bytes. Volatile tags are masked at compare time.
-        return (run(info, [outPath]).out, cleanErr, r.code)
+        return (run(info, [outPath]).out, cleanErr, r.code, kind)
     }
     let content = (try? String(contentsOf: URL(fileURLWithPath: outPath), encoding: .utf8)) ?? ""
-    return (canonicalJSON(content), cleanErr, r.code)
+    return (canonicalJSON(content), cleanErr, r.code, kind)
 }
 
 var goldenEntries: [[String: Any]] = []
@@ -758,7 +782,9 @@ for t in templates {
             "phiSafe": phiSafe, "deterministic": deterministic, "portable": t.portable,
         ]
         if let sec = rf.secondary { entry["fixtureFile2"] = sec.bundledName }
-        if let art = t.artifactName { entry["artifactName"] = art; entry["artifactKind"] = t.artifactKind }
+        // Stamp the EFFECTIVE artifactKind (result.kind) — for "auto" tools it's the type
+        // detected from the produced file, so the harness compares the same way.
+        if let art = t.artifactName { entry["artifactName"] = art; entry["artifactKind"] = result.kind }
         goldenEntries.append(entry)
     }
 }
