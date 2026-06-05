@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 
 **Input-contract parity:** 17/17 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 6 scenario(s) — 6 success / 0 drift.
+**Output behavior:** 8 scenario(s) — 8 success / 0 drift.
 
 ## Flags
 
@@ -25,13 +25,15 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 | `--skip-duplicates` | flag | ✅ match | ⊘ not covered |
 | `--study-date` | option | ✅ match | ⊘ not covered |
 | `--study-uid` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
-| `--verify-files` | flag | ✅ match | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ✅ success |
+| `--verify-files` | flag | ✅ match | ✅ success |
 
 ## Output scenarios
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| syn-archive · auto-check-verbose | `check --archive FIXTURE --verbose` | ✅ success |
+| syn-archive · auto-check-verify-files | `check --archive FIXTURE --verify-files` | ✅ success |
 | syn-archive · check | `check --archive FIXTURE` | ✅ success |
 | syn-archive · list | `list --archive FIXTURE` | ✅ success |
 | syn-archive · list-instances | `list --show-instances --archive FIXTURE` | ✅ success |
