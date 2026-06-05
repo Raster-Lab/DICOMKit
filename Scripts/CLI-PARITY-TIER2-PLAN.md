@@ -561,11 +561,17 @@ Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/
 - **Phase 2 auto-generation (started)** — `cli-parity-gen` now depends on `DICOMStudio` and
   `autoTemplates(curated:)` emits one stdout scenario per UNCOVERED flag, deriving cliArgs from
   `CommandBuilderHelpers.buildCommand` and studioParams from the same `parameterDefinitions` — one
-  flag at a time, enum-expanded, curated templates win. Two waves landed: 4 flat stdout tools
-  (diff/info/dump/validate) + a value heuristic for tag-options (`--tag`/`--ignore-tag`). **~18 new
-  scenarios, all MATCH; coverage 15.1% → 17.8%** (the four pilot tools jumped to 75–89%). Next:
-  generator ERROR-skip robustness + subcommand tools + artifact producers. (Network/DIMSE tools have
-  no offline golden → inherently deferred to Wave 5, so offline coverage caps below 100%.)
+  flag at a time, enum-expanded, curated templates win. Waves landed: (1) 4 flat stdout tools
+  (diff/info/dump/validate); (2) a value heuristic for tag-options (`--tag`/`--ignore-tag`);
+  (3) **subcommand tools** (compress/study) — `autoTemplates` iterates the subcommand param's
+  allowedValues and relies on `buildCommand`'s visibleWhen gating to emit only flags valid under
+  each subcommand. **Coverage 15.1% → 18.0%.** A **generator ERROR-skip net** makes widening safe:
+  an auto-scenario the binary rejects (nonzero exit + no stdout — wrong fixture, or a subcommand
+  needing an `--output`/`<input>` a stdout scenario doesn't set) is surfaced as a `gen-skip` warning
+  and dropped, never a broken golden (103 skipped cleanly in wave 3). Next: **artifact-producer
+  auto-gen** (set `OUTPUT` + route the comparator by produced type) — that unlocks the bulk of the
+  skipped flags. (Network/DIMSE tools have no offline golden → deferred to Wave 5; offline coverage
+  caps below 100%.)
 - **F17 — file-meta group-length leak** (comparator finding, surfaced by auto-gen): `dicom-pdf
   encapsulate` flipped MATCH↔DIFFERS run-to-run. `maskVolatileDumpTags` masked volatile UID *values*
   but not **(0002,0000) File Meta Information Group Length**, which is *derived* from them — a fresh

@@ -469,15 +469,14 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 44.4,
-      "coveredFlags" : 4,
+      "coveragePct" : 55.6,
+      "coveredFlags" : 5,
       "toolId" : "dicom-study",
       "uncoveredFlags" : [
         "--copy",
         "--output",
         "--pattern",
-        "--report",
-        "--verbose"
+        "--report"
       ],
       "wired" : true
     },
@@ -610,8 +609,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 68,
-    "pct" : 17.8,
+    "covered" : 69,
+    "pct" : 18,
     "toolsWired" : 32
   }
 }

@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 **Input-contract parity:** 9/9 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 10 scenario(s) — 6 success / 4 drift.
+**Output behavior:** 12 scenario(s) — 6 success / 6 drift.
 
 ## Flags
 
@@ -18,12 +18,14 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 | `--output` | option | ✅ match | ⊘ not covered |
 | `--pattern` | option | ✅ match | ⊘ not covered |
 | `--report` | option | ✅ match | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ⊘ not covered |
+| `--verbose` | flag | ✅ match | ❌ DRIFT |
 
 ## Output scenarios
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| syn-studyset · auto-check-verbose | `check FIXTURE --verbose` | ❌ DRIFT |
+| syn-studyset · auto-summary-verbose | `summary FIXTURE --verbose` | ❌ DRIFT |
 | syn-studyset · check | `check FIXTURE` | ❌ DRIFT |
 | syn-studyset · check-expected | `check --expected-series 2 --expected-instances 2 FIXTURE` | ❌ DRIFT |
 | syn-studyset · compare | `compare FIXTURE FIXTURE2` | ❌ DRIFT |

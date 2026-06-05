@@ -1592,6 +1592,50 @@
         "inputPath" : "FIXTURE"
       },
       "toolId" : "dicom-validate"
+    },
+    {
+      "cliArgs" : [
+        "summary",
+        "FIXTURE",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-auto-summary-verbose",
+      "label" : "syn-studyset · auto-summary-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "═══════════════════════════════════════════════════════════════\nStudy UID: 1.2.826.0.1.3680043.10.999.41.1\nStudy Date: 20200101\nPatient Name: PARITY^STUDY1\nPatient ID: SYN-STD-1\nDescription: PARITY STUDY SET 1\nSeries Count: 2\nTotal Instances: 4\n\nSeries:\n  [1] 1.2.826.0.1.3680043.10.999.41.1.2\n      Number: 2\n      Modality: CT\n      Description: PARITY SERIES\n      Instances: 2\n  [2] 1.2.826.0.1.3680043.10.999.41.1.1\n      Number: 1\n      Modality: CT\n      Description: PARITY SERIES\n      Instances: 2\n\n",
+      "studioParams" : {
+        "operation" : "summary",
+        "path" : "FIXTURE",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-study"
+    },
+    {
+      "cliArgs" : [
+        "check",
+        "FIXTURE",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-study-auto-check-verbose",
+      "label" : "syn-studyset · auto-check-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Checking study completeness: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-studyset\n✓ Study is complete\n",
+      "stdout" : "",
+      "studioParams" : {
+        "operation" : "check",
+        "path" : "FIXTURE",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-study"
     }
   ],
   "schemaVersion" : 3

@@ -315,13 +315,22 @@ let curatedTemplates: [Template] = [
 // Scoped incrementally; this first wave covers flat, deterministic STDOUT tools. Artifact
 // producers (file output) + subcommand tools widen the scope in follow-ups.
 
-/// (toolId, fixture id, positional input param ids in order).
-private struct AutoTool { let id: String; let fixture: String; let inputKeys: [String] }
+/// (toolId, fixture id, positional input param ids in order, optional subcommand param).
+/// For subcommand tools the generator iterates the subcommand param's allowedValues; flags
+/// not visible under a given subcommand simply aren't emitted (buildCommand's visibleWhen),
+/// and subcommands that need a different fixture / an --output we don't set fail the binary
+/// and are auto-skipped (see the gen-skip net) — so one fixture per tool is fine.
+private struct AutoTool {
+    let id: String; let fixture: String; let inputKeys: [String]
+    var subcommandParam: String? = nil
+}
 private let autoTools: [AutoTool] = [
     AutoTool(id: "dicom-diff", fixture: "ctpair", inputKeys: ["file1", "file2"]),
     AutoTool(id: "dicom-info", fixture: "ct", inputKeys: ["inputPath"]),
     AutoTool(id: "dicom-dump", fixture: "ct", inputKeys: ["inputPath"]),
     AutoTool(id: "dicom-validate", fixture: "ct", inputKeys: ["inputPath"]),
+    AutoTool(id: "dicom-compress", fixture: "ct", inputKeys: ["input"], subcommandParam: "operation"),
+    AutoTool(id: "dicom-study", fixture: "studyset", inputKeys: ["path"], subcommandParam: "operation"),
 ]
 
 /// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
@@ -347,29 +356,42 @@ private func autoTemplates(curated: [Template]) -> [Template] {
         let defs = ToolCatalogHelpers.parameterDefinitions(for: at.id)
         // Flags any curated scenario already exercises — skip them (auto fills only the gap).
         let coveredFlags = Set(curated.filter { $0.tool == at.id }.flatMap { $0.cliArgs }.filter { $0.hasPrefix("-") })
-        for def in defs {
-            if def.isInternal || def.flag.isEmpty { continue }          // skip internal + positionals
-            if def.parameterType == .subcommand { continue }
-            if def.parameterType == .filePath || def.parameterType == .outputPath { continue }
-            if coveredFlags.contains(def.flag) { continue }              // already covered by a curated scenario
-            for value in autoValues(def) {
-                // Baseline = inputs as FIXTURE/FIXTURE2 sentinels + only this one flag set.
-                var pv: [CLIParameterValue] = at.inputKeys.enumerated().map {
-                    CLIParameterValue(parameterID: $1, stringValue: $0 == 0 ? "FIXTURE" : "FIXTURE2")
+        // Subcommands to iterate (flat tool → [nil]).
+        let subcommands: [String?]
+        if let scParam = at.subcommandParam,
+           let scDef = defs.first(where: { $0.id == scParam }), !scDef.allowedValues.isEmpty {
+            subcommands = scDef.allowedValues.map { Optional($0) }
+        } else {
+            subcommands = [nil]
+        }
+        for sc in subcommands {
+            for def in defs {
+                if def.isInternal || def.flag.isEmpty { continue }       // skip internal + positionals
+                if def.parameterType == .subcommand || def.id == at.subcommandParam { continue }
+                if def.parameterType == .filePath || def.parameterType == .outputPath { continue }
+                if coveredFlags.contains(def.flag) { continue }          // already covered by a curated scenario
+                for value in autoValues(def) {
+                    // Baseline = inputs as FIXTURE/FIXTURE2 + the subcommand (if any) + only this one flag.
+                    var pv: [CLIParameterValue] = at.inputKeys.enumerated().map {
+                        CLIParameterValue(parameterID: $1, stringValue: $0 == 0 ? "FIXTURE" : "FIXTURE2")
+                    }
+                    if let scParam = at.subcommandParam, let sc { pv.append(CLIParameterValue(parameterID: scParam, stringValue: sc)) }
+                    pv.append(CLIParameterValue(parameterID: def.id, stringValue: value))
+                    // Derive cliArgs from buildCommand (same call Studio uses) and drop the tool name.
+                    let cmd = CommandBuilderHelpers.buildCommand(toolName: at.id, parameterValues: pv, parameterDefinitions: defs)
+                    var toks = cmd.split(separator: " ").map(String.init)
+                    if !toks.isEmpty { toks.removeFirst() }
+                    // Self-check: the flag must actually be emitted (else it isn't visible under `sc`).
+                    guard toks.contains(def.flag) || toks.contains("--\(value)") else { continue }
+                    var studioParams: [String: String] = [:]
+                    for (i, key) in at.inputKeys.enumerated() { studioParams[key] = i == 0 ? "FIXTURE" : "FIXTURE2" }
+                    if let scParam = at.subcommandParam, let sc { studioParams[scParam] = sc }
+                    studioParams[def.id] = value
+                    let scPrefix = sc.map { "\($0)-" } ?? ""
+                    let suffix = def.allowedValues.count > 1 ? "-\(value)" : ""
+                    out.append(Template(tool: at.id, label: "auto-\(scPrefix)\(def.id)\(suffix)",
+                                        cliArgs: toks, studioParams: studioParams, fixture: at.fixture))
                 }
-                pv.append(CLIParameterValue(parameterID: def.id, stringValue: value))
-                // Derive cliArgs from buildCommand (same call Studio uses) and drop the tool name.
-                let cmd = CommandBuilderHelpers.buildCommand(toolName: at.id, parameterValues: pv, parameterDefinitions: defs)
-                var toks = cmd.split(separator: " ").map(String.init)
-                if !toks.isEmpty { toks.removeFirst() }
-                // Self-check: the flag must actually be emitted (else a visibleWhen gate wasn't opened).
-                guard toks.contains(def.flag) || toks.contains("--\(value)") else { continue }
-                var studioParams: [String: String] = [:]
-                for (i, key) in at.inputKeys.enumerated() { studioParams[key] = i == 0 ? "FIXTURE" : "FIXTURE2" }
-                studioParams[def.id] = value
-                let suffix = def.allowedValues.count > 1 ? "-\(value)" : ""
-                out.append(Template(tool: at.id, label: "auto-\(def.id)\(suffix)",
-                                    cliArgs: toks, studioParams: studioParams, fixture: at.fixture))
             }
         }
     }
@@ -653,12 +675,24 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
 }
 
 var goldenEntries: [[String: Any]] = []
+var autoSkipped = 0
 for t in templates {
     let bin = binDir.appendingPathComponent(t.tool)
     guard FileManager.default.isExecutableFile(atPath: bin.path) else { continue }
+    let isAuto = t.label.hasPrefix("auto-")
     for rf in expandFixture(t.fixture) {
         let result = produce(bin, t, rf)
         let stdout = result.out
+        // Robustness for auto-generated scenarios: if the binary REJECTS the args
+        // (nonzero exit AND no stdout — bad args, wrong/missing fixture, or a flag that
+        // needs --output we didn't set), don't write a broken golden that would fail the
+        // gate. Surface it as a gen-warning (it may be a real Tier-1 drift or a fixture
+        // gap to fill later) and skip. Curated scenarios are never skipped.
+        if isAuto && result.code != 0 && stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            autoSkipped += 1
+            errln("  ⚠ gen-skip (auto) \(t.tool)-\(t.label): exit \(result.code) / no stdout — \(result.err.split(separator: "\n").first.map(String.init) ?? "")")
+            continue
+        }
         let primaryName = rf.primary?.bundledName ?? ""
         let idBase = primaryName.isEmpty ? "none" : (primaryName as NSString).deletingPathExtension
         let phiSafe = (rf.primary?.phiSafe ?? true) && (rf.secondary?.phiSafe ?? true)
@@ -701,4 +735,5 @@ writeGoldens(goldenEntries.filter {
     ($0["phiSafe"] as? Bool) == true && ($0["deterministic"] as? Bool) == true && ($0["portable"] as? Bool) == true
 }, to: "goldens.synthetic.json")
 
+if autoSkipped > 0 { errln("cli-parity-gen: \(autoSkipped) auto-scenario(s) skipped (binary rejected args / fixture gap — see gen-skip lines above)") }
 errln("cli-parity-gen: done.")

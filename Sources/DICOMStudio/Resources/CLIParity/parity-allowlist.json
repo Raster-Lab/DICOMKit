@@ -5,6 +5,8 @@
     "none__dicom-compress-backends": "F4: host-dependent hardware-backend list (excluded from committed set; local-only DIFFERS).",
     "none__dicom-uid-lookup-listall": "F5 (minor): UID list matches; Studio appends a `N UIDs found` footer.",
     "syn-studyset__dicom-study-summary-json": "F9 (minor): same data, series array order differs (Studio asc, CLI desc).",
+    "syn-studyset__dicom-study-auto-summary-verbose": "F9 (minor, auto-gen): summary --verbose lists the same series in a different order (Studio by number asc, CLI by discovery order) — same root cause as the JSON variant.",
+    "syn-studyset__dicom-study-auto-check-verbose": "F10 (minor, auto-gen): check --verbose — Studio prints `Checking study completeness:` + `[OK] Study is complete`; CLI is silent on stdout. Same root cause as the non-verbose check.",
     "syn-studyset__dicom-study-check": "F10 (minor): Studio prints `[OK] Study is complete`; CLI is silent on stdout.",
     "syn-studyset__dicom-study-check-expected": "F10 (minor): as above (check with expected counts).",
     "syn-studyset__dicom-study-compare": "F10 (minor): Studio uses `[OK]` where the CLI uses `✓`.",
