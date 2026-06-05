@@ -119,27 +119,13 @@
     },
     {
       "acceptedFlags" : 21,
-      "coveragePct" : 9.5,
-      "coveredFlags" : 2,
+      "coveragePct" : 76.2,
+      "coveredFlags" : 16,
       "toolId" : "dicom-export",
       "uncoveredFlags" : [
-        "--apply-window",
-        "--columns",
-        "--embed-metadata",
-        "--end-frame",
         "--exif-fields",
         "--fps",
-        "--frame",
-        "--labels",
-        "--loop-count",
-        "--organize-by",
-        "--quality",
-        "--recursive",
         "--scale",
-        "--spacing",
-        "--start-frame",
-        "--thumbnail-size",
-        "--verbose",
         "--window-center",
         "--window-width"
       ],
@@ -589,8 +575,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 89,
-    "pct" : 23.2,
+    "covered" : 103,
+    "pct" : 26.9,
     "toolsWired" : 32
   }
 }
