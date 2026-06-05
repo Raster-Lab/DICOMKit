@@ -7655,10 +7655,16 @@ case "dicom-study":
 
         let shiftDays = Int(shiftDaysStr)
 
-        // Parse comma-separated tag lists
-        let removeTags  = removeTagsRaw.isEmpty ? [] : removeTagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        let replacePairs = replaceRaw.isEmpty  ? [] : replaceRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
-        let keepTags    = keepTagsRaw.isEmpty  ? [] : keepTagsRaw.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }
+        // Parse tag lists — one entry per line. Do NOT split on commas: a tag is written
+        // `GGGG,EEEE` (and --replace is `GGGG,EEEE=value`), so comma-splitting `0010,0010`
+        // would shred it into "0010"+"0010", match nothing, and silently drop the modifier
+        // (F19 — same class as the F18 xml --filter-tag bug). The CLI honors these per-tag.
+        func tagList(_ raw: String) -> [String] {
+            raw.split(whereSeparator: { $0 == "\n" || $0 == "\r" }).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        }
+        let removeTags   = tagList(removeTagsRaw)
+        let replacePairs = tagList(replaceRaw)
+        let keepTags     = tagList(keepTagsRaw)
 
         // Build a SecurityViewModel scoped just for this run.
         // Resolve a sandbox-writable output path: scoped URL → ~/Downloads path → fallback.

@@ -4,24 +4,24 @@ _CLI binary:_ `dicom-convert` · _category:_ FILE_PROCESSING · _wired in Studio
 
 **Input-contract parity:** 12/12 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 8 scenario(s) — 8 success / 0 drift.
+**Output behavior:** 24 scenario(s) — 24 success / 0 drift.
 
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--apply-window` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--force` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--apply-window` | flag | ✅ match | ✓ | ✅ success |
+| `--force` | flag | ✅ match | ✓ | ✅ success |
 | `--format` | option | ✅ match | ✓ | ✅ success |
-| `--frame` | option | ✅ match | ✓ | ⊘ not covered |
+| `--frame` | option | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
 | `--quality` | option | ✅ match | ✓ | ⊘ not covered |
-| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--strip-private` | flag | ✅ match | ✓ | ⊘ not covered |
+| `--recursive` | flag | ✅ match | ✓ | ✅ success |
+| `--strip-private` | flag | ✅ match | ✓ | ✅ success |
 | `--transfer-syntax` | option | ✅ match | ✓ | ✅ success |
-| `--validate` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--window-center` | option | ✅ match | ✓ | ⊘ not covered |
-| `--window-width` | option | ✅ match | ✓ | ⊘ not covered |
+| `--validate` | flag | ✅ match | ✓ | ✅ success |
+| `--window-center` | option | ✅ match | ✓ | ✅ success |
+| `--window-width` | option | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 
@@ -30,10 +30,26 @@ _CLI binary:_ `dicom-convert` · _category:_ FILE_PROCESSING · _wired in Studio
 | CT.dcm · auto-format-jpeg | `FIXTURE --output OUTPUT --format jpeg` | ✅ success |
 | CT.dcm · auto-format-png | `FIXTURE --output OUTPUT --format png` | ✅ success |
 | CT.dcm · auto-format-tiff | `FIXTURE --output OUTPUT --format tiff` | ✅ success |
+| CT.dcm · auto-img-apply-window | `FIXTURE --output OUTPUT --format png --apply-window` | ✅ success |
+| CT.dcm · auto-img-force | `FIXTURE --output OUTPUT --format png --force` | ✅ success |
+| CT.dcm · auto-img-frame | `FIXTURE --output OUTPUT --format png --frame 0` | ✅ success |
+| CT.dcm · auto-img-recursive | `FIXTURE --output OUTPUT --format png --recursive` | ✅ success |
+| CT.dcm · auto-img-strip-private | `FIXTURE --output OUTPUT --format png --strip-private` | ✅ success |
+| CT.dcm · auto-img-validate | `FIXTURE --output OUTPUT --format png --validate` | ✅ success |
+| CT.dcm · auto-img-window-center | `FIXTURE --output OUTPUT --format png --window-center 40` | ✅ success |
+| CT.dcm · auto-img-window-width | `FIXTURE --output OUTPUT --format png --window-width 400` | ✅ success |
 | CT.dcm · implicit-le | `FIXTURE --output OUTPUT --transfer-syntax ImplicitVRLittleEndian` | ✅ success |
 | syn-ct.dcm · auto-format-jpeg | `FIXTURE --output OUTPUT --format jpeg` | ✅ success |
 | syn-ct.dcm · auto-format-png | `FIXTURE --output OUTPUT --format png` | ✅ success |
 | syn-ct.dcm · auto-format-tiff | `FIXTURE --output OUTPUT --format tiff` | ✅ success |
+| syn-ct.dcm · auto-img-apply-window | `FIXTURE --output OUTPUT --format png --apply-window` | ✅ success |
+| syn-ct.dcm · auto-img-force | `FIXTURE --output OUTPUT --format png --force` | ✅ success |
+| syn-ct.dcm · auto-img-frame | `FIXTURE --output OUTPUT --format png --frame 0` | ✅ success |
+| syn-ct.dcm · auto-img-recursive | `FIXTURE --output OUTPUT --format png --recursive` | ✅ success |
+| syn-ct.dcm · auto-img-strip-private | `FIXTURE --output OUTPUT --format png --strip-private` | ✅ success |
+| syn-ct.dcm · auto-img-validate | `FIXTURE --output OUTPUT --format png --validate` | ✅ success |
+| syn-ct.dcm · auto-img-window-center | `FIXTURE --output OUTPUT --format png --window-center 40` | ✅ success |
+| syn-ct.dcm · auto-img-window-width | `FIXTURE --output OUTPUT --format png --window-width 400` | ✅ success |
 | syn-ct.dcm · implicit-le | `FIXTURE --output OUTPUT --transfer-syntax ImplicitVRLittleEndian` | ✅ success |
 
 ---

@@ -615,6 +615,21 @@ Driving toward "every flag of every tool, input + output" (see `docs/cli-parity/
   only ratchet **up**. Verified: passes at the floor, fails when the floor is set above current. Raise
   the floor as new committed scenarios land.
 
+- **Coverage-widening wave** (local tools): convert SECOND config (baseline `--format png`, configLabel
+  `img-`) exposes the visibleWhen-gated image flags (`--frame`/`--quality`/`--window-center`/`--window-width`/
+  `--apply-window`); `dicom-split` frame-mode (dicom-multi); value heuristics for `--keep`/`--remove` (a tag)
+  and `--replace` (tag=value). `dicom-merge` file-mode is intentionally **not** auto-gen'd (only the
+  multi-series `studyset` dir fixture exists, so the merged SeriesNumber is ambiguous — F14 noise that would
+  also mask regressions; needs a single-series dir fixture). **Coverage 29.2% → 33.7%** (129/383; local
+  offline tools now ~60%). Network/DIMSE (170 flags) remain offline-uncoverable (Wave 5).
+- **F19 — `dicom-anon --keep`/`--remove`/`--replace` were broken** (3 real Studio bugs, privacy-relevant,
+  surfaced by the value-heuristic wave). (a) `executeDicomAnon` split these values on **commas**, so a tag
+  `0010,0010` was shredded into `"0010"`+`"0010"`, matched nothing, and the modifier silently did nothing —
+  the **same class as F18**; fixed by splitting on newlines. (b) `--replace` additionally set the tag with a
+  hardcoded `.LO` VR, which dropped the set on typed tags (PatientName is `PN`), leaving the profile's
+  `ANONYMOUS`; fixed to use the tag's existing/dictionary VR. All three now MATCH (CLI honors keep=original,
+  remove=deleted, replace=value).
+
 Regenerate the matrix + ledger any time with: `swift run cli-parity-docs`.
 
 ---

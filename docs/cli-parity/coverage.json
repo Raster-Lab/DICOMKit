@@ -3,15 +3,12 @@
   "tools" : [
     {
       "acceptedFlags" : 13,
-      "coveragePct" : 53.8,
-      "coveredFlags" : 7,
+      "coveragePct" : 76.9,
+      "coveredFlags" : 10,
       "toolId" : "dicom-anon",
       "uncoveredFlags" : [
         "--audit-log",
         "--dry-run",
-        "--keep",
-        "--remove",
-        "--replace",
         "--shift-dates"
       ],
       "wired" : true
@@ -53,19 +50,11 @@
     },
     {
       "acceptedFlags" : 12,
-      "coveragePct" : 25,
-      "coveredFlags" : 3,
+      "coveragePct" : 91.7,
+      "coveredFlags" : 11,
       "toolId" : "dicom-convert",
       "uncoveredFlags" : [
-        "--apply-window",
-        "--force",
-        "--frame",
-        "--quality",
-        "--recursive",
-        "--strip-private",
-        "--validate",
-        "--window-center",
-        "--window-width"
+        "--quality"
       ],
       "wired" : true
     },
@@ -402,17 +391,11 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 22.2,
-      "coveredFlags" : 2,
+      "coveragePct" : 88.9,
+      "coveredFlags" : 8,
       "toolId" : "dicom-split",
       "uncoveredFlags" : [
-        "--apply-window",
-        "--format",
-        "--pattern",
-        "--recursive",
-        "--verbose",
-        "--window-center",
-        "--window-width"
+        "--pattern"
       ],
       "wired" : true
     },
@@ -567,8 +550,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 112,
-    "pct" : 29.2,
+    "covered" : 129,
+    "pct" : 33.7,
     "toolsWired" : 32
   }
 }

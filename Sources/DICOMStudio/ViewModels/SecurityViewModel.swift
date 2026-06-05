@@ -562,12 +562,15 @@ public final class SecurityViewModel {
                     }
                 }
 
-                // Apply replacements
+                // Apply replacements. Use the tag's existing/dictionary VR — hardcoding .LO
+                // dropped the set on typed tags like PatientName (PN), leaving the profile's
+                // "ANONYMOUS" instead of the requested replacement (part of F19).
                 for (tagStr, value) in replaceMap {
                     if keepTagSet.contains(tagStr) { continue }
                     if let tag = Self.parseTag(tagStr) {
                         var ds = dicomFile.dataSet
-                        ds.setString(value, for: tag, vr: .LO)
+                        let vr = ds[tag]?.vr ?? DataElementDictionary.lookup(tag: tag)?.vr.first ?? .LO
+                        ds.setString(value, for: tag, vr: vr)
                         dicomFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: ds)
                         changed.append("\(tagStr)=\(value)")
                     }
