@@ -4853,31 +4853,6 @@ private func executeDicomStudy() async {
 
     // MARK: - dicom-study shared model types (reimplemented from StudyManager)
 
-    private struct StudyStudioInstance: Codable {
-        let sopInstanceUID: String
-        let instanceNumber: String?
-        let filePath: String
-        let fileSize: Int64
-    }
-    private struct StudyStudioSeries: Codable {
-        let seriesInstanceUID: String
-        let seriesNumber: String?
-        let seriesDescription: String?
-        let modality: String?
-        var instances: [StudyStudioInstance] = []
-    }
-    private struct StudyStudioStudy: Codable {
-        let studyInstanceUID: String
-        let studyDate: String?
-        let studyTime: String?
-        let studyDescription: String?
-        let patientName: String?
-        let patientID: String?
-        let accessionNumber: String?
-        var series: [StudyStudioSeries] = []
-        var totalInstances: Int { series.reduce(0) { $0 + $1.instances.count } }
-    }
-
     /// Detects a DICOM file by checking for the "DICM" magic at offset 128.
     private nonisolated static func studyIsDICOMFile(_ path: String) -> Bool {
         guard let handle = FileHandle(forReadingAtPath: path) else { return false }
@@ -4906,73 +4881,6 @@ private func executeDicomStudy() async {
             }
         }
         return result.sorted()
-    }
-
-    /// Scan a directory (or single file) into per-study metadata, merging series across files.
-    private nonisolated static func studyScan(at path: String) -> [StudyStudioStudy] {
-        let fm = FileManager.default
-        var isDir: ObjCBool = false
-        guard fm.fileExists(atPath: path, isDirectory: &isDir) else { return [] }
-
-        func scanFile(_ filePath: String) -> StudyStudioStudy? {
-            guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)),
-                  let file = try? DICOMFile.read(from: data, force: false) else { return nil }
-            let ds = file.dataSet
-            guard let studyUID = ds.string(for: Tag.studyInstanceUID) else { return nil }
-            let seriesUID = ds.string(for: Tag.seriesInstanceUID) ?? "UNKNOWN"
-            let sopUID = ds.string(for: Tag.sopInstanceUID) ?? "UNKNOWN"
-            let size = (try? fm.attributesOfItem(atPath: filePath)[.size] as? Int64) ?? 0
-            let inst = StudyStudioInstance(
-                sopInstanceUID: sopUID,
-                instanceNumber: ds.string(for: Tag.instanceNumber),
-                filePath: filePath, fileSize: size ?? 0)
-            let series = StudyStudioSeries(
-                seriesInstanceUID: seriesUID,
-                seriesNumber: ds.string(for: Tag.seriesNumber),
-                seriesDescription: ds.string(for: Tag.seriesDescription),
-                modality: ds.string(for: Tag.modality),
-                instances: [inst])
-            return StudyStudioStudy(
-                studyInstanceUID: studyUID,
-                studyDate: ds.string(for: Tag.studyDate),
-                studyTime: ds.string(for: Tag.studyTime),
-                studyDescription: ds.string(for: Tag.studyDescription),
-                patientName: ds.string(for: Tag.patientName),
-                patientID: ds.string(for: Tag.patientID),
-                accessionNumber: ds.string(for: Tag.accessionNumber),
-                series: [series])
-        }
-
-        if !isDir.boolValue {
-            return scanFile(path).map { [$0] } ?? []
-        }
-
-        var dict: [String: StudyStudioStudy] = [:]
-        for filePath in studyCollectDICOMFiles(at: path) {
-            guard let fileStudy = scanFile(filePath) else { continue }
-            let uid = fileStudy.studyInstanceUID
-            if var existing = dict[uid] {
-                for newSeries in fileStudy.series {
-                    if let idx = existing.series.firstIndex(where: { $0.seriesInstanceUID == newSeries.seriesInstanceUID }) {
-                        existing.series[idx].instances.append(contentsOf: newSeries.instances)
-                    } else {
-                        existing.series.append(newSeries)
-                    }
-                }
-                dict[uid] = existing
-            } else {
-                dict[uid] = fileStudy
-            }
-        }
-        return Array(dict.values).sorted { $0.studyInstanceUID < $1.studyInstanceUID }
-    }
-
-    private nonisolated static func studyFormatBytes(_ bytes: Int64) -> String {
-        let kb = Double(bytes) / 1024.0, mb = Double(bytes) / 1_048_576.0, gb = Double(bytes) / 1_073_741_824.0
-        if gb >= 1.0 { return String(format: "%.2f GB", gb) }
-        if mb >= 1.0 { return String(format: "%.2f MB", mb) }
-        if kb >= 1.0 { return String(format: "%.2f KB", kb) }
-        return "\(bytes) bytes"
     }
 
     // MARK: - dicom-study : organize
@@ -5147,50 +5055,15 @@ private func executeDicomStudy() async {
             guard FileManager.default.fileExists(atPath: pathURL.path) else {
                 return ("Error: Directory not found: \(pathURL.path)\n", 1)
             }
-            let studies = CLIWorkshopViewModel.studyScan(at: pathURL.path)
+            let studies = StudyScanner.scanStudies(at: pathURL.path)
             if studies.isEmpty { return ("Error: No DICOM files found in the specified directory\n", 1) }
-
-            var out = ""
-            switch format {
-            case "json":
-                let enc = JSONEncoder()
-                enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-                if let data = try? enc.encode(studies), let s = String(data: data, encoding: .utf8) {
-                    out += s + "\n"
-                } else {
-                    return ("Error: Failed to encode JSON\n", 1)
-                }
-            case "csv":
-                out += "StudyUID,StudyDate,PatientName,PatientID,SeriesCount,InstanceCount\n"
-                for st in studies {
-                    out += "\(st.studyInstanceUID),\(st.studyDate ?? ""),\(st.patientName ?? ""),\(st.patientID ?? ""),\(st.series.count),\(st.totalInstances)\n"
-                }
-            case "table":
-                for st in studies {
-                    out += "===============================================================\n"
-                    out += "Study UID: \(st.studyInstanceUID)\n"
-                    if let v = st.studyDate { out += "Study Date: \(v)\n" }
-                    if let v = st.patientName { out += "Patient Name: \(v)\n" }
-                    if let v = st.patientID { out += "Patient ID: \(v)\n" }
-                    if let v = st.studyDescription { out += "Description: \(v)\n" }
-                    out += "Series Count: \(st.series.count)\n"
-                    out += "Total Instances: \(st.totalInstances)\n"
-                    if verbose {
-                        out += "\nSeries:\n"
-                        for (idx, se) in st.series.enumerated() {
-                            out += "  [\(idx + 1)] \(se.seriesInstanceUID)\n"
-                            if let v = se.seriesNumber { out += "      Number: \(v)\n" }
-                            if let v = se.modality { out += "      Modality: \(v)\n" }
-                            if let v = se.seriesDescription { out += "      Description: \(v)\n" }
-                            out += "      Instances: \(se.instances.count)\n"
-                        }
-                    }
-                    out += "\n"
-                }
-            default:
+            // Render via the shared DICOMKit engine — same code the CLI uses.
+            do {
+                let out = try StudyReport.renderSummary(studies: studies, format: format, verbose: verbose)
+                return (out, 0)
+            } catch {
                 return ("Error: Invalid format: \(format). Use 'table', 'json', or 'csv'\n", 1)
             }
-            return (out, 0)
         }.value
 
         appendConsoleOutput(output)
@@ -5231,41 +5104,15 @@ private func executeDicomStudy() async {
             }
             var out = ""
             if verbose { out += "Checking study completeness: \(pathURL.path)\n" }
-            let studies = CLIWorkshopViewModel.studyScan(at: pathURL.path)
+            let studies = StudyScanner.scanStudies(at: pathURL.path)
             guard let study = studies.first else {
                 return (out + "Error: No DICOM files found in the specified directory\n", 1)
             }
-
-            var issues: [String] = []
-            var isComplete = true
-
-            if let expected = expectedSeries, study.series.count != expected {
-                issues.append("Expected \(expected) series, found \(study.series.count)")
-                isComplete = false
-            }
-            for series in study.series {
-                if let expected = expectedInstances, series.instances.count != expected {
-                    let desc = series.seriesDescription ?? series.seriesInstanceUID
-                    issues.append("Series '\(desc)': Expected \(expected) instances, found \(series.instances.count)")
-                    isComplete = false
-                }
-                let numbers = series.instances.compactMap { $0.instanceNumber }.compactMap { Int($0) }.sorted()
-                if let minNum = numbers.first, let maxNum = numbers.last, minNum <= maxNum {
-                    let missing = Set(minNum...maxNum).subtracting(Set(numbers))
-                    if !missing.isEmpty {
-                        let desc = series.seriesDescription ?? series.seriesInstanceUID
-                        issues.append("Series '\(desc)': Missing instance numbers: \(missing.sorted())")
-                        isComplete = false
-                    }
-                }
-            }
-
-            if isComplete {
-                out += "[OK] Study is complete\n"
-            } else {
-                out += "[FAIL] Study has \(issues.count) issues:\n"
-                for issue in issues { out += "  - \(issue)\n" }
-            }
+            // Evaluate via the shared DICOMKit engine — same code the CLI uses.
+            let result = StudyReport.evaluateCompleteness(
+                study: study, expectedSeries: expectedSeries, expectedInstances: expectedInstances)
+            let issues = result.issues
+            out += result.output
 
             if let reportURL = reportURL {
                 let report = issues.joined(separator: "\n")
@@ -5311,74 +5158,18 @@ private func executeDicomStudy() async {
             guard FileManager.default.fileExists(atPath: pathURL.path) else {
                 return ("Error: Directory not found: \(pathURL.path)\n", 1)
             }
-            let studies = CLIWorkshopViewModel.studyScan(at: pathURL.path)
+            let studies = StudyScanner.scanStudies(at: pathURL.path)
             guard let study = studies.first else {
                 return ("Error: No DICOM files found in the specified directory\n", 1)
             }
-
-            struct Statistics: Codable {
-                let studyUID: String
-                let seriesCount: Int
-                let totalInstances: Int
-                let totalSizeBytes: Int64
-                let averageSizePerInstance: Int64
-                let modalityCounts: [String: Int]
-                let instancesPerSeries: [Int]
+            // Compute + render via the shared DICOMKit engine — same code as the CLI.
+            let stats = StudyReport.computeStatistics(for: study, detailed: detailed)
+            do {
+                let out = try StudyReport.renderStats(stats, detailed: detailed, format: format)
+                return (out, 0)
+            } catch {
+                return ("Error: Failed to encode JSON\n", 1)
             }
-
-            let totalInstances = study.totalInstances
-            let totalSize = study.series.flatMap { $0.instances }.reduce(Int64(0)) { $0 + $1.fileSize }
-            let avg = totalInstances > 0 ? totalSize / Int64(totalInstances) : 0
-            var modalityCounts: [String: Int] = [:]
-            for s in study.series { modalityCounts[s.modality ?? "Unknown", default: 0] += 1 }
-            let instancesPerSeries = study.series.map { $0.instances.count }
-
-            let stats = Statistics(
-                studyUID: study.studyInstanceUID,
-                seriesCount: study.series.count,
-                totalInstances: totalInstances,
-                totalSizeBytes: totalSize,
-                averageSizePerInstance: avg,
-                modalityCounts: modalityCounts,
-                instancesPerSeries: detailed ? instancesPerSeries : [])
-
-            var out = ""
-            if format == "json" {
-                let enc = JSONEncoder()
-                enc.outputFormatting = [.prettyPrinted]
-                if let data = try? enc.encode(stats), let s = String(data: data, encoding: .utf8) {
-                    out += s + "\n"
-                } else {
-                    return ("Error: Failed to encode JSON\n", 1)
-                }
-            } else {
-                out += "===============================================================\n"
-                out += "Study Statistics\n"
-                out += "===============================================================\n"
-                out += "Study UID: \(stats.studyUID)\n"
-                out += "Series Count: \(stats.seriesCount)\n"
-                out += "Total Instances: \(stats.totalInstances)\n"
-                out += "Total Size: \(CLIWorkshopViewModel.studyFormatBytes(stats.totalSizeBytes))\n"
-                out += "Avg Size/Instance: \(CLIWorkshopViewModel.studyFormatBytes(stats.averageSizePerInstance))\n"
-                out += "\nModalities:\n"
-                for (m, c) in stats.modalityCounts.sorted(by: { $0.key < $1.key }) {
-                    out += "  \(m): \(c) series\n"
-                }
-                if detailed && !stats.instancesPerSeries.isEmpty {
-                    out += "\nInstances per Series:\n"
-                    for (idx, c) in stats.instancesPerSeries.enumerated() {
-                        out += "  Series \(idx + 1): \(c) instances\n"
-                    }
-                    let mn = stats.instancesPerSeries.min() ?? 0
-                    let mx = stats.instancesPerSeries.max() ?? 0
-                    let average = stats.instancesPerSeries.isEmpty ? 0.0 : Double(stats.instancesPerSeries.reduce(0, +)) / Double(stats.instancesPerSeries.count)
-                    out += "\nInstance Count Statistics:\n"
-                    out += "  Min: \(mn)\n"
-                    out += "  Max: \(mx)\n"
-                    out += "  Average: \(String(format: "%.1f", average))\n"
-                }
-            }
-            return (out, 0)
         }.value
 
         appendConsoleOutput(output)
@@ -5418,82 +5209,18 @@ private func executeDicomStudy() async {
             guard FileManager.default.fileExists(atPath: url2.path) else {
                 return ("Error: Directory not found: \(url2.path)\n", 1)
             }
-            let studies1 = CLIWorkshopViewModel.studyScan(at: url1.path)
-            let studies2 = CLIWorkshopViewModel.studyScan(at: url2.path)
+            let studies1 = StudyScanner.scanStudies(at: url1.path)
+            let studies2 = StudyScanner.scanStudies(at: url2.path)
             guard let s1 = studies1.first else { return ("Error: No DICOM files found in the specified directory\n", 1) }
             guard let s2 = studies2.first else { return ("Error: No DICOM files found in the specified directory\n", 1) }
-
-            struct SeriesDiff: Codable { let seriesUID: String; let instanceCountStudy1: Int; let instanceCountStudy2: Int }
-            struct Comparison: Codable {
-                let study1UID: String; let study2UID: String
-                let study1SeriesCount: Int; let study2SeriesCount: Int
-                let study1InstanceCount: Int; let study2InstanceCount: Int
-                let commonSeriesCount: Int; let onlyInStudy1Count: Int; let onlyInStudy2Count: Int
-                let seriesDifferences: [SeriesDiff]
+            // Compare + render via the shared DICOMKit engine — same code as the CLI.
+            let cmp = StudyReport.compareStudies(s1, s2)
+            do {
+                let out = try StudyReport.renderComparison(cmp, format: format, verbose: false)
+                return (out, 0)
+            } catch {
+                return ("Error: Failed to encode JSON\n", 1)
             }
-
-            let set1 = Set(s1.series.map { $0.seriesInstanceUID })
-            let set2 = Set(s2.series.map { $0.seriesInstanceUID })
-            let common = set1.intersection(set2)
-            let only1 = set1.subtracting(set2)
-            let only2 = set2.subtracting(set1)
-            var diffs: [SeriesDiff] = []
-            for uid in common.sorted() {
-                if let a = s1.series.first(where: { $0.seriesInstanceUID == uid }),
-                   let b = s2.series.first(where: { $0.seriesInstanceUID == uid }),
-                   a.instances.count != b.instances.count {
-                    diffs.append(SeriesDiff(seriesUID: uid, instanceCountStudy1: a.instances.count, instanceCountStudy2: b.instances.count))
-                }
-            }
-            let cmp = Comparison(
-                study1UID: s1.studyInstanceUID, study2UID: s2.studyInstanceUID,
-                study1SeriesCount: s1.series.count, study2SeriesCount: s2.series.count,
-                study1InstanceCount: s1.totalInstances, study2InstanceCount: s2.totalInstances,
-                commonSeriesCount: common.count, onlyInStudy1Count: only1.count, onlyInStudy2Count: only2.count,
-                seriesDifferences: diffs)
-
-            var out = ""
-            if format == "json" {
-                let enc = JSONEncoder()
-                enc.outputFormatting = [.prettyPrinted]
-                if let data = try? enc.encode(cmp), let s = String(data: data, encoding: .utf8) {
-                    out += s + "\n"
-                } else {
-                    return ("Error: Failed to encode JSON\n", 1)
-                }
-            } else {
-                out += "===============================================================\n"
-                out += "Study Comparison\n"
-                out += "===============================================================\n"
-                out += "Study 1 UID: \(cmp.study1UID)\n"
-                out += "Study 2 UID: \(cmp.study2UID)\n\n"
-                out += "Series Counts:\n"
-                out += "  Study 1: \(cmp.study1SeriesCount)\n"
-                out += "  Study 2: \(cmp.study2SeriesCount)\n"
-                out += "  Common: \(cmp.commonSeriesCount)\n"
-                out += "  Only in Study 1: \(cmp.onlyInStudy1Count)\n"
-                out += "  Only in Study 2: \(cmp.onlyInStudy2Count)\n\n"
-                out += "Instance Counts:\n"
-                out += "  Study 1: \(cmp.study1InstanceCount)\n"
-                out += "  Study 2: \(cmp.study2InstanceCount)\n"
-                if !cmp.seriesDifferences.isEmpty {
-                    out += "\nSeries with Different Instance Counts:\n"
-                    for d in cmp.seriesDifferences {
-                        out += "  \(d.seriesUID):\n"
-                        out += "    Study 1: \(d.instanceCountStudy1)\n"
-                        out += "    Study 2: \(d.instanceCountStudy2)\n"
-                        out += "    Difference: \(abs(d.instanceCountStudy1 - d.instanceCountStudy2))\n"
-                    }
-                }
-                if cmp.study1SeriesCount == cmp.study2SeriesCount &&
-                   cmp.study1InstanceCount == cmp.study2InstanceCount &&
-                   cmp.seriesDifferences.isEmpty {
-                    out += "\n[OK] Studies are structurally identical\n"
-                } else {
-                    out += "\n[DIFF] Studies have differences\n"
-                }
-            }
-            return (out, 0)
         }.value
 
         appendConsoleOutput(output)
