@@ -3148,6 +3148,7 @@ private func executeDicomArchive() async {
     // Gather parameter values on the main actor before detaching.
     let force = paramValue("force") == "true"
     let recursive = paramValue("recursive") == "true"
+    let skipDuplicates = paramValue("skip-duplicates") == "true"
     let verbose = paramValue("verbose") == "true"
     let format = paramValue("format")
     let showInstances = paramValue("show-instances") == "true"
@@ -3182,7 +3183,7 @@ private func executeDicomArchive() async {
                 }
                 out = try ArchiveStore.importFiles(
                     into: archivePathResolved, files: inputs,
-                    recursive: recursive, skipDuplicates: false, verbose: verbose)
+                    recursive: recursive, skipDuplicates: skipDuplicates, verbose: verbose)
             case "query":
                 out = try ArchiveStore.query(
                     in: archivePathResolved,
