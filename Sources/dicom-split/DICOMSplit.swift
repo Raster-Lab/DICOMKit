@@ -48,7 +48,7 @@ struct DICOMSplit: AsyncParsableCommand {
     var frames: String?
     
     @Option(name: .long, help: "Output format: dicom, png, jpeg, tiff (default: dicom)")
-    var format: OutputFormat = .dicom
+    var format: SplitOutputFormat = .dicom
     
     @Flag(name: .long, help: "Apply window/level settings to image output")
     var applyWindow: Bool = false
@@ -93,7 +93,7 @@ struct DICOMSplit: AsyncParsableCommand {
             fprintln("")
         }
         
-        // Create splitter
+        // Create splitter (shared DICOMKit engine; verbose output routed to stderr)
         let splitter = FrameSplitter(
             outputPath: output,
             format: format,
@@ -101,22 +101,24 @@ struct DICOMSplit: AsyncParsableCommand {
             windowCenter: windowCenter,
             windowWidth: windowWidth,
             namingPattern: pattern,
-            verbose: verbose
+            verbose: verbose,
+            log: { fprintln($0) }
         )
-        
+
         // Parse frame ranges
         let frameIndices = try frames.map { try parseFrameRange($0) }
-        
+
         // Process files
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: input, isDirectory: &isDirectory), isDirectory.boolValue {
             // Directory processing
-            try await splitter.processDirectory(input, recursive: recursive, frameIndices: frameIndices)
+            _ = try await splitter.processDirectory(input, recursive: recursive, frameIndices: frameIndices)
         } else {
             // Single file processing
-            try await splitter.processFile(input, frameIndices: frameIndices)
+            var result = SplitResult()
+            await splitter.processFile(input, frameIndices: frameIndices, into: &result)
         }
-        
+
         fprintln("\nSplit complete!")
     }
     
@@ -164,12 +166,10 @@ struct DICOMSplit: AsyncParsableCommand {
     }
 }
 
-enum OutputFormat: String, ExpressibleByArgument {
-    case dicom
-    case png
-    case jpeg
-    case tiff
-}
+// FrameSplitter + SplitError + SplitResult + SplitOutputFormat now live in the
+// DICOMKit library (Sources/DICOMKit/Splitting/). ArgumentParser stays out of the
+// library, so the CLI supplies the command-line conformance here.
+extension SplitOutputFormat: ExpressibleByArgument {}
 
 /// Prints to stderr
 private func fprintln(_ message: String) {

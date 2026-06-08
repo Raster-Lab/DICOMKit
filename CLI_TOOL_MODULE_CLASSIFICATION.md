@@ -79,8 +79,8 @@ for example from:
 | `dicom-send` | `dicom-send` / `dicom-send` | `Sources/dicom-send` | `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network libraries | Import `DICOMCore`, `DICOMNetwork` | Run `dicom-send` | DIMSE send/store workflow |
 | `dicom-diff` | `dicom-diff` / `dicom-diff` | `Sources/dicom-diff` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; full comparison via shared `DICOMComparer` + `ComparisonReport` | Run `dicom-diff` | ✅ `DICOMComparer` + result types + `ComparisonReport` renderer extracted to `DICOMKit` (`Sources/DICOMKit/Comparison/`); CLI + DICOMStudio now share them (2026-06-08) |
 | `dicom-retrieve` | `dicom-retrieve` / `dicom-retrieve` | `Sources/dicom-retrieve` | `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network libraries | Import `DICOMCore`, `DICOMNetwork` | Run `dicom-retrieve` | DIMSE retrieve workflow |
-| `dicom-split` | `dicom-split` / `dicom-split` | `Sources/dicom-split` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-split` | File organization / multi-frame operation |
-| `dicom-merge` | `dicom-merge` / `dicom-merge` | `Sources/dicom-merge` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-merge` | File organization / multi-file merge |
+| `dicom-split` | `dicom-split` / `dicom-split` | `Sources/dicom-split` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; split via shared `FrameSplitter` | Run `dicom-split` | ✅ `FrameSplitter` engine (frame extract + image export) extracted to `DICOMKit` (`Sources/DICOMKit/Splitting/`); CLI + DICOMStudio share it (2026-06-08) |
+| `dicom-merge` | `dicom-merge` / `dicom-merge` | `Sources/dicom-merge` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; merge via shared `FrameMerger` | Run `dicom-merge` | ✅ `FrameMerger` engine extracted to `DICOMKit` (`Sources/DICOMKit/Merging/`); CLI + DICOMStudio share it, deterministic sort, parity MATCHES (2026-06-08) |
 | `dicom-json` | `dicom-json` / `dicom-json` | `Sources/dicom-json` | `DICOMKit`, `DICOMCore`, `DICOMWeb` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`, `DICOMCore`, `DICOMWeb`; direct encoders/decoders exist | Run `dicom-json` | Uses `DICOMJSONEncoder` / `DICOMJSONDecoder` |
 | `dicom-xml` | `dicom-xml` / `dicom-xml` | `Sources/dicom-xml` | `DICOMKit`, `DICOMCore`, `DICOMWeb`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`, `DICOMCore`, `DICOMWeb`, `DICOMDictionary`; direct encoders/decoders exist | Run `dicom-xml` | Uses `DICOMXMLEncoder` / `DICOMXMLDecoder` |
 | `dicom-pdf` | `dicom-pdf` / `dicom-pdf` | `Sources/dicom-pdf` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-pdf` | Encapsulation / extraction workflow |
@@ -149,6 +149,8 @@ Examples include:
 - `DICOMComparer` / `ComparisonReport`
 - `Anonymizer`
 - `TagEditor`
+- `FrameMerger`
+- `FrameSplitter`
 - `DICOMJSONEncoder` / `DICOMJSONDecoder`
 - `DICOMXMLEncoder` / `DICOMXMLDecoder`
 - `DICOMwebClient`

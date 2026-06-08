@@ -50,10 +50,10 @@ struct DICOMMerge: AsyncParsableCommand {
     var level: MergeLevel = .file
     
     @Option(name: .long, help: "Sort frames by: InstanceNumber, ImagePositionPatient, AcquisitionTime, none (default: InstanceNumber)")
-    var sortBy: SortCriteria = .instanceNumber
+    var sortBy: MergeSortCriteria = .instanceNumber
     
     @Option(name: .long, help: "Sort order: ascending, descending (default: ascending)")
-    var order: SortOrder = .ascending
+    var order: MergeSortOrder = .ascending
     
     @Flag(name: .long, help: "Validate consistency of input files")
     var validate: Bool = false
@@ -87,14 +87,15 @@ struct DICOMMerge: AsyncParsableCommand {
             fprintln("")
         }
         
-        // Create merger
+        // Create merger (shared DICOMKit engine; verbose output routed to stderr)
         let merger = FrameMerger(
             format: format,
             level: level,
             sortBy: sortBy,
             order: order,
             validate: validate,
-            verbose: verbose
+            verbose: verbose,
+            log: { fprintln($0) }
         )
         
         // Gather input files
@@ -198,30 +199,13 @@ struct DICOMMerge: AsyncParsableCommand {
     }
 }
 
-enum MergeFormat: String, ExpressibleByArgument {
-    case standard
-    case enhancedCt = "enhanced-ct"
-    case enhancedMr = "enhanced-mr"
-    case enhancedXa = "enhanced-xa"
-}
-
-enum MergeLevel: String, ExpressibleByArgument {
-    case file
-    case series
-    case study
-}
-
-enum SortCriteria: String, ExpressibleByArgument {
-    case instanceNumber = "InstanceNumber"
-    case imagePositionPatient = "ImagePositionPatient"
-    case acquisitionTime = "AcquisitionTime"
-    case none
-}
-
-enum SortOrder: String, ExpressibleByArgument {
-    case ascending
-    case descending
-}
+// FrameMerger + MergeError + these option enums now live in the DICOMKit library
+// (Sources/DICOMKit/Merging/). ArgumentParser stays out of the library, so the
+// CLI supplies the command-line conformances here.
+extension MergeFormat: ExpressibleByArgument {}
+extension MergeLevel: ExpressibleByArgument {}
+extension MergeSortCriteria: ExpressibleByArgument {}
+extension MergeSortOrder: ExpressibleByArgument {}
 
 /// Prints to stderr
 private func fprintln(_ message: String) {
