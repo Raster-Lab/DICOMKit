@@ -119,8 +119,8 @@ the small workflow piece where it doesn't.
 
 | Tool | What's already shared | What's still copied → action |
 |------|-----------------------|------------------------------|
-| `dicom-uid` | `UIDGenerator` (DICOMCore), `UIDDictionary` (DICOMDictionary) | The `UIDManager` workflow (validate/lookup/regenerate) lives only in `Sources/dicom-uid/UIDManager.swift`; app re-implements it inline. **Extract `UIDManager` → DICOMKit.** |
-| `dicom-compress` | `CodecRegistry` (DICOMCore) | `CompressionManager` workflow lives only in `Sources/dicom-compress/`; app re-implements via `dcCompress*` helpers. **Extract `CompressionManager` → DICOMKit/DICOMCore.** |
+| `dicom-uid` | `UIDGenerator` (DICOMCore), `UIDDictionary` (DICOMDictionary) | The `UIDManager` workflow (validate/lookup/regenerate) lives only in `Sources/dicom-uid/UIDManager.swift`; app re-implements it inline. **Extract `UIDManager` → DICOMKit.** ✅ Output now parity-verified (DIFFERS=0); engine extraction still pending. |
+| `dicom-compress` | `CodecRegistry` (DICOMCore) | `CompressionManager` workflow lives only in `Sources/dicom-compress/`; app re-implements via `dcCompress*` helpers. **Extract `CompressionManager` → DICOMKit/DICOMCore.** ✅ Output now parity-verified (DIFFERS=0); engine extraction still pending. |
 | `dicom-export` | render primitives (`DICOMFile.tryRenderFrame`, DICOMKit) | EXIF / contact-sheet / GIF / bulk export engine inlined in both. **Extract a `DICOMImageExporter` → DICOMKit.** |
 | `dicom-query` | `DICOMQueryService.find` (DICOMNetwork) | Query-key building, multi-step orchestration, and result formatters are app-local. **Extract a `QueryWorkflow` + shared formatter → DICOMNetwork.** |
 | `dicom-retrieve` | `DICOMRetrieveService` C-MOVE/C-GET (DICOMNetwork) | Part 10 wrapper + received-instance save loop reimplemented on each side. **Extract a `Part10Writer` (+ retrieve coordinator) → DICOMCore/DICOMNetwork.** |
@@ -194,7 +194,7 @@ Sequenced by value and risk. Each wave is independently shippable.
 - **Wave 2 ✅ DONE — file-organization copies (Bucket C):** `dicom-split` ✅,
   `dicom-merge` ✅, `dicom-study` ✅, `dicom-archive` ✅ — all migrated and verified
   (parity DIFFERS for this cohort all resolved; merge + study moved to MATCH).
-- **Wave 3 — image/pixel + scripting copies (Bucket C):** `dicom-image`,
+- **Wave 3 (in progress) — image/pixel + scripting copies (Bucket C):** `dicom-image`,
   `dicom-pixedit`, `dicom-script`. These touch CoreGraphics/ImageIO and (script)
   process execution — give `dicom-script` an injectable command runner so the
   sandboxed app gets a plan/dry-run runner.
