@@ -495,30 +495,19 @@ public final class SecurityViewModel {
             fileURLs = [URL(fileURLWithPath: inputPath)]
         }
 
-        // Parse custom tag actions
-        let removedTagSet = Set(removeTags)
-        var replaceMap: [String: String] = [:]
-        for pair in replacePairs {
-            let parts = pair.split(separator: "=", maxSplits: 1)
-            if parts.count == 2 { replaceMap[String(parts[0])] = String(parts[1]) }
-        }
-        let keepTagSet = Set(keepTags)
-
-        // Profile tag lists (mirrors Anonymizer.swift tagsToRemove)
-        let basicTags   = Self.basicProfileTagNames
-        let clinicalTags = basicTags.union([
-            "0008,0020", "0008,0021", "0008,0022", "0008,0023",
-            "0008,0030", "0008,0031", "0008,0032", "0008,0033",
-        ])
-        let researchTags: Set<String> = ["0010,0010", "0010,0020", "0010,0030"]
-
-        let profileTags: Set<String>
-        switch profile {
-        case .basic, .hipaaeSafeHarbor: profileTags = basicTags
-        case .clinicalTrial:            profileTags = clinicalTags
-        case .research:                 profileTags = researchTags
-        case .custom:                   profileTags = Set(removeTags)
-        }
+        // Build the shared anonymization engine ONCE for the whole run — the exact
+        // same DICOMKit.Anonymizer the `dicom-anon` CLI uses, so the app and CLI
+        // cannot drift. Reusing one instance keeps UID remapping consistent across
+        // every file in a directory (matching the CLI), and the engine — not the
+        // app — now owns profile→tag mapping, per-tag defaults, UID regeneration,
+        // date shifting, and PHI scanning.
+        let anonymizer = DICOMKit.Anonymizer(
+            profile: Self.engineProfile(profile, removeTags: removeTags),
+            shiftDates: shiftDays,
+            regenerateUIDs: regenerateUIDs,
+            preserveTags: Set(keepTags.compactMap { Self.parseTag($0) }),
+            customActions: Self.engineCustomActions(removeTags: removeTags, replacePairs: replacePairs)
+        )
 
         for fileURL in fileURLs {
             totalFiles += 1
@@ -526,75 +515,15 @@ public final class SecurityViewModel {
 
             do {
                 let data = try Data(contentsOf: fileURL)
-                var dicomFile = try DICOMFile.read(from: data, force: force)
-                var changed: [String] = []
+                let dicomFile = try DICOMFile.read(from: data, force: force)
 
-                // Apply profile removals. Mirrors dicom-anon's per-tag defaults
-                // (Sources/dicom-anon/Anonymizer.swift `defaultAction`): PatientName is
-                // replaced with "ANONYMOUS" and PatientID with a SHA-256 pseudonym;
-                // every other profile tag is removed.
-                for tagStr in profileTags {
-                    if keepTagSet.contains(tagStr) { continue }
-                    guard let tag = Self.parseTag(tagStr),
-                          let element = dicomFile.dataSet[tag] else { continue }
-                    var ds = dicomFile.dataSet
-                    if tag == .patientName {
-                        ds.setString("ANONYMOUS", for: tag, vr: element.vr)
-                    } else if tag == .patientID {
-                        let original = element.stringValue ?? "\(element.tag)"
-                        ds.setString(Self.pseudonymize(original), for: tag, vr: element.vr)
-                    } else {
-                        ds[tag] = nil
-                    }
-                    dicomFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: ds)
-                    changed.append(tagStr)
-                }
-
-                // Apply custom removals
-                for tagStr in removedTagSet {
-                    if keepTagSet.contains(tagStr) { continue }
-                    if let tag = Self.parseTag(tagStr), dicomFile.dataSet[tag] != nil {
-                        dicomFile = DICOMFile(
-                            fileMetaInformation: dicomFile.fileMetaInformation,
-                            dataSet: { var ds = dicomFile.dataSet; ds[tag] = nil; return ds }()
-                        )
-                        changed.append(tagStr)
-                    }
-                }
-
-                // Apply replacements. Use the tag's existing/dictionary VR — hardcoding .LO
-                // dropped the set on typed tags like PatientName (PN), leaving the profile's
-                // "ANONYMOUS" instead of the requested replacement (part of F19).
-                for (tagStr, value) in replaceMap {
-                    if keepTagSet.contains(tagStr) { continue }
-                    if let tag = Self.parseTag(tagStr) {
-                        var ds = dicomFile.dataSet
-                        let vr = ds[tag]?.vr ?? DataElementDictionary.lookup(tag: tag)?.vr.first ?? .LO
-                        ds.setString(value, for: tag, vr: vr)
-                        dicomFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: ds)
-                        changed.append("\(tagStr)=\(value)")
-                    }
-                }
-
-                // Date shift
-                if let days = shiftDays {
-                    let dateTags: [(Tag, String)] = [
-                        (.studyDate, "0008,0020"), (.seriesDate, "0008,0021"),
-                        (.acquisitionDate, "0008,0022"), (.contentDate, "0008,0023"),
-                        (.patientBirthDate, "0010,0030"),
-                    ]
-                    for (tag, tagStr) in dateTags {
-                        if keepTagSet.contains(tagStr) { continue }
-                        if let dateStr = dicomFile.dataSet.string(for: tag),
-                           let shifted = Self.shiftDICOMDate(dateStr, byDays: days) {
-                            var ds = dicomFile.dataSet
-                            ds.setString(shifted, for: tag, vr: .DA)
-                            dicomFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: ds)
-                            changed.append(tagStr)
-                        }
-                    }
-                }
-
+                // All anonymization processing — profile removals, per-tag defaults
+                // (PatientName→ANONYMOUS, PatientID→hash), custom --remove/--replace,
+                // --keep, date shifting, UID regeneration, and PHI scanning — is
+                // delegated to the shared DICOMKit engine.
+                let (anonFile, anonResult) = try anonymizer.anonymize(file: dicomFile, filePath: fileURL.path)
+                let changed = anonResult.changedTags.map { $0.description }
+                warnings.append(contentsOf: anonResult.warnings)
                 modifiedTagNames.append(contentsOf: changed)
 
                 if !dryRun {
@@ -610,7 +539,7 @@ public final class SecurityViewModel {
                         let backupURL = fileURL.appendingPathExtension("backup")
                         try? FileManager.default.copyItem(at: fileURL, to: backupURL)
                     }
-                    let outData = try dicomFile.write()
+                    let outData = try anonFile.write()
                     // Sandbox/TCC-resilient write: the earlier resolveWritableOutput uses POSIX
                     // checks that miss TCC, so retry at write time and fall back to ~/Downloads.
                     let wr = try OutputAccess.write(outData, toPath: destURL.path, scopedURL: nil, subfolder: "Anonymized")
@@ -694,25 +623,6 @@ public final class SecurityViewModel {
         return (fallback.path, note)
     }
 
-    private static var basicProfileTagNames: Set<String> {
-        Set([
-            "0010,0010", // PatientName
-            "0010,0020", // PatientID
-            "0010,0030", // PatientBirthDate
-            "0010,0035", // PatientBirthTime
-            "0010,1000", // OtherPatientIDs
-            "0010,1001", // OtherPatientNames
-            "0010,4000", // PatientComments
-            "0008,0090", // ReferringPhysicianName
-            "0008,1050", // PerformingPhysicianName
-            "0008,1070", // OperatorName
-            "0008,0080", // InstitutionName
-            "0008,0081", // InstitutionAddress
-            "0008,1010", // StationName
-            "0018,1000", // DeviceSerialNumber
-        ])
-    }
-
     private static func parseTag(_ string: String) -> Tag? {
         let clean = string
             .replacingOccurrences(of: ",", with: "")
@@ -725,30 +635,34 @@ public final class SecurityViewModel {
         return Tag(group: group, element: element)
     }
 
-    /// Computes the same PatientID pseudonym dicom-anon uses: the first 32
-    /// uppercase hex characters (128 bits) of the SHA-256 of the original value.
-    /// Mirrors `Anonymizer.hashValue` so the in-process reimplementation matches
-    /// the CLI byte-for-byte. (See Sources/dicom-anon/Anonymizer.swift.)
-    private static func pseudonymize(_ value: String) -> String {
-        #if canImport(CryptoKit)
-        let hash = SHA256.hash(data: Data(value.utf8))
-        let fullHex = hash.map { String(format: "%02x", $0) }.joined().uppercased()
-        return String(fullHex.prefix(32))
-        #else
-        let h1 = UInt64(bitPattern: Int64(value.hashValue))
-        let h2 = UInt64(bitPattern: Int64(String(value.reversed()).hashValue))
-        return String(format: "%016llX%016llX", h1, h2)
-        #endif
+    // MARK: - Engine mapping (UI profile + flag strings -> shared DICOMKit engine)
+
+    /// Maps the app's UI ``AnonymizationProfile`` onto the shared engine profile.
+    /// HIPAA Safe Harbor maps to the basic profile (matching the CLI's `cliFlag`);
+    /// Custom uses the explicitly listed `--remove` tags as its removal set.
+    private static func engineProfile(_ profile: AnonymizationProfile, removeTags: [String]) -> DICOMKit.AnonymizationProfile {
+        switch profile {
+        case .basic, .hipaaeSafeHarbor: return .basic
+        case .clinicalTrial:            return .clinicalTrial
+        case .research:                 return .research
+        case .custom:                   return .custom(removeTags.compactMap { parseTag($0) })
+        }
     }
 
-    private static func shiftDICOMDate(_ dateStr: String, byDays days: Int) -> String? {
-        let trimmed = dateStr.trimmingCharacters(in: .whitespaces)
-        guard trimmed.count == 8 else { return nil }
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd"
-        guard let date = formatter.date(from: trimmed),
-              let shifted = Calendar.current.date(byAdding: .day, value: days, to: date) else { return nil }
-        return formatter.string(from: shifted)
+    /// Builds the engine's per-tag custom actions from the `--remove` / `--replace`
+    /// flag lists (matching the CLI's `parseCustomActions`).
+    private static func engineCustomActions(removeTags: [String], replacePairs: [String]) -> [Tag: DICOMKit.AnonymizationAction] {
+        var actions: [Tag: DICOMKit.AnonymizationAction] = [:]
+        for spec in removeTags {
+            if let tag = parseTag(spec) { actions[tag] = .remove }
+        }
+        for pair in replacePairs {
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            if parts.count == 2, let tag = parseTag(String(parts[0])) {
+                actions[tag] = .replaceWithDummy(String(parts[1]))
+            }
+        }
+        return actions
     }
 
     // MARK: - 11.3 Audit Log Actions

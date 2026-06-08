@@ -8062,75 +8062,20 @@ case "dicom-study":
                     sourceDataSet = cfFile.dataSet
                 }
 
-                var descriptions: [String] = []
-
-                // 1. Deletes
-                for deleteSpec in deletes {
-                    if let tag = Self.tagsParseSpecifier(deleteSpec) {
-                        let name = DataElementDictionary.lookup(tag: tag)?.name
-                        let label = Self.tagsLabel(tag, name: name)
-                        if dataSet[tag] != nil {
-                            if !dryRun { dataSet.remove(tag: tag) }
-                            descriptions.append("DELETE \(label)")
-                        } else {
-                            descriptions.append("DELETE \(label) (not present, skipped)")
-                        }
-                    } else {
-                        descriptions.append("DELETE \(deleteSpec) (unknown tag, skipped)")
-                    }
-                }
-
-                // 2. Delete private
-                if deletePrivate {
-                    var removed = 0
-                    for tag in dataSet.tags where tag.isPrivate {
-                        if !dryRun { dataSet.remove(tag: tag) }
-                        removed += 1
-                        if verbose {
-                            let name = DataElementDictionary.lookup(tag: tag)?.name
-                            descriptions.append("DELETE private tag \(Self.tagsLabel(tag, name: name))")
-                        }
-                    }
-                    if !verbose { descriptions.append("DELETE \(removed) private tag(s)") }
-                }
-
-                // 3. Copy-from
-                if let source = sourceDataSet {
-                    let tagsToCopy: [Tag]
-                    if copyTags.isEmpty {
-                        tagsToCopy = source.tags
-                    } else {
-                        tagsToCopy = copyTags.compactMap { Self.tagsParseSpecifier($0) }
-                    }
-                    for tag in tagsToCopy {
-                        if let element = source[tag] {
-                            let name = DataElementDictionary.lookup(tag: tag)?.name
-                            let label = Self.tagsLabel(tag, name: name)
-                            if !dryRun { dataSet[tag] = element }
-                            let v = element.stringValue ?? "<binary>"
-                            descriptions.append("COPY \(label) = \(v)")
-                        }
-                    }
-                }
-
-                // 4. Sets (applied last so they override copies)
-                for setSpec in sets {
-                    if let eqRange = setSpec.range(of: "=") {
-                        let tagPart   = String(setSpec[..<eqRange.lowerBound])
-                        let valuePart = String(setSpec[eqRange.upperBound...])
-                        if let tag = Self.tagsParseSpecifier(tagPart) {
-                            let name = DataElementDictionary.lookup(tag: tag)?.name
-                            let label = Self.tagsLabel(tag, name: name)
-                            let vr = dataSet[tag]?.vr ?? Self.tagsDefaultVR(tag)
-                            if !dryRun { dataSet.setString(valuePart, for: tag, vr: vr) }
-                            descriptions.append("SET \(label) = \(valuePart)")
-                        } else {
-                            descriptions.append("SET \(tagPart) (unknown tag, skipped)")
-                        }
-                    } else {
-                        descriptions.append("SET \(setSpec) (invalid format, expected TagName=Value)")
-                    }
-                }
+                // Apply all operations via the shared DICOMKit engine — the exact
+                // same TagEditor the `dicom-tags` CLI uses, so app and CLI cannot
+                // drift. (Resolution and wording are unchanged: dictionary-based
+                // names/VRs, unknown specifiers skipped with a note.)
+                let descriptions = TagEditor().applyChanges(
+                    to: &dataSet,
+                    sets: sets,
+                    deletes: deletes,
+                    deletePrivate: deletePrivate,
+                    sourceDataSet: sourceDataSet,
+                    copyTags: copyTags,
+                    verbose: verbose,
+                    dryRun: dryRun
+                )
 
                 // Build output text
                 var out = ""
@@ -8185,15 +8130,6 @@ case "dicom-study":
         }
         // Try tag name lookup via DICOMDictionary
         return DataElementDictionary.lookup(keyword: t)?.tag
-    }
-
-    nonisolated private static func tagsLabel(_ tag: Tag, name: String?) -> String {
-        let hex = tag.description
-        return name != nil ? "\(hex) \(name!)" : hex
-    }
-
-    nonisolated private static func tagsDefaultVR(_ tag: Tag) -> VR {
-        DataElementDictionary.lookup(tag: tag)?.vr.first ?? .LO
     }
 
     // MARK: - dicom-diff Execution
@@ -8256,20 +8192,23 @@ case "dicom-study":
                 // Resolve each ignore-tag by hex (GGGG,EEEE / GGGGEEEE) or by
                 // keyword name (e.g. SOPInstanceUID) — matching the CLI's parseTag.
                 let ignoreTagSet = Set(ignoreTags.compactMap { Self.tagsParseSpecifier($0) })
-                let result = Self.diffCompare(
+
+                // Compare + render via the shared DICOMKit engine — the exact same
+                // code the `dicom-diff` CLI uses, so app and CLI cannot drift.
+                let comparer = DICOMComparer(
                     file1: df1, file2: df2,
-                    file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent,
                     tagsToIgnore: ignoreTagSet, ignorePrivate: ignorePrivate,
                     comparePixels: comparePixels && !quick,
                     pixelTolerance: tolerance, showIdentical: showIdentical
                 )
-
-                var rendered: String
-                switch format {
-                case "json":    rendered = (try? Self.diffFormatJSON(result: result, file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent)) ?? "{}\n"
-                case "summary": rendered = Self.diffFormatSummary(result: result)
-                default:        rendered = Self.diffFormatText(result: result, file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent, showIdentical: showIdentical)
-                }
+                let result = try comparer.compare()
+                let report = ComparisonReport(
+                    result: result,
+                    file1Name: url1.lastPathComponent, file2Name: url2.lastPathComponent,
+                    showIdentical: showIdentical
+                )
+                let outputFormat = ComparisonOutputFormat(rawValue: format) ?? .text
+                var rendered = try report.render(format: outputFormat)
 
                 // --verbose prints a comparison header before the results (matches CLI).
                 if verbose {
@@ -8286,171 +8225,6 @@ case "dicom-study":
         addToHistory(toolName: "dicom-diff", command: commandPreview, exitCode: exitCode, output: output)
         consoleStatus = exitCode == 0 ? .success : .error
         service.setConsoleStatus(exitCode == 0 ? .success : .error)
-    }
-
-    // MARK: - dicom-diff engine (matches DICOMComparer in dicom-diff/main.swift)
-
-    private struct DiffResult {
-        var totalTags: Int = 0
-        var differenceCount: Int = 0
-        var onlyInFile1: [(tag: Tag, element: DataElement)] = []
-        var onlyInFile2: [(tag: Tag, element: DataElement)] = []
-        var modified: [(tag: Tag, value1: DataElement, value2: DataElement)] = []
-        var identical: [(tag: Tag, element: DataElement)] = []
-        var pixelsCompared: Bool = false
-        var pixelsDifferent: Bool = false
-        var maxPixelDiff: Double = 0
-        var meanPixelDiff: Double = 0
-        var diffPixelCount: Int = 0
-        var totalPixels: Int = 0
-        var hasDifferences: Bool { differenceCount > 0 || pixelsDifferent }
-    }
-
-    nonisolated private static func diffCompare(
-        file1: DICOMFile, file2: DICOMFile,
-        file1Name: String, file2Name: String,
-        tagsToIgnore: Set<Tag>, ignorePrivate: Bool,
-        comparePixels: Bool, pixelTolerance: Double, showIdentical: Bool
-    ) -> DiffResult {
-        var result = DiffResult()
-        let ds1 = file1.dataSet
-        let ds2 = file2.dataSet
-        let allTags = Set(ds1.tags).union(Set(ds2.tags)).sorted()
-
-        for tag in allTags {
-            if tagsToIgnore.contains(tag) { continue }
-            if ignorePrivate && tag.isPrivate { continue }
-            if comparePixels && tag == Tag(group: 0x7FE0, element: 0x0010) { continue }
-
-            result.totalTags += 1
-            let e1 = ds1[tag], e2 = ds2[tag]
-            switch (e1, e2) {
-            case (nil, let e?):
-                result.onlyInFile2.append((tag, e)); result.differenceCount += 1
-            case (let e?, nil):
-                result.onlyInFile1.append((tag, e)); result.differenceCount += 1
-            case (let e1?, let e2?):
-                if diffElementsEqual(e1, e2) { result.identical.append((tag, e1)) }
-                else { result.modified.append((tag, e1, e2)); result.differenceCount += 1 }
-            default: break
-            }
-        }
-
-        if comparePixels {
-            result.pixelsCompared = true
-            let pixelTag = Tag(group: 0x7FE0, element: 0x0010)
-            if let pd1 = ds1[pixelTag]?.valueData, let pd2 = ds2[pixelTag]?.valueData {
-                var maxDiff = 0.0, totalDiff = 0.0, diffCount = 0
-                let minLen = min(pd1.count, pd2.count)
-                for i in 0..<minLen {
-                    let d = abs(Double(pd1[i]) - Double(pd2[i]))
-                    if d > 0 { maxDiff = max(maxDiff, d); totalDiff += d; diffCount += 1 }
-                }
-                if pd1.count != pd2.count { diffCount += abs(pd1.count - pd2.count) }
-                result.totalPixels = max(pd1.count, pd2.count)
-                result.maxPixelDiff = maxDiff
-                result.meanPixelDiff = diffCount > 0 ? totalDiff / Double(diffCount) : 0
-                result.diffPixelCount = diffCount
-                result.pixelsDifferent = maxDiff > pixelTolerance
-            }
-        }
-        return result
-    }
-
-    nonisolated private static func diffElementsEqual(_ e1: DataElement, _ e2: DataElement) -> Bool {
-        guard e1.vr == e2.vr else { return false }
-        if e1.vr == .SQ {
-            guard let s1 = e1.sequenceItems, let s2 = e2.sequenceItems, s1.count == s2.count else { return false }
-            return zip(s1, s2).allSatisfy { i1, i2 in
-                let k1 = Set(i1.elements.keys), k2 = Set(i2.elements.keys)
-                guard k1 == k2 else { return false }
-                return k1.allSatisfy { diffElementsEqual(i1.elements[$0]!, i2.elements[$0]!) }
-            }
-        }
-        return e1.valueData == e2.valueData
-    }
-
-    nonisolated private static func diffFormatValue(_ e: DataElement) -> String {
-        if e.vr == .SQ { return "<Sequence with \(e.sequenceItems?.count ?? 0) items>" }
-        if e.vr == .OB || e.vr == .OW || e.vr == .OF || e.vr == .OD { return "<Binary data, \(e.valueData.count) bytes>" }
-        return e.stringValue ?? "<empty>"
-    }
-
-    nonisolated private static func diffFormatText(result: DiffResult, file1Name: String, file2Name: String, showIdentical: Bool) -> String {
-        var out = "=== DICOM Comparison Results ===\n\n"
-        out += "Total tags compared: \(result.totalTags)\n"
-        out += "Differences found: \(result.differenceCount)\n"
-        out += "Tags only in file 1: \(result.onlyInFile1.count)\n"
-        out += "Tags only in file 2: \(result.onlyInFile2.count)\n"
-        out += "Modified tags: \(result.modified.count)\n"
-        if result.pixelsCompared {
-            out += "\nPixel Data: \(result.pixelsDifferent ? "DIFFERENT" : "IDENTICAL")\n"
-            if result.totalPixels > 0 {
-                out += "  Max difference: \(result.maxPixelDiff)\n"
-                out += "  Mean difference: \(String(format: "%.2f", result.meanPixelDiff))\n"
-                out += "  Different pixels: \(result.diffPixelCount) / \(result.totalPixels)\n"
-            }
-        }
-        out += "\n"
-        if !result.onlyInFile1.isEmpty {
-            out += "\n--- Tags only in \(file1Name) ---\n"
-            for (tag, elem) in result.onlyInFile1.sorted(by: { $0.tag < $1.tag }) {
-                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-                out += "[\(tag)] \(name): \(diffFormatValue(elem))\n"
-            }
-        }
-        if !result.onlyInFile2.isEmpty {
-            out += "\n--- Tags only in \(file2Name) ---\n"
-            for (tag, elem) in result.onlyInFile2.sorted(by: { $0.tag < $1.tag }) {
-                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-                out += "[\(tag)] \(name): \(diffFormatValue(elem))\n"
-            }
-        }
-        if !result.modified.isEmpty {
-            out += "\n--- Modified Tags ---\n"
-            for (tag, v1, v2) in result.modified.sorted(by: { $0.tag < $1.tag }) {
-                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-                out += "\n[\(tag)] \(name)\n"
-                out += "  File 1: \(diffFormatValue(v1))\n"
-                out += "  File 2: \(diffFormatValue(v2))\n"
-            }
-        }
-        if showIdentical && !result.identical.isEmpty {
-            out += "\n--- Identical Tags (\(result.identical.count)) ---\n"
-            for (tag, elem) in result.identical.sorted(by: { $0.tag < $1.tag }) {
-                let name = DataElementDictionary.lookup(tag: tag)?.name ?? "Unknown"
-                out += "[\(tag)] \(name): \(diffFormatValue(elem))\n"
-            }
-        }
-        out += "\n=== End of Comparison ===\n"
-        return out
-    }
-
-    nonisolated private static func diffFormatSummary(result: DiffResult) -> String {
-        var out = "Files: \(result.hasDifferences ? "DIFFERENT" : "IDENTICAL")\n"
-        out += "Differences: \(result.differenceCount)\n"
-        out += "  Only in file 1: \(result.onlyInFile1.count)\n"
-        out += "  Only in file 2: \(result.onlyInFile2.count)\n"
-        out += "  Modified: \(result.modified.count)\n"
-        if result.pixelsCompared { out += "Pixel data: \(result.pixelsDifferent ? "DIFFERENT" : "IDENTICAL")\n" }
-        return out
-    }
-
-    nonisolated private static func diffFormatJSON(result: DiffResult, file1Name: String, file2Name: String) throws -> String {
-        let json: [String: Any] = [
-            "files": ["file1": file1Name, "file2": file2Name],
-            "summary": ["totalTags": result.totalTags, "differences": result.differenceCount, "hasDifferences": result.hasDifferences] as [String: Any],
-            "onlyInFile1": result.onlyInFile1.map { ["tag": $0.tag.description, "value": diffFormatValue($0.element)] },
-            "onlyInFile2": result.onlyInFile2.map { ["tag": $0.tag.description, "value": diffFormatValue($0.element)] },
-            "modified": result.modified.map {
-                ["tag": $0.tag.description,
-                 "tagName": DataElementDictionary.lookup(tag: $0.tag)?.name ?? "Unknown",
-                 "value1": diffFormatValue($0.value1),
-                 "value2": diffFormatValue($0.value2)] as [String: Any]
-            },
-        ]
-        let data = try JSONSerialization.data(withJSONObject: json, options: .prettyPrinted)
-        return (String(data: data, encoding: .utf8) ?? "") + "\n"
     }
 
     /// Performs a real C-ECHO against the server configured in the parameter fields.

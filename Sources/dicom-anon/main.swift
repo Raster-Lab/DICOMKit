@@ -349,13 +349,32 @@ struct DICOMAnon: ParsableCommand {
 
 struct ValidationError: Error, LocalizedError {
     let message: String
-    
+
     init(_ message: String) {
         self.message = message
     }
-    
+
     var errorDescription: String? {
         message
+    }
+}
+
+// CLI-only error type (the shared DICOMKit `Anonymizer` engine never throws it;
+// only the command's argument parsing / file checks do).
+enum AnonymizationError: Error, LocalizedError {
+    case invalidProfile
+    case fileNotFound
+    case writeError(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidProfile:
+            return "Invalid anonymization profile"
+        case .fileNotFound:
+            return "File not found"
+        case .writeError(let msg):
+            return "Write error: \(msg)"
+        }
     }
 }
 

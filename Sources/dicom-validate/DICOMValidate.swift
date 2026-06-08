@@ -4,6 +4,12 @@ import DICOMKit
 import DICOMCore
 import DICOMDictionary
 
+// The validation engine (`DICOMValidator`), report renderer (`ValidationReport`),
+// and `ValidationOutputFormat` now live in the DICOMKit library so the CLI and
+// DICOMStudio run the exact same code. ArgumentParser stays out of the library,
+// so the CLI supplies the command-line conformance here.
+extension ValidationOutputFormat: ExpressibleByArgument {}
+
 @main
 struct DICOMValidate: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
@@ -39,7 +45,7 @@ struct DICOMValidate: AsyncParsableCommand {
     var recursive: Bool = false
     
     @Option(name: .shortAndLong, help: "Output format: text, json")
-    var format: OutputFormat = .text
+    var format: ValidationOutputFormat = .text
     
     @Option(name: .shortAndLong, help: "Output file path (stdout if not specified)")
     var output: String?
@@ -77,8 +83,24 @@ struct DICOMValidate: AsyncParsableCommand {
         let outputText = try report.render(format: format)
         
         if let outputPath = output {
-            let outputURL = URL(fileURLWithPath: outputPath)
-            try outputText.write(to: outputURL, atomically: true, encoding: .utf8)
+            let resolvedOutputPath = OutputPathResolver.resolveFileOutput(
+                output: outputPath,
+                input: inputPath,
+                fileExtension: format == .json ? "json" : "txt"
+            )
+            let outputURL = URL(fileURLWithPath: resolvedOutputPath)
+
+            do {
+                try FileManager.default.createDirectory(
+                    at: outputURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try outputText.write(to: outputURL, atomically: true, encoding: .utf8)
+            } catch {
+                throw ValidationError(
+                    "Failed to write validation report to \(resolvedOutputPath): \(error.localizedDescription)"
+                )
+            }
         } else {
             print(outputText, terminator: "")
         }

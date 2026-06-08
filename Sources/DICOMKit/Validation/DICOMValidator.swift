@@ -1,6 +1,5 @@
 import Foundation
 import DICOMCore
-import DICOMKit
 import DICOMDictionary
 import J2KCore
 

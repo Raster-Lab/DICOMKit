@@ -1,7 +1,11 @@
 import Foundation
-import ArgumentParser
 
-public enum OutputFormat: String, ExpressibleByArgument, Sendable {
+/// Output format for a ``ValidationReport``.
+///
+/// Lives in the library (not the CLI) so DICOMStudio and the `dicom-validate`
+/// tool render reports from the same type. The CLI adds the
+/// `ExpressibleByArgument` conformance in its own module.
+public enum ValidationOutputFormat: String, Sendable {
     case text
     case json
 }
@@ -18,7 +22,7 @@ public struct ValidationReport {
         self.strict = strict
     }
     
-    public func render(format: OutputFormat) throws -> String {
+    public func render(format: ValidationOutputFormat) throws -> String {
         switch format {
         case .text:
             return renderText()
