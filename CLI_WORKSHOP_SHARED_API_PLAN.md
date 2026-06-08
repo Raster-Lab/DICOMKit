@@ -18,14 +18,18 @@
 >
 > **Wave 2 ✅ COMPLETE:** `dicom-split`, `dicom-merge`, `dicom-study`, `dicom-archive`
 > — each engine extracted into DICOMKit, CLI + DICOMStudio share it (see Progress
-> Log). Tier-2 parity is now **MATCH=264, DIFFERS=2**; the 2 remaining DIFFERS are
-> `dicom-compress` and `dicom-uid` (Bucket B, partly-copied — a later wave). Next
-> up: **Wave 3** (`dicom-image`, `dicom-pixedit`, `dicom-script`).
+> Log).
+>
+> **Tier-2 parity: MATCH=266, DIFFERS=0** 🎉 — the last two DIFFERS (`dicom-compress`
+> backends hint, `dicom-uid` lookup footer) are resolved, the `parity-allowlist.json`
+> is now **empty**, and the `PARITY_STRICT=1` gate is green. Next up: **Wave 3**
+> (`dicom-image`, `dicom-pixedit`, `dicom-script`).
 
 ## Progress Log
 
 | Date | Tool | What changed | Verified |
 |------|------|--------------|----------|
+| 2026-06-08 | **Parity → 0 DIFFERS** (`dicom-compress`, `dicom-uid`) | Retired the last 2 allowlisted DIFFERS. `dicom-uid`: the `N UIDs found` lookup footer moved stderr→stdout (it's a result summary, belongs with the listing — matches DICOMStudio). `dicom-compress`: aligned the app's `backends` hint wording to the CLI (`Use --backend <name>…`). Emptied `parity-allowlist.json` — all prior entries (F4/F5/F9/F10/F14) now retired since their tools call the shared engines and MATCH. | Regenerated goldens; **Tier-2 `StudioParityTests`: MATCH=266, DIFFERS=0**; `PARITY_STRICT=1` gate green with an empty allowlist. |
 | 2026-06-08 | **Wave 2** `dicom-archive` | Extracted the entire archive engine — index model (`ArchiveIndex`/`ArchivePatient`/`ArchiveStudy`/`ArchiveSeries`/`ArchiveInstance`), helpers (wildcard/sanitize/load/save/count), and all 7 operations (init/import/query/list/export/check/stats) — out of `Sources/dicom-archive/main.swift` into `Sources/DICOMKit/Archive/ArchiveStore.swift`. Operations **return rendered strings** (no `print`); `ArgumentParser.ValidationError` → library `ArchiveError`. CLI `main.swift` shrank **1236→~270 lines** (thin subcommand dispatch). App `executeDicomArchive` deleted its **~628-line** inline reimplementation (`A*` model + helpers + 7 subcommands) and dispatches to `ArchiveStore`, keeping only param parsing + sandbox path resolution. | `swift build` green; `dicom-archive` release build + full smoke (init→import→list/query/check/stats); **Tier-2 parity: all 8 archive scenarios still MATCH** (byte-exact preserved); overall MATCH=264, DIFFERS=2. |
 | 2026-06-08 | **Wave 2** `dicom-study` | Extracted the study analysis engine into `Sources/DICOMKit/Study/` — public models (`StudyMetadata`/`SeriesMetadata`/`InstanceMetadata`/`Statistics`/`StudyComparison`/`SeriesDifference`/`StudyError`), `StudyScanner` (scan; series sorted by UID), and `StudyReport` (summary/stats/compare/completeness renderers, returning strings — no `print`). The CLI's summary/check/stats/compare engines became thin adapters; `StudyOrganizer` (file moves) stays CLI-local. The app deleted its parallel `StudyStudio*` model + `studyScan` + `studyFormatBytes` and the inline renderers in its 4 study methods, calling the shared engine. **Reconciled in the engine:** series sorted within a study (deterministic), renderers use `✓`/`✗` (app had `[OK]`/`[FAIL]`/`[DIFF]`), and `check` output moved stderr→stdout (it's the command's primary result, consistent with summary/stats/compare and the app). | `swift build` green; `dicom-study` release build + smoke (summary/check/stats/compare); **Tier-2 parity: all 6 `dicom-study` scenarios now MATCH** (overall DIFFERS 8→2). |
 | 2026-06-08 | **Wave 2** `dicom-split` | Moved `FrameSplitter` (+ `SplitError`, `SplitOutputFormat`, new `SplitResult`) out of `Sources/dicom-split/` into `Sources/DICOMKit/Splitting/`. The engine now returns a `SplitResult` (extracted/failed/written paths) and logs via an injected closure; image export (CoreGraphics/ImageIO) moved with it. App `executeDicomSplit` deleted its ~150-line inline reimplementation (DICOM-frame + PNG/JPEG/TIFF export) and calls the shared engine, mapping `SplitResult` into its written-paths summary. Renamed `OutputFormat`→`SplitOutputFormat`. | `swift build` green; `dicom-split` release build + smoke (4-frame multiframe → 4 DICOM frames; PNG export). No parity golden (split is non-deterministic — UID regen + image encoding — so excluded from goldens); no regression (MATCH=258). |
