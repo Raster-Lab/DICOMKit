@@ -69,10 +69,11 @@ struct DICOMPixedit: ParsableCommand {
             throw ValidationError("Input file not found: \(input)")
         }
         
-        // Build operations list
+        // Build operations list. PixelEditor + PixelOperation + PixelEditError now
+        // live in the DICOMKit library; verbose output is routed to stderr here.
         var operations: [PixelOperation] = []
-        
-        let editor = PixelEditor(verbose: verbose)
+
+        let editor = PixelEditor(verbose: verbose, log: { fprintln($0) })
         
         if let maskRegionStr = maskRegion {
             let region = try editor.parseRegion(maskRegionStr)

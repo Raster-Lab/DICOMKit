@@ -2685,14 +2685,8 @@ private func executeDicomDcmdir() async {
             return
         }
 
-        // Build the operation list, mirroring main.swift validation order.
-        enum PixOp: Sendable {
-            case mask(x: Int, y: Int, width: Int, height: Int, fillValue: Int)
-            case crop(x: Int, y: Int, width: Int, height: Int)
-            case windowLevel(center: Double, width: Double)
-            case invert
-        }
-
+        // Build the operation list (shared DICOMKit PixelOperation), mirroring
+        // main.swift validation order.
         func parseRegion(_ s: String) -> (x: Int, y: Int, width: Int, height: Int)? {
             let parts = s.split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
             guard parts.count == 4 else { return nil }
@@ -2700,7 +2694,7 @@ private func executeDicomDcmdir() async {
             return (x: parts[0], y: parts[1], width: parts[2], height: parts[3])
         }
 
-        var operations: [PixOp] = []
+        var operations: [PixelOperation] = []
 
         if !maskRegionStr.isEmpty {
             guard let r = parseRegion(maskRegionStr) else {
@@ -2761,196 +2755,19 @@ private func executeDicomDcmdir() async {
 
         let (output, outputData, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Data?, Int) in
             var log = ""
-
-            // --- Pixel sample accessors (little-endian, 8/16-bit, signed/unsigned) ---
-            func bytesPerSample(_ bitsAllocated: Int) -> Int { bitsAllocated / 8 }
-
-            func getPixelValue(_ data: Data, sampleIndex: Int, bitsAllocated: Int, isSigned: Bool) -> Int {
-                let bps = bytesPerSample(bitsAllocated)
-                let byteOffset = sampleIndex * bps
-                if bps == 1 {
-                    guard byteOffset < data.count else { return 0 }
-                    let raw = data[data.startIndex + byteOffset]
-                    return isSigned ? Int(Int8(bitPattern: raw)) : Int(raw)
-                } else {
-                    let idx = data.startIndex + byteOffset
-                    guard idx + 1 < data.endIndex else { return 0 }
-                    let lo = UInt16(data[idx])
-                    let hi = UInt16(data[idx + 1])
-                    let raw = lo | (hi << 8)
-                    return isSigned ? Int(Int16(bitPattern: raw)) : Int(raw)
-                }
-            }
-
-            func setPixelValue(_ data: inout Data, sampleIndex: Int, value: Int, bitsAllocated: Int, isSigned: Bool) {
-                let bps = bytesPerSample(bitsAllocated)
-                let byteOffset = sampleIndex * bps
-                if bps == 1 {
-                    guard byteOffset < data.count else { return }
-                    if isSigned {
-                        data[data.startIndex + byteOffset] = UInt8(bitPattern: Int8(clamping: value))
-                    } else {
-                        data[data.startIndex + byteOffset] = UInt8(clamping: value)
-                    }
-                } else {
-                    let idx = data.startIndex + byteOffset
-                    guard idx + 1 < data.endIndex else { return }
-                    if isSigned {
-                        let clamped = UInt16(bitPattern: Int16(clamping: value))
-                        data[idx] = UInt8(clamped & 0xFF)
-                        data[idx + 1] = UInt8(clamped >> 8)
-                    } else {
-                        let clamped = UInt16(clamping: value)
-                        data[idx] = UInt8(clamped & 0xFF)
-                        data[idx + 1] = UInt8(clamped >> 8)
-                    }
-                }
-            }
-
             do {
                 let fileData = try Data(contentsOf: inputURL)
-                let dicomFile = try DICOMFile.read(from: fileData, force: false)
-                var dataSet = dicomFile.dataSet
-
-                guard let rowsU = dataSet.uint16(for: .rows) else {
-                    return ("Error: Required DICOM tag missing: Rows\n", nil, 1)
-                }
-                guard let colsU = dataSet.uint16(for: .columns) else {
-                    return ("Error: Required DICOM tag missing: Columns\n", nil, 1)
-                }
-                let bitsAllocated = Int(dataSet.uint16(for: .bitsAllocated) ?? 16)
-                let bitsStored = Int(dataSet.uint16(for: .bitsStored) ?? UInt16(bitsAllocated))
-                let pixelRep = Int(dataSet.uint16(for: .pixelRepresentation) ?? 0)
-                let samplesPerPixel = Int(dataSet.uint16(for: .samplesPerPixel) ?? 1)
-                let isSigned = pixelRep == 1
-                let maxValue = (1 << bitsStored) - 1
-                let bytesPerPixel = bytesPerSample(bitsAllocated) * samplesPerPixel
-
-                guard let pixelElement = dataSet[.pixelData] else {
-                    return ("Error: DICOM file contains no pixel data\n", nil, 1)
-                }
-                var pixelData = pixelElement.valueData
-
-                if verbose {
-                    log += "Image: \(Int(colsU))x\(Int(rowsU)), \(bitsAllocated)-bit, \(samplesPerPixel) sample(s)\n"
-                }
-
-                var currentRows = Int(rowsU)
-                var currentColumns = Int(colsU)
-                let originalRows = Int(rowsU)
-                let originalColumns = Int(colsU)
-
-                for operation in operations {
-                    switch operation {
-                    case .mask(let x, let y, let width, let height, let fillValue):
-                        guard x < currentColumns, y < currentRows else {
-                            return ("Error: Region is entirely outside the image bounds\n", nil, 1)
-                        }
-                        let startX = max(x, 0)
-                        let startY = max(y, 0)
-                        let endX = min(x + width, currentColumns)
-                        let endY = min(y + height, currentRows)
-                        for yy in startY..<endY {
-                            for xx in startX..<endX {
-                                let pixelOffset = yy * currentColumns + xx
-                                for s in 0..<samplesPerPixel {
-                                    let sampleIndex = pixelOffset * samplesPerPixel + s
-                                    setPixelValue(&pixelData, sampleIndex: sampleIndex, value: fillValue,
-                                                  bitsAllocated: bitsAllocated, isSigned: isSigned)
-                                }
-                            }
-                        }
-                        if verbose {
-                            log += "Applied mask: (\(x),\(y)) \(width)x\(height), fill=\(fillValue)\n"
-                        }
-
-                    case .crop(let x, let y, let width, let height):
-                        guard x < currentColumns, y < currentRows else {
-                            return ("Error: Region is entirely outside the image bounds\n", nil, 1)
-                        }
-                        let startX = max(x, 0)
-                        let startY = max(y, 0)
-                        let endX = min(x + width, currentColumns)
-                        let endY = min(y + height, currentRows)
-                        let newWidth = endX - startX
-                        let newHeight = endY - startY
-                        var croppedData = Data(capacity: newWidth * newHeight * bytesPerPixel)
-                        for yy in startY..<endY {
-                            let srcRowStart = (yy * currentColumns + startX) * bytesPerPixel
-                            let srcRowEnd = srcRowStart + newWidth * bytesPerPixel
-                            guard srcRowEnd <= pixelData.count else {
-                                return ("Error: Pixel data is shorter than expected for the given image dimensions\n", nil, 1)
-                            }
-                            let lower = pixelData.index(pixelData.startIndex, offsetBy: srcRowStart)
-                            let upper = pixelData.index(pixelData.startIndex, offsetBy: srcRowEnd)
-                            croppedData.append(pixelData[lower..<upper])
-                        }
-                        pixelData = croppedData
-                        currentColumns = newWidth
-                        currentRows = newHeight
-                        if verbose {
-                            log += "Cropped to: \(newWidth)x\(newHeight)\n"
-                        }
-
-                    case .windowLevel(let center, let width):
-                        guard width > 0 else {
-                            return ("Error: Window width must be greater than 0\n", nil, 1)
-                        }
-                        let totalSamples = currentRows * currentColumns * samplesPerPixel
-                        let maxOutput = Double(maxValue)
-                        for i in 0..<totalSamples {
-                            let input = Double(getPixelValue(pixelData, sampleIndex: i,
-                                                             bitsAllocated: bitsAllocated, isSigned: isSigned))
-                            // DICOM window/level formula (PS3.3 C.11.2.1.2)
-                            let outValue: Double
-                            if width <= 1.0 {
-                                outValue = input <= center - 0.5 ? 0.0 : maxOutput
-                            } else if input <= center - 0.5 - (width - 1.0) / 2.0 {
-                                outValue = 0.0
-                            } else if input > center - 0.5 + (width - 1.0) / 2.0 {
-                                outValue = maxOutput
-                            } else {
-                                outValue = ((input - (center - 0.5)) / (width - 1.0) + 0.5) * maxOutput
-                            }
-                            let clamped = Int(max(0.0, min(maxOutput, outValue)))
-                            setPixelValue(&pixelData, sampleIndex: i, value: clamped,
-                                          bitsAllocated: bitsAllocated, isSigned: isSigned)
-                        }
-                        if verbose {
-                            log += "Applied window/level: center=\(center), width=\(width)\n"
-                        }
-
-                    case .invert:
-                        let totalSamples = currentRows * currentColumns * samplesPerPixel
-                        for i in 0..<totalSamples {
-                            let value = getPixelValue(pixelData, sampleIndex: i,
-                                                      bitsAllocated: bitsAllocated, isSigned: isSigned)
-                            setPixelValue(&pixelData, sampleIndex: i, value: maxValue - value,
-                                          bitsAllocated: bitsAllocated, isSigned: isSigned)
-                        }
-                        if verbose {
-                            log += "Inverted pixel values\n"
-                        }
-                    }
-                }
-
-                // Update pixel data element, preserving original VR.
-                dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: pixelElement.vr, data: pixelData)
-
-                // Update Rows/Columns if changed by crop.
-                if currentRows != originalRows {
-                    dataSet.setUInt16(UInt16(currentRows), for: .rows)
-                }
-                if currentColumns != originalColumns {
-                    dataSet.setUInt16(UInt16(currentColumns), for: .columns)
-                }
-
-                let updatedFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: dataSet)
-                let written = try updatedFile.write()
-
+                // Apply pixel operations via the shared DICOMKit engine — the exact
+                // same PixelEditor the `dicom-pixedit` CLI uses, so the produced
+                // DICOM bytes are identical. Output is written below via the
+                // sandbox-aware OutputAccess path.
+                let editor = PixelEditor(verbose: verbose, log: { log += $0 + "\n" })
+                let (written, info) = try editor.processData(fileData, operations: operations)
                 log += "Edited pixel data: \(operations.count) operation(s) applied.\n"
-                log += "Image: \(currentColumns)x\(currentRows), \(bitsAllocated)-bit, \(samplesPerPixel) sample(s)\n"
+                log += "Image: \(info.columns)x\(info.rows), \(info.bitsAllocated)-bit, \(info.samplesPerPixel) sample(s)\n"
                 return (log, written, 0)
+            } catch let e as PixelEditError {
+                return ("Error: \(e.errorDescription ?? "\(e)")\n", nil, 1)
             } catch {
                 return ("Error: \(error.localizedDescription)\n", nil, 1)
             }
