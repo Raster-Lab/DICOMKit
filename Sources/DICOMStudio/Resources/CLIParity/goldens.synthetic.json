@@ -899,7 +899,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "[\n  {\n    \"patientID\" : \"SYN-STD-1\",\n    \"patientName\" : \"PARITY^STUDY1\",\n    \"series\" : [\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2\",\n        \"seriesNumber\" : \"2\"\n      },\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1\",\n        \"seriesNumber\" : \"1\"\n      }\n    ],\n    \"studyDate\" : \"20200101\",\n    \"studyDescription\" : \"PARITY STUDY SET 1\",\n    \"studyInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1\",\n    \"studyTime\" : \"120000\"\n  }\n]",
+      "stdout" : "[\n  {\n    \"patientID\" : \"SYN-STD-1\",\n    \"patientName\" : \"PARITY^STUDY1\",\n    \"series\" : [\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1\",\n        \"seriesNumber\" : \"1\"\n      },\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2\",\n        \"seriesNumber\" : \"2\"\n      }\n    ],\n    \"studyDate\" : \"20200101\",\n    \"studyDescription\" : \"PARITY STUDY SET 1\",\n    \"studyInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1\",\n    \"studyTime\" : \"120000\"\n  }\n]",
       "studioParams" : {
         "operation" : "summary",
         "path" : "FIXTURE",
@@ -1007,8 +1007,8 @@
       "label" : "syn-studyset · check",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "✓ Study is complete\n",
-      "stdout" : "",
+      "stderr" : "",
+      "stdout" : "✓ Study is complete\n",
       "studioParams" : {
         "operation" : "check",
         "path" : "FIXTURE"
@@ -1031,8 +1031,8 @@
       "label" : "syn-studyset · check-expected",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "✓ Study is complete\n",
-      "stdout" : "",
+      "stderr" : "",
+      "stdout" : "✓ Study is complete\n",
       "studioParams" : {
         "expected-instances" : "2",
         "expected-series" : "2",
@@ -1628,7 +1628,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "═══════════════════════════════════════════════════════════════\nStudy UID: 1.2.826.0.1.3680043.10.999.41.1\nStudy Date: 20200101\nPatient Name: PARITY^STUDY1\nPatient ID: SYN-STD-1\nDescription: PARITY STUDY SET 1\nSeries Count: 2\nTotal Instances: 4\n\nSeries:\n  [1] 1.2.826.0.1.3680043.10.999.41.1.2\n      Number: 2\n      Modality: CT\n      Description: PARITY SERIES\n      Instances: 2\n  [2] 1.2.826.0.1.3680043.10.999.41.1.1\n      Number: 1\n      Modality: CT\n      Description: PARITY SERIES\n      Instances: 2\n\n",
+      "stdout" : "═══════════════════════════════════════════════════════════════\nStudy UID: 1.2.826.0.1.3680043.10.999.41.1\nStudy Date: 20200101\nPatient Name: PARITY^STUDY1\nPatient ID: SYN-STD-1\nDescription: PARITY STUDY SET 1\nSeries Count: 2\nTotal Instances: 4\n\nSeries:\n  [1] 1.2.826.0.1.3680043.10.999.41.1.1\n      Number: 1\n      Modality: CT\n      Description: PARITY SERIES\n      Instances: 2\n  [2] 1.2.826.0.1.3680043.10.999.41.1.2\n      Number: 2\n      Modality: CT\n      Description: PARITY SERIES\n      Instances: 2\n\n",
       "studioParams" : {
         "operation" : "summary",
         "path" : "FIXTURE",
@@ -1649,8 +1649,8 @@
       "label" : "syn-studyset · auto-check-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Checking study completeness: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-studyset\n✓ Study is complete\n",
-      "stdout" : "",
+      "stderr" : "",
+      "stdout" : "Checking study completeness: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-studyset\n✓ Study is complete\n",
       "studioParams" : {
         "operation" : "check",
         "path" : "FIXTURE",
