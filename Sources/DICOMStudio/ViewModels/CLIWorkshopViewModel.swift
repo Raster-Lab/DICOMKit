@@ -3240,51 +3240,7 @@ private func executeDicomCompress() async {
     }
 }
 
-// MARK: - dicom-compress codec helpers (in-process reimplementation of CompressionManager)
-
-/// Maps a CLI codec/syntax name to its TransferSyntax (mirrors CompressionManager.codecMap).
-private nonisolated static func dcCompressTransferSyntax(forCodec name: String) -> TransferSyntax? {
-    switch name.lowercased() {
-    case "jpeg", "jpeg-baseline":                 return .jpegBaseline
-    case "jpeg-extended":                          return .jpegExtended
-    case "jpeg-lossless":                          return .jpegLossless
-    case "jpeg-lossless-sv1":                      return .jpegLosslessSV1
-    case "jpeg2000", "j2k":                        return .jpeg2000
-    case "jpeg2000-lossless", "j2k-lossless":      return .jpeg2000Lossless
-    case "j2k-part2", "jpeg2000-part2":            return .jpeg2000Part2
-    case "j2k-part2-lossless", "jpeg2000-part2-lossless": return .jpeg2000Part2Lossless
-    case "htj2k", "htj2k-lossy":                   return .htj2kLossy
-    case "htj2k-lossless":                          return .htj2kLossless
-    case "htj2k-rpcl", "htj2k-lossless-rpcl":      return .htj2kRPCLLossless
-    case "rle":                                     return .rleLossless
-    case "explicit-le":                             return .explicitVRLittleEndian
-    case "implicit-le":                             return .implicitVRLittleEndian
-    case "deflate":                                 return .deflatedExplicitVRLittleEndian
-    default:                                        return nil
-    }
-}
-
-private nonisolated static func dcCompressDisplayName(_ syntax: TransferSyntax) -> String {
-    switch syntax.uid {
-    case TransferSyntax.implicitVRLittleEndian.uid:          return "Implicit VR Little Endian"
-    case TransferSyntax.explicitVRLittleEndian.uid:          return "Explicit VR Little Endian"
-    case TransferSyntax.deflatedExplicitVRLittleEndian.uid:  return "Deflated Explicit VR Little Endian"
-    case TransferSyntax.explicitVRBigEndian.uid:             return "Explicit VR Big Endian"
-    case TransferSyntax.jpegBaseline.uid:                    return "JPEG Baseline (Process 1)"
-    case TransferSyntax.jpegExtended.uid:                    return "JPEG Extended (Process 2 & 4)"
-    case TransferSyntax.jpegLossless.uid:                    return "JPEG Lossless (Process 14)"
-    case TransferSyntax.jpegLosslessSV1.uid:                 return "JPEG Lossless SV1 (Process 14, SV 1)"
-    case TransferSyntax.jpeg2000Lossless.uid:                return "JPEG 2000 Lossless"
-    case TransferSyntax.jpeg2000.uid:                        return "JPEG 2000"
-    case TransferSyntax.jpeg2000Part2Lossless.uid:           return "JPEG 2000 Part 2 Lossless"
-    case TransferSyntax.jpeg2000Part2.uid:                   return "JPEG 2000 Part 2"
-    case TransferSyntax.htj2kLossless.uid:                   return "HTJ2K Lossless"
-    case TransferSyntax.htj2kRPCLLossless.uid:               return "HTJ2K RPCL Lossless"
-    case TransferSyntax.htj2kLossy.uid:                      return "HTJ2K"
-    case TransferSyntax.rleLossless.uid:                     return "RLE Lossless"
-    default:                                                  return syntax.description
-    }
-}
+// MARK: - dicom-compress display helpers (the compression engine now lives in DICOMKit's CompressionManager)
 
 private nonisolated static func dcCompressFormatBytes(_ bytes: Int) -> String {
     if bytes < 1024 { return "\(bytes) B" }
@@ -3306,254 +3262,6 @@ private nonisolated static func dcCompressParseQuality(_ q: String?) throws -> C
     }
 }
 
-/// Resolves the source transfer syntax from a parsed file's File Meta Information.
-private nonisolated static func dcCompressSourceSyntax(_ file: DICOMFile) -> TransferSyntax {
-    let uid = file.fileMetaInformation.string(for: .transferSyntaxUID)?
-        .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-        ?? TransferSyntax.explicitVRLittleEndian.uid
-    if let known = TransferSyntax.from(uid: uid) { return known }
-    let uncompressed: Set<String> = [
-        TransferSyntax.implicitVRLittleEndian.uid,
-        TransferSyntax.explicitVRLittleEndian.uid,
-        TransferSyntax.explicitVRBigEndian.uid,
-        TransferSyntax.deflatedExplicitVRLittleEndian.uid,
-    ]
-    return TransferSyntax(uid: uid, isExplicitVR: true, byteOrder: .littleEndian, isEncapsulated: !uncompressed.contains(uid))
-}
-
-private nonisolated static func dcCompressDescriptor(_ ds: DataSet) throws -> PixelDataDescriptor {
-    guard let rows = ds.uint16(for: .rows),
-          let columns = ds.uint16(for: .columns),
-          let bitsAllocated = ds.uint16(for: .bitsAllocated),
-          let bitsStored = ds.uint16(for: .bitsStored),
-          let highBit = ds.uint16(for: .highBit) else {
-        throw NSError(domain: "dicom-compress", code: 3, userInfo: [NSLocalizedDescriptionKey: "Missing required pixel data attributes (rows / columns / bitsAllocated / bitsStored / highBit)"])
-    }
-    let pixelRepresentation = ds.uint16(for: .pixelRepresentation) ?? 0
-    let samplesPerPixel = ds.uint16(for: .samplesPerPixel) ?? 1
-    let planarConfiguration = ds.uint16(for: .planarConfiguration) ?? 0
-    let numberOfFrames: Int = {
-        if let s = ds.string(for: .numberOfFrames)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")),
-           let v = Int(s), v > 0 { return v }
-        return 1
-    }()
-    let piRaw = ds.string(for: .photometricInterpretation)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-    let pi: PhotometricInterpretation = {
-        if let r = piRaw, let p = PhotometricInterpretation(rawValue: r) { return p }
-        return samplesPerPixel == 1 ? .monochrome2 : .rgb
-    }()
-    return PixelDataDescriptor(
-        rows: Int(rows), columns: Int(columns), numberOfFrames: numberOfFrames,
-        bitsAllocated: Int(bitsAllocated), bitsStored: Int(bitsStored), highBit: Int(highBit),
-        isSigned: pixelRepresentation == 1, samplesPerPixel: Int(samplesPerPixel),
-        photometricInterpretation: pi, planarConfiguration: Int(planarConfiguration)
-    )
-}
-
-private nonisolated static func dcCompressBuildOffsetTable(_ fragments: [Data]) -> [UInt32] {
-    var offsets: [UInt32] = []
-    offsets.reserveCapacity(fragments.count)
-    var current: UInt32 = 0
-    for f in fragments {
-        offsets.append(current)
-        current = current &+ 8 &+ UInt32(f.count)
-    }
-    return offsets
-}
-
-private nonisolated static func dcCompressEncodeInPlace(_ ds: inout DataSet, target: TransferSyntax, quality: CompressionQuality?) throws {
-    guard let encoder = CodecRegistry.shared.encoder(for: target.uid) else {
-        throw NSError(domain: "dicom-compress", code: 4, userInfo: [NSLocalizedDescriptionKey: "No encoder registered for transfer syntax \(target.uid). The codec may be decode-only or unsupported on this platform."])
-    }
-    guard let pixel = ds[.pixelData] else {
-        throw NSError(domain: "dicom-compress", code: 5, userInfo: [NSLocalizedDescriptionKey: "No pixel data found in DICOM file"])
-    }
-    let descriptor = try dcCompressDescriptor(ds)
-    let config: DICOMCore.CompressionConfiguration = {
-        if target.isLossless { return .lossless }
-        if let q = quality { return DICOMCore.CompressionConfiguration(quality: q, speed: .balanced) }
-        return .default
-    }()
-    guard encoder.canEncode(with: config, descriptor: descriptor) else {
-        throw NSError(domain: "dicom-compress", code: 6, userInfo: [NSLocalizedDescriptionKey: "Encoder for \(target.uid) cannot handle bitsAllocated=\(descriptor.bitsAllocated), samplesPerPixel=\(descriptor.samplesPerPixel), photometricInterpretation=\(descriptor.photometricInterpretation.rawValue)"])
-    }
-    let frames = try encoder.encode(pixel.valueData, descriptor: descriptor, configuration: config)
-    let offsetTable = dcCompressBuildOffsetTable(frames)
-    ds[.pixelData] = DataElement(
-        tag: .pixelData, vr: .OB, length: 0xFFFFFFFF, valueData: Data(),
-        encapsulatedFragments: frames, encapsulatedOffsetTable: offsetTable
-    )
-}
-
-private nonisolated static func dcCompressDecodeInPlace(_ ds: inout DataSet, source: TransferSyntax) throws {
-    guard let codec = CodecRegistry.shared.codec(for: source.uid) else {
-        throw NSError(domain: "dicom-compress", code: 7, userInfo: [NSLocalizedDescriptionKey: "No decoder registered for transfer syntax \(source.uid). Cannot decompress source pixel data."])
-    }
-    guard let pixel = ds[.pixelData] else {
-        throw NSError(domain: "dicom-compress", code: 5, userInfo: [NSLocalizedDescriptionKey: "No pixel data found in DICOM file"])
-    }
-    guard let fragments = pixel.encapsulatedFragments else {
-        throw NSError(domain: "dicom-compress", code: 8, userInfo: [NSLocalizedDescriptionKey: "Source declares encapsulated transfer syntax \(source.uid) but PixelData element has no encapsulated fragments"])
-    }
-    let descriptor = try dcCompressDescriptor(ds)
-    var combined = Data()
-    combined.reserveCapacity(descriptor.totalBytes)
-    if fragments.count == descriptor.numberOfFrames {
-        for (i, frame) in fragments.enumerated() {
-            combined.append(try codec.decodeFrame(frame, descriptor: descriptor, frameIndex: i))
-        }
-    } else {
-        var concatenated = Data()
-        for frame in fragments { concatenated.append(frame) }
-        combined = try codec.decode(concatenated, descriptor: descriptor)
-    }
-    if combined.count % 2 != 0 { combined.append(0x00) }
-    ds[.pixelData] = DataElement(
-        tag: .pixelData,
-        vr: descriptor.bitsAllocated > 8 ? .OW : .OB,
-        length: UInt32(combined.count),
-        valueData: combined
-    )
-}
-
-/// Serialises a dataset to a full DICOM file with the given target transfer syntax.
-/// Mirrors the executable-local TransferSyntaxHelper.convert(...).
-private nonisolated static func dcCompressSerialize(_ dataSet: DataSet, to target: TransferSyntax) throws -> Data {
-    var fileMeta = DataSet()
-    fileMeta[.fileMetaInformationVersion] = DataElement(tag: .fileMetaInformationVersion, vr: .OB, length: 2, valueData: Data([0x00, 0x01]))
-    if let sopClass = dataSet.string(for: .sopClassUID), let d = sopClass.data(using: .ascii) {
-        fileMeta[.mediaStorageSOPClassUID] = DataElement(tag: .mediaStorageSOPClassUID, vr: .UI, length: UInt32(d.count), valueData: d)
-    }
-    if let sopInst = dataSet.string(for: .sopInstanceUID), let d = sopInst.data(using: .ascii) {
-        fileMeta[.mediaStorageSOPInstanceUID] = DataElement(tag: .mediaStorageSOPInstanceUID, vr: .UI, length: UInt32(d.count), valueData: d)
-    }
-    if let tsData = target.uid.data(using: .ascii) {
-        fileMeta[.transferSyntaxUID] = DataElement(tag: .transferSyntaxUID, vr: .UI, length: UInt32(tsData.count), valueData: tsData)
-    }
-    if let impl = "1.2.826.0.1.3680043.10.1".data(using: .ascii) {
-        fileMeta[.implementationClassUID] = DataElement(tag: .implementationClassUID, vr: .UI, length: UInt32(impl.count), valueData: impl)
-    }
-    if let ver = "DICOMKIT-1.0".data(using: .ascii) {
-        fileMeta[.implementationVersionName] = DataElement(tag: .implementationVersionName, vr: .SH, length: UInt32(ver.count), valueData: ver)
-    }
-
-    var output = Data()
-    output.append(Data(repeating: 0, count: 128))
-    output.append(contentsOf: "DICM".utf8)
-
-    let metaWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
-    let metaData = try dcCompressWriteDataSet(fileMeta, writer: metaWriter)
-
-    let lengthData = metaWriter.serializeUInt32(UInt32(metaData.count))
-    let groupLengthElement = DataElement(tag: .fileMetaInformationGroupLength, vr: .UL, length: UInt32(lengthData.count), valueData: lengthData)
-    output.append(try dcCompressWriteElement(groupLengthElement, writer: metaWriter))
-    output.append(metaData)
-
-    let dataWriter = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
-    output.append(try dcCompressWriteDataSet(dataSet, writer: dataWriter))
-    return output
-}
-
-private nonisolated static func dcCompressWriteDataSet(_ dataSet: DataSet, writer: DICOMWriter) throws -> Data {
-    var output = Data()
-    for tag in dataSet.tags.sorted() {
-        guard let element = dataSet[tag] else { continue }
-        if element.tag == .pixelData && element.encapsulatedFragments != nil {
-            output.append(dcCompressSerializeEncapsulated(element, writer: writer))
-            continue
-        }
-        output.append(try dcCompressWriteElement(element, writer: writer))
-    }
-    return output
-}
-
-private nonisolated static func dcCompressSerializeEncapsulated(_ element: DataElement, writer: DICOMWriter) -> Data {
-    var output = Data()
-    output.append(writer.serializeUInt16(element.tag.group))
-    output.append(writer.serializeUInt16(element.tag.element))
-    output.append(contentsOf: "OB".utf8)
-    output.append(contentsOf: [0x00, 0x00])
-    output.append(writer.serializeUInt32(0xFFFFFFFF))
-
-    let offsetTable = element.encapsulatedOffsetTable ?? []
-    var botBytes = Data()
-    for offset in offsetTable { botBytes.append(writer.serializeUInt32(offset)) }
-    output.append(writer.serializeUInt16(0xFFFE))
-    output.append(writer.serializeUInt16(0xE000))
-    output.append(writer.serializeUInt32(UInt32(botBytes.count)))
-    output.append(botBytes)
-
-    if let fragments = element.encapsulatedFragments {
-        for fragment in fragments {
-            output.append(writer.serializeUInt16(0xFFFE))
-            output.append(writer.serializeUInt16(0xE000))
-            let padded: Data
-            if fragment.count % 2 != 0 { var p = fragment; p.append(0x00); padded = p } else { padded = fragment }
-            output.append(writer.serializeUInt32(UInt32(padded.count)))
-            output.append(padded)
-        }
-    }
-    output.append(writer.serializeUInt16(0xFFFE))
-    output.append(writer.serializeUInt16(0xE0DD))
-    output.append(writer.serializeUInt32(0))
-    return output
-}
-
-private nonisolated static func dcCompressWriteElement(_ element: DataElement, writer: DICOMWriter) throws -> Data {
-    var output = Data()
-    output.append(writer.serializeUInt16(element.tag.group))
-    output.append(writer.serializeUInt16(element.tag.element))
-    let vr = element.vr
-    let valueData = element.valueData
-    if writer.explicitVR {
-        output.append(contentsOf: vr.rawValue.utf8)
-        if vr.uses32BitLength {
-            output.append(contentsOf: [0x00, 0x00])
-            output.append(writer.serializeUInt32(UInt32(valueData.count)))
-        } else {
-            let length = min(valueData.count, 0xFFFF)
-            output.append(writer.serializeUInt16(UInt16(length)))
-        }
-    } else {
-        output.append(writer.serializeUInt32(UInt32(valueData.count)))
-    }
-    output.append(valueData)
-    return output
-}
-
-/// Core compress transform — produces the output file Data for a given input file Data.
-private nonisolated static func dcCompressTransform(inputData: Data, codec: String, quality: CompressionQuality?) throws -> Data {
-    guard let target = dcCompressTransferSyntax(forCodec: codec) else {
-        throw NSError(domain: "dicom-compress", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown codec '\(codec)'"])
-    }
-    let file = try DICOMFile.read(from: inputData, force: false)
-    let source = dcCompressSourceSyntax(file)
-    var ds = file.dataSet
-    if target.isEncapsulated && !source.isEncapsulated {
-        try dcCompressEncodeInPlace(&ds, target: target, quality: quality)
-    } else if target.isEncapsulated && source.isEncapsulated && target.uid != source.uid {
-        try dcCompressDecodeInPlace(&ds, source: source)
-        try dcCompressEncodeInPlace(&ds, target: target, quality: quality)
-    } else if !target.isEncapsulated && source.isEncapsulated {
-        try dcCompressDecodeInPlace(&ds, source: source)
-    }
-    return try dcCompressSerialize(ds, to: target)
-}
-
-/// Core decompress transform.
-private nonisolated static func dcCompressDecompressTransform(inputData: Data, syntax: String) throws -> Data {
-    guard let target = dcCompressTransferSyntax(forCodec: syntax) else {
-        throw NSError(domain: "dicom-compress", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unknown syntax '\(syntax)'. Use explicit-le or implicit-le."])
-    }
-    let file = try DICOMFile.read(from: inputData, force: false)
-    let source = dcCompressSourceSyntax(file)
-    var ds = file.dataSet
-    if source.isEncapsulated && !target.isEncapsulated {
-        try dcCompressDecodeInPlace(&ds, source: source)
-    }
-    return try dcCompressSerialize(ds, to: target)
-}
-
 // MARK: - dicom-compress: info
 
 private func executeDicomCompressInfo() async {
@@ -3573,27 +3281,26 @@ private func executeDicomCompressInfo() async {
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
         do {
+            // Extract via the shared DICOMKit engine; the format below stays app-side
+            // (byte-identical to the CLI — verified by the info/info-json goldens).
             let data = try Data(contentsOf: fileURL)
-            let file = try DICOMFile.read(from: data, force: false)
-            let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID)?
-                .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) ?? "1.2.840.10008.1.2"
-            let syntax = TransferSyntax.from(uid: tsUID)
-            let pixel = file.dataSet[.pixelData]
-            let pixelDataSize = pixel.map { Int($0.length) }
-            let isCompressed = syntax?.isEncapsulated ?? false
-            let isLossless = syntax?.isLossless ?? true
-            let isJPEG = syntax?.isJPEG ?? false
-            let isJPEG2000 = syntax?.isJPEG2000 ?? false
-            let isRLE = syntax?.isRLE ?? false
-            let isDeflated = syntax?.isDeflated ?? false
-            let tsName = syntax.map { Self.dcCompressDisplayName($0) } ?? tsUID
-            let rows = file.dataSet.uint16(for: .rows)
-            let cols = file.dataSet.uint16(for: .columns)
-            let ba = file.dataSet.uint16(for: .bitsAllocated)
-            let bs = file.dataSet.uint16(for: .bitsStored)
-            let spp = file.dataSet.uint16(for: .samplesPerPixel)
-            let pi = file.dataSet.string(for: .photometricInterpretation)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-            let nf = file.dataSet.string(for: .numberOfFrames)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+            let info = try CompressionManager().getCompressionInfo(data: data)
+            let tsUID = info.transferSyntaxUID
+            let tsName = info.transferSyntaxName
+            let isCompressed = info.isCompressed
+            let isLossless = info.isLossless
+            let isJPEG = info.isJPEG
+            let isJPEG2000 = info.isJPEG2000
+            let isRLE = info.isRLE
+            let isDeflated = info.isDeflated
+            let pixelDataSize = info.pixelDataSize
+            let rows = info.rows
+            let cols = info.columns
+            let ba = info.bitsAllocated
+            let bs = info.bitsStored
+            let spp = info.samplesPerPixel
+            let pi = info.photometricInterpretation
+            let nf = info.numberOfFrames
 
             if asJSON {
                 var dict: [String: Any] = [
@@ -3676,7 +3383,7 @@ private func executeDicomCompressCompress() async {
         addToHistory(toolName: "dicom-compress", command: commandPreview, exitCode: 1, output: "Missing output path")
         return
     }
-    guard Self.dcCompressTransferSyntax(forCodec: codec) != nil else {
+    guard CompressionManager.transferSyntax(for: codec) != nil else {
         let msg = "Error: Unknown codec '\(codec)'.\n"
         appendConsoleOutput(msg)
         consoleStatus = .error; service.setConsoleStatus(.error)
@@ -3714,7 +3421,8 @@ private func executeDicomCompressCompress() async {
                 log += "Backend: \(backendName)\n"
             }
             let inputData = try Data(contentsOf: inputURL)
-            let outputData = try Self.dcCompressTransform(inputData: inputData, codec: codec, quality: quality)
+            // Compress via the shared DICOMKit engine (same code the CLI runs).
+            let outputData = try CompressionManager().compressData(inputData, codec: codec, quality: quality)
             // Sandbox/TCC-resilient write (prefer scoped URL; else fall back to ~/Downloads).
             let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Compressed")
             if let note = writeRes.note { log += note + "\n" }
@@ -3762,7 +3470,7 @@ private func executeDicomCompressDecompress() async {
         addToHistory(toolName: "dicom-compress", command: commandPreview, exitCode: 1, output: "Missing output path")
         return
     }
-    guard let targetSyntax = Self.dcCompressTransferSyntax(forCodec: syntax) else {
+    guard let targetSyntax = CompressionManager.transferSyntax(for: syntax) else {
         let msg = "Error: Unknown syntax '\(syntax)'. Use explicit-le or implicit-le.\n"
         appendConsoleOutput(msg)
         consoleStatus = .error; service.setConsoleStatus(.error)
@@ -3780,7 +3488,7 @@ private func executeDicomCompressDecompress() async {
     }
     let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
     let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
-    let targetName = Self.dcCompressDisplayName(targetSyntax)
+    let targetName = CompressionManager.transferSyntaxDisplayName(targetSyntax)
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
         var log = ""
@@ -3790,7 +3498,8 @@ private func executeDicomCompressDecompress() async {
                 log += "Target syntax: \(targetName)\n"
             }
             let inputData = try Data(contentsOf: inputURL)
-            let outputData = try Self.dcCompressDecompressTransform(inputData: inputData, syntax: syntax)
+            // Decompress via the shared DICOMKit engine (same code the CLI runs).
+            let outputData = try CompressionManager().decompressData(inputData, syntax: targetSyntax)
             let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Decompressed")
             if let note = writeRes.note { log += note + "\n" }
             log += "Decompressed: \(inputPath) → \(writeRes.url.path)\n"
@@ -3842,7 +3551,7 @@ private func executeDicomCompressBatch() async {
         addToHistory(toolName: "dicom-compress", command: commandPreview, exitCode: 1, output: msg)
         return
     }
-    if !codec.trimmingCharacters(in: .whitespaces).isEmpty, Self.dcCompressTransferSyntax(forCodec: codec) == nil {
+    if !codec.trimmingCharacters(in: .whitespaces).isEmpty, CompressionManager.transferSyntax(for: codec) == nil {
         let msg = "Error: Unknown codec '\(codec)'.\n"
         appendConsoleOutput(msg)
         consoleStatus = .error; service.setConsoleStatus(.error)
@@ -3927,11 +3636,13 @@ private func executeDicomCompressBatch() async {
                 do {
                     try fm.createDirectory(at: outURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                     let inputData = try Data(contentsOf: fileURL)
+                    // Compress/decompress via the shared DICOMKit engine.
                     let outputData: Data
                     if decompress {
-                        outputData = try Self.dcCompressDecompressTransform(inputData: inputData, syntax: syntax)
+                        let target = CompressionManager.transferSyntax(for: syntax) ?? .explicitVRLittleEndian
+                        outputData = try CompressionManager().decompressData(inputData, syntax: target)
                     } else {
-                        outputData = try Self.dcCompressTransform(inputData: inputData, codec: codec, quality: quality)
+                        outputData = try CompressionManager().compressData(inputData, codec: codec, quality: quality)
                     }
                     try outputData.write(to: outURL)
                     successCount += 1

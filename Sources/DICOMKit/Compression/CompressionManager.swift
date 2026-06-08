@@ -1,33 +1,40 @@
 import Foundation
 import DICOMCore
-import DICOMKit
+
+// Shared compression workflow engine for the `dicom-compress` CLI and
+// DICOMStudio. Builds on the already-shared CodecRegistry / CompressionQuality /
+// TransferSyntax (DICOMCore). Adapters call the public entry points (info /
+// compress / decompress, file- and in-memory variants) and format the result;
+// the codec dispatch + Part-10 serialization helpers stay internal.
 
 // MARK: - Compression Info
 
 @available(macOS 10.15, *)
-struct CompressionInfo {
-    let transferSyntaxUID: String
-    let transferSyntaxName: String
-    let isCompressed: Bool
-    let isLossless: Bool
-    let isJPEG: Bool
-    let isJPEG2000: Bool
-    let isRLE: Bool
-    let isDeflated: Bool
-    let pixelDataSize: Int?
-    let rows: UInt16?
-    let columns: UInt16?
-    let bitsAllocated: UInt16?
-    let bitsStored: UInt16?
-    let samplesPerPixel: UInt16?
-    let photometricInterpretation: String?
-    let numberOfFrames: String?
+public struct CompressionInfo {
+    public let transferSyntaxUID: String
+    public let transferSyntaxName: String
+    public let isCompressed: Bool
+    public let isLossless: Bool
+    public let isJPEG: Bool
+    public let isJPEG2000: Bool
+    public let isRLE: Bool
+    public let isDeflated: Bool
+    public let pixelDataSize: Int?
+    public let rows: UInt16?
+    public let columns: UInt16?
+    public let bitsAllocated: UInt16?
+    public let bitsStored: UInt16?
+    public let samplesPerPixel: UInt16?
+    public let photometricInterpretation: String?
+    public let numberOfFrames: String?
 }
 
 // MARK: - Compression Manager
 
 @available(macOS 10.15, *)
-struct CompressionManager {
+public struct CompressionManager {
+
+    public init() {}
 
     // MARK: - Codec Name Mapping
 
@@ -49,7 +56,7 @@ struct CompressionManager {
         (["deflate"], .deflatedExplicitVRLittleEndian),
     ]
 
-    static func transferSyntax(for codecName: String) -> TransferSyntax? {
+    public static func transferSyntax(for codecName: String) -> TransferSyntax? {
         let lower = codecName.lowercased()
         for entry in codecMap {
             if entry.names.contains(lower) {
@@ -68,7 +75,7 @@ struct CompressionManager {
         return syntax.uid
     }
 
-    static func transferSyntaxDisplayName(_ syntax: TransferSyntax) -> String {
+    public static func transferSyntaxDisplayName(_ syntax: TransferSyntax) -> String {
         switch syntax.uid {
         case TransferSyntax.implicitVRLittleEndian.uid:
             return "Implicit VR Little Endian"
@@ -109,8 +116,13 @@ struct CompressionManager {
 
     // MARK: - Info
 
-    func getCompressionInfo(path: String) throws -> CompressionInfo {
+    public func getCompressionInfo(path: String) throws -> CompressionInfo {
         let data = try Data(contentsOf: URL(fileURLWithPath: path))
+        return try getCompressionInfo(data: data)
+    }
+
+    /// In-memory variant — used by DICOMStudio (reads via a security-scoped URL).
+    public func getCompressionInfo(data: Data) throws -> CompressionInfo {
         let file = try DICOMFile.read(from: data)
 
         let tsUID = file.fileMetaInformation.string(for: .transferSyntaxUID)?
@@ -144,18 +156,25 @@ struct CompressionManager {
 
     // MARK: - Compress
 
-    func compressFile(
+    public func compressFile(
         inputPath: String,
         outputPath: String,
         codec: String,
         quality: CompressionQuality?
     ) throws {
+        let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
+        let outputData = try compressData(data, codec: codec, quality: quality)
+        try outputData.write(to: URL(fileURLWithPath: outputPath))
+    }
+
+    /// In-memory compress (no file I/O) — used by DICOMStudio, which writes the
+    /// result through its sandbox-aware OutputAccess path.
+    public func compressData(_ inputData: Data, codec: String, quality: CompressionQuality?) throws -> Data {
         guard let targetSyntax = CompressionManager.transferSyntax(for: codec) else {
             throw CompressionError.unknownCodec(codec)
         }
 
-        let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
-        let file = try DICOMFile.read(from: data)
+        let file = try DICOMFile.read(from: inputData)
 
         // Resolve the source transfer syntax so we can decide whether this
         // call is an actual compression, a recompression (transcode), a
@@ -200,13 +219,11 @@ struct CompressionManager {
         // identical) — UID rewrite via TransferSyntaxHelper is correct.
 
         let converter = TransferSyntaxHelper()
-        let outputData = try converter.convert(
+        return try converter.convert(
             dataSet: workingDataSet,
             to: targetSyntax,
             preservePixelData: true
         )
-
-        try outputData.write(to: URL(fileURLWithPath: outputPath))
     }
 
     // MARK: - Codec dispatch helpers (v9.1 fix)
@@ -447,13 +464,19 @@ struct CompressionManager {
 
     // MARK: - Decompress
 
-    func decompressFile(
+    public func decompressFile(
         inputPath: String,
         outputPath: String,
         syntax: TransferSyntax
     ) throws {
         let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
-        let file = try DICOMFile.read(from: data)
+        let outputData = try decompressData(data, syntax: syntax)
+        try outputData.write(to: URL(fileURLWithPath: outputPath))
+    }
+
+    /// In-memory decompress (no file I/O) — used by DICOMStudio.
+    public func decompressData(_ inputData: Data, syntax: TransferSyntax) throws -> Data {
+        let file = try DICOMFile.read(from: inputData)
 
         let sourceSyntax = CompressionManager.resolveSourceTransferSyntax(file: file)
         var workingDataSet = file.dataSet
@@ -470,18 +493,16 @@ struct CompressionManager {
         // (caller misuse) — UID rewrite via TransferSyntaxHelper.
 
         let converter = TransferSyntaxHelper()
-        let outputData = try converter.convert(
+        return try converter.convert(
             dataSet: workingDataSet,
             to: syntax,
             preservePixelData: true
         )
-
-        try outputData.write(to: URL(fileURLWithPath: outputPath))
     }
 
     // MARK: - Supported Codecs
 
-    static func supportedCodecs() -> [(name: String, syntax: TransferSyntax, aliases: [String])] {
+    public static func supportedCodecs() -> [(name: String, syntax: TransferSyntax, aliases: [String])] {
         return codecMap.map { entry in
             (name: entry.names[0], syntax: entry.syntax, aliases: Array(entry.names.dropFirst()))
         }
@@ -489,7 +510,7 @@ struct CompressionManager {
 
     // MARK: - DICOM File Discovery
 
-    static func findDICOMFiles(in directory: String, recursive: Bool) throws -> [String] {
+    public static func findDICOMFiles(in directory: String, recursive: Bool) throws -> [String] {
         let fm = FileManager.default
         var files: [String] = []
 
@@ -763,7 +784,7 @@ struct TransferSyntaxHelper {
 
 // MARK: - Errors
 
-enum CompressionError: Error, CustomStringConvertible {
+public enum CompressionError: Error, CustomStringConvertible {
     case unknownCodec(String)
     case fileNotFound(String)
     case directoryNotFound(String)
@@ -773,7 +794,7 @@ enum CompressionError: Error, CustomStringConvertible {
     case decoderNotAvailable(String)
     case unsupportedPixelDataConfiguration(String)
 
-    var description: String {
+    public var description: String {
         switch self {
         case .unknownCodec(let name):
             return "Unknown codec '\(name)'. Use 'dicom-compress compress --help' for supported codecs."
