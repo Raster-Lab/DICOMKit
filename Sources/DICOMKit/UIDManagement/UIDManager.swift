@@ -1,16 +1,21 @@
 import Foundation
 import DICOMCore
-import DICOMKit
 import DICOMDictionary
 
+// Shared UID workflow engine for the `dicom-uid` CLI and DICOMStudio. Builds on
+// the already-shared `UIDGenerator` (DICOMCore) and `UIDDictionary`
+// (DICOMDictionary); this layer is the generate/validate/lookup/regenerate
+// workflow both adapters call. No ArgumentParser / Process / printing here —
+// adapters format the returned values/structs and handle I/O.
+
 /// Errors for UID management operations
-enum UIDManagerError: Error, CustomStringConvertible {
+public enum UIDManagerError: Error, CustomStringConvertible {
     case fileNotFound(String)
     case invalidUID(String, String)
     case noUIDsFound(String)
     case writeError(String)
 
-    var description: String {
+    public var description: String {
         switch self {
         case .fileNotFound(let path):
             return "File not found: \(path)"
@@ -25,28 +30,44 @@ enum UIDManagerError: Error, CustomStringConvertible {
 }
 
 /// UID validation result
-struct UIDValidationResult {
-    let uid: String
-    let isValid: Bool
-    let errors: [String]
-    let registryName: String?
+public struct UIDValidationResult {
+    public let uid: String
+    public let isValid: Bool
+    public let errors: [String]
+    public let registryName: String?
+
+    public init(uid: String, isValid: Bool, errors: [String], registryName: String?) {
+        self.uid = uid
+        self.isValid = isValid
+        self.errors = errors
+        self.registryName = registryName
+    }
 }
 
 /// UID mapping entry for old-to-new UID tracking
-struct UIDMapping: Codable {
-    let oldUID: String
-    let newUID: String
-    let tagName: String
-    let tagHex: String
+public struct UIDMapping: Codable {
+    public let oldUID: String
+    public let newUID: String
+    public let tagName: String
+    public let tagHex: String
+
+    public init(oldUID: String, newUID: String, tagName: String, tagHex: String) {
+        self.oldUID = oldUID
+        self.newUID = newUID
+        self.tagName = tagName
+        self.tagHex = tagHex
+    }
 }
 
 /// Manager for UID operations
-struct UIDManager {
+public struct UIDManager {
+
+    public init() {}
 
     // MARK: - UID Generation
 
     /// Generates UIDs with the specified root
-    func generateUIDs(count: Int, root: String?, type: String?) -> [String] {
+    public func generateUIDs(count: Int, root: String?, type: String?) -> [String] {
         let generator = UIDGenerator(root: root ?? UIDGenerator.defaultRoot)
         var results: [String] = []
 
@@ -71,7 +92,7 @@ struct UIDManager {
     // MARK: - UID Validation
 
     /// Validates a UID string
-    func validateUID(_ uidString: String) -> UIDValidationResult {
+    public func validateUID(_ uidString: String) -> UIDValidationResult {
         var errors: [String] = []
 
         // Check length
@@ -130,7 +151,7 @@ struct UIDManager {
     }
 
     /// Validates all UIDs in a DICOM file
-    func validateFileUIDs(path: String) throws -> [UIDValidationResult] {
+    public func validateFileUIDs(path: String) throws -> [UIDValidationResult] {
         guard FileManager.default.fileExists(atPath: path) else {
             throw UIDManagerError.fileNotFound(path)
         }
@@ -156,7 +177,7 @@ struct UIDManager {
     // MARK: - UID Lookup
 
     /// Look up a UID in the DICOM registry
-    func lookupUID(_ uidString: String) -> (name: String, type: String)? {
+    public func lookupUID(_ uidString: String) -> (name: String, type: String)? {
         if let entry = UIDDictionary.lookup(uid: uidString) {
             return (name: entry.name, type: Self.uidTypeDescription(entry.type))
         }
@@ -166,26 +187,23 @@ struct UIDManager {
     // MARK: - UID Regeneration
 
     /// UID tags that should be regenerated
-    static let uidTags: [(tag: Tag, name: String)] = [
+    public static let uidTags: [(tag: Tag, name: String)] = [
         (.sopInstanceUID, "SOPInstanceUID"),
         (.studyInstanceUID, "StudyInstanceUID"),
         (.seriesInstanceUID, "SeriesInstanceUID"),
     ]
 
-    /// Regenerates UIDs in a DICOM file
-    func regenerateUIDs(
-        inputPath: String,
-        outputPath: String?,
+    /// Regenerates instance UIDs in DICOM bytes, returning the new bytes plus the
+    /// old→new mapping. Well-known UIDs (transfer syntaxes, SOP classes) are
+    /// preserved. No file I/O — the caller decides how to persist (e.g. a
+    /// sandbox-aware write), so this is shared by the CLI and DICOMStudio.
+    public func regenerateData(
+        _ inputData: Data,
         root: String?,
         maintainRelationships: Bool,
         existingMappings: inout [String: String]
-    ) throws -> [UIDMapping] {
-        guard FileManager.default.fileExists(atPath: inputPath) else {
-            throw UIDManagerError.fileNotFound(inputPath)
-        }
-
-        let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
-        let file = try DICOMFile.read(from: data)
+    ) throws -> (data: Data, mappings: [UIDMapping]) {
+        let file = try DICOMFile.read(from: inputData)
         var dataSet = file.dataSet
         let generator = UIDGenerator(root: root ?? UIDGenerator.defaultRoot)
         var mappings: [UIDMapping] = []
@@ -227,8 +245,6 @@ struct UIDManager {
             }
         }
 
-        // Write the modified file
-        let outPath = outputPath ?? inputPath
         // Use Secondary Capture Image Storage as fallback SOP Class when the original is missing,
         // since it is the most generic storage SOP Class for DICOM files
         let newFile = DICOMFile.create(
@@ -236,6 +252,27 @@ struct UIDManager {
             sopClassUID: dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.7"
         )
         let newData = try newFile.write()
+        return (newData, mappings)
+    }
+
+    /// Regenerates UIDs in a DICOM file on disk (CLI convenience over `regenerateData`).
+    @discardableResult
+    public func regenerateUIDs(
+        inputPath: String,
+        outputPath: String?,
+        root: String?,
+        maintainRelationships: Bool,
+        existingMappings: inout [String: String]
+    ) throws -> [UIDMapping] {
+        guard FileManager.default.fileExists(atPath: inputPath) else {
+            throw UIDManagerError.fileNotFound(inputPath)
+        }
+
+        let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
+        let (newData, mappings) = try regenerateData(
+            data, root: root, maintainRelationships: maintainRelationships, existingMappings: &existingMappings)
+
+        let outPath = outputPath ?? inputPath
         try newData.write(to: URL(fileURLWithPath: outPath))
 
         return mappings
@@ -244,7 +281,7 @@ struct UIDManager {
     // MARK: - Helpers
 
     /// Gets a human-readable tag name
-    static func tagName(for tag: Tag) -> String {
+    public static func tagName(for tag: Tag) -> String {
         switch tag {
         case .sopInstanceUID: return "SOPInstanceUID"
         case .sopClassUID: return "SOPClassUID"
@@ -257,7 +294,7 @@ struct UIDManager {
     }
 
     /// Gets a human-readable description of a UID type
-    static func uidTypeDescription(_ type: UIDType) -> String {
+    public static func uidTypeDescription(_ type: UIDType) -> String {
         switch type {
         case .transferSyntax: return "Transfer Syntax"
         case .sopClass: return "SOP Class"
