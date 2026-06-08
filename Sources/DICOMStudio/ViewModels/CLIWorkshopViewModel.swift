@@ -1407,18 +1407,8 @@ private func executeDicomUIDGenerate() async {
     let root: String? = rootRaw.isEmpty ? nil : rootRaw
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
-        let generator = UIDGenerator(root: root ?? UIDGenerator.defaultRoot)
-        var uids: [String] = []
-        for _ in 0..<count {
-            let uid: DICOMUniqueIdentifier
-            switch type?.lowercased() {
-            case "study":            uid = generator.generateStudyInstanceUID()
-            case "series":           uid = generator.generateSeriesInstanceUID()
-            case "instance", "sop":  uid = generator.generateSOPInstanceUID()
-            default:                 uid = generator.generate()
-            }
-            uids.append(uid.value)
-        }
+        // Generate via the shared DICOMKit UIDManager (same code the CLI runs).
+        let uids = UIDManager().generateUIDs(count: count, root: root, type: type)
 
         if asJSON {
             do {
@@ -1467,36 +1457,11 @@ private func executeDicomUIDValidate() async {
     let fileURL: URL? = filePath.isEmpty ? nil : (inputScopedURL ?? URL(fileURLWithPath: filePath))
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
-        // Local validation reproducing UIDManager.validateUID (PS3.5 Section 9).
-        func validate(_ uidString: String) -> (uid: String, valid: Bool, errors: [String], registryName: String?) {
-            var errors: [String] = []
-            if uidString.count > 64 {
-                errors.append("Exceeds maximum length of 64 characters (length: \(uidString.count))")
-            }
-            if uidString.isEmpty {
-                errors.append("UID is empty")
-                return (uidString, false, errors, nil)
-            }
-            let allowed = CharacterSet(charactersIn: "0123456789.")
-            if uidString.unicodeScalars.contains(where: { !allowed.contains($0) }) {
-                errors.append("Contains invalid characters (only digits and periods allowed)")
-            }
-            if uidString.hasPrefix(".") { errors.append("Must not start with a period") }
-            if uidString.hasSuffix(".") { errors.append("Must not end with a period") }
-            if uidString.contains("..") { errors.append("Must not contain consecutive periods") }
-            let components = uidString.split(separator: ".", omittingEmptySubsequences: false)
-            for component in components {
-                if component.count > 1 && component.hasPrefix("0") {
-                    errors.append("Component '\(component)' has a leading zero")
-                }
-            }
-            if components.count < 2 { errors.append("Must have at least 2 components") }
-            let registryName = UIDDictionary.lookup(uid: uidString)?.name
-            return (uidString, errors.isEmpty, errors, registryName)
-        }
-
-        var results: [(uid: String, valid: Bool, errors: [String], registryName: String?)] = []
-        for uid in argUIDs { results.append(validate(uid)) }
+        // Validate via the shared DICOMKit UIDManager (PS3.5 Section 9 rules).
+        // (Qualify the result type: DICOMStudio has its own UIDValidationResult.)
+        let manager = UIDManager()
+        var results: [DICOMKit.UIDValidationResult] = []
+        for uid in argUIDs { results.append(manager.validateUID(uid)) }
 
         if let url = fileURL {
             do {
@@ -1505,7 +1470,7 @@ private func executeDicomUIDValidate() async {
                 for element in file.dataSet.allElements where element.vr == .UI {
                     if let uidString = file.dataSet.string(for: element.tag) {
                         let trimmed = uidString.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-                        if !trimmed.isEmpty { results.append(validate(trimmed)) }
+                        if !trimmed.isEmpty { results.append(manager.validateUID(trimmed)) }
                     }
                 }
             } catch {
@@ -1515,7 +1480,7 @@ private func executeDicomUIDValidate() async {
 
         if asJSON {
             let jsonResults: [[String: Any]] = results.map { r in
-                var dict: [String: Any] = ["uid": r.uid, "valid": r.valid]
+                var dict: [String: Any] = ["uid": r.uid, "valid": r.isValid]
                 if !r.errors.isEmpty { dict["errors"] = r.errors }
                 if let name = r.registryName { dict["registryName"] = name }
                 return dict
@@ -1533,7 +1498,7 @@ private func executeDicomUIDValidate() async {
             var lines: [String] = []
             var allValid = true
             for r in results {
-                if r.valid {
+                if r.isValid {
                     var line = "\u{2705} \(r.uid)"
                     if checkRegistry, let name = r.registryName { line += " [\(name)]" }
                     lines.append(line)
@@ -1569,18 +1534,8 @@ private func executeDicomUIDLookup() async {
     }
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
-        // Reproduce UIDManager.uidTypeDescription.
-        func typeDescription(_ type: UIDType) -> String {
-            switch type {
-            case .transferSyntax:     return "Transfer Syntax"
-            case .sopClass:           return "SOP Class"
-            case .metaSOPClass:       return "Meta SOP Class"
-            case .wellKnown:          return "Well-Known UID"
-            case .ldap:               return "LDAP OID"
-            case .codingScheme:       return "Coding Scheme"
-            case .applicationContext: return "Application Context"
-            }
-        }
+        // Use the shared DICOMKit UIDManager type-description.
+        let typeDescription: (UIDType) -> String = UIDManager.uidTypeDescription
 
         if !uid.isEmpty {
             guard let entry = UIDDictionary.lookup(uid: uid) else {
@@ -1698,25 +1653,9 @@ private func executeDicomUIDRegenerate() async {
         return nil
     }()
 
-    struct LocalMapping: Codable {
-        let oldUID: String
-        let newUID: String
-        let tagName: String
-        let tagHex: String
-    }
-
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
-        // Reproduce UIDManager.tagName.
-        func tagName(for tag: Tag) -> String {
-            switch tag {
-            case .sopInstanceUID:     return "SOPInstanceUID"
-            case .sopClassUID:        return "SOPClassUID"
-            case .studyInstanceUID:   return "StudyInstanceUID"
-            case .seriesInstanceUID:  return "SeriesInstanceUID"
-            case .instanceCreatorUID: return "InstanceCreatorUID"
-            default:                  return String(format: "(%04X,%04X)", tag.group, tag.element)
-            }
-        }
+        // Use the shared DICOMKit UIDManager tag-name helper.
+        func tagName(for tag: Tag) -> String { UIDManager.tagName(for: tag) }
 
         do {
             let data = try Data(contentsOf: inURL)
@@ -1743,28 +1682,12 @@ private func executeDicomUIDRegenerate() async {
                 return (lines.joined(separator: "\n") + "\n", 0)
             }
 
-            var dataSet = file.dataSet
-            let generator = UIDGenerator(root: root ?? UIDGenerator.defaultRoot)
-            var mappings: [LocalMapping] = []
+            // Regenerate via the shared engine (no-write transform); the result is
+            // written below through the app's sandbox-aware OutputAccess path.
+            var existingMappings: [String: String] = [:]
+            let (newData, mappings) = try UIDManager().regenerateData(
+                data, root: root, maintainRelationships: false, existingMappings: &existingMappings)
 
-            for element in file.dataSet.allElements where element.vr == .UI {
-                if let uidString = file.dataSet.string(for: element.tag) {
-                    let trimmed = uidString.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-                    if trimmed.isEmpty { continue }
-                    if UIDDictionary.lookup(uid: trimmed) != nil { continue }
-                    let newUID = generator.generate().value
-                    let hex = String(format: "%04X,%04X", element.tag.group, element.tag.element)
-                    mappings.append(LocalMapping(oldUID: trimmed, newUID: newUID,
-                                                 tagName: tagName(for: element.tag), tagHex: hex))
-                    dataSet.setString(newUID, for: element.tag, vr: .UI)
-                }
-            }
-
-            let newFile = DICOMFile.create(
-                dataSet: dataSet,
-                sopClassUID: dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.7"
-            )
-            let newData = try newFile.write()
             // Sandbox/TCC-resilient write (prefer scoped URL; else fall back to ~/Downloads).
             let writeRes = try OutputAccess.write(newData, toPath: resolvedOutURL.path,
                                                   scopedURL: outputScopedURL, subfolder: "UIDRegenerate")
