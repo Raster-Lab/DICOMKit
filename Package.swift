@@ -665,6 +665,7 @@ let package = Package(
         .executableTarget(
             name: "dicom-script",
             dependencies: [
+                "DICOMKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-script",

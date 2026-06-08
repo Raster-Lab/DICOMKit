@@ -1,5 +1,26 @@
 import Foundation
 import ArgumentParser
+import DICOMKit
+
+// The script engine (parser/executor/validator/template generator) now lives in
+// the DICOMKit library (Sources/DICOMKit/Scripting/). The executor calls an
+// injected command runner; this CLI supplies the real `Process`-based runner.
+private func processCommandRunner(_ tool: String, _ arguments: [String]) throws -> (output: String, exitCode: Int32) {
+    #if os(macOS) || os(Linux)
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = [tool] + arguments
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe
+    try process.run()
+    process.waitUntilExit()
+    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+    return (String(data: data, encoding: .utf8) ?? "", process.terminationStatus)
+    #else
+    throw ScriptError.executionError("Command execution is not supported on this platform: \(tool)")
+    #endif
+}
 
 @available(macOS 10.15, *)
 struct DICOMScript: ParsableCommand {
@@ -56,7 +77,7 @@ extension DICOMScript {
             
             let parsedVariables = try parseVariables(variables)
             
-            let executor = ScriptExecutor()
+            let executor = ScriptExecutor(runCommand: processCommandRunner, log: { fprintln($0) })
             try executor.execute(
                 scriptPath: scriptPath,
                 variables: parsedVariables,
@@ -101,7 +122,7 @@ extension DICOMScript {
                 throw ScriptError.scriptNotFound(scriptPath)
             }
             
-            let validator = ScriptValidator()
+            let validator = ScriptValidator(log: { fprintln($0) })
             let issues = try validator.validate(scriptPath: scriptPath, verbose: verbose)
             
             if issues.isEmpty {

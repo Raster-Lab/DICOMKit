@@ -98,7 +98,7 @@ for example from:
 | `dicom-uid` | `dicom-uid` / `dicom-uid` | `Sources/dicom-uid` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries; direct helper exists via `UIDManager` | Run `dicom-uid` | UID generate/validate/lookup/regenerate |
 | `dicom-compress` | `dicom-compress` / `dicom-compress` | `Sources/dicom-compress` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries; core transcoding API exists via `DICOMCore.TransferSyntaxConverter` | Run `dicom-compress` | Compression/transcoding workflow |
 | `dicom-study` | `dicom-study` / `dicom-study` | `Sources/dicom-study` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; scan/analyze via shared `StudyScanner` + `StudyReport` | Run `dicom-study` | ✅ Study analysis engine (scanner + summary/check/stats/compare renderers + models) extracted to `DICOMKit` (`Sources/DICOMKit/Study/`); CLI + DICOMStudio share it, parity MATCHES. `StudyOrganizer` remains CLI-local (2026-06-08) |
-| `dicom-script` | `dicom-script` / `dicom-script` | `Sources/dicom-script` | none of the DICOMKit package modules | `ArgumentParser` | Standalone CLI/helper executable | Third-party apps cannot import the executable target; must shell out or reimplement | Run `dicom-script` | No direct package library dependency |
+| `dicom-script` | `dicom-script` / `dicom-script` | `Sources/dicom-script` | `DICOMKit` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; script engine via shared `ScriptParser`/`ScriptExecutor`/`ScriptValidator`/`TemplateGenerator` | Run `dicom-script` | ✅ Script engine extracted to `DICOMKit` (`Sources/DICOMKit/Scripting/`); `ScriptExecutor` takes an injected `CommandRunner` (no `Process` in the library). CLI + DICOMStudio share it, parity MATCHES (2026-06-08) |
 | `dicom-report` | `dicom-report` / `dicom-report` | `Sources/dicom-report` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-report` | Structured report/reporting workflow |
 | `dicom-measure` | `dicom-measure` / `dicom-measure` | `Sources/dicom-measure` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-measure` | Measurement workflow |
 | `dicom-viewer` | `dicom-viewer` / `dicom-viewer` | `Sources/dicom-viewer` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-viewer` | Terminal viewer workflow |
@@ -154,6 +154,7 @@ Examples include:
 - `StudyScanner` / `StudyReport`
 - `ArchiveStore`
 - `PixelEditor`
+- `ScriptParser` / `ScriptExecutor` / `ScriptValidator` / `TemplateGenerator`
 - `DICOMJSONEncoder` / `DICOMJSONDecoder`
 - `DICOMXMLEncoder` / `DICOMXMLDecoder`
 - `DICOMwebClient`
