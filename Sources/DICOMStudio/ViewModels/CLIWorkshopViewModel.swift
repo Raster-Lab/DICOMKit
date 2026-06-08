@@ -4249,7 +4249,7 @@ private func executeDicomCompressBackends() async {
         }
         lines.append("")
         lines.append("Active backend: \(best.displayName)")
-        lines.append("Use the Backend option on the compress operation to select a specific backend.")
+        lines.append("Use --backend <name> on the compress command to select a specific backend.")
         return (lines.joined(separator: "\n") + "\n", 0)
     }.value
 

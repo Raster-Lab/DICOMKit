@@ -313,7 +313,9 @@ extension DICOMUID {
                     for entry in entries {
                         print("\(entry.uid)  \(entry.name)  (\(UIDManager.uidTypeDescription(entry.type)))")
                     }
-                    fprintln("\n\(entries.count) UIDs found")
+                    // Result summary belongs on stdout (with the listing), consistent
+                    // with how DICOMStudio renders it — keeps app/CLI output in parity.
+                    print("\n\(entries.count) UIDs found")
                 }
             }
         }
