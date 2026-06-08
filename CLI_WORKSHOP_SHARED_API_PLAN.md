@@ -29,6 +29,7 @@
 
 | Date | Tool | What changed | Verified |
 |------|------|--------------|----------|
+| 2026-06-08 | **Wave 3** `dicom-pixedit` | Moved `PixelEditor` (+ `PixelOperation`, `PixelEditError`, new `PixelEditInfo`) out of `Sources/dicom-pixedit/` into `Sources/DICOMKit/PixelEditing/`. Added a `processData(_:operations:) -> (Data, PixelEditInfo)` core (so DICOMStudio writes via its sandbox-aware `OutputAccess`) alongside the direct-write `processFile`; verbose output via injected `log` closure. App `executeDicomPixedit` deleted its ~190-line inline pixel reimplementation (mask/crop/window-level/invert + sample accessors) and calls the shared engine. Kept the descriptor internal+renamed (`PixelEditDescriptor`) to avoid colliding with `DICOMCore.PixelDataDescriptor`. | `swift build` green; `dicom-pixedit` release build + smoke (invert); regenerated goldens **unchanged**; **all 3 pixedit parity scenarios stay MATCH** — MATCH=266, DIFFERS=0, strict gate green. |
 | 2026-06-08 | **Parity → 0 DIFFERS** (`dicom-compress`, `dicom-uid`) | Retired the last 2 allowlisted DIFFERS. `dicom-uid`: the `N UIDs found` lookup footer moved stderr→stdout (it's a result summary, belongs with the listing — matches DICOMStudio). `dicom-compress`: aligned the app's `backends` hint wording to the CLI (`Use --backend <name>…`). Emptied `parity-allowlist.json` — all prior entries (F4/F5/F9/F10/F14) now retired since their tools call the shared engines and MATCH. | Regenerated goldens; **Tier-2 `StudioParityTests`: MATCH=266, DIFFERS=0**; `PARITY_STRICT=1` gate green with an empty allowlist. |
 | 2026-06-08 | **Wave 2** `dicom-archive` | Extracted the entire archive engine — index model (`ArchiveIndex`/`ArchivePatient`/`ArchiveStudy`/`ArchiveSeries`/`ArchiveInstance`), helpers (wildcard/sanitize/load/save/count), and all 7 operations (init/import/query/list/export/check/stats) — out of `Sources/dicom-archive/main.swift` into `Sources/DICOMKit/Archive/ArchiveStore.swift`. Operations **return rendered strings** (no `print`); `ArgumentParser.ValidationError` → library `ArchiveError`. CLI `main.swift` shrank **1236→~270 lines** (thin subcommand dispatch). App `executeDicomArchive` deleted its **~628-line** inline reimplementation (`A*` model + helpers + 7 subcommands) and dispatches to `ArchiveStore`, keeping only param parsing + sandbox path resolution. | `swift build` green; `dicom-archive` release build + full smoke (init→import→list/query/check/stats); **Tier-2 parity: all 8 archive scenarios still MATCH** (byte-exact preserved); overall MATCH=264, DIFFERS=2. |
 | 2026-06-08 | **Wave 2** `dicom-study` | Extracted the study analysis engine into `Sources/DICOMKit/Study/` — public models (`StudyMetadata`/`SeriesMetadata`/`InstanceMetadata`/`Statistics`/`StudyComparison`/`SeriesDifference`/`StudyError`), `StudyScanner` (scan; series sorted by UID), and `StudyReport` (summary/stats/compare/completeness renderers, returning strings — no `print`). The CLI's summary/check/stats/compare engines became thin adapters; `StudyOrganizer` (file moves) stays CLI-local. The app deleted its parallel `StudyStudio*` model + `studyScan` + `studyFormatBytes` and the inline renderers in its 4 study methods, calling the shared engine. **Reconciled in the engine:** series sorted within a study (deterministic), renderers use `✓`/`✗` (app had `[OK]`/`[FAIL]`/`[DIFF]`), and `check` output moved stderr→stdout (it's the command's primary result, consistent with summary/stats/compare and the app). | `swift build` green; `dicom-study` release build + smoke (summary/check/stats/compare); **Tier-2 parity: all 6 `dicom-study` scenarios now MATCH** (overall DIFFERS 8→2). |
@@ -145,7 +146,7 @@ delete the app's copy.**
 | `dicom-archive` ✅ **DONE** | `ArchiveIndex` model + init/import/query/list/export/check/stats ops | ~~`Sources/dicom-archive/main.swift`~~ → now `Sources/DICOMKit/Archive/` | `ArchiveStore` (model + 7 string-returning ops) shared; parity MATCHES |
 | `dicom-study` ✅ **DONE** | `StudyAnalyzer` / `CompletenessChecker` / `StatsCalculator` / `StudyComparator` + models | ~~`Sources/dicom-study/StudyManager.swift`~~ → now `Sources/DICOMKit/Study/` | `StudyScanner` + `StudyReport` + models shared (sorted series, `✓`); parity MATCHES. (`StudyOrganizer` stays CLI-local for now.) |
 | `dicom-image` | image→Secondary-Capture converter (CGImage/ImageIO pixel extract + EXIF) | `Sources/dicom-image/main.swift` | `ImageToSecondaryCaptureConverter` → DICOMKit (route SC assembly through existing `SecondaryCaptureBuilder`) |
-| `dicom-pixedit` | `PixelEditor` + `PixelDataDescriptor` + `PixelOperation` + `PixelEditError` | `Sources/dicom-pixedit/PixelEditor.swift` | `PixelEditor` → DICOMKit |
+| `dicom-pixedit` ✅ **DONE** | `PixelEditor` + `PixelDataDescriptor` + `PixelOperation` + `PixelEditError` | ~~`Sources/dicom-pixedit/PixelEditor.swift`~~ → now `Sources/DICOMKit/PixelEditing/` | `PixelEditor` shared (`processData`/`processFile` + log closure); parity MATCHES |
 | `dicom-script` | `ScriptParser` / `ScriptExecutor` / `ScriptValidator` / `TemplateGenerator` + models | `Sources/dicom-script/ScriptEngine.swift` | `DICOMScriptEngine` → DICOMKit (executor needs an injectable command runner so the sandboxed app can run dry-run/plan mode) |
 
 ## The Repeatable Extraction Recipe (Bucket C, and Bucket B where noted)
@@ -194,8 +195,8 @@ Sequenced by value and risk. Each wave is independently shippable.
 - **Wave 2 ✅ DONE — file-organization copies (Bucket C):** `dicom-split` ✅,
   `dicom-merge` ✅, `dicom-study` ✅, `dicom-archive` ✅ — all migrated and verified
   (parity DIFFERS for this cohort all resolved; merge + study moved to MATCH).
-- **Wave 3 (in progress) — image/pixel + scripting copies (Bucket C):** `dicom-image`,
-  `dicom-pixedit`, `dicom-script`. These touch CoreGraphics/ImageIO and (script)
+- **Wave 3 (in progress) — image/pixel + scripting copies (Bucket C):** `dicom-pixedit` ✅,
+  then `dicom-image`, `dicom-script`. These touch CoreGraphics/ImageIO and (script)
   process execution — give `dicom-script` an injectable command runner so the
   sandboxed app gets a plan/dry-run runner.
 - **Wave 4 — partly-copied cleanups (Bucket B):** `dicom-uid`, `dicom-compress`,
@@ -287,7 +288,7 @@ imports it.
 | `dicom-archive` ✅ | C→done | `executeDicomArchive` → shared engine | **done:** `ArchiveStore` now in DICOMKit | `Sources/DICOMKit/Archive/` (shared) |
 | `dicom-study` ✅ | C→done | `executeDicomStudy*` → shared engine | **done:** `StudyScanner`+`StudyReport`+models in DICOMKit | `Sources/DICOMKit/Study/` (shared) |
 | `dicom-image` | C | `executeDicomImage` | extract `ImageToSecondaryCaptureConverter` → DICOMKit | `Sources/dicom-image/main.swift` |
-| `dicom-pixedit` | C | `executeDicomPixedit` | extract `PixelEditor` → DICOMKit | `Sources/dicom-pixedit/PixelEditor.swift` |
+| `dicom-pixedit` ✅ | C→done | `executeDicomPixedit` → shared engine | **done:** `PixelEditor` now in DICOMKit | `Sources/DICOMKit/PixelEditing/` (shared) |
 | `dicom-script` | C | `executeDicomScript` | extract `DICOMScriptEngine` → DICOMKit/new target | `Sources/dicom-script/ScriptEngine.swift` |
 
 *Source: `CLIParityEngine.executeSupported` (32 tools) cross-referenced against

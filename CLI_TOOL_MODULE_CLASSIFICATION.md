@@ -93,7 +93,7 @@ for example from:
 | `dicom-echo` | `dicom-echo` / `dicom-echo` | `Sources/dicom-echo` | `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network libraries | Import `DICOMCore`, `DICOMNetwork` | Run `dicom-echo` | DIMSE echo/verification |
 | `dicom-mwl` | `dicom-mwl` / `dicom-mwl` | `Sources/dicom-mwl` | `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network libraries | Import `DICOMCore`, `DICOMNetwork` | Run `dicom-mwl` | Modality Worklist workflow |
 | `dicom-mpps` | `dicom-mpps` / `dicom-mpps` | `Sources/dicom-mpps` | `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network libraries | Import `DICOMCore`, `DICOMNetwork` | Run `dicom-mpps` | MPPS workflow |
-| `dicom-pixedit` | `dicom-pixedit` / `dicom-pixedit` | `Sources/dicom-pixedit` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-pixedit` | Pixel editing / masking workflow |
+| `dicom-pixedit` | `dicom-pixedit` / `dicom-pixedit` | `Sources/dicom-pixedit` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; edit pixels via shared `PixelEditor` | Run `dicom-pixedit` | ✅ `PixelEditor` engine extracted to `DICOMKit` (`Sources/DICOMKit/PixelEditing/`); CLI + DICOMStudio share it, parity MATCHES (2026-06-08) |
 | `dicom-tags` | `dicom-tags` / `dicom-tags` | `Sources/dicom-tags` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; edit tags via shared `TagEditor` | Run `dicom-tags` | ✅ `TagEditor` engine extracted to `DICOMKit` (`Sources/DICOMKit/TagEditing/`); CLI + DICOMStudio share it, resolution unified on `DataElementDictionary` + skip-on-unknown (2026-06-08) |
 | `dicom-uid` | `dicom-uid` / `dicom-uid` | `Sources/dicom-uid` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries; direct helper exists via `UIDManager` | Run `dicom-uid` | UID generate/validate/lookup/regenerate |
 | `dicom-compress` | `dicom-compress` / `dicom-compress` | `Sources/dicom-compress` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries; core transcoding API exists via `DICOMCore.TransferSyntaxConverter` | Run `dicom-compress` | Compression/transcoding workflow |
@@ -153,6 +153,7 @@ Examples include:
 - `FrameSplitter`
 - `StudyScanner` / `StudyReport`
 - `ArchiveStore`
+- `PixelEditor`
 - `DICOMJSONEncoder` / `DICOMJSONDecoder`
 - `DICOMXMLEncoder` / `DICOMXMLDecoder`
 - `DICOMwebClient`
