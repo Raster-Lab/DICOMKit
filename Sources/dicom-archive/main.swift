@@ -9,6 +9,17 @@ import DICOMDictionary
 // run the exact same code. This CLI is a thin adapter: parse argv, call the shared
 // ArchiveStore operation, and print the rendered output.
 
+// Run a shared ArchiveStore operation and print its output, re-raising the
+// library's `ArchiveError` as ArgumentParser's `ValidationError` so the CLI's
+// error message, usage hint, and exit code match its pre-extraction behavior.
+private func runArchive(_ body: () throws -> String) throws {
+    do {
+        print(try body(), terminator: "")
+    } catch let error as ArchiveError {
+        throw ValidationError(error.errorDescription ?? "\(error)")
+    }
+}
+
 // MARK: - Main Command
 
 struct DICOMArchive: ParsableCommand {
@@ -71,7 +82,7 @@ extension DICOMArchive {
         var force: Bool = false
 
         mutating func run() throws {
-            print(try ArchiveStore.initArchive(at: path, force: force), terminator: "")
+            try runArchive { try ArchiveStore.initArchive(at: path, force: force) }
         }
     }
 }
@@ -101,9 +112,9 @@ extension DICOMArchive {
         var verbose: Bool = false
 
         mutating func run() throws {
-            print(try ArchiveStore.importFiles(
+            try runArchive { try ArchiveStore.importFiles(
                 into: archive, files: files, recursive: recursive,
-                skipDuplicates: skipDuplicates, verbose: verbose), terminator: "")
+                skipDuplicates: skipDuplicates, verbose: verbose) }
         }
     }
 }
@@ -139,10 +150,10 @@ extension DICOMArchive {
         var format: String = "table"
 
         mutating func run() throws {
-            print(try ArchiveStore.query(
+            try runArchive { try ArchiveStore.query(
                 in: archive, patientName: patientName, patientID: patientID,
                 studyUID: studyUID, modality: modality, studyDate: studyDate,
-                format: format), terminator: "")
+                format: format) }
         }
     }
 }
@@ -166,7 +177,7 @@ extension DICOMArchive {
         var showInstances: Bool = false
 
         mutating func run() throws {
-            print(try ArchiveStore.list(in: archive, format: format, showInstances: showInstances), terminator: "")
+            try runArchive { try ArchiveStore.list(in: archive, format: format, showInstances: showInstances) }
         }
     }
 }
@@ -202,9 +213,9 @@ extension DICOMArchive {
         var verbose: Bool = false
 
         mutating func run() throws {
-            print(try ArchiveStore.export(
+            try runArchive { try ArchiveStore.export(
                 from: archive, output: output, studyUID: studyUID, seriesUID: seriesUID,
-                patientID: patientID, flatten: flatten, verbose: verbose), terminator: "")
+                patientID: patientID, flatten: flatten, verbose: verbose) }
         }
     }
 }
@@ -228,7 +239,7 @@ extension DICOMArchive {
         var verbose: Bool = false
 
         mutating func run() throws {
-            print(try ArchiveStore.check(in: archive, verifyFiles: verifyFiles, verbose: verbose), terminator: "")
+            try runArchive { try ArchiveStore.check(in: archive, verifyFiles: verifyFiles, verbose: verbose) }
         }
     }
 }
@@ -249,7 +260,7 @@ extension DICOMArchive {
         var format: String = "text"
 
         mutating func run() throws {
-            print(try ArchiveStore.stats(in: archive, format: format), terminator: "")
+            try runArchive { try ArchiveStore.stats(in: archive, format: format) }
         }
     }
 }
