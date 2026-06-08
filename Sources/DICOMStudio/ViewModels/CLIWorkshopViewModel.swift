@@ -3133,154 +3133,34 @@ private func executeDicomSplit() async {
     }
 
     let outcome = await Task.detached(priority: .userInitiated) { () -> SplitOutcome in
-        var result = SplitOutcome()
+        // Delegate frame extraction to the shared DICOMKit engine — the exact same
+        // FrameSplitter the `dicom-split` CLI uses. Verbose progress is collected
+        // through the log sink; per-frame stats come back in SplitResult.
+        final class LogBox: @unchecked Sendable { var text = "" }
+        let logBox = LogBox()
+        let splitter = FrameSplitter(
+            outputPath: workOutputBase,
+            format: SplitOutputFormat(rawValue: workFormat) ?? .dicom,
+            applyWindow: workApplyWindow,
+            windowCenter: workWindowCenter,
+            windowWidth: workWindowWidth,
+            namingPattern: workPattern,
+            verbose: workVerbose,
+            log: { logBox.text += $0 + "\n" }
+        )
 
-        func ext(for fmt: String) -> String {
-            switch fmt {
-            case "png": return "png"
-            case "jpeg": return "jpg"
-            case "tiff": return "tiff"
-            default: return "dcm"
-            }
-        }
-        func utType(for fmt: String) -> String {
-            switch fmt {
-            case "png": return "public.png"
-            case "jpeg": return "public.jpeg"
-            case "tiff": return "public.tiff"
-            default: return "public.data"
-            }
-        }
-
+        var split = SplitResult()
         for fileURL in workFiles {
-            guard let data = try? Data(contentsOf: fileURL),
-                  let dicomFile = try? DICOMFile.read(from: data, force: false) else {
-                result.skippedFiles += 1
-                if workVerbose { result.log += "Warning: Skipping non-DICOM file: \(fileURL.lastPathComponent)\n" }
-                continue
-            }
-
-            let numberOfFrames = dicomFile.numberOfFrames ?? 1
-            if workVerbose { result.log += "Processing: \(fileURL.lastPathComponent)\n" }
-
-            if numberOfFrames <= 1 {
-                result.skippedFiles += 1
-                if workVerbose { result.log += "  Single-frame file, skipping\n" }
-                continue
-            }
-            if workVerbose { result.log += "  Found \(numberOfFrames) frames\n" }
-
-            // Determine which frames to extract (0-based, in range).
-            let framesToExtract: [Int]
-            if let indices = workFrameIndices {
-                framesToExtract = indices.filter { $0 >= 0 && $0 < numberOfFrames }.sorted()
-            } else {
-                framesToExtract = Array(0..<numberOfFrames)
-            }
-            if workVerbose { result.log += "  Extracting \(framesToExtract.count) frames\n" }
-
-            result.processedFiles += 1
-
-            // Filename ingredients.
-            let baseName = fileURL.deletingPathExtension().lastPathComponent.isEmpty
-                ? "frame" : fileURL.deletingPathExtension().lastPathComponent
-            let modality = dicomFile.dataSet.string(for: .modality) ?? "XX"
-            let seriesNumber = dicomFile.dataSet.string(for: .seriesNumber) ?? "0"
-            let fileExt = ext(for: workFormat)
-
-            // For DICOM output we need the source pixel data once.
-            let sourcePixelData = dicomFile.pixelData()
-
-            for frameIndex in framesToExtract {
-                let filename: String
-                if let pat = workPattern {
-                    var f = pat
-                    f = f.replacingOccurrences(of: "{number}", with: String(format: "%04d", frameIndex))
-                    f = f.replacingOccurrences(of: "{modality}", with: modality)
-                    f = f.replacingOccurrences(of: "{series}", with: seriesNumber)
-                    filename = f
-                } else {
-                    filename = "\(baseName)_frame_\(String(format: "%04d", frameIndex)).\(fileExt)"
-                }
-                let outPath = (workOutputBase as NSString).appendingPathComponent(filename)
-                let outURL = URL(fileURLWithPath: outPath)
-
-                do {
-                    if workFormat == "dicom" {
-                        // Reimplementation of FrameSplitter.extractFrameAsDICOM using DICOMKit/DICOMCore.
-                        guard let pixelData = sourcePixelData else {
-                            throw NSError(domain: "dicom-split", code: 1, userInfo: [NSLocalizedDescriptionKey: "Missing pixel data in DICOM file"])
-                        }
-                        guard let frameData = pixelData.frameData(at: frameIndex) else {
-                            throw NSError(domain: "dicom-split", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to extract frame \(frameIndex)"])
-                        }
-
-                        var newDataSet = dicomFile.dataSet
-
-                        let numberOfFramesData = "1".data(using: .utf8) ?? Data()
-                        newDataSet[.numberOfFrames] = DataElement(
-                            tag: .numberOfFrames, vr: .IS,
-                            length: UInt32(numberOfFramesData.count), valueData: numberOfFramesData
-                        )
-
-                        let newSOPInstanceUID = UIDGenerator.generateSOPInstanceUID()
-                        let uidData = newSOPInstanceUID.value.data(using: .utf8) ?? Data()
-                        newDataSet[.sopInstanceUID] = DataElement(
-                            tag: .sopInstanceUID, vr: .UI,
-                            length: UInt32(uidData.count), valueData: uidData
-                        )
-
-                        newDataSet[.pixelData] = DataElement(
-                            tag: .pixelData, vr: .OW,
-                            length: UInt32(frameData.count), valueData: frameData
-                        )
-
-                        let newFile = DICOMFile(
-                            fileMetaInformation: dicomFile.fileMetaInformation,
-                            dataSet: newDataSet
-                        )
-                        let dicomData = try newFile.write()
-                        try dicomData.write(to: outURL)
-                    } else {
-                        // Image export (PNG/JPEG/TIFF) via CoreGraphics + ImageIO.
-                        #if canImport(CoreGraphics) && canImport(ImageIO)
-                        let cgImage: CGImage?
-                        if workApplyWindow, let c = workWindowCenter, let w = workWindowWidth {
-                            cgImage = dicomFile.renderFrame(frameIndex, window: WindowSettings(center: c, width: w))
-                        } else if workApplyWindow {
-                            cgImage = dicomFile.renderFrameWithStoredWindow(frameIndex)
-                        } else {
-                            cgImage = dicomFile.renderFrame(frameIndex)
-                        }
-                        guard let image = cgImage else {
-                            throw NSError(domain: "dicom-split", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to render frame \(frameIndex) as image"])
-                        }
-                        guard let destination = CGImageDestinationCreateWithURL(outURL as CFURL, utType(for: workFormat) as CFString, 1, nil) else {
-                            throw NSError(domain: "dicom-split", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create image destination for \(outURL.lastPathComponent)"])
-                        }
-                        CGImageDestinationAddImage(destination, image, nil)
-                        guard CGImageDestinationFinalize(destination) else {
-                            throw NSError(domain: "dicom-split", code: 5, userInfo: [NSLocalizedDescriptionKey: "Failed to write image to \(outURL.lastPathComponent)"])
-                        }
-                        #else
-                        throw NSError(domain: "dicom-split", code: 6, userInfo: [NSLocalizedDescriptionKey: "Image export not supported on this platform"])
-                        #endif
-                    }
-
-                    result.extracted += 1
-                    result.writtenPaths.append(outPath)
-                    if workVerbose { result.log += "  Extracted frame \(frameIndex) -> \(filename)\n" }
-                } catch {
-                    result.failed += 1
-                    if workVerbose { result.log += "  Failed to extract frame \(frameIndex): \(error.localizedDescription)\n" }
-                }
-            }
-
-            if workVerbose {
-                result.log += "  Completed: \(result.extracted) extracted so far\n"
-            }
+            await splitter.processFile(fileURL.path, frameIndices: workFrameIndices, into: &split)
         }
 
+        var result = SplitOutcome()
+        result.log = logBox.text
+        result.writtenPaths = split.writtenPaths
+        result.processedFiles = split.processedFiles
+        result.skippedFiles = split.skippedFiles
+        result.extracted = split.extracted
+        result.failed = split.failed
         return result
     }.value
 
@@ -3437,100 +3317,6 @@ private func executeDicomSplit() async {
                 return files.sorted()
             }
 
-            // --- sortFrames ---
-            func parseDecimalArray(_ ds: DataSet, _ tag: Tag) -> [Double] {
-                guard let decimals = ds.decimalStrings(for: tag) else { return [] }
-                return decimals.map { $0.value }
-            }
-            func sortFrames(_ items: [(String, DICOMFile)]) -> [(String, DICOMFile)] {
-                guard sortBy != "none" else { return items }
-                let asc = (order != "descending")
-                return items.sorted { a, b in
-                    let result: Bool
-                    switch sortBy {
-                    case "ImagePositionPatient":
-                        let p1 = parseDecimalArray(a.1.dataSet, .imagePositionPatient)
-                        let p2 = parseDecimalArray(b.1.dataSet, .imagePositionPatient)
-                        let z1 = p1.count >= 3 ? p1[2] : 0.0
-                        let z2 = p2.count >= 3 ? p2[2] : 0.0
-                        result = z1 < z2
-                    case "AcquisitionTime":
-                        let t1 = a.1.dataSet.string(for: .acquisitionTime) ?? ""
-                        let t2 = b.1.dataSet.string(for: .acquisitionTime) ?? ""
-                        result = t1 < t2
-                    default: // InstanceNumber
-                        let n1 = a.1.dataSet.int32(for: .instanceNumber) ?? 0
-                        let n2 = b.1.dataSet.int32(for: .instanceNumber) ?? 0
-                        result = n1 < n2
-                    }
-                    return asc ? result : !result
-                }
-            }
-
-            // --- validateConsistency ---
-            func validateConsistency(_ files: [DICOMFile]) throws {
-                guard let first = files.first else { return }
-                let requiredMatchingTags: [Tag] = [
-                    .studyInstanceUID, .seriesInstanceUID, .modality, .rows, .columns,
-                    .bitsAllocated, .bitsStored, .highBit, .pixelRepresentation,
-                    .samplesPerPixel, .photometricInterpretation
-                ]
-                for tag in requiredMatchingTags {
-                    let expected = first.dataSet.string(for: tag)
-                    for file in files.dropFirst() {
-                        let v = file.dataSet.string(for: tag)
-                        if v != expected {
-                            throw MergeRuntimeError.inconsistentAttribute(
-                                tag: "\(tag)", expected: expected ?? "nil", found: v ?? "nil")
-                        }
-                    }
-                }
-                if let firstPixel = first.dataSet[.pixelData]?.valueData {
-                    let firstSize = firstPixel.count
-                    for file in files.dropFirst() {
-                        if let pd = file.dataSet[.pixelData]?.valueData, pd.count != firstSize {
-                            throw MergeRuntimeError.inconsistentPixelDataSize(expected: firstSize, found: pd.count)
-                        }
-                    }
-                }
-            }
-
-            // --- createMultiFrameFile ---
-            func createMultiFrameFile(from items: [(String, DICOMFile)]) throws -> DICOMFile {
-                guard let firstFile = items.first else { throw MergeRuntimeError.noValidFiles }
-                var merged = firstFile.1.dataSet
-                var allPixelData = Data()
-                for (_, file) in items {
-                    guard let pd = file.dataSet[.pixelData]?.valueData else {
-                        throw MergeRuntimeError.missingPixelData(
-                            file: file.dataSet.string(for: .sopInstanceUID) ?? "unknown")
-                    }
-                    allPixelData.append(pd)
-                }
-                merged.setString("\(items.count)", for: .numberOfFrames, vr: .IS)
-                merged[.pixelData] = DataElement(
-                    tag: .pixelData, vr: .OW,
-                    length: UInt32(allPixelData.count), valueData: allPixelData)
-                let newSOP = UIDGenerator.generateSOPInstanceUID()
-                merged.setString(newSOP.value, for: .sopInstanceUID, vr: .UI)
-                merged.setString("1", for: .instanceNumber, vr: .IS)
-                return DICOMFile(fileMetaInformation: firstFile.1.fileMetaInformation, dataSet: merged)
-            }
-
-            // --- Load helper ---
-            func loadFiles(_ paths: [String]) -> [(String, DICOMFile)] {
-                var loaded: [(String, DICOMFile)] = []
-                for p in paths {
-                    if let data = try? Data(contentsOf: URL(fileURLWithPath: p)),
-                       let f = try? DICOMFile.read(from: data, force: false) {
-                        loaded.append((p, f))
-                    } else if verbose {
-                        log += "Warning: Skipping non-DICOM file: \(p)\n"
-                    }
-                }
-                return loaded
-            }
-
             do {
                 let files = gatherInputFiles(from: inputURL.path)
                 guard !files.isEmpty else {
@@ -3538,74 +3324,34 @@ private func executeDicomSplit() async {
                 }
                 if verbose { log += "Found \(files.count) DICOM files to process\n\n" }
 
-                switch level {
-                case "series":
-                    try fm.createDirectory(at: outputURL, withIntermediateDirectories: true)
-                    let loaded = loadFiles(files)
-                    guard !loaded.isEmpty else { return ("Error: No valid DICOM files found\n", 1) }
-                    var groups: [String: [(String, DICOMFile)]] = [:]
-                    for entry in loaded {
-                        if let uid = entry.1.dataSet.string(for: .seriesInstanceUID) {
-                            groups[uid, default: []].append(entry)
-                        }
-                    }
-                    log += "Found \(groups.count) series\n"
-                    for (uid, group) in groups {
-                        let sorted = sortFrames(group)
-                        if validate { try validateConsistency(sorted.map { $0.1 }) }
-                        let mf = try createMultiFrameFile(from: sorted)
-                        let outPath = outputURL.appendingPathComponent("series_\(uid).dcm")
-                        try mf.write().write(to: outPath)
-                        log += "  Series \(uid): \(sorted.count) frames -> \(outPath.path)\n"
-                    }
+                // Delegate the merge to the shared DICOMKit engine — the exact same
+                // FrameMerger the `dicom-merge` CLI uses. Verbose progress flows
+                // through the log sink so app and CLI cannot drift.
+                let mergeLevel = MergeLevel(rawValue: level) ?? .file
+                let merger = FrameMerger(
+                    format: .standard,
+                    level: mergeLevel,
+                    sortBy: MergeSortCriteria(rawValue: sortBy) ?? .instanceNumber,
+                    order: MergeSortOrder(rawValue: order) ?? .ascending,
+                    validate: validate,
+                    verbose: verbose,
+                    log: { log += $0 + "\n" }
+                )
 
-                case "study":
-                    try fm.createDirectory(at: outputURL, withIntermediateDirectories: true)
-                    let loaded = loadFiles(files)
-                    guard !loaded.isEmpty else { return ("Error: No valid DICOM files found\n", 1) }
-                    var studyGroups: [String: [(String, DICOMFile)]] = [:]
-                    for entry in loaded {
-                        if let uid = entry.1.dataSet.string(for: .studyInstanceUID) {
-                            studyGroups[uid, default: []].append(entry)
-                        }
-                    }
-                    log += "Found \(studyGroups.count) studies\n"
-                    for (studyUID, studyFiles) in studyGroups {
-                        let studyDir = outputURL.appendingPathComponent("study_\(studyUID)")
-                        try fm.createDirectory(at: studyDir, withIntermediateDirectories: true)
-                        var seriesGroups: [String: [(String, DICOMFile)]] = [:]
-                        for entry in studyFiles {
-                            if let uid = entry.1.dataSet.string(for: .seriesInstanceUID) {
-                                seriesGroups[uid, default: []].append(entry)
-                            }
-                        }
-                        log += "  Study \(studyUID): \(seriesGroups.count) series\n"
-                        for (uid, group) in seriesGroups {
-                            let sorted = sortFrames(group)
-                            if validate { try validateConsistency(sorted.map { $0.1 }) }
-                            let mf = try createMultiFrameFile(from: sorted)
-                            let outPath = studyDir.appendingPathComponent("series_\(uid).dcm")
-                            try mf.write().write(to: outPath)
-                            log += "    Series \(uid): \(sorted.count) frames -> \(outPath.path)\n"
-                        }
-                    }
-
-                default: // "file"
-                    // Ensure parent directory exists for a single-file output.
-                    let parent = outputURL.deletingLastPathComponent()
-                    try? fm.createDirectory(at: parent, withIntermediateDirectories: true)
-                    let loaded = loadFiles(files)
-                    guard !loaded.isEmpty else { return ("Error: No valid DICOM files found\n", 1) }
-                    if validate { try validateConsistency(loaded.map { $0.1 }) }
-                    let sorted = sortFrames(loaded)
-                    let mf = try createMultiFrameFile(from: sorted)
-                    try mf.write().write(to: outputURL)
-                    log += "Created multi-frame file with \(sorted.count) frames: \(outputURL.path)\n"
+                switch mergeLevel {
+                case .file:
+                    // Ensure the parent directory exists for a single-file output.
+                    try? fm.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try await merger.mergeToSingleFile(files: files, outputPath: outputURL.path)
+                case .series:
+                    try await merger.mergeBySeries(files: files, outputDirectory: outputURL.path)
+                case .study:
+                    try await merger.mergeByStudy(files: files, outputDirectory: outputURL.path)
                 }
 
                 log += "\nMerge complete!\n"
                 return (log, 0)
-            } catch let e as MergeRuntimeError {
+            } catch let e as MergeError {
                 return (log + "Error: \(e.description)\n", 1)
             } catch {
                 return (log + "Error: \(error.localizedDescription)\n", 1)
@@ -3616,27 +3362,6 @@ private func executeDicomSplit() async {
         addToHistory(toolName: "dicom-merge", command: commandPreview, exitCode: exitCode, output: output)
         consoleStatus = exitCode == 0 ? .success : .error
         service.setConsoleStatus(exitCode == 0 ? .success : .error)
-    }
-
-    /// Errors raised while reconstructing the executable-local FrameMerger logic.
-    private enum MergeRuntimeError: Error, CustomStringConvertible {
-        case noValidFiles
-        case missingPixelData(file: String)
-        case inconsistentAttribute(tag: String, expected: String, found: String)
-        case inconsistentPixelDataSize(expected: Int, found: Int)
-
-        var description: String {
-            switch self {
-            case .noValidFiles:
-                return "No valid DICOM files found"
-            case .missingPixelData(let file):
-                return "Missing pixel data in file: \(file)"
-            case .inconsistentAttribute(let tag, let expected, let found):
-                return "Inconsistent \(tag): expected '\(expected)', found '\(found)'"
-            case .inconsistentPixelDataSize(let expected, let found):
-                return "Inconsistent pixel data size: expected \(expected) bytes, found \(found) bytes"
-            }
-        }
     }
 
 private func executeDicomArchive() async {
