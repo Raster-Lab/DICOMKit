@@ -208,9 +208,20 @@ Sequenced by value and risk. Each wave is independently shippable.
   process execution — `dicom-script` got an injectable `CommandRunner` so the
   sandboxed app runs a plan/dry-run instead of spawning subprocesses; `dicom-image`
   shares the per-image conversion core (no committed goldens — verified by smoke).
-- **Wave 4 (in progress) — partly-copied cleanups (Bucket B):** `dicom-uid`, `dicom-compress`,
-  `dicom-export` (extract the workflow engine), then `dicom-query`,
-  `dicom-retrieve`, `dicom-ups` (route through existing shared APIs + small
+- **Wave 4 (local engines ✅, network tier pending) — partly-copied cleanups (Bucket B):**
+  `dicom-uid` ✅, `dicom-compress` ✅, `dicom-export` ✅ (workflow engines extracted).
+  **Network tier — distinct risk class (NO parity goldens; the execution clients
+  `DICOMQueryService`/`DICOMRetrieveService`/`DICOMwebClient` are already shared):**
+  - `dicom-ups` — clean route-through: the app's `executeDicomUPS` manually rebuilds the
+    state-change/update JSON + `httpClient.execute` that `DICOMwebClient.changeWorkitemState`/
+    `updateWorkitem` already encapsulate (~300 lines collapsible). Verifiable by build + request-logic review only.
+  - `dicom-retrieve` — extract the deterministic Part-10 writer (+ coordinator) → DICOMNetwork; network coordination stays.
+  - `dicom-query` — ⚠️ **do NOT naively merge:** DICOMStudio's `formatQueryResults*` take
+    `[(result, parent)]` pairs (parent-study context from its two-step query) — it intentionally
+    *diverged* from the CLI's plain `QueryFormatter([GenericQueryResult])`. Sharing the CLI's
+    simpler formatter would regress the GUI; a real dedup needs a parent-aware shared formatter.
+  These were left for a separately-verified follow-up since they carry no parity safety net.
+  Original note: route through existing shared APIs + small
   extractions).
 
 ## Where Extracted Engines Live
