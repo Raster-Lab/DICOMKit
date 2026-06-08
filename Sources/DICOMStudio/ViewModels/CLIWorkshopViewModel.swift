@@ -4431,107 +4431,32 @@ private func executeDicomStudy() async {
         let outputURL = _exportOut.url
         if let note = _exportOut.note { appendConsoleOutput(note + "\n") }
 
-        let exportToolVersion = "1.2.2"
-
         let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
             var log = ""
 
-            // MARK: helpers (file-local, mirror the CLI)
+            // MARK: helpers — pure export logic (EXIF, paths, window, encoding)
+            // comes from the shared DICOMKit DICOMImageExporter; these thin
+            // wrappers keep the orchestration call sites unchanged.
 
             func sanitizePathComponent(_ value: String) -> String {
-                let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-                var result = ""
-                for char in value.unicodeScalars {
-                    result.append(allowed.contains(char) ? Character(char) : "_")
-                }
-                return result.isEmpty ? "UNKNOWN" : result
-            }
-
-            func mapDICOMFieldToEXIF(_ field: String) -> (dictionary: String, key: String)? {
-                switch field.lowercased() {
-                case "patientname":          return ("tiff", "ImageDescription")
-                case "studydate":            return ("exif", "DateTimeOriginal")
-                case "modality":             return ("exif", "Software")
-                case "studydescription":     return ("tiff", "DocumentName")
-                case "seriesdescription":    return ("exif", "UserComment")
-                case "institutionname":      return ("tiff", "Artist")
-                case "manufacturer":         return ("tiff", "Make")
-                case "manufacturermodelname":return ("tiff", "Model")
-                case "stationname":          return ("tiff", "HostComputer")
-                default:                     return nil
-                }
-            }
-
-            func getDICOMFieldValue(_ file: DICOMFile, field: String) -> String? {
-                switch field.lowercased() {
-                case "patientname":          return file.dataSet.string(for: .patientName)
-                case "patientid":            return file.dataSet.string(for: .patientID)
-                case "studydate":            return file.dataSet.string(for: .studyDate)
-                case "studydescription":     return file.dataSet.string(for: .studyDescription)
-                case "seriesdescription":    return file.dataSet.string(for: .seriesDescription)
-                case "modality":             return file.dataSet.string(for: .modality)
-                case "institutionname":      return file.dataSet.string(for: .institutionName)
-                case "manufacturer":         return file.dataSet.string(for: .manufacturer)
-                case "manufacturermodelname":return file.dataSet.string(for: .manufacturerModelName)
-                case "stationname":          return file.dataSet.string(for: .stationName)
-                default:                     return nil
-                }
+                DICOMImageExporter.sanitizePathComponent(value)
             }
 
             func buildEXIFMetadata(from file: DICOMFile, fields: [String]?) -> CFDictionary {
-                var tiffDict: [String: Any] = [:]
-                var exifDict: [String: Any] = [:]
-                let fieldsToEmbed = fields ?? ["PatientName", "StudyDate", "Modality", "StudyDescription", "Manufacturer"]
-                for field in fieldsToEmbed {
-                    guard let value = getDICOMFieldValue(file, field: field),
-                          let mapping = mapDICOMFieldToEXIF(field) else { continue }
-                    if mapping.dictionary == "tiff" { tiffDict[mapping.key] = value }
-                    else { exifDict[mapping.key] = value }
-                }
-                tiffDict["Software"] = "DICOMKit dicom-export v\(exportToolVersion)"
-                var properties: [String: Any] = [:]
-                if !tiffDict.isEmpty { properties[kCGImagePropertyTIFFDictionary as String] = tiffDict }
-                if !exifDict.isEmpty { properties[kCGImagePropertyExifDictionary as String] = exifDict }
-                return properties as CFDictionary
-            }
-
-            func utTypeIdentifier(_ format: String) -> String {
-                switch format {
-                case "png":  return "public.png"
-                case "jpeg": return "public.jpeg"
-                case "tiff": return "public.tiff"
-                default:     return "public.png"
-                }
+                DICOMImageExporter.buildEXIFMetadata(from: file, fields: fields)
             }
 
             func fileExtension(_ format: String) -> String { format }
 
             func exportCGImage(_ image: CGImage, to url: URL, format: String, quality: Int, metadata: CFDictionary?) throws {
-                guard let destination = CGImageDestinationCreateWithURL(
-                    url as CFURL, utTypeIdentifier(format) as CFString, 1, nil
-                ) else { throw ExportRenderError.exportFailed }
-                var options: [CFString: Any] = [:]
-                if format == "jpeg" {
-                    options[kCGImageDestinationLossyCompressionQuality] = Double(quality) / 100.0
-                }
-                if let metadata = metadata, let metaDict = metadata as? [String: Any] {
-                    for (key, value) in metaDict { options[key as CFString] = value }
-                }
-                CGImageDestinationAddImage(destination, image, options as CFDictionary)
-                guard CGImageDestinationFinalize(destination) else { throw ExportRenderError.exportFailed }
+                let fmt = ExportImageFormat(rawValue: format.lowercased()) ?? .png
+                try DICOMImageExporter.exportCGImage(image, to: url, format: fmt, quality: quality, metadata: metadata)
             }
 
             func determineWindow(from file: DICOMFile, pixelData: PixelData, frameIndex: Int,
                                  center: Double?, width: Double?) -> WindowSettings {
-                if let c = center, let w = width { return WindowSettings(center: c, width: w) }
-                if let fromFile = file.windowSettings() { return fromFile }
-                if let range = pixelData.pixelRange(forFrame: frameIndex) {
-                    let c = Double(range.min + range.max) / 2.0
-                    let w = Double(range.max - range.min)
-                    return WindowSettings(center: c, width: max(1.0, w))
-                }
-                let maxVal = (1 << 16) - 1
-                return WindowSettings(center: Double(maxVal) / 2.0, width: max(1.0, Double(maxVal)))
+                DICOMImageExporter.determineWindowSettings(from: file, pixelData: pixelData,
+                                                           frameIndex: frameIndex, windowCenter: center, windowWidth: width)
             }
 
             func renderFrame(file: DICOMFile, frameIndex: Int, applyWindow: Bool,
@@ -4823,9 +4748,6 @@ private func executeDicomStudy() async {
         addToHistory(toolName: "dicom-export", command: commandPreview, exitCode: 1, output: "Unsupported platform")
         #endif
     }
-
-    /// Local error type used by the in-process dicom-export reimplementation.
-    private enum ExportRenderError: Error { case exportFailed }
 
     // MARK: - dicom-script Execution
 

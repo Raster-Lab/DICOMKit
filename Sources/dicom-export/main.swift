@@ -17,286 +17,12 @@ import UniformTypeIdentifiers
 
 let exportToolVersion = "1.2.2"
 
-// MARK: - Export Image Format
-
-enum ExportImageFormat: String, ExpressibleByArgument, CaseIterable {
-    case png
-    case jpeg
-    case tiff
-
-    var fileExtension: String { rawValue }
-
-    #if canImport(UniformTypeIdentifiers)
-    var utType: UTType {
-        switch self {
-        case .png: return .png
-        case .jpeg: return .jpeg
-        case .tiff: return .tiff
-        }
-    }
-    #endif
-}
-
-// MARK: - Organization Scheme
-
-enum OrganizationScheme: String, ExpressibleByArgument, CaseIterable {
-    case flat
-    case patient
-    case study
-    case series
-}
-
-// MARK: - Export Errors
-
-enum ExportError: LocalizedError {
-    case noPixelData
-    case renderFailed
-    case exportFailed
-    case unsupportedPlatform
-    case invalidFrame(Int, Int)
-    case noFrames
-    case invalidInput(String)
-
-    var errorDescription: String? {
-        switch self {
-        case .noPixelData:
-            return "No pixel data found in DICOM file"
-        case .renderFailed:
-            return "Failed to render pixel data to image"
-        case .exportFailed:
-            return "Failed to export image to file"
-        case .unsupportedPlatform:
-            return "Image export requires macOS or iOS (CoreGraphics)"
-        case .invalidFrame(let requested, let total):
-            return "Invalid frame \(requested). File has \(total) frames (0-\(total - 1))"
-        case .noFrames:
-            return "No frames available in DICOM file"
-        case .invalidInput(let message):
-            return message
-        }
-    }
-}
-
-// MARK: - EXIF Metadata Helpers
-
-/// Maps DICOM field names to EXIF/TIFF dictionary keys
-func mapDICOMFieldToEXIF(_ field: String) -> (dictionary: String, key: String)? {
-    switch field.lowercased() {
-    case "patientname":
-        return ("tiff", "ImageDescription")
-    case "studydate":
-        return ("exif", "DateTimeOriginal")
-    case "modality":
-        return ("exif", "Software")
-    case "studydescription":
-        return ("tiff", "DocumentName")
-    case "seriesdescription":
-        return ("exif", "UserComment")
-    case "institutionname":
-        return ("tiff", "Artist")
-    case "manufacturer":
-        return ("tiff", "Make")
-    case "manufacturermodelname":
-        return ("tiff", "Model")
-    case "stationname":
-        return ("tiff", "HostComputer")
-    default:
-        return nil
-    }
-}
-
-/// Retrieves a DICOM field value from a DICOMFile by field name
-func getDICOMFieldValue(_ file: DICOMFile, field: String) -> String? {
-    switch field.lowercased() {
-    case "patientname":
-        return file.dataSet.string(for: .patientName)
-    case "patientid":
-        return file.dataSet.string(for: .patientID)
-    case "studydate":
-        return file.dataSet.string(for: .studyDate)
-    case "studydescription":
-        return file.dataSet.string(for: .studyDescription)
-    case "seriesdescription":
-        return file.dataSet.string(for: .seriesDescription)
-    case "modality":
-        return file.dataSet.string(for: .modality)
-    case "institutionname":
-        return file.dataSet.string(for: .institutionName)
-    case "manufacturer":
-        return file.dataSet.string(for: .manufacturer)
-    case "manufacturermodelname":
-        return file.dataSet.string(for: .manufacturerModelName)
-    case "stationname":
-        return file.dataSet.string(for: .stationName)
-    default:
-        return nil
-    }
-}
-
-#if canImport(CoreGraphics)
-/// Builds EXIF/TIFF metadata dictionaries from a DICOM file
-func buildEXIFMetadata(from file: DICOMFile, fields: [String]?) -> CFDictionary {
-    var tiffDict: [String: Any] = [:]
-    var exifDict: [String: Any] = [:]
-
-    let fieldsToEmbed: [String]
-    if let specified = fields {
-        fieldsToEmbed = specified
-    } else {
-        fieldsToEmbed = ["PatientName", "StudyDate", "Modality",
-                         "StudyDescription", "Manufacturer"]
-    }
-
-    for field in fieldsToEmbed {
-        guard let value = getDICOMFieldValue(file, field: field),
-              let mapping = mapDICOMFieldToEXIF(field) else {
-            continue
-        }
-        if mapping.dictionary == "tiff" {
-            tiffDict[mapping.key] = value
-        } else {
-            exifDict[mapping.key] = value
-        }
-    }
-
-    // Add software tag
-    tiffDict["Software"] = "DICOMKit dicom-export v\(exportToolVersion)"
-
-    var properties: [String: Any] = [:]
-    if !tiffDict.isEmpty {
-        properties[kCGImagePropertyTIFFDictionary as String] = tiffDict
-    }
-    if !exifDict.isEmpty {
-        properties[kCGImagePropertyExifDictionary as String] = exifDict
-    }
-
-    return properties as CFDictionary
-}
-#endif
-
-// MARK: - Contact Sheet Layout
-
-/// Computes contact sheet grid dimensions
-func contactSheetLayout(
-    imageCount: Int,
-    columns: Int,
-    thumbnailSize: Int,
-    spacing: Int,
-    includeLabels: Bool
-) -> (rows: Int, totalWidth: Int, totalHeight: Int) {
-    let rows = max(1, (imageCount + columns - 1) / columns)
-    let labelHeight = includeLabels ? 20 : 0
-    let totalWidth = columns * thumbnailSize + (columns + 1) * spacing
-    let totalHeight = rows * (thumbnailSize + labelHeight) + (rows + 1) * spacing
-    return (rows, totalWidth, totalHeight)
-}
-
-/// Returns the position for a thumbnail at a given index in the grid
-func thumbnailPosition(
-    index: Int,
-    columns: Int,
-    thumbnailSize: Int,
-    spacing: Int,
-    includeLabels: Bool
-) -> (x: Int, y: Int) {
-    let col = index % columns
-    let row = index / columns
-    let labelHeight = includeLabels ? 20 : 0
-    let x = spacing + col * (thumbnailSize + spacing)
-    let y = spacing + row * (thumbnailSize + labelHeight + spacing)
-    return (x, y)
-}
-
-// MARK: - Animation Helpers
-
-/// Computes the GIF frame delay from FPS
-func gifFrameDelay(fps: Double) -> Double {
-    guard fps > 0 else { return 0.1 }
-    return 1.0 / fps
-}
-
-/// Validates and clamps frame range
-func validatedFrameRange(start: Int, end: Int?, totalFrames: Int) -> (start: Int, end: Int)? {
-    guard totalFrames > 0 else { return nil }
-    let clampedStart = max(0, min(start, totalFrames - 1))
-    let clampedEnd: Int
-    if let end = end {
-        clampedEnd = max(clampedStart, min(end, totalFrames - 1))
-    } else {
-        clampedEnd = totalFrames - 1
-    }
-    return (clampedStart, clampedEnd)
-}
-
-// MARK: - Bulk Export Path Helpers
-
-/// Sanitize a string for use as a path component
-func sanitizePathComponent(_ value: String) -> String {
-    let allowed = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "._-"))
-    var result = ""
-    for char in value.unicodeScalars {
-        if allowed.contains(char) {
-            result.append(Character(char))
-        } else {
-            result.append("_")
-        }
-    }
-    if result.isEmpty { result = "UNKNOWN" }
-    return result
-}
-
-/// Builds the output path for a bulk export file based on organization scheme
-func buildOrganizedPath(
-    baseOutput: String,
-    scheme: OrganizationScheme,
-    patientName: String?,
-    studyUID: String?,
-    seriesUID: String?,
-    filename: String
-) -> String {
-    switch scheme {
-    case .flat:
-        return (baseOutput as NSString).appendingPathComponent(filename)
-    case .patient:
-        let patient = sanitizePathComponent(patientName ?? "UNKNOWN")
-        return (baseOutput as NSString)
-            .appendingPathComponent(patient)
-            .appending("/\(filename)")
-    case .study:
-        let patient = sanitizePathComponent(patientName ?? "UNKNOWN")
-        let study = sanitizePathComponent(studyUID ?? "UNKNOWN")
-        return (baseOutput as NSString)
-            .appendingPathComponent(patient)
-            .appending("/\(study)/\(filename)")
-    case .series:
-        let patient = sanitizePathComponent(patientName ?? "UNKNOWN")
-        let study = sanitizePathComponent(studyUID ?? "UNKNOWN")
-        let series = sanitizePathComponent(seriesUID ?? "UNKNOWN")
-        return (baseOutput as NSString)
-            .appendingPathComponent(patient)
-            .appending("/\(study)/\(series)/\(filename)")
-    }
-}
-
-// MARK: - Window Settings Helper
-
-func determineWindowSettings(from file: DICOMFile, pixelData: PixelData, frameIndex: Int,
-                              windowCenter: Double?, windowWidth: Double?) -> WindowSettings {
-    if let center = windowCenter, let width = windowWidth {
-        return WindowSettings(center: center, width: width)
-    }
-    if let windowFromFile = file.windowSettings() {
-        return windowFromFile
-    }
-    if let range = pixelData.pixelRange(forFrame: frameIndex) {
-        let center = Double(range.min + range.max) / 2.0
-        let width = Double(range.max - range.min)
-        return WindowSettings(center: center, width: max(1.0, width))
-    }
-    let assumedBitDepth = 16
-    let maxPixelValue = (1 << assumedBitDepth) - 1
-    return WindowSettings(center: Double(maxPixelValue) / 2.0, width: max(1.0, Double(maxPixelValue)))
-}
+// ExportImageFormat / OrganizationScheme / ExportError and the export helpers now
+// live in DICOMKit (DICOMImageExporter). Add the CLI-only ArgumentParser
+// conformance here — both enums are RawRepresentable<String>, so the default
+// ExpressibleByArgument implementation applies.
+extension ExportImageFormat: ExpressibleByArgument {}
+extension OrganizationScheme: ExpressibleByArgument {}
 
 // MARK: - Main Command
 
@@ -381,7 +107,7 @@ extension DICOMExport {
 
             let cgImage: CGImage?
             if applyWindow {
-                let window = determineWindowSettings(from: dicomFile, pixelData: pixelData,
+                let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pixelData,
                                                       frameIndex: frameIndex,
                                                       windowCenter: windowCenter, windowWidth: windowWidth)
                 cgImage = try dicomFile.tryRenderFrame(frameIndex, window: window)
@@ -407,10 +133,10 @@ extension DICOMExport {
             var metadata: CFDictionary? = nil
             if embedMetadata {
                 let fields = exifFields?.split(separator: ",").map(String.init)
-                metadata = buildEXIFMetadata(from: dicomFile, fields: fields)
+                metadata = DICOMImageExporter.buildEXIFMetadata(from: dicomFile, fields: fields)
             }
 
-            try exportCGImage(image, to: outputURL, format: format, quality: quality, metadata: metadata)
+            try DICOMImageExporter.exportCGImage(image, to: outputURL, format: format, quality: quality, metadata: metadata)
             print("Exported: \(outputPath)")
             #else
             throw ExportError.unsupportedPlatform
@@ -461,7 +187,7 @@ extension DICOMExport {
                 throw ExportError.invalidInput("No input files specified")
             }
 
-            let layout = contactSheetLayout(
+            let layout = DICOMImageExporter.contactSheetLayout(
                 imageCount: inputs.count,
                 columns: columns,
                 thumbnailSize: thumbnailSize,
@@ -487,7 +213,7 @@ extension DICOMExport {
             context.fill(CGRect(x: 0, y: 0, width: layout.totalWidth, height: layout.totalHeight))
 
             for (index, inputPath) in inputs.enumerated() {
-                let pos = thumbnailPosition(
+                let pos = DICOMImageExporter.thumbnailPosition(
                     index: index,
                     columns: columns,
                     thumbnailSize: thumbnailSize,
@@ -525,7 +251,7 @@ extension DICOMExport {
             }
 
             let outputURL = URL(fileURLWithPath: output)
-            try exportCGImage(sheetImage, to: outputURL, format: format, quality: quality, metadata: nil)
+            try DICOMImageExporter.exportCGImage(sheetImage, to: outputURL, format: format, quality: quality, metadata: nil)
             print("Contact sheet exported: \(output) (\(inputs.count) images, \(columns)x\(layout.rows) grid)")
             #else
             throw ExportError.unsupportedPlatform
@@ -588,12 +314,12 @@ extension DICOMExport {
                 throw ExportError.noFrames
             }
 
-            guard let range = validatedFrameRange(start: startFrame, end: endFrame, totalFrames: totalFrames) else {
+            guard let range = DICOMImageExporter.validatedFrameRange(start: startFrame, end: endFrame, totalFrames: totalFrames) else {
                 throw ExportError.noFrames
             }
 
             let clampedScale = max(0.1, min(2.0, scale))
-            let delay = gifFrameDelay(fps: fps)
+            let delay = DICOMImageExporter.gifFrameDelay(fps: fps)
 
             let outputURL = URL(fileURLWithPath: output)
             let frameCount = range.end - range.start + 1
@@ -626,7 +352,7 @@ extension DICOMExport {
             for frameIndex in range.start...range.end {
                 let cgImage: CGImage?
                 if applyWindow, let pd = pixelData {
-                    let window = determineWindowSettings(from: dicomFile, pixelData: pd,
+                    let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pd,
                                                           frameIndex: frameIndex,
                                                           windowCenter: windowCenter, windowWidth: windowWidth)
                     cgImage = try dicomFile.tryRenderFrame(frameIndex, window: window)
@@ -770,7 +496,7 @@ extension DICOMExport {
 
                     let cgImage: CGImage?
                     if applyWindow {
-                        let window = determineWindowSettings(from: dicomFile, pixelData: pixelDataObj,
+                        let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pixelDataObj,
                                                               frameIndex: 0,
                                                               windowCenter: nil, windowWidth: nil)
                         cgImage = try dicomFile.tryRenderFrame(0, window: window)
@@ -790,7 +516,7 @@ extension DICOMExport {
                     let seriesUID = dicomFile.dataSet.string(for: .seriesInstanceUID)
                     let baseName = fileURL.deletingPathExtension().lastPathComponent + "." + format.fileExtension
 
-                    let outputPath = buildOrganizedPath(
+                    let outputPath = DICOMImageExporter.buildOrganizedPath(
                         baseOutput: output,
                         scheme: organizeBy,
                         patientName: patientName,
@@ -807,10 +533,10 @@ extension DICOMExport {
 
                     var metadata: CFDictionary? = nil
                     if embedMetadata {
-                        metadata = buildEXIFMetadata(from: dicomFile, fields: nil)
+                        metadata = DICOMImageExporter.buildEXIFMetadata(from: dicomFile, fields: nil)
                     }
 
-                    try exportCGImage(image, to: outputURL, format: format, quality: quality, metadata: metadata)
+                    try DICOMImageExporter.exportCGImage(image, to: outputURL, format: format, quality: quality, metadata: metadata)
                     successCount += 1
                     if verbose { print("✓ \(outputPath)") }
                 } catch {
@@ -827,40 +553,5 @@ extension DICOMExport {
     }
 }
 
-// MARK: - Image Export Helper
-
-#if canImport(CoreGraphics) && canImport(ImageIO)
-func exportCGImage(_ image: CGImage, to url: URL, format: ExportImageFormat,
-                   quality: Int, metadata: CFDictionary?) throws {
-    guard let destination = CGImageDestinationCreateWithURL(
-        url as CFURL,
-        format.utType.identifier as CFString,
-        1,
-        nil
-    ) else {
-        throw ExportError.exportFailed
-    }
-
-    var options: [CFString: Any] = [:]
-    if format == .jpeg {
-        options[kCGImageDestinationLossyCompressionQuality] = Double(quality) / 100.0
-    }
-
-    if let metadata = metadata {
-        // Merge metadata into options
-        if let metaDict = metadata as? [String: Any] {
-            for (key, value) in metaDict {
-                options[key as CFString] = value
-            }
-        }
-    }
-
-    CGImageDestinationAddImage(destination, image, options as CFDictionary)
-
-    guard CGImageDestinationFinalize(destination) else {
-        throw ExportError.exportFailed
-    }
-}
-#endif
 
 DICOMExport.main()

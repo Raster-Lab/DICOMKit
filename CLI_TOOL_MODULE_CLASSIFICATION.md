@@ -87,7 +87,7 @@ for example from:
 | `dicom-image` | `dicom-image` / `dicom-image` | `Sources/dicom-image` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; convert via shared `ImageConverter` | Run `dicom-image` | ✅ Image→Secondary-Capture core extracted to `DICOMKit` (`Sources/DICOMKit/SecondaryCapture/ImageConverter.swift`); CLI + DICOMStudio share it, UID gen reconciled to `UIDGenerator` (2026-06-08) |
 | `dicom-dcmdir` | `dicom-dcmdir` / `dicom-dcmdir` | `Sources/dicom-dcmdir` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-dcmdir` | DICOMDIR management |
 | `dicom-archive` | `dicom-archive` / `dicom-archive` | `Sources/dicom-archive` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; all operations via shared `ArchiveStore` | Run `dicom-archive` | ✅ Full archive engine (index model + 7 operations) extracted to `DICOMKit` (`Sources/DICOMKit/Archive/`); CLI + DICOMStudio share it, parity MATCHES (2026-06-08) |
-| `dicom-export` | `dicom-export` / `dicom-export` | `Sources/dicom-export` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-export` | Image export workflow |
+| `dicom-export` | `dicom-export` / `dicom-export` | `Sources/dicom-export` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; export helpers via shared `DICOMImageExporter` | Run `dicom-export` | ✅ Deterministic export helpers (EXIF/layout/paths/window/encode) extracted to `DICOMKit` (`Sources/DICOMKit/ImageExport/`); CLI + DICOMStudio share them (2026-06-08) |
 | `dicom-qr` | `dicom-qr` / `dicom-qr` | `Sources/dicom-qr` | `DICOMKit`, `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network + DICOM libraries | Import `DICOMKit`, `DICOMCore`, `DICOMNetwork` | Run `dicom-qr` | Composite query/retrieve helper |
 | `dicom-wado` | `dicom-wado` / `dicom-wado` | `Sources/dicom-wado` | `DICOMCore`, `DICOMWeb` | `ArgumentParser` | CLI adapter over web libraries | Import `DICOMCore`, `DICOMWeb`; direct client exists via `DICOMwebClient` | Run `dicom-wado` | DICOMweb retrieve workflow |
 | `dicom-echo` | `dicom-echo` / `dicom-echo` | `Sources/dicom-echo` | `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network libraries | Import `DICOMCore`, `DICOMNetwork` | Run `dicom-echo` | DIMSE echo/verification |
@@ -158,6 +158,7 @@ Examples include:
 - `ImageConverter`
 - `UIDManager`
 - `CompressionManager`
+- `DICOMImageExporter`
 - `DICOMJSONEncoder` / `DICOMJSONDecoder`
 - `DICOMXMLEncoder` / `DICOMXMLDecoder`
 - `DICOMwebClient`
