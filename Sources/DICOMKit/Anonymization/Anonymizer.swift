@@ -1,6 +1,5 @@
 import Foundation
 import DICOMCore
-import DICOMKit
 import DICOMDictionary
 
 #if canImport(CryptoKit)
@@ -80,20 +79,36 @@ public enum AnonymizationAction {
 
 /// Result of anonymization
 public struct AnonymizationResult {
-    let filePath: String
-    let success: Bool
-    let changedTags: [Tag]
-    let warnings: [String]
+    public let filePath: String
+    public let success: Bool
+    public let changedTags: [Tag]
+    public let warnings: [String]
+
+    public init(filePath: String, success: Bool, changedTags: [Tag], warnings: [String]) {
+        self.filePath = filePath
+        self.success = success
+        self.changedTags = changedTags
+        self.warnings = warnings
+    }
 }
 
 /// Audit log entry
 public struct AuditLogEntry {
-    let timestamp: Date
-    let filePath: String
-    let action: String
-    let tag: Tag
-    let originalValue: String?
-    let newValue: String?
+    public let timestamp: Date
+    public let filePath: String
+    public let action: String
+    public let tag: Tag
+    public let originalValue: String?
+    public let newValue: String?
+
+    public init(timestamp: Date, filePath: String, action: String, tag: Tag, originalValue: String?, newValue: String?) {
+        self.timestamp = timestamp
+        self.filePath = filePath
+        self.action = action
+        self.tag = tag
+        self.originalValue = originalValue
+        self.newValue = newValue
+    }
 }
 
 /// Main anonymizer class
@@ -131,7 +146,12 @@ public class Anonymizer {
         var changedTags: [Tag] = []
         var warnings: [String] = []
         
-        let tagsToProcess = profile.tagsToRemove.subtracting(preserveTags)
+        // Process every tag the profile removes PLUS any tag named explicitly via
+        // customActions (--remove / --replace), minus preserved (--keep) tags.
+        // Unioning customActions.keys is the shared-engine home of the F19 fix:
+        // without it, `--remove`/`--replace` only affected tags already in the
+        // profile set, silently dropping custom actions on any other tag.
+        let tagsToProcess = profile.tagsToRemove.union(customActions.keys).subtracting(preserveTags)
         
         for tag in tagsToProcess {
             guard let element = newDataSet[tag] else { continue }
@@ -393,21 +413,3 @@ public class Anonymizer {
     }
 }
 
-enum AnonymizationError: Error {
-    case invalidProfile
-    case fileNotFound
-    case writeError(String)
-}
-
-extension AnonymizationError: LocalizedError {
-    var errorDescription: String? {
-        switch self {
-        case .invalidProfile:
-            return "Invalid anonymization profile"
-        case .fileNotFound:
-            return "File not found"
-        case .writeError(let msg):
-            return "Write error: \(msg)"
-        }
-    }
-}

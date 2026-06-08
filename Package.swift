@@ -287,6 +287,9 @@ let package = Package(
             dependencies: [
                 "DICOMCore",
                 "DICOMDictionary",
+                // Level-5 validation (DICOMValidator) checks JPEG 2000 / HTJ2K
+                // codestream conformance via J2KCore.
+                .product(name: "J2KCore", package: "J2KSwift"),
                 .product(name: "J2K3D", package: "J2KSwift"),
                 // Phase 6: JPIP streaming
                 .product(name: "JPIP", package: "J2KSwift")

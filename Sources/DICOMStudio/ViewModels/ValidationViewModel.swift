@@ -2,8 +2,9 @@
 // DICOMStudio
 //
 // ViewModel for the DICOM Validation view.
-// Implements dicom-validate functionality natively using DICOMKit APIs,
-// producing output that matches the CLI tool exactly.
+// Runs validation through DICOMKit.DICOMValidator — the exact same engine the
+// `dicom-validate` CLI uses — so the app and the tool cannot drift. The library
+// ValidationResult is mapped onto the view's display model (ValidationFileResult).
 
 import Foundation
 import Observation
@@ -78,8 +79,8 @@ public final class ValidationViewModel {
 
     // MARK: - Run Validation
 
-    /// Validates the input file/directory using DICOMKit APIs.
-    /// Output text matches dicom-validate Report.renderText() / renderJSON() exactly.
+    /// Validates the input file/directory using the shared DICOMKit engine.
+    /// Output text is rendered by ValidationHelpers (matching the CLI report).
     public func runValidation() {
         guard !inputPath.isEmpty else {
             validationOutput = "Error: Input path is required.\n"
@@ -174,8 +175,12 @@ public final class ValidationViewModel {
         service.clearHistory()
     }
 
-    // MARK: - Private: Core Validation Logic
-    // Mirrors DICOMValidator in dicom-validate/Validator.swift
+    // MARK: - Private: Core Validation (shared DICOMKit engine)
+    //
+    // Validation runs through DICOMKit.DICOMValidator — the exact engine the
+    // `dicom-validate` CLI uses. There is no app-local validation logic anymore;
+    // library results are mapped onto ValidationFileResult for display so the app
+    // and the CLI can never disagree on what is valid.
 
     private func validateInput() async throws -> [ValidationFileResult] {
         let url = URL(fileURLWithPath: inputPath)
@@ -185,20 +190,27 @@ public final class ValidationViewModel {
                           userInfo: [NSLocalizedDescriptionKey: "Input path not found: \(inputPath)"])
         }
 
+        let trimmedIOD = iod.trimmingCharacters(in: .whitespaces)
+        let validator = DICOMKit.DICOMValidator(
+            level: level,
+            iod: trimmedIOD.isEmpty ? nil : trimmedIOD,
+            force: force
+        )
+
         if isDir.boolValue {
             guard recursive else {
                 throw NSError(domain: "ValidationViewModel", code: 2,
                               userInfo: [NSLocalizedDescriptionKey: "Directory validation requires --recursive flag"])
             }
-            return try await validateDirectory(url: url)
+            return validateDirectory(url: url, validator: validator)
         } else {
-            return [try validateFile(url: url)]
+            return [validateFile(url: url, validator: validator)]
         }
     }
 
-    private func validateDirectory(url: URL) async throws -> [ValidationFileResult] {
-        // Collect URLs synchronously on the current executor to avoid
-        // NSDirectoryEnumerator's makeIterator unavailability in async context.
+    private func validateDirectory(url: URL, validator: DICOMKit.DICOMValidator) -> [ValidationFileResult] {
+        // Collect URLs synchronously to avoid NSDirectoryEnumerator's makeIterator
+        // unavailability in an async context.
         let fileURLs: [URL] = {
             var collected: [URL] = []
             guard let enumerator = FileManager.default.enumerator(
@@ -213,348 +225,41 @@ public final class ValidationViewModel {
             return collected
         }()
 
-        var results: [ValidationFileResult] = []
-        for fileURL in fileURLs {
-            do {
-                results.append(try validateFile(url: fileURL))
-            } catch {
-                results.append(ValidationFileResult(
-                    filePath: fileURL.path,
-                    isValid: false,
-                    errors: [ValidationIssueEntry(level: .error, message: error.localizedDescription)]
-                ))
-            }
-        }
-        return results
+        return fileURLs.map { validateFile(url: $0, validator: validator) }
     }
 
-    /// Validates a single DICOM file — mirrors DICOMValidator.validate().
-    private func validateFile(url: URL) throws -> ValidationFileResult {
-        var errors: [ValidationIssueEntry] = []
-        var warnings: [ValidationIssueEntry] = []
-
-        let data = try Data(contentsOf: url)
-
-        // Level 1: File format
-        let dicomFile: DICOMFile
+    /// Validates one file through the shared DICOMKit engine and maps the library
+    /// result onto the view model's display model.
+    private func validateFile(url: URL, validator: DICOMKit.DICOMValidator) -> ValidationFileResult {
         do {
-            dicomFile = try DICOMFile.read(from: data, force: force)
+            let data = try Data(contentsOf: url)
+            let result = try validator.validate(data: data, filePath: url.path)
+            return Self.mapResult(result)
         } catch {
-            errors.append(ValidationIssueEntry(level: .error,
-                message: "Failed to parse DICOM file: \(error.localizedDescription)"))
-            return ValidationFileResult(filePath: url.path, isValid: false, errors: errors, warnings: warnings)
+            return ValidationFileResult(
+                filePath: url.path,
+                isValid: false,
+                errors: [ValidationIssueEntry(level: .error, message: error.localizedDescription)]
+            )
         }
+    }
 
-        // Check DICM prefix
-        if !force && data.count >= 132 {
-            let offset = data.startIndex.advanced(by: 128)
-            let prefix = data[offset..<offset.advanced(by: 4)]
-            if String(data: prefix, encoding: .ascii) != "DICM" {
-                warnings.append(ValidationIssueEntry(level: .warning,
-                    message: "Missing DICM prefix at byte 128"))
-            }
-        }
+    // MARK: - Mapping (library result -> display model)
 
-        // Validate required File Meta Information
-        let requiredMetaTags: [(Tag, String)] = [
-            (.mediaStorageSOPClassUID,    "Media Storage SOP Class UID"),
-            (.mediaStorageSOPInstanceUID, "Media Storage SOP Instance UID"),
-            (.transferSyntaxUID,          "Transfer Syntax UID"),
-        ]
-        for (tag, name) in requiredMetaTags {
-            if dicomFile.fileMetaInformation[tag] == nil {
-                errors.append(ValidationIssueEntry(level: .error,
-                    message: "Missing required File Meta Information element: \(name)",
-                    tagString: tag.description))
-            }
-        }
-
-        if level >= 2 {
-            // Level 2: Required Type 1 tags
-            let type1Tags: [(Tag, String)] = [
-                (.sopClassUID,    "SOP Class UID"),
-                (.sopInstanceUID, "SOP Instance UID"),
-            ]
-            for (tag, name) in type1Tags {
-                if let el = dicomFile.dataSet[tag] {
-                    if el.length == 0 {
-                        errors.append(ValidationIssueEntry(level: .error,
-                            message: "Type 1 element \(name) is empty",
-                            tagString: tag.description))
-                    }
-                } else {
-                    errors.append(ValidationIssueEntry(level: .error,
-                        message: "Missing required Type 1 element: \(name)",
-                        tagString: tag.description))
-                }
-            }
-
-            // VR mismatch validation
-            for tag in dicomFile.dataSet.tags {
-                if let element = dicomFile.dataSet[tag],
-                   let entry = DataElementDictionary.lookup(tag: tag) {
-                    if !entry.vr.contains(element.vr) && element.vr != .UN {
-                        warnings.append(ValidationIssueEntry(level: .warning,
-                            message: "Unexpected VR \(element.vr) for tag \(tag) (expected: \(entry.vr.map { $0.rawValue }.joined(separator: " or ")))",
-                            tagString: tag.description))
-                    }
-                }
-            }
-
-            // UID format validation
-            let uidTags: [(Tag, String)] = [
-                (.sopClassUID,    "SOP Class UID"),
-                (.sopInstanceUID, "SOP Instance UID"),
-                (.studyInstanceUID, "Study Instance UID"),
-                (.seriesInstanceUID, "Series Instance UID"),
-            ]
-            for (tag, name) in uidTags {
-                if let val = dicomFile.dataSet.string(for: tag), !val.trimmingCharacters(in: .whitespaces).isEmpty {
-                    if !isValidUID(val) {
-                        errors.append(ValidationIssueEntry(level: .error,
-                            message: "Invalid UID format for \(name)",
-                            tagString: tag.description))
-                    }
-                }
-            }
-
-            // Date format
-            let dateTags: [(Tag, String)] = [
-                (.studyDate, "Study Date"),
-                (.seriesDate, "Series Date"),
-                (.patientBirthDate, "Patient Birth Date"),
-            ]
-            for (tag, name) in dateTags {
-                if let val = dicomFile.dataSet.string(for: tag), !val.isEmpty {
-                    if !isValidDICOMDate(val) {
-                        errors.append(ValidationIssueEntry(level: .error,
-                            message: "Invalid date format for \(name) (expected YYYYMMDD)",
-                            tagString: tag.description))
-                    }
-                }
-            }
-        }
-
-        if level >= 3 {
-            // Level 3: IOD-specific mandatory tags
-            let iodName = iod.isEmpty ? detectIOD(from: dicomFile.dataSet) : iod
-            if let iodName {
-                validateIOD(iodName: iodName, dataSet: dicomFile.dataSet, errors: &errors, warnings: &warnings)
-            } else {
-                warnings.append(ValidationIssueEntry(level: .warning,
-                    message: "Cannot determine IOD type for validation",
-                    tagString: Tag.sopClassUID.description))
-            }
-        }
-
-        if level >= 4 {
-            // Level 4: Best practices
-            if dicomFile.dataSet.string(for: .patientName) == nil {
-                warnings.append(ValidationIssueEntry(level: .warning,
-                    message: "Patient Name (0010,0010) is absent — recommended for identification"))
-            }
-            if dicomFile.dataSet.string(for: .studyInstanceUID) == nil {
-                warnings.append(ValidationIssueEntry(level: .warning,
-                    message: "Study Instance UID (0020,000D) is absent"))
-            }
-            if dicomFile.dataSet.string(for: .seriesInstanceUID) == nil {
-                warnings.append(ValidationIssueEntry(level: .warning,
-                    message: "Series Instance UID (0020,000E) is absent"))
-            }
-            // Check for private creator tags without group length
-            validateBestPractices(dataSet: dicomFile.dataSet, warnings: &warnings)
-        }
-
-        if level >= 5 {
-            // Level 5: J2K codestream — informational note
-            let tsUID = dicomFile.fileMetaInformation.string(for: .transferSyntaxUID) ?? ""
-            if isJ2KTransferSyntax(tsUID) {
-                warnings.append(ValidationIssueEntry(level: .info,
-                    message: "JPEG 2000 codestream conformance check (Level 5) — use dicom-validate CLI for full J2K validation"))
-            }
-        }
-
-        return ValidationFileResult(
-            filePath: url.path,
-            isValid: errors.isEmpty,
-            errors: errors,
-            warnings: warnings
+    private static func mapResult(_ result: DICOMKit.ValidationResult) -> ValidationFileResult {
+        ValidationFileResult(
+            filePath: result.filePath,
+            isValid: result.isValid,
+            errors: result.errors.map(mapIssue),
+            warnings: result.warnings.map(mapIssue)
         )
     }
 
-    // MARK: - IOD Validation
-
-    private func detectIOD(from dataSet: DataSet) -> String? {
-        guard let uid = dataSet.string(for: .sopClassUID)?.trimmingCharacters(in: .whitespaces) else { return nil }
-        let map: [String: String] = [
-            "1.2.840.10008.5.1.4.1.1.2":     "CTImageStorage",
-            "1.2.840.10008.5.1.4.1.1.4":     "MRImageStorage",
-            "1.2.840.10008.5.1.4.1.1.6.1":   "UltrasoundImageStorage",
-            "1.2.840.10008.5.1.4.1.1.3.1":   "UltrasoundMultiframeImageStorage",
-            "1.2.840.10008.5.1.4.1.1.12.1":  "XRayAngiographicImageStorage",
-            "1.2.840.10008.5.1.4.1.1.7":     "SecondaryCaptureImageStorage",
-            "1.2.840.10008.5.1.4.1.1.88.11": "BasicTextSRStorage",
-            "1.2.840.10008.5.1.4.1.1.88.22": "EnhancedSRStorage",
-            "1.2.840.10008.5.1.4.1.1.88.33": "ComprehensiveSRStorage",
-            "1.2.840.10008.5.1.4.1.1.66.4":  "SegmentationStorage",
-            "1.2.840.10008.5.1.4.1.1.104.1": "EncapsulatedPDFStorage",
-            "1.2.840.10008.5.1.4.1.1.2.1":   "EnhancedCTImageStorage",
-            "1.2.840.10008.5.1.4.1.1.4.1":   "EnhancedMRImageStorage",
-            "1.2.840.10008.5.1.4.1.1.20":    "NuclearMedicineImageStorage",
-            "1.2.840.10008.5.1.4.1.1.128":   "PositronEmissionTomographyImageStorage",
-            "1.2.840.10008.5.1.4.1.1.1":     "ComputedRadiographyImageStorage",
-        ]
-        return map[uid]
-    }
-
-    private func validateIOD(iodName: String, dataSet: DataSet, errors: inout [ValidationIssueEntry], warnings: inout [ValidationIssueEntry]) {
-        switch iodName {
-        case "CTImageStorage", "MRImageStorage",
-             "UltrasoundImageStorage", "NuclearMedicineImageStorage",
-             "ComputedRadiographyImageStorage", "PositronEmissionTomographyImageStorage":
-            validateImageIOD(dataSet: dataSet, iodName: iodName, errors: &errors, warnings: &warnings)
-        case "SecondaryCaptureImageStorage":
-            validateSecondaryCaptureIOD(dataSet: dataSet, errors: &errors, warnings: &warnings)
-        case "BasicTextSRStorage", "EnhancedSRStorage", "ComprehensiveSRStorage":
-            validateSRIOD(dataSet: dataSet, errors: &errors, warnings: &warnings)
-        case "SegmentationStorage":
-            validateSegmentationIOD(dataSet: dataSet, errors: &errors, warnings: &warnings)
-        case "EncapsulatedPDFStorage":
-            validateEncapsulatedPDFIOD(dataSet: dataSet, errors: &errors, warnings: &warnings)
-        default:
-            warnings.append(ValidationIssueEntry(level: .warning,
-                message: "IOD-specific validation not available for \(iodName)"))
-        }
-    }
-
-    private func validateImageIOD(dataSet: DataSet, iodName: String, errors: inout [ValidationIssueEntry], warnings: inout [ValidationIssueEntry]) {
-        let mandatory: [(Tag, String)] = [
-            (.rows,            "Rows (0028,0010)"),
-            (.columns,         "Columns (0028,0011)"),
-            (.bitsAllocated,   "Bits Allocated (0028,0100)"),
-            (.bitsStored,      "Bits Stored (0028,0101)"),
-            (.highBit,         "High Bit (0028,0102)"),
-            (.pixelRepresentation, "Pixel Representation (0028,0103)"),
-            (.samplesPerPixel, "Samples Per Pixel (0028,0002)"),
-            (.photometricInterpretation, "Photometric Interpretation (0028,0004)"),
-        ]
-        for (tag, name) in mandatory {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssueEntry(level: .error,
-                    message: "Missing mandatory element for \(iodName): \(name)",
-                    tagString: tag.description))
-            }
-        }
-    }
-
-    private func validateSecondaryCaptureIOD(dataSet: DataSet, errors: inout [ValidationIssueEntry], warnings: inout [ValidationIssueEntry]) {
-        let mandatory: [(Tag, String)] = [
-            (.rows, "Rows (0028,0010)"),
-            (.columns, "Columns (0028,0011)"),
-        ]
-        for (tag, name) in mandatory {
-            if dataSet[tag] == nil {
-                errors.append(ValidationIssueEntry(level: .error,
-                    message: "Missing mandatory element for SecondaryCaptureImageStorage: \(name)",
-                    tagString: tag.description))
-            }
-        }
-        if dataSet.string(for: .conversionType) == nil {
-            warnings.append(ValidationIssueEntry(level: .warning,
-                message: "Conversion Type (0008,0064) is recommended for Secondary Capture"))
-        }
-    }
-
-    private func validateSRIOD(dataSet: DataSet, errors: inout [ValidationIssueEntry], warnings: inout [ValidationIssueEntry]) {
-        let mandatory: [(Tag, String)] = [
-            (.contentDate, "Content Date (0008,0023)"),
-            (.contentTime, "Content Time (0008,0033)"),
-            (.completionFlag, "Completion Flag (0040,A491)"),
-            (.verificationFlag, "Verification Flag (0040,A493)"),
-        ]
-        for (tag, name) in mandatory {
-            if dataSet[tag] == nil {
-                warnings.append(ValidationIssueEntry(level: .warning,
-                    message: "Missing recommended element: \(name)",
-                    tagString: tag.description))
-            }
-        }
-    }
-
-    private func validateSegmentationIOD(dataSet: DataSet, errors: inout [ValidationIssueEntry], warnings: inout [ValidationIssueEntry]) {
-        if dataSet[.segmentationType] == nil {
-            errors.append(ValidationIssueEntry(level: .error,
-                message: "Missing mandatory element for Segmentation: Segmentation Type (0062,0001)",
-                tagString: Tag.segmentationType.description))
-        }
-    }
-
-    private func validateEncapsulatedPDFIOD(dataSet: DataSet, errors: inout [ValidationIssueEntry], warnings: inout [ValidationIssueEntry]) {
-        if dataSet[.encapsulatedDocument] == nil {
-            errors.append(ValidationIssueEntry(level: .error,
-                message: "Missing mandatory element: Encapsulated Document (0042,0011)",
-                tagString: Tag.encapsulatedDocument.description))
-        }
-        if dataSet.string(for: .mimeTypeOfEncapsulatedDocument) == nil {
-            warnings.append(ValidationIssueEntry(level: .warning,
-                message: "MIME Type of Encapsulated Document (0042,0012) is absent"))
-        }
-    }
-
-    // MARK: - Best Practices
-
-    private func validateBestPractices(dataSet: DataSet, warnings: inout [ValidationIssueEntry]) {
-        // Check instance number is present
-        if dataSet[.instanceNumber] == nil {
-            warnings.append(ValidationIssueEntry(level: .warning,
-                message: "Instance Number (0020,0013) is absent — recommended for ordering"))
-        }
-        // Check specific character set (wording/tag match CLI Validator.validateBestPractices).
-        if dataSet[.specificCharacterSet] == nil {
-            warnings.append(ValidationIssueEntry(level: .warning,
-                message: "Specific Character Set not specified (ISO_IR 100 or UTF-8 recommended)",
-                tagString: "(0008,0005)"))
-        }
-        // Private-tag interoperability check (matches CLI Validator.validateBestPractices).
-        let privateTagCount = dataSet.tags.filter { $0.isPrivate }.count
-        if privateTagCount > 10 {
-            warnings.append(ValidationIssueEntry(level: .warning,
-                message: "File contains \(privateTagCount) private tags (may affect interoperability)"))
-        }
-    }
-
-    // MARK: - Format Validators
-
-    private func isValidUID(_ uid: String) -> Bool {
-        let cleaned = uid.trimmingCharacters(in: .whitespaces)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "\0"))
-        guard !cleaned.isEmpty, cleaned.count <= 64 else { return false }
-        let components = cleaned.split(separator: ".", omittingEmptySubsequences: false)
-        for component in components {
-            guard !component.isEmpty else { return false }
-            guard component.allSatisfy({ $0.isNumber }) else { return false }
-            if component.count > 1 && component.first == "0" { return false }
-        }
-        return true
-    }
-
-    private func isValidDICOMDate(_ value: String) -> Bool {
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        guard trimmed.count == 8, trimmed.allSatisfy({ $0.isNumber }) else { return false }
-        guard let month = Int(trimmed.dropFirst(4).prefix(2)),
-              let day   = Int(trimmed.dropFirst(6)) else { return false }
-        return month >= 1 && month <= 12 && day >= 1 && day <= 31
-    }
-
-    private func isJ2KTransferSyntax(_ uid: String) -> Bool {
-        let j2kUIDs = [
-            "1.2.840.10008.1.2.4.90",
-            "1.2.840.10008.1.2.4.91",
-            "1.2.840.10008.1.2.4.92",
-            "1.2.840.10008.1.2.4.93",
-            "1.2.840.10008.1.2.4.202",
-            "1.2.840.10008.1.2.4.203",
-        ]
-        return j2kUIDs.contains(uid.trimmingCharacters(in: .whitespaces))
+    private static func mapIssue(_ issue: DICOMKit.ValidationIssue) -> ValidationIssueEntry {
+        ValidationIssueEntry(
+            level: issue.level == .error ? .error : .warning,
+            message: issue.message,
+            tagString: issue.tag.map { $0.description }
+        )
     }
 }
