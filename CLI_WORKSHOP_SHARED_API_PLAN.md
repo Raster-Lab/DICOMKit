@@ -16,19 +16,23 @@
 >
 > **Wave 1 ✅ COMPLETE:** `dicom-validate`, `dicom-diff`, `dicom-anon`, `dicom-tags`.
 >
-> **Wave 2 ✅ COMPLETE:** `dicom-split`, `dicom-merge`, `dicom-study`, `dicom-archive`
-> — each engine extracted into DICOMKit, CLI + DICOMStudio share it (see Progress
-> Log).
+> **Wave 2 ✅ COMPLETE:** `dicom-split`, `dicom-merge`, `dicom-study`, `dicom-archive`.
 >
-> **Tier-2 parity: MATCH=266, DIFFERS=0** 🎉 — the last two DIFFERS (`dicom-compress`
-> backends hint, `dicom-uid` lookup footer) are resolved, the `parity-allowlist.json`
-> is now **empty**, and the `PARITY_STRICT=1` gate is green. Next up: **Wave 3**
-> (`dicom-image`, `dicom-pixedit`, `dicom-script`).
+> **Wave 3 ✅ COMPLETE:** `dicom-pixedit` (`PixelEditor`), `dicom-script` (`ScriptEngine`
+> with an injected `CommandRunner`), `dicom-image` (`ImageConverter`) — each engine
+> extracted into DICOMKit, CLI + DICOMStudio share it (see Progress Log).
+>
+> **Tier-2 parity: MATCH=266, DIFFERS=0** 🎉 — the `parity-allowlist.json` is empty and
+> the `PARITY_STRICT=1` gate is green. (`dicom-image` has no committed goldens — its
+> output is non-deterministic via UID/timestamps — so it is verified by build + smoke:
+> convert → valid Secondary Capture DICOM.) Next candidates: the remaining **Bucket B**
+> workflow extractions (`dicom-uid`/`dicom-compress` engines, `dicom-export`, …).
 
 ## Progress Log
 
 | Date | Tool | What changed | Verified |
 |------|------|--------------|----------|
+| 2026-06-08 | **Wave 3** `dicom-image` | Extracted the image→Secondary-Capture conversion into a new `Sources/DICOMKit/SecondaryCapture/ImageConverter.swift` (`ImageConverter` enum + `Metadata`/`ImageConversionError`): `secondaryCaptureData(imageURL:pageIndex:metadata:useExif:) -> Data`, `pageCount(of:)`, `isImageFile`, `generateUID`. The per-image core (CGImage pixel extraction, color-space/photometric handling, EXIF mapping, SC data-set assembly) is shared; each adapter keeps its own orchestration (file-walking, batch, multipage, sandbox writes, summaries). **Reconciled the one known drift:** UIDs now come from `DICOMCore.UIDGenerator` (was a `2.25.<timestamp>` string in the CLI; the app already used `UIDGenerator`). CLI main.swift shrank 660→~300 lines; app `executeDicomImage` deleted ~140 lines of duplicated helpers (`makeDataSet`/`extractPixelData`/EXIF). | `swift build` green; CLI release build + smoke: convert grayscale PNG → DICOM is a **valid Secondary Capture** (`dicom-info`/`dicom-validate`: ✓ VALID, SOP Class 1.2.840.10008.5.1.4.1.1.7, MONOCHROME2). No goldens (non-deterministic), so verified by smoke + transitive engine sharing. Parity unchanged: MATCH=266, DIFFERS=0, strict gate green. |
 | 2026-06-08 | **Wave 3** `dicom-script` | Moved the whole script engine (`ScriptParser`, `ScriptExecutor`, `ScriptValidator`, `TemplateGenerator`, AST types, `ScriptError`, `ScriptLogger`) out of `Sources/dicom-script/ScriptEngine.swift` into `Sources/DICOMKit/Scripting/`. **`Process` no longer lives in the library:** `ScriptExecutor` now calls an injected `CommandRunner` closure — the CLI supplies a real `Process` runner; a sandboxed app supplies a dry-run/no-op runner (never invoked when `dryRun`). Verbose output flows through an injected `log` closure. Added `DICOMKit` to the (previously dependency-free) `dicom-script` target. App `executeDicomScript` deleted its ~113-line duplicated `dicomScriptTemplate` and now emits templates from the shared `TemplateGenerator`; its plan-only run/validate renderer stays (intentional — the sandbox can't execute steps). | `swift build` green; `dicom-script` release build + smoke (template, validate, dry-run plan — no subprocess spawned). Regenerated goldens **unchanged**; both template parity scenarios stay MATCH — MATCH=266, DIFFERS=0, strict gate green. |
 | 2026-06-08 | **Wave 3** `dicom-pixedit` | Moved `PixelEditor` (+ `PixelOperation`, `PixelEditError`, new `PixelEditInfo`) out of `Sources/dicom-pixedit/` into `Sources/DICOMKit/PixelEditing/`. Added a `processData(_:operations:) -> (Data, PixelEditInfo)` core (so DICOMStudio writes via its sandbox-aware `OutputAccess`) alongside the direct-write `processFile`; verbose output via injected `log` closure. App `executeDicomPixedit` deleted its ~190-line inline pixel reimplementation (mask/crop/window-level/invert + sample accessors) and calls the shared engine. Kept the descriptor internal+renamed (`PixelEditDescriptor`) to avoid colliding with `DICOMCore.PixelDataDescriptor`. | `swift build` green; `dicom-pixedit` release build + smoke (invert); regenerated goldens **unchanged**; **all 3 pixedit parity scenarios stay MATCH** — MATCH=266, DIFFERS=0, strict gate green. |
 | 2026-06-08 | **Parity → 0 DIFFERS** (`dicom-compress`, `dicom-uid`) | Retired the last 2 allowlisted DIFFERS. `dicom-uid`: the `N UIDs found` lookup footer moved stderr→stdout (it's a result summary, belongs with the listing — matches DICOMStudio). `dicom-compress`: aligned the app's `backends` hint wording to the CLI (`Use --backend <name>…`). Emptied `parity-allowlist.json` — all prior entries (F4/F5/F9/F10/F14) now retired since their tools call the shared engines and MATCH. | Regenerated goldens; **Tier-2 `StudioParityTests`: MATCH=266, DIFFERS=0**; `PARITY_STRICT=1` gate green with an empty allowlist. |
@@ -146,7 +150,7 @@ delete the app's copy.**
 | `dicom-merge` ✅ **DONE** | `FrameMerger` + `MergeFormat/Level/SortCriteria/Order/Error` | ~~`Sources/dicom-merge/FrameMerger.swift`~~ → now `Sources/DICOMKit/Merging/` | `FrameMerger` shared (log closure + deterministic sort); parity MATCHES |
 | `dicom-archive` ✅ **DONE** | `ArchiveIndex` model + init/import/query/list/export/check/stats ops | ~~`Sources/dicom-archive/main.swift`~~ → now `Sources/DICOMKit/Archive/` | `ArchiveStore` (model + 7 string-returning ops) shared; parity MATCHES |
 | `dicom-study` ✅ **DONE** | `StudyAnalyzer` / `CompletenessChecker` / `StatsCalculator` / `StudyComparator` + models | ~~`Sources/dicom-study/StudyManager.swift`~~ → now `Sources/DICOMKit/Study/` | `StudyScanner` + `StudyReport` + models shared (sorted series, `✓`); parity MATCHES. (`StudyOrganizer` stays CLI-local for now.) |
-| `dicom-image` | image→Secondary-Capture converter (CGImage/ImageIO pixel extract + EXIF) | `Sources/dicom-image/main.swift` | `ImageToSecondaryCaptureConverter` → DICOMKit (route SC assembly through existing `SecondaryCaptureBuilder`) |
+| `dicom-image` ✅ **DONE** | image→Secondary-Capture converter (CGImage/ImageIO pixel extract + EXIF) | ~~`Sources/dicom-image/main.swift`~~ → now `Sources/DICOMKit/SecondaryCapture/ImageConverter.swift` | `ImageConverter` shared (per-image core); UID gen reconciled to `UIDGenerator`; verified by smoke (no goldens) |
 | `dicom-pixedit` ✅ **DONE** | `PixelEditor` + `PixelDataDescriptor` + `PixelOperation` + `PixelEditError` | ~~`Sources/dicom-pixedit/PixelEditor.swift`~~ → now `Sources/DICOMKit/PixelEditing/` | `PixelEditor` shared (`processData`/`processFile` + log closure); parity MATCHES |
 | `dicom-script` ✅ **DONE** | `ScriptParser` / `ScriptExecutor` / `ScriptValidator` / `TemplateGenerator` + models | ~~`Sources/dicom-script/ScriptEngine.swift`~~ → now `Sources/DICOMKit/Scripting/` | engine shared; `ScriptExecutor` takes an injected `CommandRunner` (CLI: real `Process`; app: dry-run); app uses shared `TemplateGenerator`; parity MATCHES |
 
@@ -196,10 +200,11 @@ Sequenced by value and risk. Each wave is independently shippable.
 - **Wave 2 ✅ DONE — file-organization copies (Bucket C):** `dicom-split` ✅,
   `dicom-merge` ✅, `dicom-study` ✅, `dicom-archive` ✅ — all migrated and verified
   (parity DIFFERS for this cohort all resolved; merge + study moved to MATCH).
-- **Wave 3 (in progress) — image/pixel + scripting copies (Bucket C):** `dicom-pixedit` ✅,
-  `dicom-script` ✅, then `dicom-image`. These touch CoreGraphics/ImageIO and (script)
-  process execution — give `dicom-script` an injectable command runner so the
-  sandboxed app gets a plan/dry-run runner.
+- **Wave 3 ✅ COMPLETE — image/pixel + scripting copies (Bucket C):** `dicom-pixedit` ✅,
+  `dicom-script` ✅, `dicom-image` ✅. These touch CoreGraphics/ImageIO and (script)
+  process execution — `dicom-script` got an injectable `CommandRunner` so the
+  sandboxed app runs a plan/dry-run instead of spawning subprocesses; `dicom-image`
+  shares the per-image conversion core (no committed goldens — verified by smoke).
 - **Wave 4 — partly-copied cleanups (Bucket B):** `dicom-uid`, `dicom-compress`,
   `dicom-export` (extract the workflow engine), then `dicom-query`,
   `dicom-retrieve`, `dicom-ups` (route through existing shared APIs + small
@@ -288,7 +293,7 @@ imports it.
 | `dicom-merge` ✅ | C→done | `executeDicomMerge` → shared engine | **done:** `FrameMerger` now in DICOMKit | `Sources/DICOMKit/Merging/` (shared) |
 | `dicom-archive` ✅ | C→done | `executeDicomArchive` → shared engine | **done:** `ArchiveStore` now in DICOMKit | `Sources/DICOMKit/Archive/` (shared) |
 | `dicom-study` ✅ | C→done | `executeDicomStudy*` → shared engine | **done:** `StudyScanner`+`StudyReport`+models in DICOMKit | `Sources/DICOMKit/Study/` (shared) |
-| `dicom-image` | C | `executeDicomImage` | extract `ImageToSecondaryCaptureConverter` → DICOMKit | `Sources/dicom-image/main.swift` |
+| `dicom-image` ✅ | C→done | `executeDicomImage` → shared `ImageConverter` | **done:** per-image core in DICOMKit | `Sources/DICOMKit/SecondaryCapture/` (shared) |
 | `dicom-pixedit` ✅ | C→done | `executeDicomPixedit` → shared engine | **done:** `PixelEditor` now in DICOMKit | `Sources/DICOMKit/PixelEditing/` (shared) |
 | `dicom-script` ✅ | C→done | `executeDicomScript` → shared `TemplateGenerator` | **done:** engine in DICOMKit, injected `CommandRunner` | `Sources/DICOMKit/Scripting/` (shared) |
 
