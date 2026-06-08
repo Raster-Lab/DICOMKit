@@ -4545,147 +4545,23 @@ private func executeDicomStudy() async {
 
             var out = ""
 
-            // MARK: Helpers (CLI-faithful, self-contained).
+            // Pixel extraction, EXIF mapping, and Secondary Capture assembly now
+            // come from the shared DICOMKit ImageConverter — the exact same code
+            // the dicom-image CLI runs. These thin wrappers keep call sites tidy.
+            func generateUID() -> String { ImageConverter.generateUID() }
+            func isImageFile(_ url: URL) -> Bool { ImageConverter.isImageFile(url) }
 
-            func generateUID() -> String { UIDGenerator.generateUID().value }
-
-            func formatDate(_ date: Date) -> String {
-                let f = DateFormatter(); f.dateFormat = "yyyyMMdd"; return f.string(from: date)
-            }
-            func formatTime(_ date: Date) -> String {
-                let f = DateFormatter(); f.dateFormat = "HHmmss"; return f.string(from: date)
-            }
-            func isImageFile(_ url: URL) -> Bool {
-                ["jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif"].contains(url.pathExtension.lowercased())
-            }
-            func samplesPerPixel(_ image: CGImage) -> Int {
-                switch image.colorSpace?.model {
-                case .monochrome: return 1
-                case .rgb: return 3
-                default: return 3
-                }
-            }
-            func photometric(_ image: CGImage) -> String {
-                samplesPerPixel(image) == 1 ? "MONOCHROME2" : "RGB"
-            }
-            func extractPixelData(_ image: CGImage, samples: Int) -> Data? {
-                let width = image.width, height = image.height
-                let bytesPerRow = width * samples
-                var pixelData = Data(count: bytesPerRow * height)
-                var ok = true
-                pixelData.withUnsafeMutableBytes { buffer in
-                    guard let base = buffer.baseAddress else { ok = false; return }
-                    let colorSpace = samples == 3 ? CGColorSpaceCreateDeviceRGB() : CGColorSpaceCreateDeviceGray()
-                    let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
-                    guard let ctx = CGContext(
-                        data: base, width: width, height: height,
-                        bitsPerComponent: 8, bytesPerRow: bytesPerRow,
-                        space: colorSpace, bitmapInfo: bitmapInfo.rawValue
-                    ) else { ok = false; return }
-                    ctx.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-                }
-                return ok ? pixelData : nil
-            }
-            func extractEXIFDescription(_ exif: [String: Any]?) -> String? {
-                guard let exif = exif else { return nil }
-                if let exifDict = exif[kCGImagePropertyExifDictionary as String] as? [String: Any] {
-                    if let userComment = exifDict[kCGImagePropertyExifUserComment as String] as? String { return userComment }
-                    if let desc = exifDict["ImageDescription"] as? String { return desc }
-                }
-                if let tiffDict = exif[kCGImagePropertyTIFFDictionary as String] as? [String: Any],
-                   let desc = tiffDict[kCGImagePropertyTIFFImageDescription as String] as? String {
-                    return desc
-                }
-                return nil
-            }
-            func addEXIFMetadata(_ exif: [String: Any], to dataSet: inout DataSet) {
-                if let exifDict = exif[kCGImagePropertyExifDictionary as String] as? [String: Any],
-                   let dateTimeOriginal = exifDict[kCGImagePropertyExifDateTimeOriginal as String] as? String {
-                    let parts = dateTimeOriginal.components(separatedBy: " ")
-                    if parts.count == 2 {
-                        let datePart = parts[0].replacingOccurrences(of: ":", with: "")
-                        let timePart = parts[1].replacingOccurrences(of: ":", with: "")
-                        dataSet.setString(datePart, for: .acquisitionDate, vr: .DA)
-                        dataSet.setString(timePart, for: .acquisitionTime, vr: .TM)
-                    }
-                }
-                if let dpiW = exif[kCGImagePropertyDPIWidth as String] as? Double,
-                   let dpiH = exif[kCGImagePropertyDPIHeight as String] as? Double, dpiW > 0, dpiH > 0 {
-                    let mmPerInch = 25.4
-                    let spacing = String(format: "%.6f\\%.6f", mmPerInch / dpiH, mmPerInch / dpiW)
-                    dataSet.setString(spacing, for: .pixelSpacing, vr: .DS)
-                }
+            func makeMetadata(studyUID: String, seriesUID: String, instanceNumber: Int) -> ImageConverter.Metadata {
+                ImageConverter.Metadata(
+                    patientName: patientName, patientID: patientID,
+                    studyUID: studyUID, seriesUID: seriesUID, instanceNumber: instanceNumber,
+                    studyDescription: studyDescription, seriesDescription: seriesDescription,
+                    modality: modalityVal, seriesNumber: seriesNumber)
             }
 
-            // Builds a Secondary Capture data set from a CGImage (mirrors the CLI).
-            func makeDataSet(
-                image: CGImage,
-                studyUID: String,
-                seriesUID: String,
-                instanceNumber: Int,
-                exif: [String: Any]?
-            ) -> DataSet? {
-                var dataSet = DataSet()
-
-                // SOP Common Module.
-                dataSet.setString("1.2.840.10008.5.1.4.1.1.7", for: .sopClassUID, vr: .UI) // Secondary Capture Image Storage
-                dataSet.setString(generateUID(), for: .sopInstanceUID, vr: .UI)
-
-                // Patient Module.
-                dataSet.setString(patientName, for: .patientName, vr: .PN)
-                dataSet.setString(patientID, for: .patientID, vr: .LO)
-
-                // Study Module.
-                dataSet.setString(studyUID, for: .studyInstanceUID, vr: .UI)
-                if let studyDesc = studyDescription {
-                    dataSet.setString(studyDesc, for: .studyDescription, vr: .LO)
-                } else if let exifDesc = extractEXIFDescription(exif) {
-                    dataSet.setString(exifDesc, for: .studyDescription, vr: .LO)
-                }
-                let now = Date()
-                dataSet.setString(formatDate(now), for: .studyDate, vr: .DA)
-                dataSet.setString(formatTime(now), for: .studyTime, vr: .TM)
-
-                // Series Module.
-                dataSet.setString(seriesUID, for: .seriesInstanceUID, vr: .UI)
-                dataSet.setString(modalityVal, for: .modality, vr: .CS)
-                if let seriesDesc = seriesDescription {
-                    dataSet.setString(seriesDesc, for: .seriesDescription, vr: .LO)
-                }
-                if let seriesNum = seriesNumber {
-                    dataSet.setInt(seriesNum, for: .seriesNumber, vr: .IS)
-                }
-
-                // General Equipment Module.
-                dataSet.setString("DICOMKit", for: .manufacturer, vr: .LO)
-                dataSet.setString("dicom-image CLI", for: .manufacturerModelName, vr: .LO)
-                dataSet.setString("1.1.6", for: .softwareVersions, vr: .LO)
-
-                // General Image Module.
-                dataSet.setInt(instanceNumber, for: .instanceNumber, vr: .IS)
-
-                // Image Pixel Module.
-                let samples = samplesPerPixel(image)
-                dataSet.setInt(samples, for: .samplesPerPixel, vr: .US)
-                dataSet.setString(photometric(image), for: .photometricInterpretation, vr: .CS)
-                dataSet.setInt(image.height, for: .rows, vr: .US)
-                dataSet.setInt(image.width, for: .columns, vr: .US)
-                dataSet.setInt(8, for: .bitsAllocated, vr: .US)
-                dataSet.setInt(8, for: .bitsStored, vr: .US)
-                dataSet.setInt(7, for: .highBit, vr: .US)
-                dataSet.setInt(0, for: .pixelRepresentation, vr: .US)
-                if samples == 3 {
-                    dataSet.setInt(0, for: .planarConfiguration, vr: .US)
-                }
-
-                guard let pixelData = extractPixelData(image, samples: samples) else { return nil }
-                dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: .OB, data: pixelData)
-
-                if let exif = exif { addEXIFMetadata(exif, to: &dataSet) }
-                return dataSet
-            }
-
-            // Loads, encodes and writes a single image to a .dcm file URL.
+            // Loads, encodes and writes a single image (page 0) to a .dcm file URL
+            // via the shared engine. Output is written here so the sandbox-resolved
+            // path is honored.
             func convertImageFile(
                 imageURL: URL,
                 outputURL: URL,
@@ -4693,29 +4569,16 @@ private func executeDicomStudy() async {
                 seriesUID: String,
                 instanceNumber: Int
             ) -> String? {
-                guard let imageSource = CGImageSourceCreateWithURL(imageURL as CFURL, nil),
-                      let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
-                    return "Failed to load image file"
-                }
-                var exif: [String: Any]?
-                if useExif {
-                    exif = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [String: Any]
-                }
-                guard let dataSet = makeDataSet(
-                    image: cgImage, studyUID: studyUID, seriesUID: seriesUID,
-                    instanceNumber: instanceNumber, exif: exif
-                ) else {
-                    return "Failed to extract pixel data from image"
-                }
-                let dicomFile = DICOMFile.create(
-                    dataSet: dataSet,
-                    transferSyntaxUID: "1.2.840.10008.1.2.1" // Explicit VR Little Endian
-                )
                 do {
-                    let data = try dicomFile.write()
+                    let data = try ImageConverter.secondaryCaptureData(
+                        imageURL: imageURL,
+                        metadata: makeMetadata(studyUID: studyUID, seriesUID: seriesUID, instanceNumber: instanceNumber),
+                        useExif: useExif)
                     try fm.createDirectory(at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                     try data.write(to: outputURL, options: .atomic)
                     return nil
+                } catch let e as ImageConversionError {
+                    return e.errorDescription
                 } catch {
                     return error.localizedDescription
                 }
@@ -4787,11 +4650,10 @@ private func executeDicomStudy() async {
 
             let ext = inputURL.pathExtension.lowercased()
             if splitPages && (ext == "tiff" || ext == "tif") {
-                // ---- Multi-page TIFF split ----
-                guard let imageSource = CGImageSourceCreateWithURL(inputURL as CFURL, nil) else {
-                    return ("Error: Failed to load image file\n", 1)
-                }
-                let pageCount = CGImageSourceGetCount(imageSource)
+                // ---- Multi-page TIFF split (shared ImageConverter) ----
+                let pageCount: Int
+                do { pageCount = try ImageConverter.pageCount(of: inputURL) }
+                catch { return ("Error: Failed to load image file\n", 1) }
                 guard pageCount > 0 else {
                     return ("Error: TIFF file contains no pages\n", 1)
                 }
@@ -4815,24 +4677,14 @@ private func executeDicomStudy() async {
                 let finalStudyUID = studyUIDArg ?? generateUID()
                 let finalSeriesUID = seriesUIDArg ?? generateUID()
                 for pageIndex in 0..<pageCount {
-                    guard let cgImage = CGImageSourceCreateImageAtIndex(imageSource, pageIndex, nil) else {
-                        if verbose { out += "\u{2717} Page \(pageIndex + 1): Failed to load\n" }
-                        continue
-                    }
                     let fileName = String(format: "frame_%04d.dcm", pageIndex + 1)
                     let outFileURL = outputDirURL.appendingPathComponent(fileName)
-                    guard let dataSet = makeDataSet(
-                        image: cgImage, studyUID: finalStudyUID, seriesUID: finalSeriesUID,
-                        instanceNumber: (instanceNumberArg ?? 1) + pageIndex, exif: nil
-                    ) else {
-                        if verbose { out += "\u{2717} Page \(pageIndex + 1): Failed to extract pixel data\n" }
-                        continue
-                    }
-                    let dicomFile = DICOMFile.create(
-                        dataSet: dataSet, transferSyntaxUID: "1.2.840.10008.1.2.1"
-                    )
                     do {
-                        let data = try dicomFile.write()
+                        let data = try ImageConverter.secondaryCaptureData(
+                            imageURL: inputURL, pageIndex: pageIndex,
+                            metadata: makeMetadata(studyUID: finalStudyUID, seriesUID: finalSeriesUID,
+                                                   instanceNumber: (instanceNumberArg ?? 1) + pageIndex),
+                            useExif: false)
                         try data.write(to: outFileURL, options: .atomic)
                         if verbose { out += "\u{2713} Page \(pageIndex + 1) \u{2192} \(fileName)\n" }
                     } catch {

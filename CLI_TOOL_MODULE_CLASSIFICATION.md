@@ -84,7 +84,7 @@ for example from:
 | `dicom-json` | `dicom-json` / `dicom-json` | `Sources/dicom-json` | `DICOMKit`, `DICOMCore`, `DICOMWeb` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`, `DICOMCore`, `DICOMWeb`; direct encoders/decoders exist | Run `dicom-json` | Uses `DICOMJSONEncoder` / `DICOMJSONDecoder` |
 | `dicom-xml` | `dicom-xml` / `dicom-xml` | `Sources/dicom-xml` | `DICOMKit`, `DICOMCore`, `DICOMWeb`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`, `DICOMCore`, `DICOMWeb`, `DICOMDictionary`; direct encoders/decoders exist | Run `dicom-xml` | Uses `DICOMXMLEncoder` / `DICOMXMLDecoder` |
 | `dicom-pdf` | `dicom-pdf` / `dicom-pdf` | `Sources/dicom-pdf` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-pdf` | Encapsulation / extraction workflow |
-| `dicom-image` | `dicom-image` / `dicom-image` | `Sources/dicom-image` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-image` | Image import to DICOM workflow |
+| `dicom-image` | `dicom-image` / `dicom-image` | `Sources/dicom-image` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; convert via shared `ImageConverter` | Run `dicom-image` | ✅ Image→Secondary-Capture core extracted to `DICOMKit` (`Sources/DICOMKit/SecondaryCapture/ImageConverter.swift`); CLI + DICOMStudio share it, UID gen reconciled to `UIDGenerator` (2026-06-08) |
 | `dicom-dcmdir` | `dicom-dcmdir` / `dicom-dcmdir` | `Sources/dicom-dcmdir` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-dcmdir` | DICOMDIR management |
 | `dicom-archive` | `dicom-archive` / `dicom-archive` | `Sources/dicom-archive` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; all operations via shared `ArchiveStore` | Run `dicom-archive` | ✅ Full archive engine (index model + 7 operations) extracted to `DICOMKit` (`Sources/DICOMKit/Archive/`); CLI + DICOMStudio share it, parity MATCHES (2026-06-08) |
 | `dicom-export` | `dicom-export` / `dicom-export` | `Sources/dicom-export` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-export` | Image export workflow |
@@ -155,6 +155,7 @@ Examples include:
 - `ArchiveStore`
 - `PixelEditor`
 - `ScriptParser` / `ScriptExecutor` / `ScriptValidator` / `TemplateGenerator`
+- `ImageConverter`
 - `DICOMJSONEncoder` / `DICOMJSONDecoder`
 - `DICOMXMLEncoder` / `DICOMXMLDecoder`
 - `DICOMwebClient`
