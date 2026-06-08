@@ -86,7 +86,7 @@ for example from:
 | `dicom-pdf` | `dicom-pdf` / `dicom-pdf` | `Sources/dicom-pdf` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-pdf` | Encapsulation / extraction workflow |
 | `dicom-image` | `dicom-image` / `dicom-image` | `Sources/dicom-image` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-image` | Image import to DICOM workflow |
 | `dicom-dcmdir` | `dicom-dcmdir` / `dicom-dcmdir` | `Sources/dicom-dcmdir` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-dcmdir` | DICOMDIR management |
-| `dicom-archive` | `dicom-archive` / `dicom-archive` | `Sources/dicom-archive` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-archive` | Archive / organization workflow |
+| `dicom-archive` | `dicom-archive` / `dicom-archive` | `Sources/dicom-archive` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import `DICOMKit`; all operations via shared `ArchiveStore` | Run `dicom-archive` | ✅ Full archive engine (index model + 7 operations) extracted to `DICOMKit` (`Sources/DICOMKit/Archive/`); CLI + DICOMStudio share it, parity MATCHES (2026-06-08) |
 | `dicom-export` | `dicom-export` / `dicom-export` | `Sources/dicom-export` | `DICOMKit`, `DICOMCore`, `DICOMDictionary` | `ArgumentParser` | CLI adapter over package libraries | Import package libraries | Run `dicom-export` | Image export workflow |
 | `dicom-qr` | `dicom-qr` / `dicom-qr` | `Sources/dicom-qr` | `DICOMKit`, `DICOMCore`, `DICOMNetwork` | `ArgumentParser` | CLI adapter over network + DICOM libraries | Import `DICOMKit`, `DICOMCore`, `DICOMNetwork` | Run `dicom-qr` | Composite query/retrieve helper |
 | `dicom-wado` | `dicom-wado` / `dicom-wado` | `Sources/dicom-wado` | `DICOMCore`, `DICOMWeb` | `ArgumentParser` | CLI adapter over web libraries | Import `DICOMCore`, `DICOMWeb`; direct client exists via `DICOMwebClient` | Run `dicom-wado` | DICOMweb retrieve workflow |
@@ -152,6 +152,7 @@ Examples include:
 - `FrameMerger`
 - `FrameSplitter`
 - `StudyScanner` / `StudyReport`
+- `ArchiveStore`
 - `DICOMJSONEncoder` / `DICOMJSONDecoder`
 - `DICOMXMLEncoder` / `DICOMXMLDecoder`
 - `DICOMwebClient`

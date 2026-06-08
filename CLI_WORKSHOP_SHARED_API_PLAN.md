@@ -14,16 +14,19 @@
 > The 11 full copies are the bulk of the work — their engine lives only inside
 > `Sources/dicom-<tool>/` and must be extracted into a package library first.
 >
-> **Wave 1 ✅ COMPLETE:** `dicom-validate`, `dicom-diff`, `dicom-anon`, and
-> `dicom-tags` all done — each engine extracted into DICOMKit, with the CLI and
-> DICOMStudio now calling the same shared code (see Progress Log). Next up:
-> **Wave 2** — the file-organization copies (`dicom-split`, `dicom-merge`,
-> `dicom-archive`, `dicom-study`).
+> **Wave 1 ✅ COMPLETE:** `dicom-validate`, `dicom-diff`, `dicom-anon`, `dicom-tags`.
+>
+> **Wave 2 ✅ COMPLETE:** `dicom-split`, `dicom-merge`, `dicom-study`, `dicom-archive`
+> — each engine extracted into DICOMKit, CLI + DICOMStudio share it (see Progress
+> Log). Tier-2 parity is now **MATCH=264, DIFFERS=2**; the 2 remaining DIFFERS are
+> `dicom-compress` and `dicom-uid` (Bucket B, partly-copied — a later wave). Next
+> up: **Wave 3** (`dicom-image`, `dicom-pixedit`, `dicom-script`).
 
 ## Progress Log
 
 | Date | Tool | What changed | Verified |
 |------|------|--------------|----------|
+| 2026-06-08 | **Wave 2** `dicom-archive` | Extracted the entire archive engine — index model (`ArchiveIndex`/`ArchivePatient`/`ArchiveStudy`/`ArchiveSeries`/`ArchiveInstance`), helpers (wildcard/sanitize/load/save/count), and all 7 operations (init/import/query/list/export/check/stats) — out of `Sources/dicom-archive/main.swift` into `Sources/DICOMKit/Archive/ArchiveStore.swift`. Operations **return rendered strings** (no `print`); `ArgumentParser.ValidationError` → library `ArchiveError`. CLI `main.swift` shrank **1236→~270 lines** (thin subcommand dispatch). App `executeDicomArchive` deleted its **~628-line** inline reimplementation (`A*` model + helpers + 7 subcommands) and dispatches to `ArchiveStore`, keeping only param parsing + sandbox path resolution. | `swift build` green; `dicom-archive` release build + full smoke (init→import→list/query/check/stats); **Tier-2 parity: all 8 archive scenarios still MATCH** (byte-exact preserved); overall MATCH=264, DIFFERS=2. |
 | 2026-06-08 | **Wave 2** `dicom-study` | Extracted the study analysis engine into `Sources/DICOMKit/Study/` — public models (`StudyMetadata`/`SeriesMetadata`/`InstanceMetadata`/`Statistics`/`StudyComparison`/`SeriesDifference`/`StudyError`), `StudyScanner` (scan; series sorted by UID), and `StudyReport` (summary/stats/compare/completeness renderers, returning strings — no `print`). The CLI's summary/check/stats/compare engines became thin adapters; `StudyOrganizer` (file moves) stays CLI-local. The app deleted its parallel `StudyStudio*` model + `studyScan` + `studyFormatBytes` and the inline renderers in its 4 study methods, calling the shared engine. **Reconciled in the engine:** series sorted within a study (deterministic), renderers use `✓`/`✗` (app had `[OK]`/`[FAIL]`/`[DIFF]`), and `check` output moved stderr→stdout (it's the command's primary result, consistent with summary/stats/compare and the app). | `swift build` green; `dicom-study` release build + smoke (summary/check/stats/compare); **Tier-2 parity: all 6 `dicom-study` scenarios now MATCH** (overall DIFFERS 8→2). |
 | 2026-06-08 | **Wave 2** `dicom-split` | Moved `FrameSplitter` (+ `SplitError`, `SplitOutputFormat`, new `SplitResult`) out of `Sources/dicom-split/` into `Sources/DICOMKit/Splitting/`. The engine now returns a `SplitResult` (extracted/failed/written paths) and logs via an injected closure; image export (CoreGraphics/ImageIO) moved with it. App `executeDicomSplit` deleted its ~150-line inline reimplementation (DICOM-frame + PNG/JPEG/TIFF export) and calls the shared engine, mapping `SplitResult` into its written-paths summary. Renamed `OutputFormat`→`SplitOutputFormat`. | `swift build` green; `dicom-split` release build + smoke (4-frame multiframe → 4 DICOM frames; PNG export). No parity golden (split is non-deterministic — UID regen + image encoding — so excluded from goldens); no regression (MATCH=258). |
 | 2026-06-08 | **Wave 2** `dicom-merge` | Moved `FrameMerger` (+ `MergeError`, `MergeFormat`, `MergeLevel`, `MergeSortCriteria`, `MergeSortOrder`) out of `Sources/dicom-merge/` into `Sources/DICOMKit/Merging/`. Verbose output now flows through an injected `log` closure (CLI→stderr, app→console) so wording comes from one place. App `executeDicomMerge` deleted its ~200-line inline engine (sort/validate/createMultiFrame/load + `MergeRuntimeError`) and calls the shared `FrameMerger`. **Reconciled in the engine:** group iteration sorted by UID, and input file paths sorted, so multi-output and template selection are deterministic (fixed the merge parity DIFFERS, which was a Series-Number tie-break). Renamed `SortOrder`→`MergeSortOrder` (collided with `Foundation.SortOrder`). | `swift build` green; `dicom-merge` release build + smoke (series merge); **Tier-2 parity: `dicom-merge` now MATCHES** (was DIFFERS). |
@@ -135,7 +138,7 @@ delete the app's copy.**
 | `dicom-tags` ✅ **DONE** | `TagEditor` + `TagEditorError` | ~~`Sources/dicom-tags/TagEditor.swift`~~ → now `Sources/DICOMKit/TagEditing/` | `TagEditor` shared by CLI + app; resolution unified on `DataElementDictionary` + skip-on-unknown |
 | `dicom-split` ✅ **DONE** | `FrameSplitter` (frame extract + image export) | ~~`Sources/dicom-split/FrameSplitter.swift`~~ → now `Sources/DICOMKit/Splitting/` | `FrameSplitter` shared (returns `SplitResult` + log closure) |
 | `dicom-merge` ✅ **DONE** | `FrameMerger` + `MergeFormat/Level/SortCriteria/Order/Error` | ~~`Sources/dicom-merge/FrameMerger.swift`~~ → now `Sources/DICOMKit/Merging/` | `FrameMerger` shared (log closure + deterministic sort); parity MATCHES |
-| `dicom-archive` | `ArchiveIndex` model + init/import/query/list/export/check/stats ops | `Sources/dicom-archive/main.swift` | `DICOMArchiveStore` → DICOMKit |
+| `dicom-archive` ✅ **DONE** | `ArchiveIndex` model + init/import/query/list/export/check/stats ops | ~~`Sources/dicom-archive/main.swift`~~ → now `Sources/DICOMKit/Archive/` | `ArchiveStore` (model + 7 string-returning ops) shared; parity MATCHES |
 | `dicom-study` ✅ **DONE** | `StudyAnalyzer` / `CompletenessChecker` / `StatsCalculator` / `StudyComparator` + models | ~~`Sources/dicom-study/StudyManager.swift`~~ → now `Sources/DICOMKit/Study/` | `StudyScanner` + `StudyReport` + models shared (sorted series, `✓`); parity MATCHES. (`StudyOrganizer` stays CLI-local for now.) |
 | `dicom-image` | image→Secondary-Capture converter (CGImage/ImageIO pixel extract + EXIF) | `Sources/dicom-image/main.swift` | `ImageToSecondaryCaptureConverter` → DICOMKit (route SC assembly through existing `SecondaryCaptureBuilder`) |
 | `dicom-pixedit` | `PixelEditor` + `PixelDataDescriptor` + `PixelOperation` + `PixelEditError` | `Sources/dicom-pixedit/PixelEditor.swift` | `PixelEditor` → DICOMKit |
@@ -184,9 +187,9 @@ Sequenced by value and risk. Each wave is independently shippable.
 - **Wave 1 ✅ DONE — the high-value local copies (Bucket C, read/compare/transform):**
   `dicom-validate` ✅, `dicom-diff` ✅, `dicom-anon` ✅, `dicom-tags` ✅. The most
   visible "two copies that drift" cases — all migrated and verified.
-- **Wave 2 (in progress) — file-organization copies (Bucket C):** `dicom-split` ✅,
-  `dicom-merge` ✅, `dicom-study` ✅, then `dicom-archive`. Shared frame/study/archive
-  engines; standardize directory input + per-file results during the move.
+- **Wave 2 ✅ DONE — file-organization copies (Bucket C):** `dicom-split` ✅,
+  `dicom-merge` ✅, `dicom-study` ✅, `dicom-archive` ✅ — all migrated and verified
+  (parity DIFFERS for this cohort all resolved; merge + study moved to MATCH).
 - **Wave 3 — image/pixel + scripting copies (Bucket C):** `dicom-image`,
   `dicom-pixedit`, `dicom-script`. These touch CoreGraphics/ImageIO and (script)
   process execution — give `dicom-script` an injectable command runner so the
@@ -277,7 +280,7 @@ imports it.
 | `dicom-tags` ✅ | C→done | `executeDicomTags` → shared engine | **done:** `TagEditor` now in DICOMKit (dictionary + skip reconciled) | `Sources/DICOMKit/TagEditing/` (shared) |
 | `dicom-split` ✅ | C→done | `executeDicomSplit` → shared engine | **done:** `FrameSplitter` now in DICOMKit | `Sources/DICOMKit/Splitting/` (shared) |
 | `dicom-merge` ✅ | C→done | `executeDicomMerge` → shared engine | **done:** `FrameMerger` now in DICOMKit | `Sources/DICOMKit/Merging/` (shared) |
-| `dicom-archive` | C | `executeDicomArchive` | extract `DICOMArchiveStore` → DICOMKit | `Sources/dicom-archive/main.swift` |
+| `dicom-archive` ✅ | C→done | `executeDicomArchive` → shared engine | **done:** `ArchiveStore` now in DICOMKit | `Sources/DICOMKit/Archive/` (shared) |
 | `dicom-study` ✅ | C→done | `executeDicomStudy*` → shared engine | **done:** `StudyScanner`+`StudyReport`+models in DICOMKit | `Sources/DICOMKit/Study/` (shared) |
 | `dicom-image` | C | `executeDicomImage` | extract `ImageToSecondaryCaptureConverter` → DICOMKit | `Sources/dicom-image/main.swift` |
 | `dicom-pixedit` | C | `executeDicomPixedit` | extract `PixelEditor` → DICOMKit | `Sources/dicom-pixedit/PixelEditor.swift` |
