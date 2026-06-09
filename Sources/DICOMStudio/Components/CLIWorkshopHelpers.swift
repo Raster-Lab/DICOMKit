@@ -3431,9 +3431,10 @@ case "dicom-study":
                 // ----- summary -----
                 CLIParameterDefinition(
                     id: "path", flag: "", displayName: "Study Path",
-                    parameterType: .filePath, placeholder: "study/",
+                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/",
                     helpText: "Study directory or single DICOM file",
                     isRequired: true,
+                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["summary", "check", "stats"])
                 ),
                 CLIParameterDefinition(
@@ -3462,9 +3463,9 @@ case "dicom-study":
                 ),
                 CLIParameterDefinition(
                     id: "report", flag: "--report", displayName: "Report File",
-                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/",
+                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/StudyReport.txt",
                     helpText: "Optional output report file path for detected issues",
-                    defaultValue: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/",
+                    defaultValue: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/StudyReport.txt",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["check"])
                 ),
 
@@ -3488,16 +3489,18 @@ case "dicom-study":
                 // ----- compare -----
                 CLIParameterDefinition(
                     id: "path1", flag: "", displayName: "Study 1",
-                    parameterType: .filePath, placeholder: "study1/",
+                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/",
                     helpText: "First study directory",
                     isRequired: true,
+                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
                 ),
                 CLIParameterDefinition(
                     id: "path2", flag: "", displayName: "Study 2",
-                    parameterType: .filePath, placeholder: "study2/",
+                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CR/",
                     helpText: "Second study directory",
                     isRequired: true,
+                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CR/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
                 ),
                 CLIParameterDefinition(
