@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-retrieve` · _category:_ NETWORK_OPERATIONS · _wired in St
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMRetrieveService` (`DICOMNetwork`) — both the CLI (`Sources/dicom-retrieve/`) and DICOMStudio's `executeDicomRetrieve*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** C-MOVE/C-GET execution + Part-10 wrapping of received instances run through the identical shared service.
+- **Intentional divergences (not bugs):** App auto-resolves a missing Study UID via `DICOMQueryService.find()` (CLI errors) and prints each received instance's saved path (CLI prints progress only with `--verbose`). Live network → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

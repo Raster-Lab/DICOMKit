@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 
 **Output behavior:** 60 scenario(s) — 60 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMImageExporter` (`DICOMKit/ImageExport`) — both the CLI (`Sources/dicom-export/`) and DICOMStudio's `executeDicomExport*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Produced image bytes identical (shared EXIF/layout/window/encode helpers); console messages identical.
+- **Intentional divergences (not bugs):** App adds a sandbox `OutputAccess` redirect note under TCC. Binary image output → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

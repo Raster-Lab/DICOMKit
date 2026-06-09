@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-query` · _category:_ NETWORK_OPERATIONS · _wired in Studi
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMQueryService` (`DICOMNetwork`) — both the CLI (`Sources/dicom-query/`) and DICOMStudio's `executeDicomQuery*` call it (core shared; some orchestration is adapter-local). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** C-FIND execution runs through the identical shared `find()`.
+- **Intentional divergences (not bugs):** App formats SERIES/IMAGE results with **parent-study context columns** (CLI does not), adds **XML + HL7** output formats, and a PS3.4 **two-step** SERIES/IMAGE fallback. Intentional GUI enrichment — sharing the CLI's plainer formatter would regress the app. Live network → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

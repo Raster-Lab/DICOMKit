@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-validate` · _category:_ FILE_PROCESSING · _wired in Studi
 
 **Output behavior:** 15 scenario(s) — 15 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMValidator` / `ValidationReport` (`DICOMKit/Validation`) — both the CLI (`Sources/dicom-validate/`) and DICOMStudio's `executeDicomValidate*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Byte/text-identical (8 goldens).
+- **Intentional divergences (not bugs):** App appends an educational `Exit code: N (…)` line for the GUI (the CLI conveys status via process exit code); excluded from the parity comparison path.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

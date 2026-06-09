@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-info` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 **Output behavior:** 16 scenario(s) — 16 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `MetadataPresenter` (`DICOMKit`) — both the CLI (`Sources/dicom-info/`) and DICOMStudio's `executeDicomInfo*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Byte/text-identical (9 goldens). No app modification.
+- **Intentional divergences (not bugs):** None.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

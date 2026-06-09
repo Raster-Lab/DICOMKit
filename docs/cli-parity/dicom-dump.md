@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-dump` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 **Output behavior:** 17 scenario(s) — 17 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `HexDumper` (`DICOMKit`) — both the CLI (`Sources/dicom-dump/`) and DICOMStudio's `executeDicomDump*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Byte/text-identical (9 goldens), default and `--tag`.
+- **Intentional divergences (not bugs):** App always disables ANSI color for the SwiftUI console; the harness strips ANSI from CLI output before comparing, so covered scenarios MATCH.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

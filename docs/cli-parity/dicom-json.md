@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-json` · _category:_ DATA_EXPORT · _wired in Studio:_ yes 
 
 **Output behavior:** 22 scenario(s) — 22 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMJSONEncoder` / `DICOMJSONDecoder` (`DICOMWeb`) — both the CLI (`Sources/dicom-json/`) and DICOMStudio's `executeDicomJson*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Byte/text-identical both directions (11 goldens): DICOM→JSON and JSON→DICOM (`--reverse`).
+- **Intentional divergences (not bugs):** Sandbox `OutputAccess` redirect note only on TCC denial (not hit in tests).
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

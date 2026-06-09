@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-convert` · _category:_ FILE_PROCESSING · _wired in Studio
 
 **Output behavior:** 24 scenario(s) — 24 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `TransferSyntaxConverter` + `DICOMFile rendering` (`DICOMCore + DICOMKit`) — both the CLI (`Sources/dicom-convert/`) and DICOMStudio's `executeDicomConvert*` call it (core shared; some orchestration is adapter-local). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** DICOM→DICOM converted file byte-identical (1 golden).
+- **Intentional divergences (not bugs):** App prints extra progress lines (file size, frame export, output path) + sandbox note. Image-render paths share `DICOMFile.tryRenderFrame`.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

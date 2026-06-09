@@ -6,6 +6,17 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 
 **Output behavior:** 8 scenario(s) — 8 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `ArchiveStore` (`DICOMKit/Archive`) — both the CLI (`Sources/dicom-archive/`) and DICOMStudio's `executeDicomArchive*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Read ops (query/list/check/stats) byte-identical; init/import/export identical core output.
+- **Intentional divergences (not bugs):** App may add a sandbox `OutputAccess` redirect note on init/import/export.
+- **Known bug:** `--skip-duplicates` was ignored by the app (hardcoded false) — **fixed** in commit b418bfc.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

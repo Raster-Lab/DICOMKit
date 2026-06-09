@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-diff` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 **Output behavior:** 11 scenario(s) — 11 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMComparer` / `ComparisonReport` (`DICOMKit/Comparison`) — both the CLI (`Sources/dicom-diff/`) and DICOMStudio's `executeDicomDiff*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Byte/text-identical across text, json, and summary formats (11 goldens).
+- **Intentional divergences (not bugs):** None (app adds only security-scoped URL access, no output effect).
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

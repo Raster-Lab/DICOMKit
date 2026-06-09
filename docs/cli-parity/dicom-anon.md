@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 
 **Output behavior:** 20 scenario(s) — 20 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `Anonymizer` (`DICOMKit/Anonymization`) — both the CLI (`Sources/dicom-anon/`) and DICOMStudio's `executeDicomAnon*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Output DICOM is byte-identical (9 goldens verify the produced file).
+- **Intentional divergences (not bugs):** Verbose per-file line differs (CLI `✓ <path>` vs app `Processing:` + tag count); app may add a sandbox `OutputAccess` redirect note.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

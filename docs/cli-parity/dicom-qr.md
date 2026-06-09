@@ -6,6 +6,17 @@ _CLI binary:_ `dicom-qr` · _category:_ NETWORK_OPERATIONS · _wired in Studio:_
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMQueryService` / `DICOMRetrieveService` (`DICOMNetwork`) — both the CLI (`Sources/dicom-qr/`) and DICOMStudio's `executeDicomQr*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Query + retrieve run through the identical shared services.
+- **Intentional divergences (not bugs):** App `query` prints structured output vs CLI plain text with `─` dividers; CLI has a `resume` subcommand the app lacks. Live network → no goldens.
+- **Known bug:** CLI uppercases the patient-name C-FIND key (`name.uppercased()`); the app sends it as-typed, so the same input yields different query keys.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
