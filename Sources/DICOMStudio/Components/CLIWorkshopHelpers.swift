@@ -2603,8 +2603,9 @@ case "dicom-uid":
         ),
         CLIParameterDefinition(
             id: "file", flag: "--file", displayName: "DICOM File",
-            parameterType: .filePath, placeholder: "study.dcm",
+            parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/MG/MG_01_MG_Study3_Mammogram_0012-0001.dcm",
             helpText: "Validate all UID (VR=UI) elements in a DICOM file",
+            defaultValue: "/Users/raster/Desktop/DICOM_Input/MG/MG_01_MG_Study3_Mammogram_0012-0001.dcm",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
         ),
         CLIParameterDefinition(
@@ -2650,14 +2651,16 @@ case "dicom-uid":
         ),
         CLIParameterDefinition(
             id: "output", flag: "--output", displayName: "Output File",
-            parameterType: .outputPath, placeholder: "new.dcm",
+            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/CT_New.dcm",
             helpText: "Output DICOM file path (defaults to overwriting the input)",
+            defaultValue: "/Users/raster/Desktop/DICOM_Output/CT_New.dcm",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
             id: "export-map", flag: "--export-map", displayName: "Export Mapping",
-            parameterType: .outputPath, placeholder: "mapping.json",
+            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/uid_mapping.json",
             helpText: "Export the old to new UID mapping to a JSON file",
+            defaultValue: "/Users/raster/Desktop/DICOM_Output/uid_mapping.json",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
@@ -3497,10 +3500,10 @@ case "dicom-study":
                 ),
                 CLIParameterDefinition(
                     id: "path2", flag: "", displayName: "Study 2",
-                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CR/",
+                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/MR/",
                     helpText: "Second study directory",
                     isRequired: true,
-                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CR/",
+                    defaultValue: "/Users/raster/Desktop/DICOM_Input/MR/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compare"])
                 ),
                 CLIParameterDefinition(
