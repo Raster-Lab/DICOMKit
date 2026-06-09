@@ -9,7 +9,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 ## Verified App↔CLI parity
 
 - **Shared DICOMKit engine:** `UIDManager` (`DICOMKit/UIDManagement`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
-- **Verdict:** validate/lookup byte/text-identical (6 goldens); generate/regenerate non-deterministic (fresh UIDs).
+- **Verdict:** validate/lookup/search + regenerate (UIDs masked) byte/text-identical; generate is non-deterministic (fresh UIDs). ⚠️ KNOWN DIVERGENCE: `regenerate --dry-run` — the app prints a generic message while the CLI prints the per-UID mapping (to fix).
 
 > Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 
@@ -19,16 +19,16 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 |---|---|---|---|---|
 | `--check-registry` | flag | ✅ match | ✓ | ✅ success |
 | `--count` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
-| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
+| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered (⚠️ App↔CLI divergence — needs a fix (surfaced, not masked)) |
 | `--export-map` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
 | `--file` | option | ✅ match | ✓ | ✅ success |
-| `--json` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--json` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
 | `--list-all` | flag | ✅ match | ✓ | ✅ success |
 | `--maintain-relationships` | flag | ⚠️ missing in UI | — | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
 | `--root` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
 | `--search` | option | ✅ match | ✓ | ✅ success |
-| `--type` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--type` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios

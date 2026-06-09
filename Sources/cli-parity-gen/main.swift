@@ -288,6 +288,14 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-uid", label: "lookup-search", cliArgs: ["lookup", "--search", "CT"], studioParams: ["subcommand": "lookup", "search": "CT"], fixture: "none"),
     Template(tool: "dicom-archive", label: "query-filters", cliArgs: ["query", "--archive", "FIXTURE", "--patient-name", "Test*", "--patient-id", "PAT001", "--study-uid", "1.2.3", "--study-date", "20200101"], studioParams: ["subcommand": "query", "archive": "FIXTURE", "patient-name": "Test*", "patient-id": "PAT001", "study-uid": "1.2.3", "study-date": "20200101"], fixture: "archive"),
     Template(tool: "dicom-archive", label: "check-verbose", cliArgs: ["check", "--archive", "FIXTURE", "--verbose"], studioParams: ["subcommand": "check", "archive": "FIXTURE", "verbose": "true"], fixture: "archive"),
+    // tags --verbose covered via an artifact scenario (the produced file matches; the
+    // verbose preview goes to stderr in the CLI so it can't be stdout-compared).
+    Template(tool: "dicom-tags", label: "set-verbose", cliArgs: ["--set", "PatientName=PARITY^V", "--verbose", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "set": "PatientName=PARITY^V", "verbose": "true", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
+    Template(tool: "dicom-tags", label: "copy-from", cliArgs: ["--copy-from", "FIXTURE2", "--tags", "PatientName,PatientID", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "copy-from": "FIXTURE2", "tags": "PatientName,PatientID", "output": "OUTPUT"], fixture: "ctpair", artifactName: "out.dcm", artifactKind: "dicom"),
+    Template(tool: "dicom-anon", label: "dry-run", cliArgs: ["--profile", "basic", "--dry-run", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "basic", "dry-run": "true"], fixture: "ct"),
+    // NOTE: tags --dry-run and uid `regenerate --dry-run` are NOT covered: both reveal real
+    // App↔CLI divergences (tags preview → stderr vs app console; uid app dry-run prints a
+    // generic message while the CLI prints the per-UID mapping). Tracked as findings, not masked.
 
     // --- dicom-archive (read ops over a populated archive) — local-only fixture.
     // stats is omitted: its output carries a creation timestamp (Wave-4 masking).
