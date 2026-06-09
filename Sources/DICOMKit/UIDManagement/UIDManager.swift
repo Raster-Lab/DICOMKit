@@ -278,6 +278,25 @@ public struct UIDManager {
         return mappings
     }
 
+    /// Dry-run preview for `regenerate`: the lines listing which instance UIDs would be
+    /// regenerated, in the canonical format (`  <TagName>: <oldUID> → <new UID>` followed
+    /// by a count summary). Shared by the dicom-uid CLI and DICOMStudio so both emit
+    /// byte-identical preview output. Well-known (registry) UIDs are left untouched.
+    public static func regenerationPreviewLines(for dataSet: DataSet) -> [String] {
+        var lines: [String] = []
+        var count = 0
+        for element in dataSet.allElements where element.vr == .UI {
+            guard let uidString = dataSet.string(for: element.tag) else { continue }
+            let trimmed = uidString.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+            if trimmed.isEmpty { continue }
+            if UIDDictionary.lookup(uid: trimmed) != nil { continue }
+            lines.append("  \(tagName(for: element.tag)): \(trimmed) \u{2192} <new UID>")
+            count += 1
+        }
+        lines.append(count == 0 ? "  No instance UIDs to regenerate" : "  \(count) UID(s) would be regenerated")
+        return lines
+    }
+
     // MARK: - Helpers
 
     /// Gets a human-readable tag name

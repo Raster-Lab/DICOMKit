@@ -286,6 +286,8 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-pdf", label: "encapsulate-allmeta", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--patient-name", "PARITY^PDF", "--patient-id", "SYN-PDF", "--study-uid", "1.2.826.0.1.3680043.10.999.2.1", "--series-uid", "1.2.826.0.1.3680043.10.999.2.2", "--title", "Parity Doc", "--modality", "DOC", "--series-number", "10", "--series-description", "Parity Series", "--instance-number", "42", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "patient-name": "PARITY^PDF", "patient-id": "SYN-PDF", "study-uid": "1.2.826.0.1.3680043.10.999.2.1", "series-uid": "1.2.826.0.1.3680043.10.999.2.2", "title": "Parity Doc", "modality": "DOC", "series-number": "10", "series-description": "Parity Series", "instance-number": "42", "verbose": "true"], fixture: "pdf", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-uid", label: "regenerate-flags", cliArgs: ["regenerate", "FIXTURE", "--output", "OUTPUT", "--maintain-relationships", "--verbose"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "output": "OUTPUT", "maintain-relationships": "true", "verbose": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-uid", label: "lookup-search", cliArgs: ["lookup", "--search", "CT"], studioParams: ["subcommand": "lookup", "search": "CT"], fixture: "none"),
+    // regenerate --dry-run: now byte-identical (app + CLI share UIDManager.regenerationPreviewLines).
+    Template(tool: "dicom-uid", label: "regenerate-dryrun", cliArgs: ["regenerate", "FIXTURE", "--dry-run"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "dry-run": "true"], fixture: "ct"),
     Template(tool: "dicom-archive", label: "query-filters", cliArgs: ["query", "--archive", "FIXTURE", "--patient-name", "Test*", "--patient-id", "PAT001", "--study-uid", "1.2.3", "--study-date", "20200101"], studioParams: ["subcommand": "query", "archive": "FIXTURE", "patient-name": "Test*", "patient-id": "PAT001", "study-uid": "1.2.3", "study-date": "20200101"], fixture: "archive"),
     Template(tool: "dicom-archive", label: "check-verbose", cliArgs: ["check", "--archive", "FIXTURE", "--verbose"], studioParams: ["subcommand": "check", "archive": "FIXTURE", "verbose": "true"], fixture: "archive"),
     // tags --verbose covered via an artifact scenario (the produced file matches; the
@@ -293,9 +295,10 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-tags", label: "set-verbose", cliArgs: ["--set", "PatientName=PARITY^V", "--verbose", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "set": "PatientName=PARITY^V", "verbose": "true", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-tags", label: "copy-from", cliArgs: ["--copy-from", "FIXTURE2", "--tags", "PatientName,PatientID", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "copy-from": "FIXTURE2", "tags": "PatientName,PatientID", "output": "OUTPUT"], fixture: "ctpair", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-anon", label: "dry-run", cliArgs: ["--profile", "basic", "--dry-run", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "basic", "dry-run": "true"], fixture: "ct"),
-    // NOTE: tags --dry-run and uid `regenerate --dry-run` are NOT covered: both reveal real
-    // App↔CLI divergences (tags preview → stderr vs app console; uid app dry-run prints a
-    // generic message while the CLI prints the per-UID mapping). Tracked as findings, not masked.
+    // NOTE: tags --dry-run is NOT covered — the CLI prints the preview to stderr (fprintln)
+    // while the app shows it in-console, so it isn't stdout-comparable (the text matches).
+    // (uid `regenerate --dry-run` was a real divergence — now FIXED via the shared
+    // UIDManager.regenerationPreviewLines, covered above.)
 
     // ===== Chained-fixture wave: consume/reverse directions using derived fixtures =====
     // dicom-json --reverse: derived json → DICOM (round-trip; original UIDs preserved). ✅

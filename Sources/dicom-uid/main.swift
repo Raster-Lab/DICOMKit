@@ -409,30 +409,11 @@ extension DICOMUID {
                 }
 
                 if dryRun {
-                    // Read and show what would change
+                    // Shared preview (Sources/DICOMKit/UIDManagement/UIDManager.swift) so the
+                    // CLI and DICOMStudio print byte-identical dry-run output.
                     let data = try Data(contentsOf: URL(fileURLWithPath: inputPath))
                     let file = try DICOMFile.read(from: data)
-                    var previewCount = 0
-
-                    for element in file.dataSet.allElements {
-                        if element.vr == .UI {
-                            if let uidString = file.dataSet.string(for: element.tag) {
-                                let trimmed = uidString.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-                                if trimmed.isEmpty { continue }
-                                if UIDDictionary.lookup(uid: trimmed) != nil { continue }
-
-                                let tagName = UIDManager.tagName(for: element.tag)
-                                print("  \(tagName): \(trimmed) → <new UID>")
-                                previewCount += 1
-                            }
-                        }
-                    }
-
-                    if previewCount == 0 {
-                        print("  No instance UIDs to regenerate")
-                    } else {
-                        print("  \(previewCount) UID(s) would be regenerated")
-                    }
+                    for line in UIDManager.regenerationPreviewLines(for: file.dataSet) { print(line) }
                 } else {
                     let mappings = try manager.regenerateUIDs(
                         inputPath: inputPath,

@@ -1224,6 +1224,28 @@
       "toolId" : "dicom-uid"
     },
     {
+      "cliArgs" : [
+        "regenerate",
+        "FIXTURE",
+        "--dry-run"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-uid-regenerate-dryrun",
+      "label" : "syn-ct.dcm · regenerate-dryrun",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Dry run complete — no files modified.\n",
+      "stdout" : "  SOPInstanceUID: 1.2.826.0.1.3680043.10.999.1.1.1 → <new UID>\n  StudyInstanceUID: 1.2.826.0.1.3680043.10.999.1.1 → <new UID>\n  SeriesInstanceUID: 1.2.826.0.1.3680043.10.999.1.2 → <new UID>\n  3 UID(s) would be regenerated\n",
+      "studioParams" : {
+        "dry-run" : "true",
+        "inputPath" : "FIXTURE",
+        "subcommand" : "regenerate"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
       "artifactKind" : "dicom",
       "artifactName" : "out.dcm",
       "cliArgs" : [
