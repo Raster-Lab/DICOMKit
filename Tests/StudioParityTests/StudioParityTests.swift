@@ -60,6 +60,8 @@ final class StudioParityTests: XCTestCase {
                 let obj: [String: Any] = [
                     "scenarioId": c.scenarioId, "toolId": c.toolId,
                     "status": c.status.rawValue, "note": c.note,
+                    "input": c.inputDescription,
+                    "cliOutput": c.cliOutput, "studioOutput": c.studioOutput,
                     "diff": c.diff.map { ["kind": $0.kind.rawValue, "text": $0.text] },
                 ]
                 if let d = try? JSONSerialization.data(withJSONObject: obj),
