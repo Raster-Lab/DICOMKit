@@ -2645,8 +2645,9 @@ case "dicom-uid":
         // ----- regenerate -----
         CLIParameterDefinition(
             id: "inputPath", flag: "", displayName: "Input File",
-            parameterType: .filePath, placeholder: "file.dcm",
+            parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/CT_01_CT_Study1_0001-0001.dcm",
             helpText: "Input DICOM file whose instance UIDs will be regenerated",
+            defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/CT_01_CT_Study1_0001-0001.dcm",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
