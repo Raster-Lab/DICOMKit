@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-script` · _category:_ AUTOMATION · _wired in Studio:_ yes
 
 **Output behavior:** 2 scenario(s) — 2 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `ScriptParser` / `ScriptExecutor` / `ScriptValidator` / `TemplateGenerator` (`DICOMKit/Scripting`) — both the CLI (`Sources/dicom-script/`) and DICOMStudio's `executeDicomScript*` call it (core shared; some orchestration is adapter-local). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** `template` byte-identical (2 goldens; shared `TemplateGenerator`).
+- **Intentional divergences (not bugs):** **`run`/`validate` differ by design:** the sandboxed app cannot spawn nested `dicom-*` processes, so it shows a parsed **plan only** + an educational note; the CLI executes via the injected `Process` `CommandRunner`.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

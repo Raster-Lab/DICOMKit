@@ -8,6 +8,16 @@ _CLI binary:_ `dicom-split` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 **Output behavior:** 11 scenario(s) — 11 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `FrameSplitter` (`DICOMKit/Splitting`) — both the CLI (`Sources/dicom-split/`) and DICOMStudio's `executeDicomSplit*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Extracted frames byte-identical (shared engine).
+- **Intentional divergences (not bugs):** App enriches the console: `Extracted N frame(s) to <path>`, lists up to 10 written paths + sizes; CLI prints only `Split complete!`. Non-deterministic path set → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

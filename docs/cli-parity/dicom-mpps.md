@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-mpps` · _category:_ NETWORK_OPERATIONS · _wired in Studio
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMMPPSService` (`DICOMNetwork`) — both the CLI (`Sources/dicom-mpps/`) and DICOMStudio's `executeDicomMpps*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** `create`/`update` run through the identical shared service (same N-CREATE/N-SET).
+- **Intentional divergences (not bugs):** Console presentation differs. Live network → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

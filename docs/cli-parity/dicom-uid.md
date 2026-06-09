@@ -4,7 +4,17 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 
 **Input-contract parity:** 12/13 CLI flags matched · 1 missing in UI · status **INCOMPLETE** (92%)
 
-**Output behavior:** 7 scenario(s) — 6 success / 1 drift.
+**Output behavior:** 7 scenario(s) — 7 success / 0 drift.
+
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `UIDManager` (`DICOMKit/UIDManagement`) — both the CLI (`Sources/dicom-uid/`) and DICOMStudio's `executeDicomUid*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** validate & lookup byte/text-identical (6 goldens; shared `validateUID`/`UIDDictionary`).
+- **Intentional divergences (not bugs):** `generate`/`regenerate` are **non-deterministic** (fresh UIDs by definition); app adds a sandbox write note on regenerate.
 
 ## Flags
 
@@ -16,7 +26,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | `--export-map` | option | ✅ match | ✓ | ⊘ not covered |
 | `--file` | option | ✅ match | ✓ | ✅ success |
 | `--json` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--list-all` | flag | ✅ match | ✓ | ❌ DRIFT |
+| `--list-all` | flag | ✅ match | ✓ | ✅ success |
 | `--maintain-relationships` | flag | ⚠️ missing in UI | — | ⊘ not covered |
 | `--output` | option | ✅ match | ✓ | ⊘ not covered |
 | `--root` | option | ✅ match | ✓ | ⊘ not covered |
@@ -30,7 +40,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 |---|---|---|
 | CT.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
 | dicom-uid · lookup | `lookup 1.2.840.10008.1.2.1` | ✅ success |
-| dicom-uid · lookup-listall | `lookup --list-all` | ❌ DRIFT |
+| dicom-uid · lookup-listall | `lookup --list-all` | ✅ success |
 | dicom-uid · validate | `validate 1.2.840.10008.1.2.1` | ✅ success |
 | dicom-uid · validate-invalid | `validate not-a-valid-uid` | ✅ success |
 | dicom-uid · validate-registry | `validate --check-registry 1.2.840.10008.1.2.1` | ✅ success |

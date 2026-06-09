@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-pixedit` · _category:_ DATA_EXPORT · _wired in Studio:_ y
 
 **Output behavior:** 6 scenario(s) — 6 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `PixelEditor` (`DICOMKit/PixelEditing`) — both the CLI (`Sources/dicom-pixedit/`) and DICOMStudio's `executeDicomPixedit*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Edited DICOM byte-identical (3 goldens; shared `processData`).
+- **Intentional divergences (not bugs):** App appends a 2-line summary (`Edited pixel data: N operation(s) applied.` + image dims) and a sandbox note when applicable.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

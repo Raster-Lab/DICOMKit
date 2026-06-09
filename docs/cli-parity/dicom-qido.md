@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-wado` · _subcommand:_ `query` · _category:_ NETWORK_OPERA
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMwebClient` (QIDO-RS) (`DICOMWeb`) — both the CLI (`Sources/dicom-qido/`) and DICOMStudio's `executeDicomQido*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** QIDO-RS queries run through the identical shared client (same HTTP).
+- **Intentional divergences (not bugs):** Console presentation differs (emoji). Live network → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

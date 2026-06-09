@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-image` · _category:_ DATA_EXPORT · _wired in Studio:_ yes
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `ImageConverter` (`DICOMKit/SecondaryCapture`) — both the CLI (`Sources/dicom-image/`) and DICOMStudio's `executeDicomImage*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Same engine and logic (UID generation reconciled to `UIDGenerator` in both).
+- **Intentional divergences (not bugs):** **Non-deterministic:** the produced Secondary-Capture DICOM carries fresh SOP/Study/Series UIDs + current date/time, so bytes differ run-to-run by design → no goldens (verified by smoke).
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

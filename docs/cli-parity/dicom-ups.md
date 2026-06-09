@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-wado` · _subcommand:_ `ups` · _category:_ NETWORK_OPERATI
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMwebClient` (UPS-RS) (`DICOMWeb`) — both the CLI (`Sources/dicom-ups/`) and DICOMStudio's `executeDicomUps*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** create/retrieve/search/subscribe run through the identical shared client; change-state issues the same HTTP request.
+- **Intentional divergences (not bugs):** On change-state the app prints the **curl-equivalent + raw HTTP request/response** as an educational feature (CLI does not). Live network → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

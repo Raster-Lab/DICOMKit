@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-echo` · _category:_ NETWORK_OPERATIONS · _wired in Studio
 
 **Output behavior:** no golden scenarios yet (offline output not exercised; e.g. network tool or not-yet-templated).
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `DICOMVerificationService` (`DICOMNetwork`) — both the CLI (`Sources/dicom-echo/`) and DICOMStudio's `executeDicomEcho*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** C-ECHO execution runs through the identical shared service (same wire protocol).
+- **Intentional divergences (not bugs):** Console: app `✅`/`❌` + latency in **ms**, always-on connection header; CLI `✓`/`✗` + **s**, header only with `--verbose`. Live network → no goldens.
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |

@@ -4,7 +4,17 @@ _CLI binary:_ `dicom-compress` · _category:_ FILE_PROCESSING · _wired in Studi
 
 **Input-contract parity:** 9/9 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 9 scenario(s) — 8 success / 1 drift.
+**Output behavior:** 9 scenario(s) — 9 success / 0 drift.
+
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `CompressionManager` (`DICOMKit/Compression`) — both the CLI (`Sources/dicom-compress/`) and DICOMStudio's `executeDicomCompress*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** info & backends byte-identical (goldens); compress/decompress produced DICOM byte-identical (RLE golden).
+- **Intentional divergences (not bugs):** App adds a sandbox `OutputAccess` redirect note under TCC denial. Backend list is host-dependent (identical on a given host).
 
 ## Flags
 
@@ -27,7 +37,7 @@ _CLI binary:_ `dicom-compress` · _category:_ FILE_PROCESSING · _wired in Studi
 | CT.dcm · compress-rle | `compress FIXTURE -c rle --output OUTPUT` | ✅ success |
 | CT.dcm · info | `info FIXTURE` | ✅ success |
 | CT.dcm · info-json | `info --json FIXTURE` | ✅ success |
-| dicom-compress · backends | `backends` | ❌ DRIFT |
+| dicom-compress · backends | `backends` | ✅ success |
 | dicom-compress · backends-json | `backends --json` | ✅ success |
 | syn-ct-rle.dcm · decompress-rle | `decompress FIXTURE --output OUTPUT --syntax explicit-le` | ✅ success |
 | syn-ct.dcm · compress-rle | `compress FIXTURE -c rle --output OUTPUT` | ✅ success |

@@ -6,6 +6,16 @@ _CLI binary:_ `dicom-tags` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 **Output behavior:** 8 scenario(s) — 8 success / 0 drift.
 
+## Verified App↔CLI parity
+
+> Manually audited 2026-06-09 at the code level, covering **every** flag — including
+> those the auto-generated tables below mark `⊘ not covered`. Companion:
+> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+
+- **Shared engine:** `TagEditor` (`DICOMKit/TagEditing`) — both the CLI (`Sources/dicom-tags/`) and DICOMStudio's `executeDicomTags*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
+- **Verified output match:** Edited DICOM byte-identical (4 goldens compare the artifact).
+- **Intentional divergences (not bugs):** Console wording: app `Saved: <path>` vs CLI `Output written to: <path>`; app always prints the change count (CLI only with `--verbose`/`--dry-run`).
+
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
