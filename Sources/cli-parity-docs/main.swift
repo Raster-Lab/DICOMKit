@@ -66,11 +66,19 @@ private let nonDeterministicFlags: [String: Set<String>] = [
     "dicom-pdf": ["--title", "--instance-number", "--series-number", "--series-description", "--modality"],
 ]
 
+/// Flags whose subcommand runs a SHARED engine (so output is identical by
+/// construction) but writes a file TREE the offline harness can't golden — parity
+/// is guaranteed by the shared engine + a smoke test, not a stdout/artifact golden.
+private let sharedTreeFlags: [String: Set<String>] = [
+    "dicom-study": ["--copy", "--output", "--pattern"],   // organize → shared StudyOrganizer
+]
+
 /// The reason an offline golden does not (and often cannot) exercise a flag.
 private func uncoveredReason(toolId: String, flag: String, requiresNetwork: Bool) -> String {
     if requiresNetwork { return "network — needs a live PACS/DICOMweb server" }
     if nonDeterministicTools.contains(toolId) { return "non-deterministic — fresh UIDs/timestamps" }
     if nonDeterministicFlags[toolId]?.contains(flag) == true { return "non-deterministic — fresh UIDs" }
+    if sharedTreeFlags[toolId]?.contains(flag) == true { return "shared engine — writes a file tree; parity by construction, smoke-tested" }
     if flag.contains("dry-run") { return "no-write preview — nothing to compare" }
     return "coverage gap — offline-testable, not yet templated"
 }

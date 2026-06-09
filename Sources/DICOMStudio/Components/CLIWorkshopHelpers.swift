@@ -3398,17 +3398,18 @@ case "dicom-study":
                 // ----- organize -----
                 CLIParameterDefinition(
                     id: "input", flag: "", displayName: "Input Directory",
-                    parameterType: .filePath, placeholder: "files/",
+                    parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/",
                     helpText: "Input directory containing DICOM files",
                     isRequired: true,
+                    defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Directory",
-                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/",
+                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/dicom-study/",
                     helpText: "Output directory for organized files",
                     isRequired: true,
-                    defaultValue: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/",
+                    defaultValue: "/Users/raster/Desktop/DICOM_Output/dicom-study/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
                 ),
                 CLIParameterDefinition(
@@ -3461,9 +3462,9 @@ case "dicom-study":
                 ),
                 CLIParameterDefinition(
                     id: "report", flag: "--report", displayName: "Report File",
-                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/report/StudyReport.txt",
+                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/",
                     helpText: "Optional output report file path for detected issues",
-                    defaultValue: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/report/StudyReport.txt",
+                    defaultValue: "/Users/raster/Desktop/DICOM_Output/dicom-study/report/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["check"])
                 ),
 
