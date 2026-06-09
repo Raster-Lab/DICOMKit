@@ -337,6 +337,9 @@ private struct AutoTool {
     /// Distinguishes multiple configs of the SAME tool (e.g. convert in dicom vs image mode)
     /// so their auto-labels don't collide. Empty for single-config tools.
     var configLabel: String = ""
+    /// Restrict subcommand iteration to these (e.g. only `extract` for dicom-pdf because
+    /// `encapsulate` regenerates UIDs → non-deterministic). nil → iterate all allowedValues.
+    var onlySubcommands: [String]? = nil
 }
 private let autoTools: [AutoTool] = [
     AutoTool(id: "dicom-diff", fixture: "ctpair", inputKeys: ["file1", "file2"]),
@@ -386,6 +389,18 @@ private let autoTools: [AutoTool] = [
     // (dicom-multi compare). Deterministic frame content.
     AutoTool(id: "dicom-split", fixture: "mf", inputKeys: ["inputPath"],
              outputParam: "output", artifactKind: "dicom-multi", artifactExt: "dcm", portable: false),
+    // dicom-tags write mode: one flag at a time over the produced .dcm (curated covers
+    // --set/--delete/--delete-private; this fills --tags/--verbose/etc.). A flag that needs
+    // a write op to produce output (or a second file, e.g. --copy-from) auto-skips.
+    AutoTool(id: "dicom-tags", fixture: "ct", inputKeys: ["inputPath"],
+             outputParam: "output", artifactKind: "dicom", artifactExt: "dcm"),
+    // dicom-compress artifact mode: the compress op writes a .dcm, so flags that only make
+    // sense WITH an output (--quality/--verbose/--backend on top of a baseline --codec rle)
+    // get exercised here. Compressed (RLE) bytes are deterministic but the wrapper carries
+    // volatile UIDs masked by the dicom comparator; kept local-only (portable:false).
+    AutoTool(id: "dicom-compress", fixture: "ct", inputKeys: ["input"], subcommandParam: "operation",
+             baselineParams: ["codec": "rle"], outputParam: "output", artifactKind: "dicom",
+             artifactExt: "dcm", portable: false, configLabel: "art-", onlySubcommands: ["compress"]),
 ]
 
 /// A representative value for a one-flag-at-a-time scenario, or [] if no safe generic value
@@ -412,6 +427,11 @@ private func autoValues(_ def: CLIParameterDefinition) -> [String] {
         if key.contains("frame")           { return ["0"] }
         if key.contains("crop")            { return ["0,0,8,8"] }   // x,y,w,h on the 8×8 synthetic CT
         if key.contains("url")             { return ["https://example.org/{uid}"] }
+        if key.contains("codec")           { return ["rle"] }        // RLE: lossless + deterministic
+        if key.contains("syntax")          { return ["explicit-le"] } // decompress target
+        if key.contains("exif")            { return ["PatientName"] } // dicom-export embed field
+        if key.contains("variable")        { return ["VAR=value"] }   // dicom-script KEY=VALUE
+        if key.contains("title")           { return ["Parity Doc"] }  // dicom-pdf document title
         return []   // genuinely tool-specific free-text (patterns, AE titles, …) — left to curated
     default: return []
     }
@@ -427,7 +447,8 @@ private func autoTemplates(curated: [Template]) -> [Template] {
         let subcommands: [String?]
         if let scParam = at.subcommandParam,
            let scDef = defs.first(where: { $0.id == scParam }), !scDef.allowedValues.isEmpty {
-            subcommands = scDef.allowedValues.map { Optional($0) }
+            let allowed = at.onlySubcommands.map { only in scDef.allowedValues.filter { only.contains($0) } } ?? scDef.allowedValues
+            subcommands = allowed.map { Optional($0) }
         } else {
             subcommands = [nil]
         }

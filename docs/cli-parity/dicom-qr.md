@@ -8,43 +8,39 @@ _CLI binary:_ `dicom-qr` · _category:_ NETWORK_OPERATIONS · _wired in Studio:_
 
 ## Verified App↔CLI parity
 
-> Manually audited 2026-06-09 at the code level, covering **every** flag — including
-> those the auto-generated tables below mark `⊘ not covered`. Companion:
-> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+- **Shared DICOMKit engine:** `DICOMQueryService / DICOMRetrieveService` (`DICOMNetwork`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
+- **Verdict:** query+retrieve via shared services. BUG: CLI uppercases the patient-name C-FIND key, the app sends it as-typed. Live network → no goldens.
 
-- **Shared engine:** `DICOMQueryService` / `DICOMRetrieveService` (`DICOMNetwork`) — both the CLI (`Sources/dicom-qr/`) and DICOMStudio's `executeDicomQr*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
-- **Verified output match:** Query + retrieve run through the identical shared services.
-- **Intentional divergences (not bugs):** App `query` prints structured output vs CLI plain text with `─` dividers; CLI has a `resume` subcommand the app lacks. Live network → no goldens.
-- **Known bug:** CLI uppercases the patient-name C-FIND key (`name.uppercased()`); the app sends it as-typed, so the same input yields different query keys.
+> Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--accession-number` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--aet` | option | ✅ match | ✓ | ⊘ not covered |
-| `--auto` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--called-aet` | option | ✅ match | ✓ | ⊘ not covered |
-| `--hierarchical` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--interactive` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--method` | option | ✅ match | ✓ | ⊘ not covered |
-| `--modality` | option | ✅ match | ✓ | ⊘ not covered |
-| `--move-dest` | option | ✅ match | ✓ | ⊘ not covered |
-| `--output` | option | ✅ match | ✓ | ⊘ not covered |
-| `--parallel` | option | ✅ match | ✓ | ⊘ not covered |
-| `--patient-id` | option | ✅ match | ✓ | ⊘ not covered |
-| `--patient-name` | option | ✅ match | ✓ | ⊘ not covered |
-| `--port` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--review` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--save-state` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--state` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--study-date` | option | ✅ match | ✓ | ⊘ not covered |
-| `--study-description` | option | ✅ match | ✓ | ⊘ not covered |
-| `--study-uid` | option | ✅ match | ✓ | ⊘ not covered |
-| `--timeout` | option | ✅ match | ✓ | ⊘ not covered |
-| `--transfer-syntax` | option | ✅ match | ✓ | ⊘ not covered |
-| `--validate` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--verbose` | flag | ⚠️ missing in UI | — | ⊘ not covered |
+| `--accession-number` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--aet` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--auto` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--called-aet` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--hierarchical` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--interactive` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--method` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--modality` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--move-dest` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--output` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--parallel` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--patient-id` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--patient-name` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--port` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--review` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--save-state` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--state` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--study-date` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--study-description` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--study-uid` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--timeout` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--transfer-syntax` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--validate` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--verbose` | flag | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
 
 ---
-_Legend — Input:_ ✅ match · ⚠️ missing in UI · ➕ extra in UI (drift). _Output:_ ✅ success · ❌ drift · ⊘ not covered · — not wired. Generated by `swift run cli-parity-docs` (in-process, from bundled contracts + goldens)._
+_Legend — Input:_ ✅ match · ⚠️ missing in UI · ➕ extra in UI (drift). _Output:_ ✅ success · ❌ drift · ⊘ not covered *(reason: network · non-deterministic · coverage gap · no-write preview)* · — not wired. The **Verified App↔CLI parity** block above is the durable verdict for ALL flags (incl. uncovered). Generated by `swift run cli-parity-docs` (in-process, from bundled contracts + goldens)._
