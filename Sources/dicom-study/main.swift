@@ -50,13 +50,16 @@ extension DICOMStudy {
         var verbose: Bool = false
         
         mutating func run() throws {
+            // Shared engine (Sources/DICOMKit/Study/StudyOrganizer.swift); route its
+            // output to stdout so the CLI and DICOMStudio are text-exact.
             let organizer = StudyOrganizer()
             try organizer.organize(
                 inputPath: input,
                 outputPath: output,
                 pattern: pattern,
                 copy: copy,
-                verbose: verbose
+                verbose: verbose,
+                log: { print($0) }
             )
         }
     }

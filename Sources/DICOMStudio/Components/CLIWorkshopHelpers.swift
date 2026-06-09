@@ -3405,15 +3405,16 @@ case "dicom-study":
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Directory",
-                    parameterType: .outputPath, placeholder: "organized/",
+                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/",
                     helpText: "Output directory for organized files",
                     isRequired: true,
+                    defaultValue: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
                 ),
                 CLIParameterDefinition(
                     id: "pattern", flag: "--pattern", displayName: "Naming Pattern",
                     parameterType: .enumPicker, placeholder: "descriptive",
-                    helpText: "Folder naming pattern: 'descriptive' (PatientName_Desc_UIDsuffix) or 'uid' (full UIDs)",
+                    helpText: "Folder naming (built from study data): 'descriptive' → PatientName_StudyDescription_UID8 / SeriesNumber_Modality_SeriesDescription; 'uid' → full StudyUID / SeriesUID",
                     defaultValue: "descriptive",
                     allowedValues: ["descriptive", "uid"],
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["organize"])
@@ -3460,8 +3461,9 @@ case "dicom-study":
                 ),
                 CLIParameterDefinition(
                     id: "report", flag: "--report", displayName: "Report File",
-                    parameterType: .outputPath, placeholder: "missing.txt",
+                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/report/StudyReport.txt",
                     helpText: "Optional output report file path for detected issues",
+                    defaultValue: "/Users/raster/Desktop/DICOM_Ouput/dicom-study/report/StudyReport.txt",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["check"])
                 ),
 

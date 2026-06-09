@@ -151,7 +151,7 @@ Examples include:
 - `TagEditor`
 - `FrameMerger`
 - `FrameSplitter`
-- `StudyScanner` / `StudyReport`
+- `StudyScanner` / `StudyReport` / `StudyOrganizer`
 - `ArchiveStore`
 - `PixelEditor`
 - `ScriptParser` / `ScriptExecutor` / `ScriptValidator` / `TemplateGenerator`
