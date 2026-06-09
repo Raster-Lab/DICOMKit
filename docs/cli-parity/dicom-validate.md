@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-validate` · _category:_ FILE_PROCESSING · _wired in Studi
 
 **Input-contract parity:** 8/8 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 15 scenario(s) — 15 success / 0 drift.
+**Output behavior:** 19 scenario(s) — 19 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -20,9 +20,9 @@ _CLI binary:_ `dicom-validate` · _category:_ FILE_PROCESSING · _wired in Studi
 | `--detailed` | flag | ✅ match | ✓ | ✅ success |
 | `--force` | flag | ✅ match | ✓ | ✅ success |
 | `--format` | option | ✅ match | ✓ | ✅ success |
-| `--iod` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--iod` | option | ✅ match | ✓ | ✅ success |
 | `--level` | option | ✅ match | ✓ | ✅ success |
-| `--output` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--output` | option | ✅ match | ✓ | ✅ success |
 | `--recursive` | flag | ✅ match | ✓ | ✅ success |
 | `--strict` | flag | ✅ match | ✓ | ✅ success |
 
@@ -33,15 +33,19 @@ _CLI binary:_ `dicom-validate` · _category:_ FILE_PROCESSING · _wired in Studi
 | CT.dcm · auto-force | `FIXTURE --force` | ✅ success |
 | CT.dcm · auto-recursive | `FIXTURE --recursive` | ✅ success |
 | CT.dcm · detailed | `--detailed FIXTURE` | ✅ success |
+| CT.dcm · iod-override | `--iod CTImageStorage FIXTURE` | ✅ success |
 | CT.dcm · json | `--format json FIXTURE` | ✅ success |
 | CT.dcm · level5 | `--level 5 FIXTURE` | ✅ success |
+| CT.dcm · output-file | `--output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · strict | `--strict FIXTURE` | ✅ success |
 | CT.dcm · text | `FIXTURE` | ✅ success |
 | syn-ct.dcm · auto-force | `FIXTURE --force` | ✅ success |
 | syn-ct.dcm · auto-recursive | `FIXTURE --recursive` | ✅ success |
 | syn-ct.dcm · detailed | `--detailed FIXTURE` | ✅ success |
+| syn-ct.dcm · iod-override | `--iod CTImageStorage FIXTURE` | ✅ success |
 | syn-ct.dcm · json | `--format json FIXTURE` | ✅ success |
 | syn-ct.dcm · level5 | `--level 5 FIXTURE` | ✅ success |
+| syn-ct.dcm · output-file | `--output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · strict | `--strict FIXTURE` | ✅ success |
 | syn-ct.dcm · text | `FIXTURE` | ✅ success |
 | syn-mf.dcm · mf-text | `FIXTURE` | ✅ success |

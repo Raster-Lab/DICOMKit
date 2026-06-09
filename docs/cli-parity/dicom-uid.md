@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 
 **Input-contract parity:** 12/13 CLI flags matched · 1 missing in UI · status **INCOMPLETE** (92%)
 
-**Output behavior:** 7 scenario(s) — 7 success / 0 drift.
+**Output behavior:** 10 scenario(s) — 10 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -24,23 +24,26 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | `--file` | option | ✅ match | ✓ | ✅ success |
 | `--json` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
 | `--list-all` | flag | ✅ match | ✓ | ✅ success |
-| `--maintain-relationships` | flag | ⚠️ missing in UI | — | ⊘ not covered (non-deterministic — fresh UIDs) |
-| `--output` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
+| `--maintain-relationships` | flag | ⚠️ missing in UI | — | ✅ success |
+| `--output` | option | ✅ match | ✓ | ✅ success |
 | `--root` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
-| `--search` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--search` | option | ✅ match | ✓ | ✅ success |
 | `--type` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
-| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| CT.dcm · regenerate-flags | `regenerate FIXTURE --output OUTPUT --maintain-relationships --verbose` | ✅ success |
 | CT.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
 | dicom-uid · lookup | `lookup 1.2.840.10008.1.2.1` | ✅ success |
 | dicom-uid · lookup-listall | `lookup --list-all` | ✅ success |
+| dicom-uid · lookup-search | `lookup --search CT` | ✅ success |
 | dicom-uid · validate | `validate 1.2.840.10008.1.2.1` | ✅ success |
 | dicom-uid · validate-invalid | `validate not-a-valid-uid` | ✅ success |
 | dicom-uid · validate-registry | `validate --check-registry 1.2.840.10008.1.2.1` | ✅ success |
+| syn-ct.dcm · regenerate-flags | `regenerate FIXTURE --output OUTPUT --maintain-relationships --verbose` | ✅ success |
 | syn-ct.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
 
 ---

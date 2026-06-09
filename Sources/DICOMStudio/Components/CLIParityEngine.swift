@@ -453,6 +453,9 @@ public enum CLIParityEngine {
     public static let volatileDumpTags: Set<String> = [
         "(0002,0000)", "(0002,0003)", "(0002,0012)", "(0002,0013)", "(0002,0016)",
         "(0008,0018)", "(0020,000d)", "(0020,000e)",
+        // Freshly minted by `dicom-uid regenerate` (and any UID-minting op), so they
+        // differ run-to-run between the CLI golden and the Studio re-run — mask them.
+        "(0008,3010)", "(0020,0052)",
     ]
     public static func maskVolatileDumpTags(_ lines: [String]) -> [String] {
         lines.map { line in

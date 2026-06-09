@@ -6,7 +6,7 @@ _CLI binary:_ `dicom-split` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 **Input sub-checks (Phase 3):** ⚠️ 1 default mismatch(es): `--output`.
 
-**Output behavior:** 11 scenario(s) — 11 success / 0 drift.
+**Output behavior:** 12 scenario(s) — 12 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -23,7 +23,7 @@ _CLI binary:_ `dicom-split` · _category:_ FILE_ORGANIZATION · _wired in Studio
 | `--format` | option | ✅ match | ✓ | ✅ success |
 | `--frames` | option | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ⚠️ default `.`↔`/Users/raster/Desktop/DICOM_Output/` | ✅ success |
-| `--pattern` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--pattern` | option | ✅ match | ✓ | ✅ success |
 | `--recursive` | flag | ✅ match | ✓ | ✅ success |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 | `--window-center` | option | ✅ match | ✓ | ✅ success |
@@ -43,6 +43,7 @@ _CLI binary:_ `dicom-split` · _category:_ FILE_ORGANIZATION · _wired in Studio
 | syn-mf.dcm · auto-verbose | `FIXTURE --output OUTPUT --verbose` | ✅ success |
 | syn-mf.dcm · auto-window-center | `FIXTURE --output OUTPUT --window-center 40` | ✅ success |
 | syn-mf.dcm · auto-window-width | `FIXTURE --output OUTPUT --window-width 400` | ✅ success |
+| syn-mf.dcm · frames-pattern | `FIXTURE --pattern frame_{number}_{modality}.dcm --output OUTPUT` | ✅ success |
 | syn-mf.dcm · frames-subset | `FIXTURE --frames 1,3 --output OUTPUT` | ✅ success |
 
 ---
