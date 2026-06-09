@@ -297,6 +297,18 @@ let curatedTemplates: [Template] = [
     // App↔CLI divergences (tags preview → stderr vs app console; uid app dry-run prints a
     // generic message while the CLI prints the per-UID mapping). Tracked as findings, not masked.
 
+    // ===== Chained-fixture wave: consume/reverse directions using derived fixtures =====
+    // dicom-json --reverse: derived json → DICOM (round-trip; original UIDs preserved). ✅
+    Template(tool: "dicom-json", label: "reverse", cliArgs: ["FIXTURE", "--reverse", "--output", "OUTPUT"], studioParams: ["inputPath": "FIXTURE", "reverse": "true", "output": "OUTPUT"], fixture: "json", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
+    // FINDINGS (chained fixtures built + working; scenarios withheld pending app-side fixes):
+    //  • dicom-image (png→SC): the app produces NO output file where the CLI succeeds — the
+    //    image→Secondary-Capture path fails in the Studio reimplementation. Needs investigation.
+    //  • dicom-xml --reverse: same symptom — CLI writes the .dcm, the app writes nothing
+    //    (json --reverse works, so the app's XML decoder path specifically fails).
+    //  • dicom-pdf --extract: metadata matches, but the "Extracted: <path>" line carries the
+    //    input-derived path (source vs bundle) — a harness input-path normalization gap.
+    // The png/xml/pdfdcm chained fixtures stay built + ready for when these are fixed.
+
     // --- dicom-archive (read ops over a populated archive) — local-only fixture.
     // stats is omitted: its output carries a creation timestamp (Wave-4 masking).
     Template(tool: "dicom-archive", label: "query", cliArgs: ["query", "--archive", "FIXTURE"], studioParams: ["subcommand": "query", "archive": "FIXTURE"], fixture: "archive"),
@@ -690,6 +702,30 @@ let realCT: ConcreteFixture? = {
     return nil
 }()
 
+// CHAINED FIXTURES: produced by running a forward CLI tool on a base fixture, so the
+// CONSUME/REVERSE direction has a real input (image←png, json/xml reverse←json/xml,
+// pdf extract←encapsulated dicom). Written AFTER the fixtures/ clear above so they
+// survive; git-ignored, so the scenarios that use them are portable:false (local-only
+// goldens). "DEST" in the args is replaced with the derived fixture's output path.
+func chainFixture(_ name: String, _ tool: String, _ args: [String]) -> ConcreteFixture? {
+    let bin = binDir.appendingPathComponent(tool)
+    guard FileManager.default.isExecutableFile(atPath: bin.path) else {
+        errln("→ \(tool) not built; skipping chained fixture \(name)"); return nil
+    }
+    let dest = fixturesDir.appendingPathComponent(name)
+    try? FileManager.default.removeItem(at: dest)
+    _ = run(bin, args.map { $0 == "DEST" ? dest.path : $0 })
+    guard FileManager.default.fileExists(atPath: dest.path) else {
+        errln("→ failed to build chained fixture \(name)"); return nil
+    }
+    errln("→ chained fixture: \(name)")
+    return ConcreteFixture(bundledName: name, path: dest.path, phiSafe: false)
+}
+let synPNG    = chainFixture("syn-frame.png", "dicom-export", ["single", synCT.path, "--format", "png", "--output", "DEST"])
+let synJSON   = chainFixture("syn-ct.json", "dicom-json", [synCT.path, "--output", "DEST"])
+let synXML    = chainFixture("syn-ct.xml", "dicom-xml", [synCT.path, "--output", "DEST"])
+let synPdfDcm = chainFixture("syn-pdf.dcm", "dicom-pdf", [synDoc.path, "--output", "DEST", "--patient-name", "PARITY^PDF", "--patient-id", "SYN-PDF", "--study-uid", "1.2.826.0.1.3680043.10.999.2.1", "--series-uid", "1.2.826.0.1.3680043.10.999.2.2"])
+
 // 1c. Resolve a template's logical fixture into concrete (primary, secondary) runs.
 func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: ConcreteFixture?)] {
     switch id {
@@ -700,6 +736,10 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "mf":       return [(synMF, nil)]
     case "ctrle":    return synCtRLE.map { [($0, ConcreteFixture?.none)] } ?? []
     case "pdf":      return [(synDoc, nil)]
+    case "png":      return synPNG.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "json":     return synJSON.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "xml":      return synXML.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "pdfdcm":   return synPdfDcm.map { [($0, ConcreteFixture?.none)] } ?? []
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
     case "studypair":return [(synStudy, synStudy2)]

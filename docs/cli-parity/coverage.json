@@ -140,11 +140,11 @@
     },
     {
       "acceptedFlags" : 12,
-      "coveragePct" : 91.7,
-      "coveredFlags" : 11,
+      "coveragePct" : 100,
+      "coveredFlags" : 12,
       "toolId" : "dicom-json",
       "uncoveredFlags" : [
-        "--reverse"
+
       ],
       "wired" : true
     },
@@ -517,8 +517,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 166,
-    "pct" : 43.3,
+    "covered" : 167,
+    "pct" : 43.6,
     "toolsWired" : 32
   }
 }
