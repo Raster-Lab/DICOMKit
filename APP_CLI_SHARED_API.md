@@ -56,6 +56,19 @@ the same input produced subtly different output in the app vs the CLI. Sharing
 the engine makes drift **structurally impossible** for the processing core — the
 only differences left are the adapter concerns enumerated in §5.
 
+> **Core principle — text‑exact output via one shared renderer.** Because the CLI
+> and DICOMStudio call the **same engine *and* the same output renderer**, they
+> emit **byte/text‑exact** output for the same input (subcommand + flags) — not
+> two formatters that happen to agree. This holds for results *and* errors: e.g.
+> `dicom-study organize --copy` run twice raises the identical
+> `"… already exists"` error in both, because both run the shared `StudyOrganizer`
+> (neither pre‑deletes the destination). **This invariant must be maintained for
+> every tool:** when adding or changing a tool, route both adapters through one
+> shared engine/renderer (return strings/structs or an injected `log` closure —
+> never re‑format in the adapter). The only sanctioned exceptions are the
+> adapter‑specific items in §5 (sandbox path/notes, emoji, intentional educational
+> extras, genuinely non‑deterministic UID/timestamp/network output).
+
 ---
 
 ## 2. Adapter responsibilities
@@ -98,7 +111,7 @@ number of committed Tier‑2 parity scenarios that machine‑verify byte‑exact
 | `dicom-convert` | (default) | `TransferSyntaxConverter` + `DICOMFile` rendering | `DICOMCore` + `DICOMKit` | 1 |
 | `dicom-split` | (default) | `FrameSplitter` | `DICOMKit/Splitting` | 0 |
 | `dicom-merge` | (default) | `FrameMerger` | `DICOMKit/Merging` | 0 |
-| `dicom-study` | summary · check · stats · compare · organize | `StudyScanner` / `StudyReport` | `DICOMKit/Study` | 12 |
+| `dicom-study` | summary · check · stats · compare · organize | `StudyScanner` / `StudyReport` / `StudyOrganizer` | `DICOMKit/Study` | 12 |
 | `dicom-archive` | init · import · query · list · export · check · stats | `ArchiveStore` | `DICOMKit/Archive` | 0 |
 | `dicom-pixedit` | (default) | `PixelEditor` | `DICOMKit/PixelEditing` | 3 |
 | `dicom-script` | template · run · validate | `ScriptParser`/`Executor`/`Validator`/`TemplateGenerator` | `DICOMKit/Scripting` | 2 |

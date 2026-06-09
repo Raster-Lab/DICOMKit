@@ -49,7 +49,7 @@ logic; **partial** = core shared, some orchestration local.
 | `dicom-xml` | full | ✅ SAME | 8 | sandbox redirect note only on TCC denial |
 | `dicom-convert` | partial | 🟰 SAME artifact / +note | 1 | DICOM→DICOM artifact identical; app adds progress lines + sandbox note |
 | `dicom-pixedit` | full | 🟰 SAME artifact / +note | 3 | edited DICOM identical; app adds a 2‑line summary |
-| `dicom-study` | partial | ⚠️/✅ split | 12 | summary/check/stats/compare SAME; **organize** differs (`→` vs `->`, sort) |
+| `dicom-study` | full | ✅ SAME | 12 | all subcommands shared; organize now uses the shared `StudyOrganizer` (text-exact, incl. the copy "already exists" error) |
 | `dicom-compress` | full | 🟰 SAME artifact / +note | 4 | info SAME; compress/decompress artifact identical, app adds sandbox note |
 | `dicom-uid` | full | ✅/🎲 split | 6 | validate/lookup SAME; generate/regenerate non‑deterministic |
 | `dicom-split` | full | ⚠️ DIFFER | 0 | same FrameSplitter; app lists extracted paths + summary |
@@ -138,14 +138,14 @@ logic; **partial** = core shared, some orchestration local.
 |---|---|---|
 | `--mask-region`, `--crop`, `--apply-window`, `--invert` | 🟰 SAME artifact (3) | Edited DICOM byte‑identical (shared `PixelEditor.processData`). **Console:** app appends `Edited pixel data: N operation(s) applied.` + `Image: WxH, B-bit, S sample(s)`; sandbox note when applicable. |
 
-#### `dicom-study` — `StudyScanner` / `StudyReport` — split
+#### `dicom-study` — `StudyScanner` / `StudyReport` / `StudyOrganizer` — ✅ SAME
 | Subcommand / flag | Verdict | Notes |
 |---|---|---|
 | `summary` | ✅ SAME (4) | Shared `StudyScanner.scanStudies` + `StudyReport.renderSummary`. |
 | `check` | ✅ SAME (3) | Shared `evaluateCompleteness`. |
 | `stats` | ✅ SAME (3) | Shared `computeStatistics`. |
 | `compare` | ✅ SAME (2) | Shared `compareStudies`. |
-| `organize` | ⚠️ DIFFER | Separate impls: CLI verbose arrow `→` (U+2192) vs app ASCII `->`; app sorts collected files (CLI uses enumerator order); sandbox path resolution. No shared organize engine. |
+| `organize` | ✅ SAME | Now shared via `StudyOrganizer` (DICOMKit/Study). Identical descriptive/uid folder naming, deterministic file ordering, the `→` (U+2192) verbose arrow, and the same `copyItem`/`moveItem` **"already exists"** error on a re-run (the app no longer pre-removes the destination). Only the summary line's output *path* differs when the app's sandbox redirects the write (an adapter concern, not the renderer). |
 
 #### `dicom-compress` — `CompressionManager` — split (4 goldens)
 | Subcommand / flag | Verdict | Notes |

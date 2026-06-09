@@ -10,8 +10,8 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 ## Verified App↔CLI parity
 
-- **Shared DICOMKit engine:** `StudyScanner / StudyReport` (`DICOMKit/Study`) — both the CLI and DICOMStudio call it (core shared; some orchestration adapter-local); flags with no golden still produce identical output **by construction**.
-- **Verdict:** summary/check/stats/compare byte-identical (12 goldens); `organize` differs (→ vs ->, file sort).
+- **Shared DICOMKit engine:** `StudyScanner / StudyReport / StudyOrganizer` (`DICOMKit/Study`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
+- **Verdict:** ALL subcommands shared — summary/check/stats/compare byte-identical (12 goldens); `organize` now uses the shared StudyOrganizer too (identical file naming/ordering, `→` arrow, and the same copy/move `already exists` error).
 
 > Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 

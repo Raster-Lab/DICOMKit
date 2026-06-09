@@ -3727,38 +3727,6 @@ private func executeDicomStudy() async {
         }
     }
 
-    // MARK: - dicom-study shared model types (reimplemented from StudyManager)
-
-    /// Detects a DICOM file by checking for the "DICM" magic at offset 128.
-    private nonisolated static func studyIsDICOMFile(_ path: String) -> Bool {
-        guard let handle = FileHandle(forReadingAtPath: path) else { return false }
-        defer { try? handle.close() }
-        guard let data = try? handle.read(upToCount: 132), data.count >= 132 else { return false }
-        return data.subdata(in: 128..<132) == Data([0x44, 0x49, 0x43, 0x4D])
-    }
-
-    private nonisolated static func studySanitizeFilename(_ name: String) -> String {
-        let invalid = CharacterSet(charactersIn: ":/\\?%*|\"<>")
-        return name.components(separatedBy: invalid).joined(separator: "_")
-    }
-
-    /// Recursively collect DICOM file paths under a directory.
-    private nonisolated static func studyCollectDICOMFiles(at path: String) -> [String] {
-        var result: [String] = []
-        let fm = FileManager.default
-        let base = URL(fileURLWithPath: path)
-        guard let en = fm.enumerator(atPath: path) else { return result }
-        while let rel = en.nextObject() as? String {
-            let full = base.appendingPathComponent(rel).path
-            var isDir: ObjCBool = false
-            if fm.fileExists(atPath: full, isDirectory: &isDir), !isDir.boolValue,
-               rel.hasSuffix(".dcm") || studyIsDICOMFile(full) {
-                result.append(full)
-            }
-        }
-        return result.sorted()
-    }
-
     // MARK: - dicom-study : organize
 
     private func executeDicomStudyOrganize() async {
@@ -3795,112 +3763,22 @@ private func executeDicomStudy() async {
         if let note = _orgOut.note { appendConsoleOutput(note + "\n") }
 
         let (output_, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
-            let fm = FileManager.default
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: inputURL.path, isDirectory: &isDir) else {
-                return ("Error: Directory not found: \(inputURL.path)\n", 1)
-            }
-            guard pattern == "descriptive" || pattern == "uid" else {
-                return ("Error: Invalid naming pattern: \(pattern). Use 'descriptive' or 'uid'\n", 1)
-            }
             var log = ""
-            if verbose { log += "Scanning directory: \(inputURL.path)\n" }
-            let files = CLIWorkshopViewModel.studyCollectDICOMFiles(at: inputURL.path)
-            if files.isEmpty { return ("Error: No DICOM files found in the specified directory\n", 1) }
-            if verbose { log += "Found \(files.count) DICOM files\nOrganizing files...\n" }
-
-            // Group files: studyUID -> (study info, seriesUID -> series info + paths)
-            struct SInfo { var seriesNumber: String?; var seriesDescription: String?; var modality: String?; var paths: [String] = [] }
-            struct StInfo { var studyDescription: String?; var patientName: String?; var series: [String: SInfo] = [:]; var seriesOrder: [String] = [] }
-            var studies: [String: StInfo] = [:]
-            var studyOrder: [String] = []
-
-            for filePath in files {
-                guard let data = try? Data(contentsOf: URL(fileURLWithPath: filePath)),
-                      let file = try? DICOMFile.read(from: data, force: false) else {
-                    if verbose { log += "Warning: Failed to read \(filePath)\n" }
-                    continue
-                }
-                let ds = file.dataSet
-                guard let studyUID = ds.string(for: Tag.studyInstanceUID) else {
-                    if verbose { log += "Warning: Missing StudyInstanceUID in \(filePath)\n" }
-                    continue
-                }
-                let seriesUID = ds.string(for: Tag.seriesInstanceUID) ?? "UNKNOWN_SERIES"
-                if studies[studyUID] == nil {
-                    studies[studyUID] = StInfo(
-                        studyDescription: ds.string(for: Tag.studyDescription),
-                        patientName: ds.string(for: Tag.patientName))
-                    studyOrder.append(studyUID)
-                }
-                if studies[studyUID]!.series[seriesUID] == nil {
-                    studies[studyUID]!.series[seriesUID] = SInfo(
-                        seriesNumber: ds.string(for: Tag.seriesNumber),
-                        seriesDescription: ds.string(for: Tag.seriesDescription),
-                        modality: ds.string(for: Tag.modality))
-                    studies[studyUID]!.seriesOrder.append(seriesUID)
-                }
-                studies[studyUID]!.series[seriesUID]!.paths.append(filePath)
-            }
-
             do {
-                try fm.createDirectory(at: outputURL, withIntermediateDirectories: true)
+                // Organize via the shared DICOMKit StudyOrganizer — identical file
+                // naming/ordering and the same copy/move "already exists" error as the
+                // CLI (Sources/DICOMKit/Study/StudyOrganizer.swift). Output is written
+                // under the sandbox-resolved outputURL.
+                try StudyOrganizer().organize(
+                    inputPath: inputURL.path, outputPath: outputURL.path,
+                    pattern: pattern, copy: copy, verbose: verbose,
+                    log: { log += $0 + "\n" })
+                return (log, 0)
+            } catch let e as StudyError {
+                return (log + "Error: \(e.errorDescription ?? "\(e)")\n", 1)
             } catch {
-                return (log + "Error: Write error: \(error.localizedDescription)\n", 1)
+                return (log + "Error: \(error.localizedDescription)\n", 1)
             }
-
-            var copied = 0
-            do {
-                for studyUID in studyOrder {
-                    guard let st = studies[studyUID] else { continue }
-                    let studyDirName: String
-                    if pattern == "descriptive" {
-                        let desc = st.studyDescription ?? "Unknown"
-                        let pn = st.patientName ?? "Unknown"
-                        studyDirName = CLIWorkshopViewModel.studySanitizeFilename("\(pn)_\(desc)_\(studyUID.suffix(8))")
-                    } else {
-                        studyDirName = studyUID
-                    }
-                    let studyDir = outputURL.appendingPathComponent(studyDirName)
-                    try fm.createDirectory(at: studyDir, withIntermediateDirectories: true)
-
-                    for seriesUID in st.seriesOrder {
-                        guard let se = st.series[seriesUID] else { continue }
-                        let seriesDirName: String
-                        if pattern == "descriptive" {
-                            let num = se.seriesNumber ?? "0"
-                            let desc = se.seriesDescription ?? "Unknown"
-                            let mod = se.modality ?? "XX"
-                            seriesDirName = CLIWorkshopViewModel.studySanitizeFilename("\(num)_\(mod)_\(desc)")
-                        } else {
-                            seriesDirName = seriesUID
-                        }
-                        let seriesDir = studyDir.appendingPathComponent(seriesDirName)
-                        try fm.createDirectory(at: seriesDir, withIntermediateDirectories: true)
-
-                        for (index, filePath) in se.paths.enumerated() {
-                            let dest = seriesDir.appendingPathComponent("\(index + 1).dcm")
-                            if copy {
-                                if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
-                                try fm.copyItem(at: URL(fileURLWithPath: filePath), to: dest)
-                            } else {
-                                if fm.fileExists(atPath: dest.path) { try fm.removeItem(at: dest) }
-                                try fm.moveItem(at: URL(fileURLWithPath: filePath), to: dest)
-                            }
-                            copied += 1
-                            if verbose {
-                                log += "  \(copy ? "Copied" : "Moved"): \(URL(fileURLWithPath: filePath).lastPathComponent) -> \(dest.path)\n"
-                            }
-                        }
-                    }
-                }
-            } catch {
-                return (log + "Error: Write error: \(error.localizedDescription)\n", 1)
-            }
-
-            log += "\(copy ? "Copied" : "Moved") \(copied) files to \(outputURL.path)\n"
-            log += "Organized \(studyOrder.count) studies\n"
-            return (log, 0)
         }.value
 
         appendConsoleOutput(output_)
