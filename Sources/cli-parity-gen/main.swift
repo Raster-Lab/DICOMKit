@@ -300,14 +300,12 @@ let curatedTemplates: [Template] = [
     // ===== Chained-fixture wave: consume/reverse directions using derived fixtures =====
     // dicom-json --reverse: derived json → DICOM (round-trip; original UIDs preserved). ✅
     Template(tool: "dicom-json", label: "reverse", cliArgs: ["FIXTURE", "--reverse", "--output", "OUTPUT"], studioParams: ["inputPath": "FIXTURE", "reverse": "true", "output": "OUTPUT"], fixture: "json", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
-    // FINDINGS (chained fixtures built + working; scenarios withheld pending app-side fixes):
-    //  • dicom-image (png→SC): the app produces NO output file where the CLI succeeds — the
-    //    image→Secondary-Capture path fails in the Studio reimplementation. Needs investigation.
-    //  • dicom-xml --reverse: same symptom — CLI writes the .dcm, the app writes nothing
-    //    (json --reverse works, so the app's XML decoder path specifically fails).
-    //  • dicom-pdf --extract: metadata matches, but the "Extracted: <path>" line carries the
-    //    input-derived path (source vs bundle) — a harness input-path normalization gap.
-    // The png/xml/pdfdcm chained fixtures stay built + ready for when these are fixed.
+    // dicom-xml --reverse: derived xml → DICOM (the app reads param "input", not "inputPath").
+    Template(tool: "dicom-xml", label: "reverse", cliArgs: ["FIXTURE", "--reverse", "--output", "OUTPUT"], studioParams: ["input": "FIXTURE", "reverse": "true", "output": "OUTPUT"], fixture: "xml", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
+    // dicom-image: png → Secondary-Capture DICOM (13 metadata flags; SC SOP UID masked).
+    Template(tool: "dicom-image", label: "convert-allmeta", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--patient-name", "PARITY^IMG", "--patient-id", "SYN-IMG", "--study-uid", "1.2.826.0.1.3680043.10.999.3.1", "--series-uid", "1.2.826.0.1.3680043.10.999.3.2", "--study-description", "Parity Study", "--series-description", "Parity Series", "--series-number", "1", "--instance-number", "1", "--modality", "OT", "--use-exif", "--verbose"], studioParams: ["input": "FIXTURE", "output": "OUTPUT", "patient-name": "PARITY^IMG", "patient-id": "SYN-IMG", "study-uid": "1.2.826.0.1.3680043.10.999.3.1", "series-uid": "1.2.826.0.1.3680043.10.999.3.2", "study-description": "Parity Study", "series-description": "Parity Series", "series-number": "1", "instance-number": "1", "modality": "OT", "use-exif": "true", "verbose": "true"], fixture: "png", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
+    // NOTE: dicom-pdf --extract metadata matches; only the "Extracted: <path>" line differs
+    // (input source vs bundle path) — a harness input-path normalization gap, not a tool bug.
 
     // --- dicom-archive (read ops over a populated archive) — local-only fixture.
     // stats is omitted: its output carries a creation timestamp (Wave-4 masking).
