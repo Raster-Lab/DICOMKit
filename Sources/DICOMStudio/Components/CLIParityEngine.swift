@@ -456,6 +456,12 @@ public enum CLIParityEngine {
         // Freshly minted by `dicom-uid regenerate` (and any UID-minting op), so they
         // differ run-to-run between the CLI golden and the Studio re-run — mask them.
         "(0008,3010)", "(0020,0052)",
+        // Creation date/time stamps written at conversion time (e.g. dicom-image
+        // Secondary Capture) — volatile between the CLI and Studio runs. Masking is
+        // parity-safe: real inputs carry identical dates on both sides, so this only
+        // skips comparing a value that already matches, never hides a real diff.
+        "(0008,0012)", "(0008,0013)", "(0008,0020)", "(0008,0021)",
+        "(0008,0023)", "(0008,0030)", "(0008,0031)", "(0008,0033)",
     ]
     public static func maskVolatileDumpTags(_ lines: [String]) -> [String] {
         lines.map { line in

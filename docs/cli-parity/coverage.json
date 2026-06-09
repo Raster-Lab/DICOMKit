@@ -107,24 +107,12 @@
     },
     {
       "acceptedFlags" : 14,
-      "coveragePct" : 0,
-      "coveredFlags" : 0,
+      "coveragePct" : 85.7,
+      "coveredFlags" : 12,
       "toolId" : "dicom-image",
       "uncoveredFlags" : [
-        "--instance-number",
-        "--modality",
-        "--output",
-        "--patient-id",
-        "--patient-name",
         "--recursive",
-        "--series-description",
-        "--series-number",
-        "--series-uid",
-        "--split-pages",
-        "--study-description",
-        "--study-uid",
-        "--use-exif",
-        "--verbose"
+        "--split-pages"
       ],
       "wired" : true
     },
@@ -506,19 +494,19 @@
     },
     {
       "acceptedFlags" : 10,
-      "coveragePct" : 90,
-      "coveredFlags" : 9,
+      "coveragePct" : 100,
+      "coveredFlags" : 10,
       "toolId" : "dicom-xml",
       "uncoveredFlags" : [
-        "--reverse"
+
       ],
       "wired" : true
     }
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 167,
-    "pct" : 43.6,
+    "covered" : 180,
+    "pct" : 47,
     "toolsWired" : 32
   }
 }
