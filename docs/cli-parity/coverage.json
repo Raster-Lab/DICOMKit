@@ -35,16 +35,13 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 33.3,
-      "coveredFlags" : 3,
+      "coveragePct" : 66.7,
+      "coveredFlags" : 6,
       "toolId" : "dicom-compress",
       "uncoveredFlags" : [
-        "--backend",
-        "--codec",
         "--decompress",
         "--quality",
-        "--recursive",
-        "--verbose"
+        "--recursive"
       ],
       "wired" : true
     },
@@ -107,11 +104,11 @@
     },
     {
       "acceptedFlags" : 21,
-      "coveragePct" : 95.2,
-      "coveredFlags" : 20,
+      "coveragePct" : 100,
+      "coveredFlags" : 21,
       "toolId" : "dicom-export",
       "uncoveredFlags" : [
-        "--exif-fields"
+
       ],
       "wired" : true
     },
@@ -550,8 +547,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 129,
-    "pct" : 33.7,
+    "covered" : 133,
+    "pct" : 34.7,
     "toolsWired" : 32
   }
 }

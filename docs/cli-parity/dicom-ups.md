@@ -8,53 +8,50 @@ _CLI binary:_ `dicom-wado` · _subcommand:_ `ups` · _category:_ NETWORK_OPERATI
 
 ## Verified App↔CLI parity
 
-> Manually audited 2026-06-09 at the code level, covering **every** flag — including
-> those the auto-generated tables below mark `⊘ not covered`. Companion:
-> [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
+- **Shared DICOMKit engine:** `DICOMwebClient (UPS-RS)` (`DICOMWeb`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
+- **Verdict:** create/retrieve/search/subscribe via the shared client; change-state echoes the raw HTTP request/response (educational). Live network → no goldens.
 
-- **Shared engine:** `DICOMwebClient` (UPS-RS) (`DICOMWeb`) — both the CLI (`Sources/dicom-ups/`) and DICOMStudio's `executeDicomUps*` call it (all logic shared). Flags with no golden therefore still produce **identical output by construction**.
-- **Verified output match:** create/retrieve/search/subscribe run through the identical shared client; change-state issues the same HTTP request.
-- **Intentional divergences (not bugs):** On change-state the app prints the **curl-equivalent + raw HTTP request/response** as an educational feature (CLI does not). Live network → no goldens.
+> Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 
 ## Flags
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--accession-number` | option | ✅ match | ✓ | ⊘ not covered |
-| `--admission-id` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--aet` | option | ✅ match | ✓ | ⊘ not covered |
-| `--comments` | option | ✅ match | ✓ | ⊘ not covered |
-| `--create` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--create-workitem` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--expected-completion` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--filter-state` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--format` | option | ✅ match | ✓ | ⊘ not covered |
-| `--get` | option | ✅ match | ✓ | ⊘ not covered |
-| `--label` | option | ✅ match | ✓ | ⊘ not covered |
-| `--patient-birth-date` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--patient-id` | option | ✅ match | ✓ | ⊘ not covered |
-| `--patient-name` | option | ✅ match | ✓ | ⊘ not covered |
-| `--patient-sex` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--performer-name` | option | ✅ match | ✓ | ⊘ not covered |
-| `--performer-organization` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--priority` | option | ✅ match | ✓ | ⊘ not covered |
-| `--procedure-id` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--referring-physician` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--scheduled-start` | option | ✅ match | ✓ | ⊘ not covered |
-| `--scheduled-station` | option | ✅ match | ✓ | ⊘ not covered |
-| `--search` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--state` | option | ✅ match | ✓ | ⊘ not covered |
-| `--station-name` | option | ✅ match | ✓ | ⊘ not covered |
-| `--step-id` | option | ⚠️ missing in UI | — | ⊘ not covered |
-| `--study-uid` | option | ✅ match | ✓ | ⊘ not covered |
-| `--subscribe` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--token` | option | ✅ match | ✓ | ⊘ not covered |
-| `--transaction-uid` | option | ✅ match | ✓ | ⊘ not covered |
-| `--unsubscribe` | flag | ⚠️ missing in UI | — | ⊘ not covered |
-| `--update` | option | ✅ match | ✓ | ⊘ not covered |
-| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered |
-| `--workitem-uid` | option | ✅ match | ✓ | ⊘ not covered |
-| `--worklist-label` | option | ⚠️ missing in UI | — | ⊘ not covered |
+| `--accession-number` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--admission-id` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--aet` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--comments` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--create` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--create-workitem` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--expected-completion` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--filter-state` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--format` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--get` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--label` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--patient-birth-date` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--patient-id` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--patient-name` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--patient-sex` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--performer-name` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--performer-organization` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--priority` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--procedure-id` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--referring-physician` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--scheduled-start` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--scheduled-station` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--search` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--state` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--station-name` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--step-id` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--study-uid` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--subscribe` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--token` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--transaction-uid` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--unsubscribe` | flag | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--update` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--workitem-uid` | option | ✅ match | ✓ | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
+| `--worklist-label` | option | ⚠️ missing in UI | — | ⊘ not covered (network — needs a live PACS/DICOMweb server) |
 
 ---
-_Legend — Input:_ ✅ match · ⚠️ missing in UI · ➕ extra in UI (drift). _Output:_ ✅ success · ❌ drift · ⊘ not covered · — not wired. Generated by `swift run cli-parity-docs` (in-process, from bundled contracts + goldens)._
+_Legend — Input:_ ✅ match · ⚠️ missing in UI · ➕ extra in UI (drift). _Output:_ ✅ success · ❌ drift · ⊘ not covered *(reason: network · non-deterministic · coverage gap · no-write preview)* · — not wired. The **Verified App↔CLI parity** block above is the durable verdict for ALL flags (incl. uncovered). Generated by `swift run cli-parity-docs` (in-process, from bundled contracts + goldens)._
