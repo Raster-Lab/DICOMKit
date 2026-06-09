@@ -6,7 +6,7 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 **Input sub-checks (Phase 3):** ⚠️ 1 default mismatch(es): `--format`.
 
-**Output behavior:** 12 scenario(s) — 12 success / 0 drift.
+**Output behavior:** 13 scenario(s) — 13 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -19,14 +19,14 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--copy` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--copy` | flag | ✅ match | ✓ | ⊘ not covered (shared engine — writes a file tree; parity by construction, smoke-tested) |
 | `--detailed` | flag | ✅ match | ✓ | ✅ success |
 | `--expected-instances` | option | ✅ match | ✓ | ✅ success |
 | `--expected-series` | option | ✅ match | ✓ | ✅ success |
 | `--format` | option | ✅ match | ⚠️ default `text`↔`table` | ✅ success |
-| `--output` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
-| `--pattern` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
-| `--report` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--output` | option | ✅ match | ✓ | ⊘ not covered (shared engine — writes a file tree; parity by construction, smoke-tested) |
+| `--pattern` | option | ✅ match | ✓ | ⊘ not covered (shared engine — writes a file tree; parity by construction, smoke-tested) |
+| `--report` | option | ✅ match | ✓ | ✅ success |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
@@ -37,6 +37,7 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 | syn-studyset · auto-summary-verbose | `summary FIXTURE --verbose` | ✅ success |
 | syn-studyset · check | `check FIXTURE` | ✅ success |
 | syn-studyset · check-expected | `check --expected-series 2 --expected-instances 2 FIXTURE` | ✅ success |
+| syn-studyset · check-report | `check FIXTURE --report OUTPUT` | ✅ success |
 | syn-studyset · compare | `compare FIXTURE FIXTURE2` | ✅ success |
 | syn-studyset · compare-json | `compare --format json FIXTURE FIXTURE2` | ✅ success |
 | syn-studyset · stats | `stats FIXTURE` | ✅ success |

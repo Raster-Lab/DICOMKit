@@ -263,6 +263,15 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-study", label: "check-expected", cliArgs: ["check", "--expected-series", "2", "--expected-instances", "2", "FIXTURE"], studioParams: ["operation": "check", "path": "FIXTURE", "expected-series": "2", "expected-instances": "2"], fixture: "studyset"),
     Template(tool: "dicom-study", label: "compare", cliArgs: ["compare", "FIXTURE", "FIXTURE2"], studioParams: ["operation": "compare", "path1": "FIXTURE", "path2": "FIXTURE2"], fixture: "studypair"),
     Template(tool: "dicom-study", label: "compare-json", cliArgs: ["compare", "--format", "json", "FIXTURE", "FIXTURE2"], studioParams: ["operation": "compare", "path1": "FIXTURE", "path2": "FIXTURE2", "compare-format": "json"], fixture: "studypair"),
+    // NOTE: dicom-study `organize` is intentionally NOT golden-tested. It writes a
+    // persistent Patient/Study/Series file TREE to --output; the harness substitutes/
+    // cleans OUTPUT only for single-file artifact scenarios, not for a stdout scenario
+    // that produces a directory tree, so the second adapter to run hits the shared
+    // copyItem "already exists" error (a harness side-effect, not real drift). organize
+    // parity is instead guaranteed by the shared StudyOrganizer engine (identical code
+    // in both adapters) + a copy-twice smoke test. The flags below ARE covered:
+    // dicom-study check --report — writes the issues report to OUTPUT; compare the report file.
+    Template(tool: "dicom-study", label: "check-report", cliArgs: ["check", "FIXTURE", "--report", "OUTPUT"], studioParams: ["operation": "check", "path": "FIXTURE", "report": "OUTPUT"], fixture: "studyset", portable: false, artifactName: "report.txt", artifactKind: "text"),
 
     // --- dicom-archive (read ops over a populated archive) — local-only fixture.
     // stats is omitted: its output carries a creation timestamp (Wave-4 masking).
