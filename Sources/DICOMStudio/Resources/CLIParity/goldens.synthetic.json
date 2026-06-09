@@ -1091,6 +1091,139 @@
       "toolId" : "dicom-study"
     },
     {
+      "cliArgs" : [
+        "--iod",
+        "CTImageStorage",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-validate-iod-override",
+      "label" : "syn-ct.dcm · iod-override",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "iod" : "CTImageStorage"
+      },
+      "toolId" : "dicom-validate"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "--profile",
+        "basic",
+        "--shift-dates",
+        "30",
+        "--output",
+        "OUTPUT",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-anon-shift-dates-30",
+      "label" : "syn-ct.dcm · shift-dates-30",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200131\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN ANONYMOUS\n(0010,0020) Patient ID                               VR=LO EF0DE34F927A9DBF3D8E164BDB50B40B\n(0010,0030) Patient's Birth Date                     VR=DA 19800131\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 01 00 02 00 03 00 04 00 05 00 06 00 07 00 08 00 09 00 0A 00 0B 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "profile" : "basic",
+        "shift-dates" : "30"
+      },
+      "toolId" : "dicom-anon"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--window-center",
+        "40",
+        "--window-width",
+        "400",
+        "--apply-window"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-pixedit-apply-window",
+      "label" : "syn-ct.dcm · apply-window",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 6A 06 74 06 7E 06 88 06 93 06 9D 06 A7 06 B1 06 BC 06 C6 06 D0 06 DB 06 ... (128 bytes)\n",
+      "studioParams" : {
+        "apply-window" : "true",
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "window-center" : "40",
+        "window-width" : "400"
+      },
+      "toolId" : "dicom-pixedit"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--mask-region",
+        "0,0,4,4",
+        "--fill-value",
+        "0",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-pixedit-edit-verbose",
+      "label" : "syn-ct.dcm · edit-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Input: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nOutput: <tmp>\/out.dcm\nOperations: 1\nImage: 8x8, 16-bit, 1 sample(s)\nApplied mask: (0,0) 4x4, fill=0\nWritten: <tmp>\/out.dcm\nDone.\n",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 00 00 00 00 00 00 04 00 05 00 06 00 07 00 00 00 00 00 00 00 00 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "fill-value" : "0",
+        "inputPath" : "FIXTURE",
+        "mask-region" : "0,0,4,4",
+        "output" : "OUTPUT",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-pixedit"
+    },
+    {
+      "cliArgs" : [
+        "lookup",
+        "--search",
+        "CT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "",
+      "id" : "none__dicom-uid-lookup-search",
+      "label" : "dicom-uid · lookup-search",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "1.2.840.10008.1.2.4.70  JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process 14, Selection Value 1)  (Transfer Syntax)\n1.2.840.10008.5.1.4.1.1.2  CT Image Storage  (SOP Class)\n\n2 UIDs found\n",
+      "studioParams" : {
+        "search" : "CT",
+        "subcommand" : "lookup"
+      },
+      "toolId" : "dicom-uid"
+    },
+    {
       "artifactKind" : "text",
       "artifactName" : "out.json",
       "cliArgs" : [

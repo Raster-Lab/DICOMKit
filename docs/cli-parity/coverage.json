@@ -3,44 +3,38 @@
   "tools" : [
     {
       "acceptedFlags" : 13,
-      "coveragePct" : 76.9,
-      "coveredFlags" : 10,
+      "coveragePct" : 84.6,
+      "coveredFlags" : 11,
       "toolId" : "dicom-anon",
       "uncoveredFlags" : [
         "--audit-log",
-        "--dry-run",
-        "--shift-dates"
+        "--dry-run"
       ],
       "wired" : true
     },
     {
       "acceptedFlags" : 17,
-      "coveragePct" : 35.3,
-      "coveredFlags" : 6,
+      "coveragePct" : 58.8,
+      "coveredFlags" : 10,
       "toolId" : "dicom-archive",
       "uncoveredFlags" : [
         "--flatten",
         "--force",
         "--output",
         "--path",
-        "--patient-id",
-        "--patient-name",
         "--recursive",
         "--series-uid",
-        "--skip-duplicates",
-        "--study-date",
-        "--study-uid"
+        "--skip-duplicates"
       ],
       "wired" : true
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 66.7,
-      "coveredFlags" : 6,
+      "coveragePct" : 77.8,
+      "coveredFlags" : 7,
       "toolId" : "dicom-compress",
       "uncoveredFlags" : [
         "--decompress",
-        "--quality",
         "--recursive"
       ],
       "wired" : true
@@ -157,17 +151,12 @@
     },
     {
       "acceptedFlags" : 8,
-      "coveragePct" : 12.5,
-      "coveredFlags" : 1,
+      "coveragePct" : 75,
+      "coveredFlags" : 6,
       "toolId" : "dicom-merge",
       "uncoveredFlags" : [
-        "--format",
         "--level",
-        "--order",
-        "--recursive",
-        "--sort-by",
-        "--validate",
-        "--verbose"
+        "--validate"
       ],
       "wired" : true
     },
@@ -218,32 +207,23 @@
     },
     {
       "acceptedFlags" : 14,
-      "coveragePct" : 35.7,
-      "coveredFlags" : 5,
+      "coveragePct" : 78.6,
+      "coveredFlags" : 11,
       "toolId" : "dicom-pdf",
       "uncoveredFlags" : [
         "--extract",
-        "--instance-number",
-        "--modality",
         "--recursive",
-        "--series-description",
-        "--series-number",
-        "--show-metadata",
-        "--title",
-        "--verbose"
+        "--show-metadata"
       ],
       "wired" : true
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 55.6,
-      "coveredFlags" : 5,
+      "coveragePct" : 100,
+      "coveredFlags" : 9,
       "toolId" : "dicom-pixedit",
       "uncoveredFlags" : [
-        "--apply-window",
-        "--verbose",
-        "--window-center",
-        "--window-width"
+
       ],
       "wired" : true
     },
@@ -388,11 +368,11 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 88.9,
-      "coveredFlags" : 8,
+      "coveragePct" : 100,
+      "coveredFlags" : 9,
       "toolId" : "dicom-split",
       "uncoveredFlags" : [
-        "--pattern"
+
       ],
       "wired" : true
     },
@@ -438,20 +418,16 @@
     },
     {
       "acceptedFlags" : 13,
-      "coveragePct" : 23.1,
-      "coveredFlags" : 3,
+      "coveragePct" : 53.8,
+      "coveredFlags" : 7,
       "toolId" : "dicom-uid",
       "uncoveredFlags" : [
         "--count",
         "--dry-run",
         "--export-map",
         "--json",
-        "--maintain-relationships",
-        "--output",
         "--root",
-        "--search",
-        "--type",
-        "--verbose"
+        "--type"
       ],
       "wired" : true
     },
@@ -501,12 +477,11 @@
     },
     {
       "acceptedFlags" : 8,
-      "coveragePct" : 75,
-      "coveredFlags" : 6,
+      "coveragePct" : 100,
+      "coveredFlags" : 8,
       "toolId" : "dicom-validate",
       "uncoveredFlags" : [
-        "--iod",
-        "--output"
+
       ],
       "wired" : true
     },
@@ -546,8 +521,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 134,
-    "pct" : 35,
+    "covered" : 162,
+    "pct" : 42.3,
     "toolsWired" : 32
   }
 }

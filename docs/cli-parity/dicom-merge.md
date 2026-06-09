@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 **Input-contract parity:** 8/8 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 1 scenario(s) — 1 success / 0 drift.
+**Output behavior:** 3 scenario(s) — 3 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -17,19 +17,21 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--format` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
+| `--format` | option | ✅ match | ✓ | ✅ success |
 | `--level` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
-| `--order` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
+| `--order` | option | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
-| `--recursive` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
-| `--sort-by` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
+| `--recursive` | flag | ✅ match | ✓ | ✅ success |
+| `--sort-by` | option | ✅ match | ✓ | ✅ success |
 | `--validate` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
-| `--verbose` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
+| `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| syn-studyset · format-enhanced-ct | `FIXTURE --output OUTPUT --format enhanced-ct` | ✅ success |
+| syn-studyset · sort-recursive-verbose | `FIXTURE --output OUTPUT --sort-by InstanceNumber --order descending --recursive --verbose` | ✅ success |
 | syn-studyset · studyset | `FIXTURE --output OUTPUT` | ✅ success |
 
 ---

@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 
 **Input-contract parity:** 17/17 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 8 scenario(s) — 8 success / 0 drift.
+**Output behavior:** 9 scenario(s) — 9 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -24,14 +24,14 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 | `--modality` | option | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
 | `--path` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
-| `--patient-id` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
-| `--patient-name` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--patient-id` | option | ✅ match | ✓ | ✅ success |
+| `--patient-name` | option | ✅ match | ✓ | ✅ success |
 | `--recursive` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
 | `--series-uid` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
 | `--show-instances` | flag | ✅ match | ✓ | ✅ success |
 | `--skip-duplicates` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
-| `--study-date` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
-| `--study-uid` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--study-date` | option | ✅ match | ✓ | ✅ success |
+| `--study-uid` | option | ✅ match | ✓ | ✅ success |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 | `--verify-files` | flag | ✅ match | ✓ | ✅ success |
 
@@ -39,12 +39,13 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 
 | Scenario | CLI args | Result |
 |---|---|---|
-| syn-archive · auto-check-verbose | `check --archive FIXTURE --verbose` | ✅ success |
 | syn-archive · auto-check-verify-files | `check --archive FIXTURE --verify-files` | ✅ success |
 | syn-archive · check | `check --archive FIXTURE` | ✅ success |
+| syn-archive · check-verbose | `check --archive FIXTURE --verbose` | ✅ success |
 | syn-archive · list | `list --archive FIXTURE` | ✅ success |
 | syn-archive · list-instances | `list --show-instances --archive FIXTURE` | ✅ success |
 | syn-archive · query | `query --archive FIXTURE` | ✅ success |
+| syn-archive · query-filters | `query --archive FIXTURE --patient-name Test* --patient-id PAT001 --study-uid 1.2.3 --study-date 20200101` | ✅ success |
 | syn-archive · query-json | `query --format json --archive FIXTURE` | ✅ success |
 | syn-archive · query-modality | `query --modality CT --archive FIXTURE` | ✅ success |
 
