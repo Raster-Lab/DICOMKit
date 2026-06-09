@@ -3,12 +3,11 @@
   "tools" : [
     {
       "acceptedFlags" : 13,
-      "coveragePct" : 84.6,
-      "coveredFlags" : 11,
+      "coveragePct" : 92.3,
+      "coveredFlags" : 12,
       "toolId" : "dicom-anon",
       "uncoveredFlags" : [
-        "--audit-log",
-        "--dry-run"
+        "--audit-log"
       ],
       "wired" : true
     },
@@ -405,14 +404,11 @@
     },
     {
       "acceptedFlags" : 8,
-      "coveragePct" : 50,
-      "coveredFlags" : 4,
+      "coveragePct" : 87.5,
+      "coveredFlags" : 7,
       "toolId" : "dicom-tags",
       "uncoveredFlags" : [
-        "--copy-from",
-        "--dry-run",
-        "--tags",
-        "--verbose"
+        "--dry-run"
       ],
       "wired" : true
     },
@@ -521,8 +517,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 162,
-    "pct" : 42.3,
+    "covered" : 166,
+    "pct" : 43.3,
     "toolsWired" : 32
   }
 }
