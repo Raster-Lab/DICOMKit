@@ -2406,9 +2406,10 @@ case "dicom-json":
         ),
         CLIParameterDefinition(
             id: "output", flag: "--output", displayName: "Output File",
-            parameterType: .outputPath, placeholder: "Output file path",
+            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.json",
             helpText: "Output file path. If omitted, the result is printed to the console (DICOM->JSON only).",
-            isRequired: false
+            isRequired: false,
+            defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.json"
         ),
         CLIParameterDefinition(
             id: "reverse", flag: "--reverse", displayName: "Reverse (JSON -> DICOM)",
@@ -2493,8 +2494,9 @@ case "dicom-json":
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output File",
-                    parameterType: .outputPath, placeholder: "Output file path (auto if omitted)",
-                    helpText: "Output file path. Defaults to the input name with .xml (or .dcm when --reverse)."
+                    parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.xml",
+                    helpText: "Output file path. Defaults to the input name with .xml (or .dcm when --reverse).",
+                    defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.xml"
                 ),
                 CLIParameterDefinition(
                     id: "reverse", flag: "--reverse", displayName: "Reverse (XML → DICOM)",
@@ -2804,9 +2806,9 @@ case "dicom-pdf":
             flag: "--output",
             displayName: "Output",
             parameterType: .outputPath,
-            placeholder: "report.pdf or report.dcm",
+            placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.pdf",
             helpText: "Output file or directory path. Auto-generated next to the input if omitted.",
-            defaultValue: ""
+            defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.pdf"
         ),
         CLIParameterDefinition(
             id: "extract",
@@ -2946,9 +2948,10 @@ case "dicom-pixedit":
         ),
         CLIParameterDefinition(
             id: "output", flag: "--output", displayName: "Output File",
-            parameterType: .outputPath, placeholder: "Output DICOM file path",
+            parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.dcm",
             helpText: "Destination path for the edited DICOM file",
-            isRequired: true
+            isRequired: true,
+            defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.dcm"
         ),
         CLIParameterDefinition(
             id: "mask-region", flag: "--mask-region", displayName: "Mask Region",
