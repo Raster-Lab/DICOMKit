@@ -204,11 +204,13 @@ public final class CLIAutomationTestingViewModel {
         }
         defer { if let u = artifactURL { try? FileManager.default.removeItem(at: u.deletingLastPathComponent()) } }
 
-        // Clear optional output-path params the scenario didn't set: the catalog
-        // default-fills them (e.g. ~/Desktop/DICOM_Output), but the CLI golden ran
-        // without those flags, so the Studio side must not write spurious files.
+        // Clear EVERY param the scenario didn't set: the catalog default-fills some
+        // (e.g. ~/Desktop/DICOM_Output, or a default --file/--path), but the CLI golden
+        // ran with ONLY the scenario's flags, so the Studio side must match exactly —
+        // a form default must never leak into a parity run (e.g. a default --file would
+        // make uid-validate validate that file while the CLI validated nothing).
         for def in ToolCatalogHelpers.parameterDefinitions(for: scenario.toolId)
-            where def.parameterType == .outputPath && scenario.studioParams[def.id] == nil {
+            where !def.isInternal && scenario.studioParams[def.id] == nil {
             workshop.updateParameterValue(parameterID: def.id, value: "")
         }
         for (pid, raw) in scenario.studioParams {
