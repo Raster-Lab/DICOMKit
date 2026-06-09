@@ -1662,23 +1662,12 @@ private func executeDicomUIDRegenerate() async {
             let file = try DICOMFile.read(from: data, force: false)
 
             if dryRun {
-                var lines = ["Processing: \(inURL.lastPathComponent)"]
-                var previewCount = 0
-                for element in file.dataSet.allElements where element.vr == .UI {
-                    if let uidString = file.dataSet.string(for: element.tag) {
-                        let trimmed = uidString.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
-                        if trimmed.isEmpty { continue }
-                        if UIDDictionary.lookup(uid: trimmed) != nil { continue }
-                        lines.append("  \(tagName(for: element.tag)): \(trimmed) \u{2192} <new UID>")
-                        previewCount += 1
-                    }
-                }
-                if previewCount == 0 {
-                    lines.append("  No instance UIDs to regenerate")
-                } else {
-                    lines.append("  \(previewCount) UID(s) would be regenerated")
-                }
-                lines.append("Dry run complete \u{2014} no files modified.")
+                // Shared preview (DICOMKit UIDManager) → byte-identical to the CLI's dry-run
+                // stdout. `Processing:` is verbose-only (the CLI prints it to stderr); no
+                // "Dry run complete" line (the CLI doesn't emit one) so the two stay text-exact.
+                var lines: [String] = []
+                if verbose { lines.append("Processing: \(inURL.lastPathComponent)") }
+                lines.append(contentsOf: UIDManager.regenerationPreviewLines(for: file.dataSet))
                 return (lines.joined(separator: "\n") + "\n", 0)
             }
 

@@ -80,10 +80,9 @@ private let stderrPreviewFlags: [String: Set<String>] = [
 ]
 
 /// Flags with a CONFIRMED App↔CLI CONTENT divergence — a real gap to fix, surfaced
-/// (not masked) by the parity test so it stays visible until resolved.
-private let knownDivergenceFlags: [String: Set<String>] = [
-    "dicom-uid": ["--dry-run"],   // regenerate --dry-run: app prints a generic message; CLI prints the per-UID mapping
-]
+/// (not masked) by the parity test so it stays visible until resolved. (Currently
+/// empty: uid `regenerate --dry-run` was fixed via the shared UIDManager preview.)
+private let knownDivergenceFlags: [String: Set<String>] = [:]
 
 /// The reason an offline golden does not (and often cannot) exercise a flag.
 private func uncoveredReason(toolId: String, flag: String, requiresNetwork: Bool) -> String {
@@ -165,7 +164,7 @@ private let verifiedVerdict: [String: EngineVerdict] = [
     "dicom-stow":     .init(engine: "DICOMwebClient (STOW-RS)", module: "DICOMWeb", scope: "full", verdict: "STOW-RS store via the identical shared client. Live network → no goldens."),
     "dicom-study":    .init(engine: "StudyScanner / StudyReport / StudyOrganizer", module: "DICOMKit/Study", scope: "full", verdict: "ALL subcommands shared — summary/check/stats/compare byte-identical (12 goldens); `organize` now uses the shared StudyOrganizer too (identical file naming/ordering, `→` arrow, and the same copy/move `already exists` error)."),
     "dicom-tags":     .init(engine: "TagEditor", module: "DICOMKit/TagEditing", scope: "full", verdict: "edited DICOM byte-identical (set/delete/copy-from/verbose goldens). `--dry-run` not stdout-golden-able: the CLI prints the preview to STDERR (text matches the app console)."),
-    "dicom-uid":      .init(engine: "UIDManager", module: "DICOMKit/UIDManagement", scope: "full", verdict: "validate/lookup/search + regenerate (UIDs masked) byte/text-identical; generate is non-deterministic (fresh UIDs). ⚠️ KNOWN DIVERGENCE: `regenerate --dry-run` — the app prints a generic message while the CLI prints the per-UID mapping (to fix)."),
+    "dicom-uid":      .init(engine: "UIDManager", module: "DICOMKit/UIDManagement", scope: "full", verdict: "validate/lookup/search + regenerate (UIDs masked) + regenerate --dry-run byte/text-identical (dry-run now shares `UIDManager.regenerationPreviewLines`); generate is non-deterministic (fresh UIDs)."),
     "dicom-ups":      .init(engine: "DICOMwebClient (UPS-RS)", module: "DICOMWeb", scope: "full", verdict: "create/retrieve/search/subscribe via the shared client; change-state echoes the raw HTTP request/response (educational). Live network → no goldens."),
     "dicom-validate": .init(engine: "DICOMValidator / ValidationReport", module: "DICOMKit/Validation", scope: "full", verdict: "byte-identical (8 goldens); app appends an educational `Exit code: N` line (excluded from the parity path)."),
     "dicom-wado":     .init(engine: "DICOMwebClient / WADOURIClient", module: "DICOMWeb", scope: "full", verdict: "WADO-RS/URI, QIDO-RS, STOW-RS, UPS-RS all via the identical shared client; console uses emoji + a `Mode:` line. Live network → no goldens."),

@@ -4,12 +4,12 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 
 **Input-contract parity:** 12/13 CLI flags matched · 1 missing in UI · status **INCOMPLETE** (92%)
 
-**Output behavior:** 10 scenario(s) — 10 success / 0 drift.
+**Output behavior:** 12 scenario(s) — 12 success / 0 drift.
 
 ## Verified App↔CLI parity
 
 - **Shared DICOMKit engine:** `UIDManager` (`DICOMKit/UIDManagement`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
-- **Verdict:** validate/lookup/search + regenerate (UIDs masked) byte/text-identical; generate is non-deterministic (fresh UIDs). ⚠️ KNOWN DIVERGENCE: `regenerate --dry-run` — the app prints a generic message while the CLI prints the per-UID mapping (to fix).
+- **Verdict:** validate/lookup/search + regenerate (UIDs masked) + regenerate --dry-run byte/text-identical (dry-run now shares `UIDManager.regenerationPreviewLines`); generate is non-deterministic (fresh UIDs).
 
 > Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 
@@ -19,7 +19,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 |---|---|---|---|---|
 | `--check-registry` | flag | ✅ match | ✓ | ✅ success |
 | `--count` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
-| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered (⚠️ App↔CLI divergence — needs a fix (surfaced, not masked)) |
+| `--dry-run` | flag | ✅ match | ✓ | ✅ success |
 | `--export-map` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
 | `--file` | option | ✅ match | ✓ | ✅ success |
 | `--json` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
@@ -35,6 +35,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| CT.dcm · regenerate-dryrun | `regenerate FIXTURE --dry-run` | ✅ success |
 | CT.dcm · regenerate-flags | `regenerate FIXTURE --output OUTPUT --maintain-relationships --verbose` | ✅ success |
 | CT.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
 | dicom-uid · lookup | `lookup 1.2.840.10008.1.2.1` | ✅ success |
@@ -43,6 +44,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | dicom-uid · validate | `validate 1.2.840.10008.1.2.1` | ✅ success |
 | dicom-uid · validate-invalid | `validate not-a-valid-uid` | ✅ success |
 | dicom-uid · validate-registry | `validate --check-registry 1.2.840.10008.1.2.1` | ✅ success |
+| syn-ct.dcm · regenerate-dryrun | `regenerate FIXTURE --dry-run` | ✅ success |
 | syn-ct.dcm · regenerate-flags | `regenerate FIXTURE --output OUTPUT --maintain-relationships --verbose` | ✅ success |
 | syn-ct.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
 
