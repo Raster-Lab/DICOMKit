@@ -393,6 +393,10 @@ public enum CLIParityEngine {
             // Strip ANSI color escape sequences — the CLI colorizes (e.g. dicom-dump)
             // while the app renders plain text; they should compare equal.
             line = line.replacingOccurrences(of: "\u{001B}\\[[0-9;]*m", with: "", options: .regularExpression)
+            // Canonicalize volatile log timestamps (e.g. dicom-script --verbose's
+            // "[2026-06-09 17:05:19] …") — the same line minted in the CLI and app runs
+            // differs only by the wall-clock second.
+            line = line.replacingOccurrences(of: "\\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\\]", with: "[<timestamp>]", options: .regularExpression)
             // Drop the command-echo line Studio prepends.
             if line.hasPrefix("$ ") { continue }
             // Canonicalize any absolute path ending in a fixture basename. Match the

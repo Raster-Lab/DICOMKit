@@ -288,6 +288,12 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-uid", label: "lookup-search", cliArgs: ["lookup", "--search", "CT"], studioParams: ["subcommand": "lookup", "search": "CT"], fixture: "none"),
     // regenerate --dry-run: now byte-identical (app + CLI share UIDManager.regenerationPreviewLines).
     Template(tool: "dicom-uid", label: "regenerate-dryrun", cliArgs: ["regenerate", "FIXTURE", "--dry-run"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "dry-run": "true"], fixture: "ct"),
+    // dicom-script (`script` fixture + the [timestamp] mask are ready): scenarios WITHHELD —
+    // real App↔CLI divergences in the run adapters (same class as the now-fixed uid dry-run):
+    //  • run --dry-run: the app prints a detailed plan ("Parsed N steps… / Planned steps:")
+    //    while the CLI prints a terse "Dry run completed - no commands were actually executed".
+    //  • --log: the CLI writes the timestamped execution log; the app's log file differs.
+    // Fix by sharing the dry-run/log rendering through the DICOMKit script engine, then cover.
     Template(tool: "dicom-archive", label: "query-filters", cliArgs: ["query", "--archive", "FIXTURE", "--patient-name", "Test*", "--patient-id", "PAT001", "--study-uid", "1.2.3", "--study-date", "20200101"], studioParams: ["subcommand": "query", "archive": "FIXTURE", "patient-name": "Test*", "patient-id": "PAT001", "study-uid": "1.2.3", "study-date": "20200101"], fixture: "archive"),
     Template(tool: "dicom-archive", label: "check-verbose", cliArgs: ["check", "--archive", "FIXTURE", "--verbose"], studioParams: ["subcommand": "check", "archive": "FIXTURE", "verbose": "true"], fixture: "archive"),
     // tags --verbose covered via an artifact scenario (the produced file matches; the
@@ -594,6 +600,15 @@ trailer
 %%EOF
 """.utf8))
 
+// Minimal valid DICOM Script (DSL) — the input for dicom-script run/validate. Fixed
+// text → committable; logical fixture id `script`.
+let synScript = writeSynthetic("syn-workflow.dcmscript", Data("""
+INPUT_DIR=/tmp/in
+OUTPUT_DIR=/tmp/out
+dicom-validate ${INPUT_DIR}/a.dcm
+dicom-study summary ${INPUT_DIR}
+""".utf8))
+
 // RLE-compressed copy of syn-ct, the input for the dicom-compress `decompress`
 // scenario. Built by the real dicom-compress binary so it round-trips the same
 // codec path; pure-Swift RLE is deterministic → committable (phiSafe). Skipped
@@ -737,6 +752,7 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "mf":       return [(synMF, nil)]
     case "ctrle":    return synCtRLE.map { [($0, ConcreteFixture?.none)] } ?? []
     case "pdf":      return [(synDoc, nil)]
+    case "script":   return [(synScript, nil)]
     case "png":      return synPNG.map { [($0, ConcreteFixture?.none)] } ?? []
     case "json":     return synJSON.map { [($0, ConcreteFixture?.none)] } ?? []
     case "xml":      return synXML.map { [($0, ConcreteFixture?.none)] } ?? []
