@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-image` · _category:_ DATA_EXPORT · _wired in Studio:_ yes
 
 **Input-contract parity:** 14/14 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 2 scenario(s) — 2 success / 0 drift.
+**Output behavior:** 3 scenario(s) — 3 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -26,7 +26,7 @@ _CLI binary:_ `dicom-image` · _category:_ DATA_EXPORT · _wired in Studio:_ yes
 | `--series-description` | option | ✅ match | ✓ | ✅ success |
 | `--series-number` | option | ✅ match | ✓ | ✅ success |
 | `--series-uid` | option | ✅ match | ✓ | ✅ success |
-| `--split-pages` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
+| `--split-pages` | flag | ✅ match | ✓ | ✅ success |
 | `--study-description` | option | ✅ match | ✓ | ✅ success |
 | `--study-uid` | option | ✅ match | ✓ | ✅ success |
 | `--use-exif` | flag | ✅ match | ✓ | ✅ success |
@@ -37,6 +37,7 @@ _CLI binary:_ `dicom-image` · _category:_ DATA_EXPORT · _wired in Studio:_ yes
 | Scenario | CLI args | Result |
 |---|---|---|
 | syn-frame.png · convert-allmeta | `FIXTURE --output OUTPUT --patient-name PARITY^IMG --patient-id SYN-IMG --study-uid 1.2.826.0.1.3680043.10.999.3.1 --series-uid 1.2.826.0.1.3680043.10.999.3.2 --study-description Parity Study --series-description Parity Series --series-number 1 --instance-number 1 --modality OT --use-exif --verbose` | ✅ success |
+| syn-multi.tiff · split-pages | `FIXTURE --output OUTPUT --split-pages --patient-id SYN-IMG --patient-name PARITY^IMG` | ✅ success |
 | syn-png-dir · recursive | `FIXTURE --output OUTPUT --recursive --patient-id SYN-IMG --patient-name PARITY^IMG` | ✅ success |
 
 ---

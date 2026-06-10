@@ -335,6 +335,8 @@ let curatedTemplates: [Template] = [
     // ===== Chained-fixture wave: consume/reverse directions using derived fixtures =====
     // dicom-image --recursive: a directory of PNGs → flat dir of SC DICOMs (fresh UIDs masked).
     Template(tool: "dicom-image", label: "recursive", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--recursive", "--patient-id", "SYN-IMG", "--patient-name", "PARITY^IMG"], studioParams: ["input": "FIXTURE", "output": "OUTPUT", "recursive": "true", "patient-id": "SYN-IMG", "patient-name": "PARITY^IMG"], fixture: "pngdir", portable: false, artifactName: "converted", artifactKind: "dicom-multi"),
+    // dicom-image --split-pages: a 2-page TIFF → one SC DICOM per page (flat; fresh UIDs masked).
+    Template(tool: "dicom-image", label: "split-pages", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--split-pages", "--patient-id", "SYN-IMG", "--patient-name", "PARITY^IMG"], studioParams: ["input": "FIXTURE", "output": "OUTPUT", "split-pages": "true", "patient-id": "SYN-IMG", "patient-name": "PARITY^IMG"], fixture: "tiffmulti", portable: false, artifactName: "split", artifactKind: "dicom-multi"),
     // dicom-json --reverse: derived json → DICOM (round-trip; original UIDs preserved). ✅
     Template(tool: "dicom-json", label: "reverse", cliArgs: ["FIXTURE", "--reverse", "--output", "OUTPUT"], studioParams: ["inputPath": "FIXTURE", "reverse": "true", "output": "OUTPUT"], fixture: "json", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
     // dicom-xml --reverse: derived xml → DICOM (the app reads param "input", not "inputPath").
@@ -802,6 +804,24 @@ let synPngDir: ConcreteFixture? = {
     errln("→ chained fixture dir: syn-png-dir (\(n) pngs)")
     return ConcreteFixture(bundledName: "syn-png-dir", path: dir.path, phiSafe: false)
 }()
+// A 2-page TIFF — the input for dicom-image --split-pages. Built by exporting two
+// frames to TIFF then concatenating with macOS `tiffutil -cat`. macOS-only/local.
+let synTiffMulti: ConcreteFixture? = {
+    let exportBin = binDir.appendingPathComponent("dicom-export")
+    let tiffutil = URL(fileURLWithPath: "/usr/bin/tiffutil")
+    guard FileManager.default.isExecutableFile(atPath: exportBin.path),
+          FileManager.default.isExecutableFile(atPath: tiffutil.path) else { return nil }
+    let a = fixturesDir.appendingPathComponent("_tiff_a.tiff")
+    let b = fixturesDir.appendingPathComponent("_tiff_b.tiff")
+    let dest = fixturesDir.appendingPathComponent("syn-multi.tiff")
+    try? FileManager.default.removeItem(at: dest)
+    _ = run(exportBin, ["single", synCT.path,  "--format", "tiff", "--output", a.path])
+    _ = run(exportBin, ["single", synCT2.path, "--format", "tiff", "--output", b.path])
+    _ = run(tiffutil, ["-cat", a.path, b.path, "-out", dest.path])
+    guard FileManager.default.fileExists(atPath: dest.path) else { errln("→ failed to build syn-multi.tiff"); return nil }
+    errln("→ chained fixture: syn-multi.tiff (2-page)")
+    return ConcreteFixture(bundledName: "syn-multi.tiff", path: dest.path, phiSafe: false)
+}()
 
 // 1c. Resolve a template's logical fixture into concrete (primary, secondary) runs.
 func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: ConcreteFixture?)] {
@@ -820,6 +840,7 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "pdfdcm":   return synPdfDcm.map { [($0, ConcreteFixture?.none)] } ?? []
     case "rledir":   return synRleDir.map { [($0, ConcreteFixture?.none)] } ?? []
     case "pngdir":   return synPngDir.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "tiffmulti":return synTiffMulti.map { [($0, ConcreteFixture?.none)] } ?? []
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
     case "studypair":return [(synStudy, synStudy2)]
