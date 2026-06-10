@@ -1,0 +1,4 @@
+INPUT_DIR=/tmp/in
+OUTPUT_DIR=/tmp/out
+dicom-validate ${INPUT_DIR}/a.dcm
+dicom-study summary ${INPUT_DIR}
