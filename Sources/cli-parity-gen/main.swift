@@ -279,6 +279,8 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-validate", label: "output-file", cliArgs: ["--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT"], portable: false, artifactName: "out.txt", artifactKind: "text"),
     Template(tool: "dicom-anon", label: "shift-dates-30", cliArgs: ["--profile", "basic", "--shift-dates", "30", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "basic", "shift-dates": "30", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-compress", label: "quality-high", cliArgs: ["compress", "FIXTURE", "-c", "rle", "--quality", "high", "--output", "OUTPUT"], studioParams: ["operation": "compress", "input": "FIXTURE", "codec": "rle", "quality": "high", "output": "OUTPUT"], portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
+    // batch --decompress --recursive over a dir of RLE files → dir of decompressed files.
+    Template(tool: "dicom-compress", label: "batch-decompress-recursive", cliArgs: ["batch", "FIXTURE", "--decompress", "--recursive", "--output", "OUTPUT"], studioParams: ["operation": "batch", "inputDir": "FIXTURE", "outputDir": "OUTPUT", "decompress": "true", "recursive": "true"], fixture: "rledir", portable: false, artifactName: "decompressed", artifactKind: "dicom-multi"),
     Template(tool: "dicom-pixedit", label: "apply-window", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--window-center", "40", "--window-width", "400", "--apply-window"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "window-center": "40", "window-width": "400", "apply-window": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-pixedit", label: "edit-verbose", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--mask-region", "0,0,4,4", "--fill-value", "0", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "mask-region": "0,0,4,4", "fill-value": "0", "verbose": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-merge", label: "format-enhanced-ct", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "enhanced-ct"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "enhanced-ct"], fixture: "studyset", artifactName: "out.dcm", artifactKind: "dicom"),
@@ -302,6 +304,7 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-archive", label: "check-verbose", cliArgs: ["check", "--archive", "FIXTURE", "--verbose"], studioParams: ["subcommand": "check", "archive": "FIXTURE", "verbose": "true"], fixture: "archive"),
     // archive export → flat dir of the archived instances (deterministic content); covers --output + --flatten.
     Template(tool: "dicom-archive", label: "export-flatten", cliArgs: ["export", "--archive", "FIXTURE", "--output", "OUTPUT", "--patient-id", "SYN-STD-1", "--flatten"], studioParams: ["subcommand": "export", "archive": "FIXTURE", "output": "OUTPUT", "patient-id": "SYN-STD-1", "flatten": "true"], fixture: "archive", portable: false, artifactName: "exported", artifactKind: "dicom-multi"),
+    Template(tool: "dicom-archive", label: "export-series-uid", cliArgs: ["export", "--archive", "FIXTURE", "--output", "OUTPUT", "--series-uid", "1.2.826.0.1.3680043.10.999.41.1.1", "--flatten"], studioParams: ["subcommand": "export", "archive": "FIXTURE", "output": "OUTPUT", "series-uid": "1.2.826.0.1.3680043.10.999.41.1.1", "flatten": "true"], fixture: "archive", portable: false, artifactName: "exported", artifactKind: "dicom-multi"),
     // tags --verbose covered via an artifact scenario (the produced file matches; the
     // verbose preview goes to stderr in the CLI so it can't be stdout-compared).
     Template(tool: "dicom-tags", label: "set-verbose", cliArgs: ["--set", "PatientName=PARITY^V", "--verbose", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "set": "PatientName=PARITY^V", "verbose": "true", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
@@ -313,14 +316,17 @@ let curatedTemplates: [Template] = [
     // UIDManager.regenerationPreviewLines, covered above.)
 
     // ===== Chained-fixture wave: consume/reverse directions using derived fixtures =====
+    // dicom-image --recursive: a directory of PNGs → flat dir of SC DICOMs (fresh UIDs masked).
+    Template(tool: "dicom-image", label: "recursive", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--recursive", "--patient-id", "SYN-IMG", "--patient-name", "PARITY^IMG"], studioParams: ["input": "FIXTURE", "output": "OUTPUT", "recursive": "true", "patient-id": "SYN-IMG", "patient-name": "PARITY^IMG"], fixture: "pngdir", portable: false, artifactName: "converted", artifactKind: "dicom-multi"),
     // dicom-json --reverse: derived json → DICOM (round-trip; original UIDs preserved). ✅
     Template(tool: "dicom-json", label: "reverse", cliArgs: ["FIXTURE", "--reverse", "--output", "OUTPUT"], studioParams: ["inputPath": "FIXTURE", "reverse": "true", "output": "OUTPUT"], fixture: "json", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
     // dicom-xml --reverse: derived xml → DICOM (the app reads param "input", not "inputPath").
     Template(tool: "dicom-xml", label: "reverse", cliArgs: ["FIXTURE", "--reverse", "--output", "OUTPUT"], studioParams: ["input": "FIXTURE", "reverse": "true", "output": "OUTPUT"], fixture: "xml", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
     // dicom-image: png → Secondary-Capture DICOM (13 metadata flags; SC SOP UID masked).
     Template(tool: "dicom-image", label: "convert-allmeta", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--patient-name", "PARITY^IMG", "--patient-id", "SYN-IMG", "--study-uid", "1.2.826.0.1.3680043.10.999.3.1", "--series-uid", "1.2.826.0.1.3680043.10.999.3.2", "--study-description", "Parity Study", "--series-description", "Parity Series", "--series-number", "1", "--instance-number", "1", "--modality", "OT", "--use-exif", "--verbose"], studioParams: ["input": "FIXTURE", "output": "OUTPUT", "patient-name": "PARITY^IMG", "patient-id": "SYN-IMG", "study-uid": "1.2.826.0.1.3680043.10.999.3.1", "series-uid": "1.2.826.0.1.3680043.10.999.3.2", "study-description": "Parity Study", "series-description": "Parity Series", "series-number": "1", "instance-number": "1", "modality": "OT", "use-exif": "true", "verbose": "true"], fixture: "png", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
-    // NOTE: dicom-pdf --extract metadata matches; only the "Extracted: <path>" line differs
-    // (input source vs bundle path) — a harness input-path normalization gap, not a tool bug.
+    // NOTE: dicom-pdf --extract/--show-metadata NOT covered — it both prints metadata to stdout
+    // AND writes a binary PDF, so it fits neither a stdout scenario (the app's sandbox OUTPUT
+    // redirect note diverges) nor an artifact scenario (no PDF comparator). Metadata itself matches.
 
     // --- dicom-archive (read ops over a populated archive) — local-only fixture.
     // stats is omitted: its output carries a creation timestamp (Wave-4 masking).
@@ -750,6 +756,35 @@ let synPNG    = chainFixture("syn-frame.png", "dicom-export", ["single", synCT.p
 let synJSON   = chainFixture("syn-ct.json", "dicom-json", [synCT.path, "--output", "DEST"])
 let synXML    = chainFixture("syn-ct.xml", "dicom-xml", [synCT.path, "--output", "DEST"])
 let synPdfDcm = chainFixture("syn-pdf.dcm", "dicom-pdf", [synDoc.path, "--output", "DEST", "--patient-name", "PARITY^PDF", "--patient-id", "SYN-PDF", "--study-uid", "1.2.826.0.1.3680043.10.999.2.1", "--series-uid", "1.2.826.0.1.3680043.10.999.2.2"])
+// A directory of RLE-compressed CTs — the input for dicom-compress `batch --decompress
+// --recursive`. Built by the real binary; git-ignored → scenarios portable:false.
+let synRleDir: ConcreteFixture? = {
+    let bin = binDir.appendingPathComponent("dicom-compress")
+    guard FileManager.default.isExecutableFile(atPath: bin.path) else { return nil }
+    let dir = fixturesDir.appendingPathComponent("syn-rle-dir", isDirectory: true)
+    try? FileManager.default.removeItem(at: dir)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    _ = run(bin, ["compress", synCT.path,  "-c", "rle", "--output", dir.appendingPathComponent("a.dcm").path])
+    _ = run(bin, ["compress", synCT2.path, "-c", "rle", "--output", dir.appendingPathComponent("b.dcm").path])
+    let n = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.count) ?? 0
+    guard n > 0 else { errln("→ failed to build syn-rle-dir"); return nil }
+    errln("→ chained fixture dir: syn-rle-dir (\(n) rle files)")
+    return ConcreteFixture(bundledName: "syn-rle-dir", path: dir.path, phiSafe: false)
+}()
+// A directory of PNGs — the input for dicom-image `--recursive` (batch image→SC).
+let synPngDir: ConcreteFixture? = {
+    let bin = binDir.appendingPathComponent("dicom-export")
+    guard FileManager.default.isExecutableFile(atPath: bin.path) else { return nil }
+    let dir = fixturesDir.appendingPathComponent("syn-png-dir", isDirectory: true)
+    try? FileManager.default.removeItem(at: dir)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    _ = run(bin, ["single", synCT.path,  "--format", "png", "--output", dir.appendingPathComponent("a.png").path])
+    _ = run(bin, ["single", synCT2.path, "--format", "png", "--output", dir.appendingPathComponent("b.png").path])
+    let n = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.count) ?? 0
+    guard n > 0 else { errln("→ failed to build syn-png-dir"); return nil }
+    errln("→ chained fixture dir: syn-png-dir (\(n) pngs)")
+    return ConcreteFixture(bundledName: "syn-png-dir", path: dir.path, phiSafe: false)
+}()
 
 // 1c. Resolve a template's logical fixture into concrete (primary, secondary) runs.
 func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: ConcreteFixture?)] {
@@ -766,6 +801,8 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "json":     return synJSON.map { [($0, ConcreteFixture?.none)] } ?? []
     case "xml":      return synXML.map { [($0, ConcreteFixture?.none)] } ?? []
     case "pdfdcm":   return synPdfDcm.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "rledir":   return synRleDir.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "pngdir":   return synPngDir.map { [($0, ConcreteFixture?.none)] } ?? []
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
     case "studypair":return [(synStudy, synStudy2)]
