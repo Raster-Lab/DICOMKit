@@ -13,14 +13,11 @@
     },
     {
       "acceptedFlags" : 17,
-      "coveragePct" : 76.5,
-      "coveredFlags" : 13,
+      "coveragePct" : 100,
+      "coveredFlags" : 17,
       "toolId" : "dicom-archive",
       "uncoveredFlags" : [
-        "--force",
-        "--path",
-        "--recursive",
-        "--skip-duplicates"
+
       ],
       "wired" : true
     },
@@ -486,8 +483,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 208,
-    "pct" : 54.3,
+    "covered" : 212,
+    "pct" : 55.4,
     "toolsWired" : 32
   }
 }

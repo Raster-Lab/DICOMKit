@@ -315,6 +315,11 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-script", label: "validate", cliArgs: ["validate", "FIXTURE"], studioParams: ["operation": "validate", "scriptPath": "FIXTURE"], fixture: "script"),
     Template(tool: "dicom-archive", label: "query-filters", cliArgs: ["query", "--archive", "FIXTURE", "--patient-name", "Test*", "--patient-id", "PAT001", "--study-uid", "1.2.3", "--study-date", "20200101"], studioParams: ["subcommand": "query", "archive": "FIXTURE", "patient-name": "Test*", "patient-id": "PAT001", "study-uid": "1.2.3", "study-date": "20200101"], fixture: "archive"),
     Template(tool: "dicom-archive", label: "check-verbose", cliArgs: ["check", "--archive", "FIXTURE", "--verbose"], studioParams: ["subcommand": "check", "archive": "FIXTURE", "verbose": "true"], fixture: "archive"),
+    // archive init --path --force → "initialized at <output2>" summary (path normalized).
+    Template(tool: "dicom-archive", label: "init-force", cliArgs: ["init", "--path", "OUTPUT2", "--force"], studioParams: ["subcommand": "init", "path": "OUTPUT2", "force": "true"], fixture: "none", portable: false),
+    // archive import (studyset already in the archive) --recursive --skip-duplicates → deterministic
+    // "Imported: 0" no-op (doesn't mutate the shared archive). FIXTURE=files, FIXTURE2=archive.
+    Template(tool: "dicom-archive", label: "import-skipdup", cliArgs: ["import", "FIXTURE", "--archive", "FIXTURE2", "--recursive", "--skip-duplicates"], studioParams: ["subcommand": "import", "files": "FIXTURE", "archive": "FIXTURE2", "recursive": "true", "skip-duplicates": "true"], fixture: "importset", portable: false),
     // archive export → flat dir of the archived instances (deterministic content); covers --output + --flatten.
     Template(tool: "dicom-archive", label: "export-flatten", cliArgs: ["export", "--archive", "FIXTURE", "--output", "OUTPUT", "--patient-id", "SYN-STD-1", "--flatten"], studioParams: ["subcommand": "export", "archive": "FIXTURE", "output": "OUTPUT", "patient-id": "SYN-STD-1", "flatten": "true"], fixture: "archive", portable: false, artifactName: "exported", artifactKind: "dicom-multi"),
     Template(tool: "dicom-archive", label: "export-series-uid", cliArgs: ["export", "--archive", "FIXTURE", "--output", "OUTPUT", "--series-uid", "1.2.826.0.1.3680043.10.999.41.1.1", "--flatten"], studioParams: ["subcommand": "export", "archive": "FIXTURE", "output": "OUTPUT", "series-uid": "1.2.826.0.1.3680043.10.999.41.1.1", "flatten": "true"], fixture: "archive", portable: false, artifactName: "exported", artifactKind: "dicom-multi"),
@@ -859,6 +864,7 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "pngdir":   return synPngDir.map { [($0, ConcreteFixture?.none)] } ?? []
     case "tiffmulti":return synTiffMulti.map { [($0, ConcreteFixture?.none)] } ?? []
     case "pdfdcmdir":return synPdfDcmDir.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "importset":return archiveFixture.map { [(synStudy, $0)] } ?? []   // files (studyset) + archive (already holds them → skip-dup)
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
     case "studypair":return [(synStudy, synStudy2)]
