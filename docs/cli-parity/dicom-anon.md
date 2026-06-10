@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 
 **Input-contract parity:** 13/13 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 24 scenario(s) — 24 success / 0 drift.
+**Output behavior:** 26 scenario(s) — 26 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -17,7 +17,7 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--audit-log` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--audit-log` | option | ✅ match | ✓ | ✅ success |
 | `--backup` | flag | ✅ match | ✓ | ✅ success |
 | `--dry-run` | flag | ✅ match | ✓ | ✅ success |
 | `--force` | flag | ✅ match | ✓ | ✅ success |
@@ -35,6 +35,7 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| CT.dcm · audit-log | `--profile basic --audit-log OUTPUT --output OUTPUT2 FIXTURE` | ✅ success |
 | CT.dcm · auto-backup | `FIXTURE --output OUTPUT --profile basic --backup` | ✅ success |
 | CT.dcm · auto-force | `FIXTURE --output OUTPUT --profile basic --force` | ✅ success |
 | CT.dcm · auto-keep | `FIXTURE --output OUTPUT --profile basic --keep 0010,0010` | ✅ success |
@@ -47,6 +48,7 @@ _CLI binary:_ `dicom-anon` · _category:_ FILE_PROCESSING · _wired in Studio:_ 
 | CT.dcm · clinical-trial | `--profile clinical-trial --output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · dry-run | `--profile basic --dry-run FIXTURE` | ✅ success |
 | CT.dcm · shift-dates-30 | `--profile basic --shift-dates 30 --output OUTPUT FIXTURE` | ✅ success |
+| syn-ct.dcm · audit-log | `--profile basic --audit-log OUTPUT --output OUTPUT2 FIXTURE` | ✅ success |
 | syn-ct.dcm · auto-backup | `FIXTURE --output OUTPUT --profile basic --backup` | ✅ success |
 | syn-ct.dcm · auto-force | `FIXTURE --output OUTPUT --profile basic --force` | ✅ success |
 | syn-ct.dcm · auto-keep | `FIXTURE --output OUTPUT --profile basic --keep 0010,0010` | ✅ success |

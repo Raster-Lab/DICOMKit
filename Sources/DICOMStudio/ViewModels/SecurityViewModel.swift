@@ -556,11 +556,11 @@ public final class SecurityViewModel {
             }
         }
 
-        // Write audit log
+        // Write audit log via the SHARED Anonymizer (the exact detailed per-tag log the
+        // dicom-anon CLI writes), not a generic summary — so the app and CLI audit files
+        // are byte-identical (timestamps aside).
         if !auditLogPath.isEmpty && !dryRun {
-            let logURL = URL(fileURLWithPath: auditLogPath)
-            let logText = "Anonymization audit log\n\(Date())\nFiles: \(totalFiles), Successful: \(successful), Failed: \(failed)\n"
-            try? logText.write(to: logURL, atomically: true, encoding: .utf8)
+            try? anonymizer.writeAuditLog(to: URL(fileURLWithPath: auditLogPath))
         }
 
         let summary = AnonHelpers.renderSummary(

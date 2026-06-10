@@ -397,6 +397,8 @@ public enum CLIParityEngine {
             // "[2026-06-09 17:05:19] …") — the same line minted in the CLI and app runs
             // differs only by the wall-clock second.
             line = line.replacingOccurrences(of: "\\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\\]", with: "[<timestamp>]", options: .regularExpression)
+            // ISO-8601 timestamps (e.g. dicom-anon's audit log "2026-06-10T05:40:57Z").
+            line = line.replacingOccurrences(of: "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", with: "<timestamp>", options: .regularExpression)
             // Drop the command-echo line Studio prepends.
             if line.hasPrefix("$ ") { continue }
             // Canonicalize any absolute path ending in a fixture basename. Match the
