@@ -380,11 +380,11 @@
     },
     {
       "acceptedFlags" : 8,
-      "coveragePct" : 87.5,
-      "coveredFlags" : 7,
+      "coveragePct" : 100,
+      "coveredFlags" : 8,
       "toolId" : "dicom-tags",
       "uncoveredFlags" : [
-        "--dry-run"
+
       ],
       "wired" : true
     },
@@ -488,8 +488,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 203,
-    "pct" : 53,
+    "covered" : 204,
+    "pct" : 53.3,
     "toolsWired" : 32
   }
 }

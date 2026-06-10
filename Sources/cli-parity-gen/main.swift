@@ -321,6 +321,8 @@ let curatedTemplates: [Template] = [
     // tags --verbose covered via an artifact scenario (the produced file matches; the
     // verbose preview goes to stderr in the CLI so it can't be stdout-compared).
     Template(tool: "dicom-tags", label: "set-verbose", cliArgs: ["--set", "PatientName=PARITY^V", "--verbose", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "set": "PatientName=PARITY^V", "verbose": "true", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
+    // tags --dry-run: change preview now on stdout (was stderr) → text-exact with the app.
+    Template(tool: "dicom-tags", label: "dry-run", cliArgs: ["--set", "PatientName=PARITY^DRY", "--dry-run", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "set": "PatientName=PARITY^DRY", "dry-run": "true"], fixture: "ct"),
     Template(tool: "dicom-tags", label: "copy-from", cliArgs: ["--copy-from", "FIXTURE2", "--tags", "PatientName,PatientID", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "copy-from": "FIXTURE2", "tags": "PatientName,PatientID", "output": "OUTPUT"], fixture: "ctpair", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-anon", label: "dry-run", cliArgs: ["--profile", "basic", "--dry-run", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "basic", "dry-run": "true"], fixture: "ct"),
     // anon --audit-log → text audit (ISO timestamps masked, input path normalized); .dcm → OUTPUT2.

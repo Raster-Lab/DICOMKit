@@ -122,7 +122,9 @@ struct DICOMTags: ParsableCommand {
 }
 
 private func fprintln(_ message: String) {
-    FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
+    // Route the change preview / dry-run summary to STDOUT so the CLI and DICOMStudio
+    // (which shows it in-console) are text-exact. These are results, not errors.
+    print(message)
 }
 
 DICOMTags.main()
