@@ -288,6 +288,10 @@ public final class CLIAutomationTestingViewModel {
             cliLines = CLIParityEngine.maskVolatileDumpTags(cliLines)
             studioLines = CLIParityEngine.maskVolatileDumpTags(studioLines)
         }
+        if scenario.artifactKind == "uid-list" {   // dicom-uid generate: mask the random UID values
+            cliLines = CLIParityEngine.maskUIDs(cliLines)
+            studioLines = CLIParityEngine.maskUIDs(studioLines)
+        }
         let diff = CLIParityEngine.diff(cli: cliLines, studio: studioLines)
         let isMatch = !diff.contains { $0.kind != .same }
 

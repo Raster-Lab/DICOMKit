@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 
 **Input-contract parity:** 12/13 CLI flags matched · 1 missing in UI · status **INCOMPLETE** (92%)
 
-**Output behavior:** 12 scenario(s) — 12 success / 0 drift.
+**Output behavior:** 14 scenario(s) — 14 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -18,17 +18,17 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
 | `--check-registry` | flag | ✅ match | ✓ | ✅ success |
-| `--count` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
+| `--count` | option | ✅ match | ✓ | ✅ success |
 | `--dry-run` | flag | ✅ match | ✓ | ✅ success |
 | `--export-map` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
 | `--file` | option | ✅ match | ✓ | ✅ success |
-| `--json` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
+| `--json` | flag | ✅ match | ✓ | ✅ success |
 | `--list-all` | flag | ✅ match | ✓ | ✅ success |
 | `--maintain-relationships` | flag | ⚠️ missing in UI | — | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
-| `--root` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
+| `--root` | option | ✅ match | ✓ | ✅ success |
 | `--search` | option | ✅ match | ✓ | ✅ success |
-| `--type` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
+| `--type` | option | ✅ match | ✓ | ✅ success |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
@@ -38,6 +38,8 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | CT.dcm · regenerate-dryrun | `regenerate FIXTURE --dry-run` | ✅ success |
 | CT.dcm · regenerate-flags | `regenerate FIXTURE --output OUTPUT --maintain-relationships --verbose` | ✅ success |
 | CT.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
+| dicom-uid · generate-count-type-root | `generate --count 3 --type study --root 1.2.826.0.1.3680043.9.1234` | ✅ success |
+| dicom-uid · generate-json | `generate --json --count 2` | ✅ success |
 | dicom-uid · lookup | `lookup 1.2.840.10008.1.2.1` | ✅ success |
 | dicom-uid · lookup-listall | `lookup --list-all` | ✅ success |
 | dicom-uid · lookup-search | `lookup --search CT` | ✅ success |
