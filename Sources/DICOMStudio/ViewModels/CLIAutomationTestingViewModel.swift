@@ -194,16 +194,22 @@ public final class CLIAutomationTestingViewModel {
         let isDicomMulti = scenario.artifactKind == "dicom-multi"
         let isDicomTree = scenario.artifactKind == "dicom-tree"
         var artifactURL: URL? = nil
-        if let art = scenario.artifactName, !art.isEmpty {
+        var scratchDir: URL? = nil
+        // A scratch dir is needed for the compared artifact AND/OR an OUTPUT2 secondary output.
+        if (scenario.artifactName?.isEmpty == false) || scenario.studioParams.values.contains("OUTPUT2") {
             let dir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("studio-parity-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            artifactURL = dir.appendingPathComponent(art)
-            if (isDicomMulti || isDicomTree), let u = artifactURL {   // OUTPUT is a directory the producer fills
-                try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+            scratchDir = dir
+            if let art = scenario.artifactName, !art.isEmpty {
+                artifactURL = dir.appendingPathComponent(art)
+                if (isDicomMulti || isDicomTree), let u = artifactURL {   // OUTPUT is a directory the producer fills
+                    try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
+                }
             }
         }
-        defer { if let u = artifactURL { try? FileManager.default.removeItem(at: u.deletingLastPathComponent()) } }
+        let output2URL = scratchDir?.appendingPathComponent("output2.dat")
+        defer { if let d = scratchDir { try? FileManager.default.removeItem(at: d) } }
 
         // Clear EVERY param the scenario didn't set: the catalog default-fills some
         // (e.g. ~/Desktop/DICOM_Output, or a default --file/--path), but the CLI golden
@@ -219,7 +225,7 @@ public final class CLIAutomationTestingViewModel {
             if raw == "FIXTURE"       { value = fixturePath }
             else if raw == "FIXTURE2" { value = fixturePath2 ?? raw }
             else if raw == "OUTPUT"   { value = artifactURL?.path ?? raw }
-            else if raw == "OUTPUT2"  { value = artifactURL?.deletingLastPathComponent().appendingPathComponent("output2.dat").path ?? raw }  // secondary output
+            else if raw == "OUTPUT2"  { value = output2URL?.path ?? raw }  // secondary output
             else                      { value = raw }
             workshop.updateParameterValue(parameterID: pid, value: value)
         }

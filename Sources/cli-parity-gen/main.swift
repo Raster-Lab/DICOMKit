@@ -343,9 +343,9 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-xml", label: "reverse", cliArgs: ["FIXTURE", "--reverse", "--output", "OUTPUT"], studioParams: ["input": "FIXTURE", "reverse": "true", "output": "OUTPUT"], fixture: "xml", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
     // dicom-image: png → Secondary-Capture DICOM (13 metadata flags; SC SOP UID masked).
     Template(tool: "dicom-image", label: "convert-allmeta", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--patient-name", "PARITY^IMG", "--patient-id", "SYN-IMG", "--study-uid", "1.2.826.0.1.3680043.10.999.3.1", "--series-uid", "1.2.826.0.1.3680043.10.999.3.2", "--study-description", "Parity Study", "--series-description", "Parity Series", "--series-number", "1", "--instance-number", "1", "--modality", "OT", "--use-exif", "--verbose"], studioParams: ["input": "FIXTURE", "output": "OUTPUT", "patient-name": "PARITY^IMG", "patient-id": "SYN-IMG", "study-uid": "1.2.826.0.1.3680043.10.999.3.1", "series-uid": "1.2.826.0.1.3680043.10.999.3.2", "study-description": "Parity Study", "series-description": "Parity Series", "series-number": "1", "instance-number": "1", "modality": "OT", "use-exif": "true", "verbose": "true"], fixture: "png", portable: false, artifactName: "out.dcm", artifactKind: "dicom"),
-    // NOTE: dicom-pdf --extract/--show-metadata NOT covered — it both prints metadata to stdout
-    // AND writes a binary PDF, so it fits neither a stdout scenario (the app's sandbox OUTPUT
-    // redirect note diverges) nor an artifact scenario (no PDF comparator). Metadata itself matches.
+    // dicom-pdf --extract/--show-metadata: the extracted PDF goes to OUTPUT2 (a writable scratch
+    // path, so no sandbox redirect note); stdout (metadata + the normalized "Extracted:" line) compares.
+    Template(tool: "dicom-pdf", label: "extract-show-metadata", cliArgs: ["FIXTURE", "--extract", "--output", "OUTPUT2", "--show-metadata"], studioParams: ["inputPath": "FIXTURE", "extract": "true", "output": "OUTPUT2", "show-metadata": "true"], fixture: "pdfdcm", portable: false),
 
     // --- dicom-archive (read ops over a populated archive) — local-only fixture.
     // stats is omitted: its output carries a creation timestamp (Wave-4 masking).

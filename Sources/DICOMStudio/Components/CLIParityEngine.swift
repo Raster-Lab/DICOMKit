@@ -399,6 +399,9 @@ public enum CLIParityEngine {
             line = line.replacingOccurrences(of: "\\[[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\\]", with: "[<timestamp>]", options: .regularExpression)
             // ISO-8601 timestamps (e.g. dicom-anon's audit log "2026-06-10T05:40:57Z").
             line = line.replacingOccurrences(of: "[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z", with: "<timestamp>", options: .regularExpression)
+            // The OUTPUT2 secondary-output scratch path (e.g. dicom-pdf --extract's
+            // "Extracted: …/output2.dat") differs per side — canonicalize it.
+            line = line.replacingOccurrences(of: "/[^\\s\"]*output2\\.dat", with: "<output2>", options: .regularExpression)
             // Drop the command-echo line Studio prepends.
             if line.hasPrefix("$ ") { continue }
             // Canonicalize any absolute path ending in a fixture basename. Match the
