@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 **Input-contract parity:** 8/8 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 3 scenario(s) — 3 success / 0 drift.
+**Output behavior:** 4 scenario(s) — 4 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -23,13 +23,14 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 | `--output` | option | ✅ match | ✓ | ✅ success |
 | `--recursive` | flag | ✅ match | ✓ | ✅ success |
 | `--sort-by` | option | ✅ match | ✓ | ✅ success |
-| `--validate` | flag | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
+| `--validate` | flag | ✅ match | ✓ | ✅ success |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
 ## Output scenarios
 
 | Scenario | CLI args | Result |
 |---|---|---|
+| syn-series · validate | `FIXTURE --output OUTPUT --validate` | ✅ success |
 | syn-studyset · format-enhanced-ct | `FIXTURE --output OUTPUT --format enhanced-ct` | ✅ success |
 | syn-studyset · sort-recursive-verbose | `FIXTURE --output OUTPUT --sort-by InstanceNumber --order descending --recursive --verbose` | ✅ success |
 | syn-studyset · studyset | `FIXTURE --output OUTPUT` | ✅ success |

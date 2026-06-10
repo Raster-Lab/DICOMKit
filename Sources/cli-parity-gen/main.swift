@@ -283,6 +283,10 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-pixedit", label: "edit-verbose", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--mask-region", "0,0,4,4", "--fill-value", "0", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "mask-region": "0,0,4,4", "fill-value": "0", "verbose": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-merge", label: "format-enhanced-ct", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "enhanced-ct"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "enhanced-ct"], fixture: "studyset", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-merge", label: "sort-recursive-verbose", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--sort-by", "InstanceNumber", "--order", "descending", "--recursive", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "sort-by": "InstanceNumber", "order": "descending", "recursive": "true", "verbose": "true"], fixture: "studyset", artifactName: "out.dcm", artifactKind: "dicom"),
+    // merge --validate on a homogeneous single-series set → one merged file (default --level
+    // file). (--level series/study writes a NESTED per-series tree — not golden-able, like
+    // study organize; left uncovered.)
+    Template(tool: "dicom-merge", label: "validate", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--validate"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "validate": "true"], fixture: "series", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-pdf", label: "encapsulate-allmeta", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--patient-name", "PARITY^PDF", "--patient-id", "SYN-PDF", "--study-uid", "1.2.826.0.1.3680043.10.999.2.1", "--series-uid", "1.2.826.0.1.3680043.10.999.2.2", "--title", "Parity Doc", "--modality", "DOC", "--series-number", "10", "--series-description", "Parity Series", "--instance-number", "42", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "patient-name": "PARITY^PDF", "patient-id": "SYN-PDF", "study-uid": "1.2.826.0.1.3680043.10.999.2.1", "series-uid": "1.2.826.0.1.3680043.10.999.2.2", "title": "Parity Doc", "modality": "DOC", "series-number": "10", "series-description": "Parity Series", "instance-number": "42", "verbose": "true"], fixture: "pdf", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-uid", label: "regenerate-flags", cliArgs: ["regenerate", "FIXTURE", "--output", "OUTPUT", "--maintain-relationships", "--verbose"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "output": "OUTPUT", "maintain-relationships": "true", "verbose": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-uid", label: "lookup-search", cliArgs: ["lookup", "--search", "CT"], studioParams: ["subcommand": "lookup", "search": "CT"], fixture: "none"),
@@ -680,6 +684,9 @@ func writeSyntheticSet(_ dirName: String, _ files: [(name: String, data: Data)])
 }
 let synStudy  = writeSyntheticSet("syn-studyset",  SyntheticFixtures.studySet(studyIndex: 1))
 let synStudy2 = writeSyntheticSet("syn-studyset2", SyntheticFixtures.studySet(studyIndex: 2))
+// Single-series set (one series, 3 instances) — homogeneous input for dicom-merge
+// --validate (passes) and --level series (one deterministic output). Logical id `series`.
+let synSeries = writeSyntheticSet("syn-series", SyntheticFixtures.studySet(studyIndex: 3, series: 1, instances: 3))
 errln("→ wrote 2 synthetic study-set directories")
 
 // Clear git-ignored fixtures/ once, before writing the archive + real fixtures.
@@ -762,6 +769,7 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
     case "studypair":return [(synStudy, synStudy2)]
+    case "series":   return [(synSeries, nil)]
     case "archive":  return archiveFixture.map { [($0, ConcreteFixture?.none)] } ?? []
     case "none":     return [(nil, nil)]
     default:         return [(synCT, nil)]
