@@ -304,6 +304,9 @@ let curatedTemplates: [Template] = [
     // comparing count/format/structure. Covers --count/--type/--root/--json.
     Template(tool: "dicom-uid", label: "generate-count-type-root", cliArgs: ["generate", "--count", "3", "--type", "study", "--root", "1.2.826.0.1.3680043.9.1234"], studioParams: ["subcommand": "generate", "count": "3", "type": "study", "root": "1.2.826.0.1.3680043.9.1234"], fixture: "none", portable: false, artifactKind: "uid-list"),
     Template(tool: "dicom-uid", label: "generate-json", cliArgs: ["generate", "--json", "--count", "2"], studioParams: ["subcommand": "generate", "json": "true", "count": "2"], fixture: "none", portable: false, artifactKind: "uid-list"),
+    // regenerate --export-map → JSON of old→new UID mappings (new UIDs random → uid-list mask
+    // compares structure). The regenerated .dcm goes to OUTPUT2 (throwaway).
+    Template(tool: "dicom-uid", label: "regenerate-export-map", cliArgs: ["regenerate", "FIXTURE", "--output", "OUTPUT2", "--export-map", "OUTPUT"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "output": "OUTPUT2", "export-map": "OUTPUT"], fixture: "ct", portable: false, artifactName: "map.json", artifactKind: "uid-list"),
     // dicom-script — now shares the DICOMKit script engine (ScriptExecutor/ScriptValidator)
     // in both adapters, so output is byte-identical. --dry-run previews deterministically;
     // --verbose/--log carry volatile [timestamps] (masked by CLIParityEngine.normalize).
@@ -880,11 +883,14 @@ func detectArtifactKind(_ path: String) -> String? {
 // OUTPUT resolves to a scratch file the binary writes; we read it back. Returns the
 // effective artifactKind so the caller stamps it (matters when artifactKind == "auto").
 func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, secondary: ConcreteFixture?)) -> (out: String, err: String, code: Int32, kind: String) {
+    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("cpg-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
     func resolve(_ outputPath: String) -> [String] {
         t.cliArgs.map { tok in
             if tok == "FIXTURE"  { return rf.primary?.path ?? "" }
             if tok == "FIXTURE2" { return rf.secondary?.path ?? "" }
             if tok == "OUTPUT"   { return outputPath }
+            if tok == "OUTPUT2"  { return tmp.appendingPathComponent("output2.dat").path }  // secondary output (e.g. --export-map's .dcm)
             return tok
         }
     }
@@ -895,8 +901,6 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
         let kind = t.artifactKind == "uid-list" ? "uid-list" : "stdout"
         return (canonicalJSON(r.out), r.err, r.code, kind)
     }
-    let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("cpg-\(UUID().uuidString)", isDirectory: true)
-    try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: tmp) }
     let info = binDir.appendingPathComponent("dicom-info")
     let fm = FileManager.default
