@@ -219,6 +219,7 @@ public final class CLIAutomationTestingViewModel {
             if raw == "FIXTURE"       { value = fixturePath }
             else if raw == "FIXTURE2" { value = fixturePath2 ?? raw }
             else if raw == "OUTPUT"   { value = artifactURL?.path ?? raw }
+            else if raw == "OUTPUT2"  { value = artifactURL?.deletingLastPathComponent().appendingPathComponent("output2.dat").path ?? raw }  // secondary output
             else                      { value = raw }
             workshop.updateParameterValue(parameterID: pid, value: value)
         }

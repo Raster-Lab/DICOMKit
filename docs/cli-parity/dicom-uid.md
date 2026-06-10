@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 
 **Input-contract parity:** 12/13 CLI flags matched · 1 missing in UI · status **INCOMPLETE** (92%)
 
-**Output behavior:** 14 scenario(s) — 14 success / 0 drift.
+**Output behavior:** 16 scenario(s) — 16 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -20,7 +20,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | `--check-registry` | flag | ✅ match | ✓ | ✅ success |
 | `--count` | option | ✅ match | ✓ | ✅ success |
 | `--dry-run` | flag | ✅ match | ✓ | ✅ success |
-| `--export-map` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs) |
+| `--export-map` | option | ✅ match | ✓ | ✅ success |
 | `--file` | option | ✅ match | ✓ | ✅ success |
 | `--json` | flag | ✅ match | ✓ | ✅ success |
 | `--list-all` | flag | ✅ match | ✓ | ✅ success |
@@ -36,6 +36,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | Scenario | CLI args | Result |
 |---|---|---|
 | CT.dcm · regenerate-dryrun | `regenerate FIXTURE --dry-run` | ✅ success |
+| CT.dcm · regenerate-export-map | `regenerate FIXTURE --output OUTPUT2 --export-map OUTPUT` | ✅ success |
 | CT.dcm · regenerate-flags | `regenerate FIXTURE --output OUTPUT --maintain-relationships --verbose` | ✅ success |
 | CT.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
 | dicom-uid · generate-count-type-root | `generate --count 3 --type study --root 1.2.826.0.1.3680043.9.1234` | ✅ success |
@@ -47,6 +48,7 @@ _CLI binary:_ `dicom-uid` · _category:_ AUTOMATION · _wired in Studio:_ yes ·
 | dicom-uid · validate-invalid | `validate not-a-valid-uid` | ✅ success |
 | dicom-uid · validate-registry | `validate --check-registry 1.2.840.10008.1.2.1` | ✅ success |
 | syn-ct.dcm · regenerate-dryrun | `regenerate FIXTURE --dry-run` | ✅ success |
+| syn-ct.dcm · regenerate-export-map | `regenerate FIXTURE --output OUTPUT2 --export-map OUTPUT` | ✅ success |
 | syn-ct.dcm · regenerate-flags | `regenerate FIXTURE --output OUTPUT --maintain-relationships --verbose` | ✅ success |
 | syn-ct.dcm · validate-file | `validate --file FIXTURE` | ✅ success |
 
