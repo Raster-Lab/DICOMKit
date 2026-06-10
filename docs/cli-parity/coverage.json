@@ -136,12 +136,11 @@
     },
     {
       "acceptedFlags" : 8,
-      "coveragePct" : 75,
-      "coveredFlags" : 6,
+      "coveragePct" : 87.5,
+      "coveredFlags" : 7,
       "toolId" : "dicom-merge",
       "uncoveredFlags" : [
-        "--level",
-        "--validate"
+        "--level"
       ],
       "wired" : true
     },
@@ -502,8 +501,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 183,
-    "pct" : 47.8,
+    "covered" : 184,
+    "pct" : 48,
     "toolsWired" : 32
   }
 }
