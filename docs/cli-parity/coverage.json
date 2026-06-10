@@ -13,26 +13,24 @@
     },
     {
       "acceptedFlags" : 17,
-      "coveragePct" : 70.6,
-      "coveredFlags" : 12,
+      "coveragePct" : 76.5,
+      "coveredFlags" : 13,
       "toolId" : "dicom-archive",
       "uncoveredFlags" : [
         "--force",
         "--path",
         "--recursive",
-        "--series-uid",
         "--skip-duplicates"
       ],
       "wired" : true
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 77.8,
-      "coveredFlags" : 7,
+      "coveragePct" : 100,
+      "coveredFlags" : 9,
       "toolId" : "dicom-compress",
       "uncoveredFlags" : [
-        "--decompress",
-        "--recursive"
+
       ],
       "wired" : true
     },
@@ -105,11 +103,10 @@
     },
     {
       "acceptedFlags" : 14,
-      "coveragePct" : 85.7,
-      "coveredFlags" : 12,
+      "coveragePct" : 92.9,
+      "coveredFlags" : 13,
       "toolId" : "dicom-image",
       "uncoveredFlags" : [
-        "--recursive",
         "--split-pages"
       ],
       "wired" : true
@@ -497,8 +494,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 189,
-    "pct" : 49.3,
+    "covered" : 193,
+    "pct" : 50.4,
     "toolsWired" : 32
   }
 }
