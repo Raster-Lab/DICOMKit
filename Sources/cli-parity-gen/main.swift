@@ -346,6 +346,8 @@ let curatedTemplates: [Template] = [
     // dicom-pdf --extract/--show-metadata: the extracted PDF goes to OUTPUT2 (a writable scratch
     // path, so no sandbox redirect note); stdout (metadata + the normalized "Extracted:" line) compares.
     Template(tool: "dicom-pdf", label: "extract-show-metadata", cliArgs: ["FIXTURE", "--extract", "--output", "OUTPUT2", "--show-metadata"], studioParams: ["inputPath": "FIXTURE", "extract": "true", "output": "OUTPUT2", "show-metadata": "true"], fixture: "pdfdcm", portable: false),
+    // pdf --extract --recursive over a dir of encapsulated-PDF DICOMs → "Extraction complete" summary (output dir normalized).
+    Template(tool: "dicom-pdf", label: "extract-recursive", cliArgs: ["FIXTURE", "--extract", "--recursive", "--output", "OUTPUT2"], studioParams: ["inputPath": "FIXTURE", "extract": "true", "recursive": "true", "output": "OUTPUT2"], fixture: "pdfdcmdir", portable: false),
 
     // --- dicom-archive (read ops over a populated archive) — local-only fixture.
     // stats is omitted: its output carries a creation timestamp (Wave-4 masking).
@@ -822,6 +824,21 @@ let synTiffMulti: ConcreteFixture? = {
     errln("→ chained fixture: syn-multi.tiff (2-page)")
     return ConcreteFixture(bundledName: "syn-multi.tiff", path: dest.path, phiSafe: false)
 }()
+// A directory of 2 encapsulated-PDF DICOMs — the input for dicom-pdf --extract --recursive.
+let synPdfDcmDir: ConcreteFixture? = {
+    let bin = binDir.appendingPathComponent("dicom-pdf")
+    guard FileManager.default.isExecutableFile(atPath: bin.path) else { return nil }
+    let dir = fixturesDir.appendingPathComponent("syn-pdfdcm-dir", isDirectory: true)
+    try? FileManager.default.removeItem(at: dir)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    let meta = ["--patient-name", "PARITY^PDF", "--patient-id", "SYN-PDF", "--study-uid", "1.2.826.0.1.3680043.10.999.2.1", "--series-uid", "1.2.826.0.1.3680043.10.999.2.2"]
+    _ = run(bin, [synDoc.path, "--output", dir.appendingPathComponent("a.dcm").path] + meta)
+    _ = run(bin, [synDoc.path, "--output", dir.appendingPathComponent("b.dcm").path] + meta)
+    let n = ((try? FileManager.default.contentsOfDirectory(atPath: dir.path))?.count) ?? 0
+    guard n > 0 else { errln("→ failed to build syn-pdfdcm-dir"); return nil }
+    errln("→ chained fixture dir: syn-pdfdcm-dir (\(n) files)")
+    return ConcreteFixture(bundledName: "syn-pdfdcm-dir", path: dir.path, phiSafe: false)
+}()
 
 // 1c. Resolve a template's logical fixture into concrete (primary, secondary) runs.
 func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: ConcreteFixture?)] {
@@ -841,6 +858,7 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "rledir":   return synRleDir.map { [($0, ConcreteFixture?.none)] } ?? []
     case "pngdir":   return synPngDir.map { [($0, ConcreteFixture?.none)] } ?? []
     case "tiffmulti":return synTiffMulti.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "pdfdcmdir":return synPdfDcmDir.map { [($0, ConcreteFixture?.none)] } ?? []
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
     case "studypair":return [(synStudy, synStudy2)]

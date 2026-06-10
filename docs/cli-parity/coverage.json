@@ -188,11 +188,11 @@
     },
     {
       "acceptedFlags" : 14,
-      "coveragePct" : 92.9,
-      "coveredFlags" : 13,
+      "coveragePct" : 100,
+      "coveredFlags" : 14,
       "toolId" : "dicom-pdf",
       "uncoveredFlags" : [
-        "--recursive"
+
       ],
       "wired" : true
     },
@@ -486,8 +486,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 207,
-    "pct" : 54,
+    "covered" : 208,
+    "pct" : 54.3,
     "toolsWired" : 32
   }
 }
