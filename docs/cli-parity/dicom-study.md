@@ -4,6 +4,8 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 **Input-contract parity:** 9/9 CLI flags matched · status **OK** (100%)
 
+**Input sub-checks (Phase 3):** ⚠️ 1 default mismatch(es): `--format`.
+
 **Output behavior:** 15 scenario(s) — 15 success / 0 drift.
 
 ## Verified App↔CLI parity
@@ -21,7 +23,7 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 | `--detailed` | flag | ✅ match | ✓ | ✅ success |
 | `--expected-instances` | option | ✅ match | ✓ | ✅ success |
 | `--expected-series` | option | ✅ match | ✓ | ✅ success |
-| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--format` | option | ✅ match | ⚠️ default `text`↔`table` | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
 | `--pattern` | option | ✅ match | ✓ | ✅ success |
 | `--report` | option | ✅ match | ✓ | ✅ success |

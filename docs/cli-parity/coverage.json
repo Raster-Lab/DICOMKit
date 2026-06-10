@@ -103,11 +103,11 @@
     },
     {
       "acceptedFlags" : 14,
-      "coveragePct" : 92.9,
-      "coveredFlags" : 13,
+      "coveragePct" : 100,
+      "coveredFlags" : 14,
       "toolId" : "dicom-image",
       "uncoveredFlags" : [
-        "--split-pages"
+
       ],
       "wired" : true
     },
@@ -488,8 +488,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 204,
-    "pct" : 53.3,
+    "covered" : 205,
+    "pct" : 53.5,
     "toolsWired" : 32
   }
 }
