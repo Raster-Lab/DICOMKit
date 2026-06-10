@@ -4,7 +4,7 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 
 **Input-contract parity:** 17/17 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 9 scenario(s) — 9 success / 0 drift.
+**Output behavior:** 10 scenario(s) — 10 success / 0 drift.
 
 ## Verified App↔CLI parity
 
@@ -18,11 +18,11 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
 | `--archive` | option | ✅ match | ✓ | ✅ success |
-| `--flatten` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--flatten` | flag | ✅ match | ✓ | ✅ success |
 | `--force` | flag | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
 | `--format` | option | ✅ match | ✓ | ✅ success |
 | `--modality` | option | ✅ match | ✓ | ✅ success |
-| `--output` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
+| `--output` | option | ✅ match | ✓ | ✅ success |
 | `--path` | option | ✅ match | ✓ | ⊘ not covered (coverage gap — offline-testable, not yet templated) |
 | `--patient-id` | option | ✅ match | ✓ | ✅ success |
 | `--patient-name` | option | ✅ match | ✓ | ✅ success |
@@ -42,6 +42,7 @@ _CLI binary:_ `dicom-archive` · _category:_ FILE_ORGANIZATION · _wired in Stud
 | syn-archive · auto-check-verify-files | `check --archive FIXTURE --verify-files` | ✅ success |
 | syn-archive · check | `check --archive FIXTURE` | ✅ success |
 | syn-archive · check-verbose | `check --archive FIXTURE --verbose` | ✅ success |
+| syn-archive · export-flatten | `export --archive FIXTURE --output OUTPUT --patient-id SYN-STD-1 --flatten` | ✅ success |
 | syn-archive · list | `list --archive FIXTURE` | ✅ success |
 | syn-archive · list-instances | `list --show-instances --archive FIXTURE` | ✅ success |
 | syn-archive · query | `query --archive FIXTURE` | ✅ success |
