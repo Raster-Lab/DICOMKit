@@ -296,6 +296,8 @@ let curatedTemplates: [Template] = [
     // Fix by sharing the dry-run/log rendering through the DICOMKit script engine, then cover.
     Template(tool: "dicom-archive", label: "query-filters", cliArgs: ["query", "--archive", "FIXTURE", "--patient-name", "Test*", "--patient-id", "PAT001", "--study-uid", "1.2.3", "--study-date", "20200101"], studioParams: ["subcommand": "query", "archive": "FIXTURE", "patient-name": "Test*", "patient-id": "PAT001", "study-uid": "1.2.3", "study-date": "20200101"], fixture: "archive"),
     Template(tool: "dicom-archive", label: "check-verbose", cliArgs: ["check", "--archive", "FIXTURE", "--verbose"], studioParams: ["subcommand": "check", "archive": "FIXTURE", "verbose": "true"], fixture: "archive"),
+    // archive export → flat dir of the archived instances (deterministic content); covers --output + --flatten.
+    Template(tool: "dicom-archive", label: "export-flatten", cliArgs: ["export", "--archive", "FIXTURE", "--output", "OUTPUT", "--patient-id", "SYN-STD-1", "--flatten"], studioParams: ["subcommand": "export", "archive": "FIXTURE", "output": "OUTPUT", "patient-id": "SYN-STD-1", "flatten": "true"], fixture: "archive", portable: false, artifactName: "exported", artifactKind: "dicom-multi"),
     // tags --verbose covered via an artifact scenario (the produced file matches; the
     // verbose preview goes to stderr in the CLI so it can't be stdout-compared).
     Template(tool: "dicom-tags", label: "set-verbose", cliArgs: ["--set", "PatientName=PARITY^V", "--verbose", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "set": "PatientName=PARITY^V", "verbose": "true", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
