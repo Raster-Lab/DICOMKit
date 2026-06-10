@@ -73,9 +73,7 @@ private let sharedTreeFlags: [String: Set<String>] = [:]
 /// Flags whose CLI preview goes to STDERR (so the harness, which diffs stdout, can't
 /// compare it) even though the TEXT matches the app console — a stream quirk, not a
 /// content divergence.
-private let stderrPreviewFlags: [String: Set<String>] = [
-    "dicom-tags": ["--dry-run"],   // tags fprintln → stderr; app shows it in-console
-]
+private let stderrPreviewFlags: [String: Set<String>] = [:]   // (tags --dry-run now routes to stdout → covered)
 
 /// Flags with a CONFIRMED App↔CLI CONTENT divergence — a real gap to fix, surfaced
 /// (not masked) by the parity test so it stays visible until resolved. (Currently
@@ -161,7 +159,7 @@ private let verifiedVerdict: [String: EngineVerdict] = [
     "dicom-split":    .init(engine: "FrameSplitter", module: "DICOMKit/Splitting", scope: "full", verdict: "extracted frames byte-identical (shared engine); app lists written paths + sizes. Non-deterministic path set → no goldens."),
     "dicom-stow":     .init(engine: "DICOMwebClient (STOW-RS)", module: "DICOMWeb", scope: "full", verdict: "STOW-RS store via the identical shared client. Live network → no goldens."),
     "dicom-study":    .init(engine: "StudyScanner / StudyReport / StudyOrganizer", module: "DICOMKit/Study", scope: "full", verdict: "ALL subcommands shared + golden-tested — summary/check/stats/compare byte-identical; `organize` (--copy/--output/--pattern, descriptive + uid) now REALLY compared via the dicom-tree comparator (folder naming + per-file content), not just parity-by-construction."),
-    "dicom-tags":     .init(engine: "TagEditor", module: "DICOMKit/TagEditing", scope: "full", verdict: "edited DICOM byte-identical (set/delete/copy-from/verbose goldens). `--dry-run` not stdout-golden-able: the CLI prints the preview to STDERR (text matches the app console)."),
+    "dicom-tags":     .init(engine: "TagEditor", module: "DICOMKit/TagEditing", scope: "full", verdict: "ALL flags covered (8/8): set/delete/delete-private/copy-from/tags/verbose + `--dry-run` (the change preview now routes to stdout — was stderr — so it is text-exact with the app console)."),
     "dicom-uid":      .init(engine: "UIDManager", module: "DICOMKit/UIDManagement", scope: "full", verdict: "validate/lookup/search + regenerate (UIDs masked) + regenerate --dry-run byte/text-identical (dry-run now shares `UIDManager.regenerationPreviewLines`); generate is non-deterministic (fresh UIDs)."),
     "dicom-ups":      .init(engine: "DICOMwebClient (UPS-RS)", module: "DICOMWeb", scope: "full", verdict: "create/retrieve/search/subscribe via the shared client; change-state echoes the raw HTTP request/response (educational). Live network → no goldens."),
     "dicom-validate": .init(engine: "DICOMValidator / ValidationReport", module: "DICOMKit/Validation", scope: "full", verdict: "byte-identical (8 goldens); app appends an educational `Exit code: N` line (excluded from the parity path)."),

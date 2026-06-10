@@ -4,12 +4,12 @@ _CLI binary:_ `dicom-tags` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 
 **Input-contract parity:** 8/8 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 11 scenario(s) — 11 success / 0 drift.
+**Output behavior:** 13 scenario(s) — 13 success / 0 drift.
 
 ## Verified App↔CLI parity
 
 - **Shared DICOMKit engine:** `TagEditor` (`DICOMKit/TagEditing`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
-- **Verdict:** edited DICOM byte-identical (set/delete/copy-from/verbose goldens). `--dry-run` not stdout-golden-able: the CLI prints the preview to STDERR (text matches the app console).
+- **Verdict:** ALL flags covered (8/8): set/delete/delete-private/copy-from/tags/verbose + `--dry-run` (the change preview now routes to stdout — was stderr — so it is text-exact with the app console).
 
 > Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 
@@ -20,7 +20,7 @@ _CLI binary:_ `dicom-tags` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 | `--copy-from` | option | ✅ match | ✓ | ✅ success |
 | `--delete` | option | ✅ match | ✓ | ✅ success |
 | `--delete-private` | flag | ✅ match | ✓ | ✅ success |
-| `--dry-run` | flag | ✅ match | ✓ | ⊘ not covered (preview on stderr — text matches the app console; not stdout-golden-able) |
+| `--dry-run` | flag | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
 | `--set` | option | ✅ match | ✓ | ✅ success |
 | `--tags` | option | ✅ match | ✓ | ✅ success |
@@ -32,12 +32,14 @@ _CLI binary:_ `dicom-tags` · _category:_ FILE_INSPECTION · _wired in Studio:_ 
 |---|---|---|
 | CT.dcm · delete-private | `--delete-private --output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · delete-tag | `--delete StudyDescription --output OUTPUT FIXTURE` | ✅ success |
+| CT.dcm · dry-run | `--set PatientName=PARITY^DRY --dry-run FIXTURE` | ✅ success |
 | CT.dcm · set-name | `--set PatientName=PARITY^EDIT --output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · set-studydesc | `--set StudyDescription=PARITY EDITED STUDY --output OUTPUT FIXTURE` | ✅ success |
 | CT.dcm · set-verbose | `--set PatientName=PARITY^V --verbose --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · copy-from | `--copy-from FIXTURE2 --tags PatientName,PatientID --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · delete-private | `--delete-private --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · delete-tag | `--delete StudyDescription --output OUTPUT FIXTURE` | ✅ success |
+| syn-ct.dcm · dry-run | `--set PatientName=PARITY^DRY --dry-run FIXTURE` | ✅ success |
 | syn-ct.dcm · set-name | `--set PatientName=PARITY^EDIT --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · set-studydesc | `--set StudyDescription=PARITY EDITED STUDY --output OUTPUT FIXTURE` | ✅ success |
 | syn-ct.dcm · set-verbose | `--set PatientName=PARITY^V --verbose --output OUTPUT FIXTURE` | ✅ success |
