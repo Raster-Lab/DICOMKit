@@ -133,11 +133,11 @@
     },
     {
       "acceptedFlags" : 8,
-      "coveragePct" : 87.5,
-      "coveredFlags" : 7,
+      "coveragePct" : 100,
+      "coveredFlags" : 8,
       "toolId" : "dicom-merge",
       "uncoveredFlags" : [
-        "--level"
+
       ],
       "wired" : true
     },
@@ -370,13 +370,11 @@
     },
     {
       "acceptedFlags" : 9,
-      "coveragePct" : 66.7,
-      "coveredFlags" : 6,
+      "coveragePct" : 100,
+      "coveredFlags" : 9,
       "toolId" : "dicom-study",
       "uncoveredFlags" : [
-        "--copy",
-        "--output",
-        "--pattern"
+
       ],
       "wired" : true
     },
@@ -494,8 +492,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 193,
-    "pct" : 50.4,
+    "covered" : 197,
+    "pct" : 51.4,
     "toolsWired" : 32
   }
 }

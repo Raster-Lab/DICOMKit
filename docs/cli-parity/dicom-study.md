@@ -4,14 +4,12 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 **Input-contract parity:** 9/9 CLI flags matched · status **OK** (100%)
 
-**Input sub-checks (Phase 3):** ⚠️ 1 default mismatch(es): `--format`.
-
-**Output behavior:** 13 scenario(s) — 13 success / 0 drift.
+**Output behavior:** 15 scenario(s) — 15 success / 0 drift.
 
 ## Verified App↔CLI parity
 
 - **Shared DICOMKit engine:** `StudyScanner / StudyReport / StudyOrganizer` (`DICOMKit/Study`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
-- **Verdict:** ALL subcommands shared — summary/check/stats/compare byte-identical (12 goldens); `organize` now uses the shared StudyOrganizer too (identical file naming/ordering, `→` arrow, and the same copy/move `already exists` error).
+- **Verdict:** ALL subcommands shared + golden-tested — summary/check/stats/compare byte-identical; `organize` (--copy/--output/--pattern, descriptive + uid) now REALLY compared via the dicom-tree comparator (folder naming + per-file content), not just parity-by-construction.
 
 > Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 
@@ -19,13 +17,13 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
-| `--copy` | flag | ✅ match | ✓ | ⊘ not covered (shared engine — writes a file tree; parity by construction, smoke-tested) |
+| `--copy` | flag | ✅ match | ✓ | ✅ success |
 | `--detailed` | flag | ✅ match | ✓ | ✅ success |
 | `--expected-instances` | option | ✅ match | ✓ | ✅ success |
 | `--expected-series` | option | ✅ match | ✓ | ✅ success |
-| `--format` | option | ✅ match | ⚠️ default `text`↔`table` | ✅ success |
-| `--output` | option | ✅ match | ✓ | ⊘ not covered (shared engine — writes a file tree; parity by construction, smoke-tested) |
-| `--pattern` | option | ✅ match | ✓ | ⊘ not covered (shared engine — writes a file tree; parity by construction, smoke-tested) |
+| `--format` | option | ✅ match | ✓ | ✅ success |
+| `--output` | option | ✅ match | ✓ | ✅ success |
+| `--pattern` | option | ✅ match | ✓ | ✅ success |
 | `--report` | option | ✅ match | ✓ | ✅ success |
 | `--verbose` | flag | ✅ match | ✓ | ✅ success |
 
@@ -40,6 +38,8 @@ _CLI binary:_ `dicom-study` · _category:_ AUTOMATION · _wired in Studio:_ yes 
 | syn-studyset · check-report | `check FIXTURE --report OUTPUT` | ✅ success |
 | syn-studyset · compare | `compare FIXTURE FIXTURE2` | ✅ success |
 | syn-studyset · compare-json | `compare --format json FIXTURE FIXTURE2` | ✅ success |
+| syn-studyset · organize-descriptive | `organize FIXTURE --output OUTPUT --copy --pattern descriptive` | ✅ success |
+| syn-studyset · organize-uid | `organize FIXTURE --output OUTPUT --copy --pattern uid` | ✅ success |
 | syn-studyset · stats | `stats FIXTURE` | ✅ success |
 | syn-studyset · stats-detailed | `stats --detailed FIXTURE` | ✅ success |
 | syn-studyset · stats-json | `stats --format json FIXTURE` | ✅ success |

@@ -272,6 +272,10 @@ let curatedTemplates: [Template] = [
     // in both adapters) + a copy-twice smoke test. The flags below ARE covered:
     // dicom-study check --report — writes the issues report to OUTPUT; compare the report file.
     Template(tool: "dicom-study", label: "check-report", cliArgs: ["check", "FIXTURE", "--report", "OUTPUT"], studioParams: ["operation": "check", "path": "FIXTURE", "report": "OUTPUT"], fixture: "studyset", portable: false, artifactName: "report.txt", artifactKind: "text"),
+    // study organize → Patient/Study/Series TREE (dicom-tree compares folder naming + content);
+    // --copy preserves the fixture. Covers --copy/--output/--pattern (descriptive + uid).
+    Template(tool: "dicom-study", label: "organize-descriptive", cliArgs: ["organize", "FIXTURE", "--output", "OUTPUT", "--copy", "--pattern", "descriptive"], studioParams: ["operation": "organize", "input": "FIXTURE", "output": "OUTPUT", "copy": "true", "pattern": "descriptive"], fixture: "studyset", portable: false, artifactName: "organized", artifactKind: "dicom-tree"),
+    Template(tool: "dicom-study", label: "organize-uid", cliArgs: ["organize", "FIXTURE", "--output", "OUTPUT", "--copy", "--pattern", "uid"], studioParams: ["operation": "organize", "input": "FIXTURE", "output": "OUTPUT", "copy": "true", "pattern": "uid"], fixture: "studyset", portable: false, artifactName: "organized", artifactKind: "dicom-tree"),
 
     // ===== Full-flag coverage wave (authored from CLI contracts; gate-verified) =====
     Template(tool: "dicom-split", label: "frames-pattern", cliArgs: ["FIXTURE", "--pattern", "frame_{number}_{modality}.dcm", "--output", "OUTPUT"], studioParams: ["inputPath": "FIXTURE", "pattern": "frame_{number}_{modality}.dcm", "output": "OUTPUT"], fixture: "mf", portable: false, artifactName: "frames", artifactKind: "dicom-multi"),
@@ -289,6 +293,8 @@ let curatedTemplates: [Template] = [
     // file). (--level series/study writes a NESTED per-series tree — not golden-able, like
     // study organize; left uncovered.)
     Template(tool: "dicom-merge", label: "validate", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--validate"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "validate": "true"], fixture: "series", artifactName: "out.dcm", artifactKind: "dicom"),
+    // merge --level series → per-series tree (dicom-tree); covers --level.
+    Template(tool: "dicom-merge", label: "level-series", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--level", "series"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "level": "series"], fixture: "studyset", portable: false, artifactName: "merged", artifactKind: "dicom-tree"),
     Template(tool: "dicom-pdf", label: "encapsulate-allmeta", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--patient-name", "PARITY^PDF", "--patient-id", "SYN-PDF", "--study-uid", "1.2.826.0.1.3680043.10.999.2.1", "--series-uid", "1.2.826.0.1.3680043.10.999.2.2", "--title", "Parity Doc", "--modality", "DOC", "--series-number", "10", "--series-description", "Parity Series", "--instance-number", "42", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "patient-name": "PARITY^PDF", "patient-id": "SYN-PDF", "study-uid": "1.2.826.0.1.3680043.10.999.2.1", "series-uid": "1.2.826.0.1.3680043.10.999.2.2", "title": "Parity Doc", "modality": "DOC", "series-number": "10", "series-description": "Parity Series", "instance-number": "42", "verbose": "true"], fixture: "pdf", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-uid", label: "regenerate-flags", cliArgs: ["regenerate", "FIXTURE", "--output", "OUTPUT", "--maintain-relationships", "--verbose"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "output": "OUTPUT", "maintain-relationships": "true", "verbose": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-uid", label: "lookup-search", cliArgs: ["lookup", "--search", "CT"], studioParams: ["subcommand": "lookup", "search": "CT"], fixture: "none"),
@@ -901,6 +907,27 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
             combined += "=== frame \(i) ===\n" + d + "\n"
         }
         return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "dicom-multi")
+    }
+
+    if t.artifactKind == "dicom-tree" {
+        // OUTPUT is a DIRECTORY filled with a NESTED tree (e.g. dicom-study organize:
+        // Patient/Study/Series/N.dcm; dicom-merge --level series). Recursively dump each
+        // .dcm keyed by its RELATIVE PATH so the folder structure (descriptive/uid naming)
+        // is part of the comparison.
+        let dir = tmp.appendingPathComponent(artifact, isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let r = run(bin, resolve(dir.path))
+        var rels: [String] = []
+        if let en = fm.enumerator(atPath: dir.path) {
+            while let p = en.nextObject() as? String { if p.hasSuffix(".dcm") { rels.append(p) } }
+        }
+        rels.sort()
+        var combined = "Files: \(rels.count)\n"
+        for rel in rels {
+            let d = run(info, [dir.appendingPathComponent(rel).path]).out.trimmingCharacters(in: .whitespacesAndNewlines)
+            combined += "=== \(rel) ===\n" + d + "\n"
+        }
+        return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "dicom-tree")
     }
 
     let outPath = tmp.appendingPathComponent(artifact).path

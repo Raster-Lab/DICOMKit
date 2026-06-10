@@ -4,12 +4,12 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 
 **Input-contract parity:** 8/8 CLI flags matched · status **OK** (100%)
 
-**Output behavior:** 4 scenario(s) — 4 success / 0 drift.
+**Output behavior:** 5 scenario(s) — 5 success / 0 drift.
 
 ## Verified App↔CLI parity
 
 - **Shared DICOMKit engine:** `FrameMerger` (`DICOMKit/Merging`) — both the CLI and DICOMStudio call it (all logic shared); flags with no golden still produce identical output **by construction**.
-- **Verdict:** same engine (input paths sorted for deterministic frame order); merged object gets a fresh SOP UID → non-deterministic.
+- **Verdict:** ALL flags covered (8/8): file/sort/order/format/validate/recursive/verbose + `--level series` (per-series tree, compared via dicom-tree). Same engine; merged SOP UIDs masked.
 
 > Full per-subcommand/flag detail: [`APP_CLI_PARITY_MATRIX.md`](../../APP_CLI_PARITY_MATRIX.md) · architecture: [`APP_CLI_SHARED_API.md`](../../APP_CLI_SHARED_API.md).
 
@@ -18,7 +18,7 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 | Flag | Kind | Input (UI ↔ CLI) | Type/Default | Output (UI vs CLI) |
 |---|---|---|---|---|
 | `--format` | option | ✅ match | ✓ | ✅ success |
-| `--level` | option | ✅ match | ✓ | ⊘ not covered (non-deterministic — fresh UIDs/timestamps) |
+| `--level` | option | ✅ match | ✓ | ✅ success |
 | `--order` | option | ✅ match | ✓ | ✅ success |
 | `--output` | option | ✅ match | ✓ | ✅ success |
 | `--recursive` | flag | ✅ match | ✓ | ✅ success |
@@ -32,6 +32,7 @@ _CLI binary:_ `dicom-merge` · _category:_ FILE_ORGANIZATION · _wired in Studio
 |---|---|---|
 | syn-series · validate | `FIXTURE --output OUTPUT --validate` | ✅ success |
 | syn-studyset · format-enhanced-ct | `FIXTURE --output OUTPUT --format enhanced-ct` | ✅ success |
+| syn-studyset · level-series | `FIXTURE --output OUTPUT --level series` | ✅ success |
 | syn-studyset · sort-recursive-verbose | `FIXTURE --output OUTPUT --sort-by InstanceNumber --order descending --recursive --verbose` | ✅ success |
 | syn-studyset · studyset | `FIXTURE --output OUTPUT` | ✅ success |
 
