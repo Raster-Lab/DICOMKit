@@ -192,13 +192,14 @@ public final class CLIAutomationTestingViewModel {
         // Artifact (file-producer) scenarios: the tool writes a file (or a directory
         // of files) at the OUTPUT placeholder; we compare the produced file(s).
         let isDicomMulti = scenario.artifactKind == "dicom-multi"
+        let isDicomTree = scenario.artifactKind == "dicom-tree"
         var artifactURL: URL? = nil
         if let art = scenario.artifactName, !art.isEmpty {
             let dir = FileManager.default.temporaryDirectory
                 .appendingPathComponent("studio-parity-\(UUID().uuidString)", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             artifactURL = dir.appendingPathComponent(art)
-            if isDicomMulti, let u = artifactURL {   // OUTPUT is a directory the producer fills
+            if (isDicomMulti || isDicomTree), let u = artifactURL {   // OUTPUT is a directory the producer fills
                 try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
             }
         }
@@ -248,6 +249,20 @@ public final class CLIAutomationTestingViewModel {
                 combined += "=== frame \(i) ===\n" + frame.joined(separator: "\n") + "\n"
             }
             studioRaw = combined
+        } else if let u = artifactURL, isDicomTree {
+            // Nested tree (e.g. study organize): recursively dump each .dcm keyed by its
+            // RELATIVE PATH, so folder naming/structure is compared alongside content.
+            var rels: [String] = []
+            if let en = FileManager.default.enumerator(atPath: u.path) {
+                while let p = en.nextObject() as? String { if p.hasSuffix(".dcm") { rels.append(p) } }
+            }
+            rels.sort()
+            var combined = "Files: \(rels.count)\n"
+            for rel in rels {
+                let frame = CLIParityEngine.normalize(await dump(u.appendingPathComponent(rel)), fixtureBasenames: [])
+                combined += "=== \(rel) ===\n" + frame.joined(separator: "\n") + "\n"
+            }
+            studioRaw = combined
         } else if let u = artifactURL, isPixelHash {
             // compress/decompress: compare decoded PixelData (sha256), not bytes, so
             // encapsulation / transfer-syntax differences don't matter (plan §4b).
@@ -269,7 +284,7 @@ public final class CLIAutomationTestingViewModel {
         if let f2 = scenario.fixtureFile2, !f2.isEmpty { basenames.append(f2) }
         var cliLines = CLIParityEngine.normalize(scenario.stdout, fixtureBasenames: basenames)
         var studioLines = CLIParityEngine.normalize(studioRaw, fixtureBasenames: basenames)
-        if isDicomArtifact || isDicomMulti {
+        if isDicomArtifact || isDicomMulti || isDicomTree {
             cliLines = CLIParityEngine.maskVolatileDumpTags(cliLines)
             studioLines = CLIParityEngine.maskVolatileDumpTags(studioLines)
         }

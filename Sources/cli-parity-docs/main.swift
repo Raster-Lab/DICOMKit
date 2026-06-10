@@ -65,12 +65,10 @@ private let nonDeterministicFlags: [String: Set<String>] = [
     "dicom-uid": ["--count", "--root", "--type", "--json", "--export-map"],   // generate / fresh-UID map
 ]
 
-/// Flags whose subcommand runs a SHARED engine (so output is identical by
-/// construction) but writes a file TREE the offline harness can't golden — parity
-/// is guaranteed by the shared engine + a smoke test, not a stdout/artifact golden.
-private let sharedTreeFlags: [String: Set<String>] = [
-    "dicom-study": ["--copy", "--output", "--pattern"],   // organize → shared StudyOrganizer
-]
+/// Flags that write a nested file TREE. These are now REALLY golden-tested via the
+/// `dicom-tree` comparator (recursive per-file dump keyed by relative path), so the
+/// set is empty — kept for any future tree producer that lacks a golden.
+private let sharedTreeFlags: [String: Set<String>] = [:]
 
 /// Flags whose CLI preview goes to STDERR (so the harness, which diffs stdout, can't
 /// compare it) even though the TEXT matches the app console — a stream quirk, not a
@@ -149,7 +147,7 @@ private let verifiedVerdict: [String: EngineVerdict] = [
     "dicom-image":    .init(engine: "ImageConverter", module: "DICOMKit/SecondaryCapture", scope: "full", verdict: "same engine; output Secondary-Capture DICOM carries fresh UIDs + timestamps → non-deterministic, verified by smoke."),
     "dicom-info":     .init(engine: "MetadataPresenter", module: "DICOMKit", scope: "full", verdict: "byte-identical (9 goldens); no divergence."),
     "dicom-json":     .init(engine: "DICOMJSONEncoder / DICOMJSONDecoder", module: "DICOMWeb", scope: "full", verdict: "byte-identical both directions (11 goldens); sandbox note only on TCC denial."),
-    "dicom-merge":    .init(engine: "FrameMerger", module: "DICOMKit/Merging", scope: "full", verdict: "same engine (input paths sorted for deterministic frame order); merged object gets a fresh SOP UID → non-deterministic."),
+    "dicom-merge":    .init(engine: "FrameMerger", module: "DICOMKit/Merging", scope: "full", verdict: "ALL flags covered (8/8): file/sort/order/format/validate/recursive/verbose + `--level series` (per-series tree, compared via dicom-tree). Same engine; merged SOP UIDs masked."),
     "dicom-mpps":     .init(engine: "DICOMMPPSService", module: "DICOMNetwork", scope: "full", verdict: "create/update via the identical shared service. Live network → no goldens."),
     "dicom-mwl":      .init(engine: "DICOMModalityWorklistService", module: "DICOMNetwork", scope: "full", verdict: "query via the shared service; app ADDS `create` (REST + HL7) the CLI lacks. Live network → no goldens."),
     "dicom-pdf":      .init(engine: "EncapsulatedDocumentParser / …Builder", module: "DICOMKit + DICOMCore", scope: "partial", verdict: "`extract` byte-identical; `encapsulate` non-deterministic (fresh Study/Series/SOP UIDs)."),
@@ -162,7 +160,7 @@ private let verifiedVerdict: [String: EngineVerdict] = [
     "dicom-send":     .init(engine: "DICOMStorageService", module: "DICOMNetwork", scope: "full", verdict: "C-STORE via the shared service; console differs (emoji, ms vs s, error hints). Live network → no goldens."),
     "dicom-split":    .init(engine: "FrameSplitter", module: "DICOMKit/Splitting", scope: "full", verdict: "extracted frames byte-identical (shared engine); app lists written paths + sizes. Non-deterministic path set → no goldens."),
     "dicom-stow":     .init(engine: "DICOMwebClient (STOW-RS)", module: "DICOMWeb", scope: "full", verdict: "STOW-RS store via the identical shared client. Live network → no goldens."),
-    "dicom-study":    .init(engine: "StudyScanner / StudyReport / StudyOrganizer", module: "DICOMKit/Study", scope: "full", verdict: "ALL subcommands shared — summary/check/stats/compare byte-identical (12 goldens); `organize` now uses the shared StudyOrganizer too (identical file naming/ordering, `→` arrow, and the same copy/move `already exists` error)."),
+    "dicom-study":    .init(engine: "StudyScanner / StudyReport / StudyOrganizer", module: "DICOMKit/Study", scope: "full", verdict: "ALL subcommands shared + golden-tested — summary/check/stats/compare byte-identical; `organize` (--copy/--output/--pattern, descriptive + uid) now REALLY compared via the dicom-tree comparator (folder naming + per-file content), not just parity-by-construction."),
     "dicom-tags":     .init(engine: "TagEditor", module: "DICOMKit/TagEditing", scope: "full", verdict: "edited DICOM byte-identical (set/delete/copy-from/verbose goldens). `--dry-run` not stdout-golden-able: the CLI prints the preview to STDERR (text matches the app console)."),
     "dicom-uid":      .init(engine: "UIDManager", module: "DICOMKit/UIDManagement", scope: "full", verdict: "validate/lookup/search + regenerate (UIDs masked) + regenerate --dry-run byte/text-identical (dry-run now shares `UIDManager.regenerationPreviewLines`); generate is non-deterministic (fresh UIDs)."),
     "dicom-ups":      .init(engine: "DICOMwebClient (UPS-RS)", module: "DICOMWeb", scope: "full", verdict: "create/retrieve/search/subscribe via the shared client; change-state echoes the raw HTTP request/response (educational). Live network → no goldens."),
