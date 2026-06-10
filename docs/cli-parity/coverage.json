@@ -33,11 +33,11 @@
     },
     {
       "acceptedFlags" : 12,
-      "coveragePct" : 91.7,
-      "coveredFlags" : 11,
+      "coveragePct" : 100,
+      "coveredFlags" : 12,
       "toolId" : "dicom-convert",
       "uncoveredFlags" : [
-        "--quality"
+
       ],
       "wired" : true
     },
@@ -483,8 +483,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 212,
-    "pct" : 55.4,
+    "covered" : 213,
+    "pct" : 55.6,
     "toolsWired" : 32
   }
 }

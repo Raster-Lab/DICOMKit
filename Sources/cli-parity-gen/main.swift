@@ -384,6 +384,8 @@ let curatedTemplates: [Template] = [
 
     // dicom-convert — uncompressed↔uncompressed transfer-syntax change keeps pixel bytes identical.
     Template(tool: "dicom-convert", label: "implicit-le", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "ImplicitVRLittleEndian"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "ImplicitVRLittleEndian"], artifactName: "out.dcm", artifactKind: "dicom"),
+    // convert DICOM→JPEG at --quality 95 (lossy); compare the DECODED raster (same encoder → same pixels).
+    Template(tool: "dicom-convert", label: "jpeg-quality", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "jpeg", "--quality", "95"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "jpeg", "quality": "95"], portable: false, artifactName: "out.jpg", artifactKind: "image-raster-hash"),
 
     // dicom-split — multiframe → MULTIPLE single-frame files (multi-file artifact).
     // Each produced frame is re-dumped and compared (volatile SOP UIDs masked).
