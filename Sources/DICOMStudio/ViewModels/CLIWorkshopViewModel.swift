@@ -4650,46 +4650,50 @@ private func executeDicomStudy() async {
         }
         let dryRun = paramValue("dryRun") == "true"
         let verbose = paramValue("verbose") == "true"
+        let parallel = paramValue("parallel") == "true"
+        let variablesParam = paramValue("variables")
+        let logParam = paramValue("log")
+        let logScoped = securityScopedURLs["log"]
+        let resolvedLog: String? = logParam.isEmpty ? nil
+            : OutputAccess.resolveWritableURL(forPath: logParam, scopedURL: logScoped, subfolder: "dicom-script").url.path
 
         let scopedURL = securityScopedURLs["scriptPath"]
         let accessing = scopedURL?.startAccessingSecurityScopedResource() ?? false
         defer { if accessing { scopedURL?.stopAccessingSecurityScopedResource() } }
         let url = scopedURL ?? URL(fileURLWithPath: scriptPath)
 
+        // Run/validate via the SHARED DICOMKit script engine (ScriptExecutor /
+        // ScriptValidator) — the exact code the dicom-script CLI runs — so the app and
+        // CLI emit byte-identical output. Output flows through the injected `log` closure
+        // (the CLI prints the same lines to stdout); execution of nested tools isn't
+        // supported in-app, so the runner throws (never reached on a dry run).
         let (output, exitCode): (String, Int) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
+            var log = ""
             do {
-                let content = try String(contentsOf: url, encoding: .utf8)
-                let rawLines = content.split(separator: "\n", omittingEmptySubsequences: false)
-                var assignments = 0, pipelines = 0, conditionals = 0, commands = 0
-                var steps: [String] = []
-                for raw in rawLines {
-                    let line = raw.trimmingCharacters(in: .whitespaces)
-                    if line.isEmpty || line.hasPrefix("#") { continue }
-                    if line.hasPrefix("if ") { conditionals += 1; steps.append("if: \(line)") }
-                    else if line.contains("|") { pipelines += 1; steps.append("pipeline: \(line)") }
-                    else if line.contains("=") { assignments += 1; steps.append("set: \(line)") }
-                    else { commands += 1; steps.append("run: \(line)") }
-                }
-                var out = "dicom-script \(operation): \(url.lastPathComponent)\n\n"
-                out += "Parsed \(steps.count) step(s): "
-                out += "\(commands) command(s), \(assignments) variable(s), "
-                out += "\(pipelines) pipeline(s), \(conditionals) conditional(s)\n"
                 if operation == "validate" {
-                    out += "\nScript parsed successfully.\n"
-                } else {
-                    out += "\nPlanned steps:\n"
-                    for (idx, step) in steps.enumerated() {
-                        out += "  \(idx + 1). \(step)\n"
+                    let validator = ScriptValidator(log: { log += $0 + "\n" })
+                    let issues = try validator.validate(scriptPath: url.path, verbose: verbose)
+                    if issues.isEmpty {
+                        log += "\u{2713} Script is valid\n"
+                        return (log, 0)
                     }
-                    if !dryRun {
-                        out += "\nNote: in-app execution shows the plan only. Run the script with the\n"
-                        out += "dicom-script CLI in a terminal to execute the nested tool operations.\n"
-                    }
+                    log += "\u{2717} Script has \(issues.count) issue(s):\n"
+                    for issue in issues { log += "  - \(issue)\n" }
+                    return (log, 1)
                 }
-                if verbose { out += "\n(\(rawLines.count) total lines)\n" }
-                return (out, 0)
+                var vars: [String: String] = [:]
+                for pair in variablesParam.split(whereSeparator: { $0 == "," || $0 == " " }) where pair.contains("=") {
+                    let kv = pair.split(separator: "=", maxSplits: 1)
+                    vars[String(kv[0])] = kv.count == 2 ? String(kv[1]) : ""
+                }
+                let executor = ScriptExecutor(
+                    runCommand: { tool, _ in throw ScriptError.executionError("Command execution is not supported in-app: \(tool)") },
+                    log: { log += $0 + "\n" })
+                try executor.execute(scriptPath: url.path, variables: vars, parallel: parallel,
+                                     verbose: verbose, dryRun: dryRun, logPath: resolvedLog)
+                return (log, 0)
             } catch {
-                return ("Error: \(error.localizedDescription)\n", 1)
+                return (log + "Error: \(error.localizedDescription)\n", 1)
             }
         }.value
 

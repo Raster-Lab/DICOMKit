@@ -292,12 +292,12 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-uid", label: "lookup-search", cliArgs: ["lookup", "--search", "CT"], studioParams: ["subcommand": "lookup", "search": "CT"], fixture: "none"),
     // regenerate --dry-run: now byte-identical (app + CLI share UIDManager.regenerationPreviewLines).
     Template(tool: "dicom-uid", label: "regenerate-dryrun", cliArgs: ["regenerate", "FIXTURE", "--dry-run"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "dry-run": "true"], fixture: "ct"),
-    // dicom-script (`script` fixture + the [timestamp] mask are ready): scenarios WITHHELD —
-    // real App↔CLI divergences in the run adapters (same class as the now-fixed uid dry-run):
-    //  • run --dry-run: the app prints a detailed plan ("Parsed N steps… / Planned steps:")
-    //    while the CLI prints a terse "Dry run completed - no commands were actually executed".
-    //  • --log: the CLI writes the timestamped execution log; the app's log file differs.
-    // Fix by sharing the dry-run/log rendering through the DICOMKit script engine, then cover.
+    // dicom-script — now shares the DICOMKit script engine (ScriptExecutor/ScriptValidator)
+    // in both adapters, so output is byte-identical. --dry-run previews deterministically;
+    // --verbose/--log carry volatile [timestamps] (masked by CLIParityEngine.normalize).
+    Template(tool: "dicom-script", label: "run-dryrun-vars-parallel", cliArgs: ["run", "FIXTURE", "--dry-run", "--variables", "INPUT_DIR=/data", "--parallel"], studioParams: ["operation": "run", "scriptPath": "FIXTURE", "dryRun": "true", "variables": "INPUT_DIR=/data", "parallel": "true"], fixture: "script"),
+    Template(tool: "dicom-script", label: "run-verbose-log", cliArgs: ["run", "FIXTURE", "--dry-run", "--verbose", "--log", "OUTPUT"], studioParams: ["operation": "run", "scriptPath": "FIXTURE", "dryRun": "true", "verbose": "true", "log": "OUTPUT"], fixture: "script", portable: false, artifactName: "run.log", artifactKind: "text"),
+    Template(tool: "dicom-script", label: "validate", cliArgs: ["validate", "FIXTURE"], studioParams: ["operation": "validate", "scriptPath": "FIXTURE"], fixture: "script"),
     Template(tool: "dicom-archive", label: "query-filters", cliArgs: ["query", "--archive", "FIXTURE", "--patient-name", "Test*", "--patient-id", "PAT001", "--study-uid", "1.2.3", "--study-date", "20200101"], studioParams: ["subcommand": "query", "archive": "FIXTURE", "patient-name": "Test*", "patient-id": "PAT001", "study-uid": "1.2.3", "study-date": "20200101"], fixture: "archive"),
     Template(tool: "dicom-archive", label: "check-verbose", cliArgs: ["check", "--archive", "FIXTURE", "--verbose"], studioParams: ["subcommand": "check", "archive": "FIXTURE", "verbose": "true"], fixture: "archive"),
     // archive export → flat dir of the archived instances (deterministic content); covers --output + --flatten.

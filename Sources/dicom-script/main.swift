@@ -77,7 +77,9 @@ extension DICOMScript {
             
             let parsedVariables = try parseVariables(variables)
             
-            let executor = ScriptExecutor(runCommand: processCommandRunner, log: { fprintln($0) })
+            // Route the shared engine's output to STDOUT so the CLI and DICOMStudio
+            // (which renders it in-console) are text-exact.
+            let executor = ScriptExecutor(runCommand: processCommandRunner, log: { print($0) })
             try executor.execute(
                 scriptPath: scriptPath,
                 variables: parsedVariables,
@@ -122,15 +124,15 @@ extension DICOMScript {
                 throw ScriptError.scriptNotFound(scriptPath)
             }
             
-            let validator = ScriptValidator(log: { fprintln($0) })
+            let validator = ScriptValidator(log: { print($0) })
             let issues = try validator.validate(scriptPath: scriptPath, verbose: verbose)
-            
+
             if issues.isEmpty {
-                fprintln("✓ Script is valid")
+                print("✓ Script is valid")
             } else {
-                fprintln("✗ Script has \(issues.count) issue(s):")
+                print("✗ Script has \(issues.count) issue(s):")
                 for issue in issues {
-                    fprintln("  - \(issue)")
+                    print("  - \(issue)")
                 }
                 throw ExitCode.failure
             }

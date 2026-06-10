@@ -318,15 +318,11 @@
     },
     {
       "acceptedFlags" : 5,
-      "coveragePct" : 0,
-      "coveredFlags" : 0,
+      "coveragePct" : 100,
+      "coveredFlags" : 5,
       "toolId" : "dicom-script",
       "uncoveredFlags" : [
-        "--dry-run",
-        "--log",
-        "--parallel",
-        "--variables",
-        "--verbose"
+
       ],
       "wired" : true
     },
@@ -501,8 +497,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 184,
-    "pct" : 48,
+    "covered" : 189,
+    "pct" : 49.3,
     "toolsWired" : 32
   }
 }

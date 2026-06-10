@@ -1246,6 +1246,53 @@
       "toolId" : "dicom-uid"
     },
     {
+      "cliArgs" : [
+        "run",
+        "FIXTURE",
+        "--dry-run",
+        "--variables",
+        "INPUT_DIR=\/data",
+        "--parallel"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-workflow.dcmscript",
+      "id" : "syn-workflow__dicom-script-run-dryrun-vars-parallel",
+      "label" : "syn-workflow.dcmscript · run-dryrun-vars-parallel",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "Dry run completed - no commands were actually executed\n",
+      "studioParams" : {
+        "dryRun" : "true",
+        "operation" : "run",
+        "parallel" : "true",
+        "scriptPath" : "FIXTURE",
+        "variables" : "INPUT_DIR=\/data"
+      },
+      "toolId" : "dicom-script"
+    },
+    {
+      "cliArgs" : [
+        "validate",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-workflow.dcmscript",
+      "id" : "syn-workflow__dicom-script-validate",
+      "label" : "syn-workflow.dcmscript · validate",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "✓ Script is valid\n",
+      "studioParams" : {
+        "operation" : "validate",
+        "scriptPath" : "FIXTURE"
+      },
+      "toolId" : "dicom-script"
+    },
+    {
       "artifactKind" : "dicom",
       "artifactName" : "out.dcm",
       "cliArgs" : [
