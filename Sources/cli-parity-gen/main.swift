@@ -323,6 +323,8 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-tags", label: "set-verbose", cliArgs: ["--set", "PatientName=PARITY^V", "--verbose", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "set": "PatientName=PARITY^V", "verbose": "true", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-tags", label: "copy-from", cliArgs: ["--copy-from", "FIXTURE2", "--tags", "PatientName,PatientID", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "copy-from": "FIXTURE2", "tags": "PatientName,PatientID", "output": "OUTPUT"], fixture: "ctpair", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-anon", label: "dry-run", cliArgs: ["--profile", "basic", "--dry-run", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "basic", "dry-run": "true"], fixture: "ct"),
+    // anon --audit-log → text audit (ISO timestamps masked, input path normalized); .dcm → OUTPUT2.
+    Template(tool: "dicom-anon", label: "audit-log", cliArgs: ["--profile", "basic", "--audit-log", "OUTPUT", "--output", "OUTPUT2", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "basic", "audit-log": "OUTPUT", "output": "OUTPUT2"], fixture: "ct", portable: false, artifactName: "audit.txt", artifactKind: "text"),
     // NOTE: tags --dry-run is NOT covered — the CLI prints the preview to stderr (fprintln)
     // while the app shows it in-console, so it isn't stdout-comparable (the text matches).
     // (uid `regenerate --dry-run` was a real divergence — now FIXED via the shared

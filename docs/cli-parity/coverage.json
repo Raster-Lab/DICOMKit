@@ -3,11 +3,11 @@
   "tools" : [
     {
       "acceptedFlags" : 13,
-      "coveragePct" : 92.3,
-      "coveredFlags" : 12,
+      "coveragePct" : 100,
+      "coveredFlags" : 13,
       "toolId" : "dicom-anon",
       "uncoveredFlags" : [
-        "--audit-log"
+
       ],
       "wired" : true
     },
@@ -488,8 +488,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 202,
-    "pct" : 52.7,
+    "covered" : 203,
+    "pct" : 53,
     "toolsWired" : 32
   }
 }

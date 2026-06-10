@@ -397,7 +397,12 @@ public class Anonymizer {
         var logText = "DICOM Anonymization Audit Log\n"
         logText += "Generated: \(dateFormatter.string(from: Date()))\n\n"
         
-        for entry in auditLog {
+        // Sort by file then tag so the audit log is deterministic (the rules are applied
+        // in an unordered fashion, so the raw collection order varies run-to-run).
+        let sorted = auditLog.sorted {
+            ($0.filePath, $0.tag.group, $0.tag.element) < ($1.filePath, $1.tag.group, $1.tag.element)
+        }
+        for entry in sorted {
             logText += "[\(dateFormatter.string(from: entry.timestamp))] "
             logText += "\(entry.filePath) - \(entry.action) - \(entry.tag)\n"
             if let orig = entry.originalValue {
