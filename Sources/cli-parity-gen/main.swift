@@ -300,6 +300,10 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-uid", label: "lookup-search", cliArgs: ["lookup", "--search", "CT"], studioParams: ["subcommand": "lookup", "search": "CT"], fixture: "none"),
     // regenerate --dry-run: now byte-identical (app + CLI share UIDManager.regenerationPreviewLines).
     Template(tool: "dicom-uid", label: "regenerate-dryrun", cliArgs: ["regenerate", "FIXTURE", "--dry-run"], studioParams: ["subcommand": "regenerate", "inputPath": "FIXTURE", "dry-run": "true"], fixture: "ct"),
+    // generate mints RANDOM UIDs (CLI ≠ app by design) → uid-list kind masks the values,
+    // comparing count/format/structure. Covers --count/--type/--root/--json.
+    Template(tool: "dicom-uid", label: "generate-count-type-root", cliArgs: ["generate", "--count", "3", "--type", "study", "--root", "1.2.826.0.1.3680043.9.1234"], studioParams: ["subcommand": "generate", "count": "3", "type": "study", "root": "1.2.826.0.1.3680043.9.1234"], fixture: "none", portable: false, artifactKind: "uid-list"),
+    Template(tool: "dicom-uid", label: "generate-json", cliArgs: ["generate", "--json", "--count", "2"], studioParams: ["subcommand": "generate", "json": "true", "count": "2"], fixture: "none", portable: false, artifactKind: "uid-list"),
     // dicom-script — now shares the DICOMKit script engine (ScriptExecutor/ScriptValidator)
     // in both adapters, so output is byte-identical. --dry-run previews deterministically;
     // --verbose/--log carry volatile [timestamps] (masked by CLIParityEngine.normalize).
@@ -886,7 +890,10 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
     }
     guard let artifact = t.artifactName else {
         let r = run(bin, resolve(""))
-        return (canonicalJSON(r.out), r.err, r.code, "stdout")
+        // `uid-list`: stdout of freshly-minted (random) UIDs — the harness masks the UID
+        // tokens so the COUNT/format/surrounding text compare while the random values don't.
+        let kind = t.artifactKind == "uid-list" ? "uid-list" : "stdout"
+        return (canonicalJSON(r.out), r.err, r.code, kind)
     }
     let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("cpg-\(UUID().uuidString)", isDirectory: true)
     try? FileManager.default.createDirectory(at: tmp, withIntermediateDirectories: true)
@@ -1000,6 +1007,7 @@ for t in templates {
         // Stamp the EFFECTIVE artifactKind (result.kind) — for "auto" tools it's the type
         // detected from the produced file, so the harness compares the same way.
         if let art = t.artifactName { entry["artifactName"] = art; entry["artifactKind"] = result.kind }
+        else if result.kind != "stdout" { entry["artifactKind"] = result.kind }  // e.g. uid-list (no file, but masked compare)
         goldenEntries.append(entry)
     }
 }

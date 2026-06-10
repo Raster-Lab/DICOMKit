@@ -4,8 +4,6 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 
 **Input-contract parity:** 21/21 CLI flags matched · status **OK** (100%)
 
-**Input sub-checks (Phase 3):** ⚠️ 1 default mismatch(es): `--format`.
-
 **Output behavior:** 62 scenario(s) — 62 success / 0 drift.
 
 ## Verified App↔CLI parity
@@ -24,7 +22,7 @@ _CLI binary:_ `dicom-export` · _category:_ DATA_EXPORT · _wired in Studio:_ ye
 | `--embed-metadata` | flag | ✅ match | ✓ | ✅ success |
 | `--end-frame` | option | ✅ match | ✓ | ✅ success |
 | `--exif-fields` | option | ✅ match | ✓ | ✅ success |
-| `--format` | option | ✅ match | ⚠️ default `png`↔`jpeg` | ✅ success |
+| `--format` | option | ✅ match | ✓ | ✅ success |
 | `--fps` | option | ✅ match | ✓ | ✅ success |
 | `--frame` | option | ✅ match | ✓ | ✅ success |
 | `--labels` | flag | ✅ match | ✓ | ✅ success |

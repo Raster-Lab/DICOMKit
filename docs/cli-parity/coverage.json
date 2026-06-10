@@ -390,15 +390,11 @@
     },
     {
       "acceptedFlags" : 13,
-      "coveragePct" : 61.5,
-      "coveredFlags" : 8,
+      "coveragePct" : 92.3,
+      "coveredFlags" : 12,
       "toolId" : "dicom-uid",
       "uncoveredFlags" : [
-        "--count",
-        "--export-map",
-        "--json",
-        "--root",
-        "--type"
+        "--export-map"
       ],
       "wired" : true
     },
@@ -492,8 +488,8 @@
   ],
   "totals" : {
     "accepted" : 383,
-    "covered" : 197,
-    "pct" : 51.4,
+    "covered" : 201,
+    "pct" : 52.5,
     "toolsWired" : 32
   }
 }

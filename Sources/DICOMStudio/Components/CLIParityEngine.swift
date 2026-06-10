@@ -467,6 +467,13 @@ public enum CLIParityEngine {
         "(0008,0012)", "(0008,0013)", "(0008,0020)", "(0008,0021)",
         "(0008,0023)", "(0008,0030)", "(0008,0031)", "(0008,0033)",
     ]
+    /// Masks UID tokens (dotted-decimal strings of 6+ components) to `<uid>`. Backs the
+    /// `uid-list` artifact kind: `dicom-uid generate` mints RANDOM UIDs, so the CLI and
+    /// app values differ by design — this compares the count/format/surrounding text
+    /// while ignoring the random values. (The shared UIDManager guarantees root parity.)
+    public static func maskUIDs(_ lines: [String]) -> [String] {
+        lines.map { $0.replacingOccurrences(of: "[0-9]+(\\.[0-9]+){5,}", with: "<uid>", options: .regularExpression) }
+    }
     public static func maskVolatileDumpTags(_ lines: [String]) -> [String] {
         lines.map { line in
             let head = String(line.prefix(11)).lowercased()
