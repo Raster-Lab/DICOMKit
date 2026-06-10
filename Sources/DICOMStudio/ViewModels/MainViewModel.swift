@@ -106,6 +106,10 @@ public final class MainViewModel {
     /// Persistent CLI Automation Testing ViewModel — survives tab switches.
     public var cliAutomationTestingViewModel: CLIAutomationTestingViewModel
 
+    /// Persistent CLI Parity Runner ViewModel (TESTING-ONLY App-vs-live-CLI batch
+    /// parity) — survives tab switches.
+    public var cliParityRunnerViewModel: CLIParityRunnerViewModel
+
     /// Creates the main ViewModel with dependency-injected services.
     public init(
         settingsService: SettingsService = SettingsService(),
@@ -163,6 +167,7 @@ public final class MainViewModel {
         self.archiveManagementViewModel = ArchiveManagementViewModel()
         self.validationViewModel = ValidationViewModel()
         self.cliAutomationTestingViewModel = CLIAutomationTestingViewModel()
+        self.cliParityRunnerViewModel = CLIParityRunnerViewModel()
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
 

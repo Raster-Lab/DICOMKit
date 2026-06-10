@@ -85,11 +85,18 @@ enum CLIToolTerminalCompare {
     }
 
     /// Locates a `dicom-*` executable. Resolution order:
+    ///   0. `preferredDir` (e.g. a freshly-built bin dir) — wins so a stale binary
+    ///      elsewhere on disk can never shadow it
     ///   1. `DICOM_CLI_BIN_DIR` env var (directory holding the binaries)
     ///   2. SwiftPM build products under the repo (`.build/release|debug/<tool>`)
     ///   3. `$PATH` and common install locations
-    static func locateBinary(tool: String) -> String? {
+    static func locateBinary(tool: String, preferredDir: String? = nil) -> String? {
         let fm = FileManager.default
+
+        if let dir = preferredDir {
+            let p = "\(dir)/\(tool)"
+            if fm.isExecutableFile(atPath: p) { return p }
+        }
 
         if let dir = ProcessInfo.processInfo.environment["DICOM_CLI_BIN_DIR"] {
             let p = "\(dir)/\(tool)"
@@ -118,9 +125,10 @@ enum CLIToolTerminalCompare {
         return nil
     }
 
-    /// Runs `<tool> <arguments>` and captures stdout/stderr.
-    static func run(tool: String, arguments: [String]) -> Outcome {
-        guard let bin = locateBinary(tool: tool) else {
+    /// Runs `<tool> <arguments>` and captures stdout/stderr. `binDir`, when set,
+    /// pins the binary to a specific directory (e.g. a freshly-built one).
+    static func run(tool: String, arguments: [String], binDir: String? = nil) -> Outcome {
+        guard let bin = locateBinary(tool: tool, preferredDir: binDir) else {
             return Outcome(
                 binaryPath: nil, stdout: "", stderr: "", exitCode: -1,
                 launchError: "\(tool) binary not found. Build it with `swift build --product \(tool)`, or set DICOM_CLI_BIN_DIR to the directory containing the dicom-* binaries.")

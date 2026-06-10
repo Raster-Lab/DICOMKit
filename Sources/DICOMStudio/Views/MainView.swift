@@ -84,8 +84,8 @@ public struct MainView: View {
                 .onAppear {
                     viewModel.cliWorkshopViewModel.savedServerProfiles = viewModel.networkingViewModel.serverProfiles
                 }
-        case .cliAutomationTesting:
-            CLIAutomationTestingView(viewModel: viewModel.cliAutomationTestingViewModel)
+        case .cliParity:
+            CLIParityRunnerView(viewModel: viewModel.cliParityRunnerViewModel)
         case .security:
             SecurityView(viewModel: SecurityViewModel())
         case .performanceTools:
@@ -94,8 +94,6 @@ public struct MainView: View {
             MacOSEnhancementsView(viewModel: MacOSEnhancementsViewModel())
         case .polishRelease:
             PolishReleaseView(viewModel: PolishReleaseViewModel())
-        case .fileOperations:
-            FileOperationsView(viewModel: FileOperationsViewModel())
         case .integrationTesting:
             IntegrationTestingView(viewModel: IntegrationTestingViewModel())
         case .j2kTestBench:
