@@ -16,11 +16,7 @@ import UniformTypeIdentifiers
 public struct CLIParityRunnerView: View {
     @Bindable var viewModel: CLIParityRunnerViewModel
 
-    /// Which file slot a file-import targets. A SINGLE `.fileImporter` switches on
-    /// this — two `.fileImporter` modifiers on one view conflict and stop firing.
-    private enum ImportTarget { case primary, secondary }
-    @State private var showImporter = false
-    @State private var importTarget: ImportTarget = .primary
+    @State private var showDirImporter = false
     @State private var expandedRows: Set<String> = []
 
     public init(viewModel: CLIParityRunnerViewModel) {
@@ -47,18 +43,12 @@ public struct CLIParityRunnerView: View {
             }
         }
         .navigationTitle("CLI Parity")
-        .fileImporter(isPresented: $showImporter,
-                      allowedContentTypes: [.item, .folder], allowsMultipleSelection: false) { result in
+        .fileImporter(isPresented: $showDirImporter,
+                      allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
             guard case let .success(urls) = result, let url = urls.first else { return }
-            switch importTarget {
-            case .primary:   viewModel.setInputFile(url: url)
-            case .secondary: viewModel.setSecondInputFile(url: url)
-            }
+            Task { await viewModel.setInputDirectory(url: url) }
         }
     }
-
-    private func pickPrimary()   { importTarget = .primary;   showImporter = true }
-    private func pickSecondary() { importTarget = .secondary; showImporter = true }
 
     // MARK: Banner
 
@@ -79,17 +69,19 @@ public struct CLIParityRunnerView: View {
     private var controls: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Button { pickPrimary() } label: {
-                    Label(viewModel.inputFilePath == nil ? "Choose Input File…" : "Change Input File…",
-                          systemImage: "doc.badge.plus")
-                        .font(.body)
+                Picker("Mode", selection: Binding(
+                    get: { viewModel.mode },
+                    set: { viewModel.setMode($0) }
+                )) {
+                    ForEach(ParityMode.allCases) { m in Text(m.displayName).tag(m) }
                 }
-                .controlSize(.large)
-                if let path = viewModel.inputFilePath {
-                    Text((path as NSString).lastPathComponent)
-                        .font(.body.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(width: 220)
+                .disabled(viewModel.isRunning)
+
                 Spacer()
+
                 Button {
                     Task { await viewModel.run() }
                 } label: {
@@ -97,60 +89,160 @@ public struct CLIParityRunnerView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(viewModel.isRunning || viewModel.selectedToolIDs.isEmpty)
+                .disabled(viewModel.isRunning || viewModel.isScanning || viewModel.selectedToolIDs.isEmpty)
             }
 
-            Toggle(isOn: $viewModel.rebuildBeforeRun) {
+            if viewModel.mode == .offline {
+                offlineControls
+            } else {
+                networkControls
+            }
+        }
+    }
+
+    // MARK: Offline-mode controls
+
+    private var offlineControls: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 12) {
+                Button { showDirImporter = true } label: {
+                    Label(viewModel.inputDirectory == nil ? "Input Directory (optional)…" : "Change Directory…",
+                          systemImage: "folder.badge.plus")
+                        .font(.body)
+                }
+                .controlSize(.large)
+                .disabled(viewModel.isScanning || viewModel.isRunning)
+                if viewModel.inputDirectory != nil {
+                    Button { viewModel.clearInputDirectory() } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                }
+                Spacer()
+            }
+
+            corpusStatus
+
+            rebuildToggle
+
+            Toggle(isOn: $viewModel.includeFixtureVariants) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Rebuild binaries first").font(.body)
-                    Text("Builds the selected tools fresh (swift build) so results are never stale.")
+                    Text("Include real + synthetic fixture variants").font(.body)
+                    Text("Off: one row per unique validated command. On: also runs each command on its real fixture (the full parity-test matrix).")
                         .font(.caption).foregroundStyle(.secondary)
                 }
             }
             .toggleStyle(.checkbox)
             .disabled(viewModel.isRunning)
 
-            HStack(spacing: 12) {
-                Button { pickSecondary() } label: {
-                    Label(viewModel.inputFilePath2 == nil ? "Optional 2nd File…" : "Change 2nd File…",
-                          systemImage: "doc.on.doc")
-                        .font(.callout)
-                }
-                if let path2 = viewModel.inputFilePath2 {
-                    Text((path2 as NSString).lastPathComponent)
-                        .font(.callout.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                    Button { viewModel.clearSecondInputFile() } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                }
-                Spacer()
-            }
-
             toolSelection
+        }
+    }
+
+    // MARK: Network-mode controls
+
+    private var networkControls: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            networkEndpointForm
+            rebuildToggle
+            toolSelection
+        }
+    }
+
+    private var networkEndpointForm: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: "network").foregroundStyle(.blue)
+                Text("PACS Endpoint").font(.headline)
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .bottom, spacing: 10) {
+                    labeledField("Host", text: $viewModel.networkHost, width: 220)
+                    labeledField("Port", text: $viewModel.networkPort, width: 90)
+                }
+                HStack(alignment: .bottom, spacing: 10) {
+                    labeledField("Calling AE (--aet)", text: $viewModel.networkCallingAET, width: 180)
+                    labeledField("Called AE (--called-aet)", text: $viewModel.networkCalledAET, width: 200)
+                    labeledField("Timeout (s)", text: $viewModel.networkTimeout, width: 90)
+                }
+            }
+            Text("These credentials are passed to BOTH the app and the dicom-echo CLI. The screen sweeps every valid echo flag and compares the C-ECHO outcome — success/failure, DIMSE status, remote AE — with round-trip time ignored. Edit any field to match your server.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.06)))
+    }
+
+    private func labeledField(_ label: String, text: Binding<String>, width: CGFloat) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            TextField(label, text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: width)
+                .disabled(viewModel.isRunning)
+        }
+    }
+
+    private var rebuildToggle: some View {
+        Toggle(isOn: $viewModel.rebuildBeforeRun) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Rebuild binaries first").font(.body)
+                Text("Builds the selected tools fresh (swift build) so results are never stale.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.checkbox)
+        .disabled(viewModel.isRunning)
+    }
+
+    @ViewBuilder
+    private var corpusStatus: some View {
+        if viewModel.isScanning {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text(viewModel.scanMessage).font(.callout).foregroundStyle(.secondary)
+            }
+        } else if let dir = viewModel.inputDirectory, let c = viewModel.corpus {
+            VStack(alignment: .leading, spacing: 2) {
+                Text((dir as NSString).lastPathComponent)
+                    .font(.callout.monospaced()).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Text(c.summary).font(.callout).foregroundStyle(.secondary)
+            }
+        } else {
+            Text("No directory — each tool uses its bundled synthetic fixture. Pick a directory to test your own corpus: the app draws the right shape per tool (single file, two files, multiframe, RLE, study folder), falling back to bundled where your corpus lacks one.")
+                .font(.callout).foregroundStyle(.secondary)
         }
     }
 
     private var toolSelection: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Tools (\(viewModel.selectedToolIDs.count)/\(viewModel.availableTools.count) selected)")
+                Text("Tools (\(viewModel.selectedToolIDs.count)/\(viewModel.activeTools.count) selected)")
                     .font(.headline)
                 Spacer()
                 Button("Select All") { viewModel.selectAllTools() }
                 Button("Clear") { viewModel.clearToolSelection() }
             }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 240), spacing: 10)], alignment: .leading, spacing: 8) {
-                ForEach(viewModel.availableTools) { tool in
+                ForEach(viewModel.activeTools) { tool in
                     Toggle(isOn: Binding(
                         get: { viewModel.selectedToolIDs.contains(tool.id) },
                         set: { _ in viewModel.toggleTool(tool.id) }
                     )) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(tool.id).font(.body.monospaced())
+                            HStack(spacing: 5) {
+                                if tool.requiresNetwork {
+                                    Image(systemName: "network").font(.caption2).foregroundStyle(.blue)
+                                }
+                                Text(tool.id).font(.body.monospaced())
+                            }
                             Text(viewModel.inputHint(for: tool.id)).font(.caption).foregroundStyle(.secondary)
                         }
                     }
                     .toggleStyle(.checkbox)
                 }
+            }
+            if viewModel.mode == .network {
+                Text("More network tools (query, send, retrieve…) will appear here as their parity is implemented.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .padding(12)
@@ -187,10 +279,14 @@ public struct CLIParityRunnerView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: "rectangle.split.2x1").font(.system(size: 44)).foregroundStyle(.secondary)
-            Text("Pick an input file, select tools, and run.").font(.title3).foregroundStyle(.secondary)
-            Text("Each tool's subcommands & flags are swept one by one; App vs CLI is compared per scenario.")
+            Image(systemName: viewModel.mode == .network ? "network" : "rectangle.split.2x1")
+                .font(.system(size: 44)).foregroundStyle(.secondary)
+            Text("Select tools and run.").font(.title3).foregroundStyle(.secondary)
+            Text(viewModel.mode == .network
+                 ? "Enter your PACS credentials above, then run. Each valid dicom-echo flag (--count, --stats, --verbose, --diagnose, --timeout, AE titles) is swept against the live server and the app vs CLI C-ECHO outcome is compared per scenario, with round-trip time ignored."
+                 : "Each tool runs against the correct input shape (CT, multiframe, study dir, two files, …); its subcommands & flags are swept one by one and App vs CLI is compared per scenario. Pick an input directory to test your own corpus, or leave it empty to use bundled fixtures.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .frame(maxWidth: 560)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 44)
     }
@@ -209,9 +305,12 @@ public struct CLIParityRunnerView: View {
                 VStack(alignment: .trailing, spacing: 3) {
                     Text("Skipped \(s.skipped)").font(.callout).foregroundStyle(.secondary)
                     Text("Non-det \(s.nonDeterministic)").font(.callout).foregroundStyle(.secondary)
+                    if s.failureAgreement > 0 {
+                        Text("Both-failed \(s.failureAgreement)").font(.callout).foregroundStyle(.orange)
+                    }
                 }
             }
-            Text("Denominator excludes Skipped and Non-deterministic rows. A row passes only if Input, Process and Output all match.")
+            Text("Denominator excludes Skipped, Non-deterministic and Both-failed rows. A row passes only if Input, Process and Output all match.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .padding(14)
@@ -322,6 +421,7 @@ public struct CLIParityRunnerView: View {
         case .cliError:         return .secondary
         case .skipped:          return .secondary
         case .nonDeterministic: return .purple
+        case .failureAgreement: return .orange
         }
     }
 
@@ -330,6 +430,10 @@ public struct CLIParityRunnerView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(row.commandLine).font(.callout.monospaced())
                 .foregroundStyle(.secondary).textSelection(.enabled)
+            if !row.inputUsed.isEmpty {
+                Label("input: \(row.inputUsed)", systemImage: "doc")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if !row.note.isEmpty {
                 Text(row.note).font(.callout).foregroundStyle(.secondary)
             }
@@ -342,9 +446,31 @@ public struct CLIParityRunnerView: View {
                 .padding(10)
                 .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.04)))
             }
+            // For any non-Pass row, show the exact CLI (and app) output so the user
+            // can see precisely what happened (the error/usage text, etc.).
+            if row.status != .pass {
+                if !row.cliOutput.isEmpty { outputPane("CLI output", row.cliOutput, .orange) }
+                if !row.appOutput.isEmpty { outputPane("App output", row.appOutput, .blue) }
+            }
         }
         .padding(.leading, 22).padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func outputPane(_ title: String, _ text: String, _ accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.caption.bold()).foregroundStyle(accent)
+            ScrollView(.vertical) {
+                Text(text)
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 220)
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.05)))
+        }
     }
 
     private func diffLine(_ line: OutputDiffLine) -> some View {

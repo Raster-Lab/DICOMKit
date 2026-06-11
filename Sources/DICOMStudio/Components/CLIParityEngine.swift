@@ -510,6 +510,14 @@ public enum CLIParityEngine {
     /// cli-parity-gen's `imageRasterHash` so golden and Studio hashes line up.
     public static func imageRasterHash(fileURL: URL) -> String? {
         #if canImport(ImageIO)
+        // Never hand a missing path or a directory to ImageIO: CGImageSourceCreateWithURL
+        // logs a noisy "IIOImageSource … can't open … (fileExists == false)" line to the
+        // console even though it returns nil. Callers already treat nil as a decode
+        // failure, so a quiet early return keeps the console clean when an artifact was
+        // legitimately not produced (e.g. an error-result scenario).
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: fileURL.path, isDirectory: &isDirectory),
+              !isDirectory.boolValue else { return nil }
         guard let src = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
               let image = CGImageSourceCreateImageAtIndex(src, 0, nil) else { return nil }
         let width = image.width, height = image.height

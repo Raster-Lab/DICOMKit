@@ -21,6 +21,26 @@
 
 import Foundation
 
+// MARK: - Screen mode
+
+/// The CLI Parity screen runs in two modes. OFFLINE sweeps the file tools
+/// against bundled/corpus fixtures (no network). NETWORK sweeps the DIMSE tools
+/// (dicom-echo today) against a user-supplied PACS endpoint, comparing the app
+/// and CLI semantically (timing ignored — see CLIParityEchoComparator).
+public enum ParityMode: String, Sendable, Hashable, CaseIterable, Identifiable {
+    case offline = "OFFLINE"
+    case network = "NETWORK"
+
+    public var id: String { rawValue }
+
+    public var displayName: String {
+        switch self {
+        case .offline: return "Offline"
+        case .network: return "Network"
+        }
+    }
+}
+
 // MARK: - Row status taxonomy
 
 /// The verdict for a single batch-parity scenario row.
@@ -37,6 +57,12 @@ public enum BatchRowStatus: String, Sendable, Hashable {
     case cliError         = "CLI_ERROR"
     case skipped          = "SKIPPED"
     case nonDeterministic = "NON_DETERMINISTIC"
+    /// Network only: the app and CLI BOTH failed with identical semantics (e.g.
+    /// the PACS was unreachable or rejected the association). Parity held on the
+    /// failure path, but no successful operation was compared — so this is
+    /// EXCLUDED from the score (it would otherwise inflate the pass rate when the
+    /// server is simply down).
+    case failureAgreement = "FAILURE_AGREEMENT"
 
     public var displayName: String {
         switch self {
@@ -47,6 +73,7 @@ public enum BatchRowStatus: String, Sendable, Hashable {
         case .cliError:         return "CLI Error"
         case .skipped:          return "Skipped"
         case .nonDeterministic: return "Non-deterministic"
+        case .failureAgreement: return "Both Failed"
         }
     }
 
@@ -59,14 +86,15 @@ public enum BatchRowStatus: String, Sendable, Hashable {
         case .cliError:         return "xmark.circle.fill"
         case .skipped:          return "minus.circle"
         case .nonDeterministic: return "dice"
+        case .failureAgreement: return "wifi.slash"
         }
     }
 
     /// Whether this row participates in the success-rate denominator.
     public var countsInDenominator: Bool {
         switch self {
-        case .skipped, .nonDeterministic: return false
-        default:                          return true
+        case .skipped, .nonDeterministic, .failureAgreement: return false
+        default:                                             return true
         }
     }
 
@@ -82,6 +110,7 @@ public enum BatchRowStatus: String, Sendable, Hashable {
         case .cliError:         return "The CLI binary exited with an error (or could not launch) when success was expected."
         case .skipped:          return "Not run for a structural reason (wrong/absent input fixture, or a flag combo the CLI rejects) — not a parity defect."
         case .nonDeterministic: return "The CLI's own output is not byte-stable across runs even after masking — cannot be fairly scored."
+        case .failureAgreement: return "The app and CLI both failed identically (e.g. the server was unreachable or rejected the association). Parity held on the failure path, but no successful operation was compared — excluded from the score."
         }
     }
 }
@@ -132,17 +161,41 @@ public struct BatchScenario: Sendable, Identifiable, Hashable {
     /// dicom-study organize, dicom-archive) — used to skip with a clear note when
     /// the user supplied a single file instead.
     public let needsDirectory: Bool
+    /// Bundled fixture file/dir name resolved for FIXTURE (e.g. "syn-ct.dcm",
+    /// "syn-mf.dcm", "syn-studyset"). The runner resolves this from the app bundle
+    /// so each tool gets a VALID input shape, mirroring the offline generator.
+    public let fixtureName: String?
+    /// Bundled fixture name for FIXTURE2 (two-file tools like dicom-diff).
+    public let fixture2Name: String?
+    /// True when the user's picked file may override the bundled fixture (generic
+    /// single-file / file-pair tools). False for fixture-specific tools (multiframe,
+    /// study dir, RLE, …) whose input a single arbitrary file can't satisfy.
+    public let userFileAllowed: Bool
+    /// The input-shape requirement ("ct", "mf", "ctpair", "ctrle", "studyset",
+    /// "archive", "pdf", "script"). Drives corpus resolution (CorpusIndex.resolve).
+    public let fixtureKind: String
+    /// True when a NONZERO exit is a normal RESULT for this scenario (e.g. a
+    /// validation that detects an invalid UID exits 1) — so app+CLI agreement on a
+    /// nonzero exit is compared, not flagged as an error. (Per-scenario analogue of
+    /// resultExitTools.)
+    public let resultExitOK: Bool
     /// Human hint about the expected input shape (e.g. "multiframe", "directory").
     public let inputHint: String
 
     public init(scenarioId: String, toolId: String, label: String, cliArgs: [String],
                 studioParams: [String: String], needsInputFile: Bool, needsSecondFile: Bool,
-                artifactName: String?, artifactKind: String, needsDirectory: Bool, inputHint: String) {
+                artifactName: String?, artifactKind: String, needsDirectory: Bool,
+                fixtureName: String?, fixture2Name: String?, userFileAllowed: Bool,
+                fixtureKind: String, resultExitOK: Bool = false, inputHint: String) {
         self.scenarioId = scenarioId; self.toolId = toolId; self.label = label
         self.cliArgs = cliArgs; self.studioParams = studioParams
         self.needsInputFile = needsInputFile; self.needsSecondFile = needsSecondFile
         self.artifactName = artifactName; self.artifactKind = artifactKind
         self.needsDirectory = needsDirectory
+        self.fixtureName = fixtureName; self.fixture2Name = fixture2Name
+        self.userFileAllowed = userFileAllowed
+        self.fixtureKind = fixtureKind
+        self.resultExitOK = resultExitOK
         self.inputHint = inputHint
     }
 }
@@ -167,11 +220,15 @@ public struct BatchScenarioResult: Sendable, Identifiable, Hashable {
     public let cliOutput: String
     public let diff: [OutputDiffLine]
     public let note: String
+    /// Which input was used and from where, e.g. "CT_01….dcm · corpus" or
+    /// "syn-mf.dcm · bundled". Shown in the row's expanded detail.
+    public let inputUsed: String
 
     public init(scenarioId: String, toolId: String, label: String, commandLine: String,
                 inputSignal: BatchSignal, appSucceeded: Bool?, cliExitCode: Int32?,
                 outputSignal: BatchSignal, status: BatchRowStatus,
-                appOutput: String, cliOutput: String, diff: [OutputDiffLine], note: String) {
+                appOutput: String, cliOutput: String, diff: [OutputDiffLine], note: String,
+                inputUsed: String = "") {
         self.scenarioId = scenarioId; self.toolId = toolId; self.label = label
         self.commandLine = commandLine
         self.inputSignal = inputSignal; self.appSucceeded = appSucceeded
@@ -179,6 +236,7 @@ public struct BatchScenarioResult: Sendable, Identifiable, Hashable {
         self.status = status
         self.appOutput = appOutput; self.cliOutput = cliOutput
         self.diff = diff; self.note = note
+        self.inputUsed = inputUsed
     }
 }
 
@@ -197,6 +255,7 @@ public struct BatchParitySummary: Sendable, Hashable {
     public var outputMatched: Int = 0
     public var skipped: Int = 0
     public var nonDeterministic: Int = 0
+    public var failureAgreement: Int = 0   // network: both sides failed identically
 
     public init() {}
 
@@ -222,6 +281,7 @@ public struct BatchParitySummary: Sendable, Hashable {
         switch r.status {
         case .skipped:          skipped += 1; return
         case .nonDeterministic: nonDeterministic += 1; return
+        case .failureAgreement: failureAgreement += 1; return
         default: break
         }
         denominator += 1

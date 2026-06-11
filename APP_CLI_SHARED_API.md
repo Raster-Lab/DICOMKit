@@ -229,6 +229,13 @@ exists. Tools with non‑deterministic or network output (§5.5) **cannot** have
 stable goldens and are therefore verified by **shared‑engine construction +
 smoke tests** rather than the harness. The matrix marks these explicitly.
 
+**Network (DIMSE) tools — live‑PACS parity.** The golden harness can't cover
+network output, so the *CLI Parity* screen has a separate **Network mode** that
+runs the `dicom-*` binary against a user‑supplied PACS and compares it,
+flag‑by‑flag, to a reference that drives the **same DICOMKit package API directly**
+(SDK ↔ CLI conformance, timing ignored). `dicom-echo` is covered today. See
+[`APP_CLI_NETWORK_PARITY.md`](APP_CLI_NETWORK_PARITY.md).
+
 ---
 
 ## 7. Reproducing / extending
