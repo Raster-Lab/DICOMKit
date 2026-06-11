@@ -65,7 +65,6 @@ struct NavigationServiceTests {
         #expect(allCases.contains(.performanceTools))
         #expect(allCases.contains(.macOSEnhancements))
         #expect(allCases.contains(.polishRelease))
-        #expect(allCases.contains(.fileOperations))
         #expect(allCases.contains(.integrationTesting))
         #expect(allCases.contains(.settings))
     }

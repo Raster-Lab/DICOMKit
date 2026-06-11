@@ -6082,13 +6082,20 @@ case "dicom-study":
         service.setConsoleStatus(exitCode == 0 ? .success : .error)
     }
 
-    /// Performs a real C-ECHO against the server configured in the parameter fields.
+    /// Performs a real C-ECHO against the server configured in the parameter
+    /// fields. Honors `--count`, `--stats`, `--verbose` and `--diagnose` so the
+    /// in-app tool mirrors the dicom-echo CLI (relied on by the CLI Parity
+    /// screen's network mode and by the command presets that pass these flags).
     private func executeDicomEcho() async {
         let hostValue = paramValue("host")
         let portValue = paramValue("port")
         let callingAET = paramValue("aet").isEmpty ? "DICOMSTUDIO" : paramValue("aet")
         let calledAET = paramValue("called-aet").isEmpty ? "ANY-SCP" : paramValue("called-aet")
         let timeoutStr = paramValue("timeout")
+        let count = max(1, Int(paramValue("count")) ?? 1)
+        let showStats = paramValue("stats") == "true"
+        let diagnose = paramValue("diagnose") == "true"
+        let verbose = paramValue("verbose") == "true"
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue.isEmpty ? nil : portValue) else {
             appendConsoleOutput("Error: A valid host is required (e.g. hostname or 192.168.1.1).\n")
@@ -6102,95 +6109,233 @@ case "dicom-study":
         let port = server.port
         let timeout = TimeInterval(timeoutStr) ?? 30
 
-        appendConsoleOutput("Connecting to \(host):\(port) ...\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n\n")
+        if verbose {
+            appendConsoleOutput("DICOM Echo\n")
+            appendConsoleOutput("Server: \(host):\(port)\n")
+            appendConsoleOutput("Calling AE: \(callingAET)\n")
+            appendConsoleOutput("Called AE: \(calledAET)\n")
+            appendConsoleOutput("Timeout: \(Int(timeout))s\n")
+            appendConsoleOutput("Count: \(count)\n\n")
+        } else {
+            appendConsoleOutput("Connecting to \(host):\(port) ...\n")
+            appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
+            appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
+            appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+            if count > 1 { appendConsoleOutput("  Count:            \(count)\n") }
+            appendConsoleOutput("\n")
+        }
 
+        if diagnose {
+            await runEchoDiagnostics(host: host, port: port,
+                                     callingAET: callingAET, calledAET: calledAET, timeout: timeout)
+            return
+        }
+
+        var results: [VerificationResult] = []
+        var successCount = 0
+        var failureCount = 0
+
+        for i in 1...count {
+            if verbose && count > 1 { appendConsoleOutput("[\(i)/\(count)] Sending C-ECHO...\n") }
+            do {
+                let result = try await DICOMVerificationService.echo(
+                    host: host, port: port,
+                    callingAE: callingAET, calledAE: calledAET, timeout: timeout)
+                results.append(result)
+                if result.success {
+                    successCount += 1
+                    // Per-echo detail only for a single echo or in verbose mode —
+                    // matches the CLI's gating so multi-echo runs compare equal.
+                    if verbose || count == 1 {
+                        let latencyMs = result.roundTripTime * 1000
+                        appendConsoleOutput("✅ C-ECHO successful\n")
+                        appendConsoleOutput("  Remote AE: \(result.remoteAETitle)\n")
+                        appendConsoleOutput("  Status: \(result.status)\n")
+                        appendConsoleOutput("  Round-trip time: \(String(format: "%.1f", latencyMs)) ms\n")
+                    } else {
+                        appendConsoleOutput(".")   // progress dot per echo, mirrors the CLI
+                    }
+                } else {
+                    failureCount += 1
+                    appendConsoleOutput("❌ C-ECHO failed\n")
+                    appendConsoleOutput("  Status: \(result.status)\n")
+                }
+            } catch let netErr as DICOMNetworkError {
+                failureCount += 1
+                appendEchoFailure(netErr, host: host, port: port,
+                                  callingAET: callingAET, calledAET: calledAET, timeout: timeout)
+            } catch {
+                failureCount += 1
+                appendConsoleOutput("❌ C-ECHO error: \(error.localizedDescription)\n")
+            }
+            if i < count { try? await Task.sleep(nanoseconds: 100_000_000) }   // 100ms between requests
+        }
+
+        if count > 1 && !verbose { appendConsoleOutput("\n") }   // newline after the progress dots
+
+        // Summary (mirrors the CLI: shown for multi-echo runs or when --stats is set).
+        if count > 1 || showStats {
+            appendConsoleOutput("\nSummary:\n")
+            appendConsoleOutput("  Sent: \(count)\n")
+            appendConsoleOutput("  Successful: \(successCount)\n")
+            appendConsoleOutput("  Failed: \(failureCount)\n")
+            let rate = count > 0 ? Double(successCount) / Double(count) * 100 : 0
+            appendConsoleOutput("  Success rate: \(String(format: "%.1f", rate))%\n")
+
+            if showStats {
+                let rtts = results.filter { $0.success }.map { $0.roundTripTime }
+                if !rtts.isEmpty {
+                    let minMs = (rtts.min() ?? 0) * 1000
+                    let maxMs = (rtts.max() ?? 0) * 1000
+                    let avgMs = rtts.reduce(0, +) / Double(rtts.count) * 1000
+                    appendConsoleOutput("\nRound-trip time statistics:\n")
+                    appendConsoleOutput("  Min: \(String(format: "%.1f", minMs)) ms\n")
+                    appendConsoleOutput("  Avg: \(String(format: "%.1f", avgMs)) ms\n")
+                    appendConsoleOutput("  Max: \(String(format: "%.1f", maxMs)) ms\n")
+                }
+            }
+        }
+
+        let ok = failureCount == 0
+        consoleStatus = ok ? .success : .error
+        service.setConsoleStatus(ok ? .success : .error)
+        addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: ok ? 0 : 1,
+                     output: ok ? "C-ECHO \(successCount)/\(count) successful"
+                                : "C-ECHO failed (\(failureCount)/\(count))")
+    }
+
+    /// Appends a detailed, actionable C-ECHO failure block for a network error.
+    /// Used per-iteration by ``executeDicomEcho()``; the overall console status
+    /// and history are set once by the caller based on the failure count.
+    private func appendEchoFailure(_ netErr: DICOMNetworkError, host: String, port: UInt16,
+                                   callingAET: String, calledAET: String, timeout: TimeInterval) {
+        appendConsoleOutput("❌ C-ECHO failed\n")
+        switch netErr {
+        case .associationRejected(let result, let source, let reason):
+            appendConsoleOutput("  Reason: Association rejected (\(result))\n")
+            appendConsoleOutput("  Source: \(source)\n")
+            let reasonDesc = Self.associateRejectReasonDescription(source: source, reason: reason)
+            appendConsoleOutput("  Code  : \(reason) — \(reasonDesc)\n")
+            appendConsoleOutput("\n")
+            // Actionable hints for the most common dcm4chee2 / legacy-PACS rejection reasons
+            switch (source, reason) {
+            case (.serviceUser, 3):
+                appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Called AE Title\n")
+                appendConsoleOutput("           (\"\(calledAET)\"). Register it in the remote AE Manager\n")
+                appendConsoleOutput("           (e.g. dcm4chee AE Management → Add AE Title) or change the\n")
+                appendConsoleOutput("           Called AE Title field above to match the server's configured AE.\n")
+            case (.serviceUser, 7):
+                appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Calling AE Title\n")
+                appendConsoleOutput("           (\"\(callingAET)\"). Add it to the remote server's list of\n")
+                appendConsoleOutput("           permitted calling AE titles, or change Calling AE Title above.\n")
+            case (.serviceUser, 2):
+                appendConsoleOutput("  💡 Hint: The remote SCP reports the application context is not supported.\n")
+                appendConsoleOutput("           Make sure the server has DICOM networking enabled.\n")
+            case (.serviceProviderACSE, 2):
+                appendConsoleOutput("  💡 Hint: Protocol version mismatch. Try switching to Implicit VR transfer\n")
+                appendConsoleOutput("           syntax for legacy server compatibility.\n")
+            case (.serviceProviderPresentation, 1):
+                appendConsoleOutput("  💡 Hint: Server temporarily busy. Wait a moment and retry.\n")
+            default:
+                appendConsoleOutput("  💡 Hint: Verify the host, port, and AE titles. For dcm4chee2, ensure\n")
+                appendConsoleOutput("           both the Calling and Called AE Titles are registered in the\n")
+                appendConsoleOutput("           server's AE Management console.\n")
+            }
+        case .connectionFailed(let msg):
+            appendConsoleOutput("  Error: \(msg)\n")
+            appendConsoleOutput("  💡 Hint: Check host (\(host)), port (\(port)), and that the DICOM server is running.\n")
+        case .timeout, .artimTimerExpired:
+            appendConsoleOutput("  Error: Connection timed out after \(Int(timeout))s\n")
+            appendConsoleOutput("  💡 Hint: Verify host/port are reachable. Try increasing the Timeout value.\n")
+        case .connectionClosed:
+            appendConsoleOutput("  Error: Connection closed unexpectedly by remote peer\n")
+            appendConsoleOutput("  💡 Hint: The server may have rejected the connection silently.\n")
+            appendConsoleOutput("           Check that the Called AE Title is registered on the server.\n")
+        default:
+            appendConsoleOutput("  Error: \(netErr.description)\n")
+        }
+    }
+
+    /// Runs the `--diagnose` flow: basic connectivity, a 5-request stability
+    /// probe, and association parameters — mirroring the dicom-echo CLI so the
+    /// CLI Parity screen can compare the two semantically.
+    private func runEchoDiagnostics(host: String, port: UInt16,
+                                    callingAET: String, calledAET: String, timeout: TimeInterval) async {
+        appendConsoleOutput("Running DICOM network diagnostics...\n\n")
+
+        // Test 1: Basic connectivity
+        appendConsoleOutput("Test 1: Basic C-ECHO connectivity\n")
+        appendConsoleOutput("  Testing connection to \(host):\(port)...\n")
         do {
             let result = try await DICOMVerificationService.echo(
-                host: host,
-                port: port,
-                callingAE: callingAET,
-                calledAE: calledAET,
-                timeout: timeout
-            )
+                host: host, port: port, callingAE: callingAET, calledAE: calledAET, timeout: timeout)
             if result.success {
-                let latencyMs = result.roundTripTime * 1000
-                appendConsoleOutput("✅ C-ECHO successful\n")
-                appendConsoleOutput("  Round-trip time: \(String(format: "%.1f", latencyMs)) ms\n")
-                if !result.remoteAETitle.isEmpty {
-                    appendConsoleOutput("  Remote AE Title: \(result.remoteAETitle)\n")
-                }
-                consoleStatus = .success
-                service.setConsoleStatus(.success)
-                addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 0,
-                             output: "C-ECHO successful (\(String(format: "%.1f", latencyMs)) ms)")
+                appendConsoleOutput("  Basic connectivity: PASS\n")
+                appendConsoleOutput("    Round-trip time: \(String(format: "%.1f", result.roundTripTime * 1000)) ms\n")
             } else {
-                appendConsoleOutput("❌ C-ECHO failed: server returned non-success status\n")
-                consoleStatus = .error
-                service.setConsoleStatus(.error)
-                addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1,
-                             output: "C-ECHO failed")
+                appendConsoleOutput("  Basic connectivity: FAIL\n")
+                appendConsoleOutput("    Status: \(result.status)\n")
             }
-        } catch let netErr as DICOMNetworkError {
-            appendConsoleOutput("❌ C-ECHO failed\n")
-            switch netErr {
-            case .associationRejected(let result, let source, let reason):
-                appendConsoleOutput("  Reason: Association rejected (\(result))\n")
-                appendConsoleOutput("  Source: \(source)\n")
-                let reasonDesc = Self.associateRejectReasonDescription(source: source, reason: reason)
-                appendConsoleOutput("  Code  : \(reason) — \(reasonDesc)\n")
-                appendConsoleOutput("\n")
-                // Actionable hints for the most common dcm4chee2 / legacy-PACS rejection reasons
-                switch (source, reason) {
-                case (.serviceUser, 3):
-                    appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Called AE Title\n")
-                    appendConsoleOutput("           (\"\(calledAET)\"). Register it in the remote AE Manager\n")
-                    appendConsoleOutput("           (e.g. dcm4chee AE Management → Add AE Title) or change the\n")
-                    appendConsoleOutput("           Called AE Title field above to match the server's configured AE.\n")
-                case (.serviceUser, 7):
-                    appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Calling AE Title\n")
-                    appendConsoleOutput("           (\"\(callingAET)\"). Add it to the remote server's list of\n")
-                    appendConsoleOutput("           permitted calling AE titles, or change Calling AE Title above.\n")
-                case (.serviceUser, 2):
-                    appendConsoleOutput("  💡 Hint: The remote SCP reports the application context is not supported.\n")
-                    appendConsoleOutput("           Make sure the server has DICOM networking enabled.\n")
-                case (.serviceProviderACSE, 2):
-                    appendConsoleOutput("  💡 Hint: Protocol version mismatch. Try switching to Implicit VR transfer\n")
-                    appendConsoleOutput("           syntax for legacy server compatibility.\n")
-                case (.serviceProviderPresentation, 1):
-                    appendConsoleOutput("  💡 Hint: Server temporarily busy. Wait a moment and retry.\n")
-                default:
-                    appendConsoleOutput("  💡 Hint: Verify the host, port, and AE titles. For dcm4chee2, ensure\n")
-                    appendConsoleOutput("           both the Calling and Called AE Titles are registered in the\n")
-                    appendConsoleOutput("           server's AE Management console.\n")
-                }
-            case .connectionFailed(let msg):
-                appendConsoleOutput("  Error: \(msg)\n")
-                appendConsoleOutput("  💡 Hint: Check host (\(host)), port (\(port)), and that the DICOM server is running.\n")
-            case .timeout, .artimTimerExpired:
-                appendConsoleOutput("  Error: Connection timed out after \(Int(timeout))s\n")
-                appendConsoleOutput("  💡 Hint: Verify host/port are reachable. Try increasing the Timeout value.\n")
-            case .connectionClosed:
-                appendConsoleOutput("  Error: Connection closed unexpectedly by remote peer\n")
-                appendConsoleOutput("  💡 Hint: The server may have rejected the connection silently.\n")
-                appendConsoleOutput("           Check that the Called AE Title is registered on the server.\n")
-            default:
-                appendConsoleOutput("  Error: \(netErr.description)\n")
-            }
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
-            addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1,
-                         output: netErr.description)
         } catch {
-            appendConsoleOutput("❌ C-ECHO failed\n")
-            appendConsoleOutput("  Error: \(error.localizedDescription)\n")
+            appendConsoleOutput("  Basic connectivity: ERROR\n")
+            appendConsoleOutput("    Error: \(error.localizedDescription)\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1,
-                         output: error.localizedDescription)
+                         output: "Diagnostics: basic connectivity error")
+            return
         }
+        appendConsoleOutput("\n")
+
+        // Test 2: Connection stability (5 requests)
+        appendConsoleOutput("Test 2: Connection stability (5 requests)\n")
+        var stableSuccessCount = 0
+        var stableRTTs: [TimeInterval] = []
+        for i in 1...5 {
+            do {
+                let result = try await DICOMVerificationService.echo(
+                    host: host, port: port, callingAE: callingAET, calledAE: calledAET, timeout: timeout)
+                if result.success {
+                    stableSuccessCount += 1
+                    stableRTTs.append(result.roundTripTime)
+                    appendConsoleOutput("  [\(i)/5] RTT: \(String(format: "%.1f", result.roundTripTime * 1000)) ms\n")
+                } else {
+                    appendConsoleOutput("  [\(i)/5] Status: \(result.status)\n")
+                }
+            } catch {
+                appendConsoleOutput("  [\(i)/5] Error: \(error.localizedDescription)\n")
+            }
+            if i < 5 { try? await Task.sleep(nanoseconds: 100_000_000) }
+        }
+        appendConsoleOutput("  Connection stability: \(stableSuccessCount)/5 successful\n")
+        if !stableRTTs.isEmpty {
+            let minMs = (stableRTTs.min() ?? 0) * 1000
+            let maxMs = (stableRTTs.max() ?? 0) * 1000
+            let avgMs = stableRTTs.reduce(0, +) / Double(stableRTTs.count) * 1000
+            appendConsoleOutput("  RTT min/avg/max: \(String(format: "%.1f", minMs))/\(String(format: "%.1f", avgMs))/\(String(format: "%.1f", maxMs)) ms\n")
+        }
+        appendConsoleOutput("\n")
+
+        // Test 3: Association parameters
+        appendConsoleOutput("Test 3: Association parameters\n")
+        appendConsoleOutput("  Implementation Class UID: \(VerificationConfiguration.defaultImplementationClassUID)\n")
+        appendConsoleOutput("  Implementation Version: \(VerificationConfiguration.defaultImplementationVersionName)\n")
+        appendConsoleOutput("  SOP Class: Verification (1.2.840.10008.1.1)\n")
+        appendConsoleOutput("  Transfer Syntaxes: Explicit VR Little Endian, Implicit VR Little Endian\n\n")
+
+        appendConsoleOutput("Diagnostics complete.\n")
+        let ok = stableSuccessCount == 5
+        if stableSuccessCount == 5 {
+            appendConsoleOutput("Result: All tests PASSED ✓\n")
+        } else if stableSuccessCount > 0 {
+            appendConsoleOutput("Result: Partial success (some tests failed) ⚠\n")
+        } else {
+            appendConsoleOutput("Result: All tests FAILED ✗\n")
+        }
+        consoleStatus = ok ? .success : .error
+        service.setConsoleStatus(ok ? .success : .error)
+        addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: ok ? 0 : 1,
+                     output: "Diagnostics: \(stableSuccessCount)/5 stable")
     }
 
     /// Translates an A-ASSOCIATE-RJ reason byte into a human-readable string.

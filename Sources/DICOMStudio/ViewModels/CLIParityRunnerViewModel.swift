@@ -32,15 +32,39 @@ public final class CLIParityRunnerViewModel {
 
     // MARK: Inputs / selection
 
-    /// Tools this screen can sweep (supported by the generator, non-network,
-    /// execute-supported), in catalog order.
+    /// Whether the screen is sweeping the offline file tools or the network
+    /// (DIMSE) tools. Drives which tool pool, controls and runner are used.
+    public var mode: ParityMode = .offline
+
+    /// Offline tools this screen can sweep (supported by the generator,
+    /// non-network, execute-supported), in catalog order.
     public let availableTools: [CLIToolDefinition]
+    /// Network tools that have a parity implementation today (dicom-echo).
+    public let availableNetworkTools: [CLIToolDefinition]
     public var selectedToolIDs: Set<String> = []
 
-    public private(set) var inputFilePath: String? = nil
-    public private(set) var inputFilePath2: String? = nil
-    private var inputURL: URL? = nil
-    private var inputURL2: URL? = nil
+    // MARK: Network endpoint (editable PACS credentials)
+
+    /// The PACS the network tools echo against. Pre-filled with the team's test
+    /// server; every field is user-editable. The CLI requires `--aet`, so the
+    /// Calling AE must be non-empty.
+    public var networkHost: String = "172.17.1.200"
+    public var networkPort: String = "11112"
+    public var networkCallingAET: String = "DICOMSTUDIO"
+    public var networkCalledAET: String = "TEAMPACS"
+    public var networkTimeout: String = "30"
+
+    /// Tool ids for which network parity is implemented.
+    private static let networkParitySupported = CLIParityNetworkScenarios.supportedToolIDs
+
+    /// The user's selected input corpus directory (optional). When set, each tool
+    /// draws its correct input shape from this corpus; otherwise bundled fixtures
+    /// are used.
+    public private(set) var inputDirectory: String? = nil
+    private var inputDirURL: URL? = nil
+    public private(set) var corpus: CorpusIndex? = nil
+    public var isScanning: Bool = false
+    public var scanMessage: String = ""
 
     // MARK: Run state
 
@@ -60,18 +84,61 @@ public final class CLIParityRunnerViewModel {
     /// binary elsewhere can't shadow it. nil → fall back to the default search.
     private var freshBinDir: String? = nil
 
+    /// Input label ("file · source") for the scenario currently running; stamped
+    /// onto each result row. Safe as state because scenarios run sequentially.
+    private var pendingInputUsed: String = ""
+
+    /// When true, run the same command on BOTH its real and synthetic fixtures
+    /// (the full parity-test matrix). Default false → one row per unique validated
+    /// command (preferring the synthetic fixture).
+    public var includeFixtureVariants: Bool = false
+
     public var results: [BatchScenarioResult] = []
     public var summary: BatchParitySummary = BatchParitySummary()
 
+    /// The bundled validated scenario corpus (goldens.json, or goldens.synthetic.json
+    /// on a clean checkout), loaded once.
+    private let allGoldens: [GoldenScenario]
+
     public init() {
-        let supported = CLIParityScenarioGenerator.supportedToolIDs
-        self.availableTools = ToolCatalogHelpers.allTools().filter {
-            supported.contains($0.id) && !$0.requiresNetwork &&
+        let goldens = CLIParityEngine.loadGoldens()
+        self.allGoldens = goldens
+        let toolsWithGoldens = Set(goldens.map { $0.toolId })
+        let all = ToolCatalogHelpers.allTools()
+        self.availableTools = all.filter {
+            toolsWithGoldens.contains($0.id) && !$0.requiresNetwork &&
+            CLIParityEngine.executeSupported.contains($0.id)
+        }
+        self.availableNetworkTools = all.filter {
+            $0.requiresNetwork && Self.networkParitySupported.contains($0.id) &&
             CLIParityEngine.executeSupported.contains($0.id)
         }
     }
 
     // MARK: Derived
+
+    /// The tool pool for the active mode.
+    public var activeTools: [CLIToolDefinition] {
+        mode == .network ? availableNetworkTools : availableTools
+    }
+
+    /// Switches mode, scoping the selection to the new pool's tools (and
+    /// pre-selecting the first network tool for convenience), and clears stale
+    /// results so the two modes' tables never mix.
+    public func setMode(_ m: ParityMode) {
+        guard m != mode, !isRunning else { return }
+        mode = m
+        let ids = Set(activeTools.map { $0.id })
+        selectedToolIDs = selectedToolIDs.intersection(ids)
+        if m == .network, selectedToolIDs.isEmpty, let first = availableNetworkTools.first {
+            selectedToolIDs = [first.id]
+        }
+        results = []
+        summary = BatchParitySummary()
+        errorMessage = nil
+        completedScenarios = 0
+        totalScenarios = 0
+    }
 
     /// Results grouped by tool id, preserving discovery order.
     public var groupedResults: [(toolId: String, rows: [BatchScenarioResult])] {
@@ -85,29 +152,40 @@ public final class CLIParityRunnerViewModel {
     }
 
     public func displayName(for toolId: String) -> String {
-        availableTools.first { $0.id == toolId }?.displayName ?? toolId
+        (availableTools + availableNetworkTools).first { $0.id == toolId }?.displayName ?? toolId
     }
 
     public func inputHint(for toolId: String) -> String {
-        CLIParityScenarioGenerator.inputHint(for: toolId)
+        if Self.networkParitySupported.contains(toolId) { return "PACS endpoint" }
+        return CLIParityScenarioGenerator.inputHint(for: toolId)
     }
 
     public func toggleTool(_ id: String) {
         if selectedToolIDs.contains(id) { selectedToolIDs.remove(id) } else { selectedToolIDs.insert(id) }
     }
 
-    public func selectAllTools() { selectedToolIDs = Set(availableTools.map { $0.id }) }
+    public func selectAllTools() { selectedToolIDs = Set(activeTools.map { $0.id }) }
     public func clearToolSelection() { selectedToolIDs.removeAll() }
 
-    public func setInputFile(url: URL) {
-        inputURL = url
-        inputFilePath = url.path
+    /// Selects and scans an input corpus directory. Classification runs off the
+    /// main actor (it reads file headers); the resulting CorpusIndex drives
+    /// per-tool input resolution.
+    public func setInputDirectory(url: URL) async {
+        inputDirURL = url
+        inputDirectory = url.path
+        isScanning = true
+        scanMessage = "Scanning \((url.path as NSString).lastPathComponent)…"
+        defer { isScanning = false }
+        let scoped = url.startAccessingSecurityScopedResource()
+        let index = await Task.detached { CLIParityCorpusScanner.scan(directory: url) }.value
+        if scoped { url.stopAccessingSecurityScopedResource() }
+        corpus = index
+        scanMessage = index.summary
     }
-    public func setSecondInputFile(url: URL) {
-        inputURL2 = url
-        inputFilePath2 = url.path
+
+    public func clearInputDirectory() {
+        inputDirURL = nil; inputDirectory = nil; corpus = nil; scanMessage = ""
     }
-    public func clearSecondInputFile() { inputURL2 = nil; inputFilePath2 = nil }
 
     // MARK: Run
 
@@ -125,8 +203,17 @@ public final class CLIParityRunnerViewModel {
         defer { isRunning = false; isBuilding = false }
 
         #if os(macOS)
-        let toolIds = availableTools.map { $0.id }.filter { selectedToolIDs.contains($0) }
+        let toolIds = activeTools.map { $0.id }.filter { selectedToolIDs.contains($0) }
         guard !toolIds.isEmpty else { errorMessage = "Select at least one tool to test."; return }
+
+        if mode == .network {
+            guard !networkHost.trimmingCharacters(in: .whitespaces).isEmpty else {
+                errorMessage = "Enter the PACS host (e.g. 172.17.1.200)."; return
+            }
+            guard !networkCallingAET.trimmingCharacters(in: .whitespaces).isEmpty else {
+                errorMessage = "Enter a Calling AE Title — the dicom-echo CLI requires --aet."; return
+            }
+        }
 
         // Step 0: build the selected tools' binaries FRESH so the comparison never
         // runs against a stale binary (a CLI built before the latest DICOMKit change).
@@ -158,18 +245,38 @@ public final class CLIParityRunnerViewModel {
         return
         #endif
 
+        // NETWORK mode: sweep the dicom-echo flag matrix against the live PACS
+        // and compare app vs CLI semantically (timing ignored).
+        if mode == .network {
+            let scenarios = CLIParityNetworkScenarios.scenarios(toolIDs: Set(toolIds))
+            totalScenarios = scenarios.count
+            guard !scenarios.isEmpty else { errorMessage = "No network scenarios for the selected tools."; return }
+            var sum = BatchParitySummary()
+            var rows: [BatchScenarioResult] = []
+            for s in scenarios {
+                let r = await runNetworkScenario(s)
+                rows.append(r)
+                sum.tally(r)
+                completedScenarios += 1
+                results = rows
+                summary = sum
+            }
+            results = rows
+            summary = sum
+            return
+        }
+
         let drift = computeDriftFlags(for: toolIds)
-        var scenarios: [BatchScenario] = []
-        for id in toolIds { scenarios += CLIParityScenarioGenerator.scenarios(for: id) }
+        let scenarios = CLIParityScenarioGenerator.scenarios(
+            fromGoldens: allGoldens, toolIDs: Set(toolIds), dedupByCliArgs: !includeFixtureVariants)
         totalScenarios = scenarios.count
         guard !scenarios.isEmpty else { errorMessage = "No scenarios generated for the selected tools."; return }
 
-        // Hold security-scoped access for the whole run (sandbox-off test build).
-        let scoped = inputURL.map { ($0, $0.startAccessingSecurityScopedResource()) }
-        let scoped2 = inputURL2.map { ($0, $0.startAccessingSecurityScopedResource()) }
+        // Hold security-scoped access to the corpus dir for the whole run
+        // (sandbox-off test build).
+        let scoped = inputDirURL.map { ($0, $0.startAccessingSecurityScopedResource()) }
         defer {
             if let (u, ok) = scoped, ok { u.stopAccessingSecurityScopedResource() }
-            if let (u, ok) = scoped2, ok { u.stopAccessingSecurityScopedResource() }
         }
 
         var sum = BatchParitySummary()
@@ -220,30 +327,45 @@ public final class CLIParityRunnerViewModel {
                         diff: [OutputDiffLine] = [], note: String) -> BatchScenarioResult {
         BatchScenarioResult(scenarioId: s.scenarioId, toolId: s.toolId, label: s.label, commandLine: command,
             inputSignal: input, appSucceeded: app, cliExitCode: cli, outputSignal: output, status: status,
-            appOutput: appOut, cliOutput: cliOut, diff: diff, note: note)
+            appOutput: appOut, cliOutput: cliOut, diff: diff, note: note, inputUsed: pendingInputUsed)
     }
 
     private func runScenario(_ s: BatchScenario, driftSet: Set<String>) async -> BatchScenarioResult {
         let fm = FileManager.default
-        let file1 = inputFilePath ?? ""
-        let file2 = (inputFilePath2?.isEmpty == false ? inputFilePath2! : inputFilePath) ?? ""
 
-        // Structural skips (not parity defects).
+        // Resolve the input(s) HYBRID: use the user's CORPUS when it provides the
+        // right shape for this tool (single file, file pair, multiframe, RLE, study
+        // dir); else fall back to the bundled synthetic fixture; else skip with a
+        // reason. Each tool draws the input shape it actually needs — the same way
+        // the manual CLAUDE_PARITY_TEST fed each tool its correct input.
+        let bundled1 = s.fixtureName.flatMap { CLIParityEngine.fixtureURL(named: $0)?.path }
+        let bundled2 = s.fixture2Name.flatMap { CLIParityEngine.fixtureURL(named: $0)?.path }
+        let corpusHit = corpus?.resolve(kind: s.fixtureKind)
+
+        let file1: String
+        let file2: String
+        let source: String
+        if s.needsSecondFile {
+            if let c = corpusHit, let f2 = c.file2 { file1 = c.file1; file2 = f2; source = "corpus" }
+            else if let b1 = bundled1 { file1 = b1; file2 = bundled2 ?? b1; source = "bundled" }
+            else { file1 = ""; file2 = ""; source = "" }
+        } else {
+            if let c = corpusHit { file1 = c.file1; source = "corpus" }
+            else if let b1 = bundled1 { file1 = b1; source = "bundled" }
+            else { file1 = ""; source = "" }
+            file2 = bundled2 ?? bundled1 ?? file1
+        }
+        pendingInputUsed = file1.isEmpty ? "" : "\((file1 as NSString).lastPathComponent) · \(source)"
+
+        // Skip only when no valid input could be resolved (the corpus lacks the shape
+        // AND no bundled fixture is present) — not a parity defect.
         if s.needsInputFile && file1.isEmpty {
+            let want = s.inputHint
             return result(s, command: s.toolId, input: .notApplicable, app: nil, cli: nil,
                           output: .notApplicable, status: .skipped,
-                          note: "Provide an input file (\(s.inputHint)) to run \(s.toolId).")
-        }
-        // Directory-input tools (e.g. dicom-study organize, dicom-archive) reject a
-        // single file with a cryptic exit — surface a clear note instead of a bare skip.
-        if s.needsDirectory && !file1.isEmpty {
-            var isDir: ObjCBool = false
-            let exists = fm.fileExists(atPath: file1, isDirectory: &isDir)
-            if !exists || !isDir.boolValue {
-                return result(s, command: s.toolId, input: .notApplicable, app: nil, cli: nil,
-                              output: .notApplicable, status: .skipped,
-                              note: "\(s.toolId) needs a study DIRECTORY (a folder of DICOM files); you selected a single file. Pick a folder as the input.")
-            }
+                          note: corpus != nil
+                            ? "No \(want) found in your corpus, and no bundled fixture available for \(s.toolId)."
+                            : "No bundled fixture available for \(s.toolId) (needs \(want)).")
         }
 
         // INPUT drift is known from the contract — short-circuit before running anything.
@@ -273,7 +395,7 @@ public final class CLIParityRunnerViewModel {
             if let d = cliScratch { try? fm.removeItem(at: d) }
         }
 
-        let isDir = s.artifactKind == "dicom-multi" || s.artifactKind == "dicom-tree"
+        let isDir = s.artifactKind == "dicom-multi" || s.artifactKind == "dicom-tree" || s.artifactKind == "image-multi"
         func artURL(_ scratch: URL?) -> URL? {
             guard let scratch, let name = s.artifactName else { return nil }
             let u = scratch.appendingPathComponent(name)
@@ -319,6 +441,13 @@ public final class CLIParityRunnerViewModel {
                           output: .notApplicable, status: .cliError, note: launchError)
         }
         let cliExit = outcome.exitCode
+        // Combined CLI stdout + stderr, shown verbatim in the row's dropdown for
+        // non-Pass rows so the user can see exactly why the CLI skipped/errored.
+        let cliText: String = {
+            let err = outcome.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+            if err.isEmpty { return outcome.stdout }
+            return outcome.stdout + (outcome.stdout.isEmpty ? "" : "\n") + "── stderr ──\n" + outcome.stderr
+        }()
         let cliProducedFile: Bool = {
             guard let u = cliArt else { return false }
             if isDir {
@@ -331,29 +460,46 @@ public final class CLIParityRunnerViewModel {
             ? outcome.stdout.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             : !cliProducedFile
 
-        // gen-skip net: an auto combo the CLI rejects (nonzero AND produced nothing).
-        if cliExit != 0 && cliProducedNothing {
+        // Artifact scenarios with no reference artifact: if the tool was asked to
+        // write a file/dir (artifactName != nil) but the CLI produced none — e.g. a
+        // flag/fixture combo the tool can't fulfil, like `dicom-export bulk` on a
+        // single file, which needs a directory — there is nothing to compare. Skip
+        // rather than hashing a non-existent path (which would also make ImageIO log
+        // a noisy "can't open" error). A genuine app-side miss (CLI produced the
+        // artifact, app did not) still surfaces below as drift.
+        if s.artifactName != nil && !cliProducedFile {
             return result(s, command: command, input: .match, app: appSuccess, cli: cliExit,
                           output: .notApplicable, status: .skipped,
+                          appOut: appConsole, cliOut: cliText,
+                          note: "CLI produced no \(s.artifactName ?? "artifact") for this input — nothing to compare (the flag/fixture combination doesn't yield the expected output).")
+        }
+
+        // gen-skip net: a combo the CLI rejects (nonzero AND produced nothing).
+        // Skipped only when the nonzero exit is NOT an expected result (resultExitOK) —
+        // an intentional-failure scenario should be compared, not skipped.
+        if cliExit != 0 && cliProducedNothing && !s.resultExitOK {
+            return result(s, command: command, input: .match, app: appSuccess, cli: cliExit,
+                          output: .notApplicable, status: .skipped,
+                          appOut: appConsole, cliOut: cliText,
                           note: "CLI rejected this combination (exit \(cliExit)) — not applicable to this input.")
         }
         // Exit-status reconciliation. For most tools any nonzero CLI exit is an
         // error. But "diff-style" tools (dicom-diff) use a nonzero exit as a RESULT
         // (exit 1 = files differ), and the app mirrors it — so when BOTH sides agree
         // on a nonzero result we still compare their outputs (parity is agreement).
-        let resultExit = CLIParityScenarioGenerator.resultExitTools.contains(s.toolId)
+        let resultExit = s.resultExitOK
         let cliOK = cliExit == 0
         if !cliOK && !resultExit {
             let stderr = outcome.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
             return result(s, command: command, input: .match, app: appSuccess, cli: cliExit,
                           output: .notApplicable, status: .cliError,
-                          appOut: appConsole, cliOut: outcome.stdout,
+                          appOut: appConsole, cliOut: cliText,
                           note: "CLI exited \(cliExit)" + (stderr.isEmpty ? "." : ": \(String(stderr.prefix(300)))"))
         }
         if cliOK && !appSuccess {
             return result(s, command: command, input: .match, app: appSuccess, cli: cliExit,
                           output: .notApplicable, status: .appError,
-                          appOut: appConsole, cliOut: outcome.stdout,
+                          appOut: appConsole, cliOut: cliText,
                           note: "The app reported an error while the CLI succeeded.")
         }
         if !cliOK && appSuccess {
@@ -361,7 +507,7 @@ public final class CLIParityRunnerViewModel {
             // the app reported success — an exit-status divergence (real parity miss).
             return result(s, command: command, input: .match, app: appSuccess, cli: cliExit,
                           output: .notApplicable, status: .appError,
-                          appOut: appConsole, cliOut: outcome.stdout,
+                          appOut: appConsole, cliOut: cliText,
                           note: "CLI exited \(cliExit) (a nonzero result, e.g. files differ) but the app reported success — exit-status divergence.")
         }
         // Reaching here: both succeeded, OR (diff-style) both agreed on a nonzero
@@ -414,6 +560,115 @@ public final class CLIParityRunnerViewModel {
         #endif
     }
 
+    // MARK: Network scenario (semantic, timing-independent)
+
+    /// Resolves an endpoint placeholder against the editable credential fields.
+    private func resolveNet(_ raw: String) -> String {
+        switch raw {
+        case CLIParityNetworkScenarios.hostToken:      return networkHost.trimmingCharacters(in: .whitespaces)
+        case CLIParityNetworkScenarios.portToken:      return networkPort.trimmingCharacters(in: .whitespaces)
+        case CLIParityNetworkScenarios.aetToken:       return networkCallingAET.trimmingCharacters(in: .whitespaces)
+        case CLIParityNetworkScenarios.calledAETToken: return networkCalledAET.trimmingCharacters(in: .whitespaces)
+        case CLIParityNetworkScenarios.timeoutToken:   return networkTimeout.trimmingCharacters(in: .whitespaces)
+        default:                                       return raw
+        }
+    }
+
+    #if os(macOS)
+    /// Combined CLI stdout + stderr (dicom-echo prints to stderr) for parsing and display.
+    private func combinedCLIText(_ outcome: CLIToolTerminalCompare.Outcome) -> String {
+        let err = outcome.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+        if err.isEmpty { return outcome.stdout }
+        return outcome.stdout + (outcome.stdout.isEmpty ? "" : "\n") + "── stderr ──\n" + outcome.stderr
+    }
+    #endif
+
+    /// Runs one network scenario: the app (in-process) and the real CLI both
+    /// echo the SAME live PACS, and their outcomes are compared semantically
+    /// (success/failure counts, DIMSE status, remote AE) with timing ignored.
+    private func runNetworkScenario(_ s: BatchScenario) async -> BatchScenarioResult {
+        let host = networkHost.trimmingCharacters(in: .whitespaces)
+        let portStr = networkPort.trimmingCharacters(in: .whitespaces)
+        let port = UInt16(portStr) ?? 11112
+        let callingAET = networkCallingAET.trimmingCharacters(in: .whitespaces)
+        let calledAET = networkCalledAET.trimmingCharacters(in: .whitespaces)
+        pendingInputUsed = "\(callingAET) → \(calledAET) @ \(host):\(portStr)"
+
+        // The flags for this scenario come from the INTERNAL flag-wise matrix — the
+        // screen exposes only the PACS credentials, never the echo flags.
+        let sp = s.studioParams
+        let count = max(1, Int(sp["count"] ?? "") ?? 1)
+        let verbose = sp["verbose"] == "true"
+        let diagnose = sp["diagnose"] == "true"
+        let timeout = TimeInterval(resolveNet(sp["timeout"] ?? "")) ?? 30
+
+        // ---- REFERENCE side: drive the DICOMKit package API (DICOMNetwork) directly,
+        //      exactly as the CLI does internally. The CLI Workshop's in-app echo code
+        //      is NOT involved. ----
+        let ref = await CLIParityNetworkReference.echo(
+            host: host, port: port, callingAET: callingAET, calledAET: calledAET,
+            timeout: timeout, count: count, verbose: verbose, diagnose: diagnose)
+        let refOK = ref.overallOK
+        let refRender = CLIParityNetworkReference.render(ref)
+
+        // ---- CLI side: the real dicom-echo binary ----
+        let resolvedArgs = s.cliArgs.map { resolveNet($0) }
+        let command = ([s.toolId] + resolvedArgs).joined(separator: " ")
+
+        #if os(macOS)
+        let toolId = s.toolId
+        let binDir = freshBinDir
+        let outcome = await Task.detached { CLIToolTerminalCompare.run(tool: toolId, arguments: resolvedArgs, binDir: binDir) }.value
+        if let launchError = outcome.launchError {
+            return result(s, command: command, input: .notApplicable, app: refOK, cli: outcome.exitCode,
+                          output: .notApplicable, status: .cliError, appOut: refRender, note: launchError)
+        }
+        let cliExit = outcome.exitCode
+        let cliText = combinedCLIText(outcome)
+        let cliSem = CLIParityEchoComparator.parse(cliText)
+
+        // Semantic comparison (timing-independent): SDK reference vs CLI.
+        let cmp = CLIParityEchoComparator.compare(reference: ref, cli: cliSem)
+
+        // PROCESS parity: the package API and the CLI must agree on success/failure.
+        let cliOK = cliExit == 0
+        let processMatch = (refOK == cliOK)
+        let bothFailed = !refOK && !cliOK
+
+        if !processMatch {
+            return result(s, command: command, input: .match, app: refOK, cli: cliExit,
+                          output: cmp.match ? .match : .differ, status: .appError,
+                          appOut: refRender, cliOut: cliText, diff: cmp.diff,
+                          note: "Process divergence: the DICOMKit package API \(refOK ? "succeeded" : "failed") but the dicom-echo CLI exited \(cliExit). The CLI and the package API must agree on the C-ECHO outcome.")
+        }
+
+        // Both agree on success/failure → the semantic record decides parity.
+        // A both-failed-identically row is recorded as .failureAgreement (parity
+        // held on the failure path, but no successful echo was compared) and is
+        // EXCLUDED from the score so an unreachable server can't inflate the rate.
+        let bothFailedIdentically = bothFailed && cmp.match
+        let status: BatchRowStatus = bothFailedIdentically ? .failureAgreement
+                                   : (cmp.match ? .pass : .outputDrift)
+        let note: String
+        switch status {
+        case .failureAgreement:
+            note = "The package API and the CLI both reported failure identically (e.g. server unreachable or AE not recognised) — parity held on the failure path, but no successful C-ECHO occurred, so this row is excluded from the score."
+        case .pass:
+            note = "The dicom-echo CLI matches the DICOMKit package API reference (success/failure, DIMSE status, remote AE; timing ignored)."
+        default:
+            note = "The dicom-echo CLI diverges from the DICOMKit package API reference (see diff; timing ignored)."
+        }
+        return result(s, command: command, input: .match, app: refOK, cli: cliExit,
+                      output: cmp.match ? .match : .differ,
+                      status: status,
+                      appOut: refRender, cliOut: cliText, diff: cmp.diff, note: note)
+        #else
+        return result(s, command: command, input: .match, app: refOK, cli: nil,
+                      output: .notApplicable, status: .cliError,
+                      note: "Live CLI comparison is only available on macOS.")
+        #endif
+    }
+
     // MARK: Output reduction (byte-identical to the golden harness)
 
     /// Reduces a produced artifact (or stdout) to a comparable string, matching
@@ -441,6 +696,22 @@ public final class CLIParityRunnerViewModel {
             for rel in rels {
                 let frame = CLIParityEngine.normalize(await dump(u.appendingPathComponent(rel)), fixtureBasenames: [])
                 combined += "=== \(rel) ===\n" + frame.joined(separator: "\n") + "\n"
+            }
+            return combined
+        case "image-multi":   // a DIRECTORY of exported images (dicom-export bulk)
+            var rels: [String] = []
+            if let en = fm.enumerator(atPath: u.path) {
+                while let p = en.nextObject() as? String {
+                    let lp = p.lowercased()
+                    if lp.hasSuffix(".png") || lp.hasSuffix(".jpg") || lp.hasSuffix(".jpeg")
+                        || lp.hasSuffix(".tif") || lp.hasSuffix(".tiff") { rels.append(p) }
+                }
+            }
+            rels.sort()
+            var combined = "Images: \(rels.count)\n"
+            for rel in rels {
+                let h = CLIParityEngine.imageRasterHash(fileURL: u.appendingPathComponent(rel)) ?? "<image-decode-failed>"
+                combined += "\(rel)\t\(h)\n"
             }
             return combined
         case "decoded-pixel-hash":

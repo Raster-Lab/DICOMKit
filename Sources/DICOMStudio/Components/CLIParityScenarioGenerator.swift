@@ -5,237 +5,142 @@
 // ║  ⚠️  TESTING-ONLY — REMOVE BEFORE PRODUCTION  ⚠️                            ║
 // ╚══════════════════════════════════════════════════════════════════════════╝
 //
-// In-app port of the offline `cli-parity-gen` scenario matrix (Sources/
-// cli-parity-gen/main.swift autoTools / autoValues / autoTemplates). Given a
-// tool id, it produces a BOUNDED set of test scenarios — one flag at a time,
-// enum-expanded, NOT Cartesian — derived from the SAME source of truth the app
-// and CLI use (ToolCatalogHelpers.parameterDefinitions + buildCommand), so the
-// app's argv and the CLI's argv cannot skew.
-//
-// Unlike the offline generator, the FIXTURE is the USER's selected file (a
-// `FIXTURE`/`FIXTURE2` placeholder resolved at run time), not a bundled fixture.
+// Builds the CLI Parity screen's scenarios DIRECTLY from the bundled goldens
+// (Resources/CLIParity/goldens.json — the full, validated corpus the Claude
+// parity test was generated from; falls back to goldens.synthetic.json on a
+// clean checkout). Each golden is an already-validated, VALID command (correct
+// subcommand + flag combination, captured from a successful CLI run), so this
+// reproduces the parity test's scenario set per tool instead of re-deriving a
+// lossy one-flag-at-a-time sweep.
 
 import Foundation
 
 public enum CLIParityScenarioGenerator {
 
-    // MARK: Per-tool config (ported from cli-parity-gen autoTools)
-
-    /// Encodes, per tool, which parameter ids carry the input file(s), an optional
-    /// subcommand parameter to iterate, always-set baseline params (so a one-flag
-    /// scenario runs on a working baseline), and the output param + artifact kind
-    /// for file producers.
-    struct AutoTool {
-        let id: String
-        let inputKeys: [String]
-        var subcommandParam: String? = nil
-        var baselineParams: [String: String] = [:]
-        var outputParam: String? = nil
-        var artifactKind: String = "dicom"
-        var artifactExt: String = "dcm"
-        var configLabel: String = ""
-        var onlySubcommands: [String]? = nil
-        /// True when the tool's input must be a DIRECTORY of DICOM files (not a
-        /// single file) — surfaced so a single-file input skips with a clear note.
-        var requiresDirectory: Bool = false
-        /// Human hint about the expected input shape, shown in the UI.
-        var inputHint: String = "DICOM file"
+    /// Maps a golden's bundled `fixtureFile` name to an input-shape kind (drives
+    /// corpus resolution + UI hint). Image/JSON/XML/dir format-specific kinds get
+    /// their own kind so the corpus never hands them a plain .dcm.
+    static func fixtureKind(forFixtureFile name: String) -> String {
+        switch name {
+        case "":                                  return "none"
+        case "CT.dcm", "syn-ct.dcm", "syn-ct2.dcm": return "ct"
+        case "syn-mf.dcm":                        return "mf"
+        case "syn-ct-rle.dcm":                    return "ctrle"
+        case "syn-studyset", "syn-studyset2":     return "studyset"
+        case "syn-series":                        return "series"
+        case "syn-archive":                       return "archive"
+        case "syn-doc.pdf":                       return "pdf"
+        case "syn-pdf.dcm":                       return "pdfdcm"
+        case "syn-pdfdcm-dir":                    return "pdfdcmdir"
+        case "syn-workflow.dcmscript":            return "script"
+        case "syn-ct.json":                       return "ctjson"
+        case "syn-ct.xml":                        return "ctxml"
+        case "syn-frame.png":                     return "framepng"
+        case "syn-multi.tiff":                    return "multitiff"
+        case "syn-png-dir":                       return "pngdir"
+        case "syn-rle-dir":                       return "rledir"
+        default:                                  return name.isEmpty ? "none" : "ct"
+        }
     }
 
-    static let autoTools: [AutoTool] = [
-        AutoTool(id: "dicom-diff", inputKeys: ["file1", "file2"], inputHint: "two DICOM files"),
-        AutoTool(id: "dicom-info", inputKeys: ["inputPath"]),
-        AutoTool(id: "dicom-dump", inputKeys: ["inputPath"]),
-        AutoTool(id: "dicom-validate", inputKeys: ["inputPath"]),
-        AutoTool(id: "dicom-compress", inputKeys: ["input"], subcommandParam: "operation"),
-        // STDOUT subcommands of dicom-study (summary/check/stats/compare). organize
-        // is EXCLUDED here — it's an artifact (--output) subcommand handled by the
-        // dedicated config below. Its positional id is "path" (organize's is "input").
-        AutoTool(id: "dicom-study", inputKeys: ["path"], subcommandParam: "operation",
-                 onlySubcommands: ["summary", "check", "stats", "compare"],
-                 requiresDirectory: true, inputHint: "study directory"),
-        // dicom-study organize: writes a Patient/Study/Series .dcm tree to --output.
-        // --copy (not move) preserves the input; pattern (descriptive/uid) is swept.
-        AutoTool(id: "dicom-study", inputKeys: ["input"], subcommandParam: "operation",
-                 baselineParams: ["copy": "true"],
-                 outputParam: "output", artifactKind: "dicom-tree", artifactExt: "dcm",
-                 onlySubcommands: ["organize"],
-                 requiresDirectory: true, inputHint: "study DIRECTORY of DICOM files"),
-        AutoTool(id: "dicom-archive", inputKeys: ["archive"], subcommandParam: "subcommand",
-                 requiresDirectory: true, inputHint: "archive directory"),
-        // --- Artifact producers (compare the produced FILE, not stdout) ---
-        AutoTool(id: "dicom-anon", inputKeys: ["inputPath"],
-                 baselineParams: ["profile": "basic"], outputParam: "output",
-                 artifactKind: "dicom", artifactExt: "dcm"),
-        AutoTool(id: "dicom-pixedit", inputKeys: ["inputPath"],
-                 outputParam: "output", artifactKind: "dicom", artifactExt: "dcm"),
-        AutoTool(id: "dicom-json", inputKeys: ["inputPath"],
-                 outputParam: "output", artifactKind: "text", artifactExt: "json"),
-        AutoTool(id: "dicom-xml", inputKeys: ["input"],
-                 outputParam: "output", artifactKind: "text", artifactExt: "xml"),
-        AutoTool(id: "dicom-export", inputKeys: ["inputPath"], subcommandParam: "operation",
-                 baselineParams: ["format": "png"], outputParam: "output",
-                 artifactKind: "image-raster-hash", artifactExt: "png"),
-        // DICOM-mode config: baseline --format dicom so every scenario writes a .dcm
-        // (reduced via dicom re-dump). The img- config below owns image output. (The
-        // offline gen uses "auto" + a post-hoc file sniff; in-app we split the two
-        // modes so each scenario's artifactKind is known up front.)
-        AutoTool(id: "dicom-convert", inputKeys: ["inputPath"],
-                 baselineParams: ["format": "dicom"], outputParam: "output",
-                 artifactKind: "dicom", artifactExt: "dcm"),
-        AutoTool(id: "dicom-convert", inputKeys: ["inputPath"],
-                 baselineParams: ["format": "png"], outputParam: "output",
-                 artifactKind: "image-raster-hash", artifactExt: "png", configLabel: "img-"),
-        AutoTool(id: "dicom-split", inputKeys: ["inputPath"],
-                 outputParam: "output", artifactKind: "dicom-multi", artifactExt: "dcm",
-                 inputHint: "multiframe DICOM file"),
-        AutoTool(id: "dicom-tags", inputKeys: ["inputPath"],
-                 outputParam: "output", artifactKind: "dicom", artifactExt: "dcm"),
-        AutoTool(id: "dicom-compress", inputKeys: ["input"], subcommandParam: "operation",
-                 baselineParams: ["codec": "rle"], outputParam: "output", artifactKind: "dicom",
-                 artifactExt: "dcm", configLabel: "art-", onlySubcommands: ["compress"]),
-    ]
+    /// Kinds the user corpus may supply (so the live test runs on real data).
+    /// Format-specific kinds (json/xml/png/tiff/dirs) always use the bundled fixture.
+    static let userOverridableKinds: Set<String> = ["ct", "ctpair"]
 
-    /// Tool ids this screen can sweep. (Each is also non-network and execute-supported.)
-    public static let supportedToolIDs: Set<String> = Set(autoTools.map { $0.id })
+    /// Kinds whose input is a DIRECTORY (used for the UI hint / skip messaging).
+    static let directoryKinds: Set<String> = ["studyset", "series", "archive", "pdfdcmdir", "pngdir", "rledir"]
 
-    /// Tools whose CLI uses a NONZERO exit code as a normal RESULT rather than an
-    /// error: `dicom-diff` exits 1 when the two files differ (the app mirrors this,
-    /// CLIWorkshopViewModel returns `hasDifferences ? 1 : 0`). For these, app+CLI
-    /// agreement on a nonzero exit is still compared, not flagged as a CLI error.
-    /// (dicom-anon / dicom-compress nonzero exits ARE genuine errors — excluded.)
-    public static let resultExitTools: Set<String> = ["dicom-diff"]
-
-    /// A human hint about the expected input for a tool (first matching config).
+    /// Human hint about the expected input for a tool.
     public static func inputHint(for toolId: String) -> String {
-        autoTools.first { $0.id == toolId }?.inputHint ?? "DICOM file"
-    }
-
-    // MARK: Representative values (ported from cli-parity-gen autoValues)
-
-    /// A representative value (or values, for enums) for a one-flag-at-a-time
-    /// scenario, or [] when there is no safe generic value (a wrong guess simply
-    /// makes the binary reject the combo → that row is SKIPPED, never a failure).
-    static func autoValues(_ def: CLIParameterDefinition) -> [String] {
-        if def.parameterType == .booleanToggle { return ["true"] }
-        if !def.allowedValues.isEmpty { return def.allowedValues }   // enum: cover each value
-        switch def.parameterType {
-        case .integerField, .slider: return [String(def.minValue ?? 1)]
-        case .textField, .arrayField:
-            let key = (def.id + " " + def.flag).lowercased()
-            if key.contains("tag") || key.contains("highlight") { return ["0008,0060"] }
-            if key.contains("replace")        { return ["0010,0010=ANONYMIZED"] }
-            if key.contains("keep") || key.contains("remove") { return ["0010,0010"] }
-            if key.contains("window-center")  { return ["40"] }
-            if key.contains("window-width")   { return ["400"] }
-            if key.contains("shift") || key.contains("days") { return ["30"] }
-            if key.contains("quality")        { return ["85"] }
-            if key.contains("scale")          { return ["0.5"] }
-            if key.contains("fps")            { return ["10"] }
-            if key.contains("frame")          { return ["0"] }
-            if key.contains("crop")           { return ["0,0,8,8"] }
-            if key.contains("url")            { return ["https://example.org/{uid}"] }
-            if key.contains("codec")          { return ["rle"] }
-            if key.contains("syntax")         { return ["explicit-le"] }
-            if key.contains("exif")           { return ["PatientName"] }
-            if key.contains("variable")       { return ["VAR=value"] }
-            if key.contains("title")          { return ["Parity Doc"] }
-            return []
-        default: return []
+        switch toolId {
+        case "dicom-split":             return "multiframe DICOM file"
+        case "dicom-diff":              return "two DICOM files"
+        case "dicom-study", "dicom-merge": return "study directory"
+        case "dicom-archive":           return "archive directory"
+        case "dicom-pdf":               return "PDF / encapsulated DICOM"
+        case "dicom-script":            return "no input / .dcmscript"
+        case "dicom-uid":               return "UID / DICOM file"
+        case "dicom-image":             return "image file(s)"
+        default:                        return "DICOM file"
         }
     }
 
-    // MARK: Scenario generation
+    // MARK: Goldens → scenarios
 
-    /// Generates the bounded scenario sweep for one tool: a baseline per
-    /// subcommand plus one scenario per uncovered, varied flag (enum-expanded).
-    public static func scenarios(for toolId: String) -> [BatchScenario] {
-        var out: [BatchScenario] = []
-        for at in autoTools where at.id == toolId {
-            let defs = ToolCatalogHelpers.parameterDefinitions(for: at.id)
-            let needsSecond = at.inputKeys.count >= 2
-            let needsInput = !at.inputKeys.isEmpty
-            let artifactName = at.outputParam != nil ? "out.\(at.artifactExt)" : nil
-            let artifactKind = at.outputParam != nil ? at.artifactKind : "stdout"
+    /// Maps one validated golden scenario to a runnable BatchScenario.
+    static func batchScenario(from g: GoldenScenario) -> BatchScenario {
+        var kind = fixtureKind(forFixtureFile: g.fixtureFile)
+        // Two-file scenarios (diff, tags copy-from, study compare) → a pair kind so
+        // the corpus can supply both files (else they'd fall back to bundled).
+        if g.fixtureFile2 != nil {
+            if kind == "ct" { kind = "ctpair" }
+            else if kind == "studyset" { kind = "studypair" }
+        }
+        // JSON null → stdout (NOT "dicom"): nil artifactKind always pairs with a
+        // nil artifactName, i.e. a stdout scenario.
+        var artifactKind = g.artifactKind ?? "stdout"
+        var artifactName = g.artifactName
+        // The bundled fixture name IS the fixtureFile string (resolves via fixtureURL).
+        var fixtureName: String? = g.fixtureFile.isEmpty ? nil : g.fixtureFile
+        // A nonzero recorded exit is a RESULT (diff differs, validate fails, …),
+        // so app+CLI agreement on it is compared, not flagged as an error.
+        var resultExitOK = g.exitCode != 0
 
-            // Subcommands to iterate (flat tool → [nil]).
-            let subcommands: [String?]
-            if let scParam = at.subcommandParam,
-               let scDef = defs.first(where: { $0.id == scParam }), !scDef.allowedValues.isEmpty {
-                let allowed = at.onlySubcommands.map { only in scDef.allowedValues.filter { only.contains($0) } }
-                    ?? scDef.allowedValues
-                subcommands = allowed.map { Optional($0) }
+        // `dicom-export bulk` reads a DIRECTORY of DICOM files and writes a DIRECTORY
+        // of images. The goldens captured it on a SINGLE file (which bulk rejects →
+        // exit 1), so steer it to a study directory and compare the produced image
+        // set. The user's corpus (a folder of DICOMs) drives it when provided.
+        if g.toolId == "dicom-export", g.cliArgs.first == "bulk" {
+            kind = "studyset"            // directory input (corpus study dir / bundled syn-studyset)
+            fixtureName = "syn-studyset"
+            artifactName = "out"         // OUTPUT is a directory
+            artifactKind = "image-multi" // compare the produced directory of images
+            resultExitOK = false         // bulk on a directory succeeds (exit 0)
+        }
+
+        let usesFixture  = !g.fixtureFile.isEmpty || g.cliArgs.contains("FIXTURE") || g.studioParams.values.contains("FIXTURE")
+        let usesFixture2 = (g.fixtureFile2 != nil) || g.cliArgs.contains("FIXTURE2") || g.studioParams.values.contains("FIXTURE2")
+        return BatchScenario(
+            scenarioId: g.scenarioId, toolId: g.toolId, label: g.label,
+            cliArgs: g.cliArgs, studioParams: g.studioParams,
+            needsInputFile: usesFixture, needsSecondFile: usesFixture2,
+            artifactName: artifactName,
+            artifactKind: artifactKind,
+            needsDirectory: directoryKinds.contains(kind),
+            fixtureName: fixtureName,
+            fixture2Name: g.fixtureFile2,
+            userFileAllowed: userOverridableKinds.contains(kind),
+            fixtureKind: kind,
+            resultExitOK: resultExitOK,
+            inputHint: inputHint(for: g.toolId))
+    }
+
+    /// Builds the scenario list for the selected tools from the loaded goldens.
+    /// When `dedupByCliArgs` is true, collapses the same command run on multiple
+    /// fixtures (e.g. CT.dcm + syn-ct.dcm) to ONE row, preferring the PHI-free
+    /// synthetic fixture — yielding the unique validated command set.
+    public static func scenarios(fromGoldens goldens: [GoldenScenario],
+                                 toolIDs: Set<String>,
+                                 dedupByCliArgs: Bool) -> [BatchScenario] {
+        let mapped = goldens.filter { toolIDs.contains($0.toolId) }.map(batchScenario(from:))
+        guard dedupByCliArgs else { return mapped }
+
+        var best: [String: BatchScenario] = [:]
+        var order: [String] = []
+        for s in mapped {
+            // Include fixtureKind so DIFFERENT input shapes with identical args (e.g.
+            // dicom-info on syn-ct vs syn-mf) both survive; only same-shape fixture
+            // duplicates (CT.dcm + syn-ct.dcm, both "ct") collapse.
+            let key = s.toolId + "\u{1}" + s.fixtureKind + "\u{1}" + s.cliArgs.joined(separator: "\u{1}")
+            if let existing = best[key] {
+                let existingSyn = existing.fixtureName?.hasPrefix("syn") ?? true
+                let newSyn = s.fixtureName?.hasPrefix("syn") ?? true
+                if newSyn && !existingSyn { best[key] = s }   // prefer synthetic
             } else {
-                subcommands = [nil]
-            }
-
-            // Shared param/arg seed for a scenario: inputs + subcommand + baseline + OUTPUT.
-            func seed(subcommand sc: String?) -> (pv: [CLIParameterValue], sp: [String: String]) {
-                var pv: [CLIParameterValue] = at.inputKeys.enumerated().map {
-                    CLIParameterValue(parameterID: $1, stringValue: $0 == 0 ? "FIXTURE" : "FIXTURE2")
-                }
-                var sp: [String: String] = [:]
-                for (i, key) in at.inputKeys.enumerated() { sp[key] = i == 0 ? "FIXTURE" : "FIXTURE2" }
-                if let scParam = at.subcommandParam, let sc {
-                    pv.append(CLIParameterValue(parameterID: scParam, stringValue: sc)); sp[scParam] = sc
-                }
-                for (k, v) in at.baselineParams {
-                    pv.append(CLIParameterValue(parameterID: k, stringValue: v)); sp[k] = v
-                }
-                if let op = at.outputParam {
-                    pv.append(CLIParameterValue(parameterID: op, stringValue: "OUTPUT")); sp[op] = "OUTPUT"
-                }
-                return (pv, sp)
-            }
-
-            func makeScenario(label: String, pv: [CLIParameterValue], sp: [String: String]) -> BatchScenario? {
-                let cmd = CommandBuilderHelpers.buildCommand(toolName: at.id, parameterValues: pv,
-                                                             parameterDefinitions: defs)
-                var toks = cmd.split(separator: " ").map(String.init)
-                if !toks.isEmpty { toks.removeFirst() }   // drop the tool name
-                return BatchScenario(
-                    scenarioId: "\(at.id)::\(label)", toolId: at.id, label: label,
-                    cliArgs: toks, studioParams: sp,
-                    needsInputFile: needsInput, needsSecondFile: needsSecond,
-                    artifactName: artifactName, artifactKind: artifactKind,
-                    needsDirectory: at.requiresDirectory, inputHint: at.inputHint)
-            }
-
-            for sc in subcommands {
-                let scPrefix = sc.map { "\($0)-" } ?? ""
-                let (basePV, baseSP) = seed(subcommand: sc)
-
-                // 1) Baseline scenario (inputs + subcommand + baseline, no extra flag).
-                if let s = makeScenario(label: "auto-\(at.configLabel)\(scPrefix)baseline",
-                                        pv: basePV, sp: baseSP) {
-                    out.append(s)
-                }
-
-                // 2) One flag at a time, enum-expanded.
-                for def in defs {
-                    if def.isInternal || def.flag.isEmpty { continue }            // skip internal + positionals
-                    if def.parameterType == .subcommand || def.id == at.subcommandParam { continue }
-                    if def.parameterType == .filePath || def.parameterType == .outputPath { continue }
-                    if def.id == at.outputParam || at.baselineParams[def.id] != nil { continue }
-                    // Artifact producers: skip "no-write" preview flags (comparing a produced file is moot).
-                    if at.outputParam != nil &&
-                        (def.id.lowercased().contains("dry") || def.flag.contains("dry-run")) { continue }
-
-                    for value in autoValues(def) {
-                        var pv = basePV
-                        pv.append(CLIParameterValue(parameterID: def.id, stringValue: value))
-                        var sp = baseSP
-                        sp[def.id] = value
-                        let suffix = def.allowedValues.count > 1 ? "-\(value)" : ""
-                        let label = "auto-\(at.configLabel)\(scPrefix)\(def.id)\(suffix)"
-                        guard let s = makeScenario(label: label, pv: pv, sp: sp) else { continue }
-                        // Self-check: the flag must actually be emitted (else not visible under `sc`).
-                        guard s.cliArgs.contains(def.flag) || s.cliArgs.contains("--\(value)") else { continue }
-                        out.append(s)
-                    }
-                }
+                best[key] = s
+                order.append(key)
             }
         }
-        return out
+        return order.compactMap { best[$0] }
     }
 }
