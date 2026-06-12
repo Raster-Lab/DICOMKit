@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/J2KSwift.git",
       "state" : {
-        "revision" : "22100c180eaf40064559484490cc3962223bbe40",
-        "version" : "10.24.2"
+        "revision" : "70021ad5f41da6b07f52853e93e9479fcc38b299",
+        "version" : "10.25.0"
       }
     },
     {
@@ -24,8 +24,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/JLISwift.git",
       "state" : {
-        "revision" : "f50ae2247b588e52a17323880595782765235aa3",
-        "version" : "0.4.0"
+        "revision" : "9f1c6eb609fe6f26498db82b13df6b305630a374",
+        "version" : "0.5.0"
       }
     },
     {
@@ -33,8 +33,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/JLSwift.git",
       "state" : {
-        "revision" : "bcf00ebbe3ded9d0cdd376fe18101be42a60d85a",
-        "version" : "0.8.0"
+        "revision" : "53d902fec538e5c12f4ed9864c026be5da66b5dd",
+        "version" : "0.9.0"
       }
     },
     {
@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-argument-parser.git",
       "state" : {
-        "revision" : "ca37474853a4b5f59a22c74bfdd449b1f6bc4cc2",
-        "version" : "1.8.1"
+        "revision" : "6a52f3251125d74daf04fcbd5e6f08a75d074382",
+        "version" : "1.8.2"
       }
     }
   ],
