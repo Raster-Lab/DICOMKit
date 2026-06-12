@@ -16,11 +16,15 @@ struct SendExecutor {
     let verbose: Bool
     let preferredTransferSyntaxUID: String?
     
-    /// Verifies connection using C-ECHO
+    /// Verifies connection using a real C-ECHO before sending (matches the in-app
+    /// dicom-send, which calls the same DICOMVerificationService.echo).
     func verifyConnection() async throws {
-        // For now, we'll skip C-ECHO verification as it requires more complex setup
-        // In production, this would send a C-ECHO request to verify connectivity
-        // The actual file send will verify connectivity anyway
+        let result = try await DICOMVerificationService.echo(
+            host: host, port: port, callingAE: callingAE, calledAE: calledAE, timeout: timeout)
+        guard result.success else {
+            throw DICOMNetworkError.connectionFailed(
+                "C-ECHO verification returned a non-success status: \(result.status)")
+        }
     }
     
     /// Sends multiple DICOM files to the PACS server

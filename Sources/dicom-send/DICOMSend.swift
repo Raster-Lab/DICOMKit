@@ -99,8 +99,11 @@ struct DICOMSend: AsyncParsableCommand {
             fprintln("")
         }
         
-        // Gather files to send
-        let filesToSend = try gatherFiles(from: paths, recursive: recursive)
+        // Gather files to send. Uses the SHARED DICOMSendFileGatherer (DICOMNetwork)
+        // so the CLI and the CLI-parity reference enumerate a directory identically.
+        let filesToSend = DICOMSendFileGatherer.gather(
+            paths: paths, recursive: recursive,
+            warn: verbose ? { fprintln("Warning: \($0)") } : nil)
         
         if filesToSend.isEmpty {
             throw ValidationError("No DICOM files found to send")
@@ -175,146 +178,6 @@ struct DICOMSend: AsyncParsableCommand {
         return (resolvedHost, resolvedPort)
     }
     
-    func gatherFiles(from paths: [String], recursive: Bool) throws -> [String] {
-        var files: [String] = []
-        let fileManager = FileManager.default
-        
-        for path in paths {
-            // Handle glob patterns
-            let expandedPaths = expandGlobPattern(path)
-            
-            for expandedPath in expandedPaths {
-                var isDirectory: ObjCBool = false
-                
-                guard fileManager.fileExists(atPath: expandedPath, isDirectory: &isDirectory) else {
-                    if verbose {
-                        fprintln("Warning: Path not found: \(expandedPath)")
-                    }
-                    continue
-                }
-                
-                if isDirectory.boolValue {
-                    if recursive {
-                        // Recursively find DICOM files
-                        let foundFiles = try scanDirectory(expandedPath, recursive: true)
-                        files.append(contentsOf: foundFiles)
-                    } else {
-                        // Only direct children
-                        let foundFiles = try scanDirectory(expandedPath, recursive: false)
-                        files.append(contentsOf: foundFiles)
-                    }
-                } else {
-                    // Single file
-                    files.append(expandedPath)
-                }
-            }
-        }
-        
-        return files
-    }
-    
-    func expandGlobPattern(_ pattern: String) -> [String] {
-        // Simple glob expansion using FileManager
-        let fileManager = FileManager.default
-        
-        // If no wildcards, return as-is
-        if !pattern.contains("*") && !pattern.contains("?") {
-            return [pattern]
-        }
-        
-        // Split into directory and pattern
-        let url = URL(fileURLWithPath: pattern)
-        let directory = url.deletingLastPathComponent().path
-        let filePattern = url.lastPathComponent
-        
-        guard let enumerator = fileManager.enumerator(atPath: directory) else {
-            return []
-        }
-        
-        var matches: [String] = []
-        for case let item as String in enumerator {
-            if matchesPattern(item, pattern: filePattern) {
-                matches.append((directory as NSString).appendingPathComponent(item))
-            }
-        }
-        
-        return matches
-    }
-    
-    func matchesPattern(_ string: String, pattern: String) -> Bool {
-        // Simple pattern matching (* matches any chars, ? matches single char)
-        let regexPattern = pattern
-            .replacingOccurrences(of: ".", with: "\\.")
-            .replacingOccurrences(of: "*", with: ".*")
-            .replacingOccurrences(of: "?", with: ".")
-        
-        guard let regex = try? NSRegularExpression(pattern: "^" + regexPattern + "$") else {
-            return false
-        }
-        
-        let range = NSRange(string.startIndex..., in: string)
-        return regex.firstMatch(in: string, range: range) != nil
-    }
-    
-    func scanDirectory(_ path: String, recursive: Bool) throws -> [String] {
-        let fileManager = FileManager.default
-        var files: [String] = []
-        
-        if recursive {
-            // Use enumerator for recursive scan
-            guard let enumerator = fileManager.enumerator(atPath: path) else {
-                throw ValidationError("Cannot access directory: \(path)")
-            }
-            
-            for case let item as String in enumerator {
-                let fullPath = (path as NSString).appendingPathComponent(item)
-                var isDirectory: ObjCBool = false
-                
-                if fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory),
-                   !isDirectory.boolValue,
-                   isDICOMFile(fullPath) {
-                    files.append(fullPath)
-                }
-            }
-        } else {
-            // Only direct children
-            let contents = try fileManager.contentsOfDirectory(atPath: path)
-            for item in contents {
-                let fullPath = (path as NSString).appendingPathComponent(item)
-                var isDirectory: ObjCBool = false
-                
-                if fileManager.fileExists(atPath: fullPath, isDirectory: &isDirectory),
-                   !isDirectory.boolValue,
-                   isDICOMFile(fullPath) {
-                    files.append(fullPath)
-                }
-            }
-        }
-        
-        return files
-    }
-    
-    func isDICOMFile(_ path: String) -> Bool {
-        // Check file extension
-        let ext = (path as NSString).pathExtension.lowercased()
-        if ["dcm", "dicom", "dic"].contains(ext) {
-            return true
-        }
-        
-        // Check for DICM magic bytes
-        guard let fileHandle = FileHandle(forReadingAtPath: path),
-              let data = try? fileHandle.read(upToCount: 132) else {
-            return false
-        }
-        
-        // DICOM files have "DICM" at byte 128
-        if data.count >= 132 {
-            let magic = data[128..<132]
-            return magic == Data([0x44, 0x49, 0x43, 0x4D]) // "DICM"
-        }
-        
-        return false
-    }
 }
 
 enum PriorityOption: String, ExpressibleByArgument {

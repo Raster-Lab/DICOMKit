@@ -48,12 +48,30 @@ public struct CLIWorkshopView: View {
                 // Keep the combined minimum modest so the panel doesn't force itself
                 // wider than the window — otherwise the top tab rows overflow and the
                 // rightmost tabs get clipped with no way to scroll to them.
-                HSplitView {
-                    upperPanel
-                        .frame(minWidth: 240, idealWidth: 380, maxWidth: 620)
-                    lowerPanel
-                        .frame(minWidth: 260, idealWidth: 520, maxWidth: .infinity)
+                //
+                // The split is wrapped in a GeometryReader and pinned to an EXACT
+                // height (`geo.size.height`) — NOT `maxHeight: .infinity`. HSplitView
+                // is backed by NSSplitView, which sizes to the fitting height of its
+                // tallest pane. When the "Compare CLI" result (a tall VStack of
+                // ScrollViews) appears in the right pane, NSSplitView re-measures the
+                // changed subtree with an UNBOUNDED height proposal — under which
+                // `maxHeight: .infinity` resolves to the full content height, not the
+                // window height. The split then grows past the window and the left
+                // pane's pinned Run button is pushed off-screen until a tab switch
+                // forces a full rebuild (hence the recurring "Run disappears after
+                // Compare" bug). A definite height proposal removes the ambiguity: the
+                // panes are bounded, their inner ScrollViews scroll, and the split can
+                // never exceed the window — so Run stays pinned and visible.
+                GeometryReader { geo in
+                    HSplitView {
+                        upperPanel
+                            .frame(minWidth: 240, idealWidth: 380, maxWidth: 620, maxHeight: .infinity)
+                        lowerPanel
+                            .frame(minWidth: 260, idealWidth: 520, maxWidth: .infinity, maxHeight: .infinity)
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .overlay {
@@ -520,6 +538,11 @@ public struct CLIWorkshopView: View {
                 compareColumn(title: "Terminal (\(result.toolName) CLI)", systemImage: "terminal", text: result.terminalOutput, accent: .orange)
             }
         }
+        // Fill the available console height and scroll internally, like the empty /
+        // plain-output branches. Without this the side-by-side view grows the right
+        // panel past the window; HSplitView then matches its tallest pane and the
+        // left panel's pinned Run button gets pushed off-screen.
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private func compareColumn(title: String, systemImage: String, text: String, accent: Color) -> some View {
@@ -532,16 +555,24 @@ public struct CLIWorkshopView: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(accent)
-            ScrollView([.vertical, .horizontal]) {
-                Text(text.isEmpty ? "(no output)" : text)
-                    .font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(10)
+            // A single-axis VERTICAL ScrollView clamps its height to the offered
+            // space and scrolls (like the plain console). A *bidirectional*
+            // ScrollView instead sizes to its content, which inside HSplitView grows
+            // the pane past the window and pushes the bottom (the Run button) off —
+            // so nest a horizontal scroll for wide CLI lines rather than using both
+            // axes on one ScrollView.
+            ScrollView(.vertical) {
+                ScrollView(.horizontal) {
+                    Text(text.isEmpty ? "(no output)" : text)
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .padding(10)
+                }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color.black.opacity(0.05))
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Tool Purpose Header
