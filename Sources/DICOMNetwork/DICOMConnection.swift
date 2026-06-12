@@ -195,11 +195,17 @@ public final class DICOMConnection: @unchecked Sendable {
                     self.state = .disconnected
                     resumeOnce.resume(with: .failure(DICOMNetworkError.connectionClosed))
                     
-                case .waiting(let error):
-                    // Connection is waiting, possibly due to network unavailability
-                    self.state = .failed(error.localizedDescription)
-                    resumeOnce.resume(with: .failure(DICOMNetworkError.connectionFailed("Network unavailable: \(error.localizedDescription)")))
-                    
+                case .waiting:
+                    // `.waiting` is TRANSIENT in Network.framework — NOT a terminal
+                    // failure. The connection can't be established *yet*: on first run
+                    // this is the macOS Local Network permission prompt (or interface/
+                    // route warm-up, or a momentarily-unreachable host). NWConnection
+                    // keeps retrying and transitions to `.ready` once conditions are met.
+                    // Resuming with a failure here is exactly what made the FIRST
+                    // dicom-echo fail while the retry succeeded — so stay in `.connecting`
+                    // and let the timeout below bound a host that never becomes ready.
+                    self.state = .connecting
+
                 default:
                     break
                 }

@@ -54,6 +54,57 @@ public final class CLIParityRunnerViewModel {
     public var networkCalledAET: String = "TEAMPACS"
     public var networkTimeout: String = "30"
 
+    /// A named PACS the user can switch between; selecting one loads its
+    /// host/port/called-AE into the (still-editable) endpoint fields.
+    public struct PACSServerPreset: Identifiable, Hashable, Sendable {
+        public let id: String          // also the display name
+        public let host: String
+        public let port: String
+        public let calledAET: String
+    }
+
+    public static let serverPresets: [PACSServerPreset] = [
+        .init(id: "DCM4CHEE2", host: "172.17.1.200", port: "11112", calledAET: "TEAMPACS"),
+        .init(id: "DCM4CHEE5", host: "172.17.1.111", port: "11112", calledAET: "DCM4CHEE"),
+    ]
+
+    /// The currently-selected server preset id (DCM4CHEE2 by default → TEAMPACS).
+    public var selectedServerID: String = "DCM4CHEE2"
+
+    /// Loads a preset's host/port/called-AE into the endpoint fields. The calling AE
+    /// (local SCU identity) and timeout are left as-is.
+    public func selectServer(_ id: String) {
+        guard !isRunning, let p = Self.serverPresets.first(where: { $0.id == id }) else { return }
+        selectedServerID = id
+        networkHost = p.host
+        networkPort = p.port
+        networkCalledAET = p.calledAET
+    }
+
+    // MARK: Query keys (dicom-query) — read-only C-FIND inputs
+
+    /// The user-supplied C-FIND query keys for dicom-query. Enter values that exist
+    /// on the PACS so the query returns real matches; blank fields are skipped. The
+    /// matrix sweeps each provided filter individually plus the query levels.
+    public var queryPatientName: String = ""
+    public var queryPatientID: String = ""
+    public var queryStudyDate: String = ""
+    public var queryModality: String = ""
+    public var queryAccession: String = ""
+    public var queryStudyDescription: String = ""
+    public var queryStudyUID: String = ""
+    public var querySeriesUID: String = ""
+
+    private func currentQueryFilters() -> QueryFilters {
+        func t(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
+        var f = QueryFilters()
+        f.patientName = t(queryPatientName); f.patientID = t(queryPatientID)
+        f.studyDate = t(queryStudyDate); f.modality = t(queryModality)
+        f.accession = t(queryAccession); f.studyDescription = t(queryStudyDescription)
+        f.studyUID = t(queryStudyUID); f.seriesUID = t(querySeriesUID)
+        return f
+    }
+
     /// Tool ids for which network parity is implemented.
     private static let networkParitySupported = CLIParityNetworkScenarios.supportedToolIDs
 
@@ -65,6 +116,14 @@ public final class CLIParityRunnerViewModel {
     public private(set) var corpus: CorpusIndex? = nil
     public var isScanning: Bool = false
     public var scanMessage: String = ""
+
+    /// Optional user-selected DICOM directory for `dicom-send` (network mode). When
+    /// set, both the package-API reference and the CLI send its DICOM files
+    /// (recursively); when nil, both fall back to the bundled synthetic CT.
+    public private(set) var sendDirectory: String? = nil
+    private var sendDirURL: URL? = nil
+    /// DICOM-file count of the selected send directory (for the picker's status line).
+    public private(set) var sendDirFileCount: Int = 0
 
     // MARK: Run state
 
@@ -156,6 +215,8 @@ public final class CLIParityRunnerViewModel {
     }
 
     public func inputHint(for toolId: String) -> String {
+        if toolId == "dicom-query" { return "PACS endpoint + query keys" }
+        if toolId == "dicom-send" { return "PACS endpoint (sends a synthetic CT)" }
         if Self.networkParitySupported.contains(toolId) { return "PACS endpoint" }
         return CLIParityScenarioGenerator.inputHint(for: toolId)
     }
@@ -185,6 +246,25 @@ public final class CLIParityRunnerViewModel {
 
     public func clearInputDirectory() {
         inputDirURL = nil; inputDirectory = nil; corpus = nil; scanMessage = ""
+    }
+
+    /// Selects the DICOM directory `dicom-send` should transmit (network mode). Counts
+    /// its DICOM files using the SAME shared gatherer the CLI uses, so the status line
+    /// reflects exactly what will be sent. An empty/non-DICOM directory is allowed —
+    /// the send scenario then skips with guidance rather than producing a false result.
+    public func setSendDirectory(url: URL) async {
+        sendDirURL = url
+        sendDirectory = url.path
+        let scoped = url.startAccessingSecurityScopedResource()
+        let count = await Task.detached {
+            CLIParityNetworkReference.gatherSendFiles(path: url.path, recursive: true).count
+        }.value
+        if scoped { url.stopAccessingSecurityScopedResource() }
+        sendDirFileCount = count
+    }
+
+    public func clearSendDirectory() {
+        sendDirURL = nil; sendDirectory = nil; sendDirFileCount = 0
     }
 
     // MARK: Run
@@ -245,10 +325,11 @@ public final class CLIParityRunnerViewModel {
         return
         #endif
 
-        // NETWORK mode: sweep the dicom-echo flag matrix against the live PACS
-        // and compare app vs CLI semantically (timing ignored).
+        // NETWORK mode: sweep the selected network tools against the live PACS and
+        // compare the DICOMKit package-API reference vs the CLI semantically.
         if mode == .network {
-            let scenarios = CLIParityNetworkScenarios.scenarios(toolIDs: Set(toolIds))
+            let scenarios = CLIParityNetworkScenarios.scenarios(
+                toolIDs: Set(toolIds), queryFilters: currentQueryFilters())
             totalScenarios = scenarios.count
             guard !scenarios.isEmpty else { errorMessage = "No network scenarios for the selected tools."; return }
             var sum = BatchParitySummary()
@@ -570,6 +651,10 @@ public final class CLIParityRunnerViewModel {
         case CLIParityNetworkScenarios.aetToken:       return networkCallingAET.trimmingCharacters(in: .whitespaces)
         case CLIParityNetworkScenarios.calledAETToken: return networkCalledAET.trimmingCharacters(in: .whitespaces)
         case CLIParityNetworkScenarios.timeoutToken:   return networkTimeout.trimmingCharacters(in: .whitespaces)
+        case CLIParityNetworkScenarios.sendFileToken:
+            // User-picked DICOM directory if set, else the bundled synthetic CT.
+            if let dir = sendDirURL?.path, !dir.isEmpty { return dir }
+            return CLIParityEngine.fixtureURL(named: "syn-ct.dcm")?.path ?? ""
         default:                                       return raw
         }
     }
@@ -583,10 +668,35 @@ public final class CLIParityRunnerViewModel {
     }
     #endif
 
+    /// Runs an async network op against a wall-clock deadline, returning `fallback`
+    /// if it doesn't finish in time. A hung DICOM receive isn't cancellable (it's
+    /// blocked in a continuation), so the loser task is abandoned — acceptable for a
+    /// testing harness, and far better than freezing the whole run. The deadline is
+    /// set longer than the op's own bounded connect timeouts, so it only fires on a
+    /// genuine hang (a PACS that accepts TCP but never answers a DIMSE request).
+    private func raceDeadline<T: Sendable>(_ seconds: TimeInterval, fallback: T,
+                                           _ op: @escaping @Sendable () async -> T) async -> T {
+        await withTaskGroup(of: T?.self) { group in
+            group.addTask { await op() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(max(1, seconds) * 1_000_000_000))
+                return nil   // timeout sentinel
+            }
+            // First finished wins: the op yields .some(value); the timer yields nil.
+            let result = await group.next()   // T?? — outer nil only if the group were empty
+            group.cancelAll()
+            if let inner = result, let value = inner { return value }
+            return fallback
+        }
+    }
+
     /// Runs one network scenario: the app (in-process) and the real CLI both
     /// echo the SAME live PACS, and their outcomes are compared semantically
     /// (success/failure counts, DIMSE status, remote AE) with timing ignored.
     private func runNetworkScenario(_ s: BatchScenario) async -> BatchScenarioResult {
+        let command = ([s.toolId] + s.cliArgs.map { resolveNet($0) }).joined(separator: " ")
+
+        #if os(macOS)
         let host = networkHost.trimmingCharacters(in: .whitespaces)
         let portStr = networkPort.trimmingCharacters(in: .whitespaces)
         let port = UInt16(portStr) ?? 11112
@@ -594,41 +704,148 @@ public final class CLIParityRunnerViewModel {
         let calledAET = networkCalledAET.trimmingCharacters(in: .whitespaces)
         pendingInputUsed = "\(callingAET) → \(calledAET) @ \(host):\(portStr)"
 
-        // The flags for this scenario come from the INTERNAL flag-wise matrix — the
-        // screen exposes only the PACS credentials, never the echo flags.
         let sp = s.studioParams
-        let count = max(1, Int(sp["count"] ?? "") ?? 1)
-        let verbose = sp["verbose"] == "true"
-        let diagnose = sp["diagnose"] == "true"
-        let timeout = TimeInterval(resolveNet(sp["timeout"] ?? "")) ?? 30
+        let scTimeout = TimeInterval(resolveNet(sp["timeout"] ?? "")) ?? 30
 
-        // ---- REFERENCE side: drive the DICOMKit package API (DICOMNetwork) directly,
-        //      exactly as the CLI does internally. The CLI Workshop's in-app echo code
-        //      is NOT involved. ----
-        let ref = await CLIParityNetworkReference.echo(
-            host: host, port: port, callingAET: callingAET, calledAET: calledAET,
-            timeout: timeout, count: count, verbose: verbose, diagnose: diagnose)
-        let refOK = ref.overallOK
-        let refRender = CLIParityNetworkReference.render(ref)
+        // Series/instance query levels need the scoping UID(s). The scenarios are
+        // ALWAYS generated so they're visible; skip here (with guidance) when the
+        // required UID wasn't supplied, rather than running a meaningless broad query.
+        if s.toolId == "dicom-query" {
+            let level = sp["level"] ?? "study"
+            let hasStudy = !(sp["study-uid"] ?? "").isEmpty
+            let hasSeries = !(sp["series-uid"] ?? "").isEmpty
+            if level == "series" && !hasStudy {
+                return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                              output: .notApplicable, status: .skipped,
+                              note: "Enter a Study UID in the Query Keys to test the series level.")
+            }
+            if level == "instance" && (!hasStudy || !hasSeries) {
+                return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                              output: .notApplicable, status: .skipped,
+                              note: "Enter a Study UID and a Series UID in the Query Keys to test the instance level.")
+            }
+        }
 
-        // ---- CLI side: the real dicom-echo binary ----
+        // ---- REFERENCE side: drive the DICOMKit package API directly (never the CLI
+        //      Workshop's in-app code). Tool-specific record + render; the CLI parse +
+        //      verdict below are shared. ----
+        let refOK: Bool
+        let refRender: String
+        // Tool-specific CLI parse + compare, deferred until the CLI has run.
+        let compareCLI: (_ combined: String, _ stdout: String, _ exitOK: Bool) -> (diff: [OutputDiffLine], match: Bool)
+        // Worst-case count of bounded connect-timeouts this scenario can incur, used to
+        // size the hang backstop (below) for both the reference and the CLI subprocess.
+        var netUnits = 1
+
+        switch s.toolId {
+        case "dicom-query":
+            let level = sp["level"] ?? "study"
+            var f = QueryFilters()
+            f.patientName = sp["patient-name"] ?? ""
+            f.patientID = sp["patient-id"] ?? ""
+            f.studyDate = sp["study-date"] ?? ""
+            f.modality = sp["modality"] ?? ""
+            f.accession = sp["accession"] ?? ""
+            f.studyDescription = sp["study-description"] ?? ""
+            f.studyUID = sp["study-uid"] ?? ""
+            f.seriesUID = sp["series-uid"] ?? ""
+            netUnits = 2
+            let q = await raceDeadline(
+                scTimeout * Double(netUnits) + 60,
+                fallback: CLIParityQueryComparator.semantics(level: level, success: false, objects: [])) { [f] in
+                await CLIParityNetworkReference.query(
+                    host: host, port: port, callingAET: callingAET, calledAET: calledAET,
+                    timeout: scTimeout, level: level, filters: f)
+            }
+            refOK = q.overallOK
+            refRender = CLIParityNetworkReference.renderQuery(q)
+            // dicom-query prints results to STDOUT. JSON carries full attributes →
+            // full result-set parity; csv/table/compact drop/truncate fields → result
+            // COUNT parity.
+            let format = sp["format"] ?? "json"
+            compareCLI = { _, stdout, exitOK in
+                if format == "json" {
+                    return CLIParityQueryComparator.compare(
+                        reference: q,
+                        cli: CLIParityQueryComparator.parse(stdout, level: q.level, success: exitOK))
+                }
+                let cnt = CLIParityQueryComparator.count(in: stdout, format: format)
+                return CLIParityQueryComparator.compareCount(reference: q, cliCount: cnt, format: format)
+            }
+        case "dicom-send":
+            let dryRun = sp["dry-run"] == "true"
+            let verify = sp["verify"] == "true"
+            let priorityName = sp["priority"] ?? "medium"
+            let tsName = sp["transfer-syntax"] ?? ""
+            // Expand the send path (picked directory, or the bundled CT) into the
+            // SAME file list the CLI will transmit — identical enumeration via the
+            // shared gatherer, so dry-run "Found N" and the send counts line up.
+            let sendPath = resolveNet(CLIParityNetworkScenarios.sendFileToken)
+            let recursive = s.cliArgs.contains("--recursive")
+            let files = CLIParityNetworkReference.gatherSendFiles(path: sendPath, recursive: recursive)
+            if files.isEmpty {
+                return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                              output: .notApplicable, status: .skipped,
+                              note: "No DICOM files found in the selected send directory — pick a directory that contains DICOM files, or clear it to send the bundled synthetic CT.")
+            }
+            netUnits = max(1, files.count) + (verify ? 1 : 0)
+            let snd = await raceDeadline(
+                scTimeout * Double(netUnits) + 60,
+                fallback: SendSemantics(dryRun: dryRun, sent: files.count,
+                                        succeeded: 0, failed: dryRun ? 0 : files.count)) {
+                await CLIParityNetworkReference.send(
+                    host: host, port: port, callingAET: callingAET, calledAET: calledAET, timeout: scTimeout,
+                    filePaths: files, priorityName: priorityName, transferSyntaxName: tsName,
+                    verify: verify, dryRun: dryRun)
+            }
+            refOK = snd.overallOK
+            refRender = CLIParityNetworkReference.renderSend(snd)
+            // dicom-send prints its summary to stdout (dry-run note to stderr) → parse combined.
+            compareCLI = { combined, _, _ in
+                CLIParitySendComparator.compare(reference: snd, cli: CLIParitySendComparator.parse(combined, dryRun: dryRun))
+            }
+
+        default:   // dicom-echo
+            let count = max(1, Int(sp["count"] ?? "") ?? 1)
+            let verbose = sp["verbose"] == "true"
+            let diagnose = sp["diagnose"] == "true"
+            netUnits = diagnose ? 6 : max(1, count)
+            let e = await raceDeadline(
+                scTimeout * Double(netUnits) + 60,
+                fallback: EchoSemantics(mode: diagnose ? "diagnose" : "echo",
+                                        sent: 0, succeeded: 0, failed: max(1, count),
+                                        statusCodes: [], remoteAEs: [],
+                                        diagBasicOK: diagnose ? false : nil, diagStability: nil,
+                                        diagResult: diagnose ? "FAILED" : nil)) {
+                await CLIParityNetworkReference.echo(
+                    host: host, port: port, callingAET: callingAET, calledAET: calledAET,
+                    timeout: scTimeout, count: count, verbose: verbose, diagnose: diagnose)
+            }
+            refOK = e.overallOK
+            refRender = CLIParityNetworkReference.render(e)
+            // dicom-echo prints to STDERR; parse the combined text.
+            compareCLI = { combined, _, _ in
+                CLIParityEchoComparator.compare(reference: e, cli: CLIParityEchoComparator.parse(combined))
+            }
+        }
+
+        // ---- CLI side: the real binary (same hang backstop as the reference) ----
         let resolvedArgs = s.cliArgs.map { resolveNet($0) }
-        let command = ([s.toolId] + resolvedArgs).joined(separator: " ")
-
-        #if os(macOS)
         let toolId = s.toolId
         let binDir = freshBinDir
-        let outcome = await Task.detached { CLIToolTerminalCompare.run(tool: toolId, arguments: resolvedArgs, binDir: binDir) }.value
+        let cliDeadline = scTimeout * Double(netUnits) + 60
+        let outcome = await Task.detached {
+            CLIToolTerminalCompare.run(tool: toolId, arguments: resolvedArgs, binDir: binDir, timeout: cliDeadline)
+        }.value
         if let launchError = outcome.launchError {
             return result(s, command: command, input: .notApplicable, app: refOK, cli: outcome.exitCode,
                           output: .notApplicable, status: .cliError, appOut: refRender, note: launchError)
         }
         let cliExit = outcome.exitCode
         let cliText = combinedCLIText(outcome)
-        let cliSem = CLIParityEchoComparator.parse(cliText)
 
-        // Semantic comparison (timing-independent): SDK reference vs CLI.
-        let cmp = CLIParityEchoComparator.compare(reference: ref, cli: cliSem)
+        // Semantic comparison (timing/ordering-independent): SDK reference vs CLI.
+        let cmp = compareCLI(cliText, outcome.stdout, cliExit == 0)
 
         // PROCESS parity: the package API and the CLI must agree on success/failure.
         let cliOK = cliExit == 0
@@ -639,31 +856,31 @@ public final class CLIParityRunnerViewModel {
             return result(s, command: command, input: .match, app: refOK, cli: cliExit,
                           output: cmp.match ? .match : .differ, status: .appError,
                           appOut: refRender, cliOut: cliText, diff: cmp.diff,
-                          note: "Process divergence: the DICOMKit package API \(refOK ? "succeeded" : "failed") but the dicom-echo CLI exited \(cliExit). The CLI and the package API must agree on the C-ECHO outcome.")
+                          note: "Process divergence: the DICOMKit package API \(refOK ? "succeeded" : "failed") but the \(s.toolId) CLI exited \(cliExit). The CLI and the package API must agree on the outcome.")
         }
 
         // Both agree on success/failure → the semantic record decides parity.
-        // A both-failed-identically row is recorded as .failureAgreement (parity
-        // held on the failure path, but no successful echo was compared) and is
-        // EXCLUDED from the score so an unreachable server can't inflate the rate.
+        // A both-failed-identically row is recorded as .failureAgreement (parity held
+        // on the failure path, no successful operation compared) and is EXCLUDED from
+        // the score so an unreachable server can't inflate the rate.
         let bothFailedIdentically = bothFailed && cmp.match
         let status: BatchRowStatus = bothFailedIdentically ? .failureAgreement
                                    : (cmp.match ? .pass : .outputDrift)
         let note: String
         switch status {
         case .failureAgreement:
-            note = "The package API and the CLI both reported failure identically (e.g. server unreachable or AE not recognised) — parity held on the failure path, but no successful C-ECHO occurred, so this row is excluded from the score."
+            note = "The package API and the CLI both reported failure identically (e.g. server unreachable or AE not recognised) — parity held on the failure path, but no successful operation occurred, so this row is excluded from the score."
         case .pass:
-            note = "The dicom-echo CLI matches the DICOMKit package API reference (success/failure, DIMSE status, remote AE; timing ignored)."
+            note = "The \(s.toolId) CLI matches the DICOMKit package API reference (semantic outcome; timing/ordering ignored)."
         default:
-            note = "The dicom-echo CLI diverges from the DICOMKit package API reference (see diff; timing ignored)."
+            note = "The \(s.toolId) CLI diverges from the DICOMKit package API reference (see diff; timing/ordering ignored)."
         }
         return result(s, command: command, input: .match, app: refOK, cli: cliExit,
                       output: cmp.match ? .match : .differ,
                       status: status,
                       appOut: refRender, cliOut: cliText, diff: cmp.diff, note: note)
         #else
-        return result(s, command: command, input: .match, app: refOK, cli: nil,
+        return result(s, command: command, input: .match, app: nil, cli: nil,
                       output: .notApplicable, status: .cliError,
                       note: "Live CLI comparison is only available on macOS.")
         #endif

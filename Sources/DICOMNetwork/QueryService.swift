@@ -273,7 +273,83 @@ public enum DICOMQueryService {
             queryKeys: queryKeys
         )
     }
-    
+
+    // MARK: - Shared query-key builder
+
+    /// Builds the C-FIND `QueryKeys` for a direct query at `level` from user-supplied
+    /// filter values. This is the SINGLE source of truth shared by the dicom-query
+    /// CLI, DICOMStudio's in-app query, and the CLI-parity reference, so their
+    /// input→C-FIND mapping cannot drift.
+    ///
+    /// Each non-empty value becomes a MATCHING key; absent ones become RETURN keys.
+    /// Matching follows PS3.4: at STUDY level `modality` matches **ModalitiesInStudy**
+    /// (0008,0061); at SERIES level it matches **Modality** (0008,0060). (A previous
+    /// dicom-query bug used Modality at study level, which the PACS ignores — so the
+    /// modality filter silently returned every study.)
+    ///
+    /// Return keys are the union needed by all callers; superfluous ones are harmless.
+    public static func buildQueryKeys(
+        level: QueryLevel,
+        patientName: String = "",
+        patientID: String = "",
+        studyDate: String = "",
+        modality: String = "",
+        accession: String = "",
+        studyDescription: String = "",
+        studyUID: String = "",
+        seriesUID: String = "",
+        seriesDate: String = "",
+        instanceUID: String = ""
+    ) -> QueryKeys {
+        var keys = QueryKeys(level: level)
+        switch level {
+        case .patient:
+            keys = patientID.isEmpty ? keys.requestPatientID() : keys.patientID(patientID)
+            keys = patientName.isEmpty ? keys.requestPatientName() : keys.patientName(patientName)
+            keys = keys.requestPatientBirthDate().requestPatientSex()
+                .requestNumberOfPatientRelatedStudies()
+                .requestNumberOfPatientRelatedSeries()
+                .requestNumberOfPatientRelatedInstances()
+
+        case .study:
+            keys = patientID.isEmpty ? keys.requestPatientID() : keys.patientID(patientID)
+            keys = patientName.isEmpty ? keys.requestPatientName() : keys.patientName(patientName)
+            keys = keys.requestPatientBirthDate()
+            keys = studyUID.isEmpty ? keys.requestStudyInstanceUID() : keys.studyInstanceUID(studyUID)
+            keys = studyDate.isEmpty ? keys.requestStudyDate() : keys.studyDate(studyDate)
+            // Study-level modality → ModalitiesInStudy (0008,0061).
+            keys = modality.isEmpty ? keys.requestModalitiesInStudy() : keys.modalitiesInStudy(modality)
+            keys = accession.isEmpty ? keys.requestAccessionNumber() : keys.accessionNumber(accession)
+            keys = studyDescription.isEmpty ? keys.requestStudyDescription() : keys.studyDescription(studyDescription)
+            keys = keys.requestStudyTime().requestStudyID().requestReferringPhysicianName()
+                .requestNumberOfStudyRelatedSeries().requestNumberOfStudyRelatedInstances()
+
+        case .series:
+            keys = studyUID.isEmpty ? keys.requestStudyInstanceUID() : keys.studyInstanceUID(studyUID)
+            keys = seriesUID.isEmpty ? keys.requestSeriesInstanceUID() : keys.seriesInstanceUID(seriesUID)
+            // Series-level modality → Modality (0008,0060).
+            keys = modality.isEmpty ? keys.requestModality() : keys.modality(modality)
+            if !seriesDate.isEmpty { keys = keys.seriesDate(seriesDate) }
+            keys = keys.requestSeriesNumber().requestSeriesDescription()
+                .requestNumberOfSeriesRelatedInstances()
+                // Parent-level return keys (dcm4chee5 style).
+                .requestPatientName().requestPatientID().requestStudyDate()
+                .requestStudyDescription().requestAccessionNumber()
+
+        case .image:
+            keys = studyUID.isEmpty ? keys.requestStudyInstanceUID() : keys.studyInstanceUID(studyUID)
+            keys = seriesUID.isEmpty ? keys.requestSeriesInstanceUID() : keys.seriesInstanceUID(seriesUID)
+            keys = instanceUID.isEmpty ? keys.requestSOPInstanceUID() : keys.sopInstanceUID(instanceUID)
+            keys = keys.requestSOPClassUID().requestInstanceNumber().requestContentDate()
+                .requestRows().requestColumns().requestNumberOfFrames()
+                // Parent-level return keys.
+                .requestPatientName().requestPatientID().requestStudyDate()
+                .requestStudyDescription().requestAccessionNumber()
+                .requestModality().requestSeriesNumber().requestSeriesDescription()
+        }
+        return keys
+    }
+
     // MARK: - Private Implementation
     
     /// Performs the C-FIND operation

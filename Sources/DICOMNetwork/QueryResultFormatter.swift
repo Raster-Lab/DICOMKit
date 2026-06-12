@@ -1,48 +1,50 @@
 import Foundation
 import DICOMCore
-import DICOMNetwork
 
-/// Formats query results in various output formats
-struct QueryFormatter {
-    let format: OutputFormat
-    let level: QueryLevel
-    
-    func format(results: [GenericQueryResult]) -> String {
+/// Output renderings shared by the dicom-query CLI and DICOMStudio's in-app query,
+/// so both produce identical text for the same C-FIND results.
+public enum QueryOutputFormat: String, Sendable, CaseIterable {
+    case table
+    case json
+    case csv
+    case compact
+}
+
+/// Renders C-FIND results to text. This is the SINGLE formatter used by both the
+/// `dicom-query` CLI and the DICOMStudio CLI Workshop, so their output pipelines
+/// cannot drift.
+public struct DICOMQueryResultFormatter {
+    public let format: QueryOutputFormat
+    public let level: QueryLevel
+
+    public init(format: QueryOutputFormat, level: QueryLevel) {
+        self.format = format
+        self.level = level
+    }
+
+    public func format(results: [GenericQueryResult]) -> String {
         switch format {
-        case .table:
-            return formatTable(results)
-        case .json:
-            return formatJSON(results)
-        case .csv:
-            return formatCSV(results)
-        case .compact:
-            return formatCompact(results)
+        case .table:   return formatTable(results)
+        case .json:    return formatJSON(results)
+        case .csv:     return formatCSV(results)
+        case .compact: return formatCompact(results)
         }
     }
-    
-    // MARK: - Table Format
-    
+
+    // MARK: - Table
+
     private func formatTable(_ results: [GenericQueryResult]) -> String {
-        guard !results.isEmpty else {
-            return "No results found.\n"
-        }
-        
+        guard !results.isEmpty else { return "No results found.\n" }
         switch level {
-        case .patient:
-            return formatPatientTable(results)
-        case .study:
-            return formatStudyTable(results)
-        case .series:
-            return formatSeriesTable(results)
-        case .image:
-            return formatInstanceTable(results)
+        case .patient: return formatPatientTable(results)
+        case .study:   return formatStudyTable(results)
+        case .series:  return formatSeriesTable(results)
+        case .image:   return formatInstanceTable(results)
         }
     }
-    
+
     private func formatPatientTable(_ results: [GenericQueryResult]) -> String {
         var output = ""
-        
-        // Header
         output += String(repeating: "─", count: 100) + "\n"
         output += padRight("Patient Name", 30) + " "
         output += padRight("Patient ID", 15) + " "
@@ -50,8 +52,6 @@ struct QueryFormatter {
         output += padRight("Sex", 5) + " "
         output += padRight("Studies", 8) + "\n"
         output += String(repeating: "─", count: 100) + "\n"
-        
-        // Rows
         for result in results {
             let patient = result.toPatientResult()
             output += padRight(patient.patientName ?? "", 30) + " "
@@ -60,17 +60,13 @@ struct QueryFormatter {
             output += padRight(patient.patientSex ?? "", 5) + " "
             output += padRight(patient.numberOfPatientRelatedStudies.map(String.init) ?? "", 8) + "\n"
         }
-        
         output += String(repeating: "─", count: 100) + "\n"
         output += "Total: \(results.count) patient(s)\n"
-        
         return output
     }
-    
+
     private func formatStudyTable(_ results: [GenericQueryResult]) -> String {
         var output = ""
-        
-        // Header
         output += String(repeating: "─", count: 120) + "\n"
         output += padRight("Patient Name", 25) + " "
         output += padRight("Patient ID", 12) + " "
@@ -79,8 +75,6 @@ struct QueryFormatter {
         output += padRight("Modalities", 12) + " "
         output += padRight("Series", 8) + "\n"
         output += String(repeating: "─", count: 120) + "\n"
-        
-        // Rows
         for result in results {
             let study = result.toStudyResult()
             output += padRight(study.patientName ?? "", 25) + " "
@@ -90,17 +84,13 @@ struct QueryFormatter {
             output += padRight(study.modalitiesInStudy ?? "", 12) + " "
             output += padRight(study.numberOfStudyRelatedSeries.map(String.init) ?? "", 8) + "\n"
         }
-        
         output += String(repeating: "─", count: 120) + "\n"
         output += "Total: \(results.count) study(ies)\n"
-        
         return output
     }
-    
+
     private func formatSeriesTable(_ results: [GenericQueryResult]) -> String {
         var output = ""
-        
-        // Header
         output += String(repeating: "─", count: 100) + "\n"
         output += padRight("Series Number", 15) + " "
         output += padRight("Modality", 10) + " "
@@ -108,8 +98,6 @@ struct QueryFormatter {
         output += padRight("Date", 12) + " "
         output += padRight("Instances", 10) + "\n"
         output += String(repeating: "─", count: 100) + "\n"
-        
-        // Rows
         for result in results {
             let series = result.toSeriesResult()
             output += padRight(series.seriesNumber.map(String.init) ?? "", 15) + " "
@@ -118,30 +106,23 @@ struct QueryFormatter {
             output += padRight(formatDate(series.seriesDate), 12) + " "
             output += padRight(series.numberOfSeriesRelatedInstances.map(String.init) ?? "", 10) + "\n"
         }
-        
         output += String(repeating: "─", count: 100) + "\n"
         output += "Total: \(results.count) series\n"
-        
         return output
     }
-    
+
     private func formatInstanceTable(_ results: [GenericQueryResult]) -> String {
         var output = ""
-        
-        // Header
         output += String(repeating: "─", count: 100) + "\n"
         output += padRight("Instance Number", 17) + " "
         output += padRight("SOP Class", 30) + " "
         output += padRight("Dimensions", 15) + " "
         output += padRight("Frames", 8) + "\n"
         output += String(repeating: "─", count: 100) + "\n"
-        
-        // Rows
         for result in results {
             let instance = result.toInstanceResult()
             output += padRight(instance.instanceNumber.map(String.init) ?? "", 17) + " "
             output += padRight(shortenUID(instance.sopClassUID), 30) + " "
-            
             let dimensions: String
             if let rows = instance.rows, let cols = instance.columns {
                 dimensions = "\(cols)×\(rows)"
@@ -151,63 +132,42 @@ struct QueryFormatter {
             output += padRight(dimensions, 15) + " "
             output += padRight(instance.numberOfFrames.map(String.init) ?? "1", 8) + "\n"
         }
-        
         output += String(repeating: "─", count: 100) + "\n"
         output += "Total: \(results.count) instance(s)\n"
-        
         return output
     }
-    
-    // MARK: - JSON Format
-    
+
+    // MARK: - JSON
+
     private func formatJSON(_ results: [GenericQueryResult]) -> String {
         var jsonArray: [[String: String]] = []
-        
         for result in results {
             var jsonObject: [String: String] = [:]
-            
             for (tag, data) in result.attributes {
                 let key = tag.description
-                
-                // Try to decode as string
                 if let string = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
                     let trimmed = string.trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
-                    if !trimmed.isEmpty {
-                        jsonObject[key] = trimmed
-                    }
+                    if !trimmed.isEmpty { jsonObject[key] = trimmed }
                 }
             }
-            
             jsonArray.append(jsonObject)
         }
-        
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        
         if let jsonData = try? encoder.encode(jsonArray),
            let jsonString = String(data: jsonData, encoding: .utf8) {
             return jsonString + "\n"
         }
-        
         return "[]\n"
     }
-    
-    // MARK: - CSV Format
-    
+
+    // MARK: - CSV
+
     private func formatCSV(_ results: [GenericQueryResult]) -> String {
-        guard !results.isEmpty else {
-            return ""
-        }
-        
+        guard !results.isEmpty else { return "" }
         var output = ""
-        
-        // Determine columns from first result
         let columns = results[0].attributes.keys.sorted { $0.description < $1.description }
-        
-        // Header row
         output += columns.map { escapeCSV($0.description) }.joined(separator: ",") + "\n"
-        
-        // Data rows
         for result in results {
             let row = columns.map { tag -> String in
                 if let data = result.attributes[tag],
@@ -218,18 +178,15 @@ struct QueryFormatter {
             }
             output += row.joined(separator: ",") + "\n"
         }
-        
         return output
     }
-    
-    // MARK: - Compact Format
-    
+
+    // MARK: - Compact
+
     private func formatCompact(_ results: [GenericQueryResult]) -> String {
         var output = ""
-        
         for result in results {
             var fields: [String] = []
-            
             switch level {
             case .patient:
                 let patient = result.toPatientResult()
@@ -254,43 +211,35 @@ struct QueryFormatter {
                 fields.append(instance.instanceNumber.map(String.init) ?? "")
                 fields.append(instance.sopInstanceUID ?? "")
             }
-            
             output += fields.joined(separator: " | ") + "\n"
         }
-        
         return output
     }
-    
-    // MARK: - Utility Functions
-    
+
+    // MARK: - Utilities
+
     private func padRight(_ string: String, _ width: Int) -> String {
         let truncated = String(string.prefix(width))
         return truncated.padding(toLength: width, withPad: " ", startingAt: 0)
     }
-    
+
     private func formatDate(_ dateString: String?) -> String {
-        guard let dateString = dateString, dateString.count == 8 else {
-            return dateString ?? ""
-        }
-        
-        // Convert YYYYMMDD to YYYY-MM-DD
+        guard let dateString = dateString, dateString.count == 8 else { return dateString ?? "" }
         let year = dateString.prefix(4)
         let month = dateString.dropFirst(4).prefix(2)
         let day = dateString.dropFirst(6)
         return "\(year)-\(month)-\(day)"
     }
-    
+
     private func shortenUID(_ uid: String?) -> String {
         guard let uid = uid else { return "" }
-        
-        // Show last few components of UID for readability
         let components = uid.split(separator: ".")
         if components.count > 5 {
             return "..." + components.suffix(3).joined(separator: ".")
         }
         return uid
     }
-    
+
     private func escapeCSV(_ string: String) -> String {
         if string.contains(",") || string.contains("\"") || string.contains("\n") {
             return "\"" + string.replacingOccurrences(of: "\"", with: "\"\"") + "\""

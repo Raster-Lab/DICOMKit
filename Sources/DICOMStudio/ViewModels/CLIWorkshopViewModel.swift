@@ -5660,7 +5660,10 @@ case "dicom-study":
         let computed = await Task.detached { () -> (CLIToolTerminalCompare.Outcome, Int) in
             let oc = CLIToolTerminalCompare.run(tool: executable, arguments: arguments)
             let appLines  = CLIParityEngine.normalize(appOutput, fixtureBasename: basename)
-            let termLines = CLIParityEngine.normalize(oc.stdout, fixtureBasename: basename)
+            // Compare against the FULL terminal output (stdout + stderr). Some tools
+            // (e.g. `dicom-echo --count`) emit their data to stderr, so a stdout-only
+            // comparison would silently drop it and disagree with the terminal.
+            let termLines = CLIParityEngine.normalize(oc.combined, fixtureBasename: basename)
             var diffCount = abs(appLines.count - termLines.count)
             for (a, b) in zip(appLines, termLines) where a != b { diffCount += 1 }
             return (oc, diffCount)
@@ -5683,11 +5686,11 @@ case "dicom-study":
             note = "⚠ \(differing) line(s) differ between terminal and app output."
         }
 
-        let terminalText: String = {
-            if let err = outcome.launchError { return err }
-            if !outcome.stdout.isEmpty { return outcome.stdout }
-            return outcome.stderr
-        }()
+        // Show exactly what a terminal shows: stdout AND stderr together. Picking
+        // one stream hid `dicom-echo --count`'s `Summary:` block (it goes to stderr
+        // while the progress dots go to stdout), so the panel no longer matched a
+        // real terminal run.
+        let terminalText = outcome.launchError ?? outcome.combined
 
         terminalCompareResult = CLIToolCompareResult(
             toolName: tool,
@@ -8157,164 +8160,24 @@ case "dicom-study":
         //     If the server rejects it (0xA900), fall back to concurrent two-step.
         //     For non-unique filters (modality, date) without Study UID, use two-step.
 
-        var queryKeys = QueryKeys(level: level)
+        // Build C-FIND keys via the SHARED package mapping (DICOMNetwork) — the same
+        // code the dicom-query CLI and the CLI-parity reference use, so input→C-FIND
+        // cannot drift. No app-only two-step lookup: this mirrors the CLI's single
+        // direct query.
+        let queryKeys = DICOMQueryService.buildQueryKeys(
+            level: level,
+            patientName: patientName, patientID: patientID,
+            studyDate: studyDate, modality: modality,
+            studyUID: studyUID, seriesUID: seriesUID,
+            seriesDate: seriesDate, instanceUID: instanceUID)
 
-        // Classify the query strategy for SERIES/IMAGE levels:
-        //   - hasStudyUID: direct query is always safe
-        //   - hasGloballyUniqueUID: try direct first (should work per standard),
-        //     fall back to concurrent two-step if server rejects it
-        //   - neither: must use two-step (non-unique filters need parent context)
-        let hasGloballyUniqueUID: Bool
-        switch level {
-        case .series: hasGloballyUniqueUID = !seriesUID.isEmpty
-        case .image:  hasGloballyUniqueUID = !instanceUID.isEmpty
-        default:      hasGloballyUniqueUID = false
-        }
-        let canTryDirect = (level == .series || level == .image) &&
-            studyUID.isEmpty && hasGloballyUniqueUID
-        let needsTwoStepQuery = (level == .series || level == .image) &&
-            studyUID.isEmpty && !hasGloballyUniqueUID
-
-        switch level {
-        case .patient:
-            if !patientID.isEmpty {
-                queryKeys = queryKeys.patientID(patientID)
-                appendConsoleOutput("  Patient ID:       \(patientID)\n")
-            } else {
-                queryKeys = queryKeys.requestPatientID()
-            }
-            if !patientName.isEmpty {
-                queryKeys = queryKeys.patientName(patientName)
-                appendConsoleOutput("  Patient Name:     \(patientName)\n")
-            } else {
-                queryKeys = queryKeys.requestPatientName()
-            }
-            queryKeys = queryKeys
-                .requestPatientBirthDate()
-                .requestPatientSex()
-                .requestNumberOfPatientRelatedStudies()
-                .requestNumberOfPatientRelatedSeries()
-                .requestNumberOfPatientRelatedInstances()
-
-        case .study:
-            if !patientID.isEmpty {
-                queryKeys = queryKeys.patientID(patientID)
-                appendConsoleOutput("  Patient ID:       \(patientID)\n")
-            } else {
-                queryKeys = queryKeys.requestPatientID()
-            }
-            if !patientName.isEmpty {
-                queryKeys = queryKeys.patientName(patientName)
-                appendConsoleOutput("  Patient Name:     \(patientName)\n")
-            } else {
-                queryKeys = queryKeys.requestPatientName()
-            }
-            queryKeys = queryKeys.requestPatientBirthDate()
-            if !studyUID.isEmpty {
-                queryKeys = queryKeys.studyInstanceUID(studyUID)
-                appendConsoleOutput("  Study UID:        \(studyUID)\n")
-            } else {
-                queryKeys = queryKeys.requestStudyInstanceUID()
-            }
-            if !studyDate.isEmpty {
-                queryKeys = queryKeys.studyDate(studyDate)
-                appendConsoleOutput("  Study Date:       \(studyDate)\n")
-            } else {
-                queryKeys = queryKeys.requestStudyDate()
-            }
-            if !modality.isEmpty {
-                queryKeys = queryKeys.modalitiesInStudy(modality)
-                appendConsoleOutput("  Modality:         \(modality)\n")
-            } else {
-                queryKeys = queryKeys.requestModalitiesInStudy()
-            }
-            queryKeys = queryKeys
-                .requestAccessionNumber()
-                .requestStudyDescription()
-                .requestStudyTime()
-                .requestNumberOfStudyRelatedSeries()
-                .requestNumberOfStudyRelatedInstances()
-
-        case .series:
-            // Study Root SERIES: Study Instance UID (required unique key) + series attributes
-            if !studyUID.isEmpty {
-                queryKeys = queryKeys.studyInstanceUID(studyUID)
-                appendConsoleOutput("  Study UID:        \(studyUID)\n")
-            } else {
-                queryKeys = queryKeys.requestStudyInstanceUID()
-            }
-            if !seriesUID.isEmpty {
-                queryKeys = queryKeys.seriesInstanceUID(seriesUID)
-                appendConsoleOutput("  Series UID:       \(seriesUID)\n")
-            } else {
-                queryKeys = queryKeys.requestSeriesInstanceUID()
-            }
-            if !modality.isEmpty {
-                queryKeys = queryKeys.modality(modality)
-                appendConsoleOutput("  Modality:         \(modality)\n")
-            } else {
-                queryKeys = queryKeys.requestModality()
-            }
-            if !seriesDate.isEmpty {
-                queryKeys = queryKeys.seriesDate(seriesDate)
-                appendConsoleOutput("  Series Date:      \(seriesDate)\n")
-            }
-            queryKeys = queryKeys
-                .requestSeriesNumber()
-                .requestSeriesDescription()
-                .requestNumberOfSeriesRelatedInstances()
-                // Parent-level return keys (dcm4chee5 style)
-                .requestPatientName()
-                .requestPatientID()
-                .requestStudyDate()
-                .requestStudyDescription()
-                .requestAccessionNumber()
-
-            // Log parent-level criteria handled via 2-step
-            if needsTwoStepQuery {
-                appendConsoleOutput("  (Patient/study filters will be resolved via study lookup)\n")
-            }
-
-        case .image:
-            // Study Root IMAGE: Study UID + Series UID (required unique keys) + instance attributes
-            if !studyUID.isEmpty {
-                queryKeys = queryKeys.studyInstanceUID(studyUID)
-                appendConsoleOutput("  Study UID:        \(studyUID)\n")
-            } else {
-                queryKeys = queryKeys.requestStudyInstanceUID()
-            }
-            if !seriesUID.isEmpty {
-                queryKeys = queryKeys.seriesInstanceUID(seriesUID)
-                appendConsoleOutput("  Series UID:       \(seriesUID)\n")
-            } else {
-                queryKeys = queryKeys.requestSeriesInstanceUID()
-            }
-            if !instanceUID.isEmpty {
-                queryKeys = queryKeys.sopInstanceUID(instanceUID)
-                appendConsoleOutput("  Instance UID:     \(instanceUID)\n")
-            } else {
-                queryKeys = queryKeys.requestSOPInstanceUID()
-            }
-            queryKeys = queryKeys
-                .requestSOPClassUID()
-                .requestInstanceNumber()
-                .requestContentDate()
-                .requestRows()
-                .requestColumns()
-                .requestNumberOfFrames()
-                // Parent-level return keys (dcm4chee5 style)
-                .requestPatientName()
-                .requestPatientID()
-                .requestStudyDate()
-                .requestStudyDescription()
-                .requestAccessionNumber()
-                .requestModality()
-                .requestSeriesNumber()
-                .requestSeriesDescription()
-
-            if needsTwoStepQuery {
-                appendConsoleOutput("  (Patient/study filters will be resolved via study lookup)\n")
-            }
+        // Echo the applied filters (non-empty), like the CLI's verbose listing.
+        for (label, value) in [("Patient ID", patientID), ("Patient Name", patientName),
+                               ("Study UID", studyUID), ("Study Date", studyDate),
+                               ("Modality", modality), ("Series UID", seriesUID),
+                               ("Series Date", seriesDate), ("Instance UID", instanceUID)]
+            where !value.isEmpty {
+            appendConsoleOutput("  \(label): \(value)\n")
         }
         let modelName = (level == .patient) ? "Patient Root" : "Study Root"
         appendConsoleOutput("  Model:            \(modelName)\n\n")
@@ -8328,112 +8191,28 @@ case "dicom-study":
                 informationModel: informationModel
             )
 
-            var allResults: [GenericQueryResult] = []
+            // Direct C-FIND — the same single-query pipeline as the dicom-query CLI.
+            let results = try await DICOMQueryService.find(
+                host: host, port: port, configuration: config, queryKeys: queryKeys)
 
-            if canTryDirect {
-                // Globally unique UID without Study UID — try direct query first.
-                // Per PS3.4 C.6 empty Study UID = universal match, which should work.
-                appendConsoleOutput("Querying directly with \(level) UID...\n")
-                do {
-                    allResults = try await DICOMQueryService.find(
-                        host: host, port: port,
-                        configuration: config,
-                        queryKeys: queryKeys
-                    )
-                } catch let error as DICOMNetworkError {
-                    // Check if the server rejected the empty Study UID (0xA900)
-                    if case .queryFailed(let status) = error,
-                       status == .errorIdentifierDoesNotMatchSOPClass {
-                        // Server doesn't support universal match on Study UID —
-                        // fall back to concurrent two-step with early exit.
-                        appendConsoleOutput("Server requires Study UID — falling back to study lookup...\n")
-                        allResults = try await concurrentSeriesLookup(
-                            host: host, port: port, config: config,
-                            level: level,
-                            patientID: patientID, patientName: patientName,
-                            studyDate: studyDate,
-                            modality: modality, seriesUID: seriesUID,
-                            seriesDate: seriesDate, instanceUID: instanceUID,
-                            callingAET: callingAET, calledAET: calledAET,
-                            timeout: timeout
-                        )
-                    } else {
-                        throw error
-                    }
-                }
-            } else if needsTwoStepQuery {
-                allResults = try await concurrentSeriesLookup(
-                    host: host, port: port, config: config,
-                    level: level,
-                    patientID: patientID, patientName: patientName,
-                    studyDate: studyDate,
-                    modality: modality, seriesUID: seriesUID,
-                    seriesDate: seriesDate, instanceUID: instanceUID,
-                    callingAET: callingAET, calledAET: calledAET,
-                    timeout: timeout
-                )
-            } else {
-                // Direct single query (Study UID provided)
-                allResults = try await DICOMQueryService.find(
-                    host: host, port: port,
-                    configuration: config,
-                    queryKeys: queryKeys
-                )
-            }
-
-            if allResults.isEmpty {
+            if results.isEmpty {
                 appendConsoleOutput("No results found.\n")
             } else {
-                // For SERIES/IMAGE levels, fetch parent study/patient info
-                // because servers often don't return parent-level attributes
-                // at child query levels (per PS3.4 C.6).
-                var parentLookup: [String: GenericQueryResult] = [:]
-                if level == .series || level == .image {
-                    let uniqueStudyUIDs = Set(
-                        allResults.compactMap { $0.toStudyResult().studyInstanceUID }
-                    ).sorted()
-                    if !uniqueStudyUIDs.isEmpty {
-                        appendConsoleOutput("Fetching parent study/patient info...\n")
-                        parentLookup = await fetchParentStudyInfo(
-                            host: host, port: port,
-                            callingAET: callingAET, calledAET: calledAET,
-                            timeout: timeout, studyUIDs: uniqueStudyUIDs
-                        )
-                    }
-                }
-
-                appendConsoleOutput("Found \(allResults.count) result(s):\n\n")
-                let collected: [(result: GenericQueryResult, parent: GenericQueryResult?)] = allResults.enumerated().map { (index, result) in
-                    let parent = (level == .series || level == .image)
-                        ? parentLookup[result.toStudyResult().studyInstanceUID ?? ""]
-                        : nil
-                    return (result: result, parent: parent)
-                }
-                switch outputFormat {
-                case "json":
-                    appendConsoleOutput(formatQueryResultsJSON(collected, level: level))
-                case "csv":
-                    appendConsoleOutput(formatQueryResultsCSV(collected, level: level))
-                case "xml":
-                    appendConsoleOutput(formatQueryResultsXML(collected, level: level))
-                case "hl7":
-                    appendConsoleOutput(formatQueryResultsHL7(collected, level: level))
-                case "table":
-                    appendConsoleOutput(formatQueryResultsTable(collected, level: level))
-                default:
-                    appendConsoleOutput(formatQueryResultsTable(collected, level: level))
-                }
+                appendConsoleOutput("Found \(results.count) result(s):\n\n")
+                // Render via the SHARED formatter (DICOMNetwork) so output matches the CLI.
+                let fmt = QueryOutputFormat(rawValue: outputFormat) ?? .table
+                appendConsoleOutput(DICOMQueryResultFormatter(format: fmt, level: level).format(results: results))
             }
             consoleStatus = .success
             service.setConsoleStatus(.success)
             // Warn about likely server-side result limit
-            if isLikelyServerLimit(allResults.count) {
-                appendConsoleOutput("⚠️  The result count (\(allResults.count)) may be capped by a server-side limit.\n")
+            if isLikelyServerLimit(results.count) {
+                appendConsoleOutput("⚠️  The result count (\(results.count)) may be capped by a server-side limit.\n")
                 appendConsoleOutput("    Check your PACS server configuration (e.g., LimitFindResults in Orthanc,\n")
                 appendConsoleOutput("    or LimitFindResults in dcm4chee) to increase or remove the limit.\n")
             }
             addToHistory(toolName: "dicom-query", command: commandPreview, exitCode: 0,
-                         output: "\(allResults.count) result(s) found")
+                         output: "\(results.count) result(s) found")
         } catch {
             let errorDetail = String(describing: error)
             appendConsoleOutput("❌ C-FIND failed\n")

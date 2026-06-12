@@ -21,7 +21,21 @@
 // combination) — see echoRecord(_:verbose:).
 
 import Foundation
+import DICOMCore
 import DICOMNetwork
+
+/// The query keys a `dicom-query` parity scenario applies (empty == not set).
+public struct QueryFilters: Sendable, Equatable {
+    public var patientName = ""
+    public var patientID = ""
+    public var studyDate = ""
+    public var modality = ""
+    public var accession = ""
+    public var studyDescription = ""
+    public var studyUID = ""
+    public var seriesUID = ""
+    public init() {}
+}
 
 public enum CLIParityNetworkReference {
 
@@ -129,12 +143,124 @@ public enum CLIParityNetworkReference {
         return echoRecord(calls, verbose: verbose)
     }
 
+    // MARK: dicom-query (C-FIND) — read-only
+
+    /// Runs the C-FIND scenario against the live PACS using DICOMQueryService — the
+    /// same package API dicom-query calls — building the IDENTICAL QueryKeys as the
+    /// CLI (same return keys + filters) so the matched results line up.
+    public static func query(host: String, port: UInt16, callingAET: String, calledAET: String,
+                             timeout: TimeInterval, level: String, filters: QueryFilters) async -> QuerySemantics {
+        let qLevel = queryLevel(level)
+        do {
+            let config = QueryConfiguration(
+                callingAETitle: try AETitle(callingAET),
+                calledAETitle: try AETitle(calledAET),
+                timeout: timeout,
+                informationModel: qLevel == .patient ? .patientRoot : .studyRoot)
+            let keys = DICOMQueryService.buildQueryKeys(
+                level: qLevel,
+                patientName: filters.patientName, patientID: filters.patientID,
+                studyDate: filters.studyDate, modality: filters.modality,
+                accession: filters.accession, studyDescription: filters.studyDescription,
+                studyUID: filters.studyUID, seriesUID: filters.seriesUID)
+            let results = try await DICOMQueryService.find(
+                host: host, port: port, configuration: config, queryKeys: keys)
+            // Build [tag.description: value] per result — identical to dicom-query's
+            // QueryFormatter.formatJSON, so the records compare equal.
+            let objects: [[String: String]] = results.map { result in
+                var obj: [String: String] = [:]
+                for (tag, data) in result.attributes {
+                    if let s = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) {
+                        let trimmed = s.trimmingCharacters(in: CharacterSet(charactersIn: " \0"))
+                        if !trimmed.isEmpty { obj[tag.description] = trimmed }
+                    }
+                }
+                return obj
+            }
+            return CLIParityQueryComparator.semantics(level: level, success: true, objects: objects)
+        } catch {
+            return CLIParityQueryComparator.semantics(level: level, success: false, objects: [])
+        }
+    }
+
+    static func queryLevel(_ s: String) -> QueryLevel {
+        switch s {
+        case "patient":  return .patient
+        case "series":   return .series
+        case "instance": return .image
+        default:         return .study
+        }
+    }
+    // Query keys are built by the SHARED DICOMQueryService.buildQueryKeys (DICOMNetwork) —
+    // the same mapping the CLI and the app use — so the reference cannot drift from them.
+
+    // MARK: dicom-send (C-STORE) — WRITES to the PACS
+
+    /// Expands a send path (a file, or a directory the user picked) into the exact
+    /// DICOM file list `dicom-send` would transmit, via the SHARED
+    /// `DICOMSendFileGatherer` the CLI itself uses — so the reference's file set
+    /// can never drift from the binary's (the dry-run "Found N" and the real-send
+    /// counts both depend on identical enumeration). Empty path → no files.
+    public static func gatherSendFiles(path: String, recursive: Bool) -> [String] {
+        path.isEmpty ? [] : DICOMSendFileGatherer.gather(paths: [path], recursive: recursive)
+    }
+
+    /// Sends the given file(s) using DICOMStorageService.store — the same package API
+    /// the dicom-send CLI and the in-app send call — and returns the outcome counts.
+    /// `verify` runs a real C-ECHO preflight first (matching both adapters).
+    public static func send(host: String, port: UInt16, callingAET: String, calledAET: String,
+                            timeout: TimeInterval, filePaths: [String], priorityName: String,
+                            transferSyntaxName: String, verify: Bool, dryRun: Bool) async -> SendSemantics {
+        if dryRun {
+            return SendSemantics(dryRun: true, sent: filePaths.count, succeeded: 0, failed: 0)
+        }
+        let priority: DIMSEPriority = priorityName == "high" ? .high : (priorityName == "low" ? .low : .medium)
+        if verify {
+            let ok = (try? await DICOMVerificationService.echo(
+                host: host, port: port, callingAE: callingAET, calledAE: calledAET, timeout: timeout))?.success ?? false
+            if !ok { return SendSemantics(dryRun: false, sent: filePaths.count, succeeded: 0, failed: filePaths.count) }
+        }
+        let tsUID: String? = transferSyntaxName.isEmpty ? nil : TransferSyntax.parse(transferSyntaxName)?.uid
+        var succeeded = 0, failed = 0
+        for path in filePaths {
+            guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { failed += 1; continue }
+            do {
+                let r: StoreResult
+                if let ts = tsUID, !ts.isEmpty {
+                    r = try await DICOMStorageService.store(
+                        fileData: data, preferredTransferSyntaxUID: ts, to: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET, priority: priority, timeout: timeout)
+                } else {
+                    r = try await DICOMStorageService.store(
+                        fileData: data, to: host, port: port,
+                        callingAE: callingAET, calledAE: calledAET, priority: priority, timeout: timeout)
+                }
+                if r.status.isSuccessOrWarning { succeeded += 1 } else { failed += 1 }
+            } catch {
+                failed += 1
+            }
+        }
+        return SendSemantics(dryRun: false, sent: filePaths.count, succeeded: succeeded, failed: failed)
+    }
+
     // MARK: Display
 
-    /// A human-readable rendering of the record for the row's "reference" pane.
+    /// A human-readable rendering of the echo record for the row's "reference" pane.
     public static func render(_ s: EchoSemantics) -> String {
         "DICOMKit package API reference (DICOMVerificationService.echo):\n"
             + CLIParityEchoComparator.canonical(s).joined(separator: "\n")
+    }
+
+    /// A human-readable rendering of the query record for the row's "reference" pane.
+    public static func renderQuery(_ s: QuerySemantics) -> String {
+        "DICOMKit package API reference (DICOMQueryService.find):\n"
+            + CLIParityQueryComparator.canonical(s).joined(separator: "\n")
+    }
+
+    /// A human-readable rendering of the send record for the row's "reference" pane.
+    public static func renderSend(_ s: SendSemantics) -> String {
+        "DICOMKit package API reference (DICOMStorageService.store):\n"
+            + CLIParitySendComparator.canonical(s).joined(separator: "\n")
     }
 
     // MARK: Helpers

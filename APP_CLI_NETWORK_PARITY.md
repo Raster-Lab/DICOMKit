@@ -5,8 +5,54 @@ PACS — the part the offline golden harness explicitly can't cover (network out
 is non‑deterministic, so it has no stable golden; see
 [`APP_CLI_SHARED_API.md`](APP_CLI_SHARED_API.md) §5.5/§6).
 
-> **Status (2026‑06‑11):** `dicom-echo` covered, flag‑wise, against a user‑supplied
-> PACS. The pattern is built to extend to `dicom-query` / `send` / `retrieve` / … .
+> **Status:** `dicom-echo` (flag‑wise C‑ECHO), `dicom-query` (read‑only C‑FIND,
+> result‑set parity), and `dicom-send` (C‑STORE outcome parity) are covered against a
+> user‑supplied PACS (selectable: DCM4CHEE2 / DCM4CHEE5). The pattern extends to
+> `retrieve` / … — see [`APP_CLI_NETWORK_PARITY_PLAN.md`](APP_CLI_NETWORK_PARITY_PLAN.md).
+
+> **dicom-send — C‑STORE, on the shared package API.** The app's in‑app send, the
+> `dicom-send` CLI, and the parity reference all call the same
+> `DICOMStorageService.store`. Unification fixed a real divergence: the CLI's
+> `--verify` was a no‑op stub — it now does a real `DICOMVerificationService.echo`,
+> matching the app. **Input — user‑selectable:** the end user may pick a **DICOM
+> directory** to transmit; when left empty the parity falls back to the bundled
+> synthetic CT (`syn-ct.dcm`). The directory is enumerated by the **shared
+> `DICOMSendFileGatherer` (DICOMNetwork)** that the `dicom-send` CLI itself uses, so
+> the reference's file set can never drift from the binary's (the dry‑run "Found N"
+> and the real‑send counts both depend on identical enumeration). Every scenario
+> passes `--recursive` so a picked directory is scanned in full (a no‑op for the
+> single bundled file); an empty / non‑DICOM directory yields an honest *Skipped*
+> row, not a false result. The parity compares the outcome counts (sent / succeeded /
+> failed; success = success‑or‑warning so a duplicate‑store warning isn't a false
+> drift). **It WRITES to the server** — the screen shows a warning; a `--dry-run`
+> scenario writes nothing. Scenarios: dry-run, default, `--priority high`,
+> `--transfer-syntax explicit-vr-le`, `--verify`. Inputs: the endpoint, plus an
+> optional DICOM directory.
+
+> **dicom-query — unified on the shared package API.** The app's in‑app query, the
+> `dicom-query` CLI, **and** the parity reference all call the *same* DICOMNetwork
+> code for every stage, so their pipelines cannot drift:
+> - **Input:** `DICOMQueryService.buildQueryKeys(level:filters:)` — one PS3.4‑correct
+>   filters→`QueryKeys` mapping (study‑level `--modality` → ModalitiesInStudy 0008,0061).
+> - **Process:** `DICOMQueryService.find`.
+> - **Output:** `DICOMQueryResultFormatter` (table/json/csv/compact).
+>
+> The app's query is now a thin adapter (no app‑only two‑step/parent‑enrichment, no
+> xml/hl7), identical to the CLI. The parity runner reduces both sides to a
+> `QuerySemantics` record (level · success · count · matched results as sorted
+> `tag=value;…`), compared **order‑independently** (json full attribute parity;
+> table/csv/compact validated by result count). Inputs: query‑key fields (patient
+> name/ID, study date, modality, accession, study description, study/series UID);
+> the matrix sweeps a broad study query, each provided filter individually, the four
+> `--format`s, the patient level, and series/instance when the scoping UID(s) are given.
+
+> **Hang backstop.** A DICOM SCU can block indefinitely if the PACS accepts the TCP
+> connection but never answers the DIMSE request — `--timeout` bounds only the
+> *connect*, not the post‑connect PDU receives. Each network scenario therefore runs
+> under a wall‑clock deadline (`timeout × ops + 60 s`): past it the reference op is
+> abandoned and the forked CLI is terminated (then `SIGKILL`‑ed), so one unresponsive
+> endpoint yields a *timed‑out* row instead of freezing the whole run. On a healthy
+> PACS the deadline never fires (operations finish in well under it).
 
 > ⚠️ **Testing‑only.** Like the rest of the CLI Parity screen, the live‑CLI path
 > forks the real `dicom-*` binary and needs the **App Sandbox disabled**. Remove

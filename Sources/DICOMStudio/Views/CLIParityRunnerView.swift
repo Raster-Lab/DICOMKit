@@ -17,6 +17,7 @@ public struct CLIParityRunnerView: View {
     @Bindable var viewModel: CLIParityRunnerViewModel
 
     @State private var showDirImporter = false
+    @State private var showSendDirImporter = false
     @State private var expandedRows: Set<String> = []
 
     public init(viewModel: CLIParityRunnerViewModel) {
@@ -47,6 +48,11 @@ public struct CLIParityRunnerView: View {
                       allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
             guard case let .success(urls) = result, let url = urls.first else { return }
             Task { await viewModel.setInputDirectory(url: url) }
+        }
+        .fileImporter(isPresented: $showSendDirImporter,
+                      allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+            guard case let .success(urls) = result, let url = urls.first else { return }
+            Task { await viewModel.setSendDirectory(url: url) }
         }
     }
 
@@ -142,44 +148,149 @@ public struct CLIParityRunnerView: View {
     private var networkControls: some View {
         VStack(alignment: .leading, spacing: 14) {
             networkEndpointForm
+            if viewModel.selectedToolIDs.contains("dicom-query") {
+                queryKeysForm
+            }
+            if viewModel.selectedToolIDs.contains("dicom-send") {
+                sendInput
+            }
             rebuildToggle
             toolSelection
         }
     }
 
     private var networkEndpointForm: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
-                Image(systemName: "network").foregroundStyle(.blue)
-                Text("PACS Endpoint").font(.headline)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "network").foregroundStyle(.blue).font(.title3)
+                Text("PACS Endpoint").font(.title3.bold())
+                Spacer()
             }
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .bottom, spacing: 10) {
-                    labeledField("Host", text: $viewModel.networkHost, width: 220)
-                    labeledField("Port", text: $viewModel.networkPort, width: 90)
+            HStack(spacing: 8) {
+                Text("Server").font(.callout).foregroundStyle(.secondary)
+                Picker("Server", selection: Binding(
+                    get: { viewModel.selectedServerID },
+                    set: { viewModel.selectServer($0) }
+                )) {
+                    ForEach(CLIParityRunnerViewModel.serverPresets) { Text($0.id).tag($0.id) }
                 }
-                HStack(alignment: .bottom, spacing: 10) {
-                    labeledField("Calling AE (--aet)", text: $viewModel.networkCallingAET, width: 180)
-                    labeledField("Called AE (--called-aet)", text: $viewModel.networkCalledAET, width: 200)
-                    labeledField("Timeout (s)", text: $viewModel.networkTimeout, width: 90)
-                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .frame(maxWidth: 360)
+                .disabled(viewModel.isRunning)
+                Spacer()
             }
-            Text("These credentials are passed to BOTH the app and the dicom-echo CLI. The screen sweeps every valid echo flag and compares the C-ECHO outcome — success/failure, DIMSE status, remote AE — with round-trip time ignored. Edit any field to match your server.")
-                .font(.caption).foregroundStyle(.secondary)
+            LazyVGrid(columns: fieldColumns, alignment: .leading, spacing: 12) {
+                labeledField("Host", text: $viewModel.networkHost)
+                labeledField("Port", text: $viewModel.networkPort)
+                labeledField("Calling AE (--aet)", text: $viewModel.networkCallingAET)
+                labeledField("Called AE (--called-aet)", text: $viewModel.networkCalledAET)
+                labeledField("Timeout (s)", text: $viewModel.networkTimeout)
+            }
+            Text("Pick a server preset, or edit any field. These credentials drive BOTH the DICOMKit package-API reference and the dicom-* CLI; each selected network tool is swept and compared semantically against the live server.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(12)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.06)))
     }
 
-    private func labeledField(_ label: String, text: Binding<String>, width: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.caption).foregroundStyle(.secondary)
+    private var queryKeysForm: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass").foregroundStyle(.blue).font(.title3)
+                Text("Query Keys (dicom-query)").font(.title3.bold())
+            }
+            LazyVGrid(columns: fieldColumns, alignment: .leading, spacing: 12) {
+                labeledField("Patient Name", text: $viewModel.queryPatientName)
+                labeledField("Patient ID", text: $viewModel.queryPatientID)
+                labeledField("Study Date (YYYYMMDD / range)", text: $viewModel.queryStudyDate)
+                labeledField("Modality", text: $viewModel.queryModality)
+                labeledField("Accession #", text: $viewModel.queryAccession)
+                labeledField("Study Description", text: $viewModel.queryStudyDescription)
+                labeledField("Study UID (series / instance)", text: $viewModel.queryStudyUID)
+                labeledField("Series UID (instance)", text: $viewModel.querySeriesUID)
+            }
+            Text("Read-only C-FIND. Enter values that exist on your PACS so the query returns real matches; blank fields are skipped. The sweep covers a broad study query, each provided filter individually, the four --format renderings, the patient level, and the series / instance levels (which run once you supply the matching Study UID / Series UID). Results are compared app-vs-CLI, ordering ignored.")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.secondary.opacity(0.06)))
+    }
+
+    /// dicom-send input: an optional DICOM directory to transmit (falls back to the
+    /// bundled synthetic CT when empty), plus the write-to-server warning.
+    private var sendInput: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "paperplane").foregroundStyle(.blue).font(.title3)
+                Text("Send Source (dicom-send)").font(.title3.bold())
+                Spacer()
+            }
+
+            HStack(spacing: 12) {
+                Button { showSendDirImporter = true } label: {
+                    Label(viewModel.sendDirectory == nil ? "Select DICOM Directory…" : "Change Directory…",
+                          systemImage: "folder.badge.plus")
+                        .font(.body)
+                }
+                .controlSize(.large)
+                .disabled(viewModel.isRunning)
+                if viewModel.sendDirectory != nil {
+                    Button { viewModel.clearSendDirectory() } label: { Image(systemName: "xmark.circle.fill") }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .help("Clear — fall back to the bundled synthetic CT")
+                        .disabled(viewModel.isRunning)
+                }
+                Spacer()
+            }
+
+            if let dir = viewModel.sendDirectory {
+                Label {
+                    Text("\((dir as NSString).lastPathComponent) — \(viewModel.sendDirFileCount) DICOM file(s) will be sent (recursive).")
+                        .font(.callout).foregroundStyle(viewModel.sendDirFileCount == 0 ? .orange : .secondary)
+                } icon: {
+                    Image(systemName: viewModel.sendDirFileCount == 0 ? "exclamationmark.triangle.fill" : "doc.on.doc")
+                        .foregroundStyle(viewModel.sendDirFileCount == 0 ? .orange : .secondary)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("No directory selected — sends the bundled synthetic CT (syn-ct.dcm). Pick a directory to C-STORE your own DICOM files instead.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+                Text("dicom-send WRITES to the server: the real-send scenarios C-STORE the selected file(s) to the PACS (deduplicated on repeats). A --dry-run scenario is included and writes nothing.")
+                    .font(.callout).foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer()
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.10)))
+    }
+
+    private func labeledField(_ label: String, text: Binding<String>, width: CGFloat? = nil) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(label).font(.callout).foregroundStyle(.secondary)
+                .lineLimit(1).truncationMode(.tail)
             TextField(label, text: text)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: width)
+                .frame(maxWidth: width ?? .infinity)
                 .disabled(viewModel.isRunning)
         }
     }
+
+    /// Adaptive grid: compact field boxes (~min width) that fill the row and wrap.
+    private let fieldColumns = [GridItem(.adaptive(minimum: 190, maximum: 300), spacing: 14, alignment: .leading)]
 
     private var rebuildToggle: some View {
         Toggle(isOn: $viewModel.rebuildBeforeRun) {

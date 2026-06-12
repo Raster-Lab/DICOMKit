@@ -118,8 +118,8 @@ struct DICOMQuery: AsyncParsableCommand {
             fprintln("Found \(results.count) result(s)\n")
         }
         
-        // Format and output results
-        let formatter = QueryFormatter(format: format, level: level.queryLevel)
+        // Format and output results via the shared formatter (DICOMNetwork).
+        let formatter = DICOMQueryResultFormatter(format: format.asShared, level: level.queryLevel)
         let output = formatter.format(results: results)
         print(output, terminator: "")
         #else
@@ -128,76 +128,20 @@ struct DICOMQuery: AsyncParsableCommand {
     }
     
     func buildQueryKeys() -> QueryKeys {
-        var keys = QueryKeys(level: level.queryLevel)
-        
-        // Add filters based on level
-        switch level.queryLevel {
-        case .patient:
-            keys = keys
-                .requestPatientName()
-                .requestPatientID()
-                .requestPatientBirthDate()
-                .requestPatientSex()
-                .requestNumberOfPatientRelatedStudies()
-        case .study:
-            keys = keys
-                .requestPatientName()
-                .requestPatientID()
-                .requestStudyInstanceUID()
-                .requestStudyDate()
-                .requestStudyTime()
-                .requestStudyDescription()
-                .requestAccessionNumber()
-                .requestStudyID()
-                .requestReferringPhysicianName()
-                .requestModalitiesInStudy()
-                .requestNumberOfStudyRelatedSeries()
-                .requestNumberOfStudyRelatedInstances()
-        case .series:
-            keys = keys
-                .requestSeriesInstanceUID()
-                .requestSeriesNumber()
-                .requestSeriesDescription()
-                .requestModality()
-                .requestSeriesDate()
-                .requestNumberOfSeriesRelatedInstances()
-        case .image:
-            keys = keys
-                .requestSOPInstanceUID()
-                .requestSOPClassUID()
-                .requestInstanceNumber()
-                .requestRows()
-                .requestColumns()
-                .requestNumberOfFrames()
-        }
-        
-        // Apply user-specified filters
-        if let name = patientName {
-            keys = keys.patientName(name)
-        }
-        if let id = patientId {
-            keys = keys.patientID(id)
-        }
-        if let date = studyDate {
-            keys = keys.studyDate(date)
-        }
-        if let uid = studyUid {
-            keys = keys.studyInstanceUID(uid)
-        }
-        if let uid = seriesUid {
-            keys = keys.seriesInstanceUID(uid)
-        }
-        if let accession = accessionNumber {
-            keys = keys.accessionNumber(accession)
-        }
-        if let mod = modality {
-            keys = keys.modality(mod)
-        }
-        if let desc = studyDescription {
-            keys = keys.studyDescription(desc)
-        }
-        
-        return keys
+        // Single shared mapping (DICOMNetwork) used by the CLI, the app, and the
+        // CLI-parity reference — so input→C-FIND keys cannot drift. (This is also
+        // where the study-level `--modality` → ModalitiesInStudy fix lives.)
+        DICOMQueryService.buildQueryKeys(
+            level: level.queryLevel,
+            patientName: patientName ?? "",
+            patientID: patientId ?? "",
+            studyDate: studyDate ?? "",
+            modality: modality ?? "",
+            accession: accessionNumber ?? "",
+            studyDescription: studyDescription ?? "",
+            studyUID: studyUid ?? "",
+            seriesUID: seriesUid ?? ""
+        )
     }
     
     /// Resolves the final host and port from ``--host`` and ``--port`` options.
@@ -244,6 +188,9 @@ enum OutputFormat: String, ExpressibleByArgument {
     case json
     case csv
     case compact
+
+    /// Maps to the shared package formatter's format.
+    var asShared: QueryOutputFormat { QueryOutputFormat(rawValue: rawValue) ?? .table }
 }
 
 /// Prints to stderr
