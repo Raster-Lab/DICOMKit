@@ -16,7 +16,14 @@ import UniformTypeIdentifiers
 public struct CLIParityRunnerView: View {
     @Bindable var viewModel: CLIParityRunnerViewModel
 
-    @State private var showDirImporter = false
+    // Each directory picker is a SEPARATE fileImporter attached to its OWN button.
+    // Two pitfalls this avoids: (1) SwiftUI honours only the LAST of several
+    // .fileImporter modifiers stacked on the SAME view — so they must live on
+    // different views (the offline and send buttons are never on screen at once);
+    // (2) a single importer driven by a shared discriminator races on dismiss — the
+    // binding that clears the discriminator fires before onCompletion reads it, so
+    // the picked directory went unscanned. Plain booleans on separate views fix both.
+    @State private var showInputDirImporter = false
     @State private var showSendDirImporter = false
     @State private var expandedRows: Set<String> = []
 
@@ -44,16 +51,6 @@ public struct CLIParityRunnerView: View {
             }
         }
         .navigationTitle("CLI Parity")
-        .fileImporter(isPresented: $showDirImporter,
-                      allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
-            guard case let .success(urls) = result, let url = urls.first else { return }
-            Task { await viewModel.setInputDirectory(url: url) }
-        }
-        .fileImporter(isPresented: $showSendDirImporter,
-                      allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
-            guard case let .success(urls) = result, let url = urls.first else { return }
-            Task { await viewModel.setSendDirectory(url: url) }
-        }
     }
 
     // MARK: Banner
@@ -111,13 +108,18 @@ public struct CLIParityRunnerView: View {
     private var offlineControls: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 12) {
-                Button { showDirImporter = true } label: {
+                Button { showInputDirImporter = true } label: {
                     Label(viewModel.inputDirectory == nil ? "Input Directory (optional)…" : "Change Directory…",
                           systemImage: "folder.badge.plus")
                         .font(.body)
                 }
                 .controlSize(.large)
                 .disabled(viewModel.isScanning || viewModel.isRunning)
+                .fileImporter(isPresented: $showInputDirImporter,
+                              allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+                    guard case let .success(urls) = result, let url = urls.first else { return }
+                    Task { await viewModel.setInputDirectory(url: url) }
+                }
                 if viewModel.inputDirectory != nil {
                     Button { viewModel.clearInputDirectory() } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
@@ -239,6 +241,11 @@ public struct CLIParityRunnerView: View {
                 }
                 .controlSize(.large)
                 .disabled(viewModel.isRunning)
+                .fileImporter(isPresented: $showSendDirImporter,
+                              allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+                    guard case let .success(urls) = result, let url = urls.first else { return }
+                    Task { await viewModel.setSendDirectory(url: url) }
+                }
                 if viewModel.sendDirectory != nil {
                     Button { viewModel.clearSendDirectory() } label: { Image(systemName: "xmark.circle.fill") }
                         .buttonStyle(.plain).foregroundStyle(.secondary)
