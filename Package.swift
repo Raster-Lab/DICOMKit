@@ -206,16 +206,18 @@ let package = Package(
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.8.2"),
         // Phase 1 scope: exclude aws-sdk-swift because it is unrelated to JPEG 2000 verification.
         // .package(url: "https://github.com/awslabs/aws-sdk-swift.git", from: "1.6.0"),
         // J2KSwift — pure-Swift JPEG 2000 / HTJ2K / JP3D / JPIP codec.
         // URL-consumable as of v10.9.3 (Raster-Lab/J2KSwift#438): its manifest
         // always resolves CompressionFamily from its public Git URL.
-        .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "10.24.2"),
+        // v11.0.0 is a dead-code-removal major (identical codec behavior to
+        // v10.25.0); it dropped the J2KAccelerate / J2KVulkan / J2KXS products.
+        .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "11.0.0"),
         // JLSwift — pure-Swift JPEG-LS (ITU-T T.87 / ISO-IEC 14495-1) codec.
         // Provides the `JPEGLS` product, which backs DICOMCore.JPEGLSCodec.
-        .package(url: "https://github.com/Raster-Lab/JLSwift.git", from: "0.8.0"),
+        .package(url: "https://github.com/Raster-Lab/JLSwift.git", from: "0.9.0"),
         // JLISwift — native-Swift JPEG codec (baseline/extended/progressive/
         // lossless SOF0–3, 8/12/16-bit, Accelerate-backed; jpegli-parity target).
         // Distinct from JLSwift (JPEG-LS). Products: `JLISwift` (core codec) and
@@ -225,7 +227,7 @@ let package = Package(
         // of v1.0.1: the library target dropped its CompressionFamily dependency
         // (v1.0.0 referenced it via a local path, which SwiftPM rejected for a
         // stable-versioned consumer). Provides the `JXLSwift` product.
-        .package(url: "https://github.com/Raster-Lab/JXLSwift.git", from: "1.0.1")
+        .package(url: "https://github.com/Raster-Lab/JXLSwift.git", from: "1.1.0")
     ],
     targets: [
         // OpenJPEG 2.x system library (https://www.openjpeg.org)
@@ -248,8 +250,10 @@ let package = Package(
                 .product(name: "J2KCodec", package: "J2KSwift"),
                 .product(name: "J2KFileFormat", package: "J2KSwift"),
                 .product(name: "J2K3D", package: "J2KSwift"),
-                // Phase 5: hardware acceleration backends
-                .product(name: "J2KAccelerate", package: "J2KSwift"),
+                // Phase 5: hardware acceleration backend.
+                // J2KAccelerate was removed in J2KSwift v11.0.0; the Accelerate
+                // path is now guarded by #if canImport in CodecBackend.swift and
+                // falls through to the scalar/Apple-Accelerate backend.
                 .product(name: "J2KMetal", package: "J2KSwift"),
                 // JPEG-LS — JLSwift backs DICOMCore's JPEGLSCodec.
                 .product(name: "JPEGLS", package: "JLSwift"),
