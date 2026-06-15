@@ -141,7 +141,7 @@ DICOMKit supports reading and writing the following Storage SOP Classes:
 
 ### Codec Implementation
 
-JPEG 2000 and HTJ2K decoding and encoding is provided by J2KSwift v3.2.0, a pure-Swift codec that operates on all supported platforms. Hardware acceleration is available via J2KMetal (Apple GPU) and J2KAccelerate (SIMD) where present; scalar fallback is used otherwise.
+JPEG 2000 and HTJ2K decoding and encoding is provided by J2KSwift v11.0.0, a pure-Swift codec that operates on all supported platforms. Hardware acceleration is available via J2KMetal (Apple GPU) and Apple's Accelerate framework (SIMD) where present; scalar fallback is used otherwise.
 
 ### Experimental Private SOP Classes
 
@@ -290,7 +290,7 @@ DICOMKit includes dictionaries for common vendor private tags:
 5. **HTJ2K Lossy (`.203`)**: Partially validated; real-sample lossy decoding confirmed working but not all edge cases covered
 6. **JP3D transfer syntax**: No standard DICOM UID assigned; exposed via private SOP and runtime-only codec only — do not use for production interchange
 7. **J2KDecoder.decodeResolution** (upstream J2KSwift): Not yet implemented; `--reduce` in `dicom-viewer` uses post-decode downscale as a workaround
-8. **J2KVulkan**: Linux Vulkan GPU backend deferred — requires Linux CI configuration
+8. **Vulkan GPU acceleration**: Not available — the `J2KVulkan` module was removed in J2KSwift v11.0.0; Linux uses the scalar backend
 
 ### D. References
 

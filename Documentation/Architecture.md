@@ -37,9 +37,9 @@ DICOMNetwork ──────────────────────�
 
 **Purpose**: Core types and utilities for DICOM data representation.
 
-### JPEG 2000 Codec Architecture (J2KSwift v3.2.0)
+### JPEG 2000 Codec Architecture (J2KSwift v11.0.0)
 
-The default JPEG 2000 path uses J2KSwift v3.2.0 through the DICOMCore codec registry. This provides a pure-Swift implementation for JPEG 2000, HTJ2K, JP3D, and JPIP that works across Apple platforms and Linux.
+The default JPEG 2000 path uses J2KSwift v11.0.0 through the DICOMCore codec registry. This provides a pure-Swift implementation for JPEG 2000, HTJ2K, JP3D, and JPIP that works across Apple platforms and Linux.
 
 #### Codec Layering
 
@@ -55,25 +55,22 @@ The default JPEG 2000 path uses J2KSwift v3.2.0 through the DICOMCore codec regi
                             │
 ┌───────────────────────────▼──────────────────────────────────┐
 │  DICOMCore                                                   │
-│  ├── CodecRegistry (priority order)                          │
-│  │   ├── MetalJ2KCodec        (Apple, GPU)    ── priority 0  │
-│  │   ├── AcceleratedJ2KCodec  (Apple, SIMD)   ── priority 1  │
-│  │   ├── VulkanJ2KCodec       (Linux, GPU)    ── priority 2  │
-│  │   ├── J2KSwiftCodec        (all, scalar)   ── priority 3  │
-│  │   └── NativeJPEG2000Codec  (Apple, legacy) ── deprecated  │
-│  ├── HTJ2KCodec  (ISO/IEC 15444-15, UIDs .201/.202/.203)     │
-│  ├── JP3DCodec   (ISO/IEC 15444-10, experimental private SOP)│
-│  └── JPIPCodec   (streaming, UIDs .94/.95)                   │
+│  ├── ImageCodec registry (per-UID encoder / decoder maps)    │
+│  │   ├── J2KSwiftCodec        (JPEG 2000 .90–.93, all OSes)  │
+│  │   ├── HTJ2KCodec           (HTJ2K .201 / .202 / .203)     │
+│  │   ├── JP3DCodec            (JP3D, ISO/IEC 15444-10)       │
+│  │   └── NativeJPEG2000Codec  (Apple ImageIO, deprecated)    │
+│  │      hardware backend via the CodecBackend enum,          │
+│  │      auto-selected: .metal → .accelerate → .scalar        │
+│  └── JPIP streaming (DICOMJPIPClient, UIDs .94 / .95)        │
 └───────────────────────────┬──────────────────────────────────┘
                             │
 ┌───────────────────────────▼──────────────────────────────────┐
-│  J2KSwift 3.2.0 (external SPM dependency)                    │
+│  J2KSwift 11.0.0 (external SPM dependency)                   │
 │  ├── J2KCore          ─ Image model, wavelet, entropy        │
 │  ├── J2KCodec         ─ J2KEncoder / J2KDecoder / Transcoder │
-│  ├── J2KFileFormat    ─ JP2 / JPH / JHC / MJ2 containers     │
-│  ├── J2KAccelerate    ─ Accelerate + ARM Neon kernels        │
+│  ├── J2KFileFormat    ─ JP2 / JPH / JHC containers           │
 │  ├── J2KMetal         ─ Metal compute (Apple)                │
-│  ├── J2KVulkan        ─ SPIR-V compute (Linux, opt-in)       │
 │  ├── JPIP             ─ Interactive streaming (2D + 3D)      │
 │  └── J2K3D            ─ JP3D volumetric (ISO/IEC 15444-10)   │
 └──────────────────────────────────────────────────────────────┘
@@ -85,12 +82,16 @@ The default JPEG 2000 path uses J2KSwift v3.2.0 through the DICOMCore codec regi
 
 | Backend | Condition | `CodecBackend` case |
 |---------|-----------|---------------------|
-| J2KMetal | `J2KMetalDevice.isAvailable` (Apple, iOS 17+, macOS 15+) | `.metal` |
-| J2KAccelerate | `canImport(Accelerate)` | `.accelerate` |
-| J2KVulkan | `canImport(Vulkan)` (Linux, opt-in) | `.vulkan` |
-| J2KCodec scalar | always | `.scalar` |
+| Metal (J2KMetal) | `J2KMetalDevice.isAvailable` (Apple, iOS 18+, macOS 15+) | `.metal` |
+| Apple Accelerate | `canImport(Accelerate)` | `.accelerate` |
+| Scalar (pure Swift) | always | `.scalar` |
 
-The registry always falls through gracefully to scalar if GPU backends are unavailable.
+The registry always falls through gracefully to scalar if the Metal backend is unavailable.
+
+> **Note (J2KSwift v11.0.0):** the SIMD path now uses Apple's own `Accelerate`
+> framework via `#if canImport(Accelerate)`. The former `J2KAccelerate` and
+> `J2KVulkan` modules were removed in J2KSwift v11.0.0 and are no longer part of
+> the backend chain.
 
 #### Key points
 
@@ -291,8 +292,8 @@ All errors provide detailed context for debugging.
 
 | Platform | Minimum Version | Notes |
 |----------|-----------------|-------|
-| iOS | 17.0 | Full support |
-| macOS | 15.0 | Bumped from 14 to satisfy J2KSwift v3.2.0 requirement |
+| iOS | 18.0 | Full support; matches J2KSwift's iOS 18 deployment target |
+| macOS | 15.0 | Bumped from 14 to satisfy J2KSwift's macOS 15 deployment target |
 | visionOS | 1.0 | Full support |
 
 ### Platform-Specific Features

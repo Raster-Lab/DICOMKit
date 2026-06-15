@@ -234,7 +234,7 @@ await withTaskGroup(of: CGImage?.self) { group in
 
 ## JPEG 2000 / HTJ2K / JP3D Performance
 
-DICOMKit uses J2KSwift v3.2.0 for all JPEG 2000 family codecs. Performance varies by codec, hardware backend, and image characteristics.
+DICOMKit uses J2KSwift v11.0.0 for all JPEG 2000 family codecs. Performance varies by codec, hardware backend, and image characteristics.
 
 ### Codec Selection
 
@@ -251,7 +251,7 @@ let config = CodecBackendPreference.require(.accelerate)
 
 ### Decode Performance (macOS arm64, real clinical DICOM)
 
-Measured on `instance_003317.dcm` — MR series, macOS arm64 (Apple Silicon), J2KSwift 3.2.0:
+Measured on `instance_003317.dcm` — MR series, macOS arm64 (Apple Silicon), J2KSwift 11.0.0:
 
 | Codec | Decode time | Relative |
 |-------|-------------|----------|
@@ -265,9 +265,9 @@ Measured on `instance_003317.dcm` — MR series, macOS arm64 (Apple Silicon), J2
 
 | Backend | Typical uplift over scalar |
 |---------|---------------------------|
-| J2KMetal (Apple GPU) | Up to 8–10× for large volumes |
-| J2KAccelerate (SIMD / ARM Neon) | 2–4× |
-| J2KCodec scalar | 1× (baseline) |
+| Metal (J2KMetal, Apple GPU) | Up to 8–10× for large volumes |
+| Apple Accelerate (SIMD / ARM Neon) | 2–4× |
+| Scalar (pure Swift) | 1× (baseline) |
 
 These multipliers are additive on top of the HTJ2K vs J2K codec gain, so HTJ2K + Metal can be ~40–50× faster than plain J2K scalar on Apple hardware.
 

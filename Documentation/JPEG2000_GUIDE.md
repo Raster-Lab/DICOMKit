@@ -1,6 +1,6 @@
 # JPEG 2000 Guide for DICOMKit
 
-This guide covers JPEG 2000 (J2K), High-Throughput JPEG 2000 (HTJ2K), JP3D volumetric encoding, and JPIP streaming as implemented in DICOMKit via J2KSwift v3.2.0.
+This guide covers JPEG 2000 (J2K), High-Throughput JPEG 2000 (HTJ2K), JP3D volumetric encoding, and JPIP streaming as implemented in DICOMKit via J2KSwift v11.0.0.
 
 ## Table of Contents
 
@@ -20,7 +20,7 @@ This guide covers JPEG 2000 (J2K), High-Throughput JPEG 2000 (HTJ2K), JP3D volum
 
 ## Overview
 
-DICOMKit uses **J2KSwift v3.2.0** as its primary JPEG 2000 codec stack, replacing Apple ImageIO as the default path. J2KSwift is a pure-Swift implementation that works on all supported platforms (macOS, iOS, visionOS, and Linux), with optional GPU acceleration on Apple hardware.
+DICOMKit uses **J2KSwift v11.0.0** as its primary JPEG 2000 codec stack, replacing Apple ImageIO as the default path. J2KSwift is a pure-Swift implementation that works on all supported platforms (macOS, iOS, visionOS, and Linux), with optional GPU acceleration on Apple hardware.
 
 ### Codec Stack
 
@@ -107,7 +107,7 @@ HTJ2K (ISO/IEC 15444-15) is a backward-compatible extension of JPEG 2000 that ac
 
 ### Performance
 
-Measured on a real MR instance (macOS arm64, J2KSwift 3.2.0):
+Measured on a real MR instance (macOS arm64, J2KSwift 11.0.0):
 
 | Codec | Decode time | Speedup |
 |-------|-------------|---------|
@@ -251,7 +251,7 @@ let description = CodecRegistry.shared.backendDescription
 ```bash
 dicom-compress backends
 # ✅ metal      — J2KMetal (Apple GPU)
-# ✅ accelerate — J2KAccelerate (ARM Neon / SIMD)
+# ✅ accelerate — Apple Accelerate (ARM Neon / SIMD)
 # ✅ scalar     — J2KCodec (portable fallback)
 ```
 
@@ -404,10 +404,10 @@ print(codecs.map(\.name))  // should include "HTJ2KCodec"
 | HTJ2K lossy (`.203`) edge cases | Partially validated; tracked, non-blocking |
 | `J2KDecoder.decodeResolution` | Not implemented upstream — post-decode workaround used |
 | JP3D standard DICOM transfer syntax | No standard UID; private SOP only |
-| J2KVulkan (Linux GPU) | Deferred — requires Linux CI configuration |
+| Vulkan GPU acceleration (Linux) | Not available — `J2KVulkan` removed in J2KSwift v11.0.0; Linux uses scalar |
 | JPEG-LS | Not supported |
 
 ---
 
-*DICOMKit version: 1.2.7 — J2KSwift v3.2.0*
+*DICOMKit version: 1.2.7 — J2KSwift v11.0.0*
 *Last updated: 2026-04-21*
