@@ -88,9 +88,9 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 
 **Status**: Production-ready v1.8.0 release with comprehensive DICOM support, example applications, and professional documentation.
 
-### J2KSwift v3.2.0 Integration (April 2026)
+### J2KSwift Integration (since April 2026)
 
-DICOMKit has completed a full integration of **J2KSwift v3.2.0** as its primary JPEG 2000 codec stack, replacing Apple ImageIO on all platforms.
+DICOMKit integrated **J2KSwift** as its primary JPEG 2000 codec stack in April 2026, replacing Apple ImageIO on all platforms, and currently tracks **J2KSwift v11.0.0**.
 
 - ✅ **J2KSwiftCodec** — Pure-Swift JPEG 2000 (`.90`/`.91`), Part 2 (`.92`/`.93`) encoding and decoding; cross-platform including Linux.
 - ✅ **HTJ2KCodec** — HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`); fast-path transcoder achieves **5.4× decode speedup** over J2K on macOS arm64.
@@ -1547,8 +1547,11 @@ These features may be added in future versions. See [MILESTONES.md](MILESTONES.m
 
 | Dependency | Version | Purpose |
 |------------|---------|---------|
-| Swift Argument Parser | 1.3.0+ | CLI tools argument parsing |
-| AWS SDK Swift | 1.6.0+ | Cloud storage integration (optional) |
+| Swift Argument Parser | 1.8.2+ | CLI tools argument parsing |
+| J2KSwift | 11.0.0+ | JPEG 2000 / HTJ2K / JP3D / JPIP codec stack |
+| JLSwift | 0.9.0+ | JPEG-LS codec |
+| JLISwift | 0.5.0+ | Native-Swift JPEG codec + DICOM bridge |
+| JXLSwift | 1.1.0+ | JPEG XL codec |
 
 ---
 
@@ -4576,7 +4579,7 @@ Core data types and utilities:
 - `PixelDataDescriptor` - Pixel data attributes and metadata
 - `PixelData` - Uncompressed pixel data access
 - `PixelDataError` - Detailed error types for pixel data extraction failures
-- `J2KSwiftCodec` - Cross-platform JPEG 2000 adapter using J2KSwift v3.2.0 as the primary Phase 1 implementation (NEW in April 2026)
+- `J2KSwiftCodec` - Cross-platform JPEG 2000 adapter using J2KSwift v11.0.0 as the primary implementation (introduced April 2026)
 - `WindowSettings` - VOI LUT window center/width settings
 - `DICOMError` - Error types for parsing failures
 - Little Endian and Big Endian byte reading/writing utilities
@@ -5185,7 +5188,7 @@ DICOMKit implements the **DICOM Standard 2026a** published by NEMA. Below is a d
 | 1.2.840.10008.1.2.4.203 | HTJ2K Lossy | ✅ | ⚠️ |
 | 1.2.840.10008.1.2.5 | RLE Lossless | ✅ | ✅ |
 
-*Note: ⚠️ indicates partial support. JPEG 2000 family codecs are provided by J2KSwift v3.2.0 (pure Swift, all platforms). Apple ImageIO (`NativeJPEG2000Codec`) is retained only for diagnostics.*
+*Note: ⚠️ indicates partial support. JPEG 2000 family codecs are provided by J2KSwift v11.0.0 (pure Swift, all platforms). Apple ImageIO (`NativeJPEG2000Codec`) is retained only for diagnostics.*
 
 ### SOP Class Support
 
