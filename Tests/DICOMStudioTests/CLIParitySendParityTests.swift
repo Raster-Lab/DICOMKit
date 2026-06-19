@@ -59,8 +59,11 @@ final class CLIParitySendParityTests: XCTestCase {
         XCTAssertTrue(ids.contains("dicom-send_net_dry-run"))
         XCTAssertTrue(ids.contains("dicom-send_net_default"))
         XCTAssertTrue(ids.contains("dicom-send_net_priority-high"))
-        XCTAssertTrue(ids.contains("dicom-send_net_ts-evle"))
         XCTAssertTrue(ids.contains("dicom-send_net_verify"))
+        // The transfer-syntax scenario was removed from the parity matrix.
+        XCTAssertFalse(ids.contains("dicom-send_net_ts-evle"))
+        XCTAssertFalse(CLIParityNetworkScenarios.sendScenarios()
+            .contains { $0.cliArgs.contains("--transfer-syntax") })
 
         let dry = CLIParityNetworkScenarios.sendScenarios().first { $0.scenarioId == "dicom-send_net_dry-run" }
         XCTAssertEqual(dry?.studioParams["dry-run"], "true")

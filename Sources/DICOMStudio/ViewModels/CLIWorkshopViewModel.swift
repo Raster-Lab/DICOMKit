@@ -6411,12 +6411,11 @@ case "dicom-study":
         let levelStr = paramValue("level").uppercased()
         let limit = Int(paramValue("limit")) ?? 100
         let offset = Int(paramValue("offset")) ?? 0
-        let outputFormat = paramValue("output-format").lowercased()
-
-        appendConsoleOutput("Querying \(profile.baseURL) ...\n")
-        appendConsoleOutput("  Level:   \(levelStr.isEmpty ? "STUDY" : levelStr)\n")
-        appendConsoleOutput("  Limit:   \(limit)\n")
-        appendConsoleOutput("  Offset:  \(offset)\n\n")
+        // The in-app query faithfully reproduces the `dicom-wado query` CLI (the
+        // Workshop's purpose), so it emits ONLY the formatted result the CLI prints —
+        // no app-only "Querying…/returned N" chrome that the non-verbose CLI omits and
+        // that would otherwise shift every line out of alignment in the Compare-CLI diff.
+        let fmt = QIDOOutputFormat(rawValue: paramValue("output-format").lowercased()) ?? .table
 
         do {
             let client = try DICOMwebClientFactory.makeClient(from: profile)
@@ -6451,37 +6450,28 @@ case "dicom-study":
             switch levelStr {
             case "SERIES":
                 let results = try await client.searchAllSeries(query: query)
-                let count = results.results.count
-                appendConsoleOutput("✅ QIDO-RS returned \(count) series\n\n")
-                formatQIDOSeriesOutput(results.results, format: outputFormat)
-                if count > 50 { appendConsoleOutput("... and \(count - 50) more (showing first 50)\n") }
+                appendConsoleOutput(QIDOResultFormatter().formatSeries(results.results, format: fmt))
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 0,
-                             output: "\(count) series returned")
+                             output: "\(results.results.count) series returned")
 
             case "INSTANCE":
                 let results = try await client.searchAllInstances(query: query)
-                let count = results.results.count
-                appendConsoleOutput("✅ QIDO-RS returned \(count) instances\n\n")
-                formatQIDOInstanceOutput(results.results, format: outputFormat)
-                if count > 50 { appendConsoleOutput("... and \(count - 50) more (showing first 50)\n") }
+                appendConsoleOutput(QIDOResultFormatter().formatInstances(results.results, format: fmt))
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 0,
-                             output: "\(count) instances returned")
+                             output: "\(results.results.count) instances returned")
 
             default: // STUDY
                 let results = try await client.searchStudies(query: query)
-                let count = results.results.count
                 let total = results.totalCount.map { " (total: \($0))" } ?? ""
-                appendConsoleOutput("✅ QIDO-RS returned \(count) studies\(total)\n\n")
-                formatQIDOStudyOutput(results.results, format: outputFormat)
-                if count > 50 { appendConsoleOutput("... and \(count - 50) more (showing first 50)\n") }
+                appendConsoleOutput(QIDOResultFormatter().formatStudies(results.results, format: fmt))
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 0,
-                             output: "\(count) studies returned\(total)")
+                             output: "\(results.results.count) studies returned\(total)")
             }
         } catch {
             appendConsoleOutput("❌ QIDO-RS query failed\n")
@@ -6491,228 +6481,6 @@ case "dicom-study":
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-qido", command: commandPreview, exitCode: 1,
                          output: error.localizedDescription)
-        }
-    }
-
-    // MARK: - QIDO-RS Output Formatters
-
-    /// Formats QIDO-RS study results as a detailed dataset in the requested output format.
-    private func formatQIDOStudyOutput(_ studies: [QIDOStudyResult], format: String) {
-        let items = studies.prefix(50)
-        switch format {
-        case "json":
-            appendConsoleOutput("[\n")
-            for (i, study) in items.enumerated() {
-                appendConsoleOutput("  {\n")
-                appendConsoleOutput("    \"StudyInstanceUID\": \"\(study.studyInstanceUID ?? "")\",\n")
-                appendConsoleOutput("    \"PatientName\": \"\(study.patientName ?? "")\",\n")
-                appendConsoleOutput("    \"PatientID\": \"\(study.patientID ?? "")\",\n")
-                appendConsoleOutput("    \"PatientBirthDate\": \"\(study.patientBirthDate ?? "")\",\n")
-                appendConsoleOutput("    \"PatientSex\": \"\(study.patientSex ?? "")\",\n")
-                appendConsoleOutput("    \"StudyDate\": \"\(study.studyDate ?? "")\",\n")
-                appendConsoleOutput("    \"StudyTime\": \"\(study.studyTime ?? "")\",\n")
-                appendConsoleOutput("    \"StudyDescription\": \"\(study.studyDescription ?? "")\",\n")
-                appendConsoleOutput("    \"AccessionNumber\": \"\(study.accessionNumber ?? "")\",\n")
-                appendConsoleOutput("    \"StudyID\": \"\(study.studyID ?? "")\",\n")
-                appendConsoleOutput("    \"ReferringPhysicianName\": \"\(study.referringPhysicianName ?? "")\",\n")
-                appendConsoleOutput("    \"ModalitiesInStudy\": [\(study.modalitiesInStudy.map { "\"\($0)\"" }.joined(separator: ", "))],\n")
-                appendConsoleOutput("    \"NumberOfStudyRelatedSeries\": \(study.numberOfStudyRelatedSeries.map(String.init) ?? "null"),\n")
-                appendConsoleOutput("    \"NumberOfStudyRelatedInstances\": \(study.numberOfStudyRelatedInstances.map(String.init) ?? "null")\n")
-                appendConsoleOutput("  }\(i < items.count - 1 ? "," : "")\n")
-            }
-            appendConsoleOutput("]\n")
-        case "csv":
-            appendConsoleOutput("StudyInstanceUID,PatientName,PatientID,PatientBirthDate,PatientSex,StudyDate,StudyTime,StudyDescription,AccessionNumber,StudyID,ReferringPhysicianName,ModalitiesInStudy,NumSeries,NumInstances\n")
-            for study in items {
-                let fields: [String] = [
-                    study.studyInstanceUID ?? "",
-                    csvQuote(study.patientName ?? ""),
-                    csvQuote(study.patientID ?? ""),
-                    study.patientBirthDate ?? "",
-                    study.patientSex ?? "",
-                    study.studyDate ?? "",
-                    study.studyTime ?? "",
-                    csvQuote(study.studyDescription ?? ""),
-                    csvQuote(study.accessionNumber ?? ""),
-                    study.studyID ?? "",
-                    csvQuote(study.referringPhysicianName ?? ""),
-                    csvQuote(study.modalitiesInStudy.joined(separator: "/")),
-                    study.numberOfStudyRelatedSeries.map(String.init) ?? "",
-                    study.numberOfStudyRelatedInstances.map(String.init) ?? ""
-                ]
-                appendConsoleOutput(fields.joined(separator: ",") + "\n")
-            }
-        case "xml":
-            appendConsoleOutput("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<QIDOResults level=\"STUDY\" count=\"\(items.count)\">\n")
-            for study in items {
-                appendConsoleOutput("  <Study>\n")
-                appendConsoleOutput("    <StudyInstanceUID>\(xmlEscape(study.studyInstanceUID ?? ""))</StudyInstanceUID>\n")
-                appendConsoleOutput("    <PatientName>\(xmlEscape(study.patientName ?? ""))</PatientName>\n")
-                appendConsoleOutput("    <PatientID>\(xmlEscape(study.patientID ?? ""))</PatientID>\n")
-                appendConsoleOutput("    <PatientBirthDate>\(study.patientBirthDate ?? "")</PatientBirthDate>\n")
-                appendConsoleOutput("    <PatientSex>\(study.patientSex ?? "")</PatientSex>\n")
-                appendConsoleOutput("    <StudyDate>\(study.studyDate ?? "")</StudyDate>\n")
-                appendConsoleOutput("    <StudyTime>\(study.studyTime ?? "")</StudyTime>\n")
-                appendConsoleOutput("    <StudyDescription>\(xmlEscape(study.studyDescription ?? ""))</StudyDescription>\n")
-                appendConsoleOutput("    <AccessionNumber>\(xmlEscape(study.accessionNumber ?? ""))</AccessionNumber>\n")
-                appendConsoleOutput("    <StudyID>\(study.studyID ?? "")</StudyID>\n")
-                appendConsoleOutput("    <ReferringPhysicianName>\(xmlEscape(study.referringPhysicianName ?? ""))</ReferringPhysicianName>\n")
-                appendConsoleOutput("    <ModalitiesInStudy>\(study.modalitiesInStudy.joined(separator: ","))</ModalitiesInStudy>\n")
-                appendConsoleOutput("    <NumberOfStudyRelatedSeries>\(study.numberOfStudyRelatedSeries.map(String.init) ?? "")</NumberOfStudyRelatedSeries>\n")
-                appendConsoleOutput("    <NumberOfStudyRelatedInstances>\(study.numberOfStudyRelatedInstances.map(String.init) ?? "")</NumberOfStudyRelatedInstances>\n")
-                appendConsoleOutput("  </Study>\n")
-            }
-            appendConsoleOutput("</QIDOResults>\n")
-        default: // text — detailed dataset
-            for (i, study) in items.enumerated() {
-                appendConsoleOutput("─── Study [\(i + 1)] ───────────────────────────────────────\n")
-                appendConsoleOutput("  Study Instance UID .... \(study.studyInstanceUID ?? "N/A")\n")
-                appendConsoleOutput("  Patient Name ......... \(study.patientName ?? "")\n")
-                appendConsoleOutput("  Patient ID ........... \(study.patientID ?? "")\n")
-                appendConsoleOutput("  Patient Birth Date ... \(study.patientBirthDate ?? "")\n")
-                appendConsoleOutput("  Patient Sex .......... \(study.patientSex ?? "")\n")
-                appendConsoleOutput("  Study Date ........... \(study.studyDate ?? "")\n")
-                appendConsoleOutput("  Study Time ........... \(study.studyTime ?? "")\n")
-                appendConsoleOutput("  Study Description .... \(study.studyDescription ?? "")\n")
-                appendConsoleOutput("  Accession Number ..... \(study.accessionNumber ?? "")\n")
-                appendConsoleOutput("  Study ID ............. \(study.studyID ?? "")\n")
-                appendConsoleOutput("  Referring Physician .. \(study.referringPhysicianName ?? "")\n")
-                let mods = study.modalitiesInStudy
-                appendConsoleOutput("  Modalities ........... \(mods.isEmpty ? "" : mods.joined(separator: ", "))\n")
-                appendConsoleOutput("  # Series ............. \(study.numberOfStudyRelatedSeries.map(String.init) ?? "—")\n")
-                appendConsoleOutput("  # Instances .......... \(study.numberOfStudyRelatedInstances.map(String.init) ?? "—")\n")
-                appendConsoleOutput("\n")
-            }
-        }
-    }
-
-    /// Formats QIDO-RS series results as a detailed dataset in the requested output format.
-    private func formatQIDOSeriesOutput(_ seriesList: [QIDOSeriesResult], format: String) {
-        let items = seriesList.prefix(50)
-        switch format {
-        case "json":
-            appendConsoleOutput("[\n")
-            for (i, s) in items.enumerated() {
-                appendConsoleOutput("  {\n")
-                appendConsoleOutput("    \"SeriesInstanceUID\": \"\(s.seriesInstanceUID ?? "")\",\n")
-                appendConsoleOutput("    \"StudyInstanceUID\": \"\(s.studyInstanceUID ?? "")\",\n")
-                appendConsoleOutput("    \"Modality\": \"\(s.modality ?? "")\",\n")
-                appendConsoleOutput("    \"SeriesNumber\": \(s.seriesNumber.map(String.init) ?? "null"),\n")
-                appendConsoleOutput("    \"SeriesDescription\": \"\(s.seriesDescription ?? "")\",\n")
-                appendConsoleOutput("    \"BodyPartExamined\": \"\(s.bodyPartExamined ?? "")\",\n")
-                appendConsoleOutput("    \"PerformedProcedureStepStartDate\": \"\(s.performedProcedureStepStartDate ?? "")\",\n")
-                appendConsoleOutput("    \"NumberOfSeriesRelatedInstances\": \(s.numberOfSeriesRelatedInstances.map(String.init) ?? "null")\n")
-                appendConsoleOutput("  }\(i < items.count - 1 ? "," : "")\n")
-            }
-            appendConsoleOutput("]\n")
-        case "csv":
-            appendConsoleOutput("SeriesInstanceUID,StudyInstanceUID,Modality,SeriesNumber,SeriesDescription,BodyPartExamined,ProcedureDate,NumInstances\n")
-            for s in items {
-                let fields: [String] = [
-                    s.seriesInstanceUID ?? "",
-                    s.studyInstanceUID ?? "",
-                    s.modality ?? "",
-                    s.seriesNumber.map(String.init) ?? "",
-                    csvQuote(s.seriesDescription ?? ""),
-                    s.bodyPartExamined ?? "",
-                    s.performedProcedureStepStartDate ?? "",
-                    s.numberOfSeriesRelatedInstances.map(String.init) ?? ""
-                ]
-                appendConsoleOutput(fields.joined(separator: ",") + "\n")
-            }
-        case "xml":
-            appendConsoleOutput("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<QIDOResults level=\"SERIES\" count=\"\(items.count)\">\n")
-            for s in items {
-                appendConsoleOutput("  <Series>\n")
-                appendConsoleOutput("    <SeriesInstanceUID>\(xmlEscape(s.seriesInstanceUID ?? ""))</SeriesInstanceUID>\n")
-                appendConsoleOutput("    <StudyInstanceUID>\(xmlEscape(s.studyInstanceUID ?? ""))</StudyInstanceUID>\n")
-                appendConsoleOutput("    <Modality>\(s.modality ?? "")</Modality>\n")
-                appendConsoleOutput("    <SeriesNumber>\(s.seriesNumber.map(String.init) ?? "")</SeriesNumber>\n")
-                appendConsoleOutput("    <SeriesDescription>\(xmlEscape(s.seriesDescription ?? ""))</SeriesDescription>\n")
-                appendConsoleOutput("    <BodyPartExamined>\(s.bodyPartExamined ?? "")</BodyPartExamined>\n")
-                appendConsoleOutput("    <PerformedProcedureStepStartDate>\(s.performedProcedureStepStartDate ?? "")</PerformedProcedureStepStartDate>\n")
-                appendConsoleOutput("    <NumberOfSeriesRelatedInstances>\(s.numberOfSeriesRelatedInstances.map(String.init) ?? "")</NumberOfSeriesRelatedInstances>\n")
-                appendConsoleOutput("  </Series>\n")
-            }
-            appendConsoleOutput("</QIDOResults>\n")
-        default: // text — detailed dataset
-            for (i, s) in items.enumerated() {
-                appendConsoleOutput("─── Series [\(i + 1)] ──────────────────────────────────────\n")
-                appendConsoleOutput("  Series Instance UID ... \(s.seriesInstanceUID ?? "N/A")\n")
-                appendConsoleOutput("  Study Instance UID ... \(s.studyInstanceUID ?? "")\n")
-                appendConsoleOutput("  Modality ............. \(s.modality ?? "")\n")
-                appendConsoleOutput("  Series Number ........ \(s.seriesNumber.map(String.init) ?? "—")\n")
-                appendConsoleOutput("  Series Description ... \(s.seriesDescription ?? "")\n")
-                appendConsoleOutput("  Body Part Examined ... \(s.bodyPartExamined ?? "")\n")
-                appendConsoleOutput("  Procedure Date ....... \(s.performedProcedureStepStartDate ?? "")\n")
-                appendConsoleOutput("  # Instances .......... \(s.numberOfSeriesRelatedInstances.map(String.init) ?? "—")\n")
-                appendConsoleOutput("\n")
-            }
-        }
-    }
-
-    /// Formats QIDO-RS instance results as a detailed dataset in the requested output format.
-    private func formatQIDOInstanceOutput(_ instances: [QIDOInstanceResult], format: String) {
-        let items = instances.prefix(50)
-        switch format {
-        case "json":
-            appendConsoleOutput("[\n")
-            for (i, inst) in items.enumerated() {
-                appendConsoleOutput("  {\n")
-                appendConsoleOutput("    \"SOPInstanceUID\": \"\(inst.sopInstanceUID ?? "")\",\n")
-                appendConsoleOutput("    \"SOPClassUID\": \"\(inst.sopClassUID ?? "")\",\n")
-                appendConsoleOutput("    \"SeriesInstanceUID\": \"\(inst.seriesInstanceUID ?? "")\",\n")
-                appendConsoleOutput("    \"StudyInstanceUID\": \"\(inst.studyInstanceUID ?? "")\",\n")
-                appendConsoleOutput("    \"InstanceNumber\": \(inst.instanceNumber.map(String.init) ?? "null"),\n")
-                appendConsoleOutput("    \"NumberOfFrames\": \(inst.numberOfFrames.map(String.init) ?? "null"),\n")
-                appendConsoleOutput("    \"Rows\": \(inst.rows.map(String.init) ?? "null"),\n")
-                appendConsoleOutput("    \"Columns\": \(inst.columns.map(String.init) ?? "null")\n")
-                appendConsoleOutput("  }\(i < items.count - 1 ? "," : "")\n")
-            }
-            appendConsoleOutput("]\n")
-        case "csv":
-            appendConsoleOutput("SOPInstanceUID,SOPClassUID,SeriesInstanceUID,StudyInstanceUID,InstanceNumber,NumberOfFrames,Rows,Columns\n")
-            for inst in items {
-                let fields: [String] = [
-                    inst.sopInstanceUID ?? "",
-                    inst.sopClassUID ?? "",
-                    inst.seriesInstanceUID ?? "",
-                    inst.studyInstanceUID ?? "",
-                    inst.instanceNumber.map(String.init) ?? "",
-                    inst.numberOfFrames.map(String.init) ?? "",
-                    inst.rows.map(String.init) ?? "",
-                    inst.columns.map(String.init) ?? ""
-                ]
-                appendConsoleOutput(fields.joined(separator: ",") + "\n")
-            }
-        case "xml":
-            appendConsoleOutput("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<QIDOResults level=\"INSTANCE\" count=\"\(items.count)\">\n")
-            for inst in items {
-                appendConsoleOutput("  <Instance>\n")
-                appendConsoleOutput("    <SOPInstanceUID>\(xmlEscape(inst.sopInstanceUID ?? ""))</SOPInstanceUID>\n")
-                appendConsoleOutput("    <SOPClassUID>\(inst.sopClassUID ?? "")</SOPClassUID>\n")
-                appendConsoleOutput("    <SeriesInstanceUID>\(xmlEscape(inst.seriesInstanceUID ?? ""))</SeriesInstanceUID>\n")
-                appendConsoleOutput("    <StudyInstanceUID>\(xmlEscape(inst.studyInstanceUID ?? ""))</StudyInstanceUID>\n")
-                appendConsoleOutput("    <InstanceNumber>\(inst.instanceNumber.map(String.init) ?? "")</InstanceNumber>\n")
-                appendConsoleOutput("    <NumberOfFrames>\(inst.numberOfFrames.map(String.init) ?? "")</NumberOfFrames>\n")
-                appendConsoleOutput("    <Rows>\(inst.rows.map(String.init) ?? "")</Rows>\n")
-                appendConsoleOutput("    <Columns>\(inst.columns.map(String.init) ?? "")</Columns>\n")
-                appendConsoleOutput("  </Instance>\n")
-            }
-            appendConsoleOutput("</QIDOResults>\n")
-        default: // text — detailed dataset
-            for (i, inst) in items.enumerated() {
-                appendConsoleOutput("─── Instance [\(i + 1)] ────────────────────────────────────\n")
-                appendConsoleOutput("  SOP Instance UID ..... \(inst.sopInstanceUID ?? "N/A")\n")
-                appendConsoleOutput("  SOP Class UID ........ \(inst.sopClassUID ?? "")\n")
-                appendConsoleOutput("  Series Instance UID .. \(inst.seriesInstanceUID ?? "")\n")
-                appendConsoleOutput("  Study Instance UID ... \(inst.studyInstanceUID ?? "")\n")
-                appendConsoleOutput("  Instance Number ...... \(inst.instanceNumber.map(String.init) ?? "—")\n")
-                appendConsoleOutput("  # Frames ............. \(inst.numberOfFrames.map(String.init) ?? "—")\n")
-                appendConsoleOutput("  Rows ................. \(inst.rows.map(String.init) ?? "—")\n")
-                appendConsoleOutput("  Columns .............. \(inst.columns.map(String.init) ?? "—")\n")
-                appendConsoleOutput("\n")
-            }
         }
     }
 
@@ -8592,10 +8360,6 @@ case "dicom-study":
         appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
         appendConsoleOutput("  Priority:         \(priorityStr)\n")
         appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
-        let transferSyntaxSend = paramValue("transfer-syntax")
-        if !transferSyntaxSend.isEmpty {
-            appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxSend) (proposed TS)\n")
-        }
         if retryCount > 0 {
             appendConsoleOutput("  Retry attempts:   \(retryCount)\n")
         }
@@ -8662,30 +8426,19 @@ case "dicom-study":
 
                 for attempt in 0...retryCount {
                     do {
-                        // Use preferred TS if the user selected one; otherwise let the service use the file's own TS
-                        let result: StoreResult
-                        if let tsUID = transferSyntaxUID(for: transferSyntaxSend) {
-                            result = try await DICOMStorageService.store(
-                                fileData: fileData,
-                                preferredTransferSyntaxUID: tsUID,
-                                to: host,
-                                port: port,
-                                callingAE: callingAET,
-                                calledAE: calledAET,
-                                priority: priority,
-                                timeout: timeout
-                            )
-                        } else {
-                            result = try await DICOMStorageService.store(
-                                fileData: fileData,
-                                to: host,
-                                port: port,
-                                callingAE: callingAET,
-                                calledAE: calledAET,
-                                priority: priority,
-                                timeout: timeout
-                            )
-                        }
+                        // Always send the file in its OWN transfer syntax — no preferred
+                        // TS is proposed (the dicom-send `--transfer-syntax` flag is not
+                        // exposed in the app). The package negotiates the file's TS with
+                        // standard fallbacks, so the file goes to the server as-is.
+                        let result = try await DICOMStorageService.store(
+                            fileData: fileData,
+                            to: host,
+                            port: port,
+                            callingAE: callingAET,
+                            calledAE: calledAET,
+                            priority: priority,
+                            timeout: timeout
+                        )
                         successCount += 1
                         let rtt = String(format: "%.1f", result.roundTripTime * 1000)
                         appendConsoleOutput(" ✅ (\(rtt) ms)\n")

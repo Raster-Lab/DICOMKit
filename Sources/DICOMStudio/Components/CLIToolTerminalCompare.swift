@@ -163,9 +163,12 @@ enum CLIToolTerminalCompare {
     /// when set, is a wall-clock backstop: a network tool can block past its own
     /// connect timeout if the PACS accepts TCP but never answers a DIMSE request, so
     /// past the deadline the child is terminated (then hard-killed) and the outcome is
-    /// marked timed-out — otherwise the whole parity run would freeze.
+    /// marked timed-out — otherwise the whole parity run would freeze. `stdin`, when
+    /// set, is written to the child's standard input then closed — this answers an
+    /// interactive prompt (e.g. dicom-qr `--interactive`'s study-selection `readLine()`)
+    /// deterministically, so the same answer drives the CLI and the SDK reference.
     static func run(tool: String, arguments: [String], binDir: String? = nil,
-                    timeout: TimeInterval? = nil) -> Outcome {
+                    timeout: TimeInterval? = nil, stdin: String? = nil) -> Outcome {
         guard let bin = locateBinary(tool: tool, preferredDir: binDir) else {
             return Outcome(
                 binaryPath: nil, stdout: "", stderr: "", exitCode: -1,
@@ -179,6 +182,11 @@ enum CLIToolTerminalCompare {
         let errPipe = Pipe()
         proc.standardOutput = outPipe
         proc.standardError = errPipe
+        // Feed the interactive answer (if any) on stdin so a `readLine()` prompt doesn't
+        // block forever. Without a stdin pipe the child inherits the app's, which has no
+        // input — an interactive tool would then hang until the timeout backstop fires.
+        let inPipe: Pipe? = stdin != nil ? Pipe() : nil
+        if let inPipe { proc.standardInput = inPipe }
 
         do {
             try proc.run()
@@ -186,6 +194,15 @@ enum CLIToolTerminalCompare {
             return Outcome(
                 binaryPath: bin, stdout: "", stderr: "", exitCode: -1,
                 launchError: "Failed to launch \(tool): \(error.localizedDescription). Is the App Sandbox disabled?")
+        }
+
+        // Write the interactive answer then close stdin (EOF) so the child's readLine()
+        // returns. The tool may prompt only after its query completes, so the handle is
+        // kept open until here; closing signals end-of-input for any further reads.
+        if let inPipe, let stdin {
+            let handle = inPipe.fileHandleForWriting
+            handle.write(Data(stdin.utf8))
+            try? handle.close()
         }
 
         // Drain both pipes concurrently. Reading them sequentially can deadlock
