@@ -587,189 +587,20 @@ struct QueryCommand: AsyncParsableCommand {
         }
     }
     
+    // QIDO-RS result rendering is delegated to the SHARED `QIDOResultFormatter`
+    // (DICOMWeb) — the single formatter the CLI Workshop's in-app query also calls,
+    // so the CLI and app output pipelines cannot drift (mirrors how the DIMSE
+    // `dicom-query` tool shares `DICOMQueryResultFormatter`).
     private func formatStudyResults(_ results: QIDOStudyResults, format: OutputFormat) -> String {
-        switch format {
-        case .table:
-            return formatStudyTable(results.results)
-        case .json:
-            let dicts: [[String: Any]] = results.results.map { study in
-                var dict: [String: Any] = [:]
-                if let v = study.studyInstanceUID { dict["StudyInstanceUID"] = v }
-                if let v = study.patientName { dict["PatientName"] = v }
-                if let v = study.patientID { dict["PatientID"] = v }
-                if let v = study.studyDate { dict["StudyDate"] = v }
-                if let v = study.studyTime { dict["StudyTime"] = v }
-                if let v = study.studyDescription { dict["StudyDescription"] = v }
-                if let v = study.accessionNumber { dict["AccessionNumber"] = v }
-                if let v = study.studyID { dict["StudyID"] = v }
-                if let v = study.referringPhysicianName { dict["ReferringPhysicianName"] = v }
-                if let v = study.numberOfStudyRelatedSeries { dict["NumberOfStudyRelatedSeries"] = v }
-                if let v = study.numberOfStudyRelatedInstances { dict["NumberOfStudyRelatedInstances"] = v }
-                if !study.modalitiesInStudy.isEmpty { dict["ModalitiesInStudy"] = study.modalitiesInStudy }
-                if let v = study.patientBirthDate { dict["PatientBirthDate"] = v }
-                if let v = study.patientSex { dict["PatientSex"] = v }
-                return dict
-            }
-            return formatJSON(dicts)
-        case .csv:
-            return formatStudyCSV(results.results)
-        }
+        QIDOResultFormatter().formatStudies(results.results, format: format.asQIDO)
     }
-    
+
     private func formatSeriesResults(_ results: QIDOSeriesResults, format: OutputFormat) -> String {
-        switch format {
-        case .table:
-            return formatSeriesTable(results.results)
-        case .json:
-            let dicts: [[String: Any]] = results.results.map { s in
-                var dict: [String: Any] = [:]
-                if let v = s.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
-                if let v = s.studyInstanceUID { dict["StudyInstanceUID"] = v }
-                if let v = s.modality { dict["Modality"] = v }
-                if let v = s.seriesNumber { dict["SeriesNumber"] = v }
-                if let v = s.seriesDescription { dict["SeriesDescription"] = v }
-                if let v = s.bodyPartExamined { dict["BodyPartExamined"] = v }
-                if let v = s.performedProcedureStepStartDate { dict["PerformedProcedureStepStartDate"] = v }
-                if let v = s.numberOfSeriesRelatedInstances { dict["NumberOfSeriesRelatedInstances"] = v }
-                return dict
-            }
-            return formatJSON(dicts)
-        case .csv:
-            return formatSeriesCSV(results.results)
-        }
+        QIDOResultFormatter().formatSeries(results.results, format: format.asQIDO)
     }
-    
+
     private func formatInstanceResults(_ results: QIDOInstanceResults, format: OutputFormat) -> String {
-        switch format {
-        case .table:
-            return formatInstanceTable(results.results)
-        case .json:
-            let dicts: [[String: Any]] = results.results.map { instance in
-                var dict: [String: Any] = [:]
-                if let v = instance.sopInstanceUID { dict["SOPInstanceUID"] = v }
-                if let v = instance.sopClassUID { dict["SOPClassUID"] = v }
-                if let v = instance.instanceNumber { dict["InstanceNumber"] = v }
-                if let v = instance.numberOfFrames { dict["NumberOfFrames"] = v }
-                if let v = instance.rows { dict["Rows"] = v }
-                if let v = instance.columns { dict["Columns"] = v }
-                if let v = instance.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
-                if let v = instance.studyInstanceUID { dict["StudyInstanceUID"] = v }
-                return dict
-            }
-            return formatJSON(dicts)
-        case .csv:
-            return formatInstanceCSV(results.results)
-        }
-    }
-    
-    private func formatStudyTable(_ studies: [QIDOStudyResult]) -> String {
-        var output = ""
-        output += String(repeating: "=", count: 120) + "\n"
-        output += pad("Study UID", 20) + " " + pad("Patient Name", 30) + " " + pad("Study Date", 20) + " " + pad("Modality", 10) + " " + pad("# Series", 10) + "\n"
-        output += String(repeating: "=", count: 120) + "\n"
-        
-        for study in studies {
-            let studyUID = truncate(study.studyInstanceUID ?? "", maxLength: 20)
-            let patientName = truncate(study.patientName ?? "", maxLength: 30)
-            let studyDate = study.studyDate ?? ""
-            let modality = truncate(study.modalitiesInStudy.joined(separator: ", "), maxLength: 10)
-            let numSeries = study.numberOfStudyRelatedSeries ?? 0
-            
-            output += pad(studyUID, 20) + " " + pad(patientName, 30) + " " + pad(studyDate, 20) + " " + pad(modality, 10) + " " + pad("\(numSeries)", 10) + "\n"
-        }
-        
-        output += String(repeating: "=", count: 120) + "\n"
-        return output
-    }
-    
-    private func formatSeriesTable(_ series: [QIDOSeriesResult]) -> String {
-        var output = ""
-        output += String(repeating: "=", count: 100) + "\n"
-        output += pad("Series UID", 25) + " " + pad("Modality", 10) + " " + pad("Description", 30) + " " + pad("# Images", 10) + "\n"
-        output += String(repeating: "=", count: 100) + "\n"
-        
-        for s in series {
-            let seriesUID = truncate(s.seriesInstanceUID ?? "", maxLength: 25)
-            let modality = s.modality ?? ""
-            let description = truncate(s.seriesDescription ?? "", maxLength: 30)
-            let numInstances = s.numberOfSeriesRelatedInstances ?? 0
-            
-            output += pad(seriesUID, 25) + " " + pad(modality, 10) + " " + pad(description, 30) + " " + pad("\(numInstances)", 10) + "\n"
-        }
-        
-        output += String(repeating: "=", count: 100) + "\n"
-        return output
-    }
-    
-    private func formatInstanceTable(_ instances: [QIDOInstanceResult]) -> String {
-        var output = ""
-        output += String(repeating: "=", count: 80) + "\n"
-        output += pad("SOP Instance UID", 30) + " " + pad("SOP Class", 15) + " " + pad("# Frames", 10) + "\n"
-        output += String(repeating: "=", count: 80) + "\n"
-        
-        for instance in instances {
-            let sopUID = truncate(instance.sopInstanceUID ?? "", maxLength: 30)
-            let sopClass = truncate(instance.sopClassUID ?? "", maxLength: 15)
-            let numFrames = instance.numberOfFrames ?? 1
-            
-            output += pad(sopUID, 30) + " " + pad(sopClass, 15) + " " + pad("\(numFrames)", 10) + "\n"
-        }
-        
-        output += String(repeating: "=", count: 80) + "\n"
-        return output
-    }
-    
-    private func formatStudyCSV(_ studies: [QIDOStudyResult]) -> String {
-        var output = "StudyInstanceUID,PatientName,PatientID,StudyDate,StudyDescription,ModalitiesInStudy,NumberOfSeries\n"
-        for study in studies {
-            let studyUID = csvEscape(study.studyInstanceUID ?? "")
-            let patientName = csvEscape(study.patientName ?? "")
-            let patientID = csvEscape(study.patientID ?? "")
-            let studyDate = study.studyDate ?? ""
-            let description = csvEscape(study.studyDescription ?? "")
-            let modalities = csvEscape(study.modalitiesInStudy.joined(separator: ";"))
-            let numSeries = study.numberOfStudyRelatedSeries ?? 0
-            
-            output += "\(studyUID),\(patientName),\(patientID),\(studyDate),\(description),\(modalities),\(numSeries)\n"
-        }
-        return output
-    }
-    
-    private func formatSeriesCSV(_ series: [QIDOSeriesResult]) -> String {
-        var output = "SeriesInstanceUID,StudyInstanceUID,Modality,SeriesNumber,SeriesDescription,NumberOfInstances\n"
-        for s in series {
-            let seriesUID = csvEscape(s.seriesInstanceUID ?? "")
-            let studyUID = csvEscape(s.studyInstanceUID ?? "")
-            let modality = s.modality ?? ""
-            let seriesNumber = s.seriesNumber ?? 0
-            let description = csvEscape(s.seriesDescription ?? "")
-            let numInstances = s.numberOfSeriesRelatedInstances ?? 0
-            
-            output += "\(seriesUID),\(studyUID),\(modality),\(seriesNumber),\(description),\(numInstances)\n"
-        }
-        return output
-    }
-    
-    private func formatInstanceCSV(_ instances: [QIDOInstanceResult]) -> String {
-        var output = "SOPInstanceUID,SeriesInstanceUID,SOPClassUID,InstanceNumber,NumberOfFrames\n"
-        for instance in instances {
-            let sopUID = csvEscape(instance.sopInstanceUID ?? "")
-            let seriesUID = csvEscape(instance.seriesInstanceUID ?? "")
-            let sopClass = csvEscape(instance.sopClassUID ?? "")
-            let instanceNumber = instance.instanceNumber ?? 0
-            let numFrames = instance.numberOfFrames ?? 1
-            
-            output += "\(sopUID),\(seriesUID),\(sopClass),\(instanceNumber),\(numFrames)\n"
-        }
-        return output
-    }
-    
-    private func formatJSON(_ data: [[String: Any]]) -> String {
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys]),
-              let jsonString = String(data: jsonData, encoding: .utf8) else {
-            return "[]"
-        }
-        return jsonString
+        QIDOResultFormatter().formatInstances(results.results, format: format.asQIDO)
     }
 }
 
@@ -1577,6 +1408,10 @@ enum OutputFormat: String, ExpressibleByArgument {
     case table
     case json
     case csv
+
+    /// Bridges the CLI's `--format` to the shared `QIDOResultFormatter` (DICOMWeb).
+    /// The cases line up 1:1, so the rawValue maps directly (table is the fallback).
+    var asQIDO: QIDOOutputFormat { QIDOOutputFormat(rawValue: rawValue) ?? .table }
 }
 
 enum MetadataFormat: String, ExpressibleByArgument {

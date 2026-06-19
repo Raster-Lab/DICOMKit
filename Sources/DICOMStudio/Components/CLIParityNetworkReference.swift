@@ -23,6 +23,7 @@
 import Foundation
 import DICOMCore
 import DICOMNetwork
+import DICOMWeb
 
 /// The query keys a `dicom-query` parity scenario applies (empty == not set).
 public struct QueryFilters: Sendable, Equatable {
@@ -34,6 +35,66 @@ public struct QueryFilters: Sendable, Equatable {
     public var studyDescription = ""
     public var studyUID = ""
     public var seriesUID = ""
+    public init() {}
+}
+
+/// The scope a `dicom-retrieve` parity scenario retrieves (empty == not set). The
+/// Study UID is required; Series/Instance UIDs widen the sweep to those levels;
+/// Move Destination AE is required only for the C-MOVE scenarios; `transferSyntax`
+/// (a TransferSyntax UID, empty == server decides) is requested by the C-GET scenarios.
+public struct RetrieveScope: Sendable, Equatable {
+    public var studyUID = ""
+    public var seriesUID = ""
+    public var instanceUID = ""
+    public var moveDest = ""
+    public var transferSyntax = ""
+    public init() {}
+}
+
+/// The filters a `dicom-mwl` parity scenario applies to the worklist C-FIND
+/// (empty == not set). These map 1:1 onto the dicom-mwl `query` flags and the
+/// shared `WorklistQueryKeys` builder. `date` accepts YYYYMMDD or "today"/"tomorrow"
+/// (resolved identically to the CLI's `parseDateFilter`).
+public struct WorklistFilters: Sendable, Equatable {
+    public var date = ""
+    public var station = ""
+    public var patientName = ""
+    public var patientID = ""
+    public var modality = ""
+    public var spsStatus = ""
+    public var accession = ""
+    public init() {}
+}
+
+/// The inputs a `dicom-mpps` parity scenario drives (empty == not set). The Study
+/// UID is required for N-CREATE; the patient/accession/SPS-ID fields are optional
+/// N-CREATE attributes; `seriesUID` + `imageUIDs` populate the referenced-image set
+/// carried by the completing N-SET (mirroring `dicom-mpps update --study-uid
+/// --series-uid --image-uid`).
+public struct MPPSScope: Sendable, Equatable {
+    public var studyUID = ""
+    public var patientName = ""
+    public var patientID = ""
+    public var accession = ""
+    public var spsID = ""
+    public var seriesUID = ""
+    public var imageUIDs: [String] = []
+    public init() {}
+}
+
+/// The inputs a `dicom-wado` (DICOMweb) parity scenario drives. The `dicom-wado`
+/// binary's four subcommands share one endpoint — the HTTP(S) `baseURL` (+ optional
+/// bearer `token`) — resolved at run time like the DIMSE host/port. The rest are the
+/// per-subcommand concrete inputs: `query` keys for QIDO-RS (study/series/instance
+/// UIDs double as the WADO-RS retrieve scope), and a UPS create label + patient for
+/// the read-write UPS claim lifecycle (gated behind a non-empty `upsLabel`).
+public struct WADOScope: Sendable, Equatable {
+    public var query = QueryFilters()      // QIDO-RS keys (studyUID/seriesUID double as the retrieve scope)
+    public var instanceUID = ""            // WADO-RS instance-level retrieve (with study + series)
+    public var upsLabel = ""               // UPS create lifecycle is generated only when set
+    public var upsPatientName = ""
+    public var upsPatientID = ""
+    public var upsAET = ""                 // Requesting AE for the UPS state change (claim)
     public init() {}
 }
 
@@ -243,6 +304,544 @@ public enum CLIParityNetworkReference {
         return SendSemantics(dryRun: false, sent: filePaths.count, succeeded: succeeded, failed: failed)
     }
 
+    // MARK: dicom-retrieve (C-MOVE / C-GET) — PULLS instances from the PACS
+
+    /// Runs the retrieve scenario against the live PACS using DICOMRetrieveService —
+    /// the same package API dicom-retrieve calls — and builds the outcome record.
+    ///
+    /// C-MOVE asks the PACS to forward the matched instances to `moveDest`; the
+    /// counts come from the C-MOVE-RSP. C-GET streams the instances back on the
+    /// association: the reference COUNTS them (it doesn't write to disk — the CLI
+    /// does), and reads the completed/failed counts from the final C-GET-RSP.
+    /// A thrown error or a `.error` stream event is recorded as `success = false`
+    /// with zero counts, matching the CLI's non-zero exit with no result block.
+    public static func retrieve(host: String, port: UInt16, callingAET: String, calledAET: String,
+                                timeout: TimeInterval, method: String, level: String,
+                                studyUID: String, seriesUID: String, instanceUID: String,
+                                moveDest: String, transferSyntaxName: String) async -> RetrieveSemantics {
+        let tsUID: String? = transferSyntaxName.isEmpty ? nil : TransferSyntax.parse(transferSyntaxName)?.uid
+
+        if method == "c-move" {
+            do {
+                let r: RetrieveResult
+                switch level {
+                case "instance":
+                    r = try await DICOMRetrieveService.moveInstance(
+                        host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: studyUID, seriesInstanceUID: seriesUID, sopInstanceUID: instanceUID,
+                        moveDestination: moveDest, timeout: timeout)
+                case "series":
+                    r = try await DICOMRetrieveService.moveSeries(
+                        host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: studyUID, seriesInstanceUID: seriesUID,
+                        moveDestination: moveDest, timeout: timeout)
+                default:
+                    r = try await DICOMRetrieveService.moveStudy(
+                        host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                        studyInstanceUID: studyUID, moveDestination: moveDest, timeout: timeout)
+                }
+                return RetrieveSemantics(method: "c-move", level: level, success: r.isSuccess,
+                                         completed: r.progress.completed, failed: r.progress.failed,
+                                         warning: r.progress.warning, filesReceived: 0)
+            } catch {
+                return RetrieveSemantics(method: "c-move", level: level, success: false,
+                                         completed: 0, failed: 0, warning: 0, filesReceived: 0)
+            }
+        }
+
+        // C-GET
+        do {
+            let stream: AsyncStream<DICOMRetrieveService.GetEvent>
+            switch level {
+            case "instance":
+                stream = try await DICOMRetrieveService.getInstance(
+                    host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                    studyInstanceUID: studyUID, seriesInstanceUID: seriesUID, sopInstanceUID: instanceUID,
+                    preferredTransferSyntaxUID: tsUID, timeout: timeout)
+            case "series":
+                stream = try await DICOMRetrieveService.getSeries(
+                    host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                    studyInstanceUID: studyUID, seriesInstanceUID: seriesUID,
+                    preferredTransferSyntaxUID: tsUID, timeout: timeout)
+            default:
+                stream = try await DICOMRetrieveService.getStudy(
+                    host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                    studyInstanceUID: studyUID, preferredTransferSyntaxUID: tsUID, timeout: timeout)
+            }
+            var files = 0, completed = 0, failed = 0
+            var success = false, sawCompleted = false
+            for await event in stream {
+                switch event {
+                case .instance:           files += 1
+                case .progress:           break
+                case .completed(let r):   completed = r.progress.completed; failed = r.progress.failed
+                                          success = r.isSuccess; sawCompleted = true
+                case .error:              success = false
+                }
+            }
+            // The CLI prints "Files received: N" ONLY inside its C-GET `.completed`
+            // block (and throws on a mid-transfer `.error` before reaching it), so it
+            // can never report a received-file count on an aborted transfer. Mirror
+            // that: surface the count only when `.completed` was seen, otherwise 0 —
+            // so an abort after partial instances isn't a false drift (the CLI parses 0).
+            return RetrieveSemantics(method: "c-get", level: level, success: sawCompleted && success,
+                                     completed: completed, failed: failed, warning: 0,
+                                     filesReceived: sawCompleted ? files : 0)
+        } catch {
+            return RetrieveSemantics(method: "c-get", level: level, success: false,
+                                     completed: 0, failed: 0, warning: 0, filesReceived: 0)
+        }
+    }
+
+    // MARK: dicom-qr (C-FIND review) — read-only
+
+    /// Runs the dicom-qr `--review` C-FIND against the live PACS. dicom-qr builds its
+    /// OWN study-level QueryKeys (it does not call DICOMQueryService.buildQueryKeys),
+    /// so `qrQueryKeys` replicates that key-building EXACTLY — same study-level return
+    /// keys and the same matching keys, including dicom-qr's patient-name uppercasing —
+    /// so the matched study set lines up with the CLI's.
+    public static func qrReview(host: String, port: UInt16, callingAET: String, calledAET: String,
+                                timeout: TimeInterval, filters: QueryFilters) async -> QRSemantics {
+        do {
+            let config = QueryConfiguration(
+                callingAETitle: try AETitle(callingAET),
+                calledAETitle: try AETitle(calledAET),
+                timeout: timeout,
+                informationModel: .studyRoot)
+            let results = try await DICOMQueryService.find(
+                host: host, port: port, configuration: config, queryKeys: qrQueryKeys(filters: filters))
+            let uids = results.compactMap { $0.uid(for: .studyInstanceUID) }
+            return CLIParityQRComparator.record(success: true, count: results.count, uids: uids)
+        } catch {
+            return CLIParityQRComparator.record(success: false, count: 0, uids: [])
+        }
+    }
+
+    /// Replicates dicom-qr's `buildQueryKeys` exactly (study level): the same fixed
+    /// set of return keys, then a matching key per supplied filter, with the patient
+    /// name uppercased the way dicom-qr does.
+    static func qrQueryKeys(filters f: QueryFilters) -> QueryKeys {
+        var keys = QueryKeys(level: .study)
+            .requestStudyInstanceUID()
+            .requestPatientName()
+            .requestPatientID()
+            .requestStudyDate()
+            .requestStudyDescription()
+            .requestAccessionNumber()
+            .requestModalitiesInStudy()
+            .requestNumberOfStudyRelatedSeries()
+            .requestNumberOfStudyRelatedInstances()
+        if !f.patientName.isEmpty       { keys = keys.patientName(f.patientName.uppercased()) }
+        if !f.patientID.isEmpty         { keys = keys.patientID(f.patientID) }
+        if !f.studyDate.isEmpty         { keys = keys.studyDate(f.studyDate) }
+        if !f.studyUID.isEmpty          { keys = keys.studyInstanceUID(f.studyUID) }
+        if !f.accession.isEmpty         { keys = keys.accessionNumber(f.accession) }
+        if !f.modality.isEmpty          { keys = keys.modalitiesInStudy(f.modality) }
+        if !f.studyDescription.isEmpty  { keys = keys.studyDescription(f.studyDescription) }
+        return keys
+    }
+
+    /// Replicates dicom-qr's INTERACTIVE retrieve (the harness auto-answers "all", so
+    /// every matched study is retrieved). It queries with the IDENTICAL keys, then —
+    /// mirroring the CLI's per-study loop EXACTLY — retrieves each matched study and
+    /// tallies the same Total / Success / Failed the CLI prints in its Retrieval Summary:
+    ///   • a result lacking a Study UID is a failure (the CLI prints "⚠️ Missing Study UID");
+    ///   • C-MOVE / C-GET count as success unless the operation THROWS — dicom-qr's
+    ///     `retrieveStudy` discards the C-MOVE result and only fails on a thrown error,
+    ///     and its C-GET loop fails only on a `.error` stream event — so warning/partial
+    ///     sub-operations still read as "✅ Success" on BOTH sides.
+    /// An empty result set returns early with no retrieval block (matching the CLI's
+    /// "No studies found …" path), so `retrieval` stays nil and the record equals review's.
+    public static func qrInteractive(host: String, port: UInt16, callingAET: String, calledAET: String,
+                                     timeout: TimeInterval, filters: QueryFilters,
+                                     method: String, moveDest: String) async -> QRSemantics {
+        do {
+            let config = QueryConfiguration(
+                callingAETitle: try AETitle(callingAET),
+                calledAETitle: try AETitle(calledAET),
+                timeout: timeout,
+                informationModel: .studyRoot)
+            let results = try await DICOMQueryService.find(
+                host: host, port: port, configuration: config, queryKeys: qrQueryKeys(filters: filters))
+            let uids = results.compactMap { $0.uid(for: .studyInstanceUID) }
+            if results.isEmpty {
+                return CLIParityQRComparator.record(success: true, count: 0, uids: [])
+            }
+            // Select "all" → retrieve every matched study, one association each.
+            var succeeded = 0, failed = 0
+            for result in results {
+                guard let studyUID = result.uid(for: .studyInstanceUID) else { failed += 1; continue }
+                do {
+                    if method == "c-move" {
+                        _ = try await DICOMRetrieveService.moveStudy(
+                            host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                            studyInstanceUID: studyUID, moveDestination: moveDest, timeout: timeout)
+                    } else {
+                        let stream = try await DICOMRetrieveService.getStudy(
+                            host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                            studyInstanceUID: studyUID, preferredTransferSyntaxUID: nil, timeout: timeout)
+                        for await event in stream {
+                            if case .error(let e) = event { throw e }
+                        }
+                    }
+                    succeeded += 1
+                } catch {
+                    failed += 1
+                }
+            }
+            return CLIParityQRComparator.record(
+                success: true, count: results.count, uids: uids,
+                retrieval: QRRetrieval(total: results.count, success: succeeded, failed: failed))
+        } catch {
+            return CLIParityQRComparator.record(success: false, count: 0, uids: [])
+        }
+    }
+
+    // MARK: dicom-mwl (Modality Worklist C-FIND) — read-only
+
+    /// Runs the worklist C-FIND against the live SCP using
+    /// DICOMModalityWorklistService.find — the same package API dicom-mwl calls —
+    /// building the IDENTICAL query keys: `WorklistQueryKeys.default()` then the same
+    /// filter chain (with the same `today`/`tomorrow` date resolution), so the matched
+    /// item set lines up with the CLI's. Each item is reduced to its stable identity
+    /// triple (Study UID + SPS ID + Accession).
+    public static func worklist(host: String, port: UInt16, callingAET: String, calledAET: String,
+                                timeout: TimeInterval, filters: WorklistFilters) async -> MWLSemantics {
+        var keys = WorklistQueryKeys.default()
+        if !filters.date.isEmpty {
+            // Mirror the CLI: an unparseable date makes dicom-mwl throw (nonzero exit);
+            // surface that as a failed reference so the two agree on the failure path.
+            guard let resolved = resolveWorklistDate(filters.date) else {
+                return CLIParityMWLComparator.record(success: false, count: 0, keys: [])
+            }
+            keys = keys.scheduledDate(resolved)
+        }
+        if !filters.station.isEmpty      { keys = keys.scheduledStationAET(filters.station) }
+        if !filters.patientName.isEmpty  { keys = keys.patientName(filters.patientName) }
+        if !filters.patientID.isEmpty    { keys = keys.patientID(filters.patientID) }
+        if !filters.modality.isEmpty     { keys = keys.modality(filters.modality) }
+        if !filters.spsStatus.isEmpty    { keys = keys.scheduledProcedureStepStatus(filters.spsStatus) }
+        if !filters.accession.isEmpty    { keys = keys.accessionNumber(filters.accession) }
+
+        do {
+            let items = try await DICOMModalityWorklistService.find(
+                host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                matching: keys, timeout: timeout)
+            let itemKeys = items.map {
+                CLIParityMWLComparator.key(studyUID: $0.studyInstanceUID,
+                                           spsID: $0.scheduledProcedureStepID,
+                                           accession: $0.accessionNumber)
+            }
+            return CLIParityMWLComparator.record(success: true, count: items.count, keys: itemKeys)
+        } catch {
+            return CLIParityMWLComparator.record(success: false, count: 0, keys: [])
+        }
+    }
+
+    /// Resolves a dicom-mwl `--date` filter exactly as the CLI's `parseDateFilter`
+    /// does: "today"/"tomorrow" → YYYYMMDD for the corresponding day, an 8-digit
+    /// numeric string passes through, anything else is invalid (nil).
+    static func resolveWorklistDate(_ filter: String) -> String? {
+        let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd"
+        switch filter.lowercased() {
+        case "today":
+            return fmt.string(from: Date())
+        case "tomorrow":
+            guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else { return nil }
+            return fmt.string(from: tomorrow)
+        default:
+            return (filter.count == 8 && Int(filter) != nil) ? filter : nil
+        }
+    }
+
+    // MARK: dicom-mpps (Modality Performed Procedure Step) — WRITES to the PACS
+
+    /// Drives the FULL MPPS lifecycle against the live server using
+    /// DICOMMPPSService.create (N-CREATE) and, for a lifecycle scenario,
+    /// DICOMMPPSService.update (N-SET) — the same package API dicom-mpps calls. The
+    /// minted SOP Instance UID is internal to this call (never compared); the record
+    /// captures only the outcome: create/update success, the final status, and the
+    /// referenced-image count. `referencedSOPs` is built the way the CLI's `update`
+    /// does — only when both a Series UID and image UID(s) are supplied.
+    public static func mpps(host: String, port: UInt16, callingAET: String, calledAET: String,
+                            timeout: TimeInterval, scope: MPPSScope,
+                            lifecycle: Bool, finalStatus: String) async -> MPPSSemantics {
+        func opt(_ s: String) -> String? { s.isEmpty ? nil : s }
+        let refs: [(studyUID: String, seriesUID: String, sopInstanceUID: String)] =
+            (!scope.seriesUID.isEmpty && !scope.imageUIDs.isEmpty)
+            ? scope.imageUIDs.map { (scope.studyUID, scope.seriesUID, $0) }
+            : []
+
+        let createStatus = "IN PROGRESS"
+        do {
+            let uid = try await DICOMMPPSService.create(
+                host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                studyInstanceUID: scope.studyUID, status: .inProgress, timeout: timeout,
+                patientName: opt(scope.patientName), patientID: opt(scope.patientID),
+                accessionNumber: opt(scope.accession), scheduledProcedureStepID: opt(scope.spsID))
+
+            guard lifecycle else {
+                return CLIParityMPPSComparator.record(lifecycle: false, createOK: true, updateOK: nil,
+                                                      finalStatus: createStatus, referencedImages: 0)
+            }
+            let status: DICOMNetwork.MPPSStatus = finalStatus == "DISCONTINUED" ? .discontinued : .completed
+            do {
+                try await DICOMMPPSService.update(
+                    host: host, port: port, callingAE: callingAET, calledAE: calledAET,
+                    mppsInstanceUID: uid, status: status, referencedSOPs: refs, timeout: timeout)
+                return CLIParityMPPSComparator.record(lifecycle: true, createOK: true, updateOK: true,
+                                                      finalStatus: finalStatus, referencedImages: refs.count)
+            } catch {
+                return CLIParityMPPSComparator.record(lifecycle: true, createOK: true, updateOK: false,
+                                                      finalStatus: finalStatus, referencedImages: refs.count)
+            }
+        } catch {
+            return CLIParityMPPSComparator.record(
+                lifecycle: lifecycle, createOK: false, updateOK: lifecycle ? false : nil,
+                finalStatus: lifecycle ? finalStatus : createStatus, referencedImages: 0)
+        }
+    }
+
+    // MARK: dicom-wado (DICOMweb: QIDO-RS / WADO-RS / STOW-RS / UPS-RS)
+
+    /// Builds the DICOMweb client configuration from the base URL (+ optional bearer
+    /// token) EXACTLY as the dicom-wado CLI does — via `DICOMwebConfiguration(
+    /// baseURLString:authentication:)`, which carries the SDK's default timeouts (the
+    /// CLI's per-subcommand `--timeout` flag is not threaded into the config, so the
+    /// reference must not apply one either, or the two would diverge on slow servers).
+    static func webConfig(baseURL: String, token: String) throws -> DICOMwebConfiguration {
+        try DICOMwebConfiguration(
+            baseURLString: baseURL,
+            authentication: token.isEmpty ? nil : .bearer(token: token))
+    }
+
+    /// Runs the QIDO-RS search against the live DICOMweb server using DICOMwebClient —
+    /// the same package API `dicom-wado query` calls — building the IDENTICAL QIDOQuery
+    /// (same default limit of 100, same filter chain) so the matched set lines up. Each
+    /// result is reduced to the SAME JSON object the CLI's `--format json` emits, then
+    /// fed through the shared parser so the two records compare equal iff the sets match.
+    public static func wadoQuery(baseURL: String, token: String, level: String,
+                                 filters: QueryFilters, limit: Int = 100) async -> WADOQuerySemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            var q = QIDOQuery().limit(limit).offset(0)
+            if !filters.patientName.isEmpty      { q = q.patientName(filters.patientName) }
+            if !filters.patientID.isEmpty        { q = q.patientID(filters.patientID) }
+            if !filters.studyDate.isEmpty        { q = q.studyDate(filters.studyDate) }
+            if !filters.studyUID.isEmpty         { q = q.studyInstanceUID(filters.studyUID) }
+            if !filters.seriesUID.isEmpty        { q = q.seriesInstanceUID(filters.seriesUID) }
+            if !filters.accession.isEmpty        { q = q.accessionNumber(filters.accession) }
+            if !filters.modality.isEmpty         { q = q.modality(filters.modality) }
+            if !filters.studyDescription.isEmpty { q = q.studyDescription(filters.studyDescription) }
+
+            let json: String
+            switch level {
+            case "series":
+                let r = filters.studyUID.isEmpty
+                    ? try await client.searchAllSeries(query: q)
+                    : try await client.searchSeries(studyUID: filters.studyUID, query: q)
+                json = seriesResultsJSON(r.results)
+            case "instance":
+                let r: QIDOInstanceResults
+                if !filters.studyUID.isEmpty, !filters.seriesUID.isEmpty {
+                    r = try await client.searchInstances(studyUID: filters.studyUID, seriesUID: filters.seriesUID, query: q)
+                } else if !filters.studyUID.isEmpty {
+                    r = try await client.searchInstances(studyUID: filters.studyUID, query: q)
+                } else {
+                    r = try await client.searchAllInstances(query: q)
+                }
+                json = instanceResultsJSON(r.results)
+            default:
+                let r = try await client.searchStudies(query: q)
+                json = studyResultsJSON(r.results)
+            }
+            return CLIParityWADOComparator.parseQuery(json, level: level, success: true)
+        } catch {
+            return CLIParityWADOComparator.querySemantics(level: level, success: false, objects: [])
+        }
+    }
+
+    /// Runs the WADO-RS retrieve against the live server using DICOMwebClient — the
+    /// same package API `dicom-wado retrieve` calls. The reference COUNTS what it pulls
+    /// (instances in memory, or metadata objects) without writing to disk; the runner
+    /// compares that against the file count the CLI wrote to its `--output` dir (for
+    /// instances) or the JSON-array length it printed (for `--metadata`).
+    public static func wadoRetrieve(baseURL: String, token: String, level: String,
+                                    studyUID: String, seriesUID: String, instanceUID: String,
+                                    metadata: Bool) async -> WADORetrieveSemantics {
+        let mode = metadata ? "metadata" : "instances"
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let count: Int
+            if metadata {
+                switch level {
+                case "instance": count = try await client.retrieveInstanceMetadata(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID).count
+                case "series":   count = try await client.retrieveSeriesMetadata(studyUID: studyUID, seriesUID: seriesUID).count
+                default:         count = try await client.retrieveStudyMetadata(studyUID: studyUID).count
+                }
+            } else {
+                switch level {
+                case "instance":
+                    _ = try await client.retrieveInstance(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+                    count = 1
+                case "series":
+                    count = try await client.retrieveSeries(studyUID: studyUID, seriesUID: seriesUID).instances.count
+                default:
+                    count = try await client.retrieveStudy(studyUID: studyUID).instances.count
+                }
+            }
+            return CLIParityWADOComparator.retrieveRecord(level: level, mode: mode, success: true, count: count)
+        } catch {
+            return CLIParityWADOComparator.retrieveRecord(level: level, mode: mode, success: false, count: 0)
+        }
+    }
+
+    /// Stores the given file(s) using DICOMwebClient.storeInstances — the same package
+    /// API `dicom-wado store` calls — and returns the upload OUTCOME counts. A file the
+    /// reference cannot read is counted as failed (mirroring the CLI's read-error path).
+    public static func wadoStore(baseURL: String, token: String, filePaths: [String]) async -> WADOStoreSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            var instances: [Data] = []
+            var failedReads = 0
+            for p in filePaths {
+                if let d = try? Data(contentsOf: URL(fileURLWithPath: p)) { instances.append(d) }
+                else { failedReads += 1 }
+            }
+            guard !instances.isEmpty else {
+                return WADOStoreSemantics(sent: filePaths.count, succeeded: 0, failed: filePaths.count)
+            }
+            let resp = try await client.storeInstances(instances: instances, studyUID: nil)
+            return WADOStoreSemantics(sent: filePaths.count, succeeded: resp.successCount,
+                                      failed: resp.failureCount + failedReads)
+        } catch {
+            return WADOStoreSemantics(sent: filePaths.count, succeeded: 0, failed: filePaths.count)
+        }
+    }
+
+    /// Runs the UPS-RS worklist search against the live server using
+    /// DICOMwebClient.searchWorkitems — the same package API `dicom-wado ups --search`
+    /// calls — reducing each matched workitem to its stable Workitem UID (sorted).
+    public static func wadoUPSSearch(baseURL: String, token: String) async -> WADOUPSSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let r = try await client.searchWorkitems(query: UPSQuery())
+            return CLIParityWADOComparator.searchRecord(success: true, count: r.workitems.count,
+                                                        uids: r.workitems.map { $0.workitemUID })
+        } catch {
+            return CLIParityWADOComparator.searchRecord(success: false, count: 0, uids: [])
+        }
+    }
+
+    /// Drives the UPS-RS create → claim lifecycle against the live server using
+    /// DICOMwebClient.createWorkitem (N-CREATE, SCHEDULED) then .changeWorkitemState
+    /// (→ IN PROGRESS) — the same package API `dicom-wado ups --create-workitem` and
+    /// `--update --state IN_PROGRESS` call. The Workitem UID and the claim's Transaction
+    /// UID are minted client-side and differ from the CLI's by design, so they are
+    /// NEVER compared — the record captures only the outcome (create / claim success,
+    /// final state). (The COMPLETED transition needs server-specific final-state
+    /// attributes, so the parity lifecycle stops at the claim — see the UI note.)
+    public static func wadoUPSLifecycle(baseURL: String, token: String, scope: WADOScope) async -> WADOUPSSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let builder = WorkitemBuilder(workitemUID: mintUID())
+                .setState(.scheduled)
+                .setProcedureStepLabel(scope.upsLabel)
+            if !scope.upsPatientName.isEmpty { builder.setPatientName(scope.upsPatientName) }
+            if !scope.upsPatientID.isEmpty   { builder.setPatientID(scope.upsPatientID) }
+            let workitem = try builder.build()
+
+            do {
+                let created = try await client.createWorkitem(workitem)
+                do {
+                    _ = try await client.changeWorkitemState(
+                        uid: created.workitemUID, state: .inProgress, transactionUID: mintUID(),
+                        requestingAE: scope.upsAET.isEmpty ? nil : scope.upsAET)
+                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: true, finalState: "IN PROGRESS")
+                } catch {
+                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: false, finalState: "")
+                }
+            } catch {
+                return CLIParityWADOComparator.lifecycleRecord(createOK: false, claimOK: false, finalState: "")
+            }
+        } catch {
+            // Config invalid or builder.build() threw → nothing created.
+            return CLIParityWADOComparator.lifecycleRecord(createOK: false, claimOK: false, finalState: "")
+        }
+    }
+
+    /// Mints a client-side DICOM UID (never compared — the reference and the CLI each
+    /// mint their own Workitem / Transaction UIDs, exactly like dicom-mpps).
+    static func mintUID() -> String {
+        let timestamp = UInt64(Date().timeIntervalSince1970 * 1_000_000)
+        let random = UInt32.random(in: 1...999_999)
+        return "1.2.826.0.1.3680043.8.498.\(timestamp).\(random)"
+    }
+
+    // The three QIDO-RS result→JSON builders replicate the dicom-wado CLI's
+    // `--format json` dict construction EXACTLY (same keys, same value types), so the
+    // reference's JSON is byte-comparable (after re-parsing) with the CLI's stdout.
+
+    static func studyResultsJSON(_ studies: [QIDOStudyResult]) -> String {
+        let dicts: [[String: Any]] = studies.map { study in
+            var dict: [String: Any] = [:]
+            if let v = study.studyInstanceUID { dict["StudyInstanceUID"] = v }
+            if let v = study.patientName { dict["PatientName"] = v }
+            if let v = study.patientID { dict["PatientID"] = v }
+            if let v = study.studyDate { dict["StudyDate"] = v }
+            if let v = study.studyTime { dict["StudyTime"] = v }
+            if let v = study.studyDescription { dict["StudyDescription"] = v }
+            if let v = study.accessionNumber { dict["AccessionNumber"] = v }
+            if let v = study.studyID { dict["StudyID"] = v }
+            if let v = study.referringPhysicianName { dict["ReferringPhysicianName"] = v }
+            if let v = study.numberOfStudyRelatedSeries { dict["NumberOfStudyRelatedSeries"] = v }
+            if let v = study.numberOfStudyRelatedInstances { dict["NumberOfStudyRelatedInstances"] = v }
+            if !study.modalitiesInStudy.isEmpty { dict["ModalitiesInStudy"] = study.modalitiesInStudy }
+            if let v = study.patientBirthDate { dict["PatientBirthDate"] = v }
+            if let v = study.patientSex { dict["PatientSex"] = v }
+            return dict
+        }
+        return jsonString(dicts)
+    }
+
+    static func seriesResultsJSON(_ series: [QIDOSeriesResult]) -> String {
+        let dicts: [[String: Any]] = series.map { s in
+            var dict: [String: Any] = [:]
+            if let v = s.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
+            if let v = s.studyInstanceUID { dict["StudyInstanceUID"] = v }
+            if let v = s.modality { dict["Modality"] = v }
+            if let v = s.seriesNumber { dict["SeriesNumber"] = v }
+            if let v = s.seriesDescription { dict["SeriesDescription"] = v }
+            if let v = s.bodyPartExamined { dict["BodyPartExamined"] = v }
+            if let v = s.performedProcedureStepStartDate { dict["PerformedProcedureStepStartDate"] = v }
+            if let v = s.numberOfSeriesRelatedInstances { dict["NumberOfSeriesRelatedInstances"] = v }
+            return dict
+        }
+        return jsonString(dicts)
+    }
+
+    static func instanceResultsJSON(_ instances: [QIDOInstanceResult]) -> String {
+        let dicts: [[String: Any]] = instances.map { instance in
+            var dict: [String: Any] = [:]
+            if let v = instance.sopInstanceUID { dict["SOPInstanceUID"] = v }
+            if let v = instance.sopClassUID { dict["SOPClassUID"] = v }
+            if let v = instance.instanceNumber { dict["InstanceNumber"] = v }
+            if let v = instance.numberOfFrames { dict["NumberOfFrames"] = v }
+            if let v = instance.rows { dict["Rows"] = v }
+            if let v = instance.columns { dict["Columns"] = v }
+            if let v = instance.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
+            if let v = instance.studyInstanceUID { dict["StudyInstanceUID"] = v }
+            return dict
+        }
+        return jsonString(dicts)
+    }
+
+    static func jsonString(_ data: [[String: Any]]) -> String {
+        guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys]),
+              let s = String(data: jsonData, encoding: .utf8) else { return "[]" }
+        return s
+    }
+
     // MARK: Display
 
     /// A human-readable rendering of the echo record for the row's "reference" pane.
@@ -261,6 +860,55 @@ public enum CLIParityNetworkReference {
     public static func renderSend(_ s: SendSemantics) -> String {
         "DICOMKit package API reference (DICOMStorageService.store):\n"
             + CLIParitySendComparator.canonical(s).joined(separator: "\n")
+    }
+
+    /// A human-readable rendering of the retrieve record for the row's "reference" pane.
+    public static func renderRetrieve(_ s: RetrieveSemantics) -> String {
+        let api = s.method == "c-get" ? "DICOMRetrieveService.get*" : "DICOMRetrieveService.move*"
+        return "DICOMKit package API reference (\(api)):\n"
+            + CLIParityRetrieveComparator.canonical(s).joined(separator: "\n")
+    }
+
+    /// A human-readable rendering of the qr record for the row's "reference" pane. An
+    /// interactive run (carrying a retrieval summary) also drives DICOMRetrieveService.
+    public static func renderQR(_ s: QRSemantics) -> String {
+        let api = s.retrieval == nil
+            ? "DICOMQueryService.find"
+            : "DICOMQueryService.find → DICOMRetrieveService (select all)"
+        return "DICOMKit package API reference (dicom-qr → \(api)):\n"
+            + CLIParityQRComparator.canonical(s).joined(separator: "\n")
+    }
+
+    /// A human-readable rendering of the worklist record for the row's "reference" pane.
+    public static func renderWorklist(_ s: MWLSemantics) -> String {
+        "DICOMKit package API reference (DICOMModalityWorklistService.find):\n"
+            + CLIParityMWLComparator.canonical(s).joined(separator: "\n")
+    }
+
+    /// A human-readable rendering of the MPPS lifecycle record for the row's "reference" pane.
+    public static func renderMPPS(_ s: MPPSSemantics) -> String {
+        let api = s.lifecycle ? "DICOMMPPSService.create → .update" : "DICOMMPPSService.create"
+        return "DICOMKit package API reference (\(api)):\n"
+            + CLIParityMPPSComparator.canonical(s).joined(separator: "\n")
+    }
+
+    /// Human-readable renderings of the dicom-wado (DICOMweb) records for the row's "reference" pane.
+    public static func renderWADOQuery(_ s: WADOQuerySemantics) -> String {
+        "DICOMKit package API reference (DICOMwebClient QIDO-RS search):\n"
+            + CLIParityWADOComparator.queryCanonical(s).joined(separator: "\n")
+    }
+    public static func renderWADORetrieve(_ s: WADORetrieveSemantics) -> String {
+        "DICOMKit package API reference (DICOMwebClient WADO-RS retrieve):\n"
+            + CLIParityWADOComparator.retrieveCanonical(s).joined(separator: "\n")
+    }
+    public static func renderWADOStore(_ s: WADOStoreSemantics) -> String {
+        "DICOMKit package API reference (DICOMwebClient STOW-RS store):\n"
+            + CLIParityWADOComparator.storeCanonical(s).joined(separator: "\n")
+    }
+    public static func renderWADOUPS(_ s: WADOUPSSemantics) -> String {
+        let api = s.operation == "lifecycle" ? "UPS-RS create → claim" : "UPS-RS search"
+        return "DICOMKit package API reference (DICOMwebClient \(api)):\n"
+            + CLIParityWADOComparator.upsCanonical(s).joined(separator: "\n")
     }
 
     // MARK: Helpers

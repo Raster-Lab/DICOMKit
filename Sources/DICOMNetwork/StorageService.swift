@@ -683,6 +683,33 @@ public enum DICOMStorageService {
     
     // MARK: - Private Implementation
     
+    /// Re-encodes an UNCOMPRESSED data set from one VR transfer syntax to another
+    /// (Implicit VR LE ↔ Explicit VR LE/BE) so the transmitted bytes match the
+    /// transfer syntax the SCP actually accepted in presentation-context negotiation.
+    ///
+    /// This is a pure element-header re-serialization — no pixel codec and no
+    /// caller-supplied `transcodingConfiguration` is required — so it always works
+    /// for the uncompressed↔uncompressed case. Returns `nil` when a re-encode is not
+    /// applicable (either syntax is unknown, encapsulated/compressed, or identical),
+    /// letting the caller fall back to configured transcoding or an error.
+    ///
+    /// CRITICAL: never transmit a data set encoded in one VR transfer syntax over a
+    /// presentation context that negotiated a DIFFERENT one. The SCP parses the bytes
+    /// per the NEGOTIATED syntax, so e.g. Explicit-VR bytes read as Implicit VR make
+    /// every element's length field misread — the receiver runs off the end of the
+    /// stream mid-data-set (dcm4chee logs `java.io.EOFException` in `parseDataset`).
+    private static func reencodeUncompressed(
+        _ dataSetData: Data, from sourceUID: String, to targetUID: String
+    ) throws -> Data? {
+        guard sourceUID != targetUID,
+              let sourceTS = TransferSyntax.from(uid: sourceUID),
+              let targetTS = TransferSyntax.from(uid: targetUID),
+              !sourceTS.isEncapsulated, !targetTS.isEncapsulated else { return nil }
+        let converter = TransferSyntaxConverter(configuration: .default)
+        guard converter.canTranscode(from: sourceTS, to: targetTS) else { return nil }
+        return try converter.transcode(dataSetData: dataSetData, from: sourceTS, to: targetTS).data
+    }
+
     /// Performs the C-STORE operation
     private static func performStore(
         host: String,
@@ -770,20 +797,19 @@ public enum DICOMStorageService {
                             "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax)"
                         )
                     }
+                } else if let reencoded = try reencodeUncompressed(
+                    dataSetData, from: transferSyntaxUID, to: acceptedTransferSyntax) {
+                    // No transcoding configuration, but the SCP accepted a DIFFERENT
+                    // uncompressed VR syntax than the data's. Re-encode the element
+                    // headers to the accepted syntax so the bytes parse on the receiver
+                    // — sending them as-is makes the SCP misread every length.
+                    finalDataSetData = reencoded
                 } else {
-                    // No transcoding configuration - check if basic compatibility exists
-                    if acceptedTransferSyntax == explicitVRLittleEndianTransferSyntaxUID ||
-                       acceptedTransferSyntax == implicitVRLittleEndianTransferSyntaxUID {
-                        // For uncompressed syntaxes, we can send the data as-is
-                        // The receiver should be able to interpret it
-                        finalDataSetData = dataSetData
-                    } else {
-                        try await association.abort()
-                        throw DICOMNetworkError.invalidState(
-                            "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax). " +
-                            "Enable transcoding by providing a transcodingConfiguration."
-                        )
-                    }
+                    try await association.abort()
+                    throw DICOMNetworkError.invalidState(
+                        "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax). " +
+                        "Enable transcoding by providing a transcodingConfiguration."
+                    )
                 }
             } else {
                 finalDataSetData = dataSetData
@@ -880,9 +906,11 @@ public enum DICOMStorageService {
                         try await association.abort()
                         throw DICOMNetworkError.invalidState("Cannot transcode from \(dataTransferSyntaxUID) to \(acceptedTransferSyntax)")
                     }
-                } else if acceptedTransferSyntax == explicitVRLittleEndianTransferSyntaxUID ||
-                          acceptedTransferSyntax == implicitVRLittleEndianTransferSyntaxUID {
-                    finalDataSetData = dataSetData
+                } else if let reencoded = try reencodeUncompressed(
+                    dataSetData, from: dataTransferSyntaxUID, to: acceptedTransferSyntax) {
+                    // The SCP accepted a different uncompressed VR syntax than the data's;
+                    // re-encode so the bytes parse on the receiver (see reencodeUncompressed).
+                    finalDataSetData = reencoded
                 } else {
                     try await association.abort()
                     throw DICOMNetworkError.invalidState(
