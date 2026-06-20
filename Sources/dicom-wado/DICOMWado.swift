@@ -158,19 +158,9 @@ struct RetrieveCommand: AsyncParsableCommand {
             throw ValidationError("--instance is required for WADO-URI retrieval")
         }
         
-        let wadoContentType: WADOURIClient.ContentType
-        switch contentType?.lowercased() {
-        case "image/jpeg", "jpeg":  wadoContentType = .jpeg
-        case "image/png", "png":    wadoContentType = .png
-        case "image/gif", "gif":    wadoContentType = .gif
-        case "image/jp2", "jp2":    wadoContentType = .jpeg2000
-        case "image/jph", "jph", "htj2k":
-            wadoContentType = .htj2k
-        case "image/jphc", "jphc", "htj2k-container":
-            wadoContentType = .htj2kContainer
-        case "video/mpeg", "mpeg":  wadoContentType = .mpeg
-        default:                     wadoContentType = .dicom
-        }
+        // Shared mapping (single source of truth) — the CLI-parity reference calls the
+        // same factory, so both request the identical representation for a --content-type.
+        let wadoContentType = WADOURIClient.ContentType.fromRequestString(contentType)
         
         let frameNumber: Int?
         if let framesString = frames,
@@ -231,30 +221,55 @@ struct RetrieveCommand: AsyncParsableCommand {
         if verbose {
             fprintln("Retrieving metadata...")
         }
-        
-        let metadata: [[String: Any]]
-        
-        if let instanceUID = instance, let seriesUID = series {
-            metadata = try await client.retrieveInstanceMetadata(
-                studyUID: studyUID,
-                seriesUID: seriesUID,
-                instanceUID: instanceUID
-            )
-        } else if let seriesUID = series {
-            metadata = try await client.retrieveSeriesMetadata(
-                studyUID: studyUID,
-                seriesUID: seriesUID
-            )
-        } else {
-            metadata = try await client.retrieveStudyMetadata(studyUID: studyUID)
-        }
-        
-        // Format and output
-        let output = try formatMetadata(metadata, format: format)
-        print(output)
-        
-        if verbose {
-            fprintln("\nRetrieved metadata for \(metadata.count) instance(s)")
+
+        // JSON and XML decode the same DICOMweb metadata response through different
+        // pipelines: JSON keeps the raw dataset dictionaries, while XML decodes to
+        // typed DataElements so the shared DICOMXMLEncoder (PS3.19 Native DICOM
+        // Model) can render them — the same encoder dicom-xml uses.
+        switch format {
+        case .json:
+            let metadata: [[String: Any]]
+            if let instanceUID = instance, let seriesUID = series {
+                metadata = try await client.retrieveInstanceMetadata(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID,
+                    instanceUID: instanceUID
+                )
+            } else if let seriesUID = series {
+                metadata = try await client.retrieveSeriesMetadata(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID
+                )
+            } else {
+                metadata = try await client.retrieveStudyMetadata(studyUID: studyUID)
+            }
+            let jsonData = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
+            print(String(data: jsonData, encoding: .utf8) ?? "")
+            if verbose {
+                fprintln("\nRetrieved metadata for \(metadata.count) instance(s)")
+            }
+
+        case .xml:
+            let instances: [[DataElement]]
+            if let instanceUID = instance, let seriesUID = series {
+                let elements = try await client.retrieveInstanceMetadataAsElements(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID,
+                    instanceUID: instanceUID
+                )
+                instances = [elements]
+            } else if let seriesUID = series {
+                instances = try await client.retrieveSeriesMetadataAsElements(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID
+                )
+            } else {
+                instances = try await client.retrieveStudyMetadataAsElements(studyUID: studyUID)
+            }
+            print(try formatMetadataXML(instances))
+            if verbose {
+                fprintln("\nRetrieved metadata for \(instances.count) instance(s)")
+            }
         }
     }
     
@@ -415,15 +430,32 @@ struct RetrieveCommand: AsyncParsableCommand {
         try data.write(to: outputURL)
     }
     
-    private func formatMetadata(_ metadata: [[String: Any]], format: MetadataFormat) throws -> String {
-        switch format {
-        case .json:
-            let jsonData = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
-            return String(data: jsonData, encoding: .utf8) ?? ""
-        case .xml:
-            // XML formatting would require DICOM XML encoder
-            throw ValidationError("XML format not yet implemented")
+    /// Renders DICOMweb metadata as PS3.19 Native DICOM Model XML using the shared
+    /// `DICOMXMLEncoder`. A single instance produces one `<NativeDicomModel>`
+    /// document; multiple instances are wrapped in a `<NativeDicomModelList>` so the
+    /// combined output stays one well-formed document with a single XML prolog.
+    private func formatMetadataXML(_ instances: [[DataElement]]) throws -> String {
+        let encoder = DICOMXMLEncoder(
+            configuration: DICOMXMLEncoder.Configuration(prettyPrinted: true)
+        )
+
+        // Exactly one instance → a single NativeDicomModel document. Zero instances
+        // falls through to the list branch below, yielding an empty
+        // <NativeDicomModelList> with zero <NativeDicomModel> elements — so a metadata
+        // instance count stays 0, matching the package-API reference's object count for
+        // an empty result (CLI-parity counts <NativeDicomModel> occurrences).
+        if instances.count == 1 {
+            return try encoder.encodeToString(instances[0])
         }
+
+        let xmlProlog = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        var xml = xmlProlog + "<NativeDicomModelList>\n"
+        for elements in instances {
+            let single = try encoder.encodeToString(elements)
+            xml += single.replacingOccurrences(of: xmlProlog, with: "")
+        }
+        xml += "</NativeDicomModelList>\n"
+        return xml
     }
 }
 
@@ -1177,79 +1209,34 @@ struct UPSCommand: AsyncParsableCommand {
             if let tx = effectiveTxUID { fprintln("  Transaction UID: \(tx)") }
         }
         
-        // Per PS3.4 CC.2.1.3/Table CC.2.5-3, the SCP validates that
-        // Unified Procedure Step Performed Procedure Sequence (0074,1216)
-        // is populated before allowing transition to COMPLETED.
-        // Send a minimal Update Workitem (PS3.18 §11.5) to satisfy this.
+        // Per PS3.4 CC.2.1.3/Table CC.2.5-3, the SCP validates that the Unified
+        // Procedure Step Performed Procedure Sequence (0074,1216) is populated
+        // before allowing transition to COMPLETED. The shared client helper sends
+        // a minimal Update Workitem (PS3.18 §11.5) to satisfy this and then
+        // performs the Change State — a single source of truth shared with the
+        // CLI-parity reference so the two cannot drift.
+        let response: UPSStateChangeResponse
         if newState == .completed, let txUID = effectiveTxUID {
             if verbose {
                 fprintln("Updating workitem with Final State attributes (required before COMPLETED)...")
             }
-            
-            let nowDT: String = {
-                let f = DateFormatter()
-                f.dateFormat = "yyyyMMddHHmmss.SSS000"
-                f.locale = Locale(identifier: "en_US_POSIX")
-                f.timeZone = TimeZone.current
-                return f.string(from: Date())
-            }()
-            
-            let performedBody: [String: Any] = [
-                UPSTag.transactionUID: [
-                    "vr": "UI", "Value": [txUID]
-                ] as [String: Any],
-                UPSTag.unifiedProcedureStepPerformedProcedureSequence: [
-                    "vr": "SQ",
-                    "Value": [
-                        [
-                            UPSTag.performedProcedureStepStartDateTime: [
-                                "vr": "DT", "Value": [nowDT]
-                            ] as [String: Any],
-                            UPSTag.performedProcedureStepEndDateTime: [
-                                "vr": "DT", "Value": [nowDT]
-                            ] as [String: Any],
-                            UPSTag.performedWorkitemCodeSequence: [
-                                "vr": "SQ",
-                                "Value": [
-                                    [
-                                        UPSTag.codeValue: ["vr": "SH", "Value": ["12345"]],
-                                        UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
-                                        UPSTag.codeMeaning: ["vr": "LO", "Value": ["Procedure Step Performed"]]
-                                    ] as [String: Any]
-                                ] as [[String: Any]]
-                            ] as [String: Any],
-                            UPSTag.performedStationNameCodeSequence: [
-                                "vr": "SQ",
-                                "Value": [
-                                    [
-                                        UPSTag.codeValue: ["vr": "SH", "Value": ["STATION01"]],
-                                        UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
-                                        UPSTag.codeMeaning: ["vr": "LO", "Value": ["Default Performing Station"]]
-                                    ] as [String: Any]
-                                ] as [[String: Any]]
-                            ] as [String: Any],
-                            UPSTag.outputInformationSequence: [
-                                "vr": "SQ",
-                                "Value": [] as [[String: Any]]
-                            ] as [String: Any]
-                        ] as [String: Any]
-                    ] as [[String: Any]]
-                ] as [String: Any]
-            ]
-            
-            try await client.updateWorkitem(uid: uid, updates: performedBody, transactionUID: txUID)
+            response = try await client.completeWorkitem(
+                uid: uid,
+                transactionUID: txUID,
+                requestingAE: requestingAE
+            )
             if verbose {
                 fprintln("Final State attributes updated successfully")
             }
+        } else {
+            response = try await client.changeWorkitemState(
+                uid: uid,
+                state: newState,
+                transactionUID: effectiveTxUID,
+                requestingAE: requestingAE
+            )
         }
-        
-        let response = try await client.changeWorkitemState(
-            uid: uid,
-            state: newState,
-            transactionUID: effectiveTxUID,
-            requestingAE: requestingAE
-        )
-        
+
         fprintln("Successfully updated worklist item \(uid) to \(newState.rawValue)")
         if let txUID = response.transactionUID {
             fprintln("Transaction UID: \(txUID)")
