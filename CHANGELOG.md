@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Network Utility (Live Terminal Output)
+
+- **Network Utility panel** (`NetworkUtilityView`, `NetworkUtilityViewModel`, `NetworkUtilityService`): Six-tab general-purpose network diagnostics tool surfaced as a new sidebar destination in DICOMStudio.
+  - **Ping** — wraps `/sbin/ping`; live per-packet output streams into a terminal panel, parsed summary (min/avg/max RTT, packet loss) replaces it on completion.
+  - **Port Scanner** — concurrent TCP probes via `NWConnection`; results append in arrival order for a live scan log, sorted by port number on completion.
+  - **Traceroute** — wraps `/usr/sbin/traceroute`; each hop line streams as it resolves; stderr merged into stdout so the `traceroute to …` header appears at the top in real time.
+  - **DNS Lookup** — wraps `/usr/bin/dig` per selected record type (A, AAAA, MX, TXT, NS, CNAME, SOA, PTR); each query echoes a `$ dig …` header then streams its answer block.
+  - **Interfaces** — lists all network interfaces with IPv4/IPv6 addresses, MAC address, MTU, flags, and status badges.
+  - **Netstat** — wraps `/usr/sbin/netstat`; streams TCP/UDP connections or routing table live; parsed counts (listening/established/routes) shown on completion.
+- **Shared host input**: A single `sharedHost` field is shared by the Ping, Port Scanner, and Traceroute tabs — typing a host in any one of them pre-fills the others.
+- **`AsyncStream<String>`-based live streaming** (`runStreamingProcess`): All five process-based tools share a single streaming process runner; stdout and stderr are merged into one pipe so output arrives in natural order, then yielded chunk-by-chunk via `AsyncStream`.
+- **UTF-8 carry-over buffer**: A `var pending = Data()` accumulator in the `availableData` read loop ensures multibyte characters (IDN hostnames, TXT/PTR record content) are never split and silently dropped between reads.
+- **Run-identity guard** (`streamGeneration` / `portScanGeneration`): Each run captures a generation counter; `onChunk` closures and completion assignments check `self.streamGeneration == gen` and discard stale deliveries from cancelled or superseded runs.
+- **SIGKILL escalation**: Both the wall-clock watchdog and `ProcessKillBox.cancel()` send SIGTERM then escalate to SIGKILL after a 3-second grace period, preventing hung processes from blocking the UI indefinitely.
+- **Watchdog liveness guard**: The watchdog `DispatchWorkItem` checks `proc.isRunning` before acting, preventing a process that exits naturally at the deadline from being mislabelled as timed out.
+
 ### Added — J2KSwift v3.2.0 Integration (Phases 1–9)
 
 - **J2KSwift v3.2.0 codec stack** (`Sources/DICOMCore/J2KSwiftCodec.swift`, `HTJ2KCodec.swift`, `JP3DCodec.swift`): Replaces Apple ImageIO as the primary JPEG 2000 path on all platforms, enabling full Linux support via a pure-Swift scalar backend.

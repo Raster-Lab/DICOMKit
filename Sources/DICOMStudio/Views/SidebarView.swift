@@ -34,6 +34,17 @@ struct SidebarView: View {
                 }
             }
 
+            // Network Utility stands outside the category groups — it is a
+            // general (non-DICOM) diagnostics tool, so it gets its own
+            // top-level entry rather than living under "Data & Tools".
+            Section {
+                NavigationLink(value: NavigationDestination.networkUtility) {
+                    Label(NavigationDestination.networkUtility.rawValue,
+                          systemImage: NavigationDestination.networkUtility.systemImage)
+                }
+                .accessibilityLabel(NavigationDestination.networkUtility.accessibilityLabel)
+            }
+
             Section {
                 NavigationLink(value: NavigationDestination.settings) {
                     Label("Settings", systemImage: "gear")
