@@ -926,6 +926,17 @@ public final class CLIParityRunnerViewModel {
         }
     }
 
+    /// Appends `--token <token>` to a dicom-wado argv when a DICOMweb token is configured.
+    /// The package-API reference ALWAYS passes the token to its client, so without this the
+    /// CLI would be unauthenticated on a token-protected server and diverge (a harness
+    /// artefact, not a real tool difference). Kept OUT of the displayed command / scenario
+    /// argv so the bearer token is never shown. No-op when no token is set (the common
+    /// no-auth case) and for non-wado tools (only dicom-wado accepts --token here).
+    private func withWebToken(_ args: [String]) -> [String] {
+        let token = networkWebToken.trimmingCharacters(in: .whitespaces)
+        return token.isEmpty ? args : args + ["--token", token]
+    }
+
     #if os(macOS)
     /// Combined CLI stdout + stderr (dicom-echo prints to stderr) for parsing and display.
     private func combinedCLIText(_ outcome: CLIToolTerminalCompare.Outcome) -> String {
@@ -971,9 +982,12 @@ public final class CLIParityRunnerViewModel {
         // own runners; query / retrieve / ups-search go through the generic path below.
         if s.toolId == "dicom-wado" {
             switch s.studioParams["wado-mode"] {
-            case "store":         return await runWADOStoreScenario(s)
-            case "ups-lifecycle": return await runWADOUPSLifecycleScenario(s)
-            default:              break
+            case "store":           return await runWADOStoreScenario(s)
+            case "ups-lifecycle":   return await runWADOUPSLifecycleScenario(s)
+            case "ups-get":         return await runWADOUPSGetScenario(s)
+            case "ups-subscribe":   return await runWADOUPSSubscribeScenario(s)
+            case "ups-create-json": return await runWADOUPSCreateJSONScenario(s)
+            default:                break
             }
         }
 
@@ -988,6 +1002,14 @@ public final class CLIParityRunnerViewModel {
         // prints to stdout and writes nothing.
         let wadoRetrieveInstances = s.toolId == "dicom-wado"
             && s.studioParams["wado-mode"] == "retrieve" && s.studioParams["metadata"] != "true"
+        // dicom-wado WADO-URI retrieve (--uri) SAVES one object via --output too; the
+        // file isn't parsed (the byte count comes from stdout), but it must land in the
+        // scratch dir, not the app's cwd.
+        let wadoRetrieveURI = s.toolId == "dicom-wado" && s.studioParams["wado-mode"] == "retrieve-uri"
+        // dicom-wado DERIVED retrieve (--rendered / --thumbnail / --frames) writes image /
+        // raw frame files to --output; the runner counts those files (the reference counts
+        // what it pulled), so they must land in the scratch dir too.
+        let wadoRetrieveDerived = s.toolId == "dicom-wado" && s.studioParams["wado-mode"] == "retrieve-derived"
         // dicom-qr's interactive C-GET writes its pulled files to the OUTDIR scratch dir
         // too (the reference counts in memory); C-MOVE and review write nothing there.
         let qrInteractiveGet = s.toolId == "dicom-qr" && s.studioParams["qr-mode"] == "interactive-get"
@@ -1001,7 +1023,7 @@ public final class CLIParityRunnerViewModel {
                 netScratch = dir
                 pendingNetOutputDir = dir.path
             }
-        } else if wadoRetrieveInstances || qrInteractiveGet {
+        } else if wadoRetrieveInstances || wadoRetrieveURI || wadoRetrieveDerived || qrInteractiveGet {
             let dir = fm.temporaryDirectory.appendingPathComponent("studio-parity-out-\(UUID().uuidString)", isDirectory: true)
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             netScratch = dir
@@ -1054,7 +1076,9 @@ public final class CLIParityRunnerViewModel {
                                   note: "Enter a Study UID and a Series UID in the Query Keys to test the QIDO-RS instance level.")
                 }
             }
-            if mode == "retrieve" {
+            // WADO-RS retrieve (instances/metadata) and the DERIVED retrievals
+            // (rendered/thumbnail/frames) share the same per-level UID requirements.
+            if mode == "retrieve" || mode == "retrieve-derived" {
                 if !hasStudy {
                     return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
                                   output: .notApplicable, status: .skipped,
@@ -1070,6 +1094,12 @@ public final class CLIParityRunnerViewModel {
                                   output: .notApplicable, status: .skipped,
                                   note: "Enter a Series UID (Query Keys) and an Instance UID (dicom-wado scope) to test the instance-level retrieve.")
                 }
+            }
+            // WADO-URI is always single-instance — it needs study + series + instance.
+            if mode == "retrieve-uri" && (!hasStudy || !hasSeries || !hasInstance) {
+                return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                              output: .notApplicable, status: .skipped,
+                              note: "Enter a Study UID + Series UID (Query Keys) and an Instance UID (dicom-wado scope) to test WADO-URI retrieve (--uri).")
             }
         }
 
@@ -1108,23 +1138,24 @@ public final class CLIParityRunnerViewModel {
             }
         }
 
-        // dicom-qr's INTERACTIVE rows retrieve EVERY matched study (auto-answer "all"),
-        // so they're skipped unless a Query Key bounds the match set — otherwise a broad
-        // query would move the entire PACS. C-MOVE additionally needs a Move Destination
-        // AE. The read-only review rows have no such requirement.
-        if s.toolId == "dicom-qr", let mode = sp["qr-mode"], mode.hasPrefix("interactive") {
+        // dicom-qr's INTERACTIVE and AUTO rows retrieve EVERY matched study, so they're
+        // skipped unless a Query Key bounds the match set — otherwise a broad query would
+        // move the entire PACS. C-MOVE additionally needs a Move Destination AE. The
+        // read-only review rows have no such requirement.
+        if s.toolId == "dicom-qr", let mode = sp["qr-mode"],
+           mode.hasPrefix("interactive") || mode.hasPrefix("auto") {
             let hasFilter = ["patient-name", "patient-id", "study-date", "modality",
                              "accession", "study-description", "study-uid"]
                 .contains { !(sp[$0] ?? "").isEmpty }
             if !hasFilter {
                 return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
                               output: .notApplicable, status: .skipped,
-                              note: "Enter at least one Query Key to bound the interactive retrieve — it selects \"all\" matched studies and would otherwise retrieve the entire PACS.")
+                              note: "Enter at least one Query Key to bound the interactive/auto retrieve — it selects \"all\" matched studies and would otherwise retrieve the entire PACS.")
             }
-            if mode == "interactive-move" && (sp["move-dest"] ?? "").isEmpty {
+            if (mode == "interactive-move" || mode == "auto-move") && (sp["move-dest"] ?? "").isEmpty {
                 return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
                               output: .notApplicable, status: .skipped,
-                              note: "Enter a Move Destination AE (dicom-qr scope) to test interactive C-MOVE (the PACS must be configured to forward to it). The interactive C-GET row needs no destination.")
+                              note: "Enter a Move Destination AE (dicom-qr scope) to test C-MOVE (the PACS must be configured to forward to it). The C-GET rows need no destination.")
             }
         }
 
@@ -1247,11 +1278,13 @@ public final class CLIParityRunnerViewModel {
             f.studyUID = sp["study-uid"] ?? ""
             let qrMode = sp["qr-mode"] ?? "review"
             let q: QRSemantics
-            if qrMode.hasPrefix("interactive") {
-                // Interactive: one C-FIND + one retrieve association PER matched study.
+            if qrMode.hasPrefix("interactive") || qrMode.hasPrefix("auto") {
+                // Interactive / auto: one C-FIND + one retrieve association PER matched study.
+                // Auto mode is functionally identical to interactive (select-all) but the CLI
+                // never prompts — the runner does NOT pipe stdin for auto rows. The reference
+                // path is the same: qrInteractive queries + retrieves all matches.
                 // Size the hang backstop generously so a real multi-study retrieve isn't
-                // mistaken for a hang (each op's own connect timeout still bounds a dead
-                // endpoint). The CLI feeds its selection on stdin (resolved below).
+                // mistaken for a hang (each op's own connect timeout still bounds a dead endpoint).
                 let method = sp["method"] ?? "c-get"
                 let moveDest = sp["move-dest"] ?? ""
                 netUnits = 16
@@ -1311,6 +1344,7 @@ public final class CLIParityRunnerViewModel {
             case "retrieve":
                 let level = sp["level"] ?? "study"
                 let metadata = sp["metadata"] == "true"
+                let metadataFormat = sp["metadata-format"] ?? "json"
                 let studyUID = sp["study-uid"] ?? ""
                 let seriesUID = sp["series-uid"] ?? ""
                 let instanceUID = sp["instance-uid"] ?? ""
@@ -1325,30 +1359,144 @@ public final class CLIParityRunnerViewModel {
                 }
                 refOK = r.overallOK
                 refRender = CLIParityNetworkReference.renderWADORetrieve(r)
-                // WADO-RS: --metadata prints a JSON array to STDOUT; an instances pull
-                // writes files to the output dir (counted on disk by the runner).
+                // WADO-RS: --metadata prints to STDOUT — a JSON array (--format json) or
+                // PS3.19 Native DICOM Model XML (--format xml); an instances pull writes
+                // files to the output dir (counted on disk by the runner). The metadata
+                // object/instance count is the same across formats, so both compare to
+                // the reference's count.
                 let outDir = pendingNetOutputDir
                 compareCLI = { _, stdout, exitOK in
-                    let cliCount = metadata
-                        ? CLIParityWADOComparator.parseMetadataCount(stdout)
-                        : Self.countDICOMFiles(inDir: outDir)
+                    let cliCount: Int
+                    if metadata {
+                        cliCount = metadataFormat == "xml"
+                            ? CLIParityWADOComparator.parseMetadataXMLCount(stdout)
+                            : CLIParityWADOComparator.parseMetadataCount(stdout)
+                    } else {
+                        cliCount = Self.countDICOMFiles(inDir: outDir)
+                    }
                     let cli = CLIParityWADOComparator.retrieveRecord(
                         level: level, mode: metadata ? "metadata" : "instances", success: exitOK, count: cliCount)
                     return CLIParityWADOComparator.compareRetrieve(reference: r, cli: cli)
                 }
+            case "retrieve-uri":
+                // WADO-URI (legacy) single-instance retrieve — both sides call the SAME
+                // WADOURIClient against the SAME URL. The CLI prints "Retrieved N bytes"
+                // and saves the object to the scratch --output dir.
+                let studyUID = sp["study-uid"] ?? ""
+                let seriesUID = sp["series-uid"] ?? ""
+                let instanceUID = sp["instance-uid"] ?? ""
+                let contentType = sp["content-type"] ?? ""
+                // application/dicom returns the byte-identical Part-10 object on both
+                // sides → compare success + byte count. Transcoded types (jpeg/png/…) may
+                // be re-encoded per request, so the byte count isn't guaranteed identical
+                // across the two near-simultaneous calls — compare on success ONLY there
+                // (count zeroed on both sides), so server re-encoding jitter can't show a
+                // false DIFFERS. Since the URI path is the SAME code on both sides, the
+                // only app-vs-CLI risk for transcoded types is the content-type → enum
+                // mapping, which is guarded by uriContentType's unit test, not the live
+                // byte count.
+                let dicomCT = contentType.isEmpty || contentType.lowercased() == "application/dicom"
+                netUnits = 4
+                let r = await raceDeadline(
+                    scTimeout * Double(netUnits) + 60,
+                    fallback: CLIParityWADOComparator.retrieveRecord(level: "instance", mode: "uri", success: false, count: 0)) {
+                    await CLIParityNetworkReference.wadoRetrieveURI(
+                        baseURL: webBaseURL, token: webToken,
+                        studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, contentType: contentType)
+                }
+                refOK = r.overallOK
+                refRender = CLIParityNetworkReference.renderWADORetrieve(r)
+                compareCLI = { _, stdout, exitOK in
+                    let bytes = CLIParityWADOComparator.parseURIBytes(stdout)
+                    let ref = CLIParityWADOComparator.retrieveRecord(
+                        level: "instance", mode: "uri", success: r.success, count: dicomCT ? r.count : 0)
+                    let cli = CLIParityWADOComparator.retrieveRecord(
+                        level: "instance", mode: "uri", success: exitOK, count: dicomCT ? bytes : 0)
+                    return CLIParityWADOComparator.compareRetrieve(reference: ref, cli: cli)
+                }
+            case "retrieve-derived":
+                // WADO-RS rendered / thumbnail / frames. Both sides call the SAME
+                // DICOMwebClient API (same default render options); the produced bytes are
+                // transcoded/raw and not byte-stable, so parity is on success + the COUNT
+                // of outputs (1 image for rendered/thumbnail; one file per frame). The CLI
+                // writes those files to the scratch --output dir (counted on disk); the
+                // reference counts what it pulled in memory.
+                let kind = sp["retrieve-kind"] ?? "rendered"
+                let level = sp["level"] ?? "instance"
+                let studyUID = sp["study-uid"] ?? ""
+                let seriesUID = sp["series-uid"] ?? ""
+                let instanceUID = sp["instance-uid"] ?? ""
+                let frameNums: [Int] = (sp["frames"] ?? "").split(separator: ",")
+                    .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+                netUnits = 4
+                let r = await raceDeadline(
+                    scTimeout * Double(netUnits) + 60,
+                    fallback: CLIParityWADOComparator.retrieveRecord(level: level, mode: kind, success: false, count: 0)) {
+                    await CLIParityNetworkReference.wadoRetrieveDerived(
+                        baseURL: webBaseURL, token: webToken, kind: kind, level: level,
+                        studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, frames: frameNums)
+                }
+                refOK = r.overallOK
+                refRender = CLIParityNetworkReference.renderWADORetrieve(r)
+                let derivedOutDir = pendingNetOutputDir
+                compareCLI = { _, _, exitOK in
+                    // Count the files the CLI wrote to its fresh scratch --output dir
+                    // (rendered/thumbnail → 1 image; frames → 1 file per frame).
+                    let cliCount = exitOK ? Self.countFiles(inDir: derivedOutDir) : 0
+                    let cli = CLIParityWADOComparator.retrieveRecord(level: level, mode: kind, success: exitOK, count: cliCount)
+                    return CLIParityWADOComparator.compareRetrieve(reference: r, cli: cli)
+                }
             case "ups-search":
+                let filterState = sp["filter-state"] ?? ""
+                let scheduledStation = sp["scheduled-station"] ?? ""
+                let format = sp["format"] ?? "json"
                 netUnits = 2
                 let u = await raceDeadline(
                     scTimeout * Double(netUnits) + 60,
                     fallback: CLIParityWADOComparator.searchRecord(success: false, count: 0, uids: [])) {
-                    await CLIParityNetworkReference.wadoUPSSearch(baseURL: webBaseURL, token: webToken)
+                    await CLIParityNetworkReference.wadoUPSSearch(
+                        baseURL: webBaseURL, token: webToken, filterState: filterState, scheduledStation: scheduledStation)
                 }
                 refOK = u.overallOK
                 refRender = CLIParityNetworkReference.renderWADOUPS(u)
-                // dicom-wado ups --search --format json prints a workitem JSON array to STDOUT.
+                // dicom-wado ups --search prints to STDOUT: JSON carries the Workitem
+                // UIDs → matched-set parity; csv/table drop/truncate fields → COUNT parity.
                 compareCLI = { _, stdout, exitOK in
-                    CLIParityWADOComparator.compareUPS(
-                        reference: u, cli: CLIParityWADOComparator.parseSearch(stdout, success: exitOK))
+                    if format == "json" {
+                        return CLIParityWADOComparator.compareUPS(
+                            reference: u, cli: CLIParityWADOComparator.parseSearch(stdout, success: exitOK))
+                    }
+                    let cnt = CLIParityWADOComparator.countWorkitems(in: stdout, format: format)
+                    return CLIParityWADOComparator.compareSearchCount(reference: u, cliCount: cnt, format: format)
+                }
+            case "ups-create":
+                // --create-workitem attribute sweep (single invocation). Both sides build
+                // the IDENTICAL workitem (same harness-picked attributes via the same
+                // WorkitemBuilder glue) and N-CREATE it with their OWN minted UID; parity is
+                // on create success.
+                let label = sp["label"] ?? ""
+                let pn = sp["patient-name"] ?? ""
+                let pid = sp["patient-id"] ?? ""
+                var attrs: [String: String] = [:]
+                for k in ["priority", "patient-birth-date", "patient-sex", "study-uid",
+                          "accession-number", "referring-physician", "procedure-id", "step-id",
+                          "worklist-label", "comments", "scheduled-start", "expected-completion",
+                          "station-name", "performer-name", "performer-organization", "admission-id"] {
+                    if let v = sp[k] { attrs[k] = v }
+                }
+                netUnits = 2
+                let cr = await raceDeadline(
+                    scTimeout * Double(netUnits) + 60,
+                    fallback: CLIParityWADOComparator.createRecord(createOK: false)) { [attrs] in
+                    await CLIParityNetworkReference.wadoUPSCreate(
+                        baseURL: webBaseURL, token: webToken, label: label,
+                        patientName: pn, patientID: pid, attrs: attrs)
+                }
+                refOK = cr.overallOK
+                refRender = CLIParityNetworkReference.renderWADOUPS(cr)
+                compareCLI = { _, stdout, exitOK in
+                    let pc = CLIParityWADOComparator.parseCreate(stdout, exitOK: exitOK)
+                    return CLIParityWADOComparator.compareUPS(reference: cr, cli: CLIParityWADOComparator.createRecord(createOK: pc.ok))
                 }
             default:   // "query" (QIDO-RS)
                 let level = sp["level"] ?? "study"
@@ -1361,20 +1509,28 @@ public final class CLIParityRunnerViewModel {
                 f.studyDescription = sp["study-description"] ?? ""
                 f.studyUID = sp["study-uid"] ?? ""
                 f.seriesUID = sp["series-uid"] ?? ""
+                // --limit / --offset pagination: replay the SAME page in the reference.
+                // A paginated row may return a different SET of members across the two
+                // near-simultaneous requests (the server need not keep a stable QIDO-RS
+                // order), so it's compared on matched COUNT — the page SIZE is stable.
+                let limit = Int(sp["limit"] ?? "") ?? 100
+                let offset = Int(sp["offset"] ?? "") ?? 0
+                let paginated = sp["limit"] != nil || sp["offset"] != nil
                 netUnits = 2
                 let q = await raceDeadline(
                     scTimeout * Double(netUnits) + 60,
                     fallback: CLIParityWADOComparator.querySemantics(level: level, success: false, objects: [])) { [f] in
                     await CLIParityNetworkReference.wadoQuery(
-                        baseURL: webBaseURL, token: webToken, level: level, filters: f)
+                        baseURL: webBaseURL, token: webToken, level: level, filters: f, limit: limit, offset: offset)
                 }
                 refOK = q.overallOK
                 refRender = CLIParityNetworkReference.renderWADOQuery(q)
-                // QIDO-RS prints to STDOUT. JSON carries full attributes → full
-                // result-set parity; csv/table drop fields → result COUNT parity.
+                // QIDO-RS prints to STDOUT. JSON carries full attributes → full result-set
+                // parity; csv/table drop fields, and paginated rows aren't order-stable →
+                // result COUNT parity for both.
                 let format = sp["format"] ?? "json"
                 compareCLI = { _, stdout, exitOK in
-                    if format == "json" {
+                    if format == "json" && !paginated {
                         return CLIParityWADOComparator.compareQuery(
                             reference: q,
                             cli: CLIParityWADOComparator.parseQuery(stdout, level: level, success: exitOK))
@@ -1409,7 +1565,11 @@ public final class CLIParityRunnerViewModel {
         }
 
         // ---- CLI side: the real binary (same hang backstop as the reference) ----
-        let resolvedArgs = s.cliArgs.map { resolveNet($0) }
+        // dicom-wado authenticates with --token (when configured) to match the reference;
+        // other tools take their credentials differently and never see --token here.
+        let resolvedArgs = s.toolId == "dicom-wado"
+            ? withWebToken(s.cliArgs.map { resolveNet($0) })
+            : s.cliArgs.map { resolveNet($0) }
         let toolId = s.toolId
         let binDir = freshBinDir
         let cliDeadline = scTimeout * Double(netUnits) + 60
@@ -1557,6 +1717,7 @@ public final class CLIParityRunnerViewModel {
                     updateArgs += ["--study-uid", studyUID, "--series-uid", scope.seriesUID]
                     for img in scope.imageUIDs { updateArgs += ["--image-uid", img] }
                 }
+                if sp["verbose"] == "true" { updateArgs += ["--verbose"] }
                 updateArgs += ["--timeout", String(Int(scTimeout))]
                 let updateOutcome = await Task.detached {
                     CLIToolTerminalCompare.run(tool: toolId, arguments: updateArgs, binDir: binDir, timeout: cliDeadline)
@@ -1638,11 +1799,24 @@ public final class CLIParityRunnerViewModel {
 
         let sendPath = resolveNet(CLIParityNetworkScenarios.sendFileToken)
         let files = CLIParityNetworkReference.gatherSendFiles(path: sendPath, recursive: true)
-        // NOTE: no --verbose — the CLI's "Upload Summary" (Total files / Successful /
-        // Failed) prints unconditionally, while --verbose ALSO prints per-failure
-        // "    Failed: <SOPUID> - <reason>" detail lines whose "Failed:" prefix would be
-        // matched first by parseStore (reading a digit from the SOP UID, not the count).
-        let command = (["dicom-wado", "store", baseURL] + files).joined(separator: " ")
+        // The flag(s) under test trail the SENDFILE token in the scenario argv; the
+        // runner appends them after the expanded file list. The upload OUTCOME is
+        // independent of --batch / --verbose / --continue-on-error, so the reference
+        // (which doesn't model them) still matches. parseStore reads the "Upload
+        // Summary" block, so --verbose per-failure detail lines no longer collide.
+        let extraFlags: [String] = {
+            guard let idx = s.cliArgs.firstIndex(of: CLIParityNetworkScenarios.sendFileToken) else { return [] }
+            return Array(s.cliArgs[(idx + 1)...])
+        }()
+        // --study <uid> (targeted STOW): the CLI gets it via extraFlags (it trails the
+        // SENDFILE token in the template); the reference is given the SAME studyUID so
+        // both STOW to /studies/{uid}. --input: the runner uploads via a temp file list
+        // instead of positional file args (same files → same outcome).
+        let targetStudy: String? = (sp["study-uid"]?.isEmpty == false) ? sp["study-uid"] : nil
+        let useInputList = sp["store-input"] == "true"
+        let command: String = useInputList
+            ? (["dicom-wado", "store", baseURL, "--input"] + files + extraFlags).joined(separator: " ")
+            : (["dicom-wado", "store", baseURL] + files + extraFlags).joined(separator: " ")
 
         if baseURL.isEmpty {
             return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
@@ -1659,7 +1833,7 @@ public final class CLIParityRunnerViewModel {
         let snd = await raceDeadline(
             scTimeout * Double(netUnits) + 60,
             fallback: WADOStoreSemantics(sent: files.count, succeeded: 0, failed: files.count)) {
-            await CLIParityNetworkReference.wadoStore(baseURL: baseURL, token: token, filePaths: files)
+            await CLIParityNetworkReference.wadoStore(baseURL: baseURL, token: token, filePaths: files, studyUID: targetStudy)
         }
         let refOK = snd.overallOK
         let refRender = CLIParityNetworkReference.renderWADOStore(snd)
@@ -1667,9 +1841,24 @@ public final class CLIParityRunnerViewModel {
         let toolId = s.toolId
         let binDir = freshBinDir
         let cliDeadline = scTimeout * Double(netUnits) + 60
-        let cliArgs = ["store", baseURL] + files
+        // For --input, write the gathered paths (one per line) to a temp list file the CLI
+        // reads; otherwise pass the files positionally. Either way the CLI uploads the
+        // SAME set the reference did.
+        let fm = FileManager.default
+        var listFileURL: URL? = nil
+        let cliArgs: [String]
+        if useInputList {
+            let listURL = fm.temporaryDirectory.appendingPathComponent("studio-parity-stow-list-\(UUID().uuidString).txt")
+            try? (files.joined(separator: "\n") + "\n").write(to: listURL, atomically: true, encoding: .utf8)
+            listFileURL = listURL
+            cliArgs = ["store", baseURL, "--input", listURL.path] + extraFlags
+        } else {
+            cliArgs = ["store", baseURL] + files + extraFlags
+        }
+        defer { if let u = listFileURL { try? fm.removeItem(at: u) } }
+        let storeArgs = withWebToken(cliArgs)   // authenticate like the reference (--token when set)
         let outcome = await Task.detached {
-            CLIToolTerminalCompare.run(tool: toolId, arguments: cliArgs, binDir: binDir, timeout: cliDeadline)
+            CLIToolTerminalCompare.run(tool: toolId, arguments: storeArgs, binDir: binDir, timeout: cliDeadline)
         }.value
         if let launchError = outcome.launchError {
             return result(s, command: command, input: .notApplicable, app: refOK, cli: outcome.exitCode,
@@ -1724,11 +1913,16 @@ public final class CLIParityRunnerViewModel {
         scope.upsPatientID = sp["patient-id"] ?? ""
         scope.upsAET = aet
 
-        let netUnits = 2
+        // Terminal state the lifecycle drives to: IN_PROGRESS (claim only), COMPLETED, or
+        // CANCELED. COMPLETED runs an extra Update-Workitem (Final State attributes) inside
+        // one CLI call, so size the deadline a little larger for it.
+        let finalState = (sp["ups-final"] ?? "IN_PROGRESS").uppercased()
+        let lifeLabel = finalState == "IN_PROGRESS" ? "create → claim" : "create → claim → \(finalState)"
+        let netUnits = finalState == "IN_PROGRESS" ? 2 : (finalState == "COMPLETED" ? 4 : 3)
         let ref = await raceDeadline(
             scTimeout * Double(netUnits) + 60,
             fallback: CLIParityWADOComparator.lifecycleRecord(createOK: false, claimOK: false, finalState: "")) { [scope] in
-            await CLIParityNetworkReference.wadoUPSLifecycle(baseURL: baseURL, token: token, scope: scope)
+            await CLIParityNetworkReference.wadoUPSLifecycle(baseURL: baseURL, token: token, scope: scope, finalState: finalState)
         }
         let refRender = CLIParityNetworkReference.renderWADOUPS(ref)
 
@@ -1736,8 +1930,9 @@ public final class CLIParityRunnerViewModel {
         let binDir = freshBinDir
         let cliDeadline = scTimeout * Double(netUnits) + 60
 
-        // Phase 1: create the workitem (SCHEDULED).
-        let createArgs = s.cliArgs.map { resolveNet($0) }
+        // Phase 1: create the workitem (SCHEDULED). `withWebToken` appends `--token` so the
+        // CLI authenticates exactly like the reference (kept out of the displayed command).
+        let createArgs = withWebToken(s.cliArgs.map { resolveNet($0) })
         let createOutcome = await Task.detached {
             CLIToolTerminalCompare.run(tool: toolId, arguments: createArgs, binDir: binDir, timeout: cliDeadline)
         }.value
@@ -1748,14 +1943,20 @@ public final class CLIParityRunnerViewModel {
         let createText = combinedCLIText(createOutcome)
         let parsedCreate = CLIParityWADOComparator.parseCreate(createText, exitOK: createOutcome.exitCode == 0)
 
-        // Phase 2: claim the workitem (SCHEDULED → IN PROGRESS) using the minted UID.
+        // Phase 2: claim the workitem (SCHEDULED → IN PROGRESS). ONE harness-minted
+        // Transaction UID locks the workitem and (for COMPLETED/CANCELED) authorises the
+        // terminal transition — the server requires the same UID for both, so we pass it
+        // explicitly rather than letting the claim auto-generate one.
+        let cliTxUID = CLIParityNetworkReference.mintUID()
         var claimText = ""
+        var finalText = ""
         var lastExit = createOutcome.exitCode
         var cliClaimOK: Bool? = nil
         var cliFinalState = ""
         if parsedCreate.ok, let uid = parsedCreate.uid {
-            var claimArgs = ["ups", baseURL, "--update", uid, "--state", "IN_PROGRESS"]
+            var claimArgs = ["ups", baseURL, "--update", uid, "--state", "IN_PROGRESS", "--transaction-uid", cliTxUID]
             if !aet.isEmpty { claimArgs += ["--aet", aet] }
+            claimArgs = withWebToken(claimArgs)
             let claimOutcome = await Task.detached {
                 CLIToolTerminalCompare.run(tool: toolId, arguments: claimArgs, binDir: binDir, timeout: cliDeadline)
             }.value
@@ -1763,7 +1964,26 @@ public final class CLIParityRunnerViewModel {
             lastExit = claimOutcome.exitCode
             let pc = CLIParityWADOComparator.parseClaim(claimText, exitOK: claimOutcome.exitCode == 0)
             cliClaimOK = pc.ok
-            cliFinalState = pc.ok ? "IN PROGRESS" : ""
+
+            if !pc.ok {
+                cliFinalState = ""
+            } else if finalState == "IN_PROGRESS" {
+                cliFinalState = "IN PROGRESS"
+            } else {
+                // Phase 3: terminal transition (COMPLETED/CANCELED) with the SAME Transaction UID.
+                var finalArgs = ["ups", baseURL, "--update", uid, "--state", finalState, "--transaction-uid", cliTxUID]
+                if !aet.isEmpty { finalArgs += ["--aet", aet] }
+                finalArgs = withWebToken(finalArgs)
+                let finalOutcome = await Task.detached {
+                    CLIToolTerminalCompare.run(tool: toolId, arguments: finalArgs, binDir: binDir, timeout: cliDeadline)
+                }.value
+                finalText = combinedCLIText(finalOutcome)
+                lastExit = finalOutcome.exitCode
+                let pf = CLIParityWADOComparator.parseClaim(finalText, exitOK: finalOutcome.exitCode == 0)
+                // finalState non-empty ONLY when the terminal transition succeeded; an
+                // empty value scores the row as not-successful (failureAgreement if both fail).
+                cliFinalState = pf.ok ? (finalState == "COMPLETED" ? "COMPLETED" : "CANCELED") : ""
+            }
         } else {
             // Create failed → no claim attempted; the claim did not succeed.
             cliClaimOK = false
@@ -1774,18 +1994,270 @@ public final class CLIParityRunnerViewModel {
         let cliText: String = {
             var t = "── create-workitem ──\n" + createText
             t += "\n\n── claim (IN_PROGRESS) ──\n" + (claimText.isEmpty ? "(not run — create failed)" : claimText)
+            if finalState != "IN_PROGRESS" {
+                t += "\n\n── \(finalState) ──\n" + (finalText.isEmpty ? "(not run — claim did not succeed)" : finalText)
+            }
             return t
         }()
         let cmp = CLIParityWADOComparator.compareUPS(reference: ref, cli: cli)
         return networkVerdict(
             s, command: command, refOK: ref.overallOK, refRender: refRender,
             cliExit: lastExit, cliText: cliText, cmp: cmp,
-            processNote: "Process divergence: the DICOMKit package API \(ref.overallOK ? "succeeded" : "failed") but the dicom-wado UPS create → claim lifecycle \(cli.overallOK ? "succeeded" : "failed"). The CLI and the package API must agree on the outcome.",
-            passNote: "The dicom-wado UPS create → claim lifecycle matches the DICOMKit package API reference (create / claim outcome and final state; client-minted UIDs ignored).",
-            driftNote: "The dicom-wado UPS create → claim lifecycle diverges from the DICOMKit package API reference (see diff; client-minted UIDs ignored).",
-            failAgreeNote: "The package API and the CLI both failed the UPS lifecycle identically (e.g. UPS-RS is not enabled on the server) — parity held on the failure path, but no successful operation occurred, so this row is excluded from the score.")
+            processNote: "Process divergence: the DICOMKit package API \(ref.overallOK ? "succeeded" : "failed") but the dicom-wado UPS \(lifeLabel) lifecycle \(cli.overallOK ? "succeeded" : "failed"). The CLI and the package API must agree on the outcome.",
+            passNote: "The dicom-wado UPS \(lifeLabel) lifecycle matches the DICOMKit package API reference (create / claim / final-state outcome; client-minted UIDs ignored).",
+            driftNote: "The dicom-wado UPS \(lifeLabel) lifecycle diverges from the DICOMKit package API reference (see diff; client-minted UIDs ignored).",
+            failAgreeNote: "The package API and the CLI both failed the UPS \(lifeLabel) lifecycle identically (e.g. UPS-RS is not enabled, or the server rejects the \(finalState) transition without extra configuration) — parity held on the failure path, but no successful operation occurred, so this row is excluded from the score.")
         #else
         return result(s, command: command, input: .match, app: nil, cli: nil,
+                      output: .notApplicable, status: .cliError,
+                      note: "Live CLI comparison is only available on macOS.")
+        #endif
+    }
+
+    // MARK: dicom-wado UPS-RS create → get round-trip (stateful, two-phase, WRITES)
+
+    /// Runs one `dicom-wado ups` create → get round-trip. The reference (createWorkitem →
+    /// retrieveWorkitem) and the CLI (`ups --create-workitem` → `ups --get <uid>`) each
+    /// create their OWN workitem (the minted UID differs by design and is never compared)
+    /// and retrieve it back. Parity is on the outcome (create / get success). Mirrors the
+    /// lifecycle runner's create-then-chain shape.
+    private func runWADOUPSGetScenario(_ s: BatchScenario) async -> BatchScenarioResult {
+        let command = (["dicom-wado"] + s.cliArgs.map { resolveNet($0) }).joined(separator: " ")
+        #if os(macOS)
+        let baseURL = networkWebBaseURL.trimmingCharacters(in: .whitespaces)
+        let token = networkWebToken.trimmingCharacters(in: .whitespaces)
+        pendingInputUsed = "DICOMweb \(baseURL)"
+        let sp = s.studioParams
+        let scTimeout = TimeInterval(resolveNet(sp["timeout"] ?? "")) ?? 30
+        let label = sp["label"] ?? ""
+
+        if baseURL.isEmpty {
+            return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                          output: .notApplicable, status: .skipped,
+                          note: "Enter a DICOMweb Base URL to test the dicom-wado UPS-RS create → get round-trip.")
+        }
+
+        var scope = WADOScope()
+        scope.upsLabel = label
+        scope.upsPatientName = sp["patient-name"] ?? ""
+        scope.upsPatientID = sp["patient-id"] ?? ""
+
+        let netUnits = 2
+        let ref = await raceDeadline(
+            scTimeout * Double(netUnits) + 60,
+            fallback: CLIParityWADOComparator.getRecord(createOK: false, getOK: false)) { [scope] in
+            await CLIParityNetworkReference.wadoUPSGet(baseURL: baseURL, token: token, scope: scope)
+        }
+        let refRender = CLIParityNetworkReference.renderWADOUPS(ref)
+
+        let toolId = s.toolId
+        let binDir = freshBinDir
+        let cliDeadline = scTimeout * Double(netUnits) + 60
+
+        // Phase 1: create the workitem (SCHEDULED). --token added (when set) to match the reference.
+        let createArgs = withWebToken(s.cliArgs.map { resolveNet($0) })
+        let createOutcome = await Task.detached {
+            CLIToolTerminalCompare.run(tool: toolId, arguments: createArgs, binDir: binDir, timeout: cliDeadline)
+        }.value
+        if let launchError = createOutcome.launchError {
+            return result(s, command: command, input: .notApplicable, app: ref.overallOK, cli: createOutcome.exitCode,
+                          output: .notApplicable, status: .cliError, appOut: refRender, note: launchError)
+        }
+        let createText = combinedCLIText(createOutcome)
+        let parsedCreate = CLIParityWADOComparator.parseCreate(createText, exitOK: createOutcome.exitCode == 0)
+
+        // Phase 2: get the workitem back by the minted UID.
+        var getText = ""
+        var lastExit = createOutcome.exitCode
+        var cliGetOK: Bool? = nil
+        if parsedCreate.ok, let uid = parsedCreate.uid {
+            let getArgs = withWebToken(["ups", baseURL, "--get", uid])
+            let getOutcome = await Task.detached {
+                CLIToolTerminalCompare.run(tool: toolId, arguments: getArgs, binDir: binDir, timeout: cliDeadline)
+            }.value
+            getText = combinedCLIText(getOutcome)
+            lastExit = getOutcome.exitCode
+            cliGetOK = getOutcome.exitCode == 0
+        } else {
+            // Create failed → no get attempted; the get did not succeed.
+            cliGetOK = false
+        }
+
+        let cli = CLIParityWADOComparator.getRecord(createOK: parsedCreate.ok, getOK: cliGetOK)
+        let cliText: String = {
+            var t = "── create-workitem ──\n" + createText
+            t += "\n\n── get (--get <uid>) ──\n" + (getText.isEmpty ? "(not run — create failed)" : getText)
+            return t
+        }()
+        let cmp = CLIParityWADOComparator.compareUPS(reference: ref, cli: cli)
+        return networkVerdict(
+            s, command: command, refOK: ref.overallOK, refRender: refRender,
+            cliExit: lastExit, cliText: cliText, cmp: cmp,
+            processNote: "Process divergence: the DICOMKit package API \(ref.overallOK ? "succeeded" : "failed") but the dicom-wado UPS create → get round-trip \(cli.overallOK ? "succeeded" : "failed"). The CLI and the package API must agree on the outcome.",
+            passNote: "The dicom-wado UPS create → get round-trip matches the DICOMKit package API reference (create / get outcome; client-minted UIDs ignored).",
+            driftNote: "The dicom-wado UPS create → get round-trip diverges from the DICOMKit package API reference (see diff; client-minted UIDs ignored).",
+            failAgreeNote: "The package API and the CLI both failed the UPS create → get identically (e.g. UPS-RS is not enabled on the server) — parity held on the failure path, but no successful operation occurred, so this row is excluded from the score.")
+        #else
+        return result(s, command: command, input: .match, app: nil, cli: nil,
+                      output: .notApplicable, status: .cliError,
+                      note: "Live CLI comparison is only available on macOS.")
+        #endif
+    }
+
+    // MARK: dicom-wado UPS-RS create → subscribe → unsubscribe (stateful, multi-phase, WRITES)
+
+    /// Runs one `dicom-wado ups` create → subscribe → unsubscribe round-trip. The reference
+    /// (createWorkitem → subscribeToWorkitem → unsubscribeFromWorkitem) and the CLI
+    /// (`--create-workitem` → `--subscribe …` → `--unsubscribe …`) each operate on their OWN
+    /// workitem with a harness-picked AE title (UID + AE never compared). Parity is on the
+    /// outcome (create + the subscribe/unsubscribe round-trip). Many servers don't enable UPS
+    /// subscription, so both sides commonly fail the round-trip identically (failureAgreement).
+    private func runWADOUPSSubscribeScenario(_ s: BatchScenario) async -> BatchScenarioResult {
+        let command = (["dicom-wado"] + s.cliArgs.map { resolveNet($0) }).joined(separator: " ")
+        #if os(macOS)
+        let baseURL = networkWebBaseURL.trimmingCharacters(in: .whitespaces)
+        let token = networkWebToken.trimmingCharacters(in: .whitespaces)
+        pendingInputUsed = "DICOMweb \(baseURL)"
+        let sp = s.studioParams
+        let scTimeout = TimeInterval(resolveNet(sp["timeout"] ?? "")) ?? 30
+        let label = sp["label"] ?? ""
+        let aet = sp["aet"] ?? ""
+
+        if baseURL.isEmpty {
+            return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                          output: .notApplicable, status: .skipped,
+                          note: "Enter a DICOMweb Base URL to test the dicom-wado UPS-RS subscribe round-trip.")
+        }
+
+        let netUnits = 3
+        let ref = await raceDeadline(
+            scTimeout * Double(netUnits) + 60,
+            fallback: CLIParityWADOComparator.subscribeRecord(createOK: false, roundTripOK: false)) {
+            await CLIParityNetworkReference.wadoUPSSubscribe(baseURL: baseURL, token: token, label: label, aeTitle: aet)
+        }
+        let refRender = CLIParityNetworkReference.renderWADOUPS(ref)
+
+        let toolId = s.toolId
+        let binDir = freshBinDir
+        let cliDeadline = scTimeout * Double(netUnits) + 60
+
+        // Phase 1: create the workitem (SCHEDULED). --token added (when set) to match the reference.
+        let createArgs = withWebToken(s.cliArgs.map { resolveNet($0) })
+        let createOutcome = await Task.detached {
+            CLIToolTerminalCompare.run(tool: toolId, arguments: createArgs, binDir: binDir, timeout: cliDeadline)
+        }.value
+        if let launchError = createOutcome.launchError {
+            return result(s, command: command, input: .notApplicable, app: ref.overallOK, cli: createOutcome.exitCode,
+                          output: .notApplicable, status: .cliError, appOut: refRender, note: launchError)
+        }
+        let createText = combinedCLIText(createOutcome)
+        let parsedCreate = CLIParityWADOComparator.parseCreate(createText, exitOK: createOutcome.exitCode == 0)
+
+        // Phase 2 + 3: subscribe to, then unsubscribe from, the minted workitem's events.
+        var subText = ""
+        var lastExit = createOutcome.exitCode
+        var cliRoundTripOK: Bool? = nil
+        if parsedCreate.ok, let uid = parsedCreate.uid {
+            let subArgs = withWebToken(["ups", baseURL, "--subscribe", "--workitem-uid", uid, "--aet", aet])
+            let unsubArgs = withWebToken(["ups", baseURL, "--unsubscribe", "--workitem-uid", uid, "--aet", aet])
+            let subOutcome = await Task.detached {
+                CLIToolTerminalCompare.run(tool: toolId, arguments: subArgs, binDir: binDir, timeout: cliDeadline)
+            }.value
+            let unsubOutcome = await Task.detached {
+                CLIToolTerminalCompare.run(tool: toolId, arguments: unsubArgs, binDir: binDir, timeout: cliDeadline)
+            }.value
+            subText = "── subscribe ──\n" + combinedCLIText(subOutcome) + "\n\n── unsubscribe ──\n" + combinedCLIText(unsubOutcome)
+            lastExit = unsubOutcome.exitCode
+            cliRoundTripOK = (subOutcome.exitCode == 0) && (unsubOutcome.exitCode == 0)
+        } else {
+            cliRoundTripOK = false
+        }
+
+        let cli = CLIParityWADOComparator.subscribeRecord(createOK: parsedCreate.ok, roundTripOK: cliRoundTripOK)
+        let cliText = "── create-workitem ──\n" + createText + "\n\n" + (subText.isEmpty ? "(subscribe not run — create failed)" : subText)
+        let cmp = CLIParityWADOComparator.compareUPS(reference: ref, cli: cli)
+        return networkVerdict(
+            s, command: command, refOK: ref.overallOK, refRender: refRender,
+            cliExit: lastExit, cliText: cliText, cmp: cmp,
+            processNote: "Process divergence: the DICOMKit package API \(ref.overallOK ? "succeeded" : "failed") but the dicom-wado UPS subscribe round-trip \(cli.overallOK ? "succeeded" : "failed"). The CLI and the package API must agree on the outcome.",
+            passNote: "The dicom-wado UPS create → subscribe → unsubscribe round-trip matches the DICOMKit package API reference (client-minted UIDs / AE titles ignored).",
+            driftNote: "The dicom-wado UPS subscribe round-trip diverges from the DICOMKit package API reference (see diff; client-minted UIDs / AE titles ignored).",
+            failAgreeNote: "The package API and the CLI both failed the UPS subscribe round-trip identically (e.g. UPS-RS subscription is not enabled on the server) — parity held on the failure path, so this row is excluded from the score.")
+        #else
+        return result(s, command: command, input: .match, app: nil, cli: nil,
+                      output: .notApplicable, status: .cliError,
+                      note: "Live CLI comparison is only available on macOS.")
+        #endif
+    }
+
+    // MARK: dicom-wado UPS-RS create from JSON file (WRITES)
+
+    /// Runs one `dicom-wado ups --create <jsonfile>`. The runner synthesises a DICOM-JSON
+    /// workitem file (its own minted UID) for the CLI to read; the reference creates an
+    /// equivalent workitem with a DISTINCT minted UID via the same dict-based create path, so
+    /// the two never collide. Parity is on create success.
+    private func runWADOUPSCreateJSONScenario(_ s: BatchScenario) async -> BatchScenarioResult {
+        #if os(macOS)
+        let baseURL = networkWebBaseURL.trimmingCharacters(in: .whitespaces)
+        let token = networkWebToken.trimmingCharacters(in: .whitespaces)
+        pendingInputUsed = "DICOMweb \(baseURL)"
+        let sp = s.studioParams
+        let scTimeout = TimeInterval(resolveNet(sp["timeout"] ?? "")) ?? 30
+        let label = sp["label"] ?? ""
+        let pn = sp["patient-name"] ?? ""
+        let pid = sp["patient-id"] ?? ""
+        let command = "dicom-wado ups \(baseURL) --create <jsonfile>"
+
+        if baseURL.isEmpty {
+            return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                          output: .notApplicable, status: .skipped,
+                          note: "Enter a DICOMweb Base URL to test the dicom-wado UPS-RS --create from JSON.")
+        }
+
+        let netUnits = 2
+        let ref = await raceDeadline(
+            scTimeout * Double(netUnits) + 60,
+            fallback: CLIParityWADOComparator.createRecord(createOK: false)) {
+            await CLIParityNetworkReference.wadoUPSCreateFromJSON(baseURL: baseURL, token: token, label: label, patientName: pn, patientID: pid)
+        }
+        let refRender = CLIParityNetworkReference.renderWADOUPS(ref)
+
+        // Synthesise the DICOM-JSON workitem file the CLI reads (its own distinct minted UID).
+        let json = CLIParityNetworkReference.upsCreateWorkitemJSON(label: label, patientName: pn, patientID: pid)
+        let fm = FileManager.default
+        let jsonURL = fm.temporaryDirectory.appendingPathComponent("studio-parity-ups-create-\(UUID().uuidString).json")
+        do {
+            try json.write(to: jsonURL, atomically: true, encoding: .utf8)
+        } catch {
+            return result(s, command: command, input: .notApplicable, app: ref.overallOK, cli: nil,
+                          output: .notApplicable, status: .cliError, appOut: refRender,
+                          note: "Could not write the synthesised workitem JSON: \(error.localizedDescription)")
+        }
+        defer { try? fm.removeItem(at: jsonURL) }
+
+        let toolId = s.toolId
+        let binDir = freshBinDir
+        let cliDeadline = scTimeout * Double(netUnits) + 60
+        let cliArgs = withWebToken(["ups", baseURL, "--create", jsonURL.path])   // --token when set
+        let outcome = await Task.detached {
+            CLIToolTerminalCompare.run(tool: toolId, arguments: cliArgs, binDir: binDir, timeout: cliDeadline)
+        }.value
+        if let launchError = outcome.launchError {
+            return result(s, command: command, input: .notApplicable, app: ref.overallOK, cli: outcome.exitCode,
+                          output: .notApplicable, status: .cliError, appOut: refRender, note: launchError)
+        }
+        let cliText = combinedCLIText(outcome)
+        let pc = CLIParityWADOComparator.parseCreate(cliText, exitOK: outcome.exitCode == 0)
+        let cmp = CLIParityWADOComparator.compareUPS(reference: ref, cli: CLIParityWADOComparator.createRecord(createOK: pc.ok))
+        return networkVerdict(
+            s, command: command, refOK: ref.overallOK, refRender: refRender,
+            cliExit: outcome.exitCode, cliText: cliText, cmp: cmp,
+            processNote: "Process divergence: the DICOMKit package API \(ref.overallOK ? "succeeded" : "failed") but the dicom-wado UPS --create from JSON exited \(outcome.exitCode). The CLI and the package API must agree on the outcome.",
+            passNote: "The dicom-wado UPS --create from JSON matches the DICOMKit package API reference (create success; client-minted UIDs ignored).",
+            driftNote: "The dicom-wado UPS --create from JSON diverges from the DICOMKit package API reference (see diff; client-minted UIDs ignored).",
+            failAgreeNote: "The package API and the CLI both failed the UPS --create from JSON identically (e.g. UPS-RS is not enabled on the server) — parity held on the failure path, so this row is excluded from the score.")
+        #else
+        return result(s, command: "dicom-wado ups --create", input: .match, app: nil, cli: nil,
                       output: .notApplicable, status: .cliError,
                       note: "Live CLI comparison is only available on macOS.")
         #endif
@@ -1823,6 +2295,25 @@ public final class CLIParityRunnerViewModel {
         let fm = FileManager.default
         guard let items = try? fm.contentsOfDirectory(atPath: dir) else { return 0 }
         return items.filter { $0.lowercased().hasSuffix(".dcm") }.count
+    }
+
+    /// Counts the regular files the dicom-wado CLI wrote into a fresh scratch dir — the
+    /// CLI side of a DERIVED retrieve (rendered/thumbnail → 1 image; frames → one .raw per
+    /// frame). The dir is per-scenario and only the CLI writes there, so every entry is a
+    /// produced output; sub-directories are excluded, and so are HIDDEN files (`.DS_Store`,
+    /// Spotlight artifacts, …) — the OS can drop one into a temp dir at any moment, and the
+    /// reference counts only what the API returned, so an unfiltered count would inflate the
+    /// CLI side and cause a false DIFFERS. The CLI's outputs are never dot-prefixed.
+    nonisolated static func countFiles(inDir dir: String) -> Int {
+        guard !dir.isEmpty else { return 0 }
+        let fm = FileManager.default
+        guard let items = try? fm.contentsOfDirectory(atPath: dir) else { return 0 }
+        return items.filter { item in
+            guard !item.hasPrefix(".") else { return false }   // skip hidden / system files
+            var isDir: ObjCBool = false
+            let path = (dir as NSString).appendingPathComponent(item)
+            return fm.fileExists(atPath: path, isDirectory: &isDir) && !isDir.boolValue
+        }.count
     }
 
     // MARK: Output reduction (byte-identical to the golden harness)

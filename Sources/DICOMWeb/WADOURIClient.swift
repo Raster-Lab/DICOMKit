@@ -61,6 +61,24 @@ public final class WADOURIClient: @unchecked Sendable {
         case htj2kContainer = "image/jphc"
         /// MPEG video (video/mpeg)
         case mpeg = "video/mpeg"
+
+        /// Maps a CLI / UI `--content-type` string (full media type or short alias) to a
+        /// `ContentType`. A nil, empty, or unrecognised value defaults to `.dicom` — the
+        /// WADO-URI default representation. This is the SINGLE source of truth shared by the
+        /// `dicom-wado` CLI and the CLI-parity reference, so the two can never request
+        /// different representations for the same `--content-type` argument.
+        public static func fromRequestString(_ raw: String?) -> ContentType {
+            switch (raw ?? "").lowercased() {
+            case "image/jpeg", "jpeg":                    return .jpeg
+            case "image/png", "png":                      return .png
+            case "image/gif", "gif":                      return .gif
+            case "image/jp2", "jp2":                      return .jpeg2000
+            case "image/jph", "jph", "htj2k":             return .htj2k
+            case "image/jphc", "jphc", "htj2k-container": return .htj2kContainer
+            case "video/mpeg", "mpeg":                    return .mpeg
+            default:                                       return .dicom
+            }
+        }
     }
 
     /// Result of a WADO-URI retrieve operation

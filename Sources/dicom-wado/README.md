@@ -595,7 +595,6 @@ HTTP 404: The requested study does not exist on the server
 
 ## Limitations
 
-- XML metadata format not yet implemented (use JSON)
 - Requires macOS 10.15 or later for async/await support
 - HTTPS certificate validation follows system settings
 

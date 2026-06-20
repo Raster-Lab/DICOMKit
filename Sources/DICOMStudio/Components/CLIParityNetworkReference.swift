@@ -621,10 +621,10 @@ public enum CLIParityNetworkReference {
     /// result is reduced to the SAME JSON object the CLI's `--format json` emits, then
     /// fed through the shared parser so the two records compare equal iff the sets match.
     public static func wadoQuery(baseURL: String, token: String, level: String,
-                                 filters: QueryFilters, limit: Int = 100) async -> WADOQuerySemantics {
+                                 filters: QueryFilters, limit: Int = 100, offset: Int = 0) async -> WADOQuerySemantics {
         do {
             let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
-            var q = QIDOQuery().limit(limit).offset(0)
+            var q = QIDOQuery().limit(limit).offset(offset)
             if !filters.patientName.isEmpty      { q = q.patientName(filters.patientName) }
             if !filters.patientID.isEmpty        { q = q.patientID(filters.patientID) }
             if !filters.studyDate.isEmpty        { q = q.studyDate(filters.studyDate) }
@@ -696,10 +696,277 @@ public enum CLIParityNetworkReference {
         }
     }
 
+    /// Runs the WADO-URI (legacy, PS3.18 §8) single-instance retrieve against the live
+    /// server using WADOURIClient — the same package API `dicom-wado retrieve --uri`
+    /// calls. Returns success + the retrieved BYTE count: both sides issue the IDENTICAL
+    /// request (same study/series/instance + content type) to the SAME URL, so the byte
+    /// count is deterministic. A server that doesn't speak WADO-URI at this URL throws on
+    /// BOTH sides identically (success=false, count=0), so the row stays at parity rather
+    /// than false-DIFFERing — exactly like the WADO-RS instance count.
+    public static func wadoRetrieveURI(baseURL: String, token: String,
+                                       studyUID: String, seriesUID: String, instanceUID: String,
+                                       contentType: String) async -> WADORetrieveSemantics {
+        do {
+            let client = WADOURIClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let result = try await client.retrieve(
+                studyUID: studyUID, seriesUID: seriesUID, objectUID: instanceUID,
+                contentType: uriContentType(contentType))
+            return CLIParityWADOComparator.retrieveRecord(level: "instance", mode: "uri", success: true, count: result.data.count)
+        } catch {
+            return CLIParityWADOComparator.retrieveRecord(level: "instance", mode: "uri", success: false, count: 0)
+        }
+    }
+
+    /// Runs a WADO-RS DERIVED retrieve (rendered image / thumbnail / frames) against the
+    /// live server using DICOMwebClient — the same package API `dicom-wado retrieve
+    /// --rendered | --thumbnail | --frames` calls (with the SAME default render options).
+    /// These return transcoded/raw bytes that aren't byte-stable to compare, so parity is
+    /// on success + the COUNT of produced outputs (1 image for rendered/thumbnail; one per
+    /// requested frame): the CLI writes that many files to its `--output` dir (counted on
+    /// disk by the runner), the reference counts what it pulled in memory. A server that
+    /// doesn't support rendering/frames throws on BOTH sides identically (success=false,
+    /// count=0), so the row stays at parity.
+    public static func wadoRetrieveDerived(baseURL: String, token: String, kind: String, level: String,
+                                           studyUID: String, seriesUID: String, instanceUID: String,
+                                           frames: [Int]) async -> WADORetrieveSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let count: Int
+            switch kind {
+            case "rendered":
+                _ = try await client.retrieveRenderedInstance(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+                count = 1
+            case "thumbnail":
+                switch level {
+                case "instance": _ = try await client.retrieveInstanceThumbnail(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID)
+                case "series":   _ = try await client.retrieveSeriesThumbnail(studyUID: studyUID, seriesUID: seriesUID)
+                default:         _ = try await client.retrieveStudyThumbnail(studyUID: studyUID)
+                }
+                count = 1
+            case "frames":
+                let f = try await client.retrieveFrames(studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, frames: frames)
+                count = f.count
+            default:
+                count = 0
+            }
+            return CLIParityWADOComparator.retrieveRecord(level: level, mode: kind, success: true, count: count)
+        } catch {
+            return CLIParityWADOComparator.retrieveRecord(level: level, mode: kind, success: false, count: 0)
+        }
+    }
+
+    /// Runs the UPS-RS create → get round-trip against the live server using
+    /// DICOMwebClient.createWorkitem (N-CREATE, SCHEDULED) then .retrieveWorkitem — the
+    /// same package API `dicom-wado ups --create-workitem` and `ups --get <uid>` call.
+    /// The Workitem UID is minted client-side and differs from the CLI's by design, so it
+    /// is NEVER compared — each side gets back its OWN just-created workitem. Parity is on
+    /// the outcome (createOK, getOK).
+    public static func wadoUPSGet(baseURL: String, token: String, scope: WADOScope) async -> WADOUPSSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let builder = WorkitemBuilder(workitemUID: mintUID())
+                .setState(.scheduled)
+                .setProcedureStepLabel(scope.upsLabel)
+            if !scope.upsPatientName.isEmpty { builder.setPatientName(scope.upsPatientName) }
+            if !scope.upsPatientID.isEmpty   { builder.setPatientID(scope.upsPatientID) }
+            let workitem = try builder.build()
+            do {
+                let created = try await client.createWorkitem(workitem)
+                do {
+                    _ = try await client.retrieveWorkitem(uid: created.workitemUID)
+                    return CLIParityWADOComparator.getRecord(createOK: true, getOK: true)
+                } catch {
+                    return CLIParityWADOComparator.getRecord(createOK: true, getOK: false)
+                }
+            } catch {
+                return CLIParityWADOComparator.getRecord(createOK: false, getOK: false)
+            }
+        } catch {
+            return CLIParityWADOComparator.getRecord(createOK: false, getOK: false)
+        }
+    }
+
+    /// Builds a UPS workitem from the FULL command-line attribute set (the create-workitem
+    /// attribute sweep) and N-CREATEs it — mirroring the CLI's createWorkitemFromOptions
+    /// glue EXACTLY (same WorkitemBuilder setters, same priority/date/station/performer
+    /// mapping), via the SAME package API. The workitem UID is client-minted, so it's never
+    /// compared — parity is on whether the rich create succeeded (createOK). `attrs` is keyed
+    /// by the CLI flag names (minus `--`): priority, patient-birth-date, patient-sex,
+    /// study-uid, accession-number, referring-physician, procedure-id, step-id,
+    /// worklist-label, comments, scheduled-start, expected-completion, station-name,
+    /// performer-name, performer-organization, admission-id.
+    public static func wadoUPSCreate(baseURL: String, token: String, label: String,
+                                     patientName: String, patientID: String,
+                                     attrs: [String: String]) async -> WADOUPSSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let builder = WorkitemBuilder(workitemUID: mintUID())
+                .setState(.scheduled)
+                .setProcedureStepLabel(label)
+            if !patientName.isEmpty { builder.setPatientName(patientName) }
+            if !patientID.isEmpty   { builder.setPatientID(patientID) }
+            func a(_ k: String) -> String? { let v = attrs[k]; return (v?.isEmpty == false) ? v : nil }
+            // INVALID-INPUT PARITY: the CLI's createWorkitemFromOptions THROWS on an invalid
+            // priority / patient-sex / date (ValidationError → non-zero exit → create fails),
+            // so the reference must FAIL too — not silently skip the bad attribute. Each guard
+            // below returns the failure record so both sides report createOK=false identically
+            // for a bad value (the harness only feeds valid values today, but this keeps the
+            // reference a faithful mirror for ANY input). Inlined (not a typed helper) so the
+            // priority case resolves from setPriority's parameter type — the DICOMWeb module
+            // name is shadowed by a same-named type, so it can't be written as a qualifier.
+            if let v = a("priority") {
+                switch v.uppercased() {
+                case "STAT":   builder.setPriority(.stat)
+                case "HIGH":   builder.setPriority(.high)
+                case "MEDIUM": builder.setPriority(.medium)
+                case "LOW":    builder.setPriority(.low)
+                default:       return CLIParityWADOComparator.createRecord(createOK: false)  // CLI throws
+                }
+            }
+            if let v = a("patient-birth-date") { builder.setPatientBirthDate(v) }
+            if let v = a("patient-sex") {
+                let s = v.uppercased()
+                guard ["M", "F", "O"].contains(s) else { return CLIParityWADOComparator.createRecord(createOK: false) }  // CLI throws
+                builder.setPatientSex(s)
+            }
+            if let v = a("study-uid")          { builder.setStudyInstanceUID(v) }
+            if let v = a("accession-number")   { builder.setAccessionNumber(v) }
+            if let v = a("referring-physician"){ builder.setReferringPhysicianName(v) }
+            if let v = a("procedure-id")       { builder.setRequestedProcedureID(v) }
+            if let v = a("step-id")            { builder.setScheduledProcedureStepID(v) }
+            if let v = a("worklist-label")     { builder.setWorklistLabel(v) }
+            if let v = a("comments")           { builder.setComments(v) }
+            if let v = a("scheduled-start") {
+                guard let d = parseUPSDate(v) else { return CLIParityWADOComparator.createRecord(createOK: false) }  // CLI throws
+                builder.setScheduledStartDateTime(d)
+            }
+            if let v = a("expected-completion") {
+                guard let d = parseUPSDate(v) else { return CLIParityWADOComparator.createRecord(createOK: false) }  // CLI throws
+                builder.setExpectedCompletionDateTime(d)
+            }
+            if let v = a("station-name") {
+                builder.setScheduledStationNameCodes([CodedEntry(codeValue: v, codingSchemeDesignator: "L", codeMeaning: v)])
+            }
+            let pName = a("performer-name"); let pOrg = a("performer-organization")
+            if pName != nil || pOrg != nil {
+                builder.addScheduledHumanPerformer(HumanPerformer(performerName: pName, performerOrganization: pOrg))
+            }
+            if let v = a("admission-id")       { builder.setAdmissionID(v) }
+            let workitem = try builder.build()
+            do {
+                _ = try await client.createWorkitem(workitem)
+                return CLIParityWADOComparator.createRecord(createOK: true)
+            } catch {
+                return CLIParityWADOComparator.createRecord(createOK: false)
+            }
+        } catch {
+            return CLIParityWADOComparator.createRecord(createOK: false)
+        }
+    }
+
+    /// N-CREATEs a workitem (own minted UID), then subscribes to and unsubscribes from its
+    /// events — the same package API `ups --subscribe`/`--unsubscribe` call. The AE title
+    /// is harness-picked and the UID is client-minted, so neither is compared — parity is on
+    /// the outcome (createOK + the subscribe/unsubscribe round-trip). Many servers don't
+    /// enable UPS subscription, in which case BOTH sides fail the round-trip identically.
+    public static func wadoUPSSubscribe(baseURL: String, token: String,
+                                        label: String, aeTitle: String) async -> WADOUPSSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            let builder = WorkitemBuilder(workitemUID: mintUID()).setState(.scheduled).setProcedureStepLabel(label)
+            let workitem = try builder.build()
+            let created: UPSCreateResponse
+            do {
+                created = try await client.createWorkitem(workitem)
+            } catch {
+                return CLIParityWADOComparator.subscribeRecord(createOK: false, roundTripOK: false)
+            }
+            do {
+                try await client.subscribeToWorkitem(workitemUID: created.workitemUID, aeTitle: aeTitle)
+                try await client.unsubscribeFromWorkitem(workitemUID: created.workitemUID, aeTitle: aeTitle)
+                return CLIParityWADOComparator.subscribeRecord(createOK: true, roundTripOK: true)
+            } catch {
+                return CLIParityWADOComparator.subscribeRecord(createOK: true, roundTripOK: false)
+            }
+        } catch {
+            return CLIParityWADOComparator.subscribeRecord(createOK: false, roundTripOK: false)
+        }
+    }
+
+    /// N-CREATEs a workitem from a DICOM-JSON dict — the SAME path `ups --create <jsonfile>`
+    /// uses (client.createWorkitem(workitem: [String:Any])). The reference mints its OWN UID
+    /// (distinct from the JSON file the CLI reads, so the two creates don't collide), builds
+    /// the same label/patient workitem, serialises it via Workitem.toDICOMJSONForCreate(),
+    /// and creates from that dict. Parity is on createOK.
+    public static func wadoUPSCreateFromJSON(baseURL: String, token: String,
+                                             label: String, patientName: String, patientID: String) async -> WADOUPSSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            guard let dict = buildCreateWorkitem(label: label, patientName: patientName, patientID: patientID)?.toDICOMJSONForCreate() else {
+                return CLIParityWADOComparator.createRecord(createOK: false)
+            }
+            do {
+                _ = try await client.createWorkitem(workitem: dict)
+                return CLIParityWADOComparator.createRecord(createOK: true)
+            } catch {
+                return CLIParityWADOComparator.createRecord(createOK: false)
+            }
+        } catch {
+            return CLIParityWADOComparator.createRecord(createOK: false)
+        }
+    }
+
+    /// The DICOM-JSON string the CLI's `--create <jsonfile>` reads — a minimal SCHEDULED
+    /// workitem (own minted UID, label + patient) serialised via Workitem.toDICOMJSONForCreate().
+    /// The minted UID here is DISTINCT from the reference's (wadoUPSCreateFromJSON), so the two
+    /// creates target different workitems and never conflict. Returns "" on a build failure.
+    public static func upsCreateWorkitemJSON(label: String, patientName: String, patientID: String) -> String {
+        guard let workitem = buildCreateWorkitem(label: label, patientName: patientName, patientID: patientID) else { return "" }
+        let dict = workitem.toDICOMJSONForCreate()
+        guard let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+              let str = String(data: data, encoding: .utf8) else { return "" }
+        return str
+    }
+
+    /// Builds the minimal SCHEDULED workitem shared by the JSON-create reference + file.
+    static func buildCreateWorkitem(label: String, patientName: String, patientID: String) -> Workitem? {
+        let builder = WorkitemBuilder(workitemUID: mintUID()).setState(.scheduled).setProcedureStepLabel(label)
+        if !patientName.isEmpty { builder.setPatientName(patientName) }
+        if !patientID.isEmpty   { builder.setPatientID(patientID) }
+        return try? builder.build()
+    }
+
+    /// Mirrors the dicom-wado CLI's parseISO8601Date (same formatters, same order) so a
+    /// scheduled date string parses to the IDENTICAL Date on both sides.
+    static func parseUPSDate(_ value: String) -> Date? {
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let d = iso.date(from: value) { return d }
+        iso.formatOptions = [.withInternetDateTime]
+        if let d = iso.date(from: value) { return d }
+        let fallback = DateFormatter()
+        fallback.locale = Locale(identifier: "en_US_POSIX")
+        for fmt in ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd HH:mm", "yyyy-MM-dd", "yyyyMMdd'T'HHmmss", "yyyyMMdd"] {
+            fallback.dateFormat = fmt
+            if let d = fallback.date(from: value) { return d }
+        }
+        return nil
+    }
+
+    /// Maps a CLI `--content-type` string to a WADOURIClient content type, mirroring the
+    /// dicom-wado CLI's mapping EXACTLY so both sides request the identical representation —
+    /// it now DELEGATES to the shared `WADOURIClient.ContentType.fromRequestString` factory
+    /// that the CLI also calls, so the two can never drift (an unknown/empty value defaults
+    /// to application/dicom, like the CLI's `default`).
+    static func uriContentType(_ raw: String) -> WADOURIClient.ContentType {
+        WADOURIClient.ContentType.fromRequestString(raw)
+    }
+
     /// Stores the given file(s) using DICOMwebClient.storeInstances — the same package
     /// API `dicom-wado store` calls — and returns the upload OUTCOME counts. A file the
     /// reference cannot read is counted as failed (mirroring the CLI's read-error path).
-    public static func wadoStore(baseURL: String, token: String, filePaths: [String]) async -> WADOStoreSemantics {
+    public static func wadoStore(baseURL: String, token: String, filePaths: [String],
+                                 studyUID: String? = nil) async -> WADOStoreSemantics {
         do {
             let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
             var instances: [Data] = []
@@ -711,7 +978,11 @@ public enum CLIParityNetworkReference {
             guard !instances.isEmpty else {
                 return WADOStoreSemantics(sent: filePaths.count, succeeded: 0, failed: filePaths.count)
             }
-            let resp = try await client.storeInstances(instances: instances, studyUID: nil)
+            // studyUID mirrors the CLI's `--study` (targeted STOW-RS): nil → /studies,
+            // a value → /studies/{uid}. Both sides pass the SAME value, so the upload
+            // OUTCOME counts line up — and an instance whose own StudyInstanceUID doesn't
+            // match a targeted study is rejected identically on both sides.
+            let resp = try await client.storeInstances(instances: instances, studyUID: studyUID)
             return WADOStoreSemantics(sent: filePaths.count, succeeded: resp.successCount,
                                       failed: resp.failureCount + failedReads)
         } catch {
@@ -722,10 +993,27 @@ public enum CLIParityNetworkReference {
     /// Runs the UPS-RS worklist search against the live server using
     /// DICOMwebClient.searchWorkitems — the same package API `dicom-wado ups --search`
     /// calls — reducing each matched workitem to its stable Workitem UID (sorted).
-    public static func wadoUPSSearch(baseURL: String, token: String) async -> WADOUPSSemantics {
+    public static func wadoUPSSearch(baseURL: String, token: String, filterState: String = "",
+                                     scheduledStation: String = "") async -> WADOUPSSemantics {
         do {
             let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
-            let r = try await client.searchWorkitems(query: UPSQuery())
+            // Mirror the CLI's --filter-state / --scheduled-station parsing so both sides
+            // issue the IDENTICAL UPS-RS query and the matched workitem set is comparable.
+            // An empty filter state means "no state filter" (valid); a NON-empty invalid one
+            // makes the CLI throw (non-zero exit → search fails), so the reference must fail
+            // too rather than silently issue an unfiltered query — keeping parity for any input.
+            var query = UPSQuery()
+            if !filterState.isEmpty {
+                switch filterState.uppercased() {
+                case "SCHEDULED":                 query = query.state(.scheduled)
+                case "IN_PROGRESS", "INPROGRESS": query = query.state(.inProgress)
+                case "COMPLETED":                 query = query.state(.completed)
+                case "CANCELED":                  query = query.state(.canceled)
+                default:                          return CLIParityWADOComparator.searchRecord(success: false, count: 0, uids: [])  // CLI throws
+                }
+            }
+            if !scheduledStation.isEmpty { query = query.scheduledStationName(scheduledStation) }
+            let r = try await client.searchWorkitems(query: query)
             return CLIParityWADOComparator.searchRecord(success: true, count: r.workitems.count,
                                                         uids: r.workitems.map { $0.workitemUID })
         } catch {
@@ -739,9 +1027,12 @@ public enum CLIParityNetworkReference {
     /// `--update --state IN_PROGRESS` call. The Workitem UID and the claim's Transaction
     /// UID are minted client-side and differ from the CLI's by design, so they are
     /// NEVER compared — the record captures only the outcome (create / claim success,
-    /// final state). (The COMPLETED transition needs server-specific final-state
-    /// attributes, so the parity lifecycle stops at the claim — see the UI note.)
-    public static func wadoUPSLifecycle(baseURL: String, token: String, scope: WADOScope) async -> WADOUPSSemantics {
+    /// final state). When `finalState` is COMPLETED/CANCELED the lifecycle continues past
+    /// the claim, threading the SAME single Transaction UID through the terminal transition
+    /// (COMPLETED first sends the required Final State attributes via the shared client
+    /// helper — the exact payload the CLI sends).
+    public static func wadoUPSLifecycle(baseURL: String, token: String, scope: WADOScope,
+                                        finalState: String = "IN_PROGRESS") async -> WADOUPSSemantics {
         do {
             let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
             let builder = WorkitemBuilder(workitemUID: mintUID())
@@ -751,18 +1042,49 @@ public enum CLIParityNetworkReference {
             if !scope.upsPatientID.isEmpty   { builder.setPatientID(scope.upsPatientID) }
             let workitem = try builder.build()
 
+            let created: UPSCreateResponse
             do {
-                let created = try await client.createWorkitem(workitem)
-                do {
-                    _ = try await client.changeWorkitemState(
-                        uid: created.workitemUID, state: .inProgress, transactionUID: mintUID(),
-                        requestingAE: scope.upsAET.isEmpty ? nil : scope.upsAET)
-                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: true, finalState: "IN PROGRESS")
-                } catch {
-                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: false, finalState: "")
-                }
+                created = try await client.createWorkitem(workitem)
             } catch {
                 return CLIParityWADOComparator.lifecycleRecord(createOK: false, claimOK: false, finalState: "")
+            }
+
+            // ONE Transaction UID locks the workitem at IN PROGRESS and authorises the
+            // terminal transition — the CLI threads the same single UID through both calls.
+            let txUID = mintUID()
+            let requestingAE = scope.upsAET.isEmpty ? nil : scope.upsAET
+            do {
+                _ = try await client.changeWorkitemState(
+                    uid: created.workitemUID, state: .inProgress, transactionUID: txUID,
+                    requestingAE: requestingAE)
+            } catch {
+                // Create succeeded, claim did not → never reached the requested final state.
+                return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: false, finalState: "")
+            }
+
+            // Claimed (IN PROGRESS). Drive the requested terminal transition, if any.
+            switch finalState.uppercased() {
+            case "COMPLETED":
+                do {
+                    // Shared client helper — the same Final State attributes + Change State the CLI sends.
+                    _ = try await client.completeWorkitem(
+                        uid: created.workitemUID, transactionUID: txUID, requestingAE: requestingAE)
+                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: true, finalState: "COMPLETED")
+                } catch {
+                    // Claim held but completion was rejected → final state not reached.
+                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: true, finalState: "")
+                }
+            case "CANCELED":
+                do {
+                    _ = try await client.changeWorkitemState(
+                        uid: created.workitemUID, state: .canceled, transactionUID: txUID,
+                        requestingAE: requestingAE)
+                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: true, finalState: "CANCELED")
+                } catch {
+                    return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: true, finalState: "")
+                }
+            default: // IN_PROGRESS — the claim is the terminal step.
+                return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: true, finalState: "IN PROGRESS")
             }
         } catch {
             // Config invalid or builder.build() threw → nothing created.
@@ -906,7 +1228,14 @@ public enum CLIParityNetworkReference {
             + CLIParityWADOComparator.storeCanonical(s).joined(separator: "\n")
     }
     public static func renderWADOUPS(_ s: WADOUPSSemantics) -> String {
-        let api = s.operation == "lifecycle" ? "UPS-RS create → claim" : "UPS-RS search"
+        let api: String
+        switch s.operation {
+        case "lifecycle": api = "UPS-RS create → claim"
+        case "get":       api = "UPS-RS create → get"
+        case "create":    api = "UPS-RS create-workitem"
+        case "subscribe": api = "UPS-RS create → subscribe → unsubscribe"
+        default:          api = "UPS-RS search"
+        }
         return "DICOMKit package API reference (DICOMwebClient \(api)):\n"
             + CLIParityWADOComparator.upsCanonical(s).joined(separator: "\n")
     }
