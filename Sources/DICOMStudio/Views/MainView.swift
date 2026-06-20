@@ -86,6 +86,8 @@ public struct MainView: View {
                 }
         case .cliParity:
             CLIParityRunnerView(viewModel: viewModel.cliParityRunnerViewModel)
+        case .networkUtility:
+            NetworkUtilityView(viewModel: viewModel.networkUtilityViewModel)
         case .security:
             SecurityView(viewModel: SecurityViewModel())
         case .performanceTools:

@@ -12,7 +12,7 @@ import Foundation
 /// supporting tools rather than a flat list of sixteen equal features.
 public enum NavigationCategory: String, CaseIterable, Identifiable, Sendable {
     case imaging   = "Imaging"
-    case network   = "Network"
+    case network   = "DICOM Network"
     case dataTools = "Data & Tools"
     case system    = "System"
 
@@ -37,6 +37,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case security         = "Security"
     case cliWorkshop      = "CLI Workshop"
     case cliParity        = "CLI Parity"
+    case networkUtility   = "Network Utility"
     case performanceTools   = "Performance Tools"
     case macOSEnhancements  = "macOS Enhancements"
     case polishRelease      = "Polish & Release"
@@ -65,6 +66,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .security:           return "lock.shield"
         case .cliWorkshop:        return "terminal"
         case .cliParity:          return "rectangle.split.2x1"
+        case .networkUtility:     return "network.badge.shield.half.filled"
         case .performanceTools:   return "speedometer"
         case .macOSEnhancements:  return "macwindow"
         case .polishRelease:      return "paintbrush.pointed"
@@ -93,6 +95,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .security:           return "Security & Privacy Center"
         case .cliWorkshop:        return "CLI Tools Workshop"
         case .cliParity:          return "CLI Parity Test Runner (App vs CLI)"
+        case .networkUtility:     return "Network Utility – General Network Diagnostics"
         case .performanceTools:   return "Performance & Developer Tools"
         case .macOSEnhancements:  return "macOS-Specific Enhancements"
         case .polishRelease:      return "Polish, Accessibility & Release"
@@ -109,7 +112,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
             return .imaging
         case .networking, .dicomWeb, .cloudIntegration, .gateway:
             return .network
-        case .reporting, .tools, .validation, .archiveManagement, .cliWorkshop, .cliParity:
+        case .reporting, .tools, .validation, .archiveManagement, .cliWorkshop, .cliParity, .networkUtility:
             return .dataTools
         case .security, .performanceTools, .macOSEnhancements,
              .polishRelease, .integrationTesting, .j2kTestBench, .settings:
@@ -123,9 +126,11 @@ public final class NavigationService: Sendable {
     /// The default destination when the app launches.
     public static let defaultDestination: NavigationDestination = .library
 
-    /// Returns all primary navigation destinations (excluding settings).
+    /// Returns all primary navigation destinations (excluding the standalone
+    /// Settings and Network Utility entries, which render outside the category
+    /// groups in the sidebar).
     public static var primaryDestinations: [NavigationDestination] {
-        NavigationDestination.allCases.filter { $0 != .settings }
+        NavigationDestination.allCases.filter { $0 != .settings && $0 != .networkUtility }
     }
 
     public init() {}
