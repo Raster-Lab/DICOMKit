@@ -110,6 +110,10 @@ public final class MainViewModel {
     /// parity) — survives tab switches.
     public var cliParityRunnerViewModel: CLIParityRunnerViewModel
 
+    /// Persistent Network Utility ViewModel (general, non-DICOM network
+    /// diagnostics) — survives tab switches.
+    public var networkUtilityViewModel: NetworkUtilityViewModel
+
     /// Creates the main ViewModel with dependency-injected services.
     public init(
         settingsService: SettingsService = SettingsService(),
@@ -168,6 +172,7 @@ public final class MainViewModel {
         self.validationViewModel = ValidationViewModel()
         self.cliAutomationTestingViewModel = CLIAutomationTestingViewModel()
         self.cliParityRunnerViewModel = CLIParityRunnerViewModel()
+        self.networkUtilityViewModel = NetworkUtilityViewModel()
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles
 
