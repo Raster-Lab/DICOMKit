@@ -8771,8 +8771,14 @@ case "dicom-study":
                         }
                     case .progress(let progress):
                         appendConsoleOutput("  Progress: \(progress.completed) completed, \(progress.remaining) remaining, \(progress.failed) failed\n")
-                    case .completed(let result):
-                        appendConsoleOutput("\n✅ C-GET completed — \(result.progress.completed) file(s) received\n")
+                    case .completed:
+                        if receivedCount == 0 {
+                            appendConsoleOutput("\n⚠️ C-GET completed but received 0 instances. "
+                                + "The SCP matched the request but sent no images — likely no storage "
+                                + "presentation context was negotiated for this study's SOP Class or transfer syntax.\n")
+                        } else {
+                            appendConsoleOutput("\n✅ C-GET completed — \(receivedCount) file(s) received\n")
+                        }
                         appendConsoleOutput("  Output directory: \(outputDir)\n")
                     case .error(let error):
                         appendConsoleOutput("\n❌ C-GET failed: \(error.localizedDescription)\n")
@@ -8983,6 +8989,11 @@ case "dicom-study":
             var failureCount = 0
 
             for (index, result) in studiesToRetrieve.enumerated() {
+                // Honor cancellation so a user-cancelled run stops promptly instead of
+                // marching through every remaining study. Effective now that the underlying
+                // DIMSE read (DICOMConnection.receive) honors cancellation — without it a
+                // half-dead PACS would otherwise hang this Workshop loop with no backstop.
+                if Task.isCancelled { break }
                 let s = result.toStudyResult()
                 guard let uid = s.studyInstanceUID else {
                     appendConsoleOutput("[\(index + 1)/\(studiesToRetrieve.count)] ⚠️ Missing Study UID\n")
@@ -9001,6 +9012,8 @@ case "dicom-study":
                             moveDestination: moveDest,
                             timeout: timeout
                         )
+                        successCount += 1
+                        appendConsoleOutput("  ✅ Success\n\n")
                     } else {
                         let stream = try await DICOMRetrieveService.getStudy(
                             host: host, port: port,
@@ -9037,9 +9050,18 @@ case "dicom-study":
                                 appendConsoleOutput("    ⚠️ \(err.localizedDescription)\n")
                             }
                         }
+                        // 0 instances on a matched study is a failure, not a success: the SCP
+                        // had no negotiated storage presentation context for this study's SOP
+                        // Class / transfer syntax, so nothing was transferred.
+                        if fileCount == 0 {
+                            failureCount += 1
+                            appendConsoleOutput("  ⚠️ Received 0 instances — no negotiated storage "
+                                + "presentation context for this study's SOP Class or transfer syntax.\n\n")
+                        } else {
+                            successCount += 1
+                            appendConsoleOutput("  ✅ Success\n\n")
+                        }
                     }
-                    successCount += 1
-                    appendConsoleOutput("  ✅ Success\n\n")
                 } catch {
                     failureCount += 1
                     appendConsoleOutput("  ❌ Failed: \(error.localizedDescription)\n\n")
@@ -9123,8 +9145,8 @@ case "dicom-study":
         callingAET: String, calledAET: String,
         timeout: TimeInterval
     ) async {
-        let dateFrom = paramValue("date-from")
-        let dateTo = paramValue("date-to")
+        // "Date" field (flag --date): a single scheduled-date filter, matching the CLI.
+        let date = paramValue("date-from")
         let station = paramValue("station")
         let patient = paramValue("patient")
         let patientID = paramValue("patient-id")
@@ -9138,11 +9160,7 @@ case "dicom-study":
         appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
         appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
         appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
-        if !dateFrom.isEmpty || !dateTo.isEmpty {
-            let fromDisplay = dateFrom.isEmpty ? "(open)" : dateFrom
-            let toDisplay = dateTo.isEmpty ? "(open)" : dateTo
-            appendConsoleOutput("  Date Range:       \(fromDisplay) — \(toDisplay)\n")
-        }
+        if !date.isEmpty      { appendConsoleOutput("  Date:             \(date)\n") }
         if !station.isEmpty   { appendConsoleOutput("  Station AET:      \(station)\n") }
         if !patient.isEmpty   { appendConsoleOutput("  Patient Name:     \(patient)\n") }
         if !patientID.isEmpty { appendConsoleOutput("  Patient ID:       \(patientID)\n") }
@@ -9150,34 +9168,30 @@ case "dicom-study":
         if !spsStatus.isEmpty { appendConsoleOutput("  SPS Status:       \(spsStatus)\n") }
         appendConsoleOutput("\nQuerying Modality Worklist...\n\n")
 
+        // Build C-FIND keys via the SHARED package builder (DICOMNetwork) — the same
+        // mapping the dicom-mwl CLI and the CLI-parity reference use, so the in-app
+        // query and the CLI cannot drift. A single "Date" matches that exact day,
+        // identical to `dicom-mwl query --date`.
+        let queryKeys: WorklistQueryKeys
         do {
-            var queryKeys = WorklistQueryKeys.default()
-            // Build DICOM date or date range: "YYYYMMDD", "YYYYMMDD-YYYYMMDD",
-            // "YYYYMMDD-" (from only), or "-YYYYMMDD" (to only).
-            let resolvedFrom = dateFrom.isEmpty ? "" : resolvedWorklistDate(dateFrom)
-            let resolvedTo   = dateTo.isEmpty   ? "" : resolvedWorklistDate(dateTo)
-            if !resolvedFrom.isEmpty || !resolvedTo.isEmpty {
-                let dateQuery: String
-                if !resolvedFrom.isEmpty && resolvedTo.isEmpty {
-                    dateQuery = "\(resolvedFrom)-"          // from onwards
-                } else if resolvedFrom.isEmpty && !resolvedTo.isEmpty {
-                    dateQuery = "-\(resolvedTo)"            // up to
-                } else if resolvedFrom == resolvedTo {
-                    dateQuery = resolvedFrom                // single day
-                } else {
-                    dateQuery = "\(resolvedFrom)-\(resolvedTo)"  // range
-                }
-                queryKeys = queryKeys.scheduledDate(dateQuery)
-            }
-            if !station.isEmpty   { queryKeys = queryKeys.scheduledStationAET(station) }
-            if !patient.isEmpty {
-                let wildcardPatient = patient.hasSuffix("*") ? patient : patient + "*"
-                queryKeys = queryKeys.patientName(wildcardPatient)
-            }
-            if !patientID.isEmpty { queryKeys = queryKeys.patientID(patientID) }
-            if !modality.isEmpty  { queryKeys = queryKeys.modality(modality) }
-            if !spsStatus.isEmpty { queryKeys = queryKeys.scheduledProcedureStepStatus(spsStatus) }
+            queryKeys = try WorklistQueryKeys.forQuery(
+                date: date,
+                station: station,
+                patientName: patient,
+                patientID: patientID,
+                modality: modality,
+                spsStatus: spsStatus
+            )
+        } catch {
+            let msg = (error as? WorklistDateFilterError)?.description ?? "\(error)"
+            appendConsoleOutput("❌ \(msg)\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 1, output: msg)
+            return
+        }
 
+        do {
             let items = try await DICOMModalityWorklistService.find(
                 host: host,
                 port: port,
@@ -9608,7 +9622,9 @@ case "dicom-study":
         let operation = paramValue("operation").lowercased()
         let studyUID = paramValue("study-uid")
         let mppsUID = paramValue("mpps-uid")
-        let statusStr = paramValue("status")
+        // Status is split per operation: create offers only IN PROGRESS ("status"),
+        // update offers COMPLETED / DISCONTINUED ("status-update").
+        let statusStr = (operation != "update") ? paramValue("status") : paramValue("status-update")
         // N-CREATE attributes
         let patientName = paramValue("patient-name")
         let patientID = paramValue("patient-id")

@@ -62,7 +62,7 @@ struct DICOMSend: AsyncParsableCommand {
     @Option(name: .long, help: "Operation priority: low, medium, high (default: medium)")
     var priority: PriorityOption = .medium
 
-    @Option(name: .long, help: "Preferred transfer syntax for C-STORE presentation context negotiation (for example explicit-vr-le, jpeg2000, htj2k-lossless, htj2k-rpcl, htj2k, rle-lossless)")
+    @Option(name: .long, help: "Transfer syntax to negotiate for the C-STORE presentation context. dicom-send sends files as-is and never transcodes, so this must match the file's own transfer syntax (the send fails otherwise — use dicom-convert to change it). Omit to send the file unchanged.")
     var transferSyntax: String?
 
     mutating func run() async throws {

@@ -823,13 +823,6 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
-                    id: "date-to", flag: "--date-to", displayName: "Date To",
-                    parameterType: .textField, placeholder: "tomorrow / YYYYMMDD",
-                    helpText: "End of scheduled date range (inclusive) — used by DICOMStudio's internal execution only",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
-                ),
-                CLIParameterDefinition(
                     id: "station", flag: "--station", displayName: "Station AE Title",
                     parameterType: .textField, placeholder: "e.g. CT1",
                     helpText: "Filter by Scheduled Station AE Title (0040,0001)",
@@ -1179,12 +1172,25 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "MPPS SOP Instance UID from a previous create — required for update (N-SET)",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
+                // An N-CREATE always starts the performed procedure step IN PROGRESS, so the
+                // create operation offers only that status; the final COMPLETED / DISCONTINUED
+                // transitions belong to the update (N-SET) operation (status-update below).
+                // Both map to --status but only one is ever visible (and emitted) per operation.
                 CLIParameterDefinition(
                     id: "status", flag: "--status", displayName: "Status",
                     parameterType: .enumPicker, placeholder: "IN PROGRESS",
-                    helpText: "Performed Procedure Step Status (0040,0252) — IN PROGRESS for create; COMPLETED or DISCONTINUED for update",
+                    helpText: "Performed Procedure Step Status (0040,0252) — an N-CREATE always starts the step IN PROGRESS",
                     defaultValue: "IN PROGRESS",
-                    allowedValues: ["IN PROGRESS", "COMPLETED", "DISCONTINUED"]
+                    allowedValues: ["IN PROGRESS"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "status-update", flag: "--status", displayName: "Status",
+                    parameterType: .enumPicker, placeholder: "COMPLETED",
+                    helpText: "Final Performed Procedure Step Status (0040,0252) for the N-SET update — COMPLETED or DISCONTINUED",
+                    defaultValue: "COMPLETED",
+                    allowedValues: ["COMPLETED", "DISCONTINUED"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
                     id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",

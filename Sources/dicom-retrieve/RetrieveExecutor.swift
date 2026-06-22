@@ -276,8 +276,16 @@ struct RetrieveExecutor {
                 throw error
             }
         }
+
+        // A C-GET that completes "successfully" but transfers nothing almost always
+        // means the SCP had no negotiated presentation context for the study's SOP
+        // Class / transfer syntax — surface it instead of reporting a silent success.
+        if filesReceived == 0 {
+            fprintln("⚠️  C-GET received 0 instances. The SCP matched the request but sent no images — "
+                + "likely no storage presentation context was negotiated for this study's SOP Class or transfer syntax.")
+        }
     }
-    
+
     // MARK: - File Management
     
     private func saveInstance(

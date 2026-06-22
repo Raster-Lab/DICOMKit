@@ -261,6 +261,11 @@ public final class CLIParityRunnerViewModel {
     public var wadoUPSPatientID: String = ""
     public var wadoUPSAET: String = ""
 
+    /// Which dicom-wado subcommand the parity sweep runs ("query" / "retrieve" /
+    /// "store" / "ups"), driven by the WADO panel's segmented switch. Only the selected
+    /// subcommand's scenarios are generated, so the sweep tests exactly what's on screen.
+    public var wadoSubcommand: String = "query"
+
     private func currentWADOScope() -> WADOScope {
         func t(_ s: String) -> String { s.trimmingCharacters(in: .whitespaces) }
         var sc = WADOScope()
@@ -270,6 +275,7 @@ public final class CLIParityRunnerViewModel {
         sc.upsPatientName = t(wadoUPSPatientName)
         sc.upsPatientID = t(wadoUPSPatientID)
         sc.upsAET = t(wadoUPSAET)
+        sc.subcommand = wadoSubcommand
         return sc
     }
 
@@ -952,19 +958,52 @@ public final class CLIParityRunnerViewModel {
     /// testing harness, and far better than freezing the whole run. The deadline is
     /// set longer than the op's own bounded connect timeouts, so it only fires on a
     /// genuine hang (a PACS that accepts TCP but never answers a DIMSE request).
+    /// Runs `op` but GUARANTEES a return within `seconds`, yielding `fallback` if the
+    /// deadline fires first.
+    ///
+    /// A `withTaskGroup`-based race is NOT sufficient here: structured concurrency
+    /// implicitly awaits the losing child at scope exit, so the group cannot return while
+    /// `op` is parked in an *uncancellable* call. The DIMSE response read has no wall-clock
+    /// bound of its own — `DICOMConnection.receive(length:)` wraps `NWConnection.receive`,
+    /// whose completion handler never fires if the peer holds the socket open while sending
+    /// nothing — so a PACS that accepts the association but never answers a C-MOVE/C-GET/
+    /// C-FIND blocks `op` forever and would freeze the whole parity run.
+    ///
+    /// Instead, `op` runs in a DETACHED task whose lifetime is not joined to this scope, and
+    /// two waiter tasks race it against a sleep timer through a single continuation. The
+    /// deadline therefore always wins promptly regardless of `op`'s cancellability. A
+    /// timed-out `op` is best-effort cancelled (which tears the socket down once
+    /// `receive(length:)` honors cancellation) and otherwise left to wind down on its own.
     private func raceDeadline<T: Sendable>(_ seconds: TimeInterval, fallback: T,
                                            _ op: @escaping @Sendable () async -> T) async -> T {
-        await withTaskGroup(of: T?.self) { group in
-            group.addTask { await op() }
-            group.addTask {
-                try? await Task.sleep(nanoseconds: UInt64(max(1, seconds) * 1_000_000_000))
-                return nil   // timeout sentinel
+        let opTask = Task.detached { await op() }
+        let timerTask = Task.detached {
+            try? await Task.sleep(nanoseconds: UInt64(max(1, seconds) * 1_000_000_000))
+        }
+        let resume = DeadlineResumeOnce()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<T, Never>) in
+            Task {
+                let value = await opTask.value
+                if resume.tryClaim() { timerTask.cancel(); continuation.resume(returning: value) }
             }
-            // First finished wins: the op yields .some(value); the timer yields nil.
-            let result = await group.next()   // T?? — outer nil only if the group were empty
-            group.cancelAll()
-            if let inner = result, let value = inner { return value }
-            return fallback
+            Task {
+                _ = await timerTask.value
+                if resume.tryClaim() { opTask.cancel(); continuation.resume(returning: fallback) }
+            }
+        }
+    }
+
+    /// One-shot guard so exactly one of `raceDeadline`'s two waiter tasks resumes the
+    /// continuation (op-finished vs deadline-fired), even if they fire near-simultaneously —
+    /// a double resume of a `CheckedContinuation` would trap.
+    private final class DeadlineResumeOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var claimed = false
+        func tryClaim() -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            if claimed { return false }
+            claimed = true
+            return true
         }
     }
 
@@ -1010,9 +1049,13 @@ public final class CLIParityRunnerViewModel {
         // raw frame files to --output; the runner counts those files (the reference counts
         // what it pulled), so they must land in the scratch dir too.
         let wadoRetrieveDerived = s.toolId == "dicom-wado" && s.studioParams["wado-mode"] == "retrieve-derived"
-        // dicom-qr's interactive C-GET writes its pulled files to the OUTDIR scratch dir
-        // too (the reference counts in memory); C-MOVE and review write nothing there.
-        let qrInteractiveGet = s.toolId == "dicom-qr" && s.studioParams["qr-mode"] == "interactive-get"
+        // dicom-qr's C-GET (both --interactive and --auto) writes its pulled files to the
+        // OUTDIR scratch dir, so both must get a real --output (the reference counts in
+        // memory). Keying on method == "c-get" covers interactive-get AND auto-get but
+        // excludes review (no "method" key) and C-MOVE (forwards to move-dest, writes
+        // nothing locally). Without this, auto C-GET resolved OUTDIR to "" and the CLI
+        // failed every C-STORE sub-op while the reference succeeded → false Output Drift.
+        let qrCGet = s.toolId == "dicom-qr" && s.studioParams["method"] == "c-get"
         if s.toolId == "dicom-retrieve" {
             if let out = retrieveOutputURL?.path, !out.isEmpty {
                 try? fm.createDirectory(atPath: out, withIntermediateDirectories: true)
@@ -1023,7 +1066,7 @@ public final class CLIParityRunnerViewModel {
                 netScratch = dir
                 pendingNetOutputDir = dir.path
             }
-        } else if wadoRetrieveInstances || wadoRetrieveURI || wadoRetrieveDerived || qrInteractiveGet {
+        } else if wadoRetrieveInstances || wadoRetrieveURI || wadoRetrieveDerived || qrCGet {
             let dir = fm.temporaryDirectory.appendingPathComponent("studio-parity-out-\(UUID().uuidString)", isDirectory: true)
             try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
             netScratch = dir
@@ -1227,7 +1270,7 @@ public final class CLIParityRunnerViewModel {
                                         succeeded: 0, failed: dryRun ? 0 : files.count)) {
                 await CLIParityNetworkReference.send(
                     host: host, port: port, callingAET: callingAET, calledAET: calledAET, timeout: scTimeout,
-                    filePaths: files, priorityName: priorityName, transferSyntaxName: "",
+                    filePaths: files, priorityName: priorityName,
                     verify: verify, dryRun: dryRun)
             }
             refOK = snd.overallOK

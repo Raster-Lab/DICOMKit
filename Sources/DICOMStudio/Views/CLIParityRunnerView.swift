@@ -23,11 +23,26 @@ public struct CLIParityRunnerView: View {
     // (2) a single importer driven by a shared discriminator races on dismiss — the
     // binding that clears the discriminator fires before onCompletion reads it, so
     // the picked directory went unscanned. Plain booleans on separate views fix both.
+    // The dicom-wado `store` tab reuses the Send Source picker but gets its OWN pair
+    // of booleans (showWadoStore*Importer) so it never collides with dicom-send's even
+    // when both forms are on screen — same rule: distinct booleans on distinct buttons.
     @State private var showInputDirImporter = false
     @State private var showSendDirImporter = false
     @State private var showSendFileImporter = false
+    @State private var showWadoStoreFileImporter = false
+    @State private var showWadoStoreDirImporter = false
     @State private var showRetrieveOutputImporter = false
     @State private var expandedRows: Set<String> = []
+
+    /// Which dicom-wado subcommand's inputs the WADO panel is showing — and the one the
+    /// parity sweep runs. Backed by the view model (a String) so `run()` can read it;
+    /// the segmented control binds to it through `wadoSubcommandBinding`.
+    private var wadoSubcommandBinding: Binding<WADOSubcommand> {
+        Binding(
+            get: { WADOSubcommand(rawValue: viewModel.wadoSubcommand) ?? .query },
+            set: { viewModel.wadoSubcommand = $0.rawValue }
+        )
+    }
 
     public init(viewModel: CLIParityRunnerViewModel) {
         self.viewModel = viewModel
@@ -144,19 +159,17 @@ public struct CLIParityRunnerView: View {
     private var networkControls: some View {
         VStack(alignment: .leading, spacing: 14) {
             networkEndpointForm
-            // QIDO-RS reuses the same query keys, so the form also drives dicom-wado.
+            // dicom-wado is self-contained: its query/retrieve/store/ups inputs all live
+            // in the segmented WADO panel below, so it no longer triggers these shared forms.
             if viewModel.selectedToolIDs.contains("dicom-query")
-                || viewModel.selectedToolIDs.contains("dicom-qr")
-                || viewModel.selectedToolIDs.contains("dicom-wado") {
+                || viewModel.selectedToolIDs.contains("dicom-qr") {
                 queryKeysForm
             }
             // dicom-qr's interactive retrieve adds a Move Destination AE (C-MOVE).
             if viewModel.selectedToolIDs.contains("dicom-qr") {
                 qrScopeForm
             }
-            // STOW-RS reuses the same send source, so the picker also drives dicom-wado.
-            if viewModel.selectedToolIDs.contains("dicom-send")
-                || viewModel.selectedToolIDs.contains("dicom-wado") {
+            if viewModel.selectedToolIDs.contains("dicom-send") {
                 sendInput
             }
             if viewModel.selectedToolIDs.contains("dicom-retrieve") {
@@ -222,7 +235,6 @@ public struct CLIParityRunnerView: View {
         var consumers: [String] = []
         if viewModel.selectedToolIDs.contains("dicom-query") { consumers.append("dicom-query") }
         if viewModel.selectedToolIDs.contains("dicom-qr") { consumers.append("dicom-qr") }
-        if viewModel.selectedToolIDs.contains("dicom-wado") { consumers.append("dicom-wado QIDO-RS") }
         let title = "Query Keys (" + (consumers.isEmpty ? "dicom-query" : consumers.joined(separator: " · ")) + ")"
         return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -432,11 +444,31 @@ public struct CLIParityRunnerView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.10)))
     }
 
-    /// dicom-wado (DICOMweb) input: the HTTP base URL + optional bearer token shared by
-    /// all four subcommands, the SOP Instance UID for instance-level WADO-RS retrieve,
-    /// and the UPS create → claim lifecycle inputs (a Procedure Step Label enables the
-    /// write lifecycle). The QIDO-RS query keys come from the shared Query Keys form;
-    /// STOW-RS store reuses the Send Source picker above.
+    /// The four dicom-wado subcommands, used to drive the WADO panel's segmented switch.
+    /// The selected subcommand both shows its inputs AND scopes the parity sweep — only
+    /// that subcommand's scenarios run (its value lives in the view model so `run()`
+    /// reads it). Other subcommands' inputs are retained, just not swept.
+    private enum WADOSubcommand: String, CaseIterable, Identifiable {
+        case query, retrieve, store, ups
+        var id: String { rawValue }
+        /// Short verb shown in the segmented control.
+        var verb: String { rawValue }
+        /// The DICOMweb protocol the verb maps to, shown in the section header.
+        var proto: String {
+            switch self {
+            case .query: return "QIDO-RS"
+            case .retrieve: return "WADO-RS"
+            case .store: return "STOW-RS"
+            case .ups: return "UPS-RS"
+            }
+        }
+    }
+
+    /// dicom-wado (DICOMweb) input: the shared Base URL + bearer token (Connection), then a
+    /// segmented switch that shows ONE subcommand's inputs at a time so each is easy to read
+    /// and edit while testing — query (QIDO-RS) reuses the C-FIND/QIDO query keys, retrieve
+    /// (WADO-RS) the Study/Series/Instance scope, store (STOW-RS) the Send Source picker, and
+    /// ups (UPS-RS) the create → claim lifecycle. The sweep runs the SELECTED subcommand only.
     private var wadoForm: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
@@ -444,33 +476,127 @@ public struct CLIParityRunnerView: View {
                 Text("DICOMweb Endpoint (dicom-wado)").font(.title3.bold())
                 Spacer()
             }
-            LazyVGrid(columns: fieldColumns, alignment: .leading, spacing: 12) {
-                labeledField("Base URL (…/dcm4chee-arc/aets/AET/rs)", text: $viewModel.networkWebBaseURL)
-                labeledField("Bearer Token (optional)", text: $viewModel.networkWebToken)
-                labeledField("SOP Instance UID (WADO-RS instance)", text: $viewModel.wadoInstanceUID)
-            }
-            Text("dicom-wado is ONE binary with four subcommands — all swept against the DICOMweb base URL above (a separate HTTP service from the DIMSE host/port; dcm4chee exposes it under /dcm4chee-arc/aets/<AET>/rs). query (QIDO-RS) uses the Query Keys above; retrieve (WADO-RS) pulls the Study / Series / Instance UID scope; store (STOW-RS) uploads the Send Source above; ups (UPS-RS) searches the worklist. The DICOMKit package-API reference is compared app-vs-CLI per scenario, ordering ignored.")
+
+            // Connection — shared by all four subcommands. Base URL gets its OWN full-width
+            // row (not the compact ~300pt grid cell) so the whole …/aets/<AET>/rs path shows.
+            labeledField("Base URL (…/dcm4chee-arc/aets/AET/rs)", text: $viewModel.networkWebBaseURL)
+            labeledField("Bearer Token (optional)", text: $viewModel.networkWebToken)
+
+            Text("dicom-wado is ONE binary with four subcommands, all hitting the Base URL above (a separate HTTP service from the DIMSE host/port; dcm4chee exposes it under /dcm4chee-arc/aets/<AET>/rs). Pick a subcommand below to edit its inputs and run its scenarios — the parity sweep runs the SELECTED subcommand only, comparing the DICOMKit package-API reference app-vs-CLI per scenario (ordering ignored). Switch tabs to test another; your inputs for the others are kept.")
                 .font(.callout).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
             Divider()
 
-            Text("UPS-RS lifecycle (optional — WRITES)").font(.callout.bold()).foregroundStyle(.secondary)
+            Picker("WADO subcommand", selection: wadoSubcommandBinding) {
+                ForEach(WADOSubcommand.allCases) { Text($0.verb).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .disabled(viewModel.isRunning)
+
+            switch wadoSubcommandBinding.wrappedValue {
+            case .query:    wadoQuerySection
+            case .retrieve: wadoRetrieveSection
+            case .store:    wadoStoreSection
+            case .ups:      wadoUPSSection
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.10)))
+    }
+
+    /// Header (verb · protocol) + explanatory note shown atop each WADO subcommand section.
+    private func wadoSectionHeader(_ sub: WADOSubcommand, systemImage: String, _ note: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Image(systemName: systemImage).foregroundStyle(.blue)
+                Text(sub.verb).font(.callout.bold())
+                Text("· \(sub.proto)").font(.callout).foregroundStyle(.secondary)
+            }
+            Text(note).font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// query (QIDO-RS) — read-only, reuses the C-FIND/QIDO query keys (same bindings the
+    /// dicom-query / dicom-qr Query Keys form uses).
+    private var wadoQuerySection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wadoSectionHeader(.query, systemImage: "magnifyingglass",
+                "Read-only search. Sweeps a broad study query, one query per provided filter, a combined query (≥2 filters), the study / series / instance levels (once Study / Series UID are supplied), and the --format renderings. Blank fields are skipped.")
+            LazyVGrid(columns: fieldColumns, alignment: .leading, spacing: 12) {
+                labeledField("Patient Name", text: $viewModel.queryPatientName)
+                labeledField("Patient ID", text: $viewModel.queryPatientID)
+                labeledField("Study Date (YYYYMMDD / range)", text: $viewModel.queryStudyDate)
+                labeledField("Modality", text: $viewModel.queryModality)
+                labeledField("Accession #", text: $viewModel.queryAccession)
+                labeledField("Study Description", text: $viewModel.queryStudyDescription)
+                labeledField("Study UID (series / instance)", text: $viewModel.queryStudyUID)
+                labeledField("Series UID (instance)", text: $viewModel.querySeriesUID)
+            }
+        }
+    }
+
+    /// retrieve (WADO-RS) — pulls a Study / Series / Instance scope. Study & Series UID are
+    /// the SAME bindings as the query tab; only the SOP Instance UID is WADO-retrieve specific.
+    private var wadoRetrieveSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wadoSectionHeader(.retrieve, systemImage: "arrow.down.circle",
+                "Pulls the Study / Series / Instance scope and writes the files to a temporary scratch folder (removed after the run). Study & Series UID are shared with the query tab; supply the next-level UID to deepen the retrieve.")
+            LazyVGrid(columns: fieldColumns, alignment: .leading, spacing: 12) {
+                labeledField("Study UID", text: $viewModel.queryStudyUID)
+                labeledField("Series UID (series / instance level)", text: $viewModel.querySeriesUID)
+                labeledField("SOP Instance UID (instance level)", text: $viewModel.wadoInstanceUID)
+            }
+        }
+    }
+
+    /// store (STOW-RS) — uploads the Send Source over HTTP. Reuses the dicom-send picker but
+    /// with its OWN importer booleans so the two .fileImporters never collide.
+    private var wadoStoreSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wadoSectionHeader(.store, systemImage: "arrow.up.doc",
+                "WRITES to the server: uploads the selected DICOM file/directory via DICOMweb STOW-RS (deduplicated on repeats — a file with the same SOP Instance UID won't create a new instance). Falls back to the bundled synthetic CT when nothing is picked.")
+            sendSourcePicker(fileImporter: $showWadoStoreFileImporter, dirImporter: $showWadoStoreDirImporter)
+        }
+    }
+
+    /// ups (UPS-RS) — read-only search by default; a Procedure Step Label adds the
+    /// create → claim write lifecycle.
+    private var wadoUPSSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            wadoSectionHeader(.ups, systemImage: "checklist",
+                "Leave the label blank to sweep only the read-only ups --search. Supplying a Procedure Step Label adds a create → claim lifecycle (WRITES): it N-CREATEs a workitem (SCHEDULED) then claims it (→ IN PROGRESS). Each side mints its own Workitem UID, so it's ignored; parity compares the create / claim outcome and final state.")
             LazyVGrid(columns: fieldColumns, alignment: .leading, spacing: 12) {
                 labeledField("Procedure Step Label (enables claim)", text: $viewModel.wadoUPSLabel)
                 labeledField("Patient Name", text: $viewModel.wadoUPSPatientName)
                 labeledField("Patient ID", text: $viewModel.wadoUPSPatientID)
                 labeledField("Requesting AE (claim)", text: $viewModel.wadoUPSAET)
             }
-            Text("Leave the label blank to sweep only the read-only ups --search. Supplying a Procedure Step Label adds a create → claim lifecycle: it N-CREATEs a workitem (SCHEDULED) then claims it (→ IN PROGRESS). Each side mints its own Workitem UID, so it's ignored; parity compares the create / claim outcome and final state.")
-                .font(.callout).foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// dicom-send input: an optional DICOM FILE or DIRECTORY to transmit (falls back to
+    /// the bundled synthetic CT when empty), plus the write-to-server warning. The
+    /// dicom-wado `store` tab renders the same picker (see `sendSourcePicker`) under the
+    /// WADO panel, so this standalone form is now dicom-send only.
+    private var sendInput: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "paperplane").foregroundStyle(.blue).font(.title3)
+                Text("Send Source (dicom-send)").font(.title3.bold())
+                Spacer()
+            }
+
+            sendSourcePicker(fileImporter: $showSendFileImporter, dirImporter: $showSendDirImporter)
 
             Divider()
 
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("dicom-wado WRITES to the server for two subcommands: store (STOW-RS) uploads the Send Source instance(s) over HTTP, and the UPS lifecycle creates + claims a workitem. query / retrieve are read-only (retrieve writes pulled files to a temporary scratch folder, removed after the run).")
+                Text("WRITES to the server: the real-send scenarios upload the selected file(s) via DIMSE C-STORE to the PACS. dicom-send includes a --dry-run scenario that writes nothing.")
                     .font(.callout).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer()
@@ -481,88 +607,61 @@ public struct CLIParityRunnerView: View {
         .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.10)))
     }
 
-    /// dicom-send / dicom-wado store input: an optional DICOM FILE or DIRECTORY to
-    /// transmit (falls back to the bundled synthetic CT when empty), plus the
-    /// write-to-server warning. Reused by dicom-send (DIMSE C-STORE) and dicom-wado
-    /// store (DICOMweb STOW-RS) — the title/warning list whichever is selected.
-    private var sendInput: some View {
-        var consumers: [String] = []
-        if viewModel.selectedToolIDs.contains("dicom-send") { consumers.append("dicom-send") }
-        if viewModel.selectedToolIDs.contains("dicom-wado") { consumers.append("dicom-wado STOW-RS") }
-        let title = "Send Source (" + (consumers.isEmpty ? "dicom-send" : consumers.joined(separator: " · ")) + ")"
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "paperplane").foregroundStyle(.blue).font(.title3)
-                Text(title).font(.title3.bold())
-                Spacer()
+    /// The Send Source picker buttons + selected-file status, shared by the dicom-send
+    /// `sendInput` form and the dicom-wado `store` tab. Each caller passes its OWN pair
+    /// of importer booleans so the two .fileImporters never collide (see the note at the
+    /// top of this type); both write to the same `viewModel.sendInput*` state.
+    @ViewBuilder
+    private func sendSourcePicker(fileImporter: Binding<Bool>, dirImporter: Binding<Bool>) -> some View {
+        HStack(spacing: 12) {
+            Button { fileImporter.wrappedValue = true } label: {
+                Label("Select DICOM File…", systemImage: "doc.badge.plus").font(.body)
+            }
+            .controlSize(.large)
+            .disabled(viewModel.isRunning)
+            .fileImporter(isPresented: fileImporter,
+                          allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
+                guard case let .success(urls) = result, let url = urls.first else { return }
+                Task { await viewModel.setSendInput(url: url, isDirectory: false) }
             }
 
-            // Two separate buttons, each with its OWN .fileImporter (SwiftUI honours
-            // only the LAST importer stacked on the same view, so they must live on
-            // different views — see the file-importer note at the top of this type).
-            HStack(spacing: 12) {
-                Button { showSendFileImporter = true } label: {
-                    Label("Select DICOM File…", systemImage: "doc.badge.plus").font(.body)
-                }
-                .controlSize(.large)
-                .disabled(viewModel.isRunning)
-                .fileImporter(isPresented: $showSendFileImporter,
-                              allowedContentTypes: [.data], allowsMultipleSelection: false) { result in
-                    guard case let .success(urls) = result, let url = urls.first else { return }
-                    Task { await viewModel.setSendInput(url: url, isDirectory: false) }
-                }
-
-                Button { showSendDirImporter = true } label: {
-                    Label("Select Directory…", systemImage: "folder.badge.plus").font(.body)
-                }
-                .controlSize(.large)
-                .disabled(viewModel.isRunning)
-                .fileImporter(isPresented: $showSendDirImporter,
-                              allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
-                    guard case let .success(urls) = result, let url = urls.first else { return }
-                    Task { await viewModel.setSendInput(url: url, isDirectory: true) }
-                }
-
-                if viewModel.sendInputPath != nil {
-                    Button { viewModel.clearSendInput() } label: { Image(systemName: "xmark.circle.fill") }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .help("Clear — fall back to the bundled synthetic CT")
-                        .disabled(viewModel.isRunning)
-                }
-                Spacer()
+            Button { dirImporter.wrappedValue = true } label: {
+                Label("Select Directory…", systemImage: "folder.badge.plus").font(.body)
+            }
+            .controlSize(.large)
+            .disabled(viewModel.isRunning)
+            .fileImporter(isPresented: dirImporter,
+                          allowedContentTypes: [.folder], allowsMultipleSelection: false) { result in
+                guard case let .success(urls) = result, let url = urls.first else { return }
+                Task { await viewModel.setSendInput(url: url, isDirectory: true) }
             }
 
-            if let path = viewModel.sendInputPath {
-                let kind = viewModel.sendInputIsDirectory ? "directory" : "file"
-                let recursiveNote = viewModel.sendInputIsDirectory ? " (recursive)" : ""
-                Label {
-                    Text("\((path as NSString).lastPathComponent) — \(kind), \(viewModel.sendInputFileCount) DICOM file(s) will be sent\(recursiveNote).")
-                        .font(.callout).foregroundStyle(viewModel.sendInputFileCount == 0 ? .orange : .secondary)
-                } icon: {
-                    Image(systemName: viewModel.sendInputFileCount == 0 ? "exclamationmark.triangle.fill"
-                                    : (viewModel.sendInputIsDirectory ? "folder" : "doc"))
-                        .foregroundStyle(viewModel.sendInputFileCount == 0 ? .orange : .secondary)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("No file or directory selected — sends the bundled synthetic CT (syn-ct.dcm). Pick a single DICOM file or a directory to send your own DICOM instead (C-STORE for dicom-send, STOW-RS for dicom-wado store).")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
+            if viewModel.sendInputPath != nil {
+                Button { viewModel.clearSendInput() } label: { Image(systemName: "xmark.circle.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .help("Clear — fall back to the bundled synthetic CT")
+                    .disabled(viewModel.isRunning)
             }
-
-            Divider()
-
-            HStack(alignment: .top, spacing: 8) {
-                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                Text("WRITES to the server: the real-send scenarios upload the selected file(s) — dicom-send via DIMSE C-STORE to the PACS, dicom-wado store via DICOMweb STOW-RS (deduplicated on repeats — a file with the same SOP Instance UID won't create a new instance). dicom-send includes a --dry-run scenario that writes nothing.")
-                    .font(.callout).foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer()
-            }
+            Spacer()
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color.orange.opacity(0.10)))
+
+        if let path = viewModel.sendInputPath {
+            let kind = viewModel.sendInputIsDirectory ? "directory" : "file"
+            let recursiveNote = viewModel.sendInputIsDirectory ? " (recursive)" : ""
+            Label {
+                Text("\((path as NSString).lastPathComponent) — \(kind), \(viewModel.sendInputFileCount) DICOM file(s) will be sent\(recursiveNote).")
+                    .font(.callout).foregroundStyle(viewModel.sendInputFileCount == 0 ? .orange : .secondary)
+            } icon: {
+                Image(systemName: viewModel.sendInputFileCount == 0 ? "exclamationmark.triangle.fill"
+                                : (viewModel.sendInputIsDirectory ? "folder" : "doc"))
+                    .foregroundStyle(viewModel.sendInputFileCount == 0 ? .orange : .secondary)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        } else {
+            Text("No file or directory selected — sends the bundled synthetic CT (syn-ct.dcm). Pick a single DICOM file or a directory to send your own DICOM instead (C-STORE for dicom-send, STOW-RS for dicom-wado store).")
+                .font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     private func labeledField(_ label: String, text: Binding<String>, width: CGFloat? = nil) -> some View {

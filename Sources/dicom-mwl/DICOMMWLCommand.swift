@@ -133,39 +133,24 @@ extension DICOMMWLCommand {
         
         #if canImport(Network)
         func performQuery(serverInfo: (host: String, port: UInt16)) async throws {
-            // Build query keys
-            var queryKeys = WorklistQueryKeys.default()
-            
-            // Apply filters
-            if let date = date {
-                let dateString = try parseDateFilter(date)
-                queryKeys = queryKeys.scheduledDate(dateString)
+            // Build query keys via the SHARED package builder (DICOMNetwork) — the same
+            // mapping DICOMStudio's in-app query and the CLI-parity reference use, so the
+            // input→C-FIND mapping cannot drift between the CLI and the app.
+            let queryKeys: WorklistQueryKeys
+            do {
+                queryKeys = try WorklistQueryKeys.forQuery(
+                    date: date ?? "",
+                    station: station ?? "",
+                    patientName: patient ?? "",
+                    patientID: patientId ?? "",
+                    modality: modality ?? "",
+                    spsStatus: spsStatus ?? "",
+                    accession: accessionNumber ?? ""
+                )
+            } catch {
+                throw ValidationError((error as? WorklistDateFilterError)?.description ?? "\(error)")
             }
-            
-            if let station = station {
-                queryKeys = queryKeys.scheduledStationAET(station)
-            }
-            
-            if let patient = patient {
-                queryKeys = queryKeys.patientName(patient)
-            }
-            
-            if let patientId = patientId {
-                queryKeys = queryKeys.patientID(patientId)
-            }
-            
-            if let modality = modality {
-                queryKeys = queryKeys.modality(modality)
-            }
-            
-            if let spsStatus = spsStatus {
-                queryKeys = queryKeys.scheduledProcedureStepStatus(spsStatus)
-            }
-            
-            if let accessionNumber = accessionNumber {
-                queryKeys = queryKeys.accessionNumber(accessionNumber)
-            }
-            
+
             if verbose && !json {
                 fprintln("Querying worklist...")
                 fprintln("")
@@ -193,31 +178,6 @@ extension DICOMMWLCommand {
                 fprintln("Warning: The result count (\(items.count)) may be capped by a server-side limit.")
                 fprintln("  Check your PACS server configuration (e.g., LimitFindResults in Orthanc,")
                 fprintln("  or max_worklist_results in dcm4chee) to increase or remove the limit.")
-            }
-        }
-        
-        func parseDateFilter(_ filter: String) throws -> String {
-            switch filter.lowercased() {
-            case "today":
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyyMMdd"
-                return formatter.string(from: Date())
-                
-            case "tomorrow":
-                let formatter = DateFormatter()
-                formatter.dateFormat = "yyyyMMdd"
-                guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else {
-                    throw ValidationError("Failed to calculate tomorrow's date")
-                }
-                return formatter.string(from: tomorrow)
-                
-            default:
-                // Validate YYYYMMDD format
-                if filter.count == 8 && Int(filter) != nil {
-                    return filter
-                } else {
-                    throw ValidationError("Invalid date format. Use YYYYMMDD, 'today', or 'tomorrow'")
-                }
             }
         }
         

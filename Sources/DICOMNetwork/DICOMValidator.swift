@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMDictionary
 
 // MARK: - Validation Error
 
@@ -357,81 +358,13 @@ public struct DICOMValidator: Sendable {
     
     // MARK: - Known UIDs
     
-    /// Common Storage SOP Class UIDs
-    private static let knownStorageSOPClasses: Set<String> = [
-        // CT Image Storage
-        "1.2.840.10008.5.1.4.1.1.2",
-        // Enhanced CT Image Storage
-        "1.2.840.10008.5.1.4.1.1.2.1",
-        // MR Image Storage
-        "1.2.840.10008.5.1.4.1.1.4",
-        // Enhanced MR Image Storage
-        "1.2.840.10008.5.1.4.1.1.4.1",
-        // CR Image Storage
-        "1.2.840.10008.5.1.4.1.1.1",
-        // DX Image Storage
-        "1.2.840.10008.5.1.4.1.1.1.1",
-        // US Image Storage
-        "1.2.840.10008.5.1.4.1.1.6.1",
-        // US Multi-frame Image Storage
-        "1.2.840.10008.5.1.4.1.1.3.1",
-        // Secondary Capture Image Storage
-        "1.2.840.10008.5.1.4.1.1.7",
-        // SC Multi-frame Single Bit Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.1",
-        // SC Multi-frame Grayscale Byte Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.2",
-        // SC Multi-frame Grayscale Word Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.3",
-        // SC Multi-frame True Color Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.4",
-        // X-Ray Angiographic Image Storage
-        "1.2.840.10008.5.1.4.1.1.12.1",
-        // X-Ray Radiofluoroscopic Image Storage
-        "1.2.840.10008.5.1.4.1.1.12.2",
-        // NM Image Storage
-        "1.2.840.10008.5.1.4.1.1.20",
-        // PET Image Storage
-        "1.2.840.10008.5.1.4.1.1.128",
-        // RT Image Storage
-        "1.2.840.10008.5.1.4.1.1.481.1",
-        // RT Dose Storage
-        "1.2.840.10008.5.1.4.1.1.481.2",
-        // RT Structure Set Storage
-        "1.2.840.10008.5.1.4.1.1.481.3",
-        // RT Plan Storage
-        "1.2.840.10008.5.1.4.1.1.481.5",
-        // VL Endoscopic Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.1",
-        // VL Microscopic Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.2",
-        // VL Slide-Coordinates Microscopic Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.3",
-        // VL Photographic Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.4",
-        // Video Endoscopic Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.1.1",
-        // Video Microscopic Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.2.1",
-        // Video Photographic Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.4.1",
-        // Ophthalmic Photography 8 Bit Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.5.1",
-        // Ophthalmic Photography 16 Bit Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.5.2",
-        // Digital Mammography X-Ray Image Storage - For Presentation
-        "1.2.840.10008.5.1.4.1.1.1.2",
-        // Digital Mammography X-Ray Image Storage - For Processing
-        "1.2.840.10008.5.1.4.1.1.1.2.1",
-        // Whole Slide Microscopy Image Storage
-        "1.2.840.10008.5.1.4.1.1.77.1.6",
-        // Basic Text SR Storage
-        "1.2.840.10008.5.1.4.1.1.88.11",
-        // Enhanced SR Storage
-        "1.2.840.10008.5.1.4.1.1.88.22",
-        // Comprehensive SR Storage
-        "1.2.840.10008.5.1.4.1.1.88.33"
-    ]
+    /// Known Storage SOP Class UIDs.
+    ///
+    /// Sourced from the package-wide canonical registry
+    /// (`StorageSOPClass.allUIDSet` in `DICOMDictionary`) so validation,
+    /// C-GET negotiation and the Storage SCP all recognise the same set of
+    /// storage objects — see ``StorageSOPClass``.
+    private static let knownStorageSOPClasses: Set<String> = StorageSOPClass.allUIDSet
     
     /// Known Transfer Syntax UIDs
     private static let knownTransferSyntaxes: Set<String> = [
