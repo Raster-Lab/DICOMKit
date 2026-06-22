@@ -157,6 +157,16 @@ public final class HTTPClient: @unchecked Sendable {
         sessionConfig.timeoutIntervalForRequest = configuration.timeouts.readTimeout
         sessionConfig.timeoutIntervalForResource = configuration.timeouts.resourceTimeout
         sessionConfig.httpMaximumConnectionsPerHost = connectionPoolConfig.maxConnectionsPerHost
+
+        // DICOMweb responses are DYNAMIC — a QIDO-RS query, a WADO-RS retrieve, or a
+        // UPS-RS state read must always reflect the live server, never a previously
+        // cached body. The default URLSession keeps a shared on-disk + in-memory
+        // URLCache and uses .useProtocolCachePolicy, so in a long-lived process (the
+        // app) a repeated query would be served the STALE earlier response while a
+        // fresh CLI subprocess returns the live one. Disable caching entirely so every
+        // request hits the origin.
+        sessionConfig.urlCache = nil
+        sessionConfig.requestCachePolicy = .reloadIgnoringLocalCacheData
         
         #if os(macOS) || os(iOS) || os(visionOS) || os(tvOS) || os(watchOS)
         if #available(macOS 10.13, iOS 11.0, *) {
@@ -266,6 +276,10 @@ public final class HTTPClient: @unchecked Sendable {
         var urlRequest = URLRequest(url: modifiedRequest.url)
         urlRequest.httpMethod = modifiedRequest.method.rawValue
         urlRequest.httpBody = modifiedRequest.body
+        // Never serve a cached body — DICOMweb responses must reflect the live server
+        // (see the session's disabled URLCache above; this guards against any session
+        // whose configuration still carries a cache).
+        urlRequest.cachePolicy = .reloadIgnoringLocalCacheData
         
         // Apply headers from configuration
         let headers = configuration.headers(additionalHeaders: modifiedRequest.headers)

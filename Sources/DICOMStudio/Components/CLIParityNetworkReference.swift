@@ -53,8 +53,8 @@ public struct RetrieveScope: Sendable, Equatable {
 
 /// The filters a `dicom-mwl` parity scenario applies to the worklist C-FIND
 /// (empty == not set). These map 1:1 onto the dicom-mwl `query` flags and the
-/// shared `WorklistQueryKeys` builder. `date` accepts YYYYMMDD or "today"/"tomorrow"
-/// (resolved identically to the CLI's `parseDateFilter`).
+/// shared `WorklistQueryKeys.forQuery` builder. `date` accepts YYYYMMDD or
+/// "today"/"tomorrow" (resolved by the shared `WorklistQueryKeys.resolveScheduledDate`).
 public struct WorklistFilters: Sendable, Equatable {
     public var date = ""
     public var station = ""
@@ -91,6 +91,10 @@ public struct MPPSScope: Sendable, Equatable {
 public struct WADOScope: Sendable, Equatable {
     public var query = QueryFilters()      // QIDO-RS keys (studyUID/seriesUID double as the retrieve scope)
     public var instanceUID = ""            // WADO-RS instance-level retrieve (with study + series)
+    /// Which subcommand the parity sweep generates scenarios for: "query", "retrieve",
+    /// "store", or "ups". Empty means all four. Mirrors the WADO panel's segmented
+    /// switch so the sweep focuses on the subcommand the user is testing.
+    public var subcommand = ""
     public var upsLabel = ""               // UPS create lifecycle is generated only when set
     public var upsPatientName = ""
     public var upsPatientID = ""
@@ -266,12 +270,17 @@ public enum CLIParityNetworkReference {
         path.isEmpty ? [] : DICOMSendFileGatherer.gather(paths: [path], recursive: recursive)
     }
 
-    /// Sends the given file(s) using DICOMStorageService.store — the same package API
-    /// the dicom-send CLI and the in-app send call — and returns the outcome counts.
+    /// Sends the given file(s) AS-IS using DICOMStorageService.store — the same package
+    /// API the dicom-send CLI and the in-app send call — and returns the outcome counts.
     /// `verify` runs a real C-ECHO preflight first (matching both adapters).
+    ///
+    /// There is intentionally NO transfer-syntax dimension here: dicom-send transmits each
+    /// file in its OWN transfer syntax. The CLI's `--transfer-syntax` flag is kept for
+    /// completeness but is omitted from the UI and from parity, so the reference always
+    /// uses the as-is `store(fileData:to:)` path — matching the UI and the no-flag CLI.
     public static func send(host: String, port: UInt16, callingAET: String, calledAET: String,
                             timeout: TimeInterval, filePaths: [String], priorityName: String,
-                            transferSyntaxName: String, verify: Bool, dryRun: Bool) async -> SendSemantics {
+                            verify: Bool, dryRun: Bool) async -> SendSemantics {
         if dryRun {
             return SendSemantics(dryRun: true, sent: filePaths.count, succeeded: 0, failed: 0)
         }
@@ -281,21 +290,13 @@ public enum CLIParityNetworkReference {
                 host: host, port: port, callingAE: callingAET, calledAE: calledAET, timeout: timeout))?.success ?? false
             if !ok { return SendSemantics(dryRun: false, sent: filePaths.count, succeeded: 0, failed: filePaths.count) }
         }
-        let tsUID: String? = transferSyntaxName.isEmpty ? nil : TransferSyntax.parse(transferSyntaxName)?.uid
         var succeeded = 0, failed = 0
         for path in filePaths {
             guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)) else { failed += 1; continue }
             do {
-                let r: StoreResult
-                if let ts = tsUID, !ts.isEmpty {
-                    r = try await DICOMStorageService.store(
-                        fileData: data, preferredTransferSyntaxUID: ts, to: host, port: port,
-                        callingAE: callingAET, calledAE: calledAET, priority: priority, timeout: timeout)
-                } else {
-                    r = try await DICOMStorageService.store(
-                        fileData: data, to: host, port: port,
-                        callingAE: callingAET, calledAE: calledAET, priority: priority, timeout: timeout)
-                }
+                let r = try await DICOMStorageService.store(
+                    fileData: data, to: host, port: port,
+                    callingAE: callingAET, calledAE: calledAET, priority: priority, timeout: timeout)
                 if r.status.isSuccessOrWarning { succeeded += 1 } else { failed += 1 }
             } catch {
                 failed += 1
@@ -470,6 +471,11 @@ public enum CLIParityNetworkReference {
             // Select "all" → retrieve every matched study, one association each.
             var succeeded = 0, failed = 0
             for result in results {
+                // Honor cancellation (e.g. the raceDeadline backstop firing on a half-dead
+                // PACS) so the abandoned op winds down promptly instead of marching through
+                // every remaining study. The returned record is discarded once raceDeadline
+                // has already yielded its fallback, so a partial tally here is immaterial.
+                if Task.isCancelled { break }
                 guard let studyUID = result.uid(for: .studyInstanceUID) else { failed += 1; continue }
                 do {
                     if method == "c-move" {
@@ -507,21 +513,20 @@ public enum CLIParityNetworkReference {
     /// triple (Study UID + SPS ID + Accession).
     public static func worklist(host: String, port: UInt16, callingAET: String, calledAET: String,
                                 timeout: TimeInterval, filters: WorklistFilters) async -> MWLSemantics {
-        var keys = WorklistQueryKeys.default()
-        if !filters.date.isEmpty {
-            // Mirror the CLI: an unparseable date makes dicom-mwl throw (nonzero exit);
-            // surface that as a failed reference so the two agree on the failure path.
-            guard let resolved = resolveWorklistDate(filters.date) else {
-                return CLIParityMWLComparator.record(success: false, count: 0, keys: [])
-            }
-            keys = keys.scheduledDate(resolved)
+        // Build keys via the SHARED package builder — the same mapping the dicom-mwl CLI
+        // and DICOMStudio's in-app query use. Mirror the CLI: an unparseable date makes
+        // dicom-mwl exit nonzero, so surface that as a failed reference (the builder
+        // throws WorklistDateFilterError) and the two agree on the failure path.
+        let keys: WorklistQueryKeys
+        do {
+            keys = try WorklistQueryKeys.forQuery(
+                date: filters.date, station: filters.station,
+                patientName: filters.patientName, patientID: filters.patientID,
+                modality: filters.modality, spsStatus: filters.spsStatus,
+                accession: filters.accession)
+        } catch {
+            return CLIParityMWLComparator.record(success: false, count: 0, keys: [])
         }
-        if !filters.station.isEmpty      { keys = keys.scheduledStationAET(filters.station) }
-        if !filters.patientName.isEmpty  { keys = keys.patientName(filters.patientName) }
-        if !filters.patientID.isEmpty    { keys = keys.patientID(filters.patientID) }
-        if !filters.modality.isEmpty     { keys = keys.modality(filters.modality) }
-        if !filters.spsStatus.isEmpty    { keys = keys.scheduledProcedureStepStatus(filters.spsStatus) }
-        if !filters.accession.isEmpty    { keys = keys.accessionNumber(filters.accession) }
 
         do {
             let items = try await DICOMModalityWorklistService.find(
@@ -535,22 +540,6 @@ public enum CLIParityNetworkReference {
             return CLIParityMWLComparator.record(success: true, count: items.count, keys: itemKeys)
         } catch {
             return CLIParityMWLComparator.record(success: false, count: 0, keys: [])
-        }
-    }
-
-    /// Resolves a dicom-mwl `--date` filter exactly as the CLI's `parseDateFilter`
-    /// does: "today"/"tomorrow" → YYYYMMDD for the corresponding day, an 8-digit
-    /// numeric string passes through, anything else is invalid (nil).
-    static func resolveWorklistDate(_ filter: String) -> String? {
-        let fmt = DateFormatter(); fmt.dateFormat = "yyyyMMdd"
-        switch filter.lowercased() {
-        case "today":
-            return fmt.string(from: Date())
-        case "tomorrow":
-            guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else { return nil }
-            return fmt.string(from: tomorrow)
-        default:
-            return (filter.count == 8 && Int(filter) != nil) ? filter : nil
         }
     }
 

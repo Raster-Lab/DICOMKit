@@ -299,18 +299,38 @@ public final class DICOMConnection: @unchecked Sendable {
             throw DICOMNetworkError.invalidState("Cannot receive: connection not established")
         }
         
-        return try await withCheckedThrowingContinuation { continuation in
-            connection.receive(minimumIncompleteLength: length, maximumLength: length) { data, _, isComplete, error in
-                if let error = error {
-                    continuation.resume(throwing: DICOMNetworkError.connectionFailed("Receive failed: \(error.localizedDescription)"))
-                } else if let data = data, data.count >= length {
-                    continuation.resume(returning: data)
-                } else if isComplete {
-                    continuation.resume(throwing: DICOMNetworkError.connectionClosed)
-                } else {
-                    continuation.resume(throwing: DICOMNetworkError.decodingFailed("Incomplete data received"))
+        // NWConnection.receive has no read deadline, and its completion handler never
+        // fires if the peer holds the socket open while sending nothing — a silent PACS
+        // (one that accepts the association but never answers a DIMSE request) would block
+        // this read forever. There is no ARTIM/timeout wrapper on DIMSE-response reads, so
+        // bound it cooperatively instead: honor task cancellation by tearing the socket
+        // down. Cancelling the NWConnection makes Network.framework deliver a terminal
+        // state to the completion handler, which resumes the continuation.
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let resumeOnce = ContinuationResumeOnce(continuation)
+                // Already cancelled before the receive was even posted — bail immediately.
+                if Task.isCancelled {
+                    connection.cancel()
+                    resumeOnce.resume(with: .failure(CancellationError()))
+                    return
+                }
+                connection.receive(minimumIncompleteLength: length, maximumLength: length) { data, _, isComplete, error in
+                    if let error = error {
+                        resumeOnce.resume(with: .failure(DICOMNetworkError.connectionFailed("Receive failed: \(error.localizedDescription)")))
+                    } else if let data = data, data.count >= length {
+                        resumeOnce.resume(with: .success(data))
+                    } else if isComplete {
+                        resumeOnce.resume(with: .failure(DICOMNetworkError.connectionClosed))
+                    } else {
+                        resumeOnce.resume(with: .failure(DICOMNetworkError.decodingFailed("Incomplete data received")))
+                    }
                 }
             }
+        } onCancel: { [connection] in
+            // Unblocks the pending receive above: the cancellation surfaces through the
+            // completion handler as an error/closed state, resuming the continuation.
+            connection.cancel()
         }
     }
     

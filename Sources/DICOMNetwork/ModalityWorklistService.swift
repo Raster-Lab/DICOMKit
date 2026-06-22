@@ -186,6 +186,80 @@ public struct WorklistQueryKeys: Sendable {
     }
 }
 
+/// Error thrown when an MWL scheduled-date filter cannot be resolved.
+public enum WorklistDateFilterError: Error, CustomStringConvertible, Sendable {
+    /// The supplied filter was neither `today`/`tomorrow` nor a valid `YYYYMMDD` date.
+    case invalidFormat(String)
+
+    public var description: String {
+        switch self {
+        case .invalidFormat(let filter):
+            return "Invalid date filter '\(filter)'. Use YYYYMMDD, 'today', or 'tomorrow'."
+        }
+    }
+}
+
+extension WorklistQueryKeys {
+
+    /// Resolves an MWL scheduled-date filter to a DICOM `YYYYMMDD` date string.
+    ///
+    /// This is the SINGLE source of truth shared by the `dicom-mwl` CLI, DICOMStudio's
+    /// in-app worklist query, and the CLI-parity reference, so their date handling
+    /// cannot drift. `today`/`tomorrow` resolve to the corresponding day; an 8-digit
+    /// `YYYYMMDD` passes through; anything else throws ``WorklistDateFilterError``.
+    ///
+    /// The formatter is pinned to `en_US_POSIX` so the result is always a Gregorian
+    /// calendar date regardless of the host device's locale/calendar.
+    public static func resolveScheduledDate(_ filter: String) throws -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        switch filter.lowercased() {
+        case "today":
+            return formatter.string(from: Date())
+        case "tomorrow":
+            guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else {
+                throw WorklistDateFilterError.invalidFormat(filter)
+            }
+            return formatter.string(from: tomorrow)
+        default:
+            guard filter.count == 8, Int(filter) != nil else {
+                throw WorklistDateFilterError.invalidFormat(filter)
+            }
+            return filter
+        }
+    }
+
+    /// Builds MWL C-FIND query keys from raw filter strings — the SINGLE source of
+    /// truth shared by the `dicom-mwl` CLI, DICOMStudio's in-app worklist query, and
+    /// the CLI-parity reference, so their input→C-FIND mapping cannot drift.
+    ///
+    /// Starts from ``default()`` (all common return keys) and adds a MATCHING key for
+    /// each non-empty filter. `date` accepts `today`/`tomorrow`/`YYYYMMDD` (resolved by
+    /// ``resolveScheduledDate(_:)``); an unparseable date throws ``WorklistDateFilterError``.
+    /// `patientName` is passed through verbatim — callers add `*` wildcards explicitly,
+    /// matching the `dicom-mwl --patient` semantics.
+    public static func forQuery(
+        date: String = "",
+        station: String = "",
+        patientName: String = "",
+        patientID: String = "",
+        modality: String = "",
+        spsStatus: String = "",
+        accession: String = ""
+    ) throws -> WorklistQueryKeys {
+        var keys = WorklistQueryKeys.default()
+        if !date.isEmpty        { keys = keys.scheduledDate(try resolveScheduledDate(date)) }
+        if !station.isEmpty     { keys = keys.scheduledStationAET(station) }
+        if !patientName.isEmpty { keys = keys.patientName(patientName) }
+        if !patientID.isEmpty   { keys = keys.patientID(patientID) }
+        if !modality.isEmpty    { keys = keys.modality(modality) }
+        if !spsStatus.isEmpty   { keys = keys.scheduledProcedureStepStatus(spsStatus) }
+        if !accession.isEmpty   { keys = keys.accessionNumber(accession) }
+        return keys
+    }
+}
+
 /// Modality Worklist item result.
 ///
 /// Attributes from the top-level dataset and from the nested SPS sequence

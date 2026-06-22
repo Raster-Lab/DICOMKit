@@ -683,35 +683,15 @@ public enum DICOMStorageService {
     
     // MARK: - Private Implementation
     
-    /// Re-encodes an UNCOMPRESSED data set from one VR transfer syntax to another
-    /// (Implicit VR LE ↔ Explicit VR LE/BE) so the transmitted bytes match the
-    /// transfer syntax the SCP actually accepted in presentation-context negotiation.
+    /// Performs a strictly **as-is** C-STORE: the data set is transmitted in its OWN
+    /// transfer syntax and is never transcoded, re-encoded, compressed, or decompressed.
     ///
-    /// This is a pure element-header re-serialization — no pixel codec and no
-    /// caller-supplied `transcodingConfiguration` is required — so it always works
-    /// for the uncompressed↔uncompressed case. Returns `nil` when a re-encode is not
-    /// applicable (either syntax is unknown, encapsulated/compressed, or identical),
-    /// letting the caller fall back to configured transcoding or an error.
-    ///
-    /// CRITICAL: never transmit a data set encoded in one VR transfer syntax over a
-    /// presentation context that negotiated a DIFFERENT one. The SCP parses the bytes
-    /// per the NEGOTIATED syntax, so e.g. Explicit-VR bytes read as Implicit VR make
-    /// every element's length field misread — the receiver runs off the end of the
-    /// stream mid-data-set (dcm4chee logs `java.io.EOFException` in `parseDataset`).
-    private static func reencodeUncompressed(
-        _ dataSetData: Data, from sourceUID: String, to targetUID: String
-    ) throws -> Data? {
-        guard sourceUID != targetUID,
-              let sourceTS = TransferSyntax.from(uid: sourceUID),
-              let targetTS = TransferSyntax.from(uid: targetUID),
-              !sourceTS.isEncapsulated, !targetTS.isEncapsulated else { return nil }
-        let converter = TransferSyntaxConverter(configuration: .default)
-        guard converter.canTranscode(from: sourceTS, to: targetTS) else { return nil }
-        return try converter.transcode(dataSetData: dataSetData, from: sourceTS, to: targetTS).data
-    }
-
-    /// Performs the C-STORE operation
-    private static func performStore(
+    /// A single presentation context proposing only `transferSyntaxUID` is negotiated.
+    /// If the SCP accepts it, the original bytes are sent unchanged. If the SCP does not
+    /// accept the file's transfer syntax for this SOP class, the operation fails with a
+    /// clear, actionable error — conversion is intentionally out of scope for dicom-send
+    /// (convert the file first, e.g. with dicom-convert).
+    private static func performAsIsStore(
         host: String,
         port: UInt16,
         configuration: StorageConfiguration,
@@ -721,146 +701,6 @@ public enum DICOMStorageService {
         dataSetData: Data
     ) async throws -> StoreResult {
         let startTime = Date()
-        
-        // Create association configuration
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: configuration.callingAETitle,
-            calledAETitle: configuration.calledAETitle,
-            host: host,
-            port: port,
-            maxPDUSize: configuration.maxPDUSize,
-            implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout,
-            userIdentity: configuration.userIdentity
-        )
-        
-        // Create association
-        let association = Association(configuration: associationConfig)
-        
-        // Create presentation context for the Storage SOP Class
-        // Propose the original transfer syntax and fall back to Explicit/Implicit VR LE
-        var transferSyntaxes = [transferSyntaxUID]
-        if transferSyntaxUID != explicitVRLittleEndianTransferSyntaxUID {
-            transferSyntaxes.append(explicitVRLittleEndianTransferSyntaxUID)
-        }
-        if transferSyntaxUID != implicitVRLittleEndianTransferSyntaxUID {
-            transferSyntaxes.append(implicitVRLittleEndianTransferSyntaxUID)
-        }
-        
-        let presentationContext = try PresentationContext(
-            id: 1,
-            abstractSyntax: sopClassUID,
-            transferSyntaxes: transferSyntaxes
-        )
-        
-        do {
-            // Establish association
-            let negotiated = try await association.request(presentationContexts: [presentationContext])
-            
-            // Verify that the Storage SOP Class was accepted
-            guard negotiated.isContextAccepted(1) else {
-                try await association.abort()
-                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
-            }
-            
-            // Get the accepted transfer syntax
-            let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1)
-                ?? implicitVRLittleEndianTransferSyntaxUID
-            
-            // Transcode the data set if the accepted transfer syntax differs
-            let finalDataSetData: Data
-            if acceptedTransferSyntax != transferSyntaxUID {
-                // Attempt transcoding if configuration is provided
-                if let transcodingConfig = configuration.transcodingConfiguration,
-                   let sourceTS = TransferSyntax.from(uid: transferSyntaxUID),
-                   let targetTS = TransferSyntax.from(uid: acceptedTransferSyntax) {
-                    let converter = TransferSyntaxConverter(configuration: transcodingConfig)
-                    
-                    if converter.canTranscode(from: sourceTS, to: targetTS) {
-                        do {
-                            let result = try converter.transcode(
-                                dataSetData: dataSetData,
-                                from: sourceTS,
-                                to: targetTS
-                            )
-                            finalDataSetData = result.data
-                        } catch let transcodingError as TranscodingError {
-                            try await association.abort()
-                            throw DICOMNetworkError.invalidState(
-                                "Transcoding failed: \(transcodingError.description)"
-                            )
-                        }
-                    } else {
-                        try await association.abort()
-                        throw DICOMNetworkError.invalidState(
-                            "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax)"
-                        )
-                    }
-                } else if let reencoded = try reencodeUncompressed(
-                    dataSetData, from: transferSyntaxUID, to: acceptedTransferSyntax) {
-                    // No transcoding configuration, but the SCP accepted a DIFFERENT
-                    // uncompressed VR syntax than the data's. Re-encode the element
-                    // headers to the accepted syntax so the bytes parse on the receiver
-                    // — sending them as-is makes the SCP misread every length.
-                    finalDataSetData = reencoded
-                } else {
-                    try await association.abort()
-                    throw DICOMNetworkError.invalidState(
-                        "Cannot transcode from \(transferSyntaxUID) to \(acceptedTransferSyntax). " +
-                        "Enable transcoding by providing a transcodingConfiguration."
-                    )
-                }
-            } else {
-                finalDataSetData = dataSetData
-            }
-            
-            // Send C-STORE request
-            let response = try await performCStore(
-                association: association,
-                presentationContextID: 1,
-                maxPDUSize: negotiated.maxPDUSize,
-                sopClassUID: sopClassUID,
-                sopInstanceUID: sopInstanceUID,
-                priority: configuration.priority,
-                dataSetData: finalDataSetData
-            )
-            
-            // Release association gracefully
-            try await association.release()
-            
-            let endTime = Date()
-            let roundTripTime = endTime.timeIntervalSince(startTime)
-            
-            return StoreResult(
-                success: response.status.isSuccess,
-                status: response.status,
-                affectedSOPClassUID: response.affectedSOPClassUID,
-                affectedSOPInstanceUID: response.affectedSOPInstanceUID,
-                roundTripTime: roundTripTime,
-                remoteAETitle: configuration.calledAETitle.value
-            )
-            
-        } catch {
-            // Attempt to abort the association on error
-            try? await association.abort()
-            throw error
-        }
-    }
-
-    /// Performs a C-STORE with a pre-built list of proposed transfer syntaxes.
-    /// `dataTransferSyntaxUID` is the actual encoding of `dataSetData`, used for transcoding decisions.
-    private static func performStoreWithSyntaxList(
-        host: String,
-        port: UInt16,
-        configuration: StorageConfiguration,
-        sopClassUID: String,
-        sopInstanceUID: String,
-        transferSyntaxes: [String],
-        dataTransferSyntaxUID: String,
-        dataSetData: Data
-    ) async throws -> StoreResult {
-        let startTime = Date()
 
         let associationConfig = AssociationConfiguration(
             callingAETitle: configuration.callingAETitle,
@@ -876,48 +716,39 @@ public enum DICOMStorageService {
 
         let association = Association(configuration: associationConfig)
 
+        // Propose ONLY the file's own transfer syntax — it is transmitted verbatim.
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            transferSyntaxes: transferSyntaxes
+            transferSyntaxes: [transferSyntaxUID]
+        )
+
+        // Built once so both the "no context accepted" rejection (thrown by request())
+        // and the defensive transfer-syntax-mismatch guard surface the same guidance.
+        let tsName = TransferSyntax.from(uid: transferSyntaxUID)?.displayName ?? "unknown"
+        let notAcceptedError = DICOMNetworkError.invalidState(
+            "Destination AE '\(configuration.calledAETitle.value)' did not accept the file's transfer "
+            + "syntax \(transferSyntaxUID) (\(tsName)) for SOP Class \(sopClassUID). dicom-send transmits "
+            + "files as-is and does not transcode — convert the file to a supported transfer syntax first "
+            + "(e.g. with dicom-convert), or send to a destination that accepts this one."
         )
 
         do {
-            let negotiated = try await association.request(presentationContexts: [presentationContext])
-
-            guard negotiated.isContextAccepted(1) else {
-                try await association.abort()
-                throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
+            let negotiated: NegotiatedAssociation
+            do {
+                negotiated = try await association.request(presentationContexts: [presentationContext])
+            } catch DICOMNetworkError.noPresentationContextAccepted {
+                // The SCP rejected the only context we proposed — it does not support the
+                // file's transfer syntax. Surface the actionable error, not the generic one.
+                try? await association.abort()
+                throw notAcceptedError
             }
 
-            let acceptedTransferSyntax = negotiated.acceptedTransferSyntax(forContextID: 1)
-                ?? implicitVRLittleEndianTransferSyntaxUID
-
-            let finalDataSetData: Data
-            if acceptedTransferSyntax != dataTransferSyntaxUID {
-                if let transcodingConfig = configuration.transcodingConfiguration,
-                   let sourceTS = TransferSyntax.from(uid: dataTransferSyntaxUID),
-                   let targetTS = TransferSyntax.from(uid: acceptedTransferSyntax) {
-                    let converter = TransferSyntaxConverter(configuration: transcodingConfig)
-                    if converter.canTranscode(from: sourceTS, to: targetTS) {
-                        let result = try converter.transcode(dataSetData: dataSetData, from: sourceTS, to: targetTS)
-                        finalDataSetData = result.data
-                    } else {
-                        try await association.abort()
-                        throw DICOMNetworkError.invalidState("Cannot transcode from \(dataTransferSyntaxUID) to \(acceptedTransferSyntax)")
-                    }
-                } else if let reencoded = try reencodeUncompressed(
-                    dataSetData, from: dataTransferSyntaxUID, to: acceptedTransferSyntax) {
-                    // The SCP accepted a different uncompressed VR syntax than the data's;
-                    // re-encode so the bytes parse on the receiver (see reencodeUncompressed).
-                    finalDataSetData = reencoded
-                } else {
-                    try await association.abort()
-                    throw DICOMNetworkError.invalidState(
-                        "Cannot transcode from \(dataTransferSyntaxUID) to \(acceptedTransferSyntax). Enable transcoding by providing a transcodingConfiguration.")
-                }
-            } else {
-                finalDataSetData = dataSetData
+            // Defensive: with a single proposed transfer syntax an accepted context can
+            // only carry that syntax, but verify before transmitting as-is regardless.
+            guard negotiated.acceptedTransferSyntax(forContextID: 1) == transferSyntaxUID else {
+                try await association.abort()
+                throw notAcceptedError
             }
 
             let response = try await performCStore(
@@ -927,7 +758,7 @@ public enum DICOMStorageService {
                 sopClassUID: sopClassUID,
                 sopInstanceUID: sopInstanceUID,
                 priority: configuration.priority,
-                dataSetData: finalDataSetData
+                dataSetData: dataSetData
             )
 
             try await association.release()
@@ -945,6 +776,65 @@ public enum DICOMStorageService {
             try? await association.abort()
             throw error
         }
+    }
+
+    /// Performs the C-STORE operation. dicom-send is strictly as-is: the data set is
+    /// transmitted in its own transfer syntax (no transcoding). See `performAsIsStore`.
+    private static func performStore(
+        host: String,
+        port: UInt16,
+        configuration: StorageConfiguration,
+        sopClassUID: String,
+        sopInstanceUID: String,
+        transferSyntaxUID: String,
+        dataSetData: Data
+    ) async throws -> StoreResult {
+        return try await performAsIsStore(
+            host: host,
+            port: port,
+            configuration: configuration,
+            sopClassUID: sopClassUID,
+            sopInstanceUID: sopInstanceUID,
+            transferSyntaxUID: transferSyntaxUID,
+            dataSetData: dataSetData
+        )
+    }
+
+    /// C-STORE for the `--transfer-syntax` path. dicom-send is strictly as-is, so a
+    /// requested transfer syntax is only honoured when it matches the file's own; a
+    /// request to send in a DIFFERENT syntax would require transcoding, which is out of
+    /// scope (convert the file first, e.g. with dicom-convert). `transferSyntaxes.first`
+    /// is the caller's requested syntax; `dataTransferSyntaxUID` is the file's actual
+    /// encoding, which is always what gets transmitted.
+    private static func performStoreWithSyntaxList(
+        host: String,
+        port: UInt16,
+        configuration: StorageConfiguration,
+        sopClassUID: String,
+        sopInstanceUID: String,
+        transferSyntaxes: [String],
+        dataTransferSyntaxUID: String,
+        dataSetData: Data
+    ) async throws -> StoreResult {
+        if let requested = transferSyntaxes.first, requested != dataTransferSyntaxUID {
+            let requestedName = TransferSyntax.from(uid: requested)?.displayName ?? "unknown"
+            let actualName = TransferSyntax.from(uid: dataTransferSyntaxUID)?.displayName ?? "unknown"
+            throw DICOMNetworkError.invalidState(
+                "Requested transfer syntax \(requested) (\(requestedName)) differs from the file's "
+                + "actual transfer syntax \(dataTransferSyntaxUID) (\(actualName)). dicom-send transmits "
+                + "files as-is and does not transcode — convert the file first (e.g. with dicom-convert), "
+                + "or omit --transfer-syntax to send it unchanged."
+            )
+        }
+        return try await performAsIsStore(
+            host: host,
+            port: port,
+            configuration: configuration,
+            sopClassUID: sopClassUID,
+            sopInstanceUID: sopInstanceUID,
+            transferSyntaxUID: dataTransferSyntaxUID,
+            dataSetData: dataSetData
+        )
     }
     ///
     /// - Parameters:

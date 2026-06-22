@@ -714,10 +714,13 @@ public enum CLIParityNetworkScenarios {
     /// scope and UPS lifecycle inputs come from the dicom-wado scope.
     static func wadoScenarios(scope: WADOScope) -> [BatchScenario] {
         var out: [BatchScenario] = []
-        out += wadoQueryScenarios(filters: scope.query)
-        out += wadoRetrieveScenarios(scope: scope)
-        out += wadoStoreScenarios(studyUID: scope.query.studyUID)
-        out += wadoUPSScenarios(scope: scope)
+        // Only generate the selected subcommand's scenarios (empty = all four), so the
+        // sweep runs exactly the subcommand the user picked in the WADO panel.
+        let only = scope.subcommand
+        if only.isEmpty || only == "query"    { out += wadoQueryScenarios(filters: scope.query) }
+        if only.isEmpty || only == "retrieve" { out += wadoRetrieveScenarios(scope: scope) }
+        if only.isEmpty || only == "store"    { out += wadoStoreScenarios(studyUID: scope.query.studyUID) }
+        if only.isEmpty || only == "ups"      { out += wadoUPSScenarios(scope: scope) }
         return out
     }
 

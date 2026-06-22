@@ -895,8 +895,10 @@ public struct CLIWorkshopView: View {
                 }
                 .padding(.vertical, 4)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                // Wrap the server chips onto multiple rows (FlowLayout) so none get hidden
+                // off-screen when several servers are added — replaces a horizontal
+                // ScrollView that pushed the extra chips out of view.
+                FlowLayout(spacing: 6) {
                         // "Manual" chip to deselect any server
                         Button {
                             viewModel.selectedSavedServerID = nil
@@ -962,8 +964,8 @@ public struct CLIWorkshopView: View {
                             .accessibilityLabel("Select server \(server.name)")
                             .accessibilityHint("\(server.host) port \(server.port)")
                         }
-                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .sheet(isPresented: $viewModel.showAddServerSheet) {
@@ -1057,8 +1059,10 @@ public struct CLIWorkshopView: View {
                 }
                 .padding(.vertical, 4)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                // Wrap the server chips onto multiple rows (FlowLayout) so none get hidden
+                // off-screen when several servers are added — replaces a horizontal
+                // ScrollView that pushed the extra chips out of view.
+                FlowLayout(spacing: 6) {
                         // "Manual" chip to deselect any server
                         Button {
                             viewModel.selectedDICOMwebServerID = nil
@@ -1092,11 +1096,14 @@ public struct CLIWorkshopView: View {
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(server.name)
                                             .font(.caption.bold())
+                                            .lineLimit(1)
                                         Text(server.baseURL)
                                             .font(.system(size: 11, design: .monospaced))
                                             .foregroundStyle(.secondary)
-                                            .lineLimit(1)
+                                            .lineLimit(2)
+                                            .truncationMode(.middle)
                                     }
+                                    .frame(maxWidth: 260, alignment: .leading)
                                     if isSelected {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 12))
@@ -1130,8 +1137,8 @@ public struct CLIWorkshopView: View {
                             .accessibilityLabel("Select DICOMweb server \(server.name)")
                             .accessibilityHint(server.baseURL)
                         }
-                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .sheet(isPresented: $viewModel.showAddDICOMwebServerSheet) {
