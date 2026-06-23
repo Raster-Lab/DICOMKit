@@ -955,6 +955,11 @@ public struct CLIWorkshopView: View {
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
+                                Button {
+                                    viewModel.beginEditServer(id: server.id)
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
                                 Button(role: .destructive) {
                                     viewModel.removeSavedServer(id: server.id)
                                 } label: {
@@ -969,14 +974,17 @@ public struct CLIWorkshopView: View {
             }
         }
         .sheet(isPresented: $viewModel.showAddServerSheet) {
-            addServerSheet
+            serverFormSheet(isEditing: false)
+        }
+        .sheet(isPresented: $viewModel.showEditServerSheet) {
+            serverFormSheet(isEditing: true)
         }
     }
 
-    /// Sheet for adding a new server profile.
-    private var addServerSheet: some View {
+    /// Sheet for adding or editing a PACS server profile.
+    private func serverFormSheet(isEditing: Bool) -> some View {
         VStack(spacing: 16) {
-            Text("Add Server")
+            Text(isEditing ? "Edit Server" : "Add Server")
                 .font(.headline)
 
             Form {
@@ -995,14 +1003,23 @@ public struct CLIWorkshopView: View {
 
             HStack {
                 Button("Cancel") {
-                    viewModel.showAddServerSheet = false
+                    if isEditing {
+                        viewModel.showEditServerSheet = false
+                        viewModel.editingServerID = nil
+                    } else {
+                        viewModel.showAddServerSheet = false
+                    }
                 }
                 .keyboardShortcut(.cancelAction)
 
                 Spacer()
 
-                Button("Add") {
-                    viewModel.addNewServerFromForm()
+                Button(isEditing ? "Save" : "Add") {
+                    if isEditing {
+                        viewModel.saveEditedServer()
+                    } else {
+                        viewModel.addNewServerFromForm()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(

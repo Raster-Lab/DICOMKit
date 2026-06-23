@@ -79,27 +79,23 @@ struct DICOMQuery: AsyncParsableCommand {
     mutating func run() async throws {
         #if canImport(Network)
         let serverInfo = resolveHostPort()
-        
+
+        // Verbose header via the SHARED NetworkConsole formatter, printed to STDOUT so
+        // its order matches DICOMStudio's in-process console (the parity harness diffs
+        // the binary's stdout+stderr against the app). Gated on --verbose so a plain
+        // run stays just the results table (clean for piping).
         if verbose {
-            fprintln("Connecting to: \(serverInfo.host):\(serverInfo.port)")
-            fprintln("Calling AE: \(aet)")
-            fprintln("Called AE: \(calledAet)")
-            fprintln("Query Level: \(level.queryLevel)")
-            fprintln("")
+            let model = level.queryLevel == .patient ? "Patient Root" : "Study Root"
+            print(NetworkConsole.queryHeader(
+                host: serverInfo.host, port: serverInfo.port,
+                callingAE: aet, calledAE: calledAet,
+                level: level.queryLevel, informationModel: model,
+                timeout: timeout, filters: appliedFilters()), terminator: "")
         }
-        
+
         // Build query keys
         let queryKeys = buildQueryKeys()
-        
-        if verbose {
-            fprintln("Query filters:")
-            for key in queryKeys.keys {
-                let tagName = key.tag.description
-                fprintln("  \(tagName): \(key.value.isEmpty ? "(return)" : key.value)")
-            }
-            fprintln("")
-        }
-        
+
         // Execute query
         let executor = QueryExecutor(
             host: serverInfo.host,
@@ -108,16 +104,12 @@ struct DICOMQuery: AsyncParsableCommand {
             calledAE: calledAet,
             timeout: TimeInterval(timeout)
         )
-        
+
         let results = try await executor.executeQuery(
             level: level.queryLevel,
             queryKeys: queryKeys
         )
-        
-        if verbose {
-            fprintln("Found \(results.count) result(s)\n")
-        }
-        
+
         // Format and output results via the shared formatter (DICOMNetwork).
         let formatter = DICOMQueryResultFormatter(format: format.asShared, level: level.queryLevel)
         let output = formatter.format(results: results)
@@ -125,6 +117,24 @@ struct DICOMQuery: AsyncParsableCommand {
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
+    }
+
+    /// Applied, non-empty match filters in the canonical order shared with the app's
+    /// header, so the verbose listing is identical on both sides.
+    func appliedFilters() -> [(label: String, value: String)] {
+        var f: [(String, String)] = []
+        func add(_ label: String, _ value: String?) {
+            if let v = value, !v.isEmpty { f.append((label, v)) }
+        }
+        add("Patient Name:", patientName)
+        add("Patient ID:", patientId)
+        add("Study Date:", studyDate)
+        add("Modality:", modality)
+        add("Study UID:", studyUid)
+        add("Series UID:", seriesUid)
+        add("Accession:", accessionNumber)
+        add("Study Desc:", studyDescription)
+        return f
     }
     
     func buildQueryKeys() -> QueryKeys {
@@ -191,9 +201,4 @@ enum OutputFormat: String, ExpressibleByArgument {
 
     /// Maps to the shared package formatter's format.
     var asShared: QueryOutputFormat { QueryOutputFormat(rawValue: rawValue) ?? .table }
-}
-
-/// Prints to stderr
-private func fprintln(_ message: String) {
-    FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }

@@ -50,12 +50,12 @@ public enum CLIParityMPPSComparator {
                       finalStatus: finalStatus, referencedImages: referencedImages)
     }
 
-    /// Parses the `dicom-mpps create` output (it prints to STDERR, so the combined
-    /// stdout+stderr text is passed in). Returns whether the create succeeded and the
-    /// minted MPPS SOP Instance UID — the latter is NOT used for comparison; the
-    /// runner threads it into the subsequent `dicom-mpps update --mpps-uid …`.
-    /// Success is taken from the exit code (the CLI exits nonzero on any failure),
-    /// corroborated by the "created successfully" marker.
+    /// Parses the `dicom-mpps create` output (now printed to STDOUT via the shared
+    /// NetworkConsole formatter; the runner passes the combined stdout+stderr text in
+    /// for robustness). Returns whether the create succeeded and the minted MPPS SOP
+    /// Instance UID — the latter is NOT used for comparison; the runner threads it into
+    /// the subsequent `dicom-mpps update --mpps-uid …`. Success is taken from the exit
+    /// code (the CLI exits nonzero on any failure).
     public static func parseCreate(_ text: String, exitOK: Bool) -> (ok: Bool, uid: String?) {
         var uid: String?
         for raw in text.split(separator: "\n", omittingEmptySubsequences: true) {
@@ -68,7 +68,8 @@ public enum CLIParityMPPSComparator {
         return (exitOK, uid)
     }
 
-    /// Parses the `dicom-mpps update` output (STDERR): the new status and the
+    /// Parses the `dicom-mpps update` output (STDOUT via the shared NetworkConsole
+    /// formatter; combined stdout+stderr is passed in): the new status and the
     /// referenced-image count (printed only when ≥1 image was referenced — absent ==
     /// 0). Success is from the exit code.
     public static func parseUpdate(_ text: String, exitOK: Bool) -> (ok: Bool, status: String?, refImages: Int) {

@@ -4,6 +4,7 @@
 // the scenario matrix must drive read-only worklist queries with `--json`.
 
 import XCTest
+import DICOMNetwork
 @testable import DICOMStudio
 
 @available(macOS 14.0, *)
@@ -92,8 +93,13 @@ final class CLIParityMWLParityTests: XCTestCase {
     func testAllQueryAlwaysGenerated() {
         let scs = CLIParityNetworkScenarios.mwlScenarios(filters: WorklistFilters())
         let ids = scs.map { $0.scenarioId }
+        // With no filter values, only the two unconditional baseline scenarios are
+        // generated — the no-filter "all" query and the "--verbose" variant — and no
+        // per-filter or combined rows.
         XCTAssertTrue(ids.contains("dicom-mwl_net_all"))
-        XCTAssertEqual(ids.count, 1)   // no per-filter rows without filter values
+        XCTAssertTrue(ids.contains("dicom-mwl_net_verbose"))
+        XCTAssertEqual(ids.count, 2)
+        XCTAssertFalse(ids.contains("dicom-mwl_net_combined"))
     }
 
     func testPerFilterAndCombinedScenarios() {
@@ -133,13 +139,15 @@ final class CLIParityMWLParityTests: XCTestCase {
         XCTAssertTrue(CLIParityNetworkScenarios.supportedToolIDs.contains("dicom-mwl"))
     }
 
-    // MARK: reference date resolution (mirrors the CLI's parseDateFilter)
+    // MARK: shared date resolution — the SINGLE source of truth for the CLI, the app,
+    // and the parity reference (WorklistQueryKeys.resolveScheduledDate, which throws on
+    // an unparseable filter; `try?` maps that back to the nil the assertions expect).
 
     func testDateResolutionMatchesCLI() {
-        XCTAssertEqual(CLIParityNetworkReference.resolveWorklistDate("20240315"), "20240315")
-        XCTAssertNil(CLIParityNetworkReference.resolveWorklistDate("2024-03-15"))
-        XCTAssertNil(CLIParityNetworkReference.resolveWorklistDate("notadate"))
-        XCTAssertNotNil(CLIParityNetworkReference.resolveWorklistDate("today"))
-        XCTAssertNotNil(CLIParityNetworkReference.resolveWorklistDate("tomorrow"))
+        XCTAssertEqual(try? WorklistQueryKeys.resolveScheduledDate("20240315"), "20240315")
+        XCTAssertNil(try? WorklistQueryKeys.resolveScheduledDate("2024-03-15"))
+        XCTAssertNil(try? WorklistQueryKeys.resolveScheduledDate("notadate"))
+        XCTAssertNotNil(try? WorklistQueryKeys.resolveScheduledDate("today"))
+        XCTAssertNotNil(try? WorklistQueryKeys.resolveScheduledDate("tomorrow"))
     }
 }

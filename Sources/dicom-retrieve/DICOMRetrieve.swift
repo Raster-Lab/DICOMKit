@@ -130,30 +130,30 @@ struct DICOMRetrieve: AsyncParsableCommand {
             throw ValidationError("--instance-uid requires both --study-uid and --series-uid")
         }
         
-        if verbose {
-            fprintln("DICOM Retrieve Tool v1.1.2")
-            fprintln("==========================")
-            fprintln("Server: \(serverInfo.host):\(serverInfo.port)")
-            fprintln("Calling AE: \(aet)")
-            fprintln("Called AE: \(calledAet)")
-            fprintln("Method: \(method)")
-            if let dest = moveDest {
-                fprintln("Move Destination: \(dest)")
-            }
-            fprintln("Output: \(output)")
-            fprintln("Organization: \(hierarchical ? "Hierarchical" : "Flat")")
-            fprintln("Timeout: \(timeout)s")
-            fprintln("Parallel: \(parallel)")
-            if let ts = preferredTransferSyntaxUID {
-                let scopeNote = method == .cGet ? "requested for C-GET" : "advisory for C-MOVE"
-                fprintln("Transfer Syntax: \(ts) (\(scopeNote))")
-            }
-            fprintln("")
-        }
-        
         // Create output directory
         try createOutputDirectory(output)
-        
+
+        // Header via the SHARED NetworkConsole formatter (DICOMNetwork), printed to
+        // STDOUT so its order/wording matches DICOMStudio's in-process console. The
+        // uid-list bulk path has no single study UID and no in-app equivalent, so it
+        // skips the shared header.
+        if uidList == nil {
+            let levelLabel: String
+            if instanceUid != nil { levelLabel = "Instance" }
+            else if seriesUid != nil { levelLabel = "Series" }
+            else { levelLabel = "Study" }
+            print(NetworkConsole.retrieveHeader(
+                method: method == .cGet ? "C-GET" : "C-MOVE",
+                host: serverInfo.host, port: serverInfo.port,
+                callingAE: aet, calledAE: calledAet,
+                moveDestination: moveDest,
+                level: levelLabel,
+                studyUID: studyUid ?? "", seriesUID: seriesUid, instanceUID: instanceUid,
+                output: output, hierarchical: hierarchical, timeout: timeout,
+                transferSyntax: transferSyntax), terminator: "")
+            print("Executing \(method == .cGet ? "C-GET" : "C-MOVE")...")
+        }
+
         // Create executor
         let executor = RetrieveExecutor(
             host: serverInfo.host,
@@ -167,7 +167,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
             verbose: verbose,
             preferredTransferSyntaxUID: preferredTransferSyntaxUID
         )
-        
+
         // Execute retrieval
         if let uidListPath = uidList {
             // Bulk retrieval from file

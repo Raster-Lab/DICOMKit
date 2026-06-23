@@ -387,6 +387,72 @@ final class UPSResultsTests: XCTestCase {
         XCTAssertNil(result)
     }
     
+    // MARK: - Shared Worklist Search Builder (CLI ⇄ app parity)
+
+    /// The shared builder maps ONLY the two real `dicom-wado ups --search` flags and
+    /// sets no `limit`/`includefield` — the exact CLI behaviour both the app and the
+    /// parity reference must mirror, with no app-only filters.
+    func testWorkitemSearchEmptyFilters() throws {
+        let query = try UPSQuery.workitemSearch(filterState: "", scheduledStation: "")
+        XCTAssertTrue(query.toParameters().isEmpty)
+        let nilQuery = try UPSQuery.workitemSearch(filterState: nil, scheduledStation: nil)
+        XCTAssertTrue(nilQuery.toParameters().isEmpty)
+    }
+
+    func testWorkitemSearchStateFilter() throws {
+        let params = try UPSQuery.workitemSearch(filterState: "SCHEDULED", scheduledStation: "").toParameters()
+        XCTAssertEqual(params, ["00741000": "SCHEDULED"])  // exactly one filter, no limit / includefield
+
+        // INPROGRESS alias resolves to the canonical "IN PROGRESS" rawValue (matches the CLI).
+        let inProgress = try UPSQuery.workitemSearch(filterState: "INPROGRESS", scheduledStation: "").toParameters()
+        XCTAssertEqual(inProgress, ["00741000": "IN PROGRESS"])
+    }
+
+    func testWorkitemSearchStationFilter() throws {
+        let params = try UPSQuery.workitemSearch(filterState: "", scheduledStation: "CT_AE_01").toParameters()
+        XCTAssertEqual(params, ["00404025": "CT_AE_01"])
+    }
+
+    func testWorkitemSearchBothFilters() throws {
+        let params = try UPSQuery.workitemSearch(filterState: "COMPLETED", scheduledStation: "CT_AE_01").toParameters()
+        XCTAssertEqual(params, ["00741000": "COMPLETED", "00404025": "CT_AE_01"])
+    }
+
+    func testWorkitemSearchInvalidStateThrows() {
+        XCTAssertThrowsError(try UPSQuery.workitemSearch(filterState: "BOGUS", scheduledStation: "")) { error in
+            XCTAssertEqual(error as? UPSSearchFilterError, .invalidState("BOGUS"))
+        }
+    }
+
+    // MARK: - Shared UPSResultFormatter (CLI ⇄ app parity)
+
+    func testUPSResultFormatterJSONAndCSV() {
+        let items = [
+            WorkitemResult(workitemUID: "1.2.3", state: .scheduled,
+                           procedureStepLabel: "CT Chest", patientName: "Doe^Jane", patientID: "PAT001"),
+            WorkitemResult(workitemUID: "1.2.4", state: .inProgress)
+        ]
+        let formatter = UPSResultFormatter()
+
+        // JSON carries the full attribute set and is valid JSON.
+        let jsonString = formatter.format(items, format: .json)
+        let parsed = (try? JSONSerialization.jsonObject(with: Data(jsonString.utf8))) as? [[String: Any]]
+        XCTAssertEqual(parsed?.count, 2)
+        XCTAssertEqual(parsed?.first?["workitemUID"] as? String, "1.2.3")
+        XCTAssertEqual(parsed?.first?["patientName"] as? String, "Doe^Jane")
+
+        // CSV is a header row + one row per workitem.
+        let csv = formatter.format(items, format: .csv)
+        let lines = csv.split(separator: "\n")
+        XCTAssertEqual(lines.first, "WorkitemUID,State,ProcedureStepLabel,PatientName,PatientID")
+        XCTAssertEqual(lines.count, 3)
+
+        // Table renders a "="-bordered block with a header.
+        let table = formatter.format(items, format: .table)
+        XCTAssertTrue(table.contains("Worklist UID"))
+        XCTAssertTrue(table.contains("1.2.3"))
+    }
+
     func testUPSQueryResultParsing() {
         let jsonArray: [[String: Any]] = [
             [

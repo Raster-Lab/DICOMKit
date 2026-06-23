@@ -214,7 +214,11 @@ public final class CLIWorkshopViewModel {
     public var selectedSavedServerID: UUID? = nil
     /// Whether the "Add Server" sheet is shown.
     public var showAddServerSheet: Bool = false
-    /// Editable fields for adding a new server.
+    /// Whether the "Edit Server" sheet is shown.
+    public var showEditServerSheet: Bool = false
+    /// The ID of the PACS server being edited (nil when adding).
+    public var editingServerID: UUID? = nil
+    /// Editable fields for adding/editing a server.
     public var newServerName: String = ""
     public var newServerHost: String = ""
     public var newServerPort: String = "11112"
@@ -408,25 +412,10 @@ public final class CLIWorkshopViewModel {
                 let pv = CLIParameterValue(parameterID: def.id, stringValue: def.defaultValue)
                 parameterValues.append(pv)
             }
-            // Override with persistent default server values for network tools
-            let defaults = persistentDefaults()
+            // Re-apply the saved server profile on tool switch so the connection
+            // params are consistent, but do NOT restore UserDefaults-persisted
+            // values — manually-typed data should not carry over across tools.
             let hasHostParam = defs.contains(where: { $0.id == "host" })
-            if hasHostParam {
-                if let host = defaults.host, !host.isEmpty {
-                    updateParameterValueSilent(parameterID: "host", value: host)
-                }
-                if let port = defaults.port, !port.isEmpty {
-                    updateParameterValueSilent(parameterID: "port", value: port)
-                }
-                if let calledAET = defaults.calledAET, !calledAET.isEmpty {
-                    updateParameterValueSilent(parameterID: "called-aet", value: calledAET)
-                }
-                if let callingAET = defaults.callingAET, !callingAET.isEmpty {
-                    updateParameterValueSilent(parameterID: "aet", value: callingAET)
-                }
-            }
-            // If a saved server is selected, override with its values;
-            // otherwise the persistent defaults (applied above) remain.
             if let serverID = selectedSavedServerID,
                let server = savedServerProfiles.first(where: { $0.id == serverID }),
                hasHostParam {
@@ -702,6 +691,56 @@ public final class CLIWorkshopViewModel {
         try? storage.save(all)
     }
 
+    /// Populates the edit form with an existing PACS server profile's data.
+    public func beginEditServer(id: UUID) {
+        guard let server = savedServerProfiles.first(where: { $0.id == id }) else { return }
+        editingServerID = server.id
+        newServerName = server.name
+        newServerHost = server.host
+        newServerPort = String(server.port)
+        newServerCalledAET = server.remoteAETitle
+        newServerCallingAET = server.localAETitle
+        showEditServerSheet = true
+    }
+
+    /// Saves edits to an existing PACS server profile.
+    public func saveEditedServer() {
+        guard let editID = editingServerID,
+              let idx = savedServerProfiles.firstIndex(where: { $0.id == editID }) else { return }
+        let name = newServerName.trimmingCharacters(in: .whitespaces)
+        let host = newServerHost.trimmingCharacters(in: .whitespaces)
+        let port = UInt16(newServerPort) ?? 11112
+        let calledAET = newServerCalledAET.trimmingCharacters(in: .whitespaces)
+        let callingAET = newServerCallingAET.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, !host.isEmpty, !calledAET.isEmpty else { return }
+
+        savedServerProfiles[idx] = PACSServerProfile(
+            id: editID,
+            name: name,
+            host: host,
+            port: port,
+            remoteAETitle: calledAET,
+            localAETitle: callingAET.isEmpty ? "DICOMSTUDIO" : callingAET
+        )
+
+        let storage = ServerProfileStorageService()
+        try? storage.save(savedServerProfiles)
+
+        // Reset form
+        editingServerID = nil
+        newServerName = ""
+        newServerHost = ""
+        newServerPort = "11112"
+        newServerCalledAET = ""
+        newServerCallingAET = "DICOMSTUDIO"
+        showEditServerSheet = false
+
+        // Re-apply if this was the selected server
+        if selectedSavedServerID == editID {
+            applySavedServer(id: editID)
+        }
+    }
+
     /// Resets network parameters to defaults when switching to manual mode.
     public func resetToManualInput() {
         selectedSavedServerID = nil
@@ -729,8 +768,49 @@ public final class CLIWorkshopViewModel {
         } else {
             parameterValues.append(CLIParameterValue(parameterID: parameterID, stringValue: value))
         }
+        // When the WADO protocol tab switches, rewrite the Base URL suffix so the
+        // field always shows the correct servlet path (/rs for WADO-RS, /wado for WADO-URI).
+        if parameterID == "wado-protocol", selectedToolID == "dicom-wado" {
+            let currentURL = paramValue("url")
+            if !currentURL.isEmpty {
+                let adjusted = Self.adjustWADOBaseURL(currentURL, forProtocol: value)
+                updateParameterValueSilent(parameterID: "url", value: adjusted)
+            }
+        }
         service.setParameterValues(parameterValues)
         rebuildCommandPreview()
+    }
+
+    /// Rewrites the trailing path segment of a WADO base URL to match the selected protocol.
+    ///
+    /// Replaces a trailing `/rs` or `/wado` segment with the correct one for the protocol,
+    /// or appends the suffix when no endpoint segment is present. Preserves trailing slashes.
+    ///
+    /// Exception — dcm4chee2-style root `/wado` URLs (single non-empty path segment):
+    /// these are fixed legacy endpoints and are returned unchanged regardless of the
+    /// selected protocol, since dcm4chee2 has no sibling `/rs` servlet.
+    static func adjustWADOBaseURL(_ rawURL: String, forProtocol newProtocol: String) -> String {
+        guard var components = URLComponents(string: rawURL) else { return rawURL }
+        var segments = components.path
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .map(String.init)
+        let newSuffix = newProtocol == "wado-uri" ? "wado" : "rs"
+        if let lastIdx = segments.lastIndex(where: { !$0.isEmpty }) {
+            let last = segments[lastIdx].lowercased()
+            let nonEmptyCount = segments.filter { !$0.isEmpty }.count
+            if last == "rs" || (last == "wado" && nonEmptyCount > 1) {
+                // Replace existing endpoint segment (dcm4chee5-style: .../aets/AET/rs or .../wado)
+                segments[lastIdx] = newSuffix
+            } else if last != "wado" {
+                // No endpoint suffix yet — append
+                segments.insert(newSuffix, at: lastIdx + 1)
+            }
+            // else: single-segment /wado (dcm4chee2 root endpoint) — leave unchanged
+        } else {
+            segments.append(newSuffix)
+        }
+        components.path = segments.joined(separator: "/")
+        return components.url?.absoluteString ?? rawURL
     }
 
     /// Silently updates a parameter value without rebuilding the command preview.
@@ -5650,6 +5730,28 @@ case "dicom-study":
         guard let executable = argv.first else { return }
         let arguments = Array(argv.dropFirst())
 
+        // 2a. Rebuild the tool FRESH (release) before running it, so the Compare-CLI
+        //     panel can NEVER compare against a stale binary — the CLI output must
+        //     always reflect the latest source (project requirement). Release is the
+        //     configuration that ships. On build failure, surface the error instead of
+        //     silently comparing against a stale/missing binary. The rebuild is
+        //     incremental, so it is near-instant when nothing changed.
+        let buildOutcome = await Task.detached { CLIToolBuilder.build(products: [executable]) }.value
+        guard buildOutcome.success else {
+            terminalCompareResult = CLIToolCompareResult(
+                toolName: tool,
+                appOutput: appOutput,
+                terminalOutput: "Build failed — refusing to compare against a stale binary.\n\n"
+                    + String(buildOutcome.log.suffix(4000)),
+                binaryPath: nil,
+                commandLine: commandPreview,
+                matched: false,
+                differingLineCount: 0,
+                note: "Build failed for \(executable) — fix the build, then Compare again.")
+            return
+        }
+        let freshBinDir = buildOutcome.binDir
+
         // 3. Grant file access (sandbox-off test build), then run the binary AND
         //    compute the comparison entirely off the main actor. A large dump can
         //    be thousands of lines, so use a cheap O(n) line comparison — an
@@ -5658,7 +5760,9 @@ case "dicom-study":
         let basename = compareFixtureBasename()
         let scopedURLs = securityScopedURLs.values.map { ($0, $0.startAccessingSecurityScopedResource()) }
         let computed = await Task.detached { () -> (CLIToolTerminalCompare.Outcome, Int) in
-            let oc = CLIToolTerminalCompare.run(tool: executable, arguments: arguments)
+            // Pin the binary to the freshly-built dir so a stale binary elsewhere on
+            // disk (or a more-recently-built debug build) can never shadow it.
+            let oc = CLIToolTerminalCompare.run(tool: executable, arguments: arguments, binDir: freshBinDir)
             let appLines  = CLIParityEngine.normalize(appOutput, fixtureBasename: basename)
             // Compare against the FULL terminal output (stdout + stderr). Some tools
             // (e.g. `dicom-echo --count`) emit their data to stderr, so a stdout-only
@@ -6112,20 +6216,14 @@ case "dicom-study":
         let port = server.port
         let timeout = TimeInterval(timeoutStr) ?? 30
 
+        // Verbose header via the SHARED NetworkConsole formatter (DICOMNetwork) — byte-
+        // identical to the dicom-echo CLI. Gated on --verbose, matching the CLI and the
+        // rest of the network tools; without it the output is just the echo results.
         if verbose {
-            appendConsoleOutput("DICOM Echo\n")
-            appendConsoleOutput("Server: \(host):\(port)\n")
-            appendConsoleOutput("Calling AE: \(callingAET)\n")
-            appendConsoleOutput("Called AE: \(calledAET)\n")
-            appendConsoleOutput("Timeout: \(Int(timeout))s\n")
-            appendConsoleOutput("Count: \(count)\n\n")
-        } else {
-            appendConsoleOutput("Connecting to \(host):\(port) ...\n")
-            appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-            appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-            appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
-            if count > 1 { appendConsoleOutput("  Count:            \(count)\n") }
-            appendConsoleOutput("\n")
+            appendConsoleOutput(NetworkConsole.echoHeader(
+                host: host, port: port,
+                callingAE: callingAET, calledAE: calledAET,
+                timeout: Int(timeout), count: count))
         }
 
         if diagnose {
@@ -6139,7 +6237,7 @@ case "dicom-study":
         var failureCount = 0
 
         for i in 1...count {
-            if verbose && count > 1 { appendConsoleOutput("[\(i)/\(count)] Sending C-ECHO...\n") }
+            if verbose && count > 1 { appendConsoleOutput(NetworkConsole.echoProgress(index: i, total: count)) }
             do {
                 let result = try await DICOMVerificationService.echo(
                     host: host, port: port,
@@ -6150,52 +6248,36 @@ case "dicom-study":
                     // Per-echo detail only for a single echo or in verbose mode —
                     // matches the CLI's gating so multi-echo runs compare equal.
                     if verbose || count == 1 {
-                        let latencyMs = result.roundTripTime * 1000
-                        appendConsoleOutput("✅ C-ECHO successful\n")
-                        appendConsoleOutput("  Remote AE: \(result.remoteAETitle)\n")
-                        appendConsoleOutput("  Status: \(result.status)\n")
-                        appendConsoleOutput("  Round-trip time: \(String(format: "%.1f", latencyMs)) ms\n")
+                        appendConsoleOutput(NetworkConsole.echoSuccess(
+                            remoteAE: result.remoteAETitle, status: result.status, rtt: result.roundTripTime))
                     } else {
-                        appendConsoleOutput(".")   // progress dot per echo, mirrors the CLI
+                        appendConsoleOutput(NetworkConsole.echoProgressDot())   // progress dot per echo, mirrors the CLI
                     }
                 } else {
                     failureCount += 1
-                    appendConsoleOutput("❌ C-ECHO failed\n")
-                    appendConsoleOutput("  Status: \(result.status)\n")
+                    appendConsoleOutput(NetworkConsole.echoStatusFailure(status: result.status))
                 }
             } catch let netErr as DICOMNetworkError {
                 failureCount += 1
-                appendEchoFailure(netErr, host: host, port: port,
-                                  callingAET: callingAET, calledAET: calledAET, timeout: timeout)
+                appendConsoleOutput(NetworkConsole.echoFailureDetail(
+                    netErr, host: host, port: port,
+                    callingAE: callingAET, calledAE: calledAET, timeout: Int(timeout)))
             } catch {
                 failureCount += 1
-                appendConsoleOutput("❌ C-ECHO error: \(error.localizedDescription)\n")
+                appendConsoleOutput(NetworkConsole.echoError(error.localizedDescription))
             }
             if i < count { try? await Task.sleep(nanoseconds: 100_000_000) }   // 100ms between requests
         }
 
-        if count > 1 && !verbose { appendConsoleOutput("\n") }   // newline after the progress dots
+        if count > 1 && !verbose { appendConsoleOutput(NetworkConsole.echoDotsTerminator()) }   // newline after the progress dots
 
-        // Summary (mirrors the CLI: shown for multi-echo runs or when --stats is set).
+        // Summary (mirrors the CLI: shown for multi-echo runs or when --stats is set),
+        // all via the SHARED NetworkConsole formatter.
         if count > 1 || showStats {
-            appendConsoleOutput("\nSummary:\n")
-            appendConsoleOutput("  Sent: \(count)\n")
-            appendConsoleOutput("  Successful: \(successCount)\n")
-            appendConsoleOutput("  Failed: \(failureCount)\n")
-            let rate = count > 0 ? Double(successCount) / Double(count) * 100 : 0
-            appendConsoleOutput("  Success rate: \(String(format: "%.1f", rate))%\n")
-
+            appendConsoleOutput(NetworkConsole.echoSummary(sent: count, succeeded: successCount, failed: failureCount))
             if showStats {
                 let rtts = results.filter { $0.success }.map { $0.roundTripTime }
-                if !rtts.isEmpty {
-                    let minMs = (rtts.min() ?? 0) * 1000
-                    let maxMs = (rtts.max() ?? 0) * 1000
-                    let avgMs = rtts.reduce(0, +) / Double(rtts.count) * 1000
-                    appendConsoleOutput("\nRound-trip time statistics:\n")
-                    appendConsoleOutput("  Min: \(String(format: "%.1f", minMs)) ms\n")
-                    appendConsoleOutput("  Avg: \(String(format: "%.1f", avgMs)) ms\n")
-                    appendConsoleOutput("  Max: \(String(format: "%.1f", maxMs)) ms\n")
-                }
+                appendConsoleOutput(NetworkConsole.echoStats(roundTripTimes: rtts))
             }
         }
 
@@ -6207,91 +6289,35 @@ case "dicom-study":
                                 : "C-ECHO failed (\(failureCount)/\(count))")
     }
 
-    /// Appends a detailed, actionable C-ECHO failure block for a network error.
-    /// Used per-iteration by ``executeDicomEcho()``; the overall console status
-    /// and history are set once by the caller based on the failure count.
-    private func appendEchoFailure(_ netErr: DICOMNetworkError, host: String, port: UInt16,
-                                   callingAET: String, calledAET: String, timeout: TimeInterval) {
-        appendConsoleOutput("❌ C-ECHO failed\n")
-        switch netErr {
-        case .associationRejected(let result, let source, let reason):
-            appendConsoleOutput("  Reason: Association rejected (\(result))\n")
-            appendConsoleOutput("  Source: \(source)\n")
-            let reasonDesc = Self.associateRejectReasonDescription(source: source, reason: reason)
-            appendConsoleOutput("  Code  : \(reason) — \(reasonDesc)\n")
-            appendConsoleOutput("\n")
-            // Actionable hints for the most common dcm4chee2 / legacy-PACS rejection reasons
-            switch (source, reason) {
-            case (.serviceUser, 3):
-                appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Called AE Title\n")
-                appendConsoleOutput("           (\"\(calledAET)\"). Register it in the remote AE Manager\n")
-                appendConsoleOutput("           (e.g. dcm4chee AE Management → Add AE Title) or change the\n")
-                appendConsoleOutput("           Called AE Title field above to match the server's configured AE.\n")
-            case (.serviceUser, 7):
-                appendConsoleOutput("  💡 Hint: The remote SCP does not recognise the Calling AE Title\n")
-                appendConsoleOutput("           (\"\(callingAET)\"). Add it to the remote server's list of\n")
-                appendConsoleOutput("           permitted calling AE titles, or change Calling AE Title above.\n")
-            case (.serviceUser, 2):
-                appendConsoleOutput("  💡 Hint: The remote SCP reports the application context is not supported.\n")
-                appendConsoleOutput("           Make sure the server has DICOM networking enabled.\n")
-            case (.serviceProviderACSE, 2):
-                appendConsoleOutput("  💡 Hint: Protocol version mismatch. Try switching to Implicit VR transfer\n")
-                appendConsoleOutput("           syntax for legacy server compatibility.\n")
-            case (.serviceProviderPresentation, 1):
-                appendConsoleOutput("  💡 Hint: Server temporarily busy. Wait a moment and retry.\n")
-            default:
-                appendConsoleOutput("  💡 Hint: Verify the host, port, and AE titles. For dcm4chee2, ensure\n")
-                appendConsoleOutput("           both the Calling and Called AE Titles are registered in the\n")
-                appendConsoleOutput("           server's AE Management console.\n")
-            }
-        case .connectionFailed(let msg):
-            appendConsoleOutput("  Error: \(msg)\n")
-            appendConsoleOutput("  💡 Hint: Check host (\(host)), port (\(port)), and that the DICOM server is running.\n")
-        case .timeout, .artimTimerExpired:
-            appendConsoleOutput("  Error: Connection timed out after \(Int(timeout))s\n")
-            appendConsoleOutput("  💡 Hint: Verify host/port are reachable. Try increasing the Timeout value.\n")
-        case .connectionClosed:
-            appendConsoleOutput("  Error: Connection closed unexpectedly by remote peer\n")
-            appendConsoleOutput("  💡 Hint: The server may have rejected the connection silently.\n")
-            appendConsoleOutput("           Check that the Called AE Title is registered on the server.\n")
-        default:
-            appendConsoleOutput("  Error: \(netErr.description)\n")
-        }
-    }
-
     /// Runs the `--diagnose` flow: basic connectivity, a 5-request stability
     /// probe, and association parameters — mirroring the dicom-echo CLI so the
     /// CLI Parity screen can compare the two semantically.
     private func runEchoDiagnostics(host: String, port: UInt16,
                                     callingAET: String, calledAET: String, timeout: TimeInterval) async {
-        appendConsoleOutput("Running DICOM network diagnostics...\n\n")
+        // All diagnostics chrome flows through the SHARED NetworkConsole formatter
+        // (DICOMNetwork) so the Studio panel and the dicom-echo CLI emit byte-identical
+        // output (the implementation-class/version strings are read inside the formatter
+        // from the same VerificationConfiguration defaults both sides use).
+        appendConsoleOutput(NetworkConsole.echoDiagnoseHeader())
 
         // Test 1: Basic connectivity
-        appendConsoleOutput("Test 1: Basic C-ECHO connectivity\n")
-        appendConsoleOutput("  Testing connection to \(host):\(port)...\n")
+        appendConsoleOutput(NetworkConsole.echoDiagnoseTest1Header(host: host, port: port))
         do {
             let result = try await DICOMVerificationService.echo(
                 host: host, port: port, callingAE: callingAET, calledAE: calledAET, timeout: timeout)
-            if result.success {
-                appendConsoleOutput("  Basic connectivity: PASS\n")
-                appendConsoleOutput("    Round-trip time: \(String(format: "%.1f", result.roundTripTime * 1000)) ms\n")
-            } else {
-                appendConsoleOutput("  Basic connectivity: FAIL\n")
-                appendConsoleOutput("    Status: \(result.status)\n")
-            }
+            appendConsoleOutput(NetworkConsole.echoDiagnoseBasicResult(
+                success: result.success, status: result.status, rtt: result.roundTripTime))
         } catch {
-            appendConsoleOutput("  Basic connectivity: ERROR\n")
-            appendConsoleOutput("    Error: \(error.localizedDescription)\n")
+            appendConsoleOutput(NetworkConsole.echoDiagnoseBasicError(error.localizedDescription))
             consoleStatus = .error
             service.setConsoleStatus(.error)
             addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: 1,
                          output: "Diagnostics: basic connectivity error")
             return
         }
-        appendConsoleOutput("\n")
 
         // Test 2: Connection stability (5 requests)
-        appendConsoleOutput("Test 2: Connection stability (5 requests)\n")
+        appendConsoleOutput(NetworkConsole.echoDiagnoseTest2Header())
         var stableSuccessCount = 0
         var stableRTTs: [TimeInterval] = []
         for i in 1...5 {
@@ -6301,73 +6327,28 @@ case "dicom-study":
                 if result.success {
                     stableSuccessCount += 1
                     stableRTTs.append(result.roundTripTime)
-                    appendConsoleOutput("  [\(i)/5] RTT: \(String(format: "%.1f", result.roundTripTime * 1000)) ms\n")
+                    appendConsoleOutput(NetworkConsole.echoDiagnoseStabilitySuccess(index: i, total: 5, rtt: result.roundTripTime))
                 } else {
-                    appendConsoleOutput("  [\(i)/5] Status: \(result.status)\n")
+                    appendConsoleOutput(NetworkConsole.echoDiagnoseStabilityFailure(index: i, total: 5, status: result.status))
                 }
             } catch {
-                appendConsoleOutput("  [\(i)/5] Error: \(error.localizedDescription)\n")
+                appendConsoleOutput(NetworkConsole.echoDiagnoseStabilityError(index: i, total: 5, message: error.localizedDescription))
             }
             if i < 5 { try? await Task.sleep(nanoseconds: 100_000_000) }
         }
-        appendConsoleOutput("  Connection stability: \(stableSuccessCount)/5 successful\n")
-        if !stableRTTs.isEmpty {
-            let minMs = (stableRTTs.min() ?? 0) * 1000
-            let maxMs = (stableRTTs.max() ?? 0) * 1000
-            let avgMs = stableRTTs.reduce(0, +) / Double(stableRTTs.count) * 1000
-            appendConsoleOutput("  RTT min/avg/max: \(String(format: "%.1f", minMs))/\(String(format: "%.1f", avgMs))/\(String(format: "%.1f", maxMs)) ms\n")
-        }
-        appendConsoleOutput("\n")
+        appendConsoleOutput(NetworkConsole.echoDiagnoseStabilitySummary(
+            successes: stableSuccessCount, total: 5, roundTripTimes: stableRTTs))
 
         // Test 3: Association parameters
-        appendConsoleOutput("Test 3: Association parameters\n")
-        appendConsoleOutput("  Implementation Class UID: \(VerificationConfiguration.defaultImplementationClassUID)\n")
-        appendConsoleOutput("  Implementation Version: \(VerificationConfiguration.defaultImplementationVersionName)\n")
-        appendConsoleOutput("  SOP Class: Verification (1.2.840.10008.1.1)\n")
-        appendConsoleOutput("  Transfer Syntaxes: Explicit VR Little Endian, Implicit VR Little Endian\n\n")
+        appendConsoleOutput(NetworkConsole.echoDiagnoseAssociationParams())
 
-        appendConsoleOutput("Diagnostics complete.\n")
+        // Verdict
+        appendConsoleOutput(NetworkConsole.echoDiagnoseResult(stabilitySuccesses: stableSuccessCount))
         let ok = stableSuccessCount == 5
-        if stableSuccessCount == 5 {
-            appendConsoleOutput("Result: All tests PASSED ✓\n")
-        } else if stableSuccessCount > 0 {
-            appendConsoleOutput("Result: Partial success (some tests failed) ⚠\n")
-        } else {
-            appendConsoleOutput("Result: All tests FAILED ✗\n")
-        }
         consoleStatus = ok ? .success : .error
         service.setConsoleStatus(ok ? .success : .error)
         addToHistory(toolName: "dicom-echo", command: commandPreview, exitCode: ok ? 0 : 1,
                      output: "Diagnostics: \(stableSuccessCount)/5 stable")
-    }
-
-    /// Translates an A-ASSOCIATE-RJ reason byte into a human-readable string.
-    ///
-    /// Reference: PS3.8 Tables 9-20, 9-21, 9-22
-    private static func associateRejectReasonDescription(source: AssociateRejectSource, reason: UInt8) -> String {
-        switch source {
-        case .serviceUser:
-            switch reason {
-            case 1: return "No reason given"
-            case 2: return "Application context name not supported"
-            case 3: return "Called AE Title not recognised"
-            case 7: return "Calling AE Title not recognised"
-            default: return "Unknown reason"
-            }
-        case .serviceProviderACSE:
-            switch reason {
-            case 1: return "No reason given"
-            case 2: return "Protocol version not supported"
-            default: return "Unknown reason"
-            }
-        case .serviceProviderPresentation:
-            switch reason {
-            case 0: return "No reason given"
-            case 1: return "Temporary congestion"
-            case 2: return "Local limit exceeded"
-            default: return "Unknown reason"
-            }
-        }
     }
 
     /// Returns the current string value for a parameter by ID.
@@ -7767,33 +7748,23 @@ case "dicom-study":
                              output: "Subscribed to \(workitemUID)")
 
             default: // search
-                // Build a UPSQuery from the user-provided filter parameters
-                var query = UPSQuery()
-
-                let stepStateFilter = paramValue("filter-state")
-                if !stepStateFilter.isEmpty {
-                    // Use raw attribute tag to avoid DICOMWeb.UPSState / DICOMStudio.UPSState ambiguity
-                    query = query.attribute("00741000", value: stepStateFilter)
+                // Build the query via the SHARED UPSQuery.workitemSearch builder (DICOMWeb) —
+                // the SAME single source of truth the dicom-wado ups CLI and the CLI-parity
+                // reference call, so all three issue an IDENTICAL UPS-RS query. Only the two
+                // real CLI search flags (--filter-state / --scheduled-station) feed it; the app
+                // adds no extra filters, no limit, and no includefield (the CLI sets none).
+                let query: UPSQuery
+                do {
+                    query = try UPSQuery.workitemSearch(filterState: paramValue("filter-state"),
+                                                        scheduledStation: paramValue("scheduled-station"))
+                } catch {
+                    appendConsoleOutput("Error: \(error)\n")
+                    consoleStatus = .error
+                    service.setConsoleStatus(.error)
+                    addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 1,
+                                 output: "\(error)")
+                    return
                 }
-                let priorityFilter = paramValue("priority")
-                if !priorityFilter.isEmpty {
-                    query = query.attribute("00741200", value: priorityFilter)
-                }
-                let patientNameFilter = paramValue("patient-name")
-                if !patientNameFilter.isEmpty {
-                    query = query.attribute("00100010", value: patientNameFilter)
-                }
-                let stationFilter = paramValue("scheduled-station")
-                if !stationFilter.isEmpty {
-                    query = query.attribute("00404025", value: stationFilter)
-                }
-                let limitStr = paramValue("limit")
-                if let limitVal = Int(limitStr), limitVal > 0 {
-                    query = query.limit(limitVal)
-                } else {
-                    query = query.limit(50)
-                }
-                query = query.includeAllFields()
 
                 // Log the outgoing query
                 let searchURL = client.urlBuilder.searchWorkitemsURL(parameters: query.toParameters())
@@ -7808,30 +7779,13 @@ case "dicom-study":
 
                 let results = try await client.searchWorkitems(query: query)
                 let count = results.workitems.count
-                appendConsoleOutput("✅ UPS-RS returned \(count) workitems\n\n")
-                for (i, item) in results.workitems.prefix(50).enumerated() {
-                    appendConsoleOutput("─── [\(i + 1)] \(item.workitemUID) ───\n")
-                    if let state = item.state { appendConsoleOutput("  State:      \(state.rawValue)\n") }
-                    if let pri = item.priority { appendConsoleOutput("  Priority:   \(pri.rawValue)\n") }
-                    if let step = item.procedureStepLabel { appendConsoleOutput("  Label:      \(step)\n") }
-                    if let wl = item.worklistLabel { appendConsoleOutput("  Worklist:   \(wl)\n") }
-                    if let stepID = item.scheduledProcedureStepID { appendConsoleOutput("  Step ID:    \(stepID)\n") }
-                    if let name = item.patientName { appendConsoleOutput("  Patient:    \(name)\n") }
-                    if let pid = item.patientID { appendConsoleOutput("  Patient ID: \(pid)\n") }
-                    if let dob = item.patientBirthDate { appendConsoleOutput("  Birth Date: \(dob)\n") }
-                    if let sex = item.patientSex { appendConsoleOutput("  Sex:        \(sex)\n") }
-                    if let start = item.scheduledStartDateTime { appendConsoleOutput("  Start:      \(start)\n") }
-                    if let exp = item.expectedCompletionDateTime { appendConsoleOutput("  Expected:   \(exp)\n") }
-                    if let mod = item.modificationDateTime { appendConsoleOutput("  Modified:   \(mod)\n") }
-                    if let study = item.studyInstanceUID { appendConsoleOutput("  Study UID:  \(study)\n") }
-                    if let acc = item.accessionNumber { appendConsoleOutput("  Accession:  \(acc)\n") }
-                    if let ref = item.referringPhysicianName { appendConsoleOutput("  Ref. Phys:  \(ref)\n") }
-                    if let tx = item.transactionUID { appendConsoleOutput("  Tx UID:     \(tx)\n") }
-                    if let prog = item.progressPercentage { appendConsoleOutput("  Progress:   \(prog)%\n") }
-                    if let desc = item.progressDescription { appendConsoleOutput("  Prog Desc:  \(desc)\n") }
-                    appendConsoleOutput("\n")
-                }
-                if count > 50 { appendConsoleOutput("... and \(count - 50) more\n") }
+                appendConsoleOutput("✅ UPS-RS returned \(count) workitem(s)\n\n")
+                // Render the matched workitems through the SHARED UPSResultFormatter — the SAME
+                // table/json/csv renderer the dicom-wado ups CLI uses — so the app and CLI
+                // output pipelines cannot drift (mirrors QIDOResultFormatter for the query
+                // subcommand).
+                let fmt = UPSOutputFormat(rawValue: paramValue("output-format").lowercased()) ?? .table
+                appendConsoleOutput(UPSResultFormatter().format(results.workitems, format: fmt))
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-ups", command: commandPreview, exitCode: 0,
@@ -7901,10 +7855,7 @@ case "dicom-study":
         default:         level = .study
         }
 
-        appendConsoleOutput("Querying \(host):\(port) at \(level) level ...\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        let verbose = paramValue("verbose") == "true"
 
         // Collect all user-provided filter values
         let patientID = paramValue("patient-id")
@@ -7915,40 +7866,44 @@ case "dicom-study":
         let seriesUID = paramValue("series-uid")
         let seriesDate = paramValue("series-date")
         let instanceUID = paramValue("instance-uid")
-
-        // Per PS3.4 C.6, at SERIES and IMAGE levels under Study Root:
-        //   - Only UNIQUE keys from parent levels carry through (Study Instance UID)
-        //   - Patient Name, Study Date, etc. are NOT valid and cause 0xA900
-        // Strategy:
-        //   PATIENT → Patient Root, patient attributes only
-        //   STUDY   → Study Root, patient + study attributes
-        //   SERIES/IMAGE → Study Root: direct query when Study UID is provided.
-        //     When a globally unique UID (Series/SOP Instance) is given without Study UID,
-        //     try direct first (empty Study UID = universal match per PS3.4 C.6).
-        //     If the server rejects it (0xA900), fall back to concurrent two-step.
-        //     For non-unique filters (modality, date) without Study UID, use two-step.
+        let accession = paramValue("accession-number")
+        let studyDesc = paramValue("study-description")
 
         // Build C-FIND keys via the SHARED package mapping (DICOMNetwork) — the same
         // code the dicom-query CLI and the CLI-parity reference use, so input→C-FIND
-        // cannot drift. No app-only two-step lookup: this mirrors the CLI's single
-        // direct query.
+        // cannot drift. Pass the SAME argument set as the CLI (incl. accession and
+        // study-description) so the keys — and therefore the result table — match.
         let queryKeys = DICOMQueryService.buildQueryKeys(
             level: level,
             patientName: patientName, patientID: patientID,
             studyDate: studyDate, modality: modality,
+            accession: accession, studyDescription: studyDesc,
             studyUID: studyUID, seriesUID: seriesUID,
             seriesDate: seriesDate, instanceUID: instanceUID)
 
-        // Echo the applied filters (non-empty), like the CLI's verbose listing.
-        for (label, value) in [("Patient ID", patientID), ("Patient Name", patientName),
-                               ("Study UID", studyUID), ("Study Date", studyDate),
-                               ("Modality", modality), ("Series UID", seriesUID),
-                               ("Series Date", seriesDate), ("Instance UID", instanceUID)]
-            where !value.isEmpty {
-            appendConsoleOutput("  \(label): \(value)\n")
+        // Verbose header via the SHARED NetworkConsole formatter (DICOMNetwork), gated on
+        // --verbose so a plain run is just the results table — identical to the CLI. The
+        // filter list uses the same canonical order/labels as the CLI's appliedFilters().
+        if verbose {
+            let model = (level == .patient) ? "Patient Root" : "Study Root"
+            var filters: [(label: String, value: String)] = []
+            func addFilter(_ label: String, _ value: String) {
+                if !value.isEmpty { filters.append((label, value)) }
+            }
+            addFilter("Patient Name:", patientName)
+            addFilter("Patient ID:", patientID)
+            addFilter("Study Date:", studyDate)
+            addFilter("Modality:", modality)
+            addFilter("Study UID:", studyUID)
+            addFilter("Series UID:", seriesUID)
+            addFilter("Accession:", accession)
+            addFilter("Study Desc:", studyDesc)
+            appendConsoleOutput(NetworkConsole.queryHeader(
+                host: host, port: port,
+                callingAE: callingAET, calledAE: calledAET,
+                level: level, informationModel: model,
+                timeout: Int(timeout), filters: filters))
         }
-        let modelName = (level == .patient) ? "Patient Root" : "Study Root"
-        appendConsoleOutput("  Model:            \(modelName)\n\n")
 
         do {
             let informationModel: QueryRetrieveInformationModel = (level == .patient) ? .patientRoot : .studyRoot
@@ -7963,22 +7918,14 @@ case "dicom-study":
             let results = try await DICOMQueryService.find(
                 host: host, port: port, configuration: config, queryKeys: queryKeys)
 
-            if results.isEmpty {
-                appendConsoleOutput("No results found.\n")
-            } else {
-                appendConsoleOutput("Found \(results.count) result(s):\n\n")
-                // Render via the SHARED formatter (DICOMNetwork) so output matches the CLI.
-                let fmt = QueryOutputFormat(rawValue: outputFormat) ?? .table
-                appendConsoleOutput(DICOMQueryResultFormatter(format: fmt, level: level).format(results: results))
-            }
+            // Render via the SHARED formatter (DICOMNetwork) so output matches the CLI.
+            // The formatter renders "No results found." for an empty set, so both the
+            // empty and populated cases go through one code path — identical to the CLI,
+            // which prints the formatter output verbatim with no extra prefix/warnings.
+            let fmt = QueryOutputFormat(rawValue: outputFormat) ?? .table
+            appendConsoleOutput(DICOMQueryResultFormatter(format: fmt, level: level).format(results: results))
             consoleStatus = .success
             service.setConsoleStatus(.success)
-            // Warn about likely server-side result limit
-            if isLikelyServerLimit(results.count) {
-                appendConsoleOutput("⚠️  The result count (\(results.count)) may be capped by a server-side limit.\n")
-                appendConsoleOutput("    Check your PACS server configuration (e.g., LimitFindResults in Orthanc,\n")
-                appendConsoleOutput("    or LimitFindResults in dcm4chee) to increase or remove the limit.\n")
-            }
             addToHistory(toolName: "dicom-query", command: commandPreview, exitCode: 0,
                          output: "\(results.count) result(s) found")
         } catch {
@@ -8267,7 +8214,6 @@ case "dicom-study":
         // security-scoped access for sandboxed reads.
 
         let filesParamPath = paramValue("files").trimmingCharacters(in: .whitespaces)
-        var resolvedFiles: [CLIFileEntry] = []
 
         // Start security-scoped access for the entire collection phase
         let scopedURL = securityScopedURLs["files"]
@@ -8276,69 +8222,20 @@ case "dicom-study":
             if accessing { scopedURL?.stopAccessingSecurityScopedResource() }
         }
 
-        // Helper: collect DICOM files from a single path (file or directory)
-        func collectDICOMFiles(from basePath: String) {
-            let fm = FileManager.default
-            var isDir: ObjCBool = false
-            guard fm.fileExists(atPath: basePath, isDirectory: &isDir) else { return }
-
-            if isDir.boolValue {
-                // Directory — enumerate contents
-                if recursive {
-                    if let enumerator = fm.enumerator(atPath: basePath) {
-                        while let relativePath = enumerator.nextObject() as? String {
-                            let fullPath = (basePath as NSString).appendingPathComponent(relativePath)
-                            if isDICOMCandidate(fullPath),
-                               !resolvedFiles.contains(where: { $0.path == fullPath }) {
-                                let size = (try? fm.attributesOfItem(atPath: fullPath)[.size] as? Int64) ?? 0
-                                resolvedFiles.append(CLIFileEntry(
-                                    path: fullPath,
-                                    filename: (fullPath as NSString).lastPathComponent,
-                                    fileSize: size
-                                ))
-                            }
-                        }
-                    }
-                } else {
-                    if let contents = try? fm.contentsOfDirectory(atPath: basePath) {
-                        for name in contents where !name.hasPrefix(".") {
-                            let fullPath = (basePath as NSString).appendingPathComponent(name)
-                            if isDICOMCandidate(fullPath),
-                               !resolvedFiles.contains(where: { $0.path == fullPath }) {
-                                let size = (try? fm.attributesOfItem(atPath: fullPath)[.size] as? Int64) ?? 0
-                                resolvedFiles.append(CLIFileEntry(
-                                    path: fullPath,
-                                    filename: name,
-                                    fileSize: size
-                                ))
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Single file
-                if !resolvedFiles.contains(where: { $0.path == basePath }) {
-                    let size = (try? fm.attributesOfItem(atPath: basePath)[.size] as? Int64) ?? 0
-                    resolvedFiles.append(CLIFileEntry(
-                        path: basePath,
-                        filename: (basePath as NSString).lastPathComponent,
-                        fileSize: size
-                    ))
-                }
-            }
+        // Gather files via the SHARED DICOMSendFileGatherer (DICOMNetwork) — the EXACT
+        // same enumeration the dicom-send CLI uses (Sources/dicom-send/DICOMSend.swift):
+        // DICOM detection by extension OR "DICM" magic, glob expansion, directory
+        // recursion, dotfile handling, and ordering. Previously this re-implemented
+        // collection (collectDICOMFiles/isDICOMCandidate) and diverged for directory and
+        // glob inputs, so the "Files:" count and per-file lines could differ from the CLI.
+        var inputPaths = inputFiles.map { $0.path }
+        if !filesParamPath.isEmpty { inputPaths.append(filesParamPath) }
+        let gatheredPaths = DICOMSendFileGatherer.gather(paths: inputPaths, recursive: recursive)
+        let fm = FileManager.default
+        let fileEntries: [CLIFileEntry] = gatheredPaths.map { path in
+            let size = ((try? fm.attributesOfItem(atPath: path))?[.size] as? Int64) ?? 0
+            return CLIFileEntry(path: path, filename: (path as NSString).lastPathComponent, fileSize: size)
         }
-
-        // Collect from drag-and-drop inputFiles
-        for entry in inputFiles {
-            collectDICOMFiles(from: entry.path)
-        }
-
-        // Collect from text-field path
-        if !filesParamPath.isEmpty {
-            collectDICOMFiles(from: filesParamPath)
-        }
-
-        let fileEntries = resolvedFiles
 
         guard !fileEntries.isEmpty else {
             appendConsoleOutput("Error: No DICOM files found. Verify the path exists and contains DICOM files.\n")
@@ -8353,27 +8250,22 @@ case "dicom-study":
             return
         }
 
-        appendConsoleOutput("DICOM Send (C-STORE)\n")
-        appendConsoleOutput("====================\n")
-        appendConsoleOutput("  Server:           \(host):\(port)\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-        appendConsoleOutput("  Priority:         \(priorityStr)\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
-        if retryCount > 0 {
-            appendConsoleOutput("  Retry attempts:   \(retryCount)\n")
-        }
-        appendConsoleOutput("  Files:            \(fileEntries.count)\n")
-        if dryRun {
-            appendConsoleOutput("  Mode:             DRY RUN\n")
-        }
-        appendConsoleOutput("\n")
+        // Header via the SHARED NetworkConsole formatter (DICOMNetwork) — identical to
+        // the dicom-send CLI. The app does not expose --transfer-syntax (it always
+        // sends as-is), so transferSyntax is nil here.
+        appendConsoleOutput(NetworkConsole.sendHeader(
+            host: host, port: port,
+            callingAE: callingAET, calledAE: calledAET,
+            priority: priorityStr, timeout: Int(timeout), fileCount: fileEntries.count,
+            retryAttempts: retryCount, transferSyntax: nil, dryRun: dryRun))
 
         if dryRun {
             for (index, file) in fileEntries.enumerated() {
-                appendConsoleOutput("  [\(index + 1)/\(fileEntries.count)] \(file.filename) (\(FileDropHelpers.formatFileSize(file.fileSize)))\n")
+                appendConsoleOutput(NetworkConsole.sendDryRunLine(
+                    index: index + 1, total: fileEntries.count,
+                    filename: file.filename, size: Int(file.fileSize)))
             }
-            appendConsoleOutput("\nDry run complete. Disable 'Dry Run' to send files.\n")
+            appendConsoleOutput("\nDry run complete. No files were sent.\n")
             consoleStatus = .success
             service.setConsoleStatus(.success)
             addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 0,
@@ -8410,21 +8302,25 @@ case "dicom-study":
             }
         }
 
-        // Send each file
+        // Send each file — all progress/summary text via the SHARED NetworkConsole
+        // formatter (DICOMNetwork) so it is byte-identical to the dicom-send CLI.
         var successCount = 0
         var failureCount = 0
+        var totalBytesTransferred = 0
         let startTime = Date()
 
         for (index, file) in fileEntries.enumerated() {
             let fileNumber = index + 1
-            appendConsoleOutput("[\(fileNumber)/\(fileEntries.count)] Sending: \(file.filename) (\(FileDropHelpers.formatFileSize(file.fileSize)))...")
+            appendConsoleOutput(NetworkConsole.sendFilePrefix(
+                index: fileNumber, total: fileEntries.count,
+                filename: file.filename, size: Int(file.fileSize)))
 
             do {
                 let fileData = try readFileData(at: file.path, parameterID: "files")
                 var lastError: Error?
                 var sent = false
 
-                for attempt in 0...retryCount {
+                for _ in 0...retryCount {
                     do {
                         // Always send the file in its OWN transfer syntax — no preferred
                         // TS is proposed (the dicom-send `--transfer-syntax` flag is not
@@ -8440,52 +8336,44 @@ case "dicom-study":
                             timeout: timeout
                         )
                         successCount += 1
-                        let rtt = String(format: "%.1f", result.roundTripTime * 1000)
-                        appendConsoleOutput(" ✅ (\(rtt) ms)\n")
+                        totalBytesTransferred += fileData.count
+                        appendConsoleOutput(NetworkConsole.sendFileResultSuffix(
+                            success: true, rtt: result.roundTripTime, error: nil))
                         sent = true
                         break
                     } catch {
                         lastError = error
-                        if attempt < retryCount {
-                            appendConsoleOutput(" retry \(attempt + 1)/\(retryCount)...")
-                        }
+                        // No per-attempt retry chatter: retries are non-deterministic and
+                        // would diverge from the CLI run; only the outcome line is emitted.
                     }
                 }
 
                 if !sent {
                     failureCount += 1
-                    appendConsoleOutput(" ❌ \(lastError?.localizedDescription ?? "Unknown error")\n")
+                    appendConsoleOutput(NetworkConsole.sendFileResultSuffix(
+                        success: false, rtt: 0, error: lastError?.localizedDescription))
                 }
             } catch {
                 failureCount += 1
-                appendConsoleOutput(" ❌ Cannot read file: \(error.localizedDescription)\n")
+                appendConsoleOutput(NetworkConsole.sendFileResultSuffix(
+                    success: false, rtt: 0, error: "Cannot read file: \(error.localizedDescription)"))
             }
         }
 
-        let elapsed = Date().timeIntervalSince(startTime)
-        appendConsoleOutput("\nTransfer Summary\n")
-        appendConsoleOutput("================\n")
-        appendConsoleOutput("  Total files:  \(fileEntries.count)\n")
-        appendConsoleOutput("  Succeeded:    \(successCount)\n")
-        appendConsoleOutput("  Failed:       \(failureCount)\n")
-        appendConsoleOutput("  Duration:     \(String(format: "%.1f", elapsed))s\n")
+        appendConsoleOutput(NetworkConsole.sendSummary(
+            total: fileEntries.count, succeeded: successCount, failed: failureCount,
+            bytes: totalBytesTransferred, duration: Date().timeIntervalSince(startTime)))
 
         if failureCount == 0 {
-            appendConsoleOutput("\n✅ All files sent successfully\n")
             consoleStatus = .success
             service.setConsoleStatus(.success)
-        } else if successCount == 0 {
-            appendConsoleOutput("\n❌ All files failed to send\n")
-            consoleStatus = .error
-            service.setConsoleStatus(.error)
         } else {
-            appendConsoleOutput("\n⚠️ Partial success: \(successCount) succeeded, \(failureCount) failed\n")
             consoleStatus = .error
             service.setConsoleStatus(.error)
         }
         addToHistory(toolName: "dicom-send", command: commandPreview,
                      exitCode: failureCount == 0 ? 0 : 1,
-                     output: "\(successCount)/\(fileEntries.count) files sent in \(String(format: "%.1f", elapsed))s")
+                     output: "\(successCount)/\(fileEntries.count) files sent")
     }
 
     // MARK: - C-MOVE / C-GET Execution (dicom-retrieve)
@@ -8642,36 +8530,23 @@ case "dicom-study":
         else if !seriesUID.isEmpty { levelLabel = "Series" }
         else { levelLabel = "Study" }
 
-        appendConsoleOutput("DICOM Retrieve (\(isCMove ? "C-MOVE" : "C-GET"))\n")
-        appendConsoleOutput("=================================\n")
-        appendConsoleOutput("  Server:           \(host):\(port)\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-        appendConsoleOutput("  Method:           \(isCMove ? "C-MOVE" : "C-GET")\n")
-        if isCMove {
-            appendConsoleOutput("  Move Destination: \(moveDest)\n")
-        }
-        appendConsoleOutput("  Level:            \(levelLabel)\n")
-        appendConsoleOutput("  Study UID:        \(resolvedStudyUID)\n")
-        if !seriesUID.isEmpty {
-            appendConsoleOutput("  Series UID:       \(seriesUID)\n")
-        }
-        if !instanceUID.isEmpty {
-            appendConsoleOutput("  Instance UID:     \(instanceUID)\n")
-        }
-        appendConsoleOutput("  Output:           \(outputDir)\n")
-        appendConsoleOutput("  Organization:     \(hierarchical ? "Hierarchical" : "Flat")\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
         let transferSyntaxRetrieve = paramValue("transfer-syntax")
         let preferredTSRetrieve = transferSyntaxUID(for: transferSyntaxRetrieve)
-        if !transferSyntaxRetrieve.isEmpty {
-            if isCMove {
-                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxRetrieve) (advisory — negotiated by destination AE)\n")
-            } else {
-                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxRetrieve) → \(preferredTSRetrieve ?? "unrecognised, using default") (proposed for C-STORE sub-ops)\n")
-            }
-        }
-        appendConsoleOutput("\n")
+        // Header via the SHARED NetworkConsole formatter (DICOMNetwork) — identical to
+        // the dicom-retrieve CLI. The Output line shows the raw `--output` value (what
+        // the command preview passes), not the sandbox-resolved path, so it matches.
+        let rawOutput = paramValue("output").isEmpty ? "." : paramValue("output")
+        appendConsoleOutput(NetworkConsole.retrieveHeader(
+            method: isCMove ? "C-MOVE" : "C-GET",
+            host: host, port: port,
+            callingAE: callingAET, calledAE: calledAET,
+            moveDestination: isCMove ? moveDest : nil,
+            level: levelLabel,
+            studyUID: resolvedStudyUID,
+            seriesUID: seriesUID.isEmpty ? nil : seriesUID,
+            instanceUID: instanceUID.isEmpty ? nil : instanceUID,
+            output: rawOutput, hierarchical: hierarchical, timeout: Int(timeout),
+            transferSyntax: transferSyntaxRetrieve.isEmpty ? nil : transferSyntaxRetrieve))
 
         appendConsoleOutput("Executing \(isCMove ? "C-MOVE" : "C-GET")...\n")
 
@@ -8690,7 +8565,12 @@ case "dicom-study":
                         onProgress: onProgress,
                         timeout: timeout
                     )
-                    appendConsoleOutput(formatRetrieveResult(result))
+                    appendConsoleOutput(NetworkConsole.cMoveResult(
+                        status: "\(result.status)",
+                        completed: result.progress.completed,
+                        failed: result.progress.failed,
+                        warning: result.progress.warning,
+                        isSuccess: result.isSuccess))
                 } else if !seriesUID.isEmpty {
                     let result = try await DICOMRetrieveService.moveSeries(
                         host: host, port: port,
@@ -8701,7 +8581,12 @@ case "dicom-study":
                         onProgress: onProgress,
                         timeout: timeout
                     )
-                    appendConsoleOutput(formatRetrieveResult(result))
+                    appendConsoleOutput(NetworkConsole.cMoveResult(
+                        status: "\(result.status)",
+                        completed: result.progress.completed,
+                        failed: result.progress.failed,
+                        warning: result.progress.warning,
+                        isSuccess: result.isSuccess))
                 } else {
                     let result = try await DICOMRetrieveService.moveStudy(
                         host: host, port: port,
@@ -8711,7 +8596,12 @@ case "dicom-study":
                         onProgress: onProgress,
                         timeout: timeout
                     )
-                    appendConsoleOutput(formatRetrieveResult(result))
+                    appendConsoleOutput(NetworkConsole.cMoveResult(
+                        status: "\(result.status)",
+                        completed: result.progress.completed,
+                        failed: result.progress.failed,
+                        warning: result.progress.warning,
+                        isSuccess: result.isSuccess))
                 }
             } else {
                 // C-GET — pass preferred TS so the SCP sends back in that encoding
@@ -8750,40 +8640,31 @@ case "dicom-study":
                     switch event {
                     case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
                         receivedCount += 1
-                        let sizeStr = FileDropHelpers.formatFileSize(Int64(data.count))
-                        appendConsoleOutput("  Received [\(receivedCount)]: \(sopInstanceUID) (\(sizeStr))")
-                        // Write the received data to disk wrapped in a Part 10 container
-                        do {
-                            let savedPath = try writeReceivedDICOMFile(
-                                data: data,
-                                sopInstanceUID: sopInstanceUID,
-                                sopClassUID: sopClassUID,
-                                transferSyntaxUID: transferSyntaxUID,
-                                studyUID: resolvedStudyUID,
-                                seriesUID: seriesUID.isEmpty ? nil : seriesUID,
-                                outputDir: outputDir,
-                                hierarchical: hierarchical
-                            )
-                            lastRetrievedFiles.append(savedPath)
-                            appendConsoleOutput(" → \(savedPath)\n")
-                        } catch {
-                            appendConsoleOutput(" ⚠️ Save failed: \(error.localizedDescription)\n")
-                        }
-                    case .progress(let progress):
-                        appendConsoleOutput("  Progress: \(progress.completed) completed, \(progress.remaining) remaining, \(progress.failed) failed\n")
-                    case .completed:
-                        if receivedCount == 0 {
-                            appendConsoleOutput("\n⚠️ C-GET completed but received 0 instances. "
-                                + "The SCP matched the request but sent no images — likely no storage "
-                                + "presentation context was negotiated for this study's SOP Class or transfer syntax.\n")
-                        } else {
-                            appendConsoleOutput("\n✅ C-GET completed — \(receivedCount) file(s) received\n")
-                        }
-                        appendConsoleOutput("  Output directory: \(outputDir)\n")
+                        // Save the received data (Part 10). Per-instance lines are NOT
+                        // printed: the SCP's send order/timing is volatile across
+                        // associations and would diverge from the CLI run. Only the
+                        // deterministic received count is reported in the summary.
+                        let savedPath = try writeReceivedDICOMFile(
+                            data: data,
+                            sopInstanceUID: sopInstanceUID,
+                            sopClassUID: sopClassUID,
+                            transferSyntaxUID: transferSyntaxUID,
+                            studyUID: resolvedStudyUID,
+                            seriesUID: seriesUID.isEmpty ? nil : seriesUID,
+                            outputDir: outputDir,
+                            hierarchical: hierarchical
+                        )
+                        lastRetrievedFiles.append(savedPath)
+                    case .progress, .completed:
+                        // Suppressed: progress cadence is SCP-dependent and differs
+                        // run-to-run; the summary below is the single deterministic line.
+                        break
                     case .error(let error):
-                        appendConsoleOutput("\n❌ C-GET failed: \(error.localizedDescription)\n")
+                        throw error
                     }
                 }
+                // C-GET summary via the SHARED formatter (handles the 0-instances case).
+                appendConsoleOutput(NetworkConsole.cGetSummary(received: receivedCount))
             }
 
             consoleStatus = .success
@@ -8797,23 +8678,6 @@ case "dicom-study":
             addToHistory(toolName: "dicom-retrieve", command: commandPreview, exitCode: 1,
                          output: error.localizedDescription)
         }
-    }
-
-    /// Formats a C-MOVE RetrieveResult for console display.
-    private func formatRetrieveResult(_ result: RetrieveResult) -> String {
-        var lines: [String] = []
-        lines.append("\nC-MOVE Result:")
-        lines.append("  Status:    \(result.status)")
-        lines.append("  Completed: \(result.progress.completed)")
-        lines.append("  Failed:    \(result.progress.failed)")
-        lines.append("  Warnings:  \(result.progress.warning)")
-        if result.isSuccess {
-            lines.append("\n✅ Retrieval successful")
-        } else {
-            lines.append("\n❌ Retrieval returned non-success status")
-        }
-        lines.append("")
-        return lines.joined(separator: "\n") + "\n"
     }
 
     // MARK: - Query-Retrieve Execution (dicom-qr)
@@ -8876,46 +8740,32 @@ case "dicom-study":
             }
         }()
 
-        appendConsoleOutput("DICOM Query-Retrieve\n")
-        appendConsoleOutput("====================\n")
-        appendConsoleOutput("  Server:           \(host):\(port)\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-        appendConsoleOutput("  Mode:             \(modeLabel)\n")
-        if !isReviewOnly {
-            appendConsoleOutput("  Method:           \(isCMove ? "C-MOVE" : "C-GET")\n")
-            if isCMove {
-                appendConsoleOutput("  Move Destination: \(moveDest)\n")
-            }
-        }
-        appendConsoleOutput("  Output:           \(outputDir)\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
         let transferSyntaxQR = paramValue("transfer-syntax")
         let preferredTSQR = transferSyntaxUID(for: transferSyntaxQR)
-        if !transferSyntaxQR.isEmpty {
-            if isCMove {
-                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxQR) (advisory — negotiated by destination AE)\n")
-            } else {
-                appendConsoleOutput("  Transfer Syntax:  \(transferSyntaxQR) → \(preferredTSQR ?? "unrecognised, using default") (proposed for C-STORE sub-ops)\n")
-            }
+        let rawOutputQR = paramValue("output").isEmpty ? "." : paramValue("output")
+        // Header via the SHARED NetworkConsole formatter (DICOMNetwork) — identical to
+        // the dicom-qr CLI. Filters use the same canonical order/labels as the CLI's
+        // appliedFilters(); the Output line shows the raw `--output` value.
+        var qrFilters: [(label: String, value: String)] = []
+        func addQRFilter(_ label: String, _ value: String) {
+            if !value.isEmpty { qrFilters.append((label, value)) }
         }
-
-        // Display active filters
-        var hasFilters = false
-        if !patientName.isEmpty { appendConsoleOutput("  Patient Name:     \(patientName)\n"); hasFilters = true }
-        if !patientID.isEmpty { appendConsoleOutput("  Patient ID:       \(patientID)\n"); hasFilters = true }
-        if !studyDate.isEmpty { appendConsoleOutput("  Study Date:       \(studyDate)\n"); hasFilters = true }
-        if !modality.isEmpty { appendConsoleOutput("  Modality:         \(modality)\n"); hasFilters = true }
-        if !studyUID.isEmpty { appendConsoleOutput("  Study UID:        \(studyUID)\n"); hasFilters = true }
-        if !accession.isEmpty { appendConsoleOutput("  Accession:        \(accession)\n"); hasFilters = true }
-        if !studyDesc.isEmpty { appendConsoleOutput("  Study Desc:       \(studyDesc)\n"); hasFilters = true }
-        if !hasFilters {
-            appendConsoleOutput("  Filters:          (none — returns all studies)\n")
-        }
-        appendConsoleOutput("\n")
-
-        // Step 1: Query
-        appendConsoleOutput("Phase 1: Querying studies...\n")
+        addQRFilter("Patient Name:", patientName)
+        addQRFilter("Patient ID:", patientID)
+        addQRFilter("Study Date:", studyDate)
+        addQRFilter("Modality:", modality)
+        addQRFilter("Study UID:", studyUID)
+        addQRFilter("Accession:", accession)
+        addQRFilter("Study Desc:", studyDesc)
+        appendConsoleOutput(NetworkConsole.qrHeader(
+            host: host, port: port,
+            callingAE: callingAET, calledAE: calledAET,
+            mode: modeLabel,
+            method: isCMove ? "C-MOVE" : "C-GET",
+            isReview: isReviewOnly, moveDestination: moveDest,
+            output: rawOutputQR, timeout: Int(timeout),
+            transferSyntax: transferSyntaxQR.isEmpty ? nil : transferSyntaxQR,
+            filters: qrFilters))
 
         do {
             var queryKeys = QueryKeys(level: .study)
@@ -8960,15 +8810,14 @@ case "dicom-study":
             }
 
             appendConsoleOutput("Found \(results.count) study(ies):\n\n")
+            // Study list via the SHARED NetworkConsole formatter (DICOMNetwork).
             for (index, result) in results.enumerated() {
                 let s = result.toStudyResult()
-                appendConsoleOutput("  [\(index + 1)] \(s.patientName ?? "Unknown") (ID: \(s.patientID ?? "N/A"))\n")
-                appendConsoleOutput("      Study: \(s.studyDescription ?? "No description")\n")
-                appendConsoleOutput("      Date: \(s.studyDate ?? "N/A")  Modality: \(s.modalitiesInStudy ?? "N/A")\n")
-                if let uid = s.studyInstanceUID {
-                    appendConsoleOutput("      UID: \(uid)\n")
-                }
-                appendConsoleOutput("\n")
+                appendConsoleOutput(NetworkConsole.qrStudyEntry(
+                    index: index + 1,
+                    patientName: s.patientName, patientID: s.patientID,
+                    studyDescription: s.studyDescription, studyDate: s.studyDate,
+                    modality: s.modalitiesInStudy, studyUID: s.studyInstanceUID))
             }
 
             // Review mode — done
@@ -8981,18 +8830,19 @@ case "dicom-study":
                 return
             }
 
-            // Phase 2: Retrieve
+            // Retrieve phase — all text via the SHARED NetworkConsole formatter so it is
+            // byte-identical to the dicom-qr CLI. Per-instance/progress lines are NOT
+            // printed (volatile order/timing); each study yields one ✅/❌ outcome line.
             let studiesToRetrieve = results
-            appendConsoleOutput("Phase 2: Retrieving \(studiesToRetrieve.count) study(ies)...\n\n")
+            appendConsoleOutput("Retrieving \(studiesToRetrieve.count) study(ies)...\n")
+            appendConsoleOutput("\n")
 
             var successCount = 0
             var failureCount = 0
 
             for (index, result) in studiesToRetrieve.enumerated() {
-                // Honor cancellation so a user-cancelled run stops promptly instead of
-                // marching through every remaining study. Effective now that the underlying
-                // DIMSE read (DICOMConnection.receive) honors cancellation — without it a
-                // half-dead PACS would otherwise hang this Workshop loop with no backstop.
+                // Honor cancellation so a user-cancelled run stops promptly. (Not exercised
+                // by the parity compare, which always runs to completion.)
                 if Task.isCancelled { break }
                 let s = result.toStudyResult()
                 guard let uid = s.studyInstanceUID else {
@@ -9001,7 +8851,9 @@ case "dicom-study":
                     continue
                 }
 
-                appendConsoleOutput("[\(index + 1)/\(studiesToRetrieve.count)] Retrieving: \(s.patientName ?? "Unknown") — \(uid)\n")
+                appendConsoleOutput(NetworkConsole.qrRetrieveLine(
+                    index: index + 1, total: studiesToRetrieve.count,
+                    patientName: s.patientName, studyUID: uid))
 
                 do {
                     if isCMove {
@@ -9012,8 +8864,6 @@ case "dicom-study":
                             moveDestination: moveDest,
                             timeout: timeout
                         )
-                        successCount += 1
-                        appendConsoleOutput("  ✅ Success\n\n")
                     } else {
                         let stream = try await DICOMRetrieveService.getStudy(
                             host: host, port: port,
@@ -9022,68 +8872,42 @@ case "dicom-study":
                             preferredTransferSyntaxUID: preferredTSQR,
                             timeout: timeout
                         )
-                        var fileCount = 0
                         for await event in stream {
                             switch event {
                             case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
-                                fileCount += 1
-                                do {
-                                    let savedPath = try writeReceivedDICOMFile(
-                                        data: data,
-                                        sopInstanceUID: sopInstanceUID,
-                                        sopClassUID: sopClassUID,
-                                        transferSyntaxUID: transferSyntaxUID,
-                                        studyUID: uid,
-                                        outputDir: outputDir,
-                                        hierarchical: hierarchical
-                                    )
-                                    lastRetrievedFiles.append(savedPath)
-                                    appendConsoleOutput("    Saved: \(savedPath)\n")
-                                } catch {
-                                    appendConsoleOutput("    ⚠️ Save failed: \(error.localizedDescription)\n")
-                                }
-                            case .progress(let progress):
-                                appendConsoleOutput("    Progress: \(progress.completed)/\(progress.completed + progress.remaining)\n")
-                            case .completed(_):
-                                appendConsoleOutput("    \(fileCount) file(s) saved to \(outputDir)\n")
+                                let savedPath = try writeReceivedDICOMFile(
+                                    data: data,
+                                    sopInstanceUID: sopInstanceUID,
+                                    sopClassUID: sopClassUID,
+                                    transferSyntaxUID: transferSyntaxUID,
+                                    studyUID: uid,
+                                    outputDir: outputDir,
+                                    hierarchical: hierarchical
+                                )
+                                lastRetrievedFiles.append(savedPath)
+                            case .progress, .completed:
+                                break
                             case .error(let err):
-                                appendConsoleOutput("    ⚠️ \(err.localizedDescription)\n")
+                                throw err
                             }
                         }
-                        // 0 instances on a matched study is a failure, not a success: the SCP
-                        // had no negotiated storage presentation context for this study's SOP
-                        // Class / transfer syntax, so nothing was transferred.
-                        if fileCount == 0 {
-                            failureCount += 1
-                            appendConsoleOutput("  ⚠️ Received 0 instances — no negotiated storage "
-                                + "presentation context for this study's SOP Class or transfer syntax.\n\n")
-                        } else {
-                            successCount += 1
-                            appendConsoleOutput("  ✅ Success\n\n")
-                        }
                     }
+                    successCount += 1
+                    appendConsoleOutput(NetworkConsole.qrRetrieveOutcome(success: true, error: nil))
                 } catch {
                     failureCount += 1
-                    appendConsoleOutput("  ❌ Failed: \(error.localizedDescription)\n\n")
+                    appendConsoleOutput(NetworkConsole.qrRetrieveOutcome(
+                        success: false, error: error.localizedDescription))
                 }
             }
 
-            appendConsoleOutput("Retrieval Summary\n")
-            appendConsoleOutput("=================\n")
-            appendConsoleOutput("  Total:     \(studiesToRetrieve.count)\n")
-            appendConsoleOutput("  Succeeded: \(successCount)\n")
-            appendConsoleOutput("  Failed:    \(failureCount)\n")
+            appendConsoleOutput(NetworkConsole.qrSummary(
+                total: studiesToRetrieve.count, success: successCount, failed: failureCount))
 
             if failureCount == 0 {
-                appendConsoleOutput("\n✅ All studies retrieved successfully\n")
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
-            } else if successCount == 0 {
-                appendConsoleOutput("\n❌ All retrievals failed\n")
-                consoleStatus = .error
-                service.setConsoleStatus(.error)
             } else {
-                appendConsoleOutput("\n⚠️ Partial success\n")
                 consoleStatus = .error
                 service.setConsoleStatus(.error)
             }
@@ -9154,19 +8978,23 @@ case "dicom-study":
         let spsStatus = paramValue("sps-status")
         let jsonOutput = paramValue("json") == "true"
 
-        appendConsoleOutput("DICOM Modality Worklist (C-FIND)\n")
-        appendConsoleOutput("================================\n")
-        appendConsoleOutput("  Server:           \(host):\(port)\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
-        if !date.isEmpty      { appendConsoleOutput("  Date:             \(date)\n") }
-        if !station.isEmpty   { appendConsoleOutput("  Station AET:      \(station)\n") }
-        if !patient.isEmpty   { appendConsoleOutput("  Patient Name:     \(patient)\n") }
-        if !patientID.isEmpty { appendConsoleOutput("  Patient ID:       \(patientID)\n") }
-        if !modality.isEmpty  { appendConsoleOutput("  Modality:         \(modality)\n") }
-        if !spsStatus.isEmpty { appendConsoleOutput("  SPS Status:       \(spsStatus)\n") }
-        appendConsoleOutput("\nQuerying Modality Worklist...\n\n")
+        // Header via the SHARED NetworkConsole formatter (DICOMNetwork) — the IDENTICAL
+        // builder the dicom-mwl CLI uses, so the chrome can't drift. The filter list
+        // uses the same canonical order/labels as the CLI's appliedFilters().
+        var filters: [(label: String, value: String)] = []
+        func addFilter(_ label: String, _ value: String) {
+            if !value.isEmpty { filters.append((label, value)) }
+        }
+        addFilter("Date:", date)
+        addFilter("Station AET:", station)
+        addFilter("Patient Name:", patient)
+        addFilter("Patient ID:", patientID)
+        addFilter("Modality:", modality)
+        addFilter("SPS Status:", spsStatus)
+        appendConsoleOutput(NetworkConsole.mwlQueryHeader(
+            host: host, port: port,
+            callingAE: callingAET, calledAE: calledAET,
+            timeout: Int(timeout), filters: filters))
 
         // Build C-FIND keys via the SHARED package builder (DICOMNetwork) — the same
         // mapping the dicom-mwl CLI and the CLI-parity reference use, so the in-app
@@ -9201,85 +9029,29 @@ case "dicom-study":
                 timeout: timeout
             )
 
-            if items.isEmpty {
-                appendConsoleOutput("No worklist items found matching the specified criteria.\n")
-                consoleStatus = .success
-                service.setConsoleStatus(.success)
-                addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0, output: "0 worklist items found")
-                return
-            }
-
-            appendConsoleOutput("Found \(items.count) worklist item(s):\n\n")
-
+            // Render via the SHARED NetworkConsole formatter (DICOMNetwork) — the
+            // IDENTICAL functions AND the SAME structure the dicom-mwl CLI uses: in
+            // --json mode print ONLY the JSON array (no surrounding chrome, so the
+            // first-'[' … last-']' contract holds); otherwise the formatted list. The
+            // result-limit caution is text-mode-only so the JSON array stays clean.
             if jsonOutput {
-                appendConsoleOutput("[\n")
-                for (index, item) in items.enumerated() {
-                    appendConsoleOutput("  {\n")
-                    if let v = item.patientName                      { appendConsoleOutput("    \"PatientName\": \"\(v)\",\n") }
-                    if let v = item.patientID                        { appendConsoleOutput("    \"PatientID\": \"\(v)\",\n") }
-                    if let v = item.patientBirthDate                 { appendConsoleOutput("    \"PatientBirthDate\": \"\(v)\",\n") }
-                    if let v = item.patientSex                       { appendConsoleOutput("    \"PatientSex\": \"\(v)\",\n") }
-                    if let v = item.accessionNumber                  { appendConsoleOutput("    \"AccessionNumber\": \"\(v)\",\n") }
-                    if let v = item.studyInstanceUID                 { appendConsoleOutput("    \"StudyInstanceUID\": \"\(v)\",\n") }
-                    if let v = item.referringPhysicianName           { appendConsoleOutput("    \"ReferringPhysicianName\": \"\(v)\",\n") }
-                    if let v = item.requestedProcedureID             { appendConsoleOutput("    \"RequestedProcedureID\": \"\(v)\",\n") }
-                    if let v = item.requestedProcedureDescription    { appendConsoleOutput("    \"RequestedProcedureDescription\": \"\(v)\",\n") }
-                    if let v = item.modality                         { appendConsoleOutput("    \"Modality\": \"\(v)\",\n") }
-                    if let v = item.scheduledStationAETitle          { appendConsoleOutput("    \"ScheduledStationAETitle\": \"\(v)\",\n") }
-                    if let v = item.scheduledStationName             { appendConsoleOutput("    \"ScheduledStationName\": \"\(v)\",\n") }
-                    if let v = item.scheduledProcedureStepStartDate  { appendConsoleOutput("    \"SPSStartDate\": \"\(v)\",\n") }
-                    if let v = item.scheduledProcedureStepStartTime  { appendConsoleOutput("    \"SPSStartTime\": \"\(v)\",\n") }
-                    if let v = item.scheduledProcedureStepStatus     { appendConsoleOutput("    \"SPSStatus\": \"\(v)\",\n") }
-                    if let v = item.scheduledProcedureStepID         { appendConsoleOutput("    \"SPSID\": \"\(v)\",\n") }
-                    if let v = item.scheduledProcedureStepDescription{ appendConsoleOutput("    \"SPSDescription\": \"\(v)\",\n") }
-                    if let v = item.scheduledPerformingPhysicianName { appendConsoleOutput("    \"ScheduledPhysician\": \"\(v)\"\n") }
-                    appendConsoleOutput("  }\(index < items.count - 1 ? "," : "")\n")
-                }
-                appendConsoleOutput("]\n")
+                appendConsoleOutput(NetworkConsole.mwlJSON(items: items))
+            } else if items.isEmpty {
+                appendConsoleOutput(NetworkConsole.mwlNoResults())
             } else {
-                let sep = String(repeating: "─", count: 60)
+                appendConsoleOutput(NetworkConsole.mwlFound(count: items.count))
                 for (index, item) in items.enumerated() {
-                    appendConsoleOutput("[\(index + 1)] Worklist Item\n")
-                    appendConsoleOutput("\(sep)\n")
-                    // Patient
-                    if let v = item.patientName    { appendConsoleOutput("  Patient Name:          \(v)\n") }
-                    if let v = item.patientID      { appendConsoleOutput("  Patient ID:            \(v)\n") }
-                    if let v = item.patientBirthDate { appendConsoleOutput("  Date of Birth:         \(v)\n") }
-                    if let v = item.patientSex     { appendConsoleOutput("  Sex:                   \(v)\n") }
-                    // Study
-                    if let v = item.accessionNumber { appendConsoleOutput("  Accession Number:      \(v)\n") }
-                    if let v = item.referringPhysicianName { appendConsoleOutput("  Referring Physician:   \(v)\n") }
-                    if let v = item.requestedProcedureID  { appendConsoleOutput("  Requested Proc. ID:    \(v)\n") }
-                    if let v = item.requestedProcedureDescription { appendConsoleOutput("  Requested Proc. Desc:  \(v)\n") }
-                    if let v = item.studyInstanceUID { appendConsoleOutput("  Study UID:             \(v)\n") }
-                    // SPS
-                    if let v = item.modality       { appendConsoleOutput("  Modality:              \(v)\n") }
-                    if let v = item.scheduledProcedureStepStartDate {
-                        var dateTime = v
-                        if let t = item.scheduledProcedureStepStartTime { dateTime += "  \(t)" }
-                        appendConsoleOutput("  Scheduled Date/Time:   \(dateTime)\n")
-                    }
-                    if let v = item.scheduledProcedureStepStatus    { appendConsoleOutput("  SPS Status:            \(v)\n") }
-                    if let v = item.scheduledProcedureStepID        { appendConsoleOutput("  SPS ID:                \(v)\n") }
-                    if let v = item.scheduledProcedureStepDescription { appendConsoleOutput("  SPS Description:       \(v)\n") }
-                    if let v = item.scheduledStationAETitle         { appendConsoleOutput("  Station AE Title:      \(v)\n") }
-                    if let v = item.scheduledStationName            { appendConsoleOutput("  Station Name:          \(v)\n") }
-                    if let v = item.scheduledPerformingPhysicianName { appendConsoleOutput("  Performing Physician:  \(v)\n") }
-                    appendConsoleOutput("\n")
+                    appendConsoleOutput(NetworkConsole.mwlItem(index: index + 1, item: item, verbose: false))
                 }
+                appendConsoleOutput(NetworkConsole.mwlCompleted(count: items.count))
             }
-
-            appendConsoleOutput("✅ Worklist query completed — \(items.count) item(s) returned\n")
-            // Warn about likely server-side result limit
-            if isLikelyServerLimit(items.count) {
-                appendConsoleOutput("⚠️  The result count (\(items.count)) may be capped by a server-side limit.\n")
-                appendConsoleOutput("    Check your PACS server configuration (e.g., LimitFindResults in Orthanc,\n")
-                appendConsoleOutput("    or max_worklist_results in dcm4chee) to increase or remove the limit.\n")
+            if !jsonOutput {
+                appendConsoleOutput(NetworkConsole.mwlLimitWarning(count: items.count))
             }
             consoleStatus = .success
             service.setConsoleStatus(.success)
             addToHistory(toolName: "dicom-mwl", command: commandPreview, exitCode: 0,
-                         output: "\(items.count) worklist item(s) found")
+                         output: items.isEmpty ? "0 worklist items found" : "\(items.count) worklist item(s) found")
         } catch {
             let errorDesc = (error as? DICOMNetworkError)?.description ?? error.localizedDescription
             appendConsoleOutput("❌ Worklist query failed: \(errorDesc)\n")
@@ -9568,13 +9340,6 @@ case "dicom-study":
         }
     }
 
-    /// Returns `true` when the result count looks like a server-side cap
-    /// (common defaults: 50, 100, 200, 250, 500, 1000).
-    private func isLikelyServerLimit(_ count: Int) -> Bool {
-        let commonLimits: Set<Int> = [50, 100, 200, 250, 500, 1000, 2000, 5000]
-        return commonLimits.contains(count)
-    }
-
     /// Resolves a date filter string for MWL queries.
     /// Accepts "today", "tomorrow", or YYYYMMDD format.
     private func resolvedWorklistDate(_ filter: String) -> String {
@@ -9628,16 +9393,10 @@ case "dicom-study":
         // N-CREATE attributes
         let patientName = paramValue("patient-name")
         let patientID = paramValue("patient-id")
-        let modality = paramValue("modality")
-        let procedureID = paramValue("procedure-id")
-        let procedureDesc = paramValue("procedure-desc")
         let accessionNumber = paramValue("accession-number")
-        let performingPhysician = paramValue("performing-physician")
-        let stationName = paramValue("station-name")
         // N-SET attributes
         let seriesUID = paramValue("series-uid")
         let imageUIDsRaw = paramValue("image-uids")
-        let discontinueReason = paramValue("discontinue-reason")
 
         guard let server = resolveHostPort(hostValue, explicitPort: portValue) else {
             appendConsoleOutput("Error: A valid host is required (e.g. hostname or hostname:11112).\n")
@@ -9681,37 +9440,39 @@ case "dicom-study":
             mppsStatus = isCreate ? DICOMNetwork.MPPSStatus.inProgress : DICOMNetwork.MPPSStatus.completed
         }
 
-        appendConsoleOutput("DICOM MPPS (\(isCreate ? "N-CREATE" : "N-SET"))\n")
-        appendConsoleOutput("=====================================\n")
-        appendConsoleOutput("  Operation:        \(isCreate ? "Create (N-CREATE)" : "Update (N-SET)")\n")
-        appendConsoleOutput("  Server:           \(host):\(port)\n")
-        appendConsoleOutput("  Calling AE Title: \(callingAET)\n")
-        appendConsoleOutput("  Called AE Title:  \(calledAET)\n")
-        appendConsoleOutput("  Status:           \(mppsStatus.rawValue)\n")
-        appendConsoleOutput("  Timeout:          \(Int(timeout))s\n")
+        // Header via the SHARED NetworkConsole formatter (DICOMNetwork) — the IDENTICAL
+        // builder the dicom-mpps CLI uses. Operation-specific rows are supplied as an
+        // ordered field list (the app exposes more attributes than the CLI; each side
+        // passes what it has).
+        var headerFields: [(label: String, value: String)] = []
+        func addHeaderField(_ label: String, _ value: String) {
+            if !value.isEmpty { headerFields.append((label, value)) }
+        }
         if isCreate {
-            if !studyUID.isEmpty        { appendConsoleOutput("  Study UID:        \(studyUID)\n") }
-            if !patientName.isEmpty     { appendConsoleOutput("  Patient Name:     \(patientName)\n") }
-            if !patientID.isEmpty       { appendConsoleOutput("  Patient ID:       \(patientID)\n") }
-            if !modality.isEmpty        { appendConsoleOutput("  Modality:         \(modality)\n") }
-            if !procedureID.isEmpty     { appendConsoleOutput("  Procedure ID:     \(procedureID)\n") }
-            if !procedureDesc.isEmpty   { appendConsoleOutput("  Procedure Desc:   \(procedureDesc)\n") }
-            if !accessionNumber.isEmpty { appendConsoleOutput("  Accession Number: \(accessionNumber)\n") }
-            if !performingPhysician.isEmpty { appendConsoleOutput("  Physician:        \(performingPhysician)\n") }
-            if !stationName.isEmpty     { appendConsoleOutput("  Station Name:     \(stationName)\n") }
+            addHeaderField("Study UID:", studyUID)
+            addHeaderField("Patient Name:", patientName)
+            addHeaderField("Patient ID:", patientID)
+            addHeaderField("Accession Number:", accessionNumber)
         } else {
-            if !mppsUID.isEmpty         { appendConsoleOutput("  MPPS UID:         \(mppsUID)\n") }
-            if !seriesUID.isEmpty       { appendConsoleOutput("  Series UID:       \(seriesUID)\n") }
-            if !imageUIDsRaw.isEmpty    { appendConsoleOutput("  Image UIDs:       \(imageUIDsRaw)\n") }
-            if mppsStatus == .discontinued && !discontinueReason.isEmpty {
-                appendConsoleOutput("  Discontinue Reason: \(discontinueReason)\n")
+            addHeaderField("MPPS UID:", mppsUID)
+            if !seriesUID.isEmpty {
+                let imageCount = imageUIDsRaw
+                    .split(separator: ",")
+                    .map { $0.trimmingCharacters(in: .whitespaces) }
+                    .filter { !$0.isEmpty }.count
+                addHeaderField("Referenced Images:", "\(imageCount) instance(s)")
             }
         }
-        appendConsoleOutput("\n")
+        appendConsoleOutput(NetworkConsole.mppsHeader(
+            isCreate: isCreate,
+            host: host, port: port,
+            callingAE: callingAET, calledAE: calledAET,
+            status: mppsStatus.rawValue, timeout: Int(timeout),
+            fields: headerFields))
 
         do {
             if isCreate {
-                appendConsoleOutput("Creating MPPS instance (N-CREATE)...\n")
+                appendConsoleOutput(NetworkConsole.mppsProgress(isCreate: true))
                 let createdUID = try await DICOMMPPSService.create(
                     host: host,
                     port: port,
@@ -9722,16 +9483,12 @@ case "dicom-study":
                     timeout: timeout,
                     patientName: patientName.isEmpty ? nil : patientName,
                     patientID: patientID.isEmpty ? nil : patientID,
-                    modality: modality.isEmpty ? nil : modality,
-                    procedureStepID: procedureID.isEmpty ? nil : procedureID,
-                    procedureStepDescription: procedureDesc.isEmpty ? nil : procedureDesc,
-                    performingPhysicianName: performingPhysician.isEmpty ? nil : performingPhysician,
-                    performedStationName: stationName.isEmpty ? nil : stationName,
                     accessionNumber: accessionNumber.isEmpty ? nil : accessionNumber
                 )
-                appendConsoleOutput("✅ MPPS instance created\n")
-                appendConsoleOutput("  MPPS Instance UID: \(createdUID)\n\n")
-                appendConsoleOutput("To complete or discontinue this procedure step:\n")
+                // Result via the SHARED formatter (preserves the "MPPS Instance UID:"
+                // marker). The UI-specific next-step hint stays local.
+                appendConsoleOutput(NetworkConsole.mppsCreateResult(uid: createdUID))
+                appendConsoleOutput("\nTo complete or discontinue this procedure step:\n")
                 appendConsoleOutput("  Set Operation to 'update', paste the MPPS UID above,\n")
                 appendConsoleOutput("  and set Status to COMPLETED or DISCONTINUED.\n")
                 consoleStatus = .success
@@ -9739,7 +9496,7 @@ case "dicom-study":
                 addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 0,
                              output: "Created MPPS: \(createdUID)")
             } else {
-                appendConsoleOutput("Updating MPPS instance (N-SET) to \(mppsStatus.rawValue)...\n")
+                appendConsoleOutput(NetworkConsole.mppsProgress(isCreate: false))
                 // Build referenced SOPs for the update
                 var referencedSOPs: [(studyUID: String, seriesUID: String, sopInstanceUID: String)] = []
                 if !seriesUID.isEmpty && !imageUIDsRaw.isEmpty {
@@ -9759,17 +9516,14 @@ case "dicom-study":
                     referencedSOPs: referencedSOPs,
                     studyInstanceUID: studyUID.isEmpty ? nil : studyUID,
                     accessionNumber: accessionNumber.isEmpty ? nil : accessionNumber,
-                    scheduledProcedureStepID: procedureID.isEmpty ? nil : procedureID,
-                    procedureStepID: procedureID.isEmpty ? nil : procedureID,
                     timeout: timeout
                 )
-                appendConsoleOutput("✅ MPPS instance updated to \(mppsStatus.rawValue)\n")
-                if !referencedSOPs.isEmpty {
-                    appendConsoleOutput("  Referenced Images: \(referencedSOPs.count)\n")
-                }
-                if mppsStatus == .discontinued && !discontinueReason.isEmpty {
-                    appendConsoleOutput("  Discontinuation Reason: \(discontinueReason)\n")
-                }
+                // Result via the SHARED formatter (preserves the "New Status:" /
+                // "Referenced Images:" markers).
+                appendConsoleOutput(NetworkConsole.mppsUpdateResult(
+                    uid: mppsUID,
+                    status: mppsStatus.rawValue,
+                    referencedImages: referencedSOPs.count))
                 consoleStatus = .success
                 service.setConsoleStatus(.success)
                 addToHistory(toolName: "dicom-mpps", command: commandPreview, exitCode: 0,

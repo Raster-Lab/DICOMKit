@@ -620,7 +620,21 @@ public enum CLIParityNetworkReference {
             if !filters.studyUID.isEmpty         { q = q.studyInstanceUID(filters.studyUID) }
             if !filters.seriesUID.isEmpty        { q = q.seriesInstanceUID(filters.seriesUID) }
             if !filters.accession.isEmpty        { q = q.accessionNumber(filters.accession) }
-            if !filters.modality.isEmpty         { q = q.modality(filters.modality) }
+            if !filters.modality.isEmpty {
+                // Match the level-aware key the app (CLIWorkshopViewModel.executeDicomQIDO)
+                // and the dicom-wado CLI use (PS3.18 §10.6):
+                //   • series level           → Modality (0008,0060)
+                //   • study / instance level → Modalities in Study (0008,0061)
+                // Sending Modality (0008,0060) at study level is not a valid study
+                // matching key, so the server ignores it and returns ALL studies —
+                // which made this reference (count 100, unfiltered) drift from the
+                // correctly-filtered CLI.
+                if level == "series" {
+                    q = q.modality(filters.modality)
+                } else {
+                    q = q.modalitiesInStudy(filters.modality)
+                }
+            }
             if !filters.studyDescription.isEmpty { q = q.studyDescription(filters.studyDescription) }
 
             let json: String
@@ -986,22 +1000,13 @@ public enum CLIParityNetworkReference {
                                      scheduledStation: String = "") async -> WADOUPSSemantics {
         do {
             let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
-            // Mirror the CLI's --filter-state / --scheduled-station parsing so both sides
-            // issue the IDENTICAL UPS-RS query and the matched workitem set is comparable.
-            // An empty filter state means "no state filter" (valid); a NON-empty invalid one
-            // makes the CLI throw (non-zero exit → search fails), so the reference must fail
-            // too rather than silently issue an unfiltered query — keeping parity for any input.
-            var query = UPSQuery()
-            if !filterState.isEmpty {
-                switch filterState.uppercased() {
-                case "SCHEDULED":                 query = query.state(.scheduled)
-                case "IN_PROGRESS", "INPROGRESS": query = query.state(.inProgress)
-                case "COMPLETED":                 query = query.state(.completed)
-                case "CANCELED":                  query = query.state(.canceled)
-                default:                          return CLIParityWADOComparator.searchRecord(success: false, count: 0, uids: [])  // CLI throws
-                }
-            }
-            if !scheduledStation.isEmpty { query = query.scheduledStationName(scheduledStation) }
+            // Build the query via the SHARED UPSQuery.workitemSearch builder — the SAME
+            // single source of truth the dicom-wado ups CLI and the CLI Workshop's in-app
+            // search call, so all three issue an IDENTICAL UPS-RS query and the matched
+            // workitem set is comparable. A non-empty invalid --filter-state makes the
+            // builder throw (mirroring the CLI's non-zero exit), caught below as a failed
+            // search rather than a silently unfiltered query — keeping parity for any input.
+            let query = try UPSQuery.workitemSearch(filterState: filterState, scheduledStation: scheduledStation)
             let r = try await client.searchWorkitems(query: query)
             return CLIParityWADOComparator.searchRecord(success: true, count: r.workitems.count,
                                                         uids: r.workitems.map { $0.workitemUID })

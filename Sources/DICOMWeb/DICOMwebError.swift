@@ -196,8 +196,12 @@ extension DICOMwebError: LocalizedError {
             return "Gateway Timeout\(message.map { ": \($0)" } ?? "")"
         case .httpError(let statusCode, let message):
             return "HTTP Error \(statusCode)\(message.map { ": \($0)" } ?? "")"
-        case .connectionFailed:
-            return "Connection failed"
+        case .connectionFailed(let underlying):
+            // Surface the underlying URLError reason instead of a bare "Connection
+            // failed". This is what reveals an App Transport Security block of cleartext
+            // http:// (URLError -1022) — otherwise the real cause is hidden and operators
+            // chase phantom UID/endpoint problems for a request that is actually correct.
+            return "Connection failed" + (underlying.map { ": \($0.localizedDescription)" } ?? "")
         case .timeout(let operation):
             return "Timeout\(operation.map { " during \($0)" } ?? "")"
         case .dnsLookupFailed(let host):

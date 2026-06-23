@@ -402,6 +402,17 @@ public enum CLIParityEngine {
             // The OUTPUT2 secondary-output scratch path (e.g. dicom-pdf --extract's
             // "Extracted: …/output2.dat") differs per side — canonicalize it.
             line = line.replacingOccurrences(of: "/[^\\s\"]*output2\\.dat", with: "<output2>", options: .regularExpression)
+            // Volatile network timing — the in-app run and the CLI run are two SEPARATE
+            // operations against the PACS, so per-op round-trip times, durations, and
+            // throughput legitimately differ by wall-clock and must not show as diffs
+            // (same philosophy as the timestamp/UID masks). Byte COUNTS are deterministic
+            // (identical files/datasets on both sides) and are deliberately NOT masked:
+            // a "/s" throughput is masked, a plain "1.23 MB" size is left intact. The
+            // seconds form requires a decimal point so an integer "Timeout: 30s" (which
+            // is identical on both sides anyway) is left untouched.
+            line = line.replacingOccurrences(of: "[0-9]+(\\.[0-9]+)?\\s?(ms|µs|us)\\b", with: "<dur>", options: .regularExpression)
+            line = line.replacingOccurrences(of: "[0-9]+(\\.[0-9]+)?\\s?[KMGT]?B/s", with: "<rate>", options: .regularExpression)
+            line = line.replacingOccurrences(of: "[0-9]+\\.[0-9]+\\s?s\\b", with: "<dur>", options: .regularExpression)
             // Drop the command-echo line Studio prepends.
             if line.hasPrefix("$ ") { continue }
             // Canonicalize any absolute path ending in a fixture basename. Match the

@@ -105,7 +105,7 @@ extension DICOMMPPSCommand {
         @Option(name: .long, help: "Patient ID (0010,0020)")
         var patientId: String?
         
-        @Option(name: .long, help: "Initial status (default: IN PROGRESS)")
+        @Option(name: .long, help: "Initial status — must be IN PROGRESS; N-CREATE always starts the step (default: IN PROGRESS)")
         var status: String = "IN PROGRESS"
         
         @Option(name: .long, help: "Scheduled Procedure Step ID from the MWL item — links this MPPS to the worklist entry so the server can transition its status (0040,0009)")
@@ -123,27 +123,38 @@ extension DICOMMPPSCommand {
         mutating func run() async throws {
             #if canImport(Network)
             let serverInfo = DICOMMPPSCommand.resolveHostPort(host: host, port: port)
-            
+
             // Parse status
             let mppsStatus = try DICOMMPPSCommand.parseStatus(status)
-            
-            if verbose {
-                fprintln("DICOM MPPS Tool v1.0.0")
-                fprintln("======================")
-                fprintln("Operation: Create (N-CREATE)")
-                fprintln("Server: \(serverInfo.host):\(serverInfo.port)")
-                fprintln("Calling AE: \(aet)")
-                fprintln("Called AE: \(calledAet)")
-                fprintln("Study UID: \(studyUid)")
-                fprintln("Status: \(mppsStatus.rawValue)")
-                if let patientName { fprintln("Patient Name: \(patientName)") }
-                if let patientId { fprintln("Patient ID: \(patientId)") }
-                if let spsId { fprintln("SPS ID: \(spsId)") }
-                if let accessionNumber { fprintln("Accession #: \(accessionNumber)") }
-                fprintln("Timeout: \(timeout)s")
-                fprintln("")
+
+            // N-CREATE always STARTS the performed procedure step IN PROGRESS; the
+            // terminal states (COMPLETED / DISCONTINUED) are reached only via `update`
+            // (N-SET). Reject anything else so a step can never be minted already in a
+            // terminal state — mirroring the Update subcommand's status guard.
+            guard mppsStatus == .inProgress else {
+                throw ValidationError("Create status must be IN PROGRESS — use 'dicom-mpps update --status COMPLETED|DISCONTINUED' to transition the step")
             }
-            
+
+            // Verbose header via the SHARED NetworkConsole formatter (DICOMNetwork) to
+            // STDOUT — the IDENTICAL builder the Studio MPPS panel uses, so the chrome
+            // can't drift. The order matches the app (the parity harness diffs the
+            // binary's stdout+stderr against the app's in-process console).
+            if verbose {
+                var fields: [(label: String, value: String)] = [("Study UID:", studyUid)]
+                if let patientName { fields.append(("Patient Name:", patientName)) }
+                if let patientId { fields.append(("Patient ID:", patientId)) }
+                if let spsId { fields.append(("SPS ID:", spsId)) }
+                if let accessionNumber { fields.append(("Accession Number:", accessionNumber)) }
+                print(NetworkConsole.mppsHeader(
+                    isCreate: true,
+                    host: serverInfo.host, port: serverInfo.port,
+                    callingAE: aet, calledAE: calledAet,
+                    status: mppsStatus.rawValue, timeout: timeout,
+                    fields: fields), terminator: "")
+            }
+
+            print(NetworkConsole.mppsProgress(isCreate: true), terminator: "")
+
             // Create MPPS
             let mppsInstanceUID = try await DICOMMPPSService.create(
                 host: serverInfo.host,
@@ -158,13 +169,16 @@ extension DICOMMPPSCommand {
                 accessionNumber: accessionNumber,
                 scheduledProcedureStepID: spsId
             )
-            
-            fprintln("✓ MPPS instance created successfully")
-            fprintln("  MPPS Instance UID: \(mppsInstanceUID)")
-            fprintln("")
-            fprintln("Use this UID to update the MPPS when the procedure completes:")
-            fprintln("  dicom-mpps update \(serverInfo.host) --port \(serverInfo.port) \\")
-            fprintln("    --aet \(aet) --mpps-uid \(mppsInstanceUID) --status COMPLETED")
+
+            // Result via the SHARED formatter — preserves the "MPPS Instance UID:" marker
+            // the parity comparator threads into the subsequent N-SET. The CLI-specific
+            // next-step hint (the literal update command) stays local: it's legitimately
+            // different from the app's UI instruction.
+            print(NetworkConsole.mppsCreateResult(uid: mppsInstanceUID), terminator: "")
+            print("")
+            print("Use this UID to update the MPPS when the procedure completes:")
+            print("  dicom-mpps update \(serverInfo.host) --port \(serverInfo.port) \\")
+            print("    --aet \(aet) --mpps-uid \(mppsInstanceUID) --status COMPLETED")
             
             #else
             throw ValidationError("Network functionality is not available on this platform")
@@ -227,22 +241,20 @@ extension DICOMMPPSCommand {
                 throw ValidationError("Update status must be COMPLETED or DISCONTINUED")
             }
             
+            // Verbose header via the SHARED NetworkConsole formatter (DICOMNetwork).
             if verbose {
-                fprintln("DICOM MPPS Tool v1.0.0")
-                fprintln("======================")
-                fprintln("Operation: Update (N-SET)")
-                fprintln("Server: \(serverInfo.host):\(serverInfo.port)")
-                fprintln("Calling AE: \(aet)")
-                fprintln("Called AE: \(calledAet)")
-                fprintln("MPPS UID: \(mppsUid)")
-                fprintln("Status: \(mppsStatus.rawValue)")
-                if let study = studyUid, let series = seriesUid {
-                    fprintln("Referenced Images: \(imageUid.count) instance(s)")
+                var fields: [(label: String, value: String)] = [("MPPS UID:", mppsUid)]
+                if studyUid != nil, seriesUid != nil {
+                    fields.append(("Referenced Images:", "\(imageUid.count) instance(s)"))
                 }
-                fprintln("Timeout: \(timeout)s")
-                fprintln("")
+                print(NetworkConsole.mppsHeader(
+                    isCreate: false,
+                    host: serverInfo.host, port: serverInfo.port,
+                    callingAE: aet, calledAE: calledAet,
+                    status: mppsStatus.rawValue, timeout: timeout,
+                    fields: fields), terminator: "")
             }
-            
+
             // Build referenced SOPs list
             var referencedSOPs: [(studyUID: String, seriesUID: String, sopInstanceUID: String)] = []
             if let study = studyUid, let series = seriesUid {
@@ -250,7 +262,9 @@ extension DICOMMPPSCommand {
                     referencedSOPs.append((study, series, imageUID))
                 }
             }
-            
+
+            print(NetworkConsole.mppsProgress(isCreate: false), terminator: "")
+
             // Update MPPS
             try await DICOMMPPSService.update(
                 host: serverInfo.host,
@@ -262,13 +276,13 @@ extension DICOMMPPSCommand {
                 referencedSOPs: referencedSOPs,
                 timeout: TimeInterval(timeout)
             )
-            
-            fprintln("✓ MPPS instance updated successfully")
-            fprintln("  MPPS Instance UID: \(mppsUid)")
-            fprintln("  New Status: \(mppsStatus.rawValue)")
-            if !referencedSOPs.isEmpty {
-                fprintln("  Referenced Images: \(referencedSOPs.count)")
-            }
+
+            // Result via the SHARED formatter — preserves the "New Status:" /
+            // "Referenced Images:" markers the parity comparator parses.
+            print(NetworkConsole.mppsUpdateResult(
+                uid: mppsUid,
+                status: mppsStatus.rawValue,
+                referencedImages: referencedSOPs.count), terminator: "")
             
             #else
             throw ValidationError("Network functionality is not available on this platform")
@@ -277,7 +291,3 @@ extension DICOMMPPSCommand {
     }
 }
 
-/// Prints to stderr
-private func fprintln(_ message: String) {
-    FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
-}
