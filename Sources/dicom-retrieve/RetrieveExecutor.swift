@@ -19,10 +19,6 @@ struct RetrieveExecutor {
     
     /// Retrieves a study from PACS
     func retrieveStudy(studyUID: String, method: RetrievalMethod) async throws {
-        if verbose {
-            fprintln("Retrieving study: \(studyUID)")
-        }
-        
         switch method {
         case .cMove:
             guard let dest = moveDestination else {
@@ -36,10 +32,6 @@ struct RetrieveExecutor {
     
     /// Retrieves a series from PACS
     func retrieveSeries(studyUID: String, seriesUID: String, method: RetrievalMethod) async throws {
-        if verbose {
-            fprintln("Retrieving series: \(seriesUID) from study: \(studyUID)")
-        }
-        
         switch method {
         case .cMove:
             guard let dest = moveDestination else {
@@ -53,10 +45,6 @@ struct RetrieveExecutor {
     
     /// Retrieves an instance from PACS
     func retrieveInstance(studyUID: String, seriesUID: String, sopUID: String, method: RetrievalMethod) async throws {
-        if verbose {
-            fprintln("Retrieving instance: \(sopUID)")
-        }
-        
         switch method {
         case .cMove:
             guard let dest = moveDestination else {
@@ -117,12 +105,11 @@ struct RetrieveExecutor {
     // MARK: - C-MOVE Implementation
     
     private func performCMove(studyUID: String, seriesUID: String?, sopUID: String?, destination: String) async throws {
-        let onProgress: @Sendable (RetrieveProgress) -> Void = { progress in
-            if self.verbose {
-                fprintln("  Progress: \(progress.completed)/\(progress.total) completed, \(progress.failed) failed, \(progress.remaining) remaining")
-            }
-        }
-        
+        // Intermediate progress is suppressed: the count/cadence of C-MOVE progress
+        // messages depends on SCP pacing and differs between two associations, so it
+        // can't be compared. Only the deterministic final result is rendered.
+        let onProgress: @Sendable (RetrieveProgress) -> Void = { _ in }
+
         let result: RetrieveResult
         
         if let sopUID = sopUID, let seriesUID = seriesUID {
@@ -166,18 +153,14 @@ struct RetrieveExecutor {
             )
         }
         
-        if verbose || !result.isSuccess {
-            fprintln("\nC-MOVE Result:")
-            fprintln("  Status: \(result.status)")
-            fprintln("  Completed: \(result.progress.completed)")
-            fprintln("  Failed: \(result.progress.failed)")
-            fprintln("  Warnings: \(result.progress.warning)")
-        }
-        
-        if result.hasWarning {
-            fprintln("Warning: \(result.status)")
-        }
-        
+        // C-MOVE result via the SHARED formatter, printed to STDOUT (always).
+        print(NetworkConsole.cMoveResult(
+            status: "\(result.status)",
+            completed: result.progress.completed,
+            failed: result.progress.failed,
+            warning: result.progress.warning,
+            isSuccess: result.isSuccess), terminator: "")
+
         if !result.isSuccess {
             throw RetrieveError.retrievalFailed(status: result.status)
         }
@@ -227,17 +210,19 @@ struct RetrieveExecutor {
         }
         
         var filesReceived = 0
-        var totalBytes = 0
-        
+        var finalResult: RetrieveResult?
+
         for await event in stream {
             switch event {
-            case .progress(let progress):
-                if verbose {
-                    fprintln("  Progress: \(progress.completed)/\(progress.total) completed, \(progress.failed) failed, \(progress.remaining) remaining")
-                }
-                
+            case .progress:
+                // Suppressed: progress cadence is SCP-dependent and differs run-to-run.
+                break
+
             case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
-                // Save received instance to disk as a proper Part 10 file
+                // Save received instance to disk as a proper Part 10 file. Per-instance
+                // lines are NOT printed: the SCP's send order is not guaranteed stable
+                // across associations, so they would diff positionally. Only the
+                // deterministic received count is reported in the summary.
                 try saveInstance(
                     sopInstanceUID: sopInstanceUID,
                     sopClassUID: sopClassUID,
@@ -246,43 +231,21 @@ struct RetrieveExecutor {
                     studyUID: studyUID,
                     seriesUID: seriesUID
                 )
-                
                 filesReceived += 1
-                totalBytes += data.count
-                
-                if verbose {
-                    fprintln("  Received instance: \(sopInstanceUID) (\(formatBytes(data.count)))")
-                }
-                
+
             case .completed(let result):
-                if verbose || result.hasWarning {
-                    fprintln("\nC-GET Completed:")
-                    fprintln("  Files received: \(filesReceived)")
-                    fprintln("  Total size: \(formatBytes(totalBytes))")
-                    fprintln("  Status: \(result.status)")
-                    fprintln("  Completed: \(result.progress.completed)")
-                    fprintln("  Failed: \(result.progress.failed)")
-                }
-                
-                if result.hasWarning {
-                    fprintln("Warning: \(result.status)")
-                }
-                
-                if !result.isSuccess {
-                    throw RetrieveError.retrievalFailed(status: result.status)
-                }
-                
+                finalResult = result
+
             case .error(let error):
                 throw error
             }
         }
 
-        // A C-GET that completes "successfully" but transfers nothing almost always
-        // means the SCP had no negotiated presentation context for the study's SOP
-        // Class / transfer syntax — surface it instead of reporting a silent success.
-        if filesReceived == 0 {
-            fprintln("⚠️  C-GET received 0 instances. The SCP matched the request but sent no images — "
-                + "likely no storage presentation context was negotiated for this study's SOP Class or transfer syntax.")
+        // C-GET summary via the SHARED formatter (handles the 0-instances warning).
+        print(NetworkConsole.cGetSummary(received: filesReceived), terminator: "")
+
+        if let result = finalResult, !result.isSuccess {
+            throw RetrieveError.retrievalFailed(status: result.status)
         }
     }
 
@@ -323,19 +286,6 @@ struct RetrieveExecutor {
         try part10.write(to: URL(fileURLWithPath: filepath))
     }
     
-    private func formatBytes(_ bytes: Int) -> String {
-        let kb = Double(bytes) / 1024.0
-        if kb < 1024.0 {
-            return String(format: "%.1f KB", kb)
-        }
-        let mb = kb / 1024.0
-        if mb < 1024.0 {
-            return String(format: "%.1f MB", mb)
-        }
-        let gb = mb / 1024.0
-        return String(format: "%.1f GB", gb)
-    }
-
     // MARK: - Part 10 file wrapper
 
     /// Wraps raw C-GET/C-STORE dataset bytes in a DICOM Part 10 container.

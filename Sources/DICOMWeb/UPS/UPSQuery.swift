@@ -570,3 +570,51 @@ extension UPSQuery {
         return query
     }
 }
+
+// MARK: - Worklist Search Builder (shared input mapping)
+
+/// Error thrown by `UPSQuery.workitemSearch` for an unrecognised procedure-step state.
+public enum UPSSearchFilterError: Error, CustomStringConvertible, Sendable, Equatable {
+    case invalidState(String)
+
+    public var description: String {
+        switch self {
+        case .invalidState(let value):
+            return "Invalid state: \(value). Valid states: SCHEDULED, IN_PROGRESS, COMPLETED, CANCELED"
+        }
+    }
+}
+
+extension UPSQuery {
+
+    /// Builds a `dicom-wado ups --search` worklist query from the tool's two search-filter
+    /// flags. This is the SINGLE source of truth for UPS-RS search input: the CLI, the CLI
+    /// Workshop's in-app search, and the CLI-parity reference all build their query here, so
+    /// the three cannot drift. It maps ONLY the two real CLI search flags
+    /// (`--filter-state` / `--scheduled-station`) and adds no extra filters, no `limit`, and
+    /// no `includefield` — the CLI sets none, so neither does the app.
+    ///
+    /// - Parameters:
+    ///   - filterState: `--filter-state` value (empty/nil means no state filter). A non-empty
+    ///     unrecognised value throws `UPSSearchFilterError.invalidState`, mirroring the CLI,
+    ///     which rejects an invalid `--filter-state` (non-zero exit) rather than silently
+    ///     issuing an unfiltered query.
+    ///   - scheduledStation: `--scheduled-station` value (empty/nil means no station filter).
+    /// - Returns: The configured query.
+    public static func workitemSearch(filterState: String?, scheduledStation: String?) throws -> UPSQuery {
+        var query = UPSQuery()
+        if let filterState = filterState, !filterState.isEmpty {
+            switch filterState.uppercased() {
+            case "SCHEDULED":                 query = query.state(.scheduled)
+            case "IN_PROGRESS", "INPROGRESS": query = query.state(.inProgress)
+            case "COMPLETED":                 query = query.state(.completed)
+            case "CANCELED":                  query = query.state(.canceled)
+            default:                          throw UPSSearchFilterError.invalidState(filterState)
+            }
+        }
+        if let scheduledStation = scheduledStation, !scheduledStation.isEmpty {
+            query = query.scheduledStationName(scheduledStation)
+        }
+        return query
+    }
+}

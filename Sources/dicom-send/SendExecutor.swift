@@ -27,54 +27,52 @@ struct SendExecutor {
         }
     }
     
-    /// Sends multiple DICOM files to the PACS server
+    /// Sends multiple DICOM files to the PACS server. All progress/summary text is
+    /// rendered through the SHARED NetworkConsole formatter (DICOMNetwork) and printed
+    /// to STDOUT, so the output is byte-identical to DICOMStudio's in-process send.
     func sendFiles(_ filePaths: [String]) async throws {
-        let reporter = ProgressReporter(totalFiles: filePaths.count, verbose: verbose)
-        
         var successCount = 0
         var failureCount = 0
         var totalBytesTransferred = 0
-        
+        let startTime = Date()
+
         for (index, filePath) in filePaths.enumerated() {
             let fileNumber = index + 1
-            
+            let filename = (filePath as NSString).lastPathComponent
+
             do {
                 // Read file data
                 let fileURL = URL(fileURLWithPath: filePath)
                 let fileData = try Data(contentsOf: fileURL)
-                
-                reporter.startFile(fileNumber, path: filePath, size: fileData.count)
-                
+
+                print(NetworkConsole.sendFilePrefix(
+                    index: fileNumber, total: filePaths.count,
+                    filename: filename, size: fileData.count), terminator: "")
+                fflush(stdout)
+
                 // Send with retry logic
                 let result = try await sendFileWithRetry(fileData: fileData, filePath: filePath)
-                
+
                 totalBytesTransferred += fileData.count
                 successCount += 1
-                
-                reporter.completeFile(
-                    fileNumber,
-                    success: true,
-                    sopInstanceUID: result.affectedSOPInstanceUID,
-                    roundTripTime: result.roundTripTime,
-                    totalBytes: totalBytesTransferred
-                )
-                
+
+                print(NetworkConsole.sendFileResultSuffix(
+                    success: true, rtt: result.roundTripTime, error: nil), terminator: "")
+
             } catch {
                 failureCount += 1
-                reporter.completeFile(
-                    fileNumber,
-                    success: false,
-                    error: error,
-                    totalBytes: totalBytesTransferred
-                )
-                
+                print(NetworkConsole.sendFileResultSuffix(
+                    success: false, rtt: 0, error: error.localizedDescription), terminator: "")
                 // Continue with next file
             }
         }
-        
+
         // Print final summary
-        reporter.printSummary(succeeded: successCount, failed: failureCount, totalBytes: totalBytesTransferred)
-        
+        print(NetworkConsole.sendSummary(
+            total: filePaths.count, succeeded: successCount, failed: failureCount,
+            bytes: totalBytesTransferred, duration: Date().timeIntervalSince(startTime)),
+            terminator: "")
+
         if failureCount > 0 {
             throw SendError.partialFailure(succeeded: successCount, failed: failureCount)
         }
@@ -91,9 +89,9 @@ struct SendExecutor {
                 lastError = error
                 
                 if attempt < retryAttempts {
-                    if verbose {
-                        fprintln("  Retry attempt \(attempt + 1)/\(retryAttempts)...")
-                    }
+                    // No per-attempt chatter: retries are failure-driven and
+                    // non-deterministic, so any retry line would diverge between the
+                    // CLI and in-app runs. Only the final outcome line is emitted.
                     // Exponential backoff: 1s, 2s, 4s, 8s...
                     let delay = Double(1 << attempt)
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
@@ -144,11 +142,6 @@ enum SendError: LocalizedError {
             return "Send completed with \(succeeded) succeeded and \(failed) failed"
         }
     }
-}
-
-/// Prints to stderr
-private func fprintln(_ message: String) {
-    FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
 
 #endif

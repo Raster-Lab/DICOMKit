@@ -46,6 +46,11 @@ struct RetrieveCommand: AsyncParsableCommand {
             
             By default uses WADO-RS (RESTful paths). Use --uri for legacy WADO-URI servers
             (e.g. dcm4chee2) that expect query-parameter URLs.
+
+            WADO-URI endpoint: dcm4chee-arc serves WADO-URI from its `/wado` servlet, not the
+            RESTful `/rs` endpoint. If a `/rs` base URL is supplied with --uri it is rewritten
+            to `/wado` automatically (so `…/aets/AET/rs` becomes `…/aets/AET/wado`); dcm4chee2's
+            root `/wado` and other paths are used as-is.
             
             WADO-RS examples:
               dicom-wado retrieve https://server/dicom-web --study 1.2.3.4.5 -o study/
@@ -555,7 +560,20 @@ struct QueryCommand: AsyncParsableCommand {
             query = query.accessionNumber(accessionNumber)
         }
         if let modality = modality {
-            query = query.modality(modality)
+            // Use the correct DICOM matching key per query level (PS3.18 §10.6),
+            // mirroring the app's in-process path (CLIWorkshopViewModel.executeDicomQIDO)
+            // and the sibling dicom-query / dicom-qr tools:
+            //   • series level          → Modality (0008,0060)
+            //   • study / instance level → Modalities in Study (0008,0061)
+            // Sending Modality (0008,0060) at the study level is NOT a valid study-level
+            // matching key, so servers (e.g. dcm4chee) ignore it and return ALL studies
+            // unfiltered — the bug this fixes.
+            switch level {
+            case .series:
+                query = query.modality(modality)
+            case .study, .instance:
+                query = query.modalitiesInStudy(modality)
+            }
         }
         if let studyDescription = studyDescription {
             query = query.studyDescription(studyDescription)
@@ -950,43 +968,28 @@ struct UPSCommand: AsyncParsableCommand {
     }
     
     private func searchWorkitems(client: DICOMwebClient) async throws {
-        // Build query using fluent API
-        var query = UPSQuery()
-        
-        if let filterStateStr = filterState {
-            // Parse state string to UPSState
-            switch filterStateStr.uppercased() {
-            case "SCHEDULED":
-                query = query.state(.scheduled)
-            case "IN_PROGRESS", "INPROGRESS":
-                query = query.state(.inProgress)
-            case "COMPLETED":
-                query = query.state(.completed)
-            case "CANCELED":
-                query = query.state(.canceled)
-            default:
-                throw ValidationError("Invalid state: \(filterStateStr). Valid states: SCHEDULED, IN_PROGRESS, COMPLETED, CANCELED")
-            }
+        // Build query via the SHARED UPSQuery.workitemSearch builder (DICOMWeb) — the
+        // single source of truth the CLI Workshop's in-app search and the CLI-parity
+        // reference also call, so the three issue an IDENTICAL UPS-RS query. Maps only
+        // the two real search flags (--filter-state / --scheduled-station).
+        let query: UPSQuery
+        do {
+            query = try UPSQuery.workitemSearch(filterState: filterState, scheduledStation: scheduledStation)
+        } catch let error as UPSSearchFilterError {
+            throw ValidationError(error.description)
         }
-        if let scheduledStation = scheduledStation {
-            query = query.scheduledStationName(scheduledStation)
-        }
-        
+
         if verbose {
             fprintln("Searching worklist items...")
         }
-        
+
         let results = try await client.searchWorkitems(query: query)
-        
-        switch format {
-        case .table:
-            print(formatWorkitemTable(results.workitems))
-        case .json:
-            print(formatWorkitemJSON(results.workitems))
-        case .csv:
-            print(formatWorkitemCSV(results.workitems))
-        }
-        
+
+        // Render via the SHARED UPSResultFormatter — the single workitem-search renderer
+        // the CLI Workshop also calls, so the CLI and app output pipelines cannot drift
+        // (mirrors QIDOResultFormatter for the query subcommand).
+        print(UPSResultFormatter().format(results.workitems, format: format.asUPS))
+
         if verbose {
             fprintln("\nFound \(results.workitems.count) worklist item(s)")
         }
@@ -1313,74 +1316,6 @@ struct UPSCommand: AsyncParsableCommand {
         }
     }
     
-    private func formatWorkitemTable(_ workitems: [WorkitemResult]) -> String {
-        // Compute dynamic column width for UID based on longest value
-        let maxUIDLength = workitems.reduce(12) { max($0, $1.workitemUID.count) }  // min 12 for header
-        let uidWidth = min(maxUIDLength, 70)  // cap at 70 to avoid excessive width
-        let totalWidth = uidWidth + 1 + 20 + 1 + 30 + 1 + 20
-
-        var output = ""
-        output += String(repeating: "=", count: totalWidth) + "\n"
-        output += pad("Worklist UID", uidWidth) + " " + pad("State", 20) + " " + pad("Label", 30) + " " + pad("Patient", 20) + "\n"
-        output += String(repeating: "=", count: totalWidth) + "\n"
-        
-        for item in workitems {
-            let uid = truncate(item.workitemUID, maxLength: uidWidth)
-            let state = item.state?.rawValue ?? ""
-            let label = truncate(item.procedureStepLabel ?? "", maxLength: 30)
-            let patient = truncate(item.patientName ?? "", maxLength: 20)
-            
-            output += pad(uid, uidWidth) + " " + pad(state, 20) + " " + pad(label, 30) + " " + pad(patient, 20) + "\n"
-        }
-        
-        output += String(repeating: "=", count: totalWidth) + "\n"
-        return output
-    }
-    
-    private func formatWorkitemJSON(_ workitems: [WorkitemResult]) -> String {
-        var items: [[String: Any]] = []
-        for item in workitems {
-            var dict: [String: Any] = ["workitemUID": item.workitemUID]
-            if let s = item.state { dict["state"] = s.rawValue }
-            if let p = item.priority { dict["priority"] = p.rawValue }
-            if let pp = item.progressPercentage { dict["progressPercentage"] = pp }
-            if let pd = item.progressDescription { dict["progressDescription"] = pd }
-            if let sd = item.scheduledStartDateTime { dict["scheduledStartDateTime"] = sd }
-            if let ec = item.expectedCompletionDateTime { dict["expectedCompletionDateTime"] = ec }
-            if let md = item.modificationDateTime { dict["modificationDateTime"] = md }
-            if let l = item.procedureStepLabel { dict["procedureStepLabel"] = l }
-            if let wl = item.worklistLabel { dict["worklistLabel"] = wl }
-            if let sid = item.scheduledProcedureStepID { dict["scheduledProcedureStepID"] = sid }
-            if let pn = item.patientName { dict["patientName"] = pn }
-            if let pid = item.patientID { dict["patientID"] = pid }
-            if let dob = item.patientBirthDate { dict["patientBirthDate"] = dob }
-            if let sex = item.patientSex { dict["patientSex"] = sex }
-            if let suid = item.studyInstanceUID { dict["studyInstanceUID"] = suid }
-            if let acc = item.accessionNumber { dict["accessionNumber"] = acc }
-            if let ref = item.referringPhysicianName { dict["referringPhysicianName"] = ref }
-            if let tx = item.transactionUID { dict["transactionUID"] = tx }
-            items.append(dict)
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: data, encoding: .utf8) else {
-            return "[]"
-        }
-        return str
-    }
-    
-    private func formatWorkitemCSV(_ workitems: [WorkitemResult]) -> String {
-        var output = "WorkitemUID,State,ProcedureStepLabel,PatientName,PatientID\n"
-        for item in workitems {
-            let uid = csvEscape(item.workitemUID)
-            let state = csvEscape(item.state?.rawValue ?? "")
-            let label = csvEscape(item.procedureStepLabel ?? "")
-            let patient = csvEscape(item.patientName ?? "")
-            let patientID = csvEscape(item.patientID ?? "")
-            
-            output += "\(uid),\(state),\(label),\(patient),\(patientID)\n"
-        }
-        return output
-    }
 }
 
 // MARK: - Supporting Types
@@ -1399,6 +1334,10 @@ enum OutputFormat: String, ExpressibleByArgument {
     /// Bridges the CLI's `--format` to the shared `QIDOResultFormatter` (DICOMWeb).
     /// The cases line up 1:1, so the rawValue maps directly (table is the fallback).
     var asQIDO: QIDOOutputFormat { QIDOOutputFormat(rawValue: rawValue) ?? .table }
+
+    /// Bridges the CLI's `--format` to the shared `UPSResultFormatter` (DICOMWeb).
+    /// The cases line up 1:1, so the rawValue maps directly (table is the fallback).
+    var asUPS: UPSOutputFormat { UPSOutputFormat(rawValue: rawValue) ?? .table }
 }
 
 enum MetadataFormat: String, ExpressibleByArgument {
@@ -1418,28 +1357,6 @@ func fprintln(_ message: String = "", to stream: Stream = .standardOutput) {
 enum Stream {
     case standardOutput
     case standardError
-}
-
-func truncate(_ string: String, maxLength: Int) -> String {
-    if string.count <= maxLength {
-        return string
-    }
-    let endIndex = string.index(string.startIndex, offsetBy: maxLength - 3)
-    return String(string[..<endIndex]) + "..."
-}
-
-func pad(_ string: String, _ width: Int) -> String {
-    if string.count >= width {
-        return string
-    }
-    return string + String(repeating: " ", count: width - string.count)
-}
-
-func csvEscape(_ string: String) -> String {
-    if string.contains(",") || string.contains("\"") || string.contains("\n") {
-        return "\"\(string.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-    return string
 }
 
 extension Array {

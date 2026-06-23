@@ -25,6 +25,7 @@
 import Foundation
 import Observation
 import DICOMCore
+import DICOMWeb
 
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 @Observable
@@ -75,7 +76,7 @@ public final class CLIParityRunnerViewModel {
 
     public static let serverPresets: [PACSServerPreset] = [
         .init(id: "DCM4CHEE2", host: "172.17.1.200", port: "11112", calledAET: "TEAMPACS",
-              webBaseURL: "http://172.17.1.200:8080/dcm4chee-arc/aets/TEAMPACS/rs"),
+              webBaseURL: "http://172.17.1.200:8080/wado"),
         .init(id: "DCM4CHEE5", host: "172.17.1.111", port: "11112", calledAET: "DCM4CHEE",
               webBaseURL: "http://172.17.1.111:8080/dcm4chee-arc/aets/DCM4CHEE/rs"),
         .init(id: "DCM4CHEE5 MWL", host: "172.17.1.111", port: "11112", calledAET: "WORKLIST",
@@ -928,6 +929,11 @@ public final class CLIParityRunnerViewModel {
             // that don't write retrieved files.
             return pendingNetOutputDir
         case CLIParityNetworkScenarios.webURLToken:    return networkWebBaseURL.trimmingCharacters(in: .whitespaces)
+        case CLIParityNetworkScenarios.webWADOURIURLToken:
+            // Resolve the WADO-URI servlet: /rs → /wado for dcm4chee5, root /wado unchanged.
+            let base = networkWebBaseURL.trimmingCharacters(in: .whitespaces)
+            guard let url = URL(string: base) else { return base }
+            return WADOURIClient.resolveURIEndpoint(url).absoluteString
         default:                                       return raw
         }
     }
@@ -1440,11 +1446,17 @@ public final class CLIParityRunnerViewModel {
                 // byte count.
                 let dicomCT = contentType.isEmpty || contentType.lowercased() == "application/dicom"
                 netUnits = 4
+                // Use the resolved WADO-URI endpoint (/rs → /wado) so both the reference
+                // and the CLI (whose command already shows the resolved URL via webWADOURIURLToken)
+                // hit the same servlet explicitly — no silent rewrite needed.
+                let uriBaseURL: String = URL(string: webBaseURL).map {
+                    WADOURIClient.resolveURIEndpoint($0).absoluteString
+                } ?? webBaseURL
                 let r = await raceDeadline(
                     scTimeout * Double(netUnits) + 60,
                     fallback: CLIParityWADOComparator.retrieveRecord(level: "instance", mode: "uri", success: false, count: 0)) {
                     await CLIParityNetworkReference.wadoRetrieveURI(
-                        baseURL: webBaseURL, token: webToken,
+                        baseURL: uriBaseURL, token: webToken,
                         studyUID: studyUID, seriesUID: seriesUID, instanceUID: instanceUID, contentType: contentType)
                 }
                 refOK = r.overallOK
@@ -1751,6 +1763,10 @@ public final class CLIParityRunnerViewModel {
         var cliUpdateOK: Bool? = nil
         var cliRefImages = 0
         var cliFinalStatus = "IN PROGRESS"
+        // The N-SET command, surfaced in the row's displayed commandLine so the update
+        // sub-operation is VISIBLE — a lifecycle row runs two chained CLI invocations
+        // (`create` then `update`), but only the create argv lives in `s.cliArgs`.
+        var updateCommandShown = ""
         if lifecycle {
             if parsedCreate.ok, let uid = parsedCreate.uid {
                 var updateArgs = ["update", host, "--port", portStr, "--aet", callingAET,
@@ -1762,6 +1778,7 @@ public final class CLIParityRunnerViewModel {
                 }
                 if sp["verbose"] == "true" { updateArgs += ["--verbose"] }
                 updateArgs += ["--timeout", String(Int(scTimeout))]
+                updateCommandShown = ([toolId] + updateArgs).joined(separator: " ")
                 let updateOutcome = await Task.detached {
                     CLIToolTerminalCompare.run(tool: toolId, arguments: updateArgs, binDir: binDir, timeout: cliDeadline)
                 }.value
@@ -1772,11 +1789,21 @@ public final class CLIParityRunnerViewModel {
                 cliRefImages = pu.refImages
                 cliFinalStatus = pu.status ?? finalStatus
             } else {
-                // Create failed → no N-SET attempted; the update did not succeed.
+                // Create failed → no N-SET attempted; the update did not succeed. Still
+                // show the update we WOULD have run (UID threaded from the create) so the
+                // sub-operation stays visible in the row.
                 cliUpdateOK = false
                 cliFinalStatus = finalStatus
+                updateCommandShown = "\(toolId) update \(host) --port \(portStr) --aet \(callingAET) "
+                    + "--called-aet \(calledAET) --mpps-uid <minted by create> --status \(finalStatus)"
             }
         }
+
+        // Displayed command: for a lifecycle row, chain the N-CREATE and N-SET commands
+        // so BOTH sub-operations are visible (the create-only rows keep the create argv).
+        let displayCommand = lifecycle && !updateCommandShown.isEmpty
+            ? command + "  →  " + updateCommandShown
+            : command
 
         let cli = CLIParityMPPSComparator.record(
             lifecycle: lifecycle, createOK: parsedCreate.ok, updateOK: cliUpdateOK,
@@ -1799,7 +1826,7 @@ public final class CLIParityRunnerViewModel {
         let bothFailed = !refOK && !cliOK
 
         if !processMatch {
-            return result(s, command: command, input: .match, app: refOK, cli: lastExit,
+            return result(s, command: displayCommand, input: .match, app: refOK, cli: lastExit,
                           output: cmp.match ? .match : .differ, status: .appError,
                           appOut: refRender, cliOut: cliText, diff: cmp.diff,
                           note: "Process divergence: the DICOMKit package API \(refOK ? "succeeded" : "failed") but the dicom-mpps CLI lifecycle \(cliOK ? "succeeded" : "failed"). The CLI and the package API must agree on the outcome.")
@@ -1816,7 +1843,7 @@ public final class CLIParityRunnerViewModel {
         default:
             note = "The dicom-mpps CLI lifecycle diverges from the DICOMKit package API reference (see diff; client-minted UIDs ignored)."
         }
-        return result(s, command: command, input: .match, app: refOK, cli: lastExit,
+        return result(s, command: displayCommand, input: .match, app: refOK, cli: lastExit,
                       output: cmp.match ? .match : .differ, status: status,
                       appOut: refRender, cliOut: cliText, diff: cmp.diff, note: note)
         #else

@@ -1123,46 +1123,9 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
-                    id: "modality", flag: "--modality", displayName: "Modality",
-                    parameterType: .enumPicker, placeholder: "CT",
-                    helpText: "Modality being performed (0008,0060) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    defaultValue: "CT",
-                    allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "procedure-id", flag: "--procedure-id", displayName: "Procedure Step ID",
-                    parameterType: .textField, placeholder: "e.g. SPS001",
-                    helpText: "Performed Procedure Step ID (0040,0253) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
-                    parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
-                    helpText: "Performed Procedure Step Description (0040,0254) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
                     id: "accession-number", flag: "--accession-number", displayName: "Accession Number",
                     parameterType: .textField, placeholder: "e.g. ACC12345",
                     helpText: "Accession Number (0008,0050) — links the MPPS to the imaging order and helps the server match the MWL item",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "performing-physician", flag: "--physician", displayName: "Performing Physician",
-                    parameterType: .textField, placeholder: "e.g. SMITH^JANE",
-                    helpText: "Name of performing physician (0008,1050) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "station-name", flag: "--station-name", displayName: "Station Name",
-                    parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
-                    helpText: "Performing Station Name (0008,1010) — sent via DICOMStudio internal execution",
-                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 // ----- N-SET parameters -----
@@ -1202,13 +1165,6 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "image-uids", flag: "--image-uids", displayName: "Image SOP Instance UIDs",
                     parameterType: .textField, placeholder: "UID1,UID2,...",
                     helpText: "Comma-separated SOP Instance UIDs of acquired images — sent via DICOMStudio internal execution (CLI uses --image-uid, repeatable)",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
-                ),
-                CLIParameterDefinition(
-                    id: "discontinue-reason", flag: "--discontinue-reason", displayName: "Discontinuation Reason",
-                    parameterType: .textField, placeholder: "e.g. Patient refused",
-                    helpText: "Reason for discontinuation (0040,0281) — sent via DICOMStudio internal execution",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),

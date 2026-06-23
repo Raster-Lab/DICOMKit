@@ -42,6 +42,13 @@ public enum CLIParityNetworkScenarios {
     /// subcommands all hit it.
     public static let webURLToken = "WEBURL"
 
+    /// WADO-URI variant of the DICOMweb base URL. The runner resolves it by applying
+    /// `WADOURIClient.resolveURIEndpoint` to `networkWebBaseURL` — so a dcm4chee5 `/rs`
+    /// base becomes `.../wado` (the correct WADO-URI servlet), while dcm4chee2's root
+    /// `/wado` is returned unchanged. Used exclusively by WADO-URI (`--uri`) scenarios
+    /// so the displayed CLI command and the reference both show the explicit `/wado` URL.
+    public static let webWADOURIURLToken = "WEBURIURL"
+
     /// Number of requests used by the multi-echo scenarios. Kept small so the
     /// live-server sweep stays quick and light on network traffic.
     private static let multiCount = "3"
@@ -575,9 +582,10 @@ public enum CLIParityNetworkScenarios {
             out.append(mwlSc("combined", "mwl query (all filters)", apply: f))
         }
 
-        // --verbose: proves the flag is accepted; verbose output goes to stderr (fprintln)
-        // so the JSON stdout is unaffected. The MWL comparator slices stdout to the first
-        // '[' … last ']', so even if verbose bled to stdout it would be harmless.
+        // --verbose: proves the flag is accepted. Every MWL scenario also passes --json,
+        // and the shared verbose header is gated on `!json`, so it is suppressed and the
+        // JSON stdout is unaffected. (The MWL comparator also slices stdout to the first
+        // '[' … last ']', so any stray chrome would be harmless regardless.)
         out.append(mwlSc("verbose", "mwl query --verbose", apply: WorklistFilters(), verbose: true))
         return out
     }
@@ -631,23 +639,25 @@ public enum CLIParityNetworkScenarios {
     /// UIDs by design).
     static func mppsScenarios(scope: MPPSScope) -> [BatchScenario] {
         var out: [BatchScenario] = []
-        out.append(mppsSc("create-in-progress", "mpps create (IN PROGRESS)",
+        out.append(mppsSc("create-in-progress", "mpps create (N-CREATE · IN PROGRESS)",
                           lifecycle: false, finalStatus: "", scope: scope))
-        out.append(mppsSc("lifecycle-completed", "mpps create → complete",
+        out.append(mppsSc("lifecycle-completed", "mpps create → update COMPLETED (N-CREATE → N-SET)",
                           lifecycle: true, finalStatus: "COMPLETED", scope: scope))
-        out.append(mppsSc("lifecycle-discontinued", "mpps create → discontinue",
+        out.append(mppsSc("lifecycle-discontinued", "mpps create → update DISCONTINUED (N-CREATE → N-SET)",
                           lifecycle: true, finalStatus: "DISCONTINUED", scope: scope))
         // Referenced-image completion — only when a Series UID and image UID(s) exist.
         if !scope.seriesUID.isEmpty && !scope.imageUIDs.isEmpty {
-            out.append(mppsSc("lifecycle-completed-images", "mpps create → complete (referenced images)",
+            out.append(mppsSc("lifecycle-completed-images", "mpps create → update COMPLETED + referenced images (N-CREATE → N-SET)",
                               lifecycle: true, finalStatus: "COMPLETED", scope: scope, withImages: true))
         }
-        // --verbose on create: proves the flag is accepted; verbose prints to stderr
-        // (fprintln) so the "MPPS Instance UID:" marker the comparator parses is
-        // unaffected. The runner also threads --verbose into the update command when
+        // --verbose on create: proves the flag is accepted. The verbose header now
+        // prints to STDOUT via the shared NetworkConsole formatter, and the
+        // "MPPS Instance UID:" result marker (also STDOUT) is parsed from the combined
+        // stream, so the marker remains unaffected. The runner also threads --verbose
+        // into the update command when
         // sp["verbose"] == "true" (lifecycle rows carry it too, but create-only is
         // cheapest to exercise the flag).
-        out.append(mppsSc("create-in-progress-verbose", "mpps create (IN PROGRESS) --verbose",
+        out.append(mppsSc("create-in-progress-verbose", "mpps create (N-CREATE · IN PROGRESS) --verbose",
                           lifecycle: false, finalStatus: "", scope: scope, verbose: true))
         return out
     }
@@ -909,7 +919,7 @@ public enum CLIParityNetworkScenarios {
         let seriesUID = scope.query.seriesUID
         let instanceUID = scope.instanceUID
 
-        var cli = ["retrieve", webURLToken, "--uri",
+        var cli = ["retrieve", webWADOURIURLToken, "--uri",
                    "--study", studyUID, "--series", seriesUID, "--instance", instanceUID]
         if !contentType.isEmpty { cli += ["--content-type", contentType] }
         if !timeout.isEmpty     { cli += ["--timeout", timeout] }

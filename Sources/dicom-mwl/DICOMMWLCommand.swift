@@ -107,23 +107,17 @@ extension DICOMMWLCommand {
             // Resolve host and port
             let serverInfo = resolveHostPort()
             
+            // Verbose header via the SHARED NetworkConsole formatter (DICOMNetwork),
+            // printed to STDOUT so its order matches the Studio MWL panel (the parity
+            // harness diffs the binary's stdout+stderr against the app). Gated on
+            // --verbose (and suppressed in --json mode so the JSON array stays clean).
             if verbose && !json {
-                fprintln("DICOM Modality Worklist Tool v1.0.0")
-                fprintln("====================================")
-                fprintln("Server: \(serverInfo.host):\(serverInfo.port)")
-                fprintln("Calling AE: \(aet)")
-                fprintln("Called AE: \(calledAet)")
-                fprintln("Timeout: \(timeout)s")
-                if let date = date          { fprintln("Date filter:       \(date)") }
-                if let s = station          { fprintln("Station AE filter: \(s)") }
-                if let p = patient          { fprintln("Patient filter:    \(p)") }
-                if let pid = patientId      { fprintln("Patient ID filter: \(pid)") }
-                if let mod = modality       { fprintln("Modality filter:   \(mod)") }
-                if let st = spsStatus       { fprintln("SPS Status filter: \(st)") }
-                if let acc = accessionNumber { fprintln("Accession filter:  \(acc)") }
-                fprintln("")
+                print(NetworkConsole.mwlQueryHeader(
+                    host: serverInfo.host, port: serverInfo.port,
+                    callingAE: aet, calledAE: calledAet,
+                    timeout: timeout, filters: appliedFilters()), terminator: "")
             }
-            
+
             try await performQuery(serverInfo: serverInfo)
             
             #else
@@ -151,11 +145,6 @@ extension DICOMMWLCommand {
                 throw ValidationError((error as? WorklistDateFilterError)?.description ?? "\(error)")
             }
 
-            if verbose && !json {
-                fprintln("Querying worklist...")
-                fprintln("")
-            }
-            
             // Perform query
             let items = try await DICOMModalityWorklistService.find(
                 host: serverInfo.host,
@@ -165,109 +154,46 @@ extension DICOMMWLCommand {
                 matching: queryKeys,
                 timeout: TimeInterval(timeout)
             )
-            
-            // Display results
+
+            // Render via the SHARED NetworkConsole formatter (DICOMNetwork) to STDOUT —
+            // the IDENTICAL functions the Studio MWL panel uses, so the formatted list,
+            // the JSON array, and the result-limit caution cannot drift between sides.
             if json {
-                printJSON(items: items)
+                print(NetworkConsole.mwlJSON(items: items), terminator: "")
+            } else if items.isEmpty {
+                print(NetworkConsole.mwlNoResults(), terminator: "")
             } else {
-                printFormatted(items: items)
-            }
-            // Warn about likely server-side result limit
-            let commonLimits: Set<Int> = [50, 100, 200, 250, 500, 1000, 2000, 5000]
-            if commonLimits.contains(items.count) {
-                fprintln("Warning: The result count (\(items.count)) may be capped by a server-side limit.")
-                fprintln("  Check your PACS server configuration (e.g., LimitFindResults in Orthanc,")
-                fprintln("  or max_worklist_results in dcm4chee) to increase or remove the limit.")
-            }
-        }
-        
-        func printFormatted(items: [WorklistItem]) {
-            if items.isEmpty {
-                fprintln("No worklist items found.")
-                return
-            }
-            
-            fprintln("Found \(items.count) worklist item(s):")
-            fprintln("")
-            
-            let sep = String(repeating: "─", count: 60)
-            
-            for (index, item) in items.enumerated() {
-                fprintln("[\(index + 1)] Worklist Item")
-                fprintln(sep)
-                // Patient
-                if let v = item.patientName       { fprintln("  Patient Name:          \(v)") }
-                if let v = item.patientID         { fprintln("  Patient ID:            \(v)") }
-                if let v = item.patientBirthDate  { fprintln("  Date of Birth:         \(v)") }
-                if let v = item.patientSex        { fprintln("  Sex:                   \(v)") }
-                // Study / order
-                if let v = item.accessionNumber   { fprintln("  Accession Number:      \(v)") }
-                if let v = item.referringPhysicianName     { fprintln("  Referring Physician:   \(v)") }
-                if let v = item.requestedProcedureID       { fprintln("  Requested Proc. ID:    \(v)") }
-                if let v = item.requestedProcedureDescription { fprintln("  Requested Proc. Desc:  \(v)") }
-                if let v = item.studyInstanceUID  { fprintln("  Study UID:             \(v)") }
-                // Scheduled Procedure Step
-                if let v = item.modality          { fprintln("  Modality:              \(v)") }
-                if let date = item.scheduledProcedureStepStartDate {
-                    let dateTime: String
-                    if let t = item.scheduledProcedureStepStartTime {
-                        dateTime = "\(date)  \(t)"
-                    } else {
-                        dateTime = date
-                    }
-                    fprintln("  Scheduled Date/Time:   \(dateTime)")
+                print(NetworkConsole.mwlFound(count: items.count), terminator: "")
+                for (index, item) in items.enumerated() {
+                    print(NetworkConsole.mwlItem(index: index + 1, item: item, verbose: verbose), terminator: "")
                 }
-                if let v = item.scheduledProcedureStepStatus      { fprintln("  SPS Status:            \(v)") }
-                if let v = item.scheduledProcedureStepID          { fprintln("  SPS ID:                \(v)") }
-                if let v = item.scheduledProcedureStepDescription { fprintln("  SPS Description:       \(v)") }
-                if let v = item.scheduledStationAETitle           { fprintln("  Station AE Title:      \(v)") }
-                if let v = item.scheduledStationName              { fprintln("  Station Name:          \(v)") }
-                if let v = item.scheduledPerformingPhysicianName  { fprintln("  Performing Physician:  \(v)") }
-                // Verbose: all raw attributes
-                if verbose {
-                    fprintln("  Raw Attributes:")
-                    for (tag, data) in item.attributes.sorted(by: { $0.key < $1.key }) {
-                        let value = String(data: data, encoding: .ascii) ??
-                            data.prefix(16).map { String(format: "%02X", $0) }.joined(separator: " ")
-                        fprintln("    (\(String(format: "%04X", tag.group)),\(String(format: "%04X", tag.element))): \(value)")
-                    }
-                }
-                fprintln("")
+                print(NetworkConsole.mwlCompleted(count: items.count), terminator: "")
             }
-        }
-        
-        func printJSON(items: [WorklistItem]) {
-            var jsonItems: [[String: Any]] = []
-            
-            for item in items {
-                var jsonItem: [String: Any] = [:]
-                if let v = item.patientName                       { jsonItem["PatientName"] = v }
-                if let v = item.patientID                         { jsonItem["PatientID"] = v }
-                if let v = item.patientBirthDate                  { jsonItem["PatientBirthDate"] = v }
-                if let v = item.patientSex                        { jsonItem["PatientSex"] = v }
-                if let v = item.accessionNumber                   { jsonItem["AccessionNumber"] = v }
-                if let v = item.studyInstanceUID                  { jsonItem["StudyInstanceUID"] = v }
-                if let v = item.referringPhysicianName            { jsonItem["ReferringPhysicianName"] = v }
-                if let v = item.requestedProcedureID              { jsonItem["RequestedProcedureID"] = v }
-                if let v = item.requestedProcedureDescription     { jsonItem["RequestedProcedureDescription"] = v }
-                if let v = item.modality                          { jsonItem["Modality"] = v }
-                if let v = item.scheduledStationAETitle           { jsonItem["ScheduledStationAETitle"] = v }
-                if let v = item.scheduledStationName              { jsonItem["ScheduledStationName"] = v }
-                if let v = item.scheduledProcedureStepStartDate   { jsonItem["SPSStartDate"] = v }
-                if let v = item.scheduledProcedureStepStartTime   { jsonItem["SPSStartTime"] = v }
-                if let v = item.scheduledProcedureStepStatus      { jsonItem["SPSStatus"] = v }
-                if let v = item.scheduledProcedureStepID          { jsonItem["SPSID"] = v }
-                if let v = item.scheduledProcedureStepDescription { jsonItem["SPSDescription"] = v }
-                if let v = item.scheduledPerformingPhysicianName  { jsonItem["ScheduledPerformingPhysician"] = v }
-                jsonItems.append(jsonItem)
-            }
-            
-            let jsonData = (try? JSONSerialization.data(withJSONObject: jsonItems, options: [.prettyPrinted, .sortedKeys])) ?? Data()
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print(jsonString)
+            // Warn about a likely server-side result limit (heuristic lives in the
+            // shared formatter). Suppressed in --json mode to keep the array clean.
+            if !json {
+                let warning = NetworkConsole.mwlLimitWarning(count: items.count)
+                if !warning.isEmpty { print(warning, terminator: "") }
             }
         }
         #endif
+
+        /// Applied, non-empty worklist filters in the canonical order/labels shared
+        /// with the Studio MWL header, so the verbose listing is identical on both sides.
+        func appliedFilters() -> [(label: String, value: String)] {
+            var f: [(String, String)] = []
+            func add(_ label: String, _ value: String?) {
+                if let v = value, !v.isEmpty { f.append((label, v)) }
+            }
+            add("Date:", date)
+            add("Station AET:", station)
+            add("Patient Name:", patient)
+            add("Patient ID:", patientId)
+            add("Modality:", modality)
+            add("SPS Status:", spsStatus)
+            add("Accession:", accessionNumber)
+            return f
+        }
         
         /// Resolves the final host and port from ``--host`` and ``--port`` options.
         func resolveHostPort() -> (host: String, port: UInt16) {
@@ -291,9 +217,4 @@ extension DICOMMWLCommand {
             return (resolvedHost, resolvedPort)
         }
     }
-}
-
-/// Prints to stderr
-private func fprintln(_ message: String) {
-    FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }

@@ -64,15 +64,15 @@ struct DICOMEcho: AsyncParsableCommand {
             throw ValidationError("Count must be greater than 0")
         }
         
+        // Verbose header via the SHARED NetworkConsole formatter (DICOMNetwork),
+        // printed to STDOUT so the parity harness (which diffs the binary's
+        // stdout+stderr against the app) sees identical chrome. Gated on --verbose so
+        // plain output stays pipe-friendly — the same convention as dicom-query.
         if verbose {
-            fprintln("DICOM Echo Tool v1.0.0")
-            fprintln("======================")
-            fprintln("Server: \(serverInfo.host):\(serverInfo.port)")
-            fprintln("Calling AE: \(aet)")
-            fprintln("Called AE: \(calledAet)")
-            fprintln("Timeout: \(timeout)s")
-            fprintln("Count: \(count)")
-            fprintln("")
+            emit(NetworkConsole.echoHeader(
+                host: serverInfo.host, port: serverInfo.port,
+                callingAE: aet, calledAE: calledAet,
+                timeout: timeout, count: count))
         }
         
         if diagnose {
@@ -94,9 +94,9 @@ struct DICOMEcho: AsyncParsableCommand {
         
         for i in 1...count {
             if verbose && count > 1 {
-                fprintln("[\(i)/\(count)] Sending C-ECHO...")
+                emit(NetworkConsole.echoProgress(index: i, total: count))
             }
-            
+
             do {
                 let result = try await DICOMVerificationService.echo(
                     host: serverInfo.host,
@@ -105,66 +105,54 @@ struct DICOMEcho: AsyncParsableCommand {
                     calledAE: calledAet,
                     timeout: TimeInterval(timeout)
                 )
-                
+
                 results.append(result)
-                
+
                 if result.success {
                     successCount += 1
+                    // Per-echo detail only for a single echo or in verbose mode; a silent
+                    // multi-echo run shows one dot per success instead.
                     if verbose || count == 1 {
-                        fprintln("✓ C-ECHO successful")
-                        fprintln("  Remote AE: \(result.remoteAETitle)")
-                        fprintln("  Status: \(result.status)")
-                        fprintln("  Round-trip time: \(String(format: "%.3f", result.roundTripTime))s")
+                        emit(NetworkConsole.echoSuccess(
+                            remoteAE: result.remoteAETitle, status: result.status, rtt: result.roundTripTime))
                     } else {
-                        print(".", terminator: "")
+                        emit(NetworkConsole.echoProgressDot())
                         fflush(stdout)
                     }
                 } else {
                     failureCount += 1
-                    fprintln("✗ C-ECHO failed")
-                    fprintln("  Status: \(result.status)")
+                    emit(NetworkConsole.echoStatusFailure(status: result.status))
                 }
-                
+
+            } catch let netErr as DICOMNetworkError {
+                failureCount += 1
+                emit(NetworkConsole.echoFailureDetail(
+                    netErr, host: serverInfo.host, port: serverInfo.port,
+                    callingAE: aet, calledAE: calledAet, timeout: timeout))
             } catch {
                 failureCount += 1
-                fprintln("✗ C-ECHO error: \(error)")
+                emit(NetworkConsole.echoError(error.localizedDescription))
             }
-            
+
             // Small delay between requests if count > 1
             if i < count && count > 1 {
                 try await Task.sleep(nanoseconds: 100_000_000) // 100ms
             }
         }
-        
+
         if count > 1 && !verbose {
-            print("") // New line after dots
+            emit(NetworkConsole.echoDotsTerminator()) // New line after dots
         }
-        
-        // Print summary
+
+        // Print summary (multi-echo runs or --stats) via the SHARED formatter.
         if count > 1 || stats {
-            fprintln("")
-            fprintln("Summary:")
-            fprintln("  Sent: \(count)")
-            fprintln("  Successful: \(successCount)")
-            fprintln("  Failed: \(failureCount)")
-            fprintln("  Success rate: \(String(format: "%.1f", Double(successCount) / Double(count) * 100))%")
-            
-            if stats && !results.isEmpty {
+            emit(NetworkConsole.echoSummary(sent: count, succeeded: successCount, failed: failureCount))
+            if stats {
                 let roundTripTimes = results.filter { $0.success }.map { $0.roundTripTime }
-                if !roundTripTimes.isEmpty {
-                    let min = roundTripTimes.min()!
-                    let max = roundTripTimes.max()!
-                    let avg = roundTripTimes.reduce(0, +) / Double(roundTripTimes.count)
-                    
-                    fprintln("")
-                    fprintln("Round-trip time statistics:")
-                    fprintln("  Min: \(String(format: "%.3f", min))s")
-                    fprintln("  Avg: \(String(format: "%.3f", avg))s")
-                    fprintln("  Max: \(String(format: "%.3f", max))s")
-                }
+                emit(NetworkConsole.echoStats(roundTripTimes: roundTripTimes))
             }
         }
-        
+
         // Exit with appropriate code
         if failureCount > 0 {
             throw ExitCode(1)
@@ -172,13 +160,13 @@ struct DICOMEcho: AsyncParsableCommand {
     }
     
     func runDiagnostics(serverInfo: (host: String, port: UInt16)) async throws {
-        fprintln("Running DICOM network diagnostics...")
-        fprintln("")
-        
+        // All diagnostics chrome flows through the SHARED NetworkConsole formatter so
+        // the CLI and the Studio panel emit byte-identical output.
+        emit(NetworkConsole.echoDiagnoseHeader())
+
         // Test 1: Basic connectivity
-        fprintln("Test 1: Basic C-ECHO connectivity")
-        fprintln("  Testing connection to \(serverInfo.host):\(serverInfo.port)...")
-        
+        emit(NetworkConsole.echoDiagnoseTest1Header(host: serverInfo.host, port: serverInfo.port))
+
         do {
             let result = try await DICOMVerificationService.echo(
                 host: serverInfo.host,
@@ -187,27 +175,18 @@ struct DICOMEcho: AsyncParsableCommand {
                 calledAE: calledAet,
                 timeout: TimeInterval(timeout)
             )
-            
-            if result.success {
-                fprintln("  ✓ Basic connectivity: PASS")
-                fprintln("    Round-trip time: \(String(format: "%.3f", result.roundTripTime))s")
-            } else {
-                fprintln("  ✗ Basic connectivity: FAIL")
-                fprintln("    Status: \(result.status)")
-            }
+            emit(NetworkConsole.echoDiagnoseBasicResult(
+                success: result.success, status: result.status, rtt: result.roundTripTime))
         } catch {
-            fprintln("  ✗ Basic connectivity: ERROR")
-            fprintln("    Error: \(error)")
+            emit(NetworkConsole.echoDiagnoseBasicError(error.localizedDescription))
             throw ExitCode(1)
         }
-        
-        fprintln("")
-        
+
         // Test 2: Multiple requests for stability
-        fprintln("Test 2: Connection stability (5 requests)")
+        emit(NetworkConsole.echoDiagnoseTest2Header())
         var stableSuccessCount = 0
         var stableRTTs: [TimeInterval] = []
-        
+
         for i in 1...5 {
             do {
                 let result = try await DICOMVerificationService.echo(
@@ -217,58 +196,43 @@ struct DICOMEcho: AsyncParsableCommand {
                     calledAE: calledAet,
                     timeout: TimeInterval(timeout)
                 )
-                
+
                 if result.success {
                     stableSuccessCount += 1
                     stableRTTs.append(result.roundTripTime)
-                    fprintln("  [\(i)/5] ✓ RTT: \(String(format: "%.3f", result.roundTripTime))s")
+                    emit(NetworkConsole.echoDiagnoseStabilitySuccess(index: i, total: 5, rtt: result.roundTripTime))
                 } else {
-                    fprintln("  [\(i)/5] ✗ Status: \(result.status)")
+                    emit(NetworkConsole.echoDiagnoseStabilityFailure(index: i, total: 5, status: result.status))
                 }
             } catch {
-                fprintln("  [\(i)/5] ✗ Error: \(error)")
+                emit(NetworkConsole.echoDiagnoseStabilityError(index: i, total: 5, message: error.localizedDescription))
             }
-            
+
             if i < 5 {
                 try await Task.sleep(nanoseconds: 100_000_000) // 100ms between requests
             }
         }
-        
-        fprintln("  Connection stability: \(stableSuccessCount)/5 successful")
-        
-        if !stableRTTs.isEmpty {
-            let minRTT = stableRTTs.min()!
-            let maxRTT = stableRTTs.max()!
-            let avgRTT = stableRTTs.reduce(0, +) / Double(stableRTTs.count)
-            let variance = stableRTTs.map { pow($0 - avgRTT, 2) }.reduce(0, +) / Double(stableRTTs.count)
-            let stdDev = sqrt(variance)
-            
-            fprintln("  RTT min/avg/max/stddev: \(String(format: "%.3f", minRTT))/\(String(format: "%.3f", avgRTT))/\(String(format: "%.3f", maxRTT))/\(String(format: "%.3f", stdDev))s")
-        }
-        
-        fprintln("")
-        
+
+        emit(NetworkConsole.echoDiagnoseStabilitySummary(
+            successes: stableSuccessCount, total: 5, roundTripTimes: stableRTTs))
+
         // Test 3: Association info
-        fprintln("Test 3: Association parameters")
-        fprintln("  Implementation Class UID: \(VerificationConfiguration.defaultImplementationClassUID)")
-        fprintln("  Implementation Version: \(VerificationConfiguration.defaultImplementationVersionName ?? "N/A")")
-        fprintln("  SOP Class: Verification (1.2.840.10008.1.1)")
-        fprintln("  Transfer Syntaxes: Explicit VR Little Endian, Implicit VR Little Endian")
-        
-        fprintln("")
-        fprintln("Diagnostics complete.")
-        
-        if stableSuccessCount == 5 {
-            fprintln("Result: All tests PASSED ✓")
-        } else if stableSuccessCount > 0 {
-            fprintln("Result: Partial success (some tests failed) ⚠")
-            throw ExitCode(1)
-        } else {
-            fprintln("Result: All tests FAILED ✗")
+        emit(NetworkConsole.echoDiagnoseAssociationParams())
+
+        // Verdict
+        emit(NetworkConsole.echoDiagnoseResult(stabilitySuccesses: stableSuccessCount))
+
+        if stableSuccessCount < 5 {
             throw ExitCode(1)
         }
     }
     #endif
+
+    /// Writes shared-formatter output to STDOUT. The NetworkConsole strings already
+    /// carry their own newlines, so no terminator is added.
+    func emit(_ text: String) {
+        print(text, terminator: "")
+    }
     
     /// Resolves the final host and port from ``--host`` and ``--port`` options.
     /// If ``--host`` contains a colon-separated port (e.g. "server:4242"),
@@ -296,9 +260,4 @@ struct DICOMEcho: AsyncParsableCommand {
 
         return (resolvedHost, resolvedPort)
     }
-}
-
-/// Prints to stderr
-private func fprintln(_ message: String) {
-    FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }

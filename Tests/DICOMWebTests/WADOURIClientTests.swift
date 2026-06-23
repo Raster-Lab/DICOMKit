@@ -61,4 +61,48 @@ struct WADOURIClientTests {
         let client = WADOURIClient(httpClient: httpClient)
         #expect(client.configuration.baseURL.absoluteString == "http://pacs.local/wado")
     }
+
+    // MARK: - Endpoint Resolution (/rs → /wado)
+
+    @Test("resolveURIEndpoint rewrites a dcm4chee-arc /rs base to /wado")
+    func test_resolveURIEndpoint_rewritesRSToWado() {
+        let resolved = WADOURIClient.resolveURIEndpoint(
+            URL(string: "http://172.17.1.111:8080/dcm4chee-arc/aets/DCM4CHEE/rs")!
+        )
+        #expect(resolved.absoluteString == "http://172.17.1.111:8080/dcm4chee-arc/aets/DCM4CHEE/wado")
+    }
+
+    @Test("resolveURIEndpoint rewrites only the final /rs segment")
+    func test_resolveURIEndpoint_rewritesOnlyFinalSegment() {
+        // A path that merely contains 'rs' earlier must be untouched; only a trailing
+        // /rs segment is the RESTful endpoint that needs redirecting to /wado.
+        let resolved = WADOURIClient.resolveURIEndpoint(
+            URL(string: "http://host/rs-archive/aets/AE/rs")!
+        )
+        #expect(resolved.absoluteString == "http://host/rs-archive/aets/AE/wado")
+    }
+
+    @Test("resolveURIEndpoint preserves a trailing slash")
+    func test_resolveURIEndpoint_trailingSlash() {
+        let resolved = WADOURIClient.resolveURIEndpoint(
+            URL(string: "http://host:8080/dcm4chee-arc/aets/AE/rs/")!
+        )
+        #expect(resolved.absoluteString == "http://host:8080/dcm4chee-arc/aets/AE/wado/")
+    }
+
+    @Test("resolveURIEndpoint leaves a dcm4chee2 /wado root unchanged")
+    func test_resolveURIEndpoint_wadoUnchanged() {
+        let resolved = WADOURIClient.resolveURIEndpoint(
+            URL(string: "http://172.17.1.200:8080/wado")!
+        )
+        #expect(resolved.absoluteString == "http://172.17.1.200:8080/wado")
+    }
+
+    @Test("resolveURIEndpoint leaves a non-/rs custom path unchanged")
+    func test_resolveURIEndpoint_customPathUnchanged() {
+        let resolved = WADOURIClient.resolveURIEndpoint(
+            URL(string: "http://pacs.example.com/dicom-web")!
+        )
+        #expect(resolved.absoluteString == "http://pacs.example.com/dicom-web")
+    }
 }
