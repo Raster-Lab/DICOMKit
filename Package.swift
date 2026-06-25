@@ -834,7 +834,7 @@ let package = Package(
         ),
         .testTarget(
             name: "DICOMStudioTests",
-            dependencies: ["DICOMStudio"]
+            dependencies: ["DICOMStudio", "DICOMWeb"]
         ),
         // Tier-2 output-parity harness: drives the in-app Studio reimplementations
         // (CLIWorkshopViewModel.executeCommand) headlessly against the bundled

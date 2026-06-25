@@ -1665,7 +1665,90 @@ extension DICOMwebClient {
             warnings: warnings
         )
     }
-    
+
+    /// Transitions an IN PROGRESS workitem to COMPLETED, first populating the
+    /// minimal Final State attributes the SCP requires.
+    ///
+    /// Per PS3.4 CC.2.1.3 / Table CC.2.5-3 the SCP validates that the Unified
+    /// Procedure Step Performed Procedure Sequence (0074,1216) is populated
+    /// before allowing the transition to COMPLETED. This convenience sends a
+    /// minimal Update Workitem (PS3.18 §11.5) to satisfy that requirement and
+    /// then performs the Change State (PS3.18 §11.6) to COMPLETED — so callers
+    /// (the CLI and the CLI-parity reference) share ONE source of truth for the
+    /// completion payload and cannot drift.
+    ///
+    /// - Parameters:
+    ///   - uid: The workitem's SOP Instance UID
+    ///   - transactionUID: The Transaction UID that locked the workitem at IN PROGRESS
+    ///   - requestingAE: Optional Requesting AE Title appended to the URL (required by some servers)
+    /// - Returns: The Change State response for the COMPLETED transition
+    /// - Throws: DICOMwebError on failure, UPSError for invalid transitions
+    public func completeWorkitem(
+        uid: String,
+        transactionUID: String,
+        requestingAE: String? = nil
+    ) async throws -> UPSStateChangeResponse {
+        let nowDT: String = {
+            let f = DateFormatter()
+            f.dateFormat = "yyyyMMddHHmmss.SSS000"
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.timeZone = TimeZone.current
+            return f.string(from: Date())
+        }()
+
+        let performedBody: [String: Any] = [
+            UPSTag.transactionUID: [
+                "vr": "UI", "Value": [transactionUID]
+            ] as [String: Any],
+            UPSTag.unifiedProcedureStepPerformedProcedureSequence: [
+                "vr": "SQ",
+                "Value": [
+                    [
+                        UPSTag.performedProcedureStepStartDateTime: [
+                            "vr": "DT", "Value": [nowDT]
+                        ] as [String: Any],
+                        UPSTag.performedProcedureStepEndDateTime: [
+                            "vr": "DT", "Value": [nowDT]
+                        ] as [String: Any],
+                        UPSTag.performedWorkitemCodeSequence: [
+                            "vr": "SQ",
+                            "Value": [
+                                [
+                                    UPSTag.codeValue: ["vr": "SH", "Value": ["12345"]],
+                                    UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
+                                    UPSTag.codeMeaning: ["vr": "LO", "Value": ["Procedure Step Performed"]]
+                                ] as [String: Any]
+                            ] as [[String: Any]]
+                        ] as [String: Any],
+                        UPSTag.performedStationNameCodeSequence: [
+                            "vr": "SQ",
+                            "Value": [
+                                [
+                                    UPSTag.codeValue: ["vr": "SH", "Value": ["STATION01"]],
+                                    UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
+                                    UPSTag.codeMeaning: ["vr": "LO", "Value": ["Default Performing Station"]]
+                                ] as [String: Any]
+                            ] as [[String: Any]]
+                        ] as [String: Any],
+                        UPSTag.outputInformationSequence: [
+                            "vr": "SQ",
+                            "Value": [] as [[String: Any]]
+                        ] as [String: Any]
+                    ] as [String: Any]
+                ] as [[String: Any]]
+            ] as [String: Any]
+        ]
+
+        try await updateWorkitem(uid: uid, updates: performedBody, transactionUID: transactionUID)
+
+        return try await changeWorkitemState(
+            uid: uid,
+            state: .completed,
+            transactionUID: transactionUID,
+            requestingAE: requestingAE
+        )
+    }
+
     /// Requests cancellation of a workitem
     ///
     /// - Parameters:

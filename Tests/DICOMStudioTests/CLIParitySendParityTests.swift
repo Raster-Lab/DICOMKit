@@ -32,11 +32,44 @@ final class CLIParitySendParityTests: XCTestCase {
     }
 
     func testParsesDryRun() {
-        let cli = "Found 1 file(s) to send\nDry run complete. Use without --dry-run to send files.\n"
+        // The shared dry-run output: header "Files: N" field (the gathered count),
+        // then one "[i/N] name (size)" line per file, then the completion notice.
+        let cli = """
+        DICOM Send (C-STORE)
+        ====================
+          Server:            127.0.0.1:11112
+          Files:             2
+          Mode:              DRY RUN
+
+          [1/2] syn-ct-1.dcm (1.2 KB)
+          [2/2] syn-ct-2.dcm (1.2 KB)
+
+        Dry run complete. No files were sent.
+        """
         let s = C.parse(cli, dryRun: true)
         XCTAssertTrue(s.dryRun)
-        XCTAssertEqual(s.sent, 1)
+        XCTAssertEqual(s.sent, 2)        // read from the header "Files:" field, not "Found"
         XCTAssertEqual(s.succeeded, 0)
+        XCTAssertEqual(s.failed, 0)
+    }
+
+    /// REGRESSION: a dry-run filename containing "Files:" must NOT shadow the header
+    /// count. The header "Files:" line precedes the listing, so the parser (which
+    /// returns the first matching line) reads the true gathered count, not "[1/2]".
+    func testDryRunFilenameDoesNotShadowHeaderCount() {
+        let cli = """
+        DICOM Send (C-STORE)
+        ====================
+          Files:             2
+          Mode:              DRY RUN
+
+          [1/2] My-Files:thing.dcm (1.2 KB)
+          [2/2] other.dcm (1.2 KB)
+
+        Dry run complete. No files were sent.
+        """
+        let s = C.parse(cli, dryRun: true)
+        XCTAssertEqual(s.sent, 2)        // the header count, not 1 from "[1/2]"
     }
 
     func testMatchAndDrift() {
@@ -59,8 +92,11 @@ final class CLIParitySendParityTests: XCTestCase {
         XCTAssertTrue(ids.contains("dicom-send_net_dry-run"))
         XCTAssertTrue(ids.contains("dicom-send_net_default"))
         XCTAssertTrue(ids.contains("dicom-send_net_priority-high"))
-        XCTAssertTrue(ids.contains("dicom-send_net_ts-evle"))
         XCTAssertTrue(ids.contains("dicom-send_net_verify"))
+        // The transfer-syntax scenario was removed from the parity matrix.
+        XCTAssertFalse(ids.contains("dicom-send_net_ts-evle"))
+        XCTAssertFalse(CLIParityNetworkScenarios.sendScenarios()
+            .contains { $0.cliArgs.contains("--transfer-syntax") })
 
         let dry = CLIParityNetworkScenarios.sendScenarios().first { $0.scenarioId == "dicom-send_net_dry-run" }
         XCTAssertEqual(dry?.studioParams["dry-run"], "true")

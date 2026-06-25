@@ -895,8 +895,10 @@ public struct CLIWorkshopView: View {
                 }
                 .padding(.vertical, 4)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                // Wrap the server chips onto multiple rows (FlowLayout) so none get hidden
+                // off-screen when several servers are added — replaces a horizontal
+                // ScrollView that pushed the extra chips out of view.
+                FlowLayout(spacing: 6) {
                         // "Manual" chip to deselect any server
                         Button {
                             viewModel.selectedSavedServerID = nil
@@ -953,6 +955,11 @@ public struct CLIWorkshopView: View {
                             }
                             .buttonStyle(.plain)
                             .contextMenu {
+                                Button {
+                                    viewModel.beginEditServer(id: server.id)
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
                                 Button(role: .destructive) {
                                     viewModel.removeSavedServer(id: server.id)
                                 } label: {
@@ -962,19 +969,22 @@ public struct CLIWorkshopView: View {
                             .accessibilityLabel("Select server \(server.name)")
                             .accessibilityHint("\(server.host) port \(server.port)")
                         }
-                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .sheet(isPresented: $viewModel.showAddServerSheet) {
-            addServerSheet
+            serverFormSheet(isEditing: false)
+        }
+        .sheet(isPresented: $viewModel.showEditServerSheet) {
+            serverFormSheet(isEditing: true)
         }
     }
 
-    /// Sheet for adding a new server profile.
-    private var addServerSheet: some View {
+    /// Sheet for adding or editing a PACS server profile.
+    private func serverFormSheet(isEditing: Bool) -> some View {
         VStack(spacing: 16) {
-            Text("Add Server")
+            Text(isEditing ? "Edit Server" : "Add Server")
                 .font(.headline)
 
             Form {
@@ -993,14 +1003,23 @@ public struct CLIWorkshopView: View {
 
             HStack {
                 Button("Cancel") {
-                    viewModel.showAddServerSheet = false
+                    if isEditing {
+                        viewModel.showEditServerSheet = false
+                        viewModel.editingServerID = nil
+                    } else {
+                        viewModel.showAddServerSheet = false
+                    }
                 }
                 .keyboardShortcut(.cancelAction)
 
                 Spacer()
 
-                Button("Add") {
-                    viewModel.addNewServerFromForm()
+                Button(isEditing ? "Save" : "Add") {
+                    if isEditing {
+                        viewModel.saveEditedServer()
+                    } else {
+                        viewModel.addNewServerFromForm()
+                    }
                 }
                 .keyboardShortcut(.defaultAction)
                 .disabled(
@@ -1057,8 +1076,10 @@ public struct CLIWorkshopView: View {
                 }
                 .padding(.vertical, 4)
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 6) {
+                // Wrap the server chips onto multiple rows (FlowLayout) so none get hidden
+                // off-screen when several servers are added — replaces a horizontal
+                // ScrollView that pushed the extra chips out of view.
+                FlowLayout(spacing: 6) {
                         // "Manual" chip to deselect any server
                         Button {
                             viewModel.selectedDICOMwebServerID = nil
@@ -1092,11 +1113,14 @@ public struct CLIWorkshopView: View {
                                     VStack(alignment: .leading, spacing: 1) {
                                         Text(server.name)
                                             .font(.caption.bold())
+                                            .lineLimit(1)
                                         Text(server.baseURL)
                                             .font(.system(size: 11, design: .monospaced))
                                             .foregroundStyle(.secondary)
-                                            .lineLimit(1)
+                                            .lineLimit(2)
+                                            .truncationMode(.middle)
                                     }
+                                    .frame(maxWidth: 260, alignment: .leading)
                                     if isSelected {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 12))
@@ -1130,8 +1154,8 @@ public struct CLIWorkshopView: View {
                             .accessibilityLabel("Select DICOMweb server \(server.name)")
                             .accessibilityHint(server.baseURL)
                         }
-                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .sheet(isPresented: $viewModel.showAddDICOMwebServerSheet) {

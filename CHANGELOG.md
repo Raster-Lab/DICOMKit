@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — WADORetrieveConsoleFormatter (Shared WADO-RS / WADO-URI Retrieve Renderer)
+
+- **`WADORetrieveConsoleFormatter`** (`Sources/DICOMWeb/WADORetrieveConsoleFormatter.swift`): Shared output renderer for WADO-RS / WADO-URI retrieve — verbose preamble blocks, per-mode status lines (metadata / rendered / thumbnail / frames / instances / WADO-URI result), and the metadata body (JSON pretty-printed + PS3.19 Native DICOM Model XML). Mirrors `QIDOResultFormatter` (query) and `UPSResultFormatter` (ups): a SINGLE formatter both sides call, so the `dicom-wado retrieve` CLI binary and DICOMStudio's in-app retrieve cannot produce different output.
+  - `DICOMWado.swift` (`RetrieveCommand`) now delegates all verbose preamble, per-mode status, and metadata body output to `WADORetrieveConsoleFormatter` instead of hand-rolling inline strings.
+  - `CLIWorkshopViewModel.swift` (WADO retrieve case) likewise delegates to the formatter; the mode-detection / inline-echo block is removed, and the verbose preamble is gated by `--verbose` on both sides identically.
+  - `parseFrameNumbers` moved from `RetrieveCommand` into `WADORetrieveConsoleFormatter` (as a throwing method returning `[Int]`) with a companion `WADOFrameParseError` type; the CLI catches `WADOFrameParseError` and re-throws as `ValidationError`.
+
+### Added — STOWResultFormatter (Shared WADO STOW-RS Upload Renderer)
+
+- **`STOWResultFormatter`** (`Sources/DICOMWeb/STOWResultFormatter.swift`): Shared console renderer for `dicom-wado store` (STOW-RS) upload output — verbose pre-upload header, per-batch start/result lines, per-failure detail, and the always-printed final summary block. Both the `dicom-wado store` CLI path and DICOMStudio's in-app STOW upload call this single formatter, preventing output pipeline drift. The summary block format is a parity contract that `CLIParityWADOComparator.parseStore` anchors on.
+
+### Added — UPS-RS Parity Harness: Full Operation Matrix, Global Subscribe, and get --format/--verbose
+
+- **UPS write scenarios run out-of-the-box**: The parity harness no longer gates the full UPS operation matrix on a user-supplied Procedure Step Label. A `upsDefaultLabel` (`"CLI Parity Workitem"`) is substituted when the WADO panel's label is blank, so `ups-lifecycle`, `ups-lifecycle-complete`, `ups-lifecycle-cancel`, `ups-get`, `ups-create-attrs`, `ups-create-json`, and `ups-subscribe` always appear in the scenario list — matching how the harness already auto-picks the AE title and station filter.
+- **Global UPS subscribe scenario** (`ups-subscribe-global`): New `runWADOUPSSubscribeGlobalScenario` runner exercises `ups --subscribe --aet <ae>` (no `--workitem-uid`) → `ups --unsubscribe --aet <ae>` — the GLOBAL round-trip that subscribes to ALL workitems' events. Reference uses `DICOMwebClient.subscribeToAllWorkitems` + `unsubscribeFromWorkitem(nil)`. Parity on round-trip outcome; servers that don't enable UPS subscription fail both sides identically (`failureAgreement`).
+- **ups-get `--format` / `--verbose` variants**: Four `--format` flag variants (`table`, `json`, `csv`) plus a `--verbose` variant are now generated for the `ups-get` scenario. The flags are threaded through `studioParams["get-format"]` and `"get-verbose"` and appended at run time (after the Workitem UID is known), mirroring how the CLI appends them to the chained `ups --get <uid>` command.
+- **Transaction UID flow corrected**: The UPS lifecycle runner (`runWADOUPSLifecycleScenario`) no longer pre-mints a Transaction UID and supplies it to the `--update --state IN_PROGRESS` claim. Instead it lets the server assign one, parses it from the CLI's IN PROGRESS output (`Transaction UID: …`), and reuses it for the terminal `COMPLETED`/`CANCELED` transition — exactly how a real operator works. The reference (`CLIParityNetworkReference.wadoUPSLifecycle`) likewise captures and reuses `claimResp.transactionUID`. When no UID is returned the terminal transition is skipped and recorded as not reached.
+- **`wadoUPSSubscribeGlobal`** reference method added to `CLIParityNetworkReference`: calls `client.subscribeToAllWorkitems` + `client.unsubscribeFromWorkitem(nil)`; `createOK` is vacuously true (no workitem is created).
+
+### Changed — C-GET and dicom-send Dry-Run Comparators Aligned with Shared Formatters
+
+- **C-GET comparator** (`CLIParityRetrieveComparator`): The shared `NetworkConsole.cGetSummary` now emits exactly one terse line — `"✅ C-GET completed — N file(s) received"` on success or `"⚠️ C-GET completed but received 0 instances. …"` when nothing arrived — instead of a structured `C-GET Completed:` block with sub-operation counts. The parser now reads the received-file count from that line only; `completed`/`failed` are no longer parsed or compared for C-GET (they are unobservable in the CLI text). `canonical()` updated accordingly: C-GET compares `success + files`; C-MOVE still compares `completed + failed + warning`.
+- **dicom-send dry-run comparator** (`CLIParitySendComparator`): The shared formatter's dry-run path (`NetworkConsole.sendHeader`) prints the gathered file count in the header's `"Files: N"` field rather than `"Found N file(s) to send"`. The parser now reads the first `"Files:"` line — the header count — rather than `"Found"`.
+
+### Changed — UPS CLI Workshop: unsubscribe Operation and Simplified cliMapping
+
+- **`unsubscribe` operation added** to the UPS parameter definition in `CLIWorkshopHelpers`: the operation picker now lists `search`, `get`, `create-workitem`, `change-state`, `subscribe`, `unsubscribe`. `--workitem-uid` is shown for `unsubscribe` as well as `subscribe` and `create-workitem`.
+- **`--search` and `--create-workitem` moved to `cliMapping`**: Both flags are now emitted automatically when the matching operation tab is selected, removing the separate boolean-toggle `CLIParameterDefinition` entries that were previously needed. This mirrors the existing `--subscribe`/`--unsubscribe` mapping pattern.
+- **No auto-pre-selection in Network mode**: Switching to Network mode no longer pre-selects the first network tool. The user explicitly picks which tools to include in the parity sweep.
+
+### Fixed — HL7 ORM^O01 Field Placement for dcm4chee-arc MWL Create
+
+- **HL7 ORM IPC segment + OBR field map corrected** (`ModalityWorklistService.buildHL7ORM`): The previous implementation wrote `scheduledStationAETitle` into `OBR-20`, which dcm4chee-arc's default inbound order stylesheet (`hl7-order2dcm.xsl`) reads as the **Scheduled Procedure Step ID** (`0040,0009`) — so a user's Station AET surfaced on the server as the SPS ID. Fixed in two ways:
+  - **OBR path corrected**: rebuilt with an explicit index→value map (`hl7Segment(_:fields:)` helper) so the values land at their exact positions. OBR-18 = Accession Number, OBR-19 = Requested Procedure ID, OBR-20 = SPS ID, OBR-24 = Modality, OBR-27 4th component = SPS Start Date/Time.
+  - **IPC segment added**: a dcm4che-private `IPC` (Imaging Procedure Control) segment is emitted after OBR so every SPS attribute has an unambiguous, configuration-independent slot — **IPC-7 = Station Name**, **IPC-9 = Scheduled Station AE Title** (the only ORM path that carries them). IPC-1/2/3 also supply Accession / Requested Procedure ID / Study Instance UID, matching the OBR fallback exactly.
+  - `buildHL7ORM` promoted from `private` to `internal` to allow the new field-placement regression tests (`Tests/DICOMStudioTests/MWLCreateHL7ORMTests.swift`) to assert each value's exact HL7 position without requiring a live MLLP server.
+
+### Fixed — WADO-URI Endpoint Resolution for dcm4chee5
+
+- **`WADOURIClient.resolveURIEndpoint(_:)`** (new public static method): dcm4chee-arc 5.x serves WADO-URI (`?requestType=WADO`) from `/wado`, while the sibling WADO-RS/QIDO-RS endpoint lives at `/rs`. Supplying a WADO-RS base URL for a WADO-URI request returned HTTP 404. The resolver rewrites a trailing `/rs` path segment to `/wado`; all other base URLs are returned unchanged. Because the `dicom-wado` CLI, CLI Workshop, and parity reference all retrieve through this one client, they resolve identically and cannot drift.
+
+### Fixed — dicom-mpps N-CREATE Status Guard
+
+- **`dicom-mpps create --status` validation**: N-CREATE must always start the step `IN PROGRESS`; the previous code accepted `COMPLETED` or `DISCONTINUED` at creation, which servers reject (terminal states are reached only via N-SET). The `create` subcommand now validates that `--status` is `IN PROGRESS` and emits a clear `ValidationError` directing the user to `dicom-mpps update` for state transitions.
+
+### Added — UPS-RS Result Formatter (Shared)
+
+- **`UPSResultFormatter`** (`Sources/DICOMWeb/UPSResultFormatter.swift`): Shared output renderer for UPS-RS worklist search results — table, JSON (`UPSOutputFormat`), and CSV — used by both the `dicom-wado ups --search` CLI path and DICOMStudio's in-app UPS worklist search. Mirrors `QIDOResultFormatter` (QIDO-RS) and `DICOMQueryResultFormatter` (DIMSE): a single formatter both sides call so their output pipelines cannot drift.
+
+### Added — CLI Workshop PACS Server Edit
+
+- **Edit saved PACS server profiles**: The CLI Workshop saved-server list now supports in-place editing (`beginEditServer(id:)` / `saveEditedServer()` on `CLIWorkshopViewModel`). A new `showEditServerSheet` / `editingServerID` pair drives the edit sheet; saving re-applies the updated values when the edited profile is currently selected. Previously only add and delete were supported.
+
+### Changed — NetworkConsole Shared Formatter Covers All Network CLIs
+
+- **`NetworkConsole` (DICOMNetwork) now covers all DIMSE network tools**: `dicom-echo`, `dicom-mwl` (query), and `dicom-mpps` joined the shared formatter, completing the set started with `dicom-query / dicom-send / dicom-retrieve / dicom-qr / dicom-wado`. All human console output — headers, per-echo progress, summaries, verbose details — routes through one `NetworkConsole` method on both the CLI binary and the DICOMStudio CLI Workshop in-process path, making terminal-compare diff drift impossible by construction.
+- **`dicom-send/ProgressReporter.swift` removed**: its logic was absorbed into `NetworkConsole`. Any callers that imported it directly must switch to the corresponding `NetworkConsole.*` methods.
+
+### Added — Network CLI & DICOMweb Tests
+
+- **`MWLCreateHL7ORMTests`** (`Tests/DICOMStudioTests/`): Regression tests asserting each value in the HL7 ORM^O01 message built by `ModalityWorklistService.buildHL7ORM` lands at its exact field position in both the OBR fallback path and the IPC segment, so the field-placement bug (`OBR-20` Station AET mismap) cannot silently return.
+- **`UPSTests`** (`Tests/DICOMWebTests/`): Coverage for UPS-RS workitem query parsing and the new `UPSResultFormatter` output (table/JSON/CSV).
+- **`WADOURIClientTests`** (`Tests/DICOMWebTests/`): Coverage for `WADOURIClient.resolveURIEndpoint` (no-op for `/wado`, rewrite for `/rs`, passthrough for other paths) and WADO-URI URL building.
+
 ### Added — Network Utility (Live Terminal Output)
 
 - **Network Utility panel** (`NetworkUtilityView`, `NetworkUtilityViewModel`, `NetworkUtilityService`): Six-tab general-purpose network diagnostics tool surfaced as a new sidebar destination in DICOMStudio.

@@ -62,7 +62,7 @@ struct DICOMSend: AsyncParsableCommand {
     @Option(name: .long, help: "Operation priority: low, medium, high (default: medium)")
     var priority: PriorityOption = .medium
 
-    @Option(name: .long, help: "Preferred transfer syntax for C-STORE presentation context negotiation (for example explicit-vr-le, jpeg2000, htj2k-lossless, htj2k-rpcl, htj2k, rle-lossless)")
+    @Option(name: .long, help: "Transfer syntax to negotiate for the C-STORE presentation context. dicom-send sends files as-is and never transcodes, so this must match the file's own transfer syntax (the send fails otherwise — use dicom-convert to change it). Omit to send the file unchanged.")
     var transferSyntax: String?
 
     mutating func run() async throws {
@@ -79,51 +79,36 @@ struct DICOMSend: AsyncParsableCommand {
             preferredTransferSyntaxUID = nil
         }
         
-        if verbose {
-            fprintln("DICOM Send Tool v1.0.0")
-            fprintln("======================")
-            fprintln("Server: \(serverInfo.host):\(serverInfo.port)")
-            fprintln("Calling AE: \(aet)")
-            fprintln("Called AE: \(calledAet)")
-            fprintln("Priority: \(priority)")
-            fprintln("Timeout: \(timeout)s")
-            if let ts = preferredTransferSyntaxUID {
-                fprintln("Transfer Syntax: \(ts) (preferred in presentation context)")
-            }
-            if retry > 0 {
-                fprintln("Retry attempts: \(retry)")
-            }
-            if dryRun {
-                fprintln("Mode: DRY RUN (no files will be sent)")
-            }
-            fprintln("")
-        }
-        
         // Gather files to send. Uses the SHARED DICOMSendFileGatherer (DICOMNetwork)
         // so the CLI and the CLI-parity reference enumerate a directory identically.
         let filesToSend = DICOMSendFileGatherer.gather(
             paths: paths, recursive: recursive,
             warn: verbose ? { fprintln("Warning: \($0)") } : nil)
-        
+
         if filesToSend.isEmpty {
             throw ValidationError("No DICOM files found to send")
         }
-        
-        if verbose || dryRun {
-            fprintln("Found \(filesToSend.count) file(s) to send")
-            if verbose {
-                for (index, path) in filesToSend.enumerated() {
-                    fprintln("  [\(index + 1)] \(path)")
-                }
-                fprintln("")
-            }
-        }
-        
+
+        // Header via the SHARED NetworkConsole formatter (DICOMNetwork), printed to
+        // STDOUT so its order/wording matches DICOMStudio's in-process console.
+        print(NetworkConsole.sendHeader(
+            host: serverInfo.host, port: serverInfo.port,
+            callingAE: aet, calledAE: calledAet,
+            priority: priority.rawValue, timeout: timeout, fileCount: filesToSend.count,
+            retryAttempts: retry, transferSyntax: preferredTransferSyntaxUID, dryRun: dryRun),
+            terminator: "")
+
         if dryRun {
-            fprintln("Dry run complete. Use without --dry-run to send files.")
+            for (index, path) in filesToSend.enumerated() {
+                let size = (try? Data(contentsOf: URL(fileURLWithPath: path)).count) ?? 0
+                print(NetworkConsole.sendDryRunLine(
+                    index: index + 1, total: filesToSend.count,
+                    filename: (path as NSString).lastPathComponent, size: size), terminator: "")
+            }
+            print("\nDry run complete. No files were sent.")
             return
         }
-        
+
         // Create executor
         let executor = SendExecutor(
             host: serverInfo.host,
@@ -136,21 +121,22 @@ struct DICOMSend: AsyncParsableCommand {
             verbose: verbose,
             preferredTransferSyntaxUID: preferredTransferSyntaxUID
         )
-        
-        // Verify connection if requested
+
+        // Verify connection if requested (shown unconditionally on both sides).
         if verify {
-            if verbose {
-                fprintln("Verifying connection with C-ECHO...")
-            }
-            try await executor.verifyConnection()
-            if verbose {
-                fprintln("✓ Connection verified\n")
+            print("Verifying connection with C-ECHO...")
+            do {
+                try await executor.verifyConnection()
+                print("  ✅ Connection verified\n")
+            } catch {
+                print("  ❌ C-ECHO failed — aborting send")
+                throw error
             }
         }
-        
+
         // Send files
         try await executor.sendFiles(filesToSend)
-        
+
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif

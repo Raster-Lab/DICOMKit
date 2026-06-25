@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMDictionary
 
 // MARK: - Retrieve Progress
 
@@ -841,7 +842,7 @@ public enum DICOMRetrieveService {
         preferredTransferSyntaxUID: String? = nil
     ) -> AsyncStream<GetEvent> {
         AsyncStream { continuation in
-            Task {
+            let producer = Task {
                 do {
                     // Validate that the level is supported by the information model
                     guard configuration.informationModel.supportsLevel(keys.level) else {
@@ -887,12 +888,16 @@ public enum DICOMRetrieveService {
                     contextID += 2
                     
                     // Storage SOP Class presentation contexts
-                    // Build the accepted TS list: preferred first (if provided), then standard fallbacks
+                    // Build the accepted TS list: preferred first (if provided), then
+                    // uncompressed, then the common compressed syntaxes. Offering the
+                    // compressed syntaxes lets the SCP send natively-compressed objects
+                    // (e.g. JPEG-Lossless XA cine) instead of being forced to transcode —
+                    // which many SCPs refuse to do, silently dropping the sub-operation.
                     var storageTransferSyntaxes: [String] = []
                     if let preferred = preferredTransferSyntaxUID, !preferred.isEmpty {
                         storageTransferSyntaxes.append(preferred)
                     }
-                    for ts in [explicitVRLittleEndianTransferSyntaxUID, implicitVRLittleEndianTransferSyntaxUID]
+                    for ts in retrieveStorageTransferSyntaxUIDs
                         where !storageTransferSyntaxes.contains(ts) {
                         storageTransferSyntaxes.append(ts)
                     }
@@ -947,9 +952,14 @@ public enum DICOMRetrieveService {
                     continuation.finish()
                 }
             }
+            // If the consumer stops iterating (its task is cancelled, it breaks out, or the
+            // stream is abandoned), cancel the producer so its association and network reads
+            // tear down instead of leaking. This is effective now that
+            // DICOMConnection.receive(length:) honors cancellation by cancelling the socket.
+            continuation.onTermination = { @Sendable _ in producer.cancel() }
         }
     }
-    
+
     /// Performs the C-GET request/response exchange
     private static func performCGet(
         association: Association,
@@ -1161,43 +1171,29 @@ public enum DICOMRetrieveService {
 
 // MARK: - Common Storage SOP Class UIDs
 
-/// Common Storage SOP Class UIDs for C-GET operations
+/// Common Storage SOP Class UIDs for C-GET operations.
 ///
-/// These are the most commonly used storage SOP classes that a C-GET SCU
-/// should be prepared to accept as sub-operations.
-public let commonStorageSOPClassUIDs: [String] = [
-    // CT Image Storage
-    "1.2.840.10008.5.1.4.1.1.2",
-    // Enhanced CT Image Storage
-    "1.2.840.10008.5.1.4.1.1.2.1",
-    // MR Image Storage
-    "1.2.840.10008.5.1.4.1.1.4",
-    // Enhanced MR Image Storage
-    "1.2.840.10008.5.1.4.1.1.4.1",
-    // Ultrasound Image Storage
-    "1.2.840.10008.5.1.4.1.1.6.1",
-    // Secondary Capture Image Storage
-    "1.2.840.10008.5.1.4.1.1.7",
-    // Digital X-Ray Image Storage - For Presentation
-    "1.2.840.10008.5.1.4.1.1.1.1",
-    // Digital X-Ray Image Storage - For Processing
-    "1.2.840.10008.5.1.4.1.1.1.1.1",
-    // Computed Radiography Image Storage
-    "1.2.840.10008.5.1.4.1.1.1",
-    // Digital Mammography X-Ray Image Storage - For Presentation
-    "1.2.840.10008.5.1.4.1.1.1.2",
-    // Digital Mammography X-Ray Image Storage - For Processing
-    "1.2.840.10008.5.1.4.1.1.1.2.1",
-    // Nuclear Medicine Image Storage
-    "1.2.840.10008.5.1.4.1.1.20",
-    // PET Image Storage
-    "1.2.840.10008.5.1.4.1.1.128",
-    // RT Image Storage
-    "1.2.840.10008.5.1.4.1.1.481.1",
-    // RT Structure Set Storage
-    "1.2.840.10008.5.1.4.1.1.481.3",
-    // RT Plan Storage
-    "1.2.840.10008.5.1.4.1.1.481.5",
-    // RT Dose Storage
-    "1.2.840.10008.5.1.4.1.1.481.2"
+/// A C-GET SCU must propose one storage presentation context per SOP Class it
+/// is willing to receive as a C-STORE sub-operation. This is sourced from the
+/// package-wide canonical registry (`StorageSOPClass.allUIDs` in
+/// `DICOMDictionary`) so the SCU, the `StorageSCP` and the validator stay in
+/// lock-step — see ``StorageSOPClass`` for why a shared list matters.
+public let commonStorageSOPClassUIDs: [String] = StorageSOPClass.allUIDs
+
+// MARK: - Retrieve Transfer Syntaxes
+
+/// Transfer syntaxes proposed for each storage presentation context during
+/// C-GET. Includes the uncompressed baselines plus the common compressed
+/// syntaxes so the SCP can return natively-compressed objects without
+/// transcoding (e.g. JPEG-Lossless / JPEG 2000 XA cine).
+let retrieveStorageTransferSyntaxUIDs: [String] = [
+    explicitVRLittleEndianTransferSyntaxUID,    // 1.2.840.10008.1.2.1
+    implicitVRLittleEndianTransferSyntaxUID,    // 1.2.840.10008.1.2
+    "1.2.840.10008.1.2.4.50",                   // JPEG Baseline (Process 1)
+    "1.2.840.10008.1.2.4.51",                   // JPEG Extended (Process 2 & 4)
+    "1.2.840.10008.1.2.4.57",                   // JPEG Lossless, Non-Hierarchical (Process 14)
+    "1.2.840.10008.1.2.4.70",                   // JPEG Lossless SV1 (Process 14, SV1)
+    "1.2.840.10008.1.2.4.90",                   // JPEG 2000 Lossless
+    "1.2.840.10008.1.2.4.91",                   // JPEG 2000
+    "1.2.840.10008.1.2.5"                        // RLE Lossless
 ]

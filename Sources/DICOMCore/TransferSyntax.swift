@@ -712,6 +712,73 @@ extension TransferSyntax: CustomStringConvertible {
     }
 }
 
+// MARK: - Catalog (display + enumeration)
+extension TransferSyntax {
+    /// Every transfer syntax DICOMKit defines, in a UI-friendly order (uncompressed,
+    /// JPEG, JPEG 2000 / HTJ2K, JPEG-LS, RLE, video, JPIP, JP3D). The single source of
+    /// truth for "all available transfer syntaxes" — callers (e.g. pickers) should
+    /// enumerate this rather than maintaining their own list. Each entry's `uid`
+    /// round-trips through `from(uid:)` / `parse(_:)`.
+    public static let allKnown: [TransferSyntax] = [
+        // Uncompressed
+        .implicitVRLittleEndian, .explicitVRLittleEndian,
+        .deflatedExplicitVRLittleEndian, .explicitVRBigEndian,
+        // JPEG
+        .jpegBaseline, .jpegExtended, .jpegLossless, .jpegLosslessSV1,
+        // JPEG 2000 / HTJ2K
+        .jpeg2000Lossless, .jpeg2000, .jpeg2000Part2Lossless, .jpeg2000Part2,
+        .htj2kLossless, .htj2kRPCLLossless, .htj2kLossy,
+        // JPEG-LS
+        .jpegLSLossless, .jpegLSNearLossless,
+        // RLE
+        .rleLossless,
+        // Video
+        .mpeg2MainProfile, .mpeg2MainProfileHighLevel,
+        .mpeg4AVCHP41, .mpeg4AVCHP41BD,
+        .hevcH265MainProfile, .hevcH265Main10Profile,
+        // JPIP
+        .jpipReferenced, .jpipReferencedDeflate,
+        // JP3D (experimental / private)
+        .jp3dLossless, .jp3dLossy,
+    ]
+
+    /// A short, human-readable name for pickers and summaries (distinct from the more
+    /// verbose `description`, which always appends the UID and VR/endianness).
+    public var displayName: String {
+        switch uid {
+        case TransferSyntax.implicitVRLittleEndian.uid:        return "Implicit VR Little Endian"
+        case TransferSyntax.explicitVRLittleEndian.uid:        return "Explicit VR Little Endian"
+        case TransferSyntax.deflatedExplicitVRLittleEndian.uid: return "Deflated Explicit VR Little Endian"
+        case TransferSyntax.explicitVRBigEndian.uid:           return "Explicit VR Big Endian (retired)"
+        case TransferSyntax.jpegBaseline.uid:                  return "JPEG Baseline (Process 1)"
+        case TransferSyntax.jpegExtended.uid:                  return "JPEG Extended (Process 2 & 4)"
+        case TransferSyntax.jpegLossless.uid:                  return "JPEG Lossless (Process 14)"
+        case TransferSyntax.jpegLosslessSV1.uid:               return "JPEG Lossless SV1 (Process 14)"
+        case TransferSyntax.jpeg2000Lossless.uid:              return "JPEG 2000 Lossless"
+        case TransferSyntax.jpeg2000.uid:                      return "JPEG 2000"
+        case TransferSyntax.jpeg2000Part2Lossless.uid:         return "JPEG 2000 Part 2 Multi-component Lossless"
+        case TransferSyntax.jpeg2000Part2.uid:                 return "JPEG 2000 Part 2 Multi-component"
+        case TransferSyntax.htj2kLossless.uid:                 return "HTJ2K Lossless"
+        case TransferSyntax.htj2kRPCLLossless.uid:             return "HTJ2K Lossless (RPCL)"
+        case TransferSyntax.htj2kLossy.uid:                    return "HTJ2K"
+        case TransferSyntax.jpegLSLossless.uid:                return "JPEG-LS Lossless"
+        case TransferSyntax.jpegLSNearLossless.uid:            return "JPEG-LS Near-Lossless"
+        case TransferSyntax.rleLossless.uid:                   return "RLE Lossless"
+        case TransferSyntax.mpeg2MainProfile.uid:              return "MPEG2 Main Profile @ Main Level"
+        case TransferSyntax.mpeg2MainProfileHighLevel.uid:     return "MPEG2 Main Profile @ High Level"
+        case TransferSyntax.mpeg4AVCHP41.uid:                  return "MPEG-4 AVC/H.264 HP @ Level 4.1"
+        case TransferSyntax.mpeg4AVCHP41BD.uid:                return "MPEG-4 AVC/H.264 BD-compatible HP @ Level 4.1"
+        case TransferSyntax.hevcH265MainProfile.uid:           return "HEVC/H.265 Main Profile @ Level 5.1"
+        case TransferSyntax.hevcH265Main10Profile.uid:         return "HEVC/H.265 Main 10 Profile @ Level 5.1"
+        case TransferSyntax.jpipReferenced.uid:                return "JPIP Referenced"
+        case TransferSyntax.jpipReferencedDeflate.uid:         return "JPIP Referenced Deflate"
+        case TransferSyntax.jp3dLossless.uid:                  return "JP3D Lossless (experimental)"
+        case TransferSyntax.jp3dLossy.uid:                     return "JP3D Lossy (experimental)"
+        default:                                               return description
+        }
+    }
+}
+
 /// Byte ordering for DICOM data
 ///
 /// Specifies how multi-byte numeric values are stored in memory.

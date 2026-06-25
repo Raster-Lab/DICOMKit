@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMDictionary
 
 // MARK: - Storage SCP Configuration
 
@@ -49,53 +50,15 @@ public struct StorageSCPConfiguration: Sendable, Hashable {
     /// Default Implementation Version Name for DICOMKit SCP
     public static let defaultImplementationVersionName = "DICOMKIT_SCP"
     
-    /// Common Storage SOP Classes accepted by default
-    public static let commonStorageSOPClasses: Set<String> = [
-        // CT Image Storage
-        "1.2.840.10008.5.1.4.1.1.2",
-        // Enhanced CT Image Storage
-        "1.2.840.10008.5.1.4.1.1.2.1",
-        // MR Image Storage
-        "1.2.840.10008.5.1.4.1.1.4",
-        // Enhanced MR Image Storage
-        "1.2.840.10008.5.1.4.1.1.4.1",
-        // CR Image Storage
-        "1.2.840.10008.5.1.4.1.1.1",
-        // DX Image Storage
-        "1.2.840.10008.5.1.4.1.1.1.1",
-        // Digital Mammography X-Ray Image Storage
-        "1.2.840.10008.5.1.4.1.1.1.2",
-        // US Image Storage
-        "1.2.840.10008.5.1.4.1.1.6.1",
-        // US Multi-frame Image Storage
-        "1.2.840.10008.5.1.4.1.1.3.1",
-        // Secondary Capture Image Storage
-        "1.2.840.10008.5.1.4.1.1.7",
-        // Multi-frame Single Bit Secondary Capture Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.1",
-        // Multi-frame Grayscale Byte Secondary Capture Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.2",
-        // Multi-frame Grayscale Word Secondary Capture Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.3",
-        // Multi-frame True Color Secondary Capture Image Storage
-        "1.2.840.10008.5.1.4.1.1.7.4",
-        // NM Image Storage
-        "1.2.840.10008.5.1.4.1.1.20",
-        // PET Image Storage
-        "1.2.840.10008.5.1.4.1.1.128",
-        // Enhanced PET Image Storage
-        "1.2.840.10008.5.1.4.1.1.130",
-        // RT Image Storage
-        "1.2.840.10008.5.1.4.1.1.481.1",
-        // RT Dose Storage
-        "1.2.840.10008.5.1.4.1.1.481.2",
-        // RT Structure Set Storage
-        "1.2.840.10008.5.1.4.1.1.481.3",
-        // RT Plan Storage
-        "1.2.840.10008.5.1.4.1.1.481.5",
-        // Verification SOP Class
-        "1.2.840.10008.1.1"
-    ]
+    /// Common Storage SOP Classes accepted by default.
+    ///
+    /// Sourced from the package-wide canonical registry
+    /// (`StorageSOPClass.allUIDs` in `DICOMDictionary`) so the set of objects
+    /// this SCP will receive over C-STORE / C-MOVE always matches what the
+    /// C-GET SCU proposes — see ``StorageSOPClass``. The Verification SOP Class
+    /// is added so the same endpoint also answers C-ECHO.
+    public static let commonStorageSOPClasses: Set<String> =
+        StorageSOPClass.allUIDSet.union([verificationSOPClassUID])
     
     /// Common Transfer Syntaxes accepted by default
     public static let commonTransferSyntaxes: Set<String> = [

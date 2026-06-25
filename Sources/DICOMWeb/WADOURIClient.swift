@@ -61,6 +61,24 @@ public final class WADOURIClient: @unchecked Sendable {
         case htj2kContainer = "image/jphc"
         /// MPEG video (video/mpeg)
         case mpeg = "video/mpeg"
+
+        /// Maps a CLI / UI `--content-type` string (full media type or short alias) to a
+        /// `ContentType`. A nil, empty, or unrecognised value defaults to `.dicom` — the
+        /// WADO-URI default representation. This is the SINGLE source of truth shared by the
+        /// `dicom-wado` CLI and the CLI-parity reference, so the two can never request
+        /// different representations for the same `--content-type` argument.
+        public static func fromRequestString(_ raw: String?) -> ContentType {
+            switch (raw ?? "").lowercased() {
+            case "image/jpeg", "jpeg":                    return .jpeg
+            case "image/png", "png":                      return .png
+            case "image/gif", "gif":                      return .gif
+            case "image/jp2", "jp2":                      return .jpeg2000
+            case "image/jph", "jph", "htj2k":             return .htj2k
+            case "image/jphc", "jphc", "htj2k-container": return .htj2kContainer
+            case "video/mpeg", "mpeg":                    return .mpeg
+            default:                                       return .dicom
+            }
+        }
     }
 
     /// Result of a WADO-URI retrieve operation
@@ -184,6 +202,35 @@ public final class WADOURIClient: @unchecked Sendable {
 
     // MARK: - URL Building
 
+    /// Resolves the effective WADO-URI endpoint for a configured base URL.
+    ///
+    /// dcm4chee-arc (5.x) serves WADO-URI (PS3.18 §8) from its `/wado` servlet, while the
+    /// sibling RESTful endpoint `/rs` (WADO-RS / QIDO-RS / STOW-RS) returns HTTP 404 for a
+    /// `?requestType=WADO` query. A base URL whose final path segment is `rs` is therefore
+    /// aimed at the wrong servlet for WADO-URI — almost always because the WADO-RS base URL
+    /// (e.g. `…/dcm4chee-arc/aets/AET/rs`) was reused for a URI-mode request. Rewrite that
+    /// trailing `/rs` to `/wado` so the request reaches the URI service.
+    ///
+    /// Any other base URL is already correct and is returned unchanged — dcm4chee2's root
+    /// `/wado` endpoint, a custom WADO path, etc. The rewrite is safe to apply
+    /// unconditionally here because `WADOURIClient` only ever issues WADO-URI requests, for
+    /// which an `/rs` endpoint is never valid. Because the `dicom-wado` CLI, the in-app CLI
+    /// Workshop, and the CLI-parity reference all retrieve through this one client, they
+    /// resolve the endpoint identically and cannot drift.
+    public static func resolveURIEndpoint(_ baseURL: URL) -> URL {
+        guard var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return baseURL
+        }
+        var segments = components.path.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard let lastSegment = segments.lastIndex(where: { !$0.isEmpty }),
+              segments[lastSegment].lowercased() == "rs" else {
+            return baseURL
+        }
+        segments[lastSegment] = "wado"
+        components.path = segments.joined(separator: "/")
+        return components.url ?? baseURL
+    }
+
     /// Builds a WADO-URI request URL with query parameters
     ///
     /// Reference: PS3.18 §8.1.1 — URL format:
@@ -199,8 +246,11 @@ public final class WADOURIClient: @unchecked Sendable {
         columns: Int?,
         frameNumber: Int?
     ) throws -> URL {
+        // Resolve the WADO-URI servlet (rewriting a WADO-RS `/rs` base to `/wado`) before
+        // appending the query parameters — see resolveURIEndpoint.
+        let endpoint = Self.resolveURIEndpoint(configuration.baseURL)
         guard var components = URLComponents(
-            url: configuration.baseURL,
+            url: endpoint,
             resolvingAgainstBaseURL: false
         ) else {
             throw DICOMwebError.invalidURL(url: configuration.baseURL.absoluteString)
