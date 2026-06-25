@@ -87,7 +87,8 @@ public struct MPPSScope: Sendable, Equatable {
 /// bearer `token`) — resolved at run time like the DIMSE host/port. The rest are the
 /// per-subcommand concrete inputs: `query` keys for QIDO-RS (study/series/instance
 /// UIDs double as the WADO-RS retrieve scope), and a UPS create label + patient for
-/// the read-write UPS claim lifecycle (gated behind a non-empty `upsLabel`).
+/// the read-write UPS claim lifecycle (the label is optional — the harness substitutes a
+/// default when it is blank, so the write scenarios always run).
 public struct WADOScope: Sendable, Equatable {
     public var query = QueryFilters()      // QIDO-RS keys (studyUID/seriesUID double as the retrieve scope)
     public var instanceUID = ""            // WADO-RS instance-level retrieve (with study + series)
@@ -95,7 +96,7 @@ public struct WADOScope: Sendable, Equatable {
     /// "store", or "ups". Empty means all four. Mirrors the WADO panel's segmented
     /// switch so the sweep focuses on the subcommand the user is testing.
     public var subcommand = ""
-    public var upsLabel = ""               // UPS create lifecycle is generated only when set
+    public var upsLabel = ""               // UPS create label; harness substitutes a default when left blank
     public var upsPatientName = ""
     public var upsPatientID = ""
     public var upsAET = ""                 // Requesting AE for the UPS state change (claim)
@@ -896,6 +897,25 @@ public enum CLIParityNetworkReference {
         }
     }
 
+    /// GLOBAL UPS subscription round-trip — the `ups --subscribe --aet <ae>` (no --workitem-uid)
+    /// path: subscribe to ALL workitems' events, then unsubscribe. No workitem is created, so
+    /// createOK is reported vacuously true and parity is on the round-trip outcome (matching the
+    /// CLI runner). Uses the SAME shared client calls the CLI's subscribe/unsubscribe go through.
+    public static func wadoUPSSubscribeGlobal(baseURL: String, token: String, aeTitle: String) async -> WADOUPSSemantics {
+        do {
+            let client = DICOMwebClient(configuration: try webConfig(baseURL: baseURL, token: token))
+            do {
+                try await client.subscribeToAllWorkitems(aeTitle: aeTitle)
+                try await client.unsubscribeFromWorkitem(workitemUID: nil, aeTitle: aeTitle)
+                return CLIParityWADOComparator.subscribeRecord(createOK: true, roundTripOK: true)
+            } catch {
+                return CLIParityWADOComparator.subscribeRecord(createOK: true, roundTripOK: false)
+            }
+        } catch {
+            return CLIParityWADOComparator.subscribeRecord(createOK: false, roundTripOK: false)
+        }
+    }
+
     /// N-CREATEs a workitem from a DICOM-JSON dict — the SAME path `ups --create <jsonfile>`
     /// uses (client.createWorkitem(workitem: [String:Any])). The reference mints its OWN UID
     /// (distinct from the JSON file the CLI reads, so the two creates don't collide), builds
@@ -1021,10 +1041,11 @@ public enum CLIParityNetworkReference {
     /// `--update --state IN_PROGRESS` call. The Workitem UID and the claim's Transaction
     /// UID are minted client-side and differ from the CLI's by design, so they are
     /// NEVER compared — the record captures only the outcome (create / claim success,
-    /// final state). When `finalState` is COMPLETED/CANCELED the lifecycle continues past
-    /// the claim, threading the SAME single Transaction UID through the terminal transition
-    /// (COMPLETED first sends the required Final State attributes via the shared client
-    /// helper — the exact payload the CLI sends).
+    /// final state). When `finalState` is COMPLETED/CANCELED the lifecycle continues past the
+    /// claim, REUSING the Transaction UID the IN PROGRESS claim response handed back (the
+    /// server's access lock) to authorise the terminal transition — exactly as the CLI reuses
+    /// the UID its IN PROGRESS step prints (COMPLETED first sends the required Final State
+    /// attributes via the shared client helper — the exact payload the CLI sends).
     public static func wadoUPSLifecycle(baseURL: String, token: String, scope: WADOScope,
                                         finalState: String = "IN_PROGRESS") async -> WADOUPSSemantics {
         do {
@@ -1043,14 +1064,18 @@ public enum CLIParityNetworkReference {
                 return CLIParityWADOComparator.lifecycleRecord(createOK: false, claimOK: false, finalState: "")
             }
 
-            // ONE Transaction UID locks the workitem at IN PROGRESS and authorises the
-            // terminal transition — the CLI threads the same single UID through both calls.
-            let txUID = mintUID()
+            // Claim the SAME workitem to IN PROGRESS, then REUSE the Transaction UID the claim
+            // response hands back (the server's access lock) to authorise the terminal
+            // transition — mirroring the CLI, which parses the UID the IN PROGRESS step prints
+            // and feeds it back into COMPLETED/CANCELED.
+            let claimTxUID = mintUID()
             let requestingAE = scope.upsAET.isEmpty ? nil : scope.upsAET
+            let txUID: String
             do {
-                _ = try await client.changeWorkitemState(
-                    uid: created.workitemUID, state: .inProgress, transactionUID: txUID,
+                let claimResp = try await client.changeWorkitemState(
+                    uid: created.workitemUID, state: .inProgress, transactionUID: claimTxUID,
                     requestingAE: requestingAE)
+                txUID = claimResp.transactionUID ?? claimTxUID
             } catch {
                 // Create succeeded, claim did not → never reached the requested final state.
                 return CLIParityWADOComparator.lifecycleRecord(createOK: true, claimOK: false, finalState: "")

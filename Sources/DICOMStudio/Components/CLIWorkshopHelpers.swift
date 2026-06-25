@@ -1463,12 +1463,20 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "operation", flag: "", displayName: "Operation",
                     parameterType: .enumPicker, placeholder: "search",
-                    helpText: "UPS-RS operation: search workitems, get details, create workitem, change state, or subscribe to events",
+                    helpText: "UPS-RS operation: search workitems, get details, create workitem, change state, or subscribe to / unsubscribe from events",
                     isRequired: true, isInternal: true,
                     defaultValue: "search",
-                    allowedValues: ["search", "get", "create-workitem", "change-state", "subscribe"],
+                    allowedValues: ["search", "get", "create-workitem", "change-state", "subscribe", "unsubscribe"],
+                    // Each operation that maps to a bare CLI flag is emitted here, keyed off the
+                    // selected operation, so picking the tab auto-adds the flag to the command
+                    // (buildCommand applies the operation's defaultValue; a separate booleanToggle
+                    // would NOT be emitted unless the user manually checked it). "get"/"change-state"
+                    // carry their UID via --get/--update value flags instead, so they are not mapped.
                     cliMapping: [
+                        "search": "--search",
+                        "create-workitem": "--create-workitem",
                         "subscribe": "--subscribe",
+                        "unsubscribe": "--unsubscribe",
                     ]
                 ),
 
@@ -1478,14 +1486,8 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "DICOMweb server base URL (PS3.18 §6.5)",
                     isRequired: true
                 ),
-                // --search flag (shown when operation=search)
-                CLIParameterDefinition(
-                    id: "search-flag", flag: "--search", displayName: "Search",
-                    parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Search for worklist items",
-                    defaultValue: "true",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search"])
-                ),
+                // --search is emitted automatically via the operation cliMapping above
+                // when the "search" tab is selected (no manual toggle needed).
                 // --get <uid> (shown when operation=get)
                 CLIParameterDefinition(
                     id: "get-uid", flag: "--get", displayName: "Get Workitem UID",
@@ -1494,14 +1496,8 @@ public enum ToolCatalogHelpers: Sendable {
                     isRequired: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["get"])
                 ),
-                // --create-workitem flag (shown when operation=create-workitem)
-                CLIParameterDefinition(
-                    id: "create-workitem-flag", flag: "--create-workitem", displayName: "Create Workitem",
-                    parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Create a new worklist item from command-line options",
-                    defaultValue: "true",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
-                ),
+                // --create-workitem is emitted automatically via the operation cliMapping
+                // above when the "create-workitem" tab is selected (no manual toggle needed).
                 // --update <uid> (shown when operation=change-state)
                 CLIParameterDefinition(
                     id: "update-uid", flag: "--update", displayName: "Update Workitem UID",
@@ -1515,7 +1511,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "workitem-uid", flag: "--workitem-uid", displayName: "Workitem UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619... (auto-generated if empty)",
                     helpText: "UPS Workitem SOP Instance UID — auto-generated for create if omitted",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem", "subscribe"])
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem", "subscribe", "unsubscribe"])
                 ),
                 CLIParameterDefinition(
                     id: "subscribe-aet", flag: "--aet", displayName: "AE Title",
@@ -1523,7 +1519,7 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Local Application Entity Title for subscribe/unsubscribe",
                     isRequired: true,
                     defaultValue: "DICOM_STUDIO",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["subscribe"])
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["subscribe", "unsubscribe"])
                 ),
                 // --workitem-uid also visible for change-state (used in command preview)
                 // Note: change-state uses --update <uid> from update-uid parameter, not --workitem-uid
@@ -3576,13 +3572,22 @@ case "dicom-script":
         rawParameterDefinitions(for: toolID).map { def in
             guard def.defaultValue.isEmpty else { return def }
             var d = def
-            if def.parameterType == .filePath, inputFileParameterIDs.contains(def.id) {
+            if def.parameterType == .filePath, inputFileParameterIDs.contains(def.id),
+               !isFileListParameter(toolID: toolID, paramID: def.id) {
                 d.defaultValue = defaultInputFilePath
             } else if def.parameterType == .outputPath {
                 d.defaultValue = defaultOutputDirectory
             }
             return d
         }
+    }
+
+    /// Parameters that take a TEXT FILE listing paths (one per line) rather than a
+    /// primary DICOM file, so they must NOT be pre-filled with the default CT.dcm
+    /// testing path — they start empty for the user to supply a list file.
+    /// Currently just `dicom-wado store --input` (the "Input File List" advanced field).
+    private static func isFileListParameter(toolID: String, paramID: String) -> Bool {
+        toolID == "dicom-stow" && paramID == "input"
     }
 }
 

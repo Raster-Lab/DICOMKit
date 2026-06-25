@@ -192,20 +192,22 @@ final class CLIParityWADOParityTests: XCTestCase {
         XCTAssertTrue(ids.contains("dicom-wado_net_retrieve-study-metadata"))
         XCTAssertTrue(ids.contains("dicom-wado_net_store-default"))
         XCTAssertTrue(ids.contains("dicom-wado_net_ups-search"))
-        // Gated scenarios are absent without their inputs.
+        // The UPS write scenarios now run out-of-the-box (harness default label), so the
+        // full operation matrix is present even with an empty scope.
+        XCTAssertTrue(ids.contains("dicom-wado_net_ups-lifecycle"))
+        // Gated scenarios are still absent without their inputs.
         XCTAssertFalse(ids.contains("dicom-wado_net_retrieve-series"))
         XCTAssertFalse(ids.contains("dicom-wado_net_retrieve-instance"))
-        XCTAssertFalse(ids.contains("dicom-wado_net_ups-lifecycle"))
     }
 
-    /// Series/instance retrieve and the UPS lifecycle appear once their inputs are set.
+    /// Series/instance retrieve appear once their inputs are set. (UPS write scenarios are no
+    /// longer gated on a label — see testUPSWriteScenariosAlwaysGenerated.)
     func testGatedScenariosAppearWithInputs() {
         var scope = WADOScope()
-        scope.query.seriesUID = "1.2.4"; scope.instanceUID = "1.2.5"; scope.upsLabel = "CT Scan"
+        scope.query.seriesUID = "1.2.4"; scope.instanceUID = "1.2.5"
         let ids = CLIParityNetworkScenarios.wadoScenarios(scope: scope).map { $0.scenarioId }
         XCTAssertTrue(ids.contains("dicom-wado_net_retrieve-series"))
         XCTAssertTrue(ids.contains("dicom-wado_net_retrieve-instance"))
-        XCTAssertTrue(ids.contains("dicom-wado_net_ups-lifecycle"))
     }
 
     /// Per-filter and combined QIDO scenarios mirror the dicom-query study sweep.
@@ -273,12 +275,11 @@ final class CLIParityWADOParityTests: XCTestCase {
                    "ups-search-completed", "ups-search-canceled", "ups-search-csv", "ups-search-table"] {
             XCTAssertTrue(ids.contains("dicom-wado_net_\(id)"), "missing \(id)")
         }
-        // The lifecycle is NOT generated without a label.
-        XCTAssertFalse(ids.contains("dicom-wado_net_ups-lifecycle"))
-
-        for s in ups {
+        // The write scenarios now generate with the harness default label (validated in
+        // testUPSWriteScenariosAlwaysGenerated); here we check just the search rows.
+        let searchRows = ups.filter { $0.studioParams["wado-mode"] == "ups-search" }
+        for s in searchRows {
             XCTAssertEqual(s.cliArgs.first, "ups")
-            XCTAssertEqual(s.studioParams["wado-mode"], "ups-search")
             XCTAssertTrue(s.cliArgs.contains("--search"))
         }
         let scheduled = ups.first { $0.scenarioId == "dicom-wado_net_ups-search-scheduled" }
@@ -289,6 +290,34 @@ final class CLIParityWADOParityTests: XCTestCase {
         let csv = ups.first { $0.scenarioId == "dicom-wado_net_ups-search-csv" }
         XCTAssertEqual(csv?.studioParams["format"], "csv")
         XCTAssertNil(csv?.studioParams["filter-state"])   // broad search, format only
+    }
+
+    /// The FULL UPS operation matrix (create-workitem / change-state / get / subscribe /
+    /// unsubscribe) is generated out-of-the-box — even without a user-supplied label, the
+    /// harness supplies a default so every operation, plus the get --format / --verbose and
+    /// the global-subscribe flag variants, is exercised by the parity sweep.
+    func testUPSWriteScenariosAlwaysGenerated() {
+        let ups = CLIParityNetworkScenarios.wadoUPSScenarios(scope: WADOScope())
+        let ids = Set(ups.map { $0.scenarioId })
+        for id in ["ups-lifecycle", "ups-lifecycle-complete", "ups-lifecycle-cancel",
+                   "ups-get", "ups-get-table", "ups-get-json", "ups-get-csv", "ups-get-verbose",
+                   "ups-create-attrs", "ups-create-json",
+                   "ups-subscribe", "ups-subscribe-global"] {
+            XCTAssertTrue(ids.contains("dicom-wado_net_\(id)"), "missing \(id)")
+        }
+        // change-state coverage rides on the lifecycle: it chains --update --state <FINAL>.
+        let complete = ups.first { $0.scenarioId == "dicom-wado_net_ups-lifecycle-complete" }
+        XCTAssertEqual(complete?.studioParams["ups-final"], "COMPLETED")
+        // get --format / --verbose thread through studioParams for the runner to append.
+        let getCsv = ups.first { $0.scenarioId == "dicom-wado_net_ups-get-csv" }
+        XCTAssertEqual(getCsv?.studioParams["get-format"], "csv")
+        let getVerbose = ups.first { $0.scenarioId == "dicom-wado_net_ups-get-verbose" }
+        XCTAssertEqual(getVerbose?.studioParams["get-verbose"], "true")
+        // global subscribe carries --subscribe + --aet but NO --workitem-uid.
+        let global = ups.first { $0.scenarioId == "dicom-wado_net_ups-subscribe-global" }
+        XCTAssertEqual(global?.studioParams["wado-mode"], "ups-subscribe-global")
+        XCTAssertTrue(global?.cliArgs.contains("--subscribe") ?? false)
+        XCTAssertFalse(global?.cliArgs.contains("--workitem-uid") ?? true)
     }
 
     /// Non-JSON ups search renders are validated by matched COUNT: CSV = rows−header,
@@ -647,12 +676,13 @@ final class CLIParityWADOParityTests: XCTestCase {
 
     // MARK: UPS-RS create → get round-trip
 
-    /// ups-get is generated only with a Procedure Step Label (it must create a workitem
-    /// first); it carries the --create-workitem command and routes through the ups-get
-    /// runner (which chains the --get by the minted UID).
+    /// ups-get is generated out-of-the-box (the harness supplies a default label so the
+    /// create→get round-trip runs); it carries the --create-workitem command and routes
+    /// through the ups-get runner (which chains the --get by the minted UID).
     func testUPSGetScenario() {
+        // Generated even with an empty scope (harness default label).
         let bare = CLIParityNetworkScenarios.wadoUPSScenarios(scope: WADOScope()).map { $0.scenarioId }
-        XCTAssertFalse(bare.contains("dicom-wado_net_ups-get"))
+        XCTAssertTrue(bare.contains("dicom-wado_net_ups-get"))
 
         var scope = WADOScope()
         scope.upsLabel = "CT Scan"; scope.upsPatientName = "DOE^JANE"
@@ -737,12 +767,12 @@ final class CLIParityWADOParityTests: XCTestCase {
         } else { XCTFail("station search must pass --scheduled-station") }
     }
 
-    /// The create-attrs / create-json / subscribe rows are generated only with a Procedure
-    /// Step Label; each routes through its own runner and carries the right command shape.
-    func testUPSGroupBScenariosGatedOnLabel() {
+    /// The create-attrs / create-json / subscribe rows are generated out-of-the-box (harness
+    /// default label); each routes through its own runner and carries the right command shape.
+    func testUPSGroupBScenarioShapes() {
         let bare = CLIParityNetworkScenarios.wadoUPSScenarios(scope: WADOScope()).map { $0.scenarioId }
         for id in ["ups-create-attrs", "ups-create-json", "ups-subscribe"] {
-            XCTAssertFalse(bare.contains("dicom-wado_net_\(id)"), "\(id) must be gated on a label")
+            XCTAssertTrue(bare.contains("dicom-wado_net_\(id)"), "\(id) must be generated out-of-the-box")
         }
 
         var scope = WADOScope()
@@ -848,12 +878,12 @@ final class CLIParityWADOParityTests: XCTestCase {
     // MARK: Group C — UPS state machine (COMPLETED/CANCELED) / URI png+gif / verbose / token
 
     /// The full state-machine rows (create → claim → COMPLETED, and → CANCELED) are generated
-    /// only with a Procedure Step Label, route through the ups-lifecycle runner, and carry the
-    /// target terminal state in `ups-final` (the claim-only row stays at IN_PROGRESS).
+    /// out-of-the-box (harness default label), route through the ups-lifecycle runner, and carry
+    /// the target terminal state in `ups-final` (the claim-only row stays at IN_PROGRESS).
     func testUPSLifecycleStateMachineScenarios() {
         let bare = CLIParityNetworkScenarios.wadoUPSScenarios(scope: WADOScope()).map { $0.scenarioId }
         for id in ["ups-lifecycle-complete", "ups-lifecycle-cancel"] {
-            XCTAssertFalse(bare.contains("dicom-wado_net_\(id)"), "\(id) must be gated on a label")
+            XCTAssertTrue(bare.contains("dicom-wado_net_\(id)"), "\(id) must be generated out-of-the-box")
         }
 
         var scope = WADOScope()
@@ -864,16 +894,24 @@ final class CLIParityWADOParityTests: XCTestCase {
         let claim = ups.first { $0.scenarioId == "dicom-wado_net_ups-lifecycle" }
         XCTAssertEqual(claim?.studioParams["wado-mode"], "ups-lifecycle")
         XCTAssertEqual(claim?.studioParams["ups-final"], "IN_PROGRESS")
+        // The --update --state change-state operation must be VISIBLE in the scenario label
+        // (the UI lists the label; the runner chains the actual --update by the minted UID).
+        XCTAssertTrue(claim?.label.contains("--update --state IN_PROGRESS") ?? false,
+                      "lifecycle label must surface --update --state, got: \(claim?.label ?? "nil")")
 
         let complete = ups.first { $0.scenarioId == "dicom-wado_net_ups-lifecycle-complete" }
         XCTAssertEqual(complete?.studioParams["wado-mode"], "ups-lifecycle")
         XCTAssertEqual(complete?.studioParams["ups-final"], "COMPLETED")
         // The argv is still the create-workitem command (the runner chains claim + terminal step).
         XCTAssertTrue(complete?.cliArgs.contains("--create-workitem") ?? false)
+        XCTAssertTrue(complete?.label.contains("--update") ?? false)
+        XCTAssertTrue(complete?.label.contains("COMPLETED") ?? false)
 
         let cancel = ups.first { $0.scenarioId == "dicom-wado_net_ups-lifecycle-cancel" }
         XCTAssertEqual(cancel?.studioParams["ups-final"], "CANCELED")
         XCTAssertTrue(cancel?.cliArgs.contains("--create-workitem") ?? false)
+        XCTAssertTrue(cancel?.label.contains("--update") ?? false)
+        XCTAssertTrue(cancel?.label.contains("CANCELED") ?? false)
     }
 
     /// The lifecycle `success` requires the requested terminal state to have been REACHED:
