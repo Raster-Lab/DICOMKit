@@ -1020,13 +1020,25 @@ public enum CLIParityNetworkScenarios {
                             inputHint: "DICOMweb endpoint (stores a picked DICOM file/directory, or a synthetic CT) via --input")
     }
 
-    // dicom-wado ups (UPS-RS) — search (read) always; create → claim lifecycle (writes)
-    // only when a Procedure Step Label is supplied. The search sweep covers the broad
-    // query, one row per --filter-state value (both sides issue the IDENTICAL filtered
-    // query, so the matched workitem set is comparable), and --format coverage (csv/
-    // table validated by matched COUNT, like the QIDO query sweep).
-    static func wadoUPSScenarios(scope: WADOScope) -> [BatchScenario] {
+    // dicom-wado ups (UPS-RS) — the FULL operation matrix runs out-of-the-box: search (read)
+    // plus the create → claim lifecycle / get / create-workitem / subscribe writes, using the
+    // user's Procedure Step Label or a harness default when blank. The search sweep covers the
+    // broad query, one row per --filter-state value (both sides issue the IDENTICAL filtered
+    // query, so the matched workitem set is comparable), and --format coverage (csv/table
+    // validated by matched COUNT, like the QIDO query sweep).
+    static func wadoUPSScenarios(scope inputScope: WADOScope) -> [BatchScenario] {
+        // The create-based write scenarios (create-workitem / change-state / get / subscribe
+        // / unsubscribe) all need a Procedure Step Label. The harness supplies a DEFAULT so
+        // the FULL UPS operation matrix runs out-of-the-box — matching how it already
+        // auto-picks the AE title, the scheduled-station filter, and the create attribute
+        // set; the WADO panel's label value overrides it when the user sets one. (Previously
+        // these were gated behind a user-supplied label, so by default ONLY search ran.)
+        var scope = inputScope
+        if scope.upsLabel.isEmpty { scope.upsLabel = upsDefaultLabel }
+
         var out: [BatchScenario] = []
+
+        // ── --search (read) ──────────────────────────────────────────────────────────
         out.append(wadoUPSSearchSc("ups-search", "wado ups --search (UPS-RS)", filterState: "", format: "json"))
         for st in ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELED"] {
             let idState = st.lowercased().replacingOccurrences(of: "_", with: "-")
@@ -1046,33 +1058,49 @@ public enum CLIParityNetworkScenarios {
         // stays at parity with the non-verbose search.
         out.append(wadoUPSSearchSc("ups-search-verbose", "wado ups --search --verbose",
                                    filterState: "", format: "json", verbose: true))
-        if !scope.upsLabel.isEmpty {
-            out.append(wadoUPSLifecycleSc("ups-lifecycle", "wado ups create → claim", scope: scope))
-            // Full state machine: create → claim (IN PROGRESS) → COMPLETED, and
-            // create → claim → CANCELED. The runner threads ONE harness-minted
-            // Transaction UID through both the claim and the final transition (the
-            // server requires the same UID that locked the workitem). COMPLETED also
-            // sends the required Final State attributes (shared client helper). Some
-            // servers reject these without extra config → both sides fail identically
-            // (failureAgreement), never a false DIFFERS.
-            out.append(wadoUPSLifecycleSc("ups-lifecycle-complete", "wado ups create → claim → COMPLETED",
-                                          scope: scope, finalState: "COMPLETED"))
-            out.append(wadoUPSLifecycleSc("ups-lifecycle-cancel", "wado ups create → claim → CANCELED",
-                                          scope: scope, finalState: "CANCELED"))
-            // --get round-trip: create a workitem, then retrieve it back by its minted UID
-            // (chained by the runner — the UID is only known at run time). Each side gets
-            // its OWN workitem, so parity is on the outcome (create / get success).
-            out.append(wadoUPSGetSc("ups-get", "wado ups create → --get", scope: scope))
-            // --create-workitem attribute sweep: create with the FULL harness-picked
-            // attribute set (priority/dates/station/performer/…). Parity on create success.
-            out.append(wadoUPSCreateAttrsSc("ups-create-attrs", "wado ups --create-workitem (all attributes)", scope: scope))
-            // --create <jsonfile>: create from a synthesised DICOM-JSON workitem file.
-            out.append(wadoUPSCreateJSONSc("ups-create-json", "wado ups --create <jsonfile>", scope: scope))
-            // --subscribe / --unsubscribe round-trip (create → subscribe → unsubscribe).
-            out.append(wadoUPSSubscribeSc("ups-subscribe", "wado ups create → --subscribe → --unsubscribe", scope: scope))
-        }
+
+        // ── --update (change-state) lifecycle: create → claim → final state (writes) ──
+        // Full state machine: create → claim (IN PROGRESS), → COMPLETED, → CANCELED. The
+        // runner threads ONE harness-minted Transaction UID through both the claim and the
+        // final transition (the server requires the same UID that locked the workitem).
+        // COMPLETED also sends the required Final State attributes (shared client helper).
+        // Some servers reject these without extra config → both sides fail identically
+        // (failureAgreement), never a false DIFFERS.
+        out.append(wadoUPSLifecycleSc("ups-lifecycle", "wado ups create → --update --state IN_PROGRESS", scope: scope))
+        out.append(wadoUPSLifecycleSc("ups-lifecycle-complete", "wado ups --update --state IN_PROGRESS → COMPLETED",
+                                      scope: scope, finalState: "COMPLETED"))
+        out.append(wadoUPSLifecycleSc("ups-lifecycle-cancel", "wado ups --update --state IN_PROGRESS → CANCELED",
+                                      scope: scope, finalState: "CANCELED"))
+
+        // ── --get round-trip: create a workitem, then retrieve it back by its minted UID
+        // (chained by the runner — the UID is only known at run time). Each side gets its
+        // OWN workitem, so parity is on the outcome (create / get success). The --format and
+        // --verbose variants exercise those flags on the get (get now honours --format via
+        // the shared UPSResultFormatter, like --search).
+        out.append(wadoUPSGetSc("ups-get",         "wado ups create → --get", scope: scope))
+        out.append(wadoUPSGetSc("ups-get-table",   "wado ups create → --get --format table", scope: scope, format: "table"))
+        out.append(wadoUPSGetSc("ups-get-json",    "wado ups create → --get --format json",  scope: scope, format: "json"))
+        out.append(wadoUPSGetSc("ups-get-csv",     "wado ups create → --get --format csv",   scope: scope, format: "csv"))
+        out.append(wadoUPSGetSc("ups-get-verbose", "wado ups create → --get --verbose", scope: scope, verbose: true))
+
+        // ── --create-workitem (full attribute sweep) + --create <jsonfile> ──
+        // create with the FULL harness-picked attribute set (priority/dates/station/
+        // performer/…). Parity on create success.
+        out.append(wadoUPSCreateAttrsSc("ups-create-attrs", "wado ups --create-workitem (all attributes)", scope: scope))
+        out.append(wadoUPSCreateJSONSc("ups-create-json", "wado ups --create <jsonfile>", scope: scope))
+
+        // ── --subscribe / --unsubscribe ──
+        // Workitem-scoped round-trip (create → subscribe --workitem-uid → unsubscribe), and
+        // the GLOBAL round-trip (--subscribe / --unsubscribe with --aet only, no workitem).
+        out.append(wadoUPSSubscribeSc("ups-subscribe", "wado ups create → --subscribe → --unsubscribe", scope: scope))
+        out.append(wadoUPSSubscribeGlobalSc("ups-subscribe-global", "wado ups --subscribe (global) → --unsubscribe", scope: scope))
+
         return out
     }
+
+    /// Harness-picked Procedure Step Label used for the create-based UPS write scenarios when
+    /// the user leaves the WADO panel's label blank — so the full operation matrix still runs.
+    private static let upsDefaultLabel = "CLI Parity Workitem"
 
     /// Harness-picked station AE for the --scheduled-station search filter (the user
     /// supplies no station input; both sides filter by the same value → comparable count).
@@ -1117,17 +1145,23 @@ public enum CLIParityNetworkScenarios {
                             inputHint: "DICOMweb endpoint + UPS scope (writes)")
     }
 
-    private static func wadoUPSGetSc(_ idSuffix: String, _ label: String, scope: WADOScope) -> BatchScenario {
+    private static func wadoUPSGetSc(_ idSuffix: String, _ label: String, scope: WADOScope,
+                                     format: String = "", verbose: Bool = false) -> BatchScenario {
         // The argv is the `--create-workitem` command; the runner runs it, parses the
         // minted Workitem UID, then runs `ups --get <uid>` itself (the UID is only known
         // at run time). Each side retrieves its OWN just-created workitem.
         var cli = ["ups", webURLToken, "--create-workitem", "--label", scope.upsLabel]
         if !scope.upsPatientName.isEmpty { cli += ["--patient-name", scope.upsPatientName] }
         if !scope.upsPatientID.isEmpty   { cli += ["--patient-id", scope.upsPatientID] }
-        let sp: [String: String] = [
+        var sp: [String: String] = [
             "wado-mode": "ups-get", "label": scope.upsLabel,
             "patient-name": scope.upsPatientName, "patient-id": scope.upsPatientID,
         ]
+        // Drive the optional --format / --verbose flags the runner appends to the chained
+        // `ups --get <uid>` (the UID is only known at run time, so the flags can't be baked
+        // into the static cliArgs above).
+        if !format.isEmpty { sp["get-format"] = format }
+        if verbose { sp["get-verbose"] = "true" }
         return wadoScenario(idSuffix, label, cliArgs: cli, studioParams: sp,
                             inputHint: "DICOMweb endpoint + UPS scope (writes)")
     }
@@ -1206,6 +1240,19 @@ public enum CLIParityNetworkScenarios {
         ]
         return wadoScenario(idSuffix, label, cliArgs: cli, studioParams: sp,
                             inputHint: "DICOMweb endpoint + UPS scope (writes, subscription)")
+    }
+
+    private static func wadoUPSSubscribeGlobalSc(_ idSuffix: String, _ label: String, scope: WADOScope) -> BatchScenario {
+        // GLOBAL subscription: `ups --subscribe --aet <ae>` then `ups --unsubscribe --aet <ae>`
+        // (no --workitem-uid, no create — subscribes to ALL workitems' events). The runner
+        // runs the sub/unsub pair directly; AE title is harness-picked. Parity on the
+        // round-trip outcome.
+        let cli = ["ups", webURLToken, "--subscribe", "--aet", upsSubscribeAET]
+        let sp: [String: String] = [
+            "wado-mode": "ups-subscribe-global", "aet": upsSubscribeAET,
+        ]
+        return wadoScenario(idSuffix, label, cliArgs: cli, studioParams: sp,
+                            inputHint: "DICOMweb endpoint (global UPS subscription)")
     }
 
     /// Assembles one dicom-wado scenario — all four subcommands share the same shape

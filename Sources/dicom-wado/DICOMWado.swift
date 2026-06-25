@@ -128,14 +128,12 @@ struct RetrieveCommand: AsyncParsableCommand {
         let client = DICOMwebClient(configuration: config)
         
         if verbose {
-            fprintln("DICOMweb Server: \(baseURL)")
-            fprintln("Study UID: \(studyUID)")
-            if let seriesUID = series {
-                fprintln("Series UID: \(seriesUID)")
-            }
-            if let instanceUID = instance {
-                fprintln("Instance UID: \(instanceUID)")
-            }
+            // Console rendering is delegated to the SHARED WADORetrieveConsoleFormatter
+            // (DICOMWeb) — the single retrieve-output renderer the CLI Workshop's in-app
+            // retrieve also calls, so the CLI and app output pipelines cannot drift
+            // (mirrors QIDOResultFormatter for the query subcommand).
+            fprintln(WADORetrieveConsoleFormatter().verbosePreambleRS(
+                baseURL: baseURL, studyUID: studyUID, seriesUID: series, instanceUID: instance))
             fprintln("")
         }
         
@@ -176,19 +174,14 @@ struct RetrieveCommand: AsyncParsableCommand {
             frameNumber = nil
         }
         
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("WADO-URI Server: \(baseURL)")
-            fprintln("Protocol:     WADO-URI (PS3.18 §8)")
-            fprintln("Study UID:    \(studyUID)")
-            fprintln("Series UID:   \(seriesUID)")
-            fprintln("Instance UID: \(instanceUID)")
-            fprintln("Content-Type: \(wadoContentType.rawValue)")
-            if let frame = frameNumber {
-                fprintln("Frame:        \(frame)")
-            }
+            fprintln(fmt.verbosePreambleURI(
+                baseURL: baseURL, studyUID: studyUID, seriesUID: seriesUID,
+                instanceUID: instanceUID, contentType: wadoContentType.rawValue, frame: frameNumber))
             fprintln("")
         }
-        
+
         let client = WADOURIClient(configuration: config)
         let result = try await client.retrieve(
             studyUID: studyUID,
@@ -215,16 +208,17 @@ struct RetrieveCommand: AsyncParsableCommand {
         try saveData(result.data, filename: filename)
         
         if verbose {
-            fprintln("Retrieved \(result.data.count) bytes via WADO-URI")
-            fprintln("Saved to: \(output ?? FileManager.default.currentDirectoryPath)/\(filename)")
+            fprintln(fmt.uriRetrievedVerbose(bytes: result.data.count))
+            fprintln(fmt.savedTo(path: "\(output ?? FileManager.default.currentDirectoryPath)/\(filename)"))
         } else {
-            fprintln("Retrieved \(result.data.count) bytes → \(filename)")
+            fprintln(fmt.uriRetrieved(bytes: result.data.count, filename: filename))
         }
     }
     
     private func retrieveMetadata(client: DICOMwebClient, studyUID: String) async throws {
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving metadata...")
+            fprintln(fmt.metadataRetrieving())
         }
 
         // JSON and XML decode the same DICOMweb metadata response through different
@@ -248,10 +242,9 @@ struct RetrieveCommand: AsyncParsableCommand {
             } else {
                 metadata = try await client.retrieveStudyMetadata(studyUID: studyUID)
             }
-            let jsonData = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
-            print(String(data: jsonData, encoding: .utf8) ?? "")
+            print(try fmt.metadataJSON(metadata))
             if verbose {
-                fprintln("\nRetrieved metadata for \(metadata.count) instance(s)")
+                fprintln(fmt.metadataCount(metadata.count))
             }
 
         case .xml:
@@ -271,9 +264,9 @@ struct RetrieveCommand: AsyncParsableCommand {
             } else {
                 instances = try await client.retrieveStudyMetadataAsElements(studyUID: studyUID)
             }
-            print(try formatMetadataXML(instances))
+            print(try fmt.metadataXML(instances))
             if verbose {
-                fprintln("\nRetrieved metadata for \(instances.count) instance(s)")
+                fprintln(fmt.metadataCount(instances.count))
             }
         }
     }
@@ -283,28 +276,30 @@ struct RetrieveCommand: AsyncParsableCommand {
             throw ValidationError("--series and --instance are required for rendered retrieval")
         }
         
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving rendered image...")
+            fprintln(fmt.renderedRetrieving())
         }
-        
+
         let imageData = try await client.retrieveRenderedInstance(
             studyUID: studyUID,
             seriesUID: seriesUID,
             instanceUID: instanceUID
         )
-        
+
         try saveData(imageData, filename: "rendered_\(instanceUID).jpg")
-        
+
         if verbose {
-            fprintln("Saved rendered image (\(imageData.count) bytes)")
+            fprintln(fmt.renderedSaved(bytes: imageData.count))
         }
     }
     
     private func retrieveThumbnail(client: DICOMwebClient, studyUID: String) async throws {
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving thumbnail...")
+            fprintln(fmt.thumbnailRetrieving())
         }
-        
+
         let thumbnailData: Data
         
         if let instanceUID = instance, let seriesUID = series {
@@ -326,7 +321,7 @@ struct RetrieveCommand: AsyncParsableCommand {
         }
         
         if verbose {
-            fprintln("Saved thumbnail (\(thumbnailData.count) bytes)")
+            fprintln(fmt.thumbnailSaved(bytes: thumbnailData.count))
         }
     }
     
@@ -335,35 +330,42 @@ struct RetrieveCommand: AsyncParsableCommand {
             throw ValidationError("--series and --instance are required for frame retrieval")
         }
         
-        let frameNumbers = try parseFrameNumbers(framesString)
-        
-        if verbose {
-            fprintln("Retrieving frames: \(frameNumbers.map(String.init).joined(separator: ", "))...")
+        let fmt = WADORetrieveConsoleFormatter()
+        let frameNumbers: [Int]
+        do {
+            frameNumbers = try fmt.parseFrameNumbers(framesString)
+        } catch let error as WADOFrameParseError {
+            throw ValidationError(error.description)
         }
-        
+
+        if verbose {
+            fprintln(fmt.framesRetrieving(frameNumbers))
+        }
+
         let frames = try await client.retrieveFrames(
             studyUID: studyUID,
             seriesUID: seriesUID,
             instanceUID: instanceUID,
             frames: frameNumbers
         )
-        
+
         for frame in frames {
             let filename = "frame_\(frame.frameNumber)_\(instanceUID).raw"
             try saveData(frame.data, filename: filename)
             if verbose {
-                fprintln("Saved frame \(frame.frameNumber) (\(frame.data.count) bytes)")
+                fprintln(fmt.frameSaved(number: frame.frameNumber, bytes: frame.data.count))
             }
         }
-        
+
         if verbose {
-            fprintln("\nRetrieved \(frames.count) frame(s)")
+            fprintln(fmt.framesCount(frames.count))
         }
     }
     
     private func retrieveInstances(client: DICOMwebClient, studyUID: String) async throws {
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving DICOM instances...")
+            fprintln(fmt.instancesRetrieving())
         }
         
         if let instanceUID = instance, let seriesUID = series {
@@ -375,7 +377,7 @@ struct RetrieveCommand: AsyncParsableCommand {
             )
             try saveData(instanceData, filename: "instance_\(instanceUID).dcm")
             if verbose {
-                fprintln("Saved instance (\(instanceData.count) bytes)")
+                fprintln(fmt.instanceSaved(bytes: instanceData.count))
             }
         } else if let seriesUID = series {
             // Series
@@ -387,11 +389,11 @@ struct RetrieveCommand: AsyncParsableCommand {
                 let filename = "instance_\(index + 1).dcm"
                 try saveData(instanceData, filename: filename)
                 if verbose {
-                    fprintln("Saved instance \(index + 1) (\(instanceData.count) bytes)")
+                    fprintln(fmt.instanceSaved(index: index + 1, bytes: instanceData.count))
                 }
             }
             if verbose {
-                fprintln("\nRetrieved \(result.instances.count) instance(s)")
+                fprintln(fmt.instancesCount(result.instances.count))
             }
         } else {
             // Full study
@@ -400,25 +402,12 @@ struct RetrieveCommand: AsyncParsableCommand {
                 let filename = "instance_\(index + 1).dcm"
                 try saveData(instanceData, filename: filename)
                 if verbose {
-                    fprintln("Saved instance \(index + 1) (\(instanceData.count) bytes)")
+                    fprintln(fmt.instanceSaved(index: index + 1, bytes: instanceData.count))
                 }
             }
             if verbose {
-                fprintln("\nRetrieved \(result.instances.count) instance(s)")
+                fprintln(fmt.instancesCount(result.instances.count))
             }
-        }
-    }
-    
-    private func parseFrameNumbers(_ framesString: String) throws -> [Int] {
-        let components = framesString.split(separator: ",")
-        return try components.map { component in
-            guard let number = Int(component.trimmingCharacters(in: .whitespaces)) else {
-                throw ValidationError("Invalid frame number: \(component)")
-            }
-            guard number > 0 else {
-                throw ValidationError("Frame numbers must be positive: \(number)")
-            }
-            return number
         }
     }
     
@@ -433,34 +422,6 @@ struct RetrieveCommand: AsyncParsableCommand {
         )
         
         try data.write(to: outputURL)
-    }
-    
-    /// Renders DICOMweb metadata as PS3.19 Native DICOM Model XML using the shared
-    /// `DICOMXMLEncoder`. A single instance produces one `<NativeDicomModel>`
-    /// document; multiple instances are wrapped in a `<NativeDicomModelList>` so the
-    /// combined output stays one well-formed document with a single XML prolog.
-    private func formatMetadataXML(_ instances: [[DataElement]]) throws -> String {
-        let encoder = DICOMXMLEncoder(
-            configuration: DICOMXMLEncoder.Configuration(prettyPrinted: true)
-        )
-
-        // Exactly one instance → a single NativeDicomModel document. Zero instances
-        // falls through to the list branch below, yielding an empty
-        // <NativeDicomModelList> with zero <NativeDicomModel> elements — so a metadata
-        // instance count stays 0, matching the package-API reference's object count for
-        // an empty result (CLI-parity counts <NativeDicomModel> occurrences).
-        if instances.count == 1 {
-            return try encoder.encodeToString(instances[0])
-        }
-
-        let xmlProlog = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-        var xml = xmlProlog + "<NativeDicomModelList>\n"
-        for elements in instances {
-            let single = try encoder.encodeToString(elements)
-            xml += single.replacingOccurrences(of: xmlProlog, with: "")
-        }
-        xml += "</NativeDicomModelList>\n"
-        return xml
     }
 }
 
@@ -719,14 +680,17 @@ struct StoreCommand: AsyncParsableCommand {
         )
         
         let client = DICOMwebClient(configuration: config)
-        
+
+        // Console rendering is delegated to the SHARED STOWResultFormatter (DICOMWeb) —
+        // the single store-output renderer the CLI Workshop's in-app STOW upload also
+        // calls, so the CLI and app output pipelines cannot drift (mirrors
+        // QIDOResultFormatter for the query subcommand). The "Upload Summary" block is a
+        // parity contract parsed by CLIParityWADOComparator.parseStore.
+        let stowFmt = STOWResultFormatter()
+
         if verbose {
-            fprintln("DICOMweb Server: \(baseURL)")
-            if let studyUID = study {
-                fprintln("Target Study: \(studyUID)")
-            }
-            fprintln("Files to upload: \(filesToUpload.count)")
-            fprintln("Batch size: \(batch)")
+            fprintln(stowFmt.header(baseURL: baseURL, targetStudyUID: study,
+                                    fileCount: filesToUpload.count, batchSize: batch))
             fprintln("")
         }
         
@@ -736,7 +700,7 @@ struct StoreCommand: AsyncParsableCommand {
         
         for (batchIndex, batchFiles) in filesToUpload.chunked(into: batch).enumerated() {
             if verbose {
-                fprintln("Batch \(batchIndex + 1): Uploading \(batchFiles.count) file(s)...")
+                fprintln(stowFmt.batchStart(batchNumber: batchIndex + 1, fileCount: batchFiles.count))
             }
             
             // Load batch files
@@ -768,12 +732,11 @@ struct StoreCommand: AsyncParsableCommand {
                 totalFailure += failureCount
                 
                 if verbose {
-                    fprintln("  Success: \(successCount), Failure: \(failureCount)")
-                    if !response.failedInstances.isEmpty {
-                        for failure in response.failedInstances {
-                            let reason = failure.failureDescription ?? (failure.failureReason.map { "Code \($0)" } ?? "unknown error")
-                            fprintln("    Failed: \(failure.sopInstanceUID ?? "unknown") - \(reason)")
-                        }
+                    fprintln(stowFmt.batchResult(success: successCount, failure: failureCount))
+                    for failure in response.failedInstances {
+                        let reason = stowFmt.failureReason(description: failure.failureDescription,
+                                                           code: failure.failureReason)
+                        fprintln(stowFmt.failureDetail(sopInstanceUID: failure.sopInstanceUID, reason: reason))
                     }
                 }
             } catch {
@@ -788,10 +751,7 @@ struct StoreCommand: AsyncParsableCommand {
         }
         
         // Summary
-        fprintln("\nUpload Summary:")
-        fprintln("  Total files: \(filesToUpload.count)")
-        fprintln("  Successful: \(totalSuccess)")
-        fprintln("  Failed: \(totalFailure)")
+        fprintln(stowFmt.summary(total: filesToUpload.count, succeeded: totalSuccess, failed: totalFailure))
         
         if totalFailure > 0 && !continueOnError {
             throw ExitCode.failure
@@ -999,15 +959,16 @@ struct UPSCommand: AsyncParsableCommand {
         if verbose {
             fprintln("Retrieving worklist item: \(uid)")
         }
-        
-        let workitem = try await client.retrieveWorkitem(uid: uid)
-        
-        let jsonData = try JSONSerialization.data(
-            withJSONObject: workitem,
-            options: [.prettyPrinted, .sortedKeys]
-        )
-        if let jsonString = String(data: jsonData, encoding: .utf8) {
-            print(jsonString)
+
+        // Render via the SHARED UPSResultFormatter, honoring --format (table/json/csv) —
+        // the SAME renderer --search uses, so get and search share one output pipeline and
+        // the CLI Workshop's in-app get cannot drift. retrieveWorkitemResult returns the
+        // WorkitemResult the formatter consumes (mirrors the package's UPS --format contract).
+        let result = try await client.retrieveWorkitemResult(uid: uid)
+        print(UPSResultFormatter().format([result], format: format.asUPS))
+
+        if verbose {
+            fprintln("\nRetrieved worklist item \(uid)")
         }
     }
     

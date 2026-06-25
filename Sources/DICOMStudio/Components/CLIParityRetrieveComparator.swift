@@ -13,9 +13,10 @@
 // while C-MOVE asks the PACS to forward them to a destination AE. Both the package
 // API reference and the CLI drive the SAME DICOMRetrieveService.move*/get* calls, so
 // their sub-operation counts line up. Comparison is on the OUTCOME — method, level,
-// overall success, and the completed / failed sub-operation counts (plus the
-// retrieved-file count for C-GET and the warning count for C-MOVE). Round-trip time
-// and throughput are never compared.
+// and overall success. C-MOVE additionally compares the completed / failed / warning
+// sub-operation counts (its result block prints them); C-GET compares the
+// received-file count instead — its shared summary prints ONLY that, not the
+// per-sub-operation counts. Round-trip time and throughput are never compared.
 //
 // NOTE: every retrieve scenario runs with `--verbose`, because dicom-retrieve only
 // prints its result block when `--verbose` is set (or the op failed) — without it a
@@ -46,13 +47,12 @@ public struct RetrieveSemantics: Equatable, Sendable {
 public enum CLIParityRetrieveComparator {
 
     /// Parses the dicom-retrieve CLI output (it prints its result block to stderr,
-    /// so the combined stdout+stderr text is passed in). The C-MOVE block carries
-    /// `Completed:` / `Failed:` / `Warnings:`; the C-GET block carries
-    /// `Files received:` / `Completed:` / `Failed:`. `success` comes from the CLI's
-    /// exit code (the records must agree on it — see runNetworkScenario).
+    /// so the combined stdout+stderr text is passed in). `success` comes from the
+    /// CLI's exit code (the records must agree on it — see runNetworkScenario).
     ///
-    /// The count lines are matched by line PREFIX (after trimming the two-space
-    /// indent), NOT by substring-contains. This is essential because:
+    /// C-MOVE prints a structured `C-MOVE Result:` block carrying `Completed:` /
+    /// `Failed:` / `Warnings:`. Those are matched by line PREFIX (after trimming the
+    /// two-space indent), NOT by substring-contains. This is essential because:
     ///   • the verbose per-sub-operation "Progress:" lines use lower-case
     ///     "completed"/"failed" (no colon) — excluded by the capitalised label; and
     ///   • the `Status:` line embeds the DIMSEStatus description, which for a FAILURE
@@ -60,7 +60,15 @@ public enum CLIParityRetrieveComparator {
     ///     process (0x0110)"). A contains-search would match that line first and read
     ///     the status hex (→ 0) instead of the real failed-sub-operation count. The
     ///     `Status:` prefix means `hasPrefix("Failed:")` correctly skips it.
-    /// (The "C-GET Completed:" header is likewise skipped — its prefix is "C-GET".)
+    ///
+    /// C-GET no longer prints a structured count block: its shared
+    /// NetworkConsole.cGetSummary emits EXACTLY one terse line —
+    /// "✅ C-GET completed — N file(s) received" on success, or
+    /// "⚠️ C-GET completed but received 0 instances. …" when nothing arrived. The
+    /// received-file count is therefore the only comparable C-GET signal; it is read
+    /// from that line (the 0-instances warning ⇒ 0). The per-sub-operation
+    /// completed/failed counts from the final C-GET-RSP are unobservable in the CLI
+    /// text, so they are not parsed (and not compared — see `canonical`).
     public static func parse(_ text: String, method: String, level: String, success: Bool) -> RetrieveSemantics {
         func intAfter(_ label: String) -> Int? {
             for raw in text.split(separator: "\n", omittingEmptySubsequences: true) {
@@ -71,12 +79,23 @@ public enum CLIParityRetrieveComparator {
             return nil
         }
         if method == "c-get" {
+            // Read N from "… — N file(s) received"; the 0-instances warning line
+            // ("received 0 instances") carries no received count and means 0.
+            func cGetFilesReceived() -> Int {
+                for raw in text.split(separator: "\n", omittingEmptySubsequences: true) {
+                    let line = raw.trimmingCharacters(in: .whitespaces)
+                    if line.contains("received 0 instances") { return 0 }
+                    if line.contains("file(s) received"),
+                       let r = line.range(of: "[0-9]+", options: .regularExpression) {
+                        return Int(line[r]) ?? 0
+                    }
+                }
+                return 0
+            }
             return RetrieveSemantics(
                 method: "c-get", level: level, success: success,
-                completed: intAfter("Completed:") ?? 0,
-                failed: intAfter("Failed:") ?? 0,
-                warning: 0,
-                filesReceived: intAfter("Files received:") ?? 0)
+                completed: 0, failed: 0, warning: 0,
+                filesReceived: cGetFilesReceived())
         }
         return RetrieveSemantics(
             method: "c-move", level: level, success: success,
@@ -86,14 +105,18 @@ public enum CLIParityRetrieveComparator {
             filesReceived: 0)
     }
 
-    /// A stable, human-readable rendering of the record. The trailing line is
-    /// method-specific: C-GET reports the received-file count, C-MOVE the warning
-    /// count (dicom-retrieve doesn't print warnings for C-GET).
+    /// A stable, human-readable rendering of the record. C-MOVE compares the
+    /// completed / failed / warning sub-operation counts (its result block prints
+    /// them); C-GET compares ONLY the received-file count — its shared summary emits
+    /// nothing else, so including completed/failed would diff forever against the
+    /// reference's (unprintable) C-GET-RSP counts. `success` participates for both.
     public static func canonical(_ s: RetrieveSemantics) -> [String] {
-        var out = ["method: \(s.method)", "level: \(s.level)", "success: \(s.success)",
-                   "completed: \(s.completed)", "failed: \(s.failed)"]
-        if s.method == "c-get" { out.append("files: \(s.filesReceived)") }
-        else { out.append("warning: \(s.warning)") }
+        var out = ["method: \(s.method)", "level: \(s.level)", "success: \(s.success)"]
+        if s.method == "c-get" {
+            out.append("files: \(s.filesReceived)")
+        } else {
+            out += ["completed: \(s.completed)", "failed: \(s.failed)", "warning: \(s.warning)"]
+        }
         return out
     }
 

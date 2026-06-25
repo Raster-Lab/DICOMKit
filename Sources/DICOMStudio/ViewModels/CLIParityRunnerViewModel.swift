@@ -397,18 +397,15 @@ public final class CLIParityRunnerViewModel {
         mode == .network ? availableNetworkTools : availableTools
     }
 
-    /// Switches mode, scoping the selection to the new pool's tools (and
-    /// pre-selecting the first network tool for convenience), and clears stale
-    /// results so the two modes' tables never mix.
+    /// Switches mode, scoping the selection to the new pool's tools, and clears
+    /// stale results so the two modes' tables never mix. No tool is pre-selected —
+    /// the user explicitly picks which tools to run (Network mode starts with an
+    /// empty selection, so dicom-echo is not auto-checked).
     public func setMode(_ m: ParityMode) {
         guard m != mode, !isRunning else { return }
         mode = m
         let ids = Set(activeTools.map { $0.id })
         selectedToolIDs = selectedToolIDs.intersection(ids)
-        if m == .network, selectedToolIDs.isEmpty,
-           let first = availableNetworkTools.first(where: { networkParityReady($0.id) }) {
-            selectedToolIDs = [first.id]
-        }
         enforceServerLock()   // a carried-over dicom-mpps selection pins DCM4CHEE5 MWL
         results = []
         summary = BatchParitySummary()
@@ -1031,6 +1028,7 @@ public final class CLIParityRunnerViewModel {
             case "ups-lifecycle":   return await runWADOUPSLifecycleScenario(s)
             case "ups-get":         return await runWADOUPSGetScenario(s)
             case "ups-subscribe":   return await runWADOUPSSubscribeScenario(s)
+            case "ups-subscribe-global": return await runWADOUPSSubscribeGlobalScenario(s)
             case "ups-create-json": return await runWADOUPSCreateJSONScenario(s)
             default:                break
             }
@@ -1953,15 +1951,35 @@ public final class CLIParityRunnerViewModel {
 
     // MARK: dicom-wado UPS-RS create → claim lifecycle (stateful, two-phase, WRITES)
 
-    /// Runs one `dicom-wado ups` create → claim lifecycle. The package-API reference
-    /// (createWorkitem → changeWorkitemState IN PROGRESS) and the CLI (`ups
-    /// --create-workitem` → `ups --update --state IN_PROGRESS`) each run an INDEPENDENT
-    /// claim. The Workitem UID is minted client-side and differs between the two by
-    /// design, so it's never compared — the CLI side threads the UID parsed from its own
-    /// create output into its claim. Parity is on the outcome (create / claim success,
-    /// final state).
+    /// Runs one `dicom-wado ups` create → claim lifecycle on a SINGLE workitem. The
+    /// package-API reference (createWorkitem → changeWorkitemState IN PROGRESS) and the CLI
+    /// (`ups --create-workitem` → `ups --update --state IN_PROGRESS`) each run an INDEPENDENT
+    /// claim. The Workitem UID is minted client-side and differs between the two by design, so
+    /// it's never compared — the CLI side parses the UID from its own create output. For the
+    /// COMPLETED/CANCELED rows the claim is run WITHOUT a pre-supplied Transaction UID; the
+    /// IN PROGRESS step returns one (printed as "Transaction UID: …") which is parsed and
+    /// reused to authorise the terminal transition. Parity is on the outcome (create / claim
+    /// success, final state).
     private func runWADOUPSLifecycleScenario(_ s: BatchScenario) async -> BatchScenarioResult {
-        let command = (["dicom-wado"] + s.cliArgs.map { resolveNet($0) }).joined(separator: " ")
+        // Show the FULL state-machine chain in the displayed command so the --update --state
+        // transitions (SCHEDULED → IN_PROGRESS → COMPLETED/CANCELED) are visible in the parity
+        // UI. The runner mints the Workitem UID + Transaction UID at run time, shown as
+        // <uid>/<txuid> placeholders here; the resolved per-phase commands + output appear in
+        // the expanded result after running.
+        let command: String = {
+            let createCmd = (["dicom-wado"] + s.cliArgs.map { resolveNet($0) }).joined(separator: " ")
+            let url = networkWebBaseURL.trimmingCharacters(in: .whitespaces)
+            let fin = (s.studioParams["ups-final"] ?? "IN_PROGRESS").uppercased()
+            let aetTitle = s.studioParams["aet"] ?? ""
+            let aetFlag = aetTitle.isEmpty ? "" : " --aet \(aetTitle)"
+            var lines = [createCmd,
+                         "dicom-wado ups \(url) --update <uid> --state IN_PROGRESS\(aetFlag)"]
+            if fin != "IN_PROGRESS" {
+                // The IN_PROGRESS step above returns a Transaction UID; reuse it here.
+                lines.append("dicom-wado ups \(url) --update <uid> --state \(fin)\(aetFlag) --transaction-uid <txuid-from-IN_PROGRESS>")
+            }
+            return lines.joined(separator: "\n")
+        }()
         #if os(macOS)
         let baseURL = networkWebBaseURL.trimmingCharacters(in: .whitespaces)
         let token = networkWebToken.trimmingCharacters(in: .whitespaces)
@@ -1987,7 +2005,7 @@ public final class CLIParityRunnerViewModel {
         // CANCELED. COMPLETED runs an extra Update-Workitem (Final State attributes) inside
         // one CLI call, so size the deadline a little larger for it.
         let finalState = (sp["ups-final"] ?? "IN_PROGRESS").uppercased()
-        let lifeLabel = finalState == "IN_PROGRESS" ? "create → claim" : "create → claim → \(finalState)"
+        let lifeLabel = finalState == "IN_PROGRESS" ? "create → --update IN_PROGRESS" : "create → --update IN_PROGRESS → \(finalState)"
         let netUnits = finalState == "IN_PROGRESS" ? 2 : (finalState == "COMPLETED" ? 4 : 3)
         let ref = await raceDeadline(
             scTimeout * Double(netUnits) + 60,
@@ -2013,18 +2031,18 @@ public final class CLIParityRunnerViewModel {
         let createText = combinedCLIText(createOutcome)
         let parsedCreate = CLIParityWADOComparator.parseCreate(createText, exitOK: createOutcome.exitCode == 0)
 
-        // Phase 2: claim the workitem (SCHEDULED → IN PROGRESS). ONE harness-minted
-        // Transaction UID locks the workitem and (for COMPLETED/CANCELED) authorises the
-        // terminal transition — the server requires the same UID for both, so we pass it
-        // explicitly rather than letting the claim auto-generate one.
-        let cliTxUID = CLIParityNetworkReference.mintUID()
+        // Phase 2: claim the SAME workitem (SCHEDULED → IN PROGRESS) WITHOUT pre-supplying a
+        // Transaction UID — the CLI generates one and the IN PROGRESS response prints it
+        // ("Transaction UID: …"). We parse that UID and reuse it to authorise the terminal
+        // transition (COMPLETED/CANCELED), exactly as a real operator would: the server's
+        // access lock is the UID handed back by the IN PROGRESS step, not a pre-chosen one.
         var claimText = ""
         var finalText = ""
         var lastExit = createOutcome.exitCode
         var cliClaimOK: Bool? = nil
         var cliFinalState = ""
         if parsedCreate.ok, let uid = parsedCreate.uid {
-            var claimArgs = ["ups", baseURL, "--update", uid, "--state", "IN_PROGRESS", "--transaction-uid", cliTxUID]
+            var claimArgs = ["ups", baseURL, "--update", uid, "--state", "IN_PROGRESS"]
             if !aet.isEmpty { claimArgs += ["--aet", aet] }
             claimArgs = withWebToken(claimArgs)
             let claimOutcome = await Task.detached {
@@ -2032,6 +2050,8 @@ public final class CLIParityRunnerViewModel {
             }.value
             claimText = combinedCLIText(claimOutcome)
             lastExit = claimOutcome.exitCode
+            // parseClaim returns both the claim outcome AND the Transaction UID the IN PROGRESS
+            // step handed back — the access lock we must reuse for the terminal transition.
             let pc = CLIParityWADOComparator.parseClaim(claimText, exitOK: claimOutcome.exitCode == 0)
             cliClaimOK = pc.ok
 
@@ -2039,9 +2059,10 @@ public final class CLIParityRunnerViewModel {
                 cliFinalState = ""
             } else if finalState == "IN_PROGRESS" {
                 cliFinalState = "IN PROGRESS"
-            } else {
-                // Phase 3: terminal transition (COMPLETED/CANCELED) with the SAME Transaction UID.
-                var finalArgs = ["ups", baseURL, "--update", uid, "--state", finalState, "--transaction-uid", cliTxUID]
+            } else if let claimTxUID = pc.transactionUID, !claimTxUID.isEmpty {
+                // Phase 3: terminal transition (COMPLETED/CANCELED) on the SAME workitem,
+                // re-using the Transaction UID returned by the IN PROGRESS claim.
+                var finalArgs = ["ups", baseURL, "--update", uid, "--state", finalState, "--transaction-uid", claimTxUID]
                 if !aet.isEmpty { finalArgs += ["--aet", aet] }
                 finalArgs = withWebToken(finalArgs)
                 let finalOutcome = await Task.detached {
@@ -2053,6 +2074,11 @@ public final class CLIParityRunnerViewModel {
                 // finalState non-empty ONLY when the terminal transition succeeded; an
                 // empty value scores the row as not-successful (failureAgreement if both fail).
                 cliFinalState = pf.ok ? (finalState == "COMPLETED" ? "COMPLETED" : "CANCELED") : ""
+            } else {
+                // Claim succeeded but no Transaction UID was returned → the terminal transition
+                // can't be authorised; record it as not reached (scores like a failed final).
+                finalText = "(no Transaction UID returned by the IN PROGRESS claim — cannot transition to \(finalState))"
+                cliFinalState = ""
             }
         } else {
             // Create failed → no claim attempted; the claim did not succeed.
@@ -2141,7 +2167,12 @@ public final class CLIParityRunnerViewModel {
         var lastExit = createOutcome.exitCode
         var cliGetOK: Bool? = nil
         if parsedCreate.ok, let uid = parsedCreate.uid {
-            let getArgs = withWebToken(["ups", baseURL, "--get", uid])
+            // Append the optional --format / --verbose flags this scenario exercises (the UID
+            // is only known now, so they couldn't be baked into the static cliArgs).
+            var getArgv = ["ups", baseURL, "--get", uid]
+            if let f = sp["get-format"], !f.isEmpty { getArgv += ["--format", f] }
+            if sp["get-verbose"] == "true" { getArgv += ["--verbose"] }
+            let getArgs = withWebToken(getArgv)
             let getOutcome = await Task.detached {
                 CLIToolTerminalCompare.run(tool: toolId, arguments: getArgs, binDir: binDir, timeout: cliDeadline)
             }.value
@@ -2253,6 +2284,75 @@ public final class CLIParityRunnerViewModel {
             passNote: "The dicom-wado UPS create → subscribe → unsubscribe round-trip matches the DICOMKit package API reference (client-minted UIDs / AE titles ignored).",
             driftNote: "The dicom-wado UPS subscribe round-trip diverges from the DICOMKit package API reference (see diff; client-minted UIDs / AE titles ignored).",
             failAgreeNote: "The package API and the CLI both failed the UPS subscribe round-trip identically (e.g. UPS-RS subscription is not enabled on the server) — parity held on the failure path, so this row is excluded from the score.")
+        #else
+        return result(s, command: command, input: .match, app: nil, cli: nil,
+                      output: .notApplicable, status: .cliError,
+                      note: "Live CLI comparison is only available on macOS.")
+        #endif
+    }
+
+    // MARK: dicom-wado UPS-RS GLOBAL subscribe → unsubscribe (no workitem, WRITES)
+
+    /// Runs one `dicom-wado ups --subscribe --aet <ae>` (no --workitem-uid) → `--unsubscribe`
+    /// global round-trip. The reference (subscribeToAllWorkitems → unsubscribeFromWorkitem(nil))
+    /// and the CLI both target ALL workitems' events for a harness-picked AE (AE title never
+    /// compared). No workitem is created. Parity is on the round-trip outcome; many servers
+    /// don't enable UPS subscription, so both sides commonly fail identically (failureAgreement).
+    private func runWADOUPSSubscribeGlobalScenario(_ s: BatchScenario) async -> BatchScenarioResult {
+        let command = (["dicom-wado"] + s.cliArgs.map { resolveNet($0) }).joined(separator: " ")
+        #if os(macOS)
+        let baseURL = networkWebBaseURL.trimmingCharacters(in: .whitespaces)
+        let token = networkWebToken.trimmingCharacters(in: .whitespaces)
+        pendingInputUsed = "DICOMweb \(baseURL)"
+        let sp = s.studioParams
+        let scTimeout = TimeInterval(resolveNet(sp["timeout"] ?? "")) ?? 30
+        let aet = sp["aet"] ?? ""
+
+        if baseURL.isEmpty {
+            return result(s, command: command, input: .notApplicable, app: nil, cli: nil,
+                          output: .notApplicable, status: .skipped,
+                          note: "Enter a DICOMweb Base URL to test the dicom-wado UPS-RS global subscribe round-trip.")
+        }
+
+        let netUnits = 2
+        let ref = await raceDeadline(
+            scTimeout * Double(netUnits) + 60,
+            fallback: CLIParityWADOComparator.subscribeRecord(createOK: false, roundTripOK: false)) {
+            await CLIParityNetworkReference.wadoUPSSubscribeGlobal(baseURL: baseURL, token: token, aeTitle: aet)
+        }
+        let refRender = CLIParityNetworkReference.renderWADOUPS(ref)
+
+        let toolId = s.toolId
+        let binDir = freshBinDir
+        let cliDeadline = scTimeout * Double(netUnits) + 60
+
+        // Global subscribe, then global unsubscribe — both with --aet only (no --workitem-uid).
+        let subArgs = withWebToken(["ups", baseURL, "--subscribe", "--aet", aet])
+        let subOutcome = await Task.detached {
+            CLIToolTerminalCompare.run(tool: toolId, arguments: subArgs, binDir: binDir, timeout: cliDeadline)
+        }.value
+        if let launchError = subOutcome.launchError {
+            return result(s, command: command, input: .notApplicable, app: ref.overallOK, cli: subOutcome.exitCode,
+                          output: .notApplicable, status: .cliError, appOut: refRender, note: launchError)
+        }
+        let unsubArgs = withWebToken(["ups", baseURL, "--unsubscribe", "--aet", aet])
+        let unsubOutcome = await Task.detached {
+            CLIToolTerminalCompare.run(tool: toolId, arguments: unsubArgs, binDir: binDir, timeout: cliDeadline)
+        }.value
+        let cliRoundTripOK = (subOutcome.exitCode == 0) && (unsubOutcome.exitCode == 0)
+        // createOK is vacuously true here (no create phase) so the record compares the
+        // round-trip outcome the same way the workitem-scoped subscribe row does.
+        let cli = CLIParityWADOComparator.subscribeRecord(createOK: true, roundTripOK: cliRoundTripOK)
+        let cliText = "── subscribe (global) ──\n" + combinedCLIText(subOutcome)
+            + "\n\n── unsubscribe (global) ──\n" + combinedCLIText(unsubOutcome)
+        let cmp = CLIParityWADOComparator.compareUPS(reference: ref, cli: cli)
+        return networkVerdict(
+            s, command: command, refOK: ref.overallOK, refRender: refRender,
+            cliExit: unsubOutcome.exitCode, cliText: cliText, cmp: cmp,
+            processNote: "Process divergence: the DICOMKit package API \(ref.overallOK ? "succeeded" : "failed") but the dicom-wado UPS global subscribe round-trip \(cli.overallOK ? "succeeded" : "failed"). The CLI and the package API must agree on the outcome.",
+            passNote: "The dicom-wado UPS global subscribe → unsubscribe round-trip matches the DICOMKit package API reference (AE titles ignored).",
+            driftNote: "The dicom-wado UPS global subscribe round-trip diverges from the DICOMKit package API reference (see diff; AE titles ignored).",
+            failAgreeNote: "The package API and the CLI both failed the UPS global subscribe round-trip identically (e.g. UPS-RS subscription is not enabled on the server) — parity held on the failure path, so this row is excluded from the score.")
         #else
         return result(s, command: command, input: .match, app: nil, cli: nil,
                       output: .notApplicable, status: .cliError,

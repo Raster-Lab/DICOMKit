@@ -39,53 +39,55 @@ final class CLIParityRetrieveParityTests: XCTestCase {
 
     // MARK: parse — C-GET
 
+    /// The shared NetworkConsole.cGetSummary prints ONE terse line, no structured
+    /// count block; the received-file count is read from it.
     func testParsesCGetSummaryCounts() {
         let cli = """
-        ── stderr ──
-        Retrieving study: 1.2.3
-          Progress: 0/3 completed, 0 failed, 3 remaining
-          Received instance: 1.2.3.1 (10.5 KB)
-          Received instance: 1.2.3.2 (10.5 KB)
-          Received instance: 1.2.3.3 (10.5 KB)
+        DICOM Retrieve (C-GET)
+        ========================
+          Server: 127.0.0.1:11112
+          Timeout: 30s
 
-        C-GET Completed:
-          Files received: 3
-          Total size: 31.5 KB
-          Status: Success
-          Completed: 3
-          Failed: 0
+        Executing C-GET...
+
+        ✅ C-GET completed — 3 file(s) received
         """
         let s = C.parse(cli, method: "c-get", level: "study", success: true)
         XCTAssertEqual(s.method, "c-get")
-        XCTAssertEqual(s.completed, 3)
-        XCTAssertEqual(s.failed, 0)
         XCTAssertEqual(s.filesReceived, 3)
+        XCTAssertTrue(s.overallOK)
     }
 
-    /// REGRESSION: the CLI prints "Status: <desc>" before the count lines, and a
-    /// FAILURE DIMSEStatus.description begins with the literal "Failed:" (e.g.
-    /// "Failed: Unable to process (0x0110)"). A substring search would read the status
-    /// hex (→ 0) instead of the real failed-sub-operation count; the prefix-anchored
-    /// parse must read the true "Failed: N" line. This is the exact false-DIFFERS case
-    /// the harness must avoid on a C-GET failure-status retrieve.
-    func testStatusLineDoesNotShadowFailedCount() {
+    /// The 0-instances warning summary parses to a received count of 0 (the SCP
+    /// matched but negotiated no storage context). A reference that also received 0
+    /// must NOT drift.
+    func testParsesCGetZeroInstanceWarning() {
         let cli = """
-        ── stderr ──
-          Received instance: 1.2.3.1 (10.5 KB)
+        Executing C-GET...
 
-        C-GET Completed:
-          Files received: 1
-          Total size: 10.5 KB
-          Status: Failed: Unable to process (0x0110)
-          Completed: 0
-          Failed: 2
+        ⚠️ C-GET completed but received 0 instances. The SCP matched the request but \
+        sent no images — likely no storage presentation context was negotiated.
+        """
+        let s = C.parse(cli, method: "c-get", level: "study", success: true)
+        XCTAssertEqual(s.filesReceived, 0)
+        let ref = RetrieveSemantics(method: "c-get", level: "study", success: true,
+                                    completed: 0, failed: 0, warning: 0, filesReceived: 0)
+        XCTAssertTrue(C.compare(reference: ref, cli: s).match)
+    }
+
+    /// A FAILED C-GET (non-zero exit) still parses the received-file count and is
+    /// compared on success + files only. C-GET no longer prints a failed sub-op count,
+    /// so the reference's (unobservable) failed count is excluded — a genuinely
+    /// identical failure path is NOT a false drift.
+    func testFailedCGetComparesOnSuccessAndFiles() {
+        let cli = """
+        Executing C-GET...
+
+        ✅ C-GET completed — 1 file(s) received
         """
         let s = C.parse(cli, method: "c-get", level: "study", success: false)
-        XCTAssertEqual(s.failed, 2)          // the real count, NOT the status hex (0)
-        XCTAssertEqual(s.completed, 0)
         XCTAssertEqual(s.filesReceived, 1)
-        // The reference for the same failed C-GET reports failed:2 too → records agree,
-        // so a genuinely-identical failure path is NOT a false drift.
+        XCTAssertFalse(s.overallOK)
         let ref = RetrieveSemantics(method: "c-get", level: "study", success: false,
                                     completed: 0, failed: 2, warning: 0, filesReceived: 1)
         XCTAssertTrue(C.compare(reference: ref, cli: s).match)
@@ -140,9 +142,10 @@ final class CLIParityRetrieveParityTests: XCTestCase {
     func testCGetFileCountDriftIsDetected() {
         let ref = RetrieveSemantics(method: "c-get", level: "series", success: true,
                                     completed: 3, failed: 0, warning: 0, filesReceived: 3)
-        // Same completed/failed but a different received-file count must be a drift.
-        let cli = C.parse("C-GET Completed:\n  Files received: 2\n  Completed: 3\n  Failed: 0\n",
+        // A different received-file count must be a drift.
+        let cli = C.parse("✅ C-GET completed — 2 file(s) received\n",
                           method: "c-get", level: "series", success: true)
+        XCTAssertEqual(cli.filesReceived, 2)
         XCTAssertFalse(C.compare(reference: ref, cli: cli).match)
     }
 
@@ -150,7 +153,7 @@ final class CLIParityRetrieveParityTests: XCTestCase {
     func testSuccessFlagIsCompared() {
         let ref = RetrieveSemantics(method: "c-get", level: "study", success: true,
                                     completed: 1, failed: 0, warning: 0, filesReceived: 1)
-        let cli = C.parse("C-GET Completed:\n  Files received: 1\n  Completed: 1\n  Failed: 0\n",
+        let cli = C.parse("✅ C-GET completed — 1 file(s) received\n",
                           method: "c-get", level: "study", success: false)
         XCTAssertFalse(C.compare(reference: ref, cli: cli).match)
     }
