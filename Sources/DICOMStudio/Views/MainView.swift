@@ -15,12 +15,21 @@ import SwiftUI
 public struct MainView: View {
     @Bindable var viewModel: MainViewModel
 
+    /// The shell owns the split's column visibility so the sidebar is ALWAYS shown
+    /// on launch. Without this, NavigationSplitView is free to drop to `.detailOnly`
+    /// whenever a detail view (e.g. the wide CLI Parity / network forms) demands more
+    /// width than the window can spare — and macOS then persists that collapsed state,
+    /// so the navigation sidebar goes missing on the landing page across launches.
+    /// Defaulting to `.all` (and pinning the sidebar's column width in SidebarView)
+    /// keeps it visible while leaving the toolbar toggle free to collapse it on demand.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+
     public init(viewModel: MainViewModel) {
         self.viewModel = viewModel
     }
 
     public var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(viewModel: viewModel)
         } detail: {
             if let destination = viewModel.selectedDestination {

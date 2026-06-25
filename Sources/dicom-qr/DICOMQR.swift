@@ -178,32 +178,23 @@ extension DICOMQR {
             
             // Parse server
             let serverInfo = resolveHostPort()
-            
-            if verbose {
-                print("Query-Retrieve Configuration:")
-                print("  Server: \(serverInfo.host):\(serverInfo.port)")
-                print("  Calling AET: \(aet)")
-                print("  Called AET: \(calledAet)")
-                print("  Method: \(method)")
-                if let dest = moveDest {
-                    print("  Move Dest: \(dest)")
-                }
-                print("  Output: \(output)")
-                print("  Mode: \(interactive ? "Interactive" : auto ? "Automatic" : "Review")")
-                if let ts = transferSyntax {
-                    print("  Transfer Syntax: \(ts) (requested)")
-                }
-                print("")
-            }
-            
+
+            // Header via the SHARED NetworkConsole formatter (DICOMNetwork), printed to
+            // STDOUT so its order/wording matches DICOMStudio's in-process console.
+            let modeLabel = interactive ? "Interactive" : (auto ? "Automatic" : "Review")
+            print(NetworkConsole.qrHeader(
+                host: serverInfo.host, port: serverInfo.port,
+                callingAE: aet, calledAE: calledAet,
+                mode: modeLabel,
+                method: retrievalMethod == .cMove ? "C-MOVE" : "C-GET",
+                isReview: review, moveDestination: moveDest,
+                output: output, timeout: timeout,
+                transferSyntax: transferSyntax,
+                filters: appliedFilters()), terminator: "")
+
             // Build query keys
             let queryKeys = buildQueryKeys()
-            
-            // Execute query
-            if verbose {
-                print("Executing C-FIND query...")
-            }
-            
+
             let queryExecutor = QueryExecutor(
                 host: serverInfo.host,
                 port: serverInfo.port,
@@ -218,28 +209,25 @@ extension DICOMQR {
                 print("No studies found matching the query criteria.")
                 return
             }
-            
-            if verbose {
-                print("Raw C-FIND response attributes:")
-                for (index, result) in results.enumerated() {
-                    print("  Result [\(index + 1)]:")
-                    for (tag, data) in result.attributes.sorted(by: { $0.key < $1.key }) {
-                        let str = String(data: data, encoding: .utf8) ?? String(data: data, encoding: .ascii) ?? "<binary \(data.count) bytes>"
-                        print("    (\(String(format: "%04X", tag.group)),\(String(format: "%04X", tag.element))) = \"\(str.trimmingCharacters(in: CharacterSet(charactersIn: " \0")))\"")
-                    }
-                }
-                print("")
-            }
-            
-            print("Found \(results.count) studies")
+
+            print("Found \(results.count) study(ies):")
             print("")
-            
-            // Display results
-            displayResults(results)
-            
+
+            // Study list via the SHARED NetworkConsole formatter (DICOMNetwork). Uses
+            // toStudyResult() (and ModalitiesInStudy, the key actually requested) so the
+            // fields match DICOMStudio's in-process qr exactly.
+            for (index, result) in results.enumerated() {
+                let s = result.toStudyResult()
+                print(NetworkConsole.qrStudyEntry(
+                    index: index + 1,
+                    patientName: s.patientName, patientID: s.patientID,
+                    studyDescription: s.studyDescription, studyDate: s.studyDate,
+                    modality: s.modalitiesInStudy, studyUID: s.studyInstanceUID), terminator: "")
+            }
+
             // Handle different modes
             if review {
-                // Review mode - just display and optionally save
+                print("Review complete. \(results.count) study(ies) found.")
                 if let statePath = saveState {
                     try saveQueryState(results: results, path: statePath)
                     print("")
@@ -248,7 +236,7 @@ extension DICOMQR {
                 }
                 return
             }
-            
+
             // Determine which studies to retrieve
             let studiesToRetrieve: [GenericQueryResult]
             if interactive {
@@ -256,16 +244,15 @@ extension DICOMQR {
             } else {
                 studiesToRetrieve = results
             }
-            
+
             if studiesToRetrieve.isEmpty {
                 print("No studies selected for retrieval.")
                 return
             }
-            
+
+            print("Retrieving \(studiesToRetrieve.count) study(ies)...")
             print("")
-            print("Retrieving \(studiesToRetrieve.count) studies...")
-            print("")
-            
+
             // Create retrieve executor
             let retrieveExecutor = RetrieveExecutor(
                 host: serverInfo.host,
@@ -300,32 +287,31 @@ extension DICOMQR {
             var failureCount = 0
             
             for (index, result) in studiesToRetrieve.enumerated() {
-                guard let studyUID = result.studyInstanceUID else {
-                    print("[\(index + 1)/\(studiesToRetrieve.count)] ⚠️  Missing Study UID")
+                let s = result.toStudyResult()
+                guard let studyUID = s.studyInstanceUID else {
+                    print("[\(index + 1)/\(studiesToRetrieve.count)] ⚠️ Missing Study UID")
                     failureCount += 1
                     continue
                 }
-                
-                print("[\(index + 1)/\(studiesToRetrieve.count)] Retrieving: \(studyUID)")
-                
+
+                print(NetworkConsole.qrRetrieveLine(
+                    index: index + 1, total: studiesToRetrieve.count,
+                    patientName: s.patientName, studyUID: studyUID), terminator: "")
+
                 do {
                     try await retrieveExecutor.retrieveStudy(studyUID: studyUID, method: retrievalMethod)
                     successCount += 1
-                    print("  ✅ Success")
+                    print(NetworkConsole.qrRetrieveOutcome(success: true, error: nil), terminator: "")
                 } catch {
                     failureCount += 1
-                    print("  ❌ Failed: \(error.localizedDescription)")
+                    print(NetworkConsole.qrRetrieveOutcome(success: false, error: error.localizedDescription), terminator: "")
                 }
-                
-                print("")
             }
-            
-            // Print summary
-            print("Retrieval Summary:")
-            print("  Total: \(studiesToRetrieve.count)")
-            print("  Success: \(successCount)")
-            print("  Failed: \(failureCount)")
-            
+
+            // Summary via the SHARED formatter.
+            print(NetworkConsole.qrSummary(
+                total: studiesToRetrieve.count, success: successCount, failed: failureCount), terminator: "")
+
             if validate && successCount > 0 {
                 print("")
                 print("Validating retrieved files...")
@@ -378,24 +364,24 @@ extension DICOMQR {
             
             return keys
         }
-        
-        private func displayResults(_ results: [GenericQueryResult]) {
-            print("Studies:")
-            print("─────────────────────────────────────────────────────────────────")
-            for (index, result) in results.enumerated() {
-                print("[\(index + 1)] \(result.patientName ?? "Unknown") (ID: \(result.patientID ?? "N/A"))")
-                print("    Study: \(result.studyDescription ?? "No description")")
-                print("    Date: \(result.studyDate ?? "N/A")  Modality: \(result.modality ?? "N/A")")
-                if let uid = result.studyInstanceUID {
-                    print("    UID: \(uid)")
-                }
-                if let accession = result.accessionNumber {
-                    print("    Accession: \(accession)")
-                }
+
+        /// Applied, non-empty match filters in the canonical order shared with the
+        /// app's header, so the header listing is identical on both sides.
+        private func appliedFilters() -> [(label: String, value: String)] {
+            var f: [(String, String)] = []
+            func add(_ label: String, _ value: String?) {
+                if let v = value, !v.isEmpty { f.append((label, v)) }
             }
-            print("─────────────────────────────────────────────────────────────────")
+            add("Patient Name:", patientName)
+            add("Patient ID:", patientId)
+            add("Study Date:", studyDate)
+            add("Modality:", modality)
+            add("Study UID:", studyUid)
+            add("Accession:", accessionNumber)
+            add("Study Desc:", studyDescription)
+            return f
         }
-        
+
         private func selectStudiesInteractively(_ results: [GenericQueryResult]) throws -> [GenericQueryResult] {
             print("")
             print("Enter study numbers to retrieve (comma-separated, or 'all'):")
@@ -750,10 +736,10 @@ struct RetrieveExecutor {
     let verbose: Bool
     
     func retrieveStudy(studyUID: String, method: RetrievalMethod) async throws {
-        if verbose {
-            print("  Executing \(method.rawValue.uppercased()) for study: \(studyUID)")
-        }
-        
+        // Silent per-study retrieval: the calling loop renders the `[i/N] Retrieving…`
+        // line and the ✅/❌ outcome via the shared NetworkConsole formatter, so this
+        // executor must not print anything of its own (volatile per-instance/progress
+        // lines would diverge from the in-app run).
         switch method {
         case .cMove:
             guard let moveDestination = moveDestination else {
@@ -777,8 +763,6 @@ struct RetrieveExecutor {
                 studyInstanceUID: studyUID,
                 timeout: timeout
             )
-            var filesReceived = 0
-            var totalBytes = 0
             for await event in stream {
                 switch event {
                 case .instance(let sopInstanceUID, let sopClassUID, let transferSyntaxUID, let data):
@@ -789,20 +773,8 @@ struct RetrieveExecutor {
                         data: data,
                         studyUID: studyUID
                     )
-                    filesReceived += 1
-                    totalBytes += data.count
-                    if verbose {
-                        print("    Received instance: \(sopInstanceUID) (\(formatBytes(totalBytes)))")
-                    }
-                case .progress(let progress):
-                    if verbose {
-                        print("    Progress: \(progress.completed)/\(progress.completed + progress.remaining)")
-                    }
-                case .completed(let result):
-                    print("  Files received: \(filesReceived) (\(formatBytes(totalBytes)))")
-                    if verbose {
-                        print("  C-GET status: \(result.status)")
-                    }
+                case .progress, .completed:
+                    break
                 case .error(let err):
                     throw err
                 }
@@ -885,14 +857,6 @@ struct RetrieveExecutor {
         file += meta
         file += dataset
         return file
-    }
-    
-    private func formatBytes(_ bytes: Int) -> String {
-        let kb = Double(bytes) / 1024.0
-        if kb < 1024.0 { return String(format: "%.1f KB", kb) }
-        let mb = kb / 1024.0
-        if mb < 1024.0 { return String(format: "%.1f MB", mb) }
-        return String(format: "%.1f GB", mb / 1024.0)
     }
 }
 #endif

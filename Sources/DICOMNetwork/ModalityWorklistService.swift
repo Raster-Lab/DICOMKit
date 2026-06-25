@@ -186,6 +186,80 @@ public struct WorklistQueryKeys: Sendable {
     }
 }
 
+/// Error thrown when an MWL scheduled-date filter cannot be resolved.
+public enum WorklistDateFilterError: Error, CustomStringConvertible, Sendable {
+    /// The supplied filter was neither `today`/`tomorrow` nor a valid `YYYYMMDD` date.
+    case invalidFormat(String)
+
+    public var description: String {
+        switch self {
+        case .invalidFormat(let filter):
+            return "Invalid date filter '\(filter)'. Use YYYYMMDD, 'today', or 'tomorrow'."
+        }
+    }
+}
+
+extension WorklistQueryKeys {
+
+    /// Resolves an MWL scheduled-date filter to a DICOM `YYYYMMDD` date string.
+    ///
+    /// This is the SINGLE source of truth shared by the `dicom-mwl` CLI, DICOMStudio's
+    /// in-app worklist query, and the CLI-parity reference, so their date handling
+    /// cannot drift. `today`/`tomorrow` resolve to the corresponding day; an 8-digit
+    /// `YYYYMMDD` passes through; anything else throws ``WorklistDateFilterError``.
+    ///
+    /// The formatter is pinned to `en_US_POSIX` so the result is always a Gregorian
+    /// calendar date regardless of the host device's locale/calendar.
+    public static func resolveScheduledDate(_ filter: String) throws -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd"
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        switch filter.lowercased() {
+        case "today":
+            return formatter.string(from: Date())
+        case "tomorrow":
+            guard let tomorrow = Calendar.current.date(byAdding: .day, value: 1, to: Date()) else {
+                throw WorklistDateFilterError.invalidFormat(filter)
+            }
+            return formatter.string(from: tomorrow)
+        default:
+            guard filter.count == 8, Int(filter) != nil else {
+                throw WorklistDateFilterError.invalidFormat(filter)
+            }
+            return filter
+        }
+    }
+
+    /// Builds MWL C-FIND query keys from raw filter strings — the SINGLE source of
+    /// truth shared by the `dicom-mwl` CLI, DICOMStudio's in-app worklist query, and
+    /// the CLI-parity reference, so their input→C-FIND mapping cannot drift.
+    ///
+    /// Starts from ``default()`` (all common return keys) and adds a MATCHING key for
+    /// each non-empty filter. `date` accepts `today`/`tomorrow`/`YYYYMMDD` (resolved by
+    /// ``resolveScheduledDate(_:)``); an unparseable date throws ``WorklistDateFilterError``.
+    /// `patientName` is passed through verbatim — callers add `*` wildcards explicitly,
+    /// matching the `dicom-mwl --patient` semantics.
+    public static func forQuery(
+        date: String = "",
+        station: String = "",
+        patientName: String = "",
+        patientID: String = "",
+        modality: String = "",
+        spsStatus: String = "",
+        accession: String = ""
+    ) throws -> WorklistQueryKeys {
+        var keys = WorklistQueryKeys.default()
+        if !date.isEmpty        { keys = keys.scheduledDate(try resolveScheduledDate(date)) }
+        if !station.isEmpty     { keys = keys.scheduledStationAET(station) }
+        if !patientName.isEmpty { keys = keys.patientName(patientName) }
+        if !patientID.isEmpty   { keys = keys.patientID(patientID) }
+        if !modality.isEmpty    { keys = keys.modality(modality) }
+        if !spsStatus.isEmpty   { keys = keys.scheduledProcedureStepStatus(spsStatus) }
+        if !accession.isEmpty   { keys = keys.accessionNumber(accession) }
+        return keys
+    }
+}
+
 /// Modality Worklist item result.
 ///
 /// Attributes from the top-level dataset and from the nested SPS sequence
@@ -1216,9 +1290,31 @@ public enum DICOMModalityWorklistService {
 
     /// Builds an HL7 v2.5 ORM^O01 order message for MWL creation.
     ///
-    /// Segments: MSH, PID, PV1, ORC, OBR, ZDS
-    /// The ZDS segment carries the Study Instance UID for DICOM-aware receivers.
-    private static func buildHL7ORM(
+    /// Segments: MSH, PID, PV1, ORC, OBR, IPC, ZDS
+    ///
+    /// Field placement follows dcm4chee-arc's DEFAULT inbound order stylesheet
+    /// `hl7-order2dcm.xsl` (the modern successor to `hl7-orm2dcm.xsl`), which builds the
+    /// Scheduled Procedure Step Sequence (0040,0100) along one of two mutually-exclusive
+    /// paths:
+    ///
+    /// * **IPC path** — when an `IPC` (Imaging Procedure Control, dcm4che private) segment
+    ///   is present, every SPS attribute is read directly from a dedicated IPC field
+    ///   (SPS ID ← IPC-4, Modality ← IPC-5, SPS Description ← IPC-6, Station Name ← IPC-7,
+    ///   **Station AE Title ← IPC-9**), and Accession/Requested-Procedure-ID/Study-UID come
+    ///   from IPC-1/IPC-2/IPC-3. This is the only path that can carry Scheduled Station AE
+    ///   Title and Scheduled Station Name, and it does so independent of server config.
+    /// * **ZDS/OBR fallback** — with no IPC segment, the SPS item is built from the OBR:
+    ///   **SPS ID ← OBR-20** (Filler Field 1, `$obr/field[20]`), Modality ← OBR-24,
+    ///   Accession ← OBR-18, Requested Procedure ID ← OBR-19. (Earlier revisions wrote the
+    ///   Station AE Title into OBR-20, so the server ingested it as the SPS ID — fixed here.)
+    ///
+    /// We emit BOTH: the `IPC` segment so a default dcm4chee-arc maps every field correctly,
+    /// and a correctly-aligned OBR as the fallback for receivers that key off the OBR/ZDS
+    /// path. The `ZDS` segment carries the Study Instance UID for DICOM-aware receivers.
+    ///
+    /// - Note: `internal` (not `private`) so the field-placement regression test can assert
+    ///   each value lands at its exact HL7 position without a live MLLP server.
+    static func buildHL7ORM(
         messageControlID: String,
         timestamp: String,
         sendingApplication: String,
@@ -1284,38 +1380,58 @@ public enum DICOMModalityWorklistService {
         msg += "|SC"                      // ORC-5: Order Status (SC = Scheduled)
         msg += cr
 
-        // OBR — Observation Request
-        msg += "OBR"
-        msg += "|1"                       // OBR-1: Set ID
-        msg += "|\(accessionNumber)"      // OBR-2: Placer Order Number
-        msg += "|"                        // OBR-3: Filler Order Number
-        // OBR-4: Universal Service Identifier (procedure code^description)
-        msg += "|\(requestedProcedureID)^\(requestedProcedureDescription)"
-        msg += "|"                        // OBR-5: Priority
-        msg += "|"                        // OBR-6: Requested Date/Time
-        msg += "|\(scheduledDateTime)"    // OBR-7: Observation Date/Time
-        msg += "||||"                     // OBR-8..11
-        msg += "|"                        // OBR-12: Danger Code
-        msg += "|"                        // OBR-13: Relevant Clinical Info
-        msg += "|"                        // OBR-14: Specimen Received Date/Time
-        msg += "|"                        // OBR-15: Specimen Source
-        msg += "|\(referringPhysicianName ?? "")" // OBR-16: Ordering Provider
-        msg += "|"                        // OBR-17: Order Callback Phone Number
-        msg += "|\(scheduledProcedureStepDescription)" // OBR-18: Placer Field 1 (SPS description)
-        msg += "|\(scheduledProcedureStepID)"   // OBR-19: Placer Field 2 (SPS ID)
-        msg += "|\(scheduledStationAETitle)"    // OBR-20: Filler Field 1 (Station AET)
-        msg += "|\(scheduledStationName)"       // OBR-21: Filler Field 2 (Station Name)
-        msg += "|"                        // OBR-22: Results Rpt/Status Date
-        msg += "|"                        // OBR-23: Charge to Practice
-        msg += "|\(modality)"             // OBR-24: Diagnostic Serv Sect ID (modality)
-        msg += "|"                        // OBR-25: Result Status
-        msg += "|"                        // OBR-26: Parent Result
-        msg += "|^^^" + scheduledDateTime // OBR-27: Quantity/Timing (for scheduled date/time)
+        // OBR — Observation Request. Built from an explicit field-index→value map so each
+        // value lands at its exact HL7 position (manual pipe-counting is what previously
+        // shifted Station AET into the SPS-ID slot). Indices match dcm4chee-arc's default
+        // `hl7-order2dcm.xsl` ZDS/OBR fallback path:
+        //   OBR-18 → Accession Number (0008,0050)         [Placer Field 1]
+        //   OBR-19 → Requested Procedure ID (0040,1001)    [Placer Field 2]
+        //   OBR-20 → Scheduled Procedure Step ID (0040,0009) [Filler Field 1, $obr/field[20]]
+        //   OBR-24 → Modality (0008,0060)
+        //   OBR-27 → Scheduled Procedure Step Start Date/Time (4th component, $obr/field[27]/component[3])
+        //   OBR-34 → Scheduled Performing Physician's Name (0040,0006)
+        //   OBR-44 → Requested Procedure Description (0032,1060) via the procedure code's text component
+        // Scheduled Station AE Title / Station Name have NO OBR slot in this default — they
+        // travel in the IPC segment below.
+        var obrFields: [Int: String] = [
+            1: "1",                                                          // Set ID
+            2: accessionNumber,                                             // Placer Order Number
+            4: "\(requestedProcedureID)^\(requestedProcedureDescription)",  // Universal Service Identifier (code^text)
+            7: scheduledDateTime,                                           // Observation Date/Time (informational)
+            16: referringPhysicianName ?? "",                               // Ordering Provider → Requesting Physician (0032,1032)
+            18: accessionNumber,                                            // Placer Field 1 → Accession Number (0008,0050)
+            19: requestedProcedureID,                                       // Placer Field 2 → Requested Procedure ID (0040,1001)
+            20: scheduledProcedureStepID,                                   // Filler Field 1 → Scheduled Procedure Step ID (0040,0009)
+            24: modality,                                                   // Diagnostic Serv Sect ID → Modality (0008,0060)
+            27: "^^^\(scheduledDateTime)",                                  // Quantity/Timing, 4th comp → SPS Start Date/Time (0040,0002/0003)
+            44: "\(requestedProcedureID)^\(requestedProcedureDescription)"  // Procedure Code → Requested Procedure Description (0032,1060)
+        ]
         if let performer = scheduledPerformingPhysicianName, !performer.isEmpty {
-            // OBR-28..33 (skip to OBR-34: Technician)
-            msg += "|||||||\(performer)"
+            obrFields[34] = performer                                       // Technician slot → Scheduled Performing Physician's Name (0040,0006)
         }
-        msg += cr
+        msg += hl7Segment("OBR", fields: obrFields) + cr
+
+        // IPC — Imaging Procedure Control (dcm4che private segment). When present, dcm4chee-arc's
+        // default stylesheet builds the Scheduled Procedure Step Sequence directly from IPC fields,
+        // giving every SPS attribute an unambiguous, configuration-independent slot — including the
+        // Scheduled Station AE Title (IPC-9) and Scheduled Station Name (IPC-7), which the bare
+        // ORM/OBR path cannot carry. IPC-1/2/3 also override Accession / Requested Procedure ID /
+        // Study Instance UID, so the worklist item matches the OBR fallback exactly.
+        var ipcFields: [Int: String] = [
+            1: accessionNumber,            // Accession Number (0008,0050)
+            2: requestedProcedureID,       // Requested Procedure ID (0040,1001)
+            3: studyInstanceUID,           // Study Instance UID (0020,000D)
+            4: scheduledProcedureStepID,   // Scheduled Procedure Step ID (0040,0009)
+            5: modality,                   // Modality (0008,0060)
+            7: scheduledStationName,       // Scheduled Station Name (0040,0010)
+            9: scheduledStationAETitle     // Scheduled Station AE Title (0040,0001)
+        ]
+        if !scheduledProcedureStepDescription.isEmpty {
+            // SPS Description (0040,0007) is read from IPC-6's text component (2nd component);
+            // leave the code (1st component) empty so no spurious protocol code is created.
+            ipcFields[6] = "^\(scheduledProcedureStepDescription)"
+        }
+        msg += hl7Segment("IPC", fields: ipcFields) + cr
 
         // ZDS — Study Instance UID (custom Z-segment, dcm4chee convention)
         msg += "ZDS"
@@ -1323,6 +1439,21 @@ public enum DICOMModalityWorklistService {
         msg += cr
 
         return msg
+    }
+
+    /// Builds an HL7 segment string from a 1-based field-index→value map.
+    ///
+    /// The segment name is followed by fields `1...maxIndex` joined by the field separator
+    /// `|`; any index absent from `fields` is emitted as an empty field. Placing each value
+    /// by explicit index (rather than counting pipe separators by hand) keeps high-numbered
+    /// fields — e.g. OBR-20, OBR-44, IPC-9 — at exactly their intended HL7 position.
+    /// MSH is built separately because MSH-1 *is* the field separator.
+    private static func hl7Segment(_ name: String, fields: [Int: String]) -> String {
+        guard let maxIndex = fields.keys.max(), maxIndex >= 1 else { return name }
+        var parts = [name]
+        parts.reserveCapacity(maxIndex + 1)
+        for i in 1...maxIndex { parts.append(fields[i] ?? "") }
+        return parts.joined(separator: "|")
     }
 
     // MARK: - MLLP Transport

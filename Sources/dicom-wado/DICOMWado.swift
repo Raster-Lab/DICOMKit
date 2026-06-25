@@ -46,6 +46,11 @@ struct RetrieveCommand: AsyncParsableCommand {
             
             By default uses WADO-RS (RESTful paths). Use --uri for legacy WADO-URI servers
             (e.g. dcm4chee2) that expect query-parameter URLs.
+
+            WADO-URI endpoint: dcm4chee-arc serves WADO-URI from its `/wado` servlet, not the
+            RESTful `/rs` endpoint. If a `/rs` base URL is supplied with --uri it is rewritten
+            to `/wado` automatically (so `…/aets/AET/rs` becomes `…/aets/AET/wado`); dcm4chee2's
+            root `/wado` and other paths are used as-is.
             
             WADO-RS examples:
               dicom-wado retrieve https://server/dicom-web --study 1.2.3.4.5 -o study/
@@ -123,14 +128,12 @@ struct RetrieveCommand: AsyncParsableCommand {
         let client = DICOMwebClient(configuration: config)
         
         if verbose {
-            fprintln("DICOMweb Server: \(baseURL)")
-            fprintln("Study UID: \(studyUID)")
-            if let seriesUID = series {
-                fprintln("Series UID: \(seriesUID)")
-            }
-            if let instanceUID = instance {
-                fprintln("Instance UID: \(instanceUID)")
-            }
+            // Console rendering is delegated to the SHARED WADORetrieveConsoleFormatter
+            // (DICOMWeb) — the single retrieve-output renderer the CLI Workshop's in-app
+            // retrieve also calls, so the CLI and app output pipelines cannot drift
+            // (mirrors QIDOResultFormatter for the query subcommand).
+            fprintln(WADORetrieveConsoleFormatter().verbosePreambleRS(
+                baseURL: baseURL, studyUID: studyUID, seriesUID: series, instanceUID: instance))
             fprintln("")
         }
         
@@ -158,19 +161,9 @@ struct RetrieveCommand: AsyncParsableCommand {
             throw ValidationError("--instance is required for WADO-URI retrieval")
         }
         
-        let wadoContentType: WADOURIClient.ContentType
-        switch contentType?.lowercased() {
-        case "image/jpeg", "jpeg":  wadoContentType = .jpeg
-        case "image/png", "png":    wadoContentType = .png
-        case "image/gif", "gif":    wadoContentType = .gif
-        case "image/jp2", "jp2":    wadoContentType = .jpeg2000
-        case "image/jph", "jph", "htj2k":
-            wadoContentType = .htj2k
-        case "image/jphc", "jphc", "htj2k-container":
-            wadoContentType = .htj2kContainer
-        case "video/mpeg", "mpeg":  wadoContentType = .mpeg
-        default:                     wadoContentType = .dicom
-        }
+        // Shared mapping (single source of truth) — the CLI-parity reference calls the
+        // same factory, so both request the identical representation for a --content-type.
+        let wadoContentType = WADOURIClient.ContentType.fromRequestString(contentType)
         
         let frameNumber: Int?
         if let framesString = frames,
@@ -181,19 +174,14 @@ struct RetrieveCommand: AsyncParsableCommand {
             frameNumber = nil
         }
         
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("WADO-URI Server: \(baseURL)")
-            fprintln("Protocol:     WADO-URI (PS3.18 §8)")
-            fprintln("Study UID:    \(studyUID)")
-            fprintln("Series UID:   \(seriesUID)")
-            fprintln("Instance UID: \(instanceUID)")
-            fprintln("Content-Type: \(wadoContentType.rawValue)")
-            if let frame = frameNumber {
-                fprintln("Frame:        \(frame)")
-            }
+            fprintln(fmt.verbosePreambleURI(
+                baseURL: baseURL, studyUID: studyUID, seriesUID: seriesUID,
+                instanceUID: instanceUID, contentType: wadoContentType.rawValue, frame: frameNumber))
             fprintln("")
         }
-        
+
         let client = WADOURIClient(configuration: config)
         let result = try await client.retrieve(
             studyUID: studyUID,
@@ -220,41 +208,66 @@ struct RetrieveCommand: AsyncParsableCommand {
         try saveData(result.data, filename: filename)
         
         if verbose {
-            fprintln("Retrieved \(result.data.count) bytes via WADO-URI")
-            fprintln("Saved to: \(output ?? FileManager.default.currentDirectoryPath)/\(filename)")
+            fprintln(fmt.uriRetrievedVerbose(bytes: result.data.count))
+            fprintln(fmt.savedTo(path: "\(output ?? FileManager.default.currentDirectoryPath)/\(filename)"))
         } else {
-            fprintln("Retrieved \(result.data.count) bytes → \(filename)")
+            fprintln(fmt.uriRetrieved(bytes: result.data.count, filename: filename))
         }
     }
     
     private func retrieveMetadata(client: DICOMwebClient, studyUID: String) async throws {
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving metadata...")
+            fprintln(fmt.metadataRetrieving())
         }
-        
-        let metadata: [[String: Any]]
-        
-        if let instanceUID = instance, let seriesUID = series {
-            metadata = try await client.retrieveInstanceMetadata(
-                studyUID: studyUID,
-                seriesUID: seriesUID,
-                instanceUID: instanceUID
-            )
-        } else if let seriesUID = series {
-            metadata = try await client.retrieveSeriesMetadata(
-                studyUID: studyUID,
-                seriesUID: seriesUID
-            )
-        } else {
-            metadata = try await client.retrieveStudyMetadata(studyUID: studyUID)
-        }
-        
-        // Format and output
-        let output = try formatMetadata(metadata, format: format)
-        print(output)
-        
-        if verbose {
-            fprintln("\nRetrieved metadata for \(metadata.count) instance(s)")
+
+        // JSON and XML decode the same DICOMweb metadata response through different
+        // pipelines: JSON keeps the raw dataset dictionaries, while XML decodes to
+        // typed DataElements so the shared DICOMXMLEncoder (PS3.19 Native DICOM
+        // Model) can render them — the same encoder dicom-xml uses.
+        switch format {
+        case .json:
+            let metadata: [[String: Any]]
+            if let instanceUID = instance, let seriesUID = series {
+                metadata = try await client.retrieveInstanceMetadata(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID,
+                    instanceUID: instanceUID
+                )
+            } else if let seriesUID = series {
+                metadata = try await client.retrieveSeriesMetadata(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID
+                )
+            } else {
+                metadata = try await client.retrieveStudyMetadata(studyUID: studyUID)
+            }
+            print(try fmt.metadataJSON(metadata))
+            if verbose {
+                fprintln(fmt.metadataCount(metadata.count))
+            }
+
+        case .xml:
+            let instances: [[DataElement]]
+            if let instanceUID = instance, let seriesUID = series {
+                let elements = try await client.retrieveInstanceMetadataAsElements(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID,
+                    instanceUID: instanceUID
+                )
+                instances = [elements]
+            } else if let seriesUID = series {
+                instances = try await client.retrieveSeriesMetadataAsElements(
+                    studyUID: studyUID,
+                    seriesUID: seriesUID
+                )
+            } else {
+                instances = try await client.retrieveStudyMetadataAsElements(studyUID: studyUID)
+            }
+            print(try fmt.metadataXML(instances))
+            if verbose {
+                fprintln(fmt.metadataCount(instances.count))
+            }
         }
     }
     
@@ -263,28 +276,30 @@ struct RetrieveCommand: AsyncParsableCommand {
             throw ValidationError("--series and --instance are required for rendered retrieval")
         }
         
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving rendered image...")
+            fprintln(fmt.renderedRetrieving())
         }
-        
+
         let imageData = try await client.retrieveRenderedInstance(
             studyUID: studyUID,
             seriesUID: seriesUID,
             instanceUID: instanceUID
         )
-        
+
         try saveData(imageData, filename: "rendered_\(instanceUID).jpg")
-        
+
         if verbose {
-            fprintln("Saved rendered image (\(imageData.count) bytes)")
+            fprintln(fmt.renderedSaved(bytes: imageData.count))
         }
     }
     
     private func retrieveThumbnail(client: DICOMwebClient, studyUID: String) async throws {
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving thumbnail...")
+            fprintln(fmt.thumbnailRetrieving())
         }
-        
+
         let thumbnailData: Data
         
         if let instanceUID = instance, let seriesUID = series {
@@ -306,7 +321,7 @@ struct RetrieveCommand: AsyncParsableCommand {
         }
         
         if verbose {
-            fprintln("Saved thumbnail (\(thumbnailData.count) bytes)")
+            fprintln(fmt.thumbnailSaved(bytes: thumbnailData.count))
         }
     }
     
@@ -315,35 +330,42 @@ struct RetrieveCommand: AsyncParsableCommand {
             throw ValidationError("--series and --instance are required for frame retrieval")
         }
         
-        let frameNumbers = try parseFrameNumbers(framesString)
-        
-        if verbose {
-            fprintln("Retrieving frames: \(frameNumbers.map(String.init).joined(separator: ", "))...")
+        let fmt = WADORetrieveConsoleFormatter()
+        let frameNumbers: [Int]
+        do {
+            frameNumbers = try fmt.parseFrameNumbers(framesString)
+        } catch let error as WADOFrameParseError {
+            throw ValidationError(error.description)
         }
-        
+
+        if verbose {
+            fprintln(fmt.framesRetrieving(frameNumbers))
+        }
+
         let frames = try await client.retrieveFrames(
             studyUID: studyUID,
             seriesUID: seriesUID,
             instanceUID: instanceUID,
             frames: frameNumbers
         )
-        
+
         for frame in frames {
             let filename = "frame_\(frame.frameNumber)_\(instanceUID).raw"
             try saveData(frame.data, filename: filename)
             if verbose {
-                fprintln("Saved frame \(frame.frameNumber) (\(frame.data.count) bytes)")
+                fprintln(fmt.frameSaved(number: frame.frameNumber, bytes: frame.data.count))
             }
         }
-        
+
         if verbose {
-            fprintln("\nRetrieved \(frames.count) frame(s)")
+            fprintln(fmt.framesCount(frames.count))
         }
     }
     
     private func retrieveInstances(client: DICOMwebClient, studyUID: String) async throws {
+        let fmt = WADORetrieveConsoleFormatter()
         if verbose {
-            fprintln("Retrieving DICOM instances...")
+            fprintln(fmt.instancesRetrieving())
         }
         
         if let instanceUID = instance, let seriesUID = series {
@@ -355,7 +377,7 @@ struct RetrieveCommand: AsyncParsableCommand {
             )
             try saveData(instanceData, filename: "instance_\(instanceUID).dcm")
             if verbose {
-                fprintln("Saved instance (\(instanceData.count) bytes)")
+                fprintln(fmt.instanceSaved(bytes: instanceData.count))
             }
         } else if let seriesUID = series {
             // Series
@@ -367,11 +389,11 @@ struct RetrieveCommand: AsyncParsableCommand {
                 let filename = "instance_\(index + 1).dcm"
                 try saveData(instanceData, filename: filename)
                 if verbose {
-                    fprintln("Saved instance \(index + 1) (\(instanceData.count) bytes)")
+                    fprintln(fmt.instanceSaved(index: index + 1, bytes: instanceData.count))
                 }
             }
             if verbose {
-                fprintln("\nRetrieved \(result.instances.count) instance(s)")
+                fprintln(fmt.instancesCount(result.instances.count))
             }
         } else {
             // Full study
@@ -380,25 +402,12 @@ struct RetrieveCommand: AsyncParsableCommand {
                 let filename = "instance_\(index + 1).dcm"
                 try saveData(instanceData, filename: filename)
                 if verbose {
-                    fprintln("Saved instance \(index + 1) (\(instanceData.count) bytes)")
+                    fprintln(fmt.instanceSaved(index: index + 1, bytes: instanceData.count))
                 }
             }
             if verbose {
-                fprintln("\nRetrieved \(result.instances.count) instance(s)")
+                fprintln(fmt.instancesCount(result.instances.count))
             }
-        }
-    }
-    
-    private func parseFrameNumbers(_ framesString: String) throws -> [Int] {
-        let components = framesString.split(separator: ",")
-        return try components.map { component in
-            guard let number = Int(component.trimmingCharacters(in: .whitespaces)) else {
-                throw ValidationError("Invalid frame number: \(component)")
-            }
-            guard number > 0 else {
-                throw ValidationError("Frame numbers must be positive: \(number)")
-            }
-            return number
         }
     }
     
@@ -413,17 +422,6 @@ struct RetrieveCommand: AsyncParsableCommand {
         )
         
         try data.write(to: outputURL)
-    }
-    
-    private func formatMetadata(_ metadata: [[String: Any]], format: MetadataFormat) throws -> String {
-        switch format {
-        case .json:
-            let jsonData = try JSONSerialization.data(withJSONObject: metadata, options: [.prettyPrinted, .sortedKeys])
-            return String(data: jsonData, encoding: .utf8) ?? ""
-        case .xml:
-            // XML formatting would require DICOM XML encoder
-            throw ValidationError("XML format not yet implemented")
-        }
     }
 }
 
@@ -523,7 +521,20 @@ struct QueryCommand: AsyncParsableCommand {
             query = query.accessionNumber(accessionNumber)
         }
         if let modality = modality {
-            query = query.modality(modality)
+            // Use the correct DICOM matching key per query level (PS3.18 §10.6),
+            // mirroring the app's in-process path (CLIWorkshopViewModel.executeDicomQIDO)
+            // and the sibling dicom-query / dicom-qr tools:
+            //   • series level          → Modality (0008,0060)
+            //   • study / instance level → Modalities in Study (0008,0061)
+            // Sending Modality (0008,0060) at the study level is NOT a valid study-level
+            // matching key, so servers (e.g. dcm4chee) ignore it and return ALL studies
+            // unfiltered — the bug this fixes.
+            switch level {
+            case .series:
+                query = query.modality(modality)
+            case .study, .instance:
+                query = query.modalitiesInStudy(modality)
+            }
         }
         if let studyDescription = studyDescription {
             query = query.studyDescription(studyDescription)
@@ -587,189 +598,20 @@ struct QueryCommand: AsyncParsableCommand {
         }
     }
     
+    // QIDO-RS result rendering is delegated to the SHARED `QIDOResultFormatter`
+    // (DICOMWeb) — the single formatter the CLI Workshop's in-app query also calls,
+    // so the CLI and app output pipelines cannot drift (mirrors how the DIMSE
+    // `dicom-query` tool shares `DICOMQueryResultFormatter`).
     private func formatStudyResults(_ results: QIDOStudyResults, format: OutputFormat) -> String {
-        switch format {
-        case .table:
-            return formatStudyTable(results.results)
-        case .json:
-            let dicts: [[String: Any]] = results.results.map { study in
-                var dict: [String: Any] = [:]
-                if let v = study.studyInstanceUID { dict["StudyInstanceUID"] = v }
-                if let v = study.patientName { dict["PatientName"] = v }
-                if let v = study.patientID { dict["PatientID"] = v }
-                if let v = study.studyDate { dict["StudyDate"] = v }
-                if let v = study.studyTime { dict["StudyTime"] = v }
-                if let v = study.studyDescription { dict["StudyDescription"] = v }
-                if let v = study.accessionNumber { dict["AccessionNumber"] = v }
-                if let v = study.studyID { dict["StudyID"] = v }
-                if let v = study.referringPhysicianName { dict["ReferringPhysicianName"] = v }
-                if let v = study.numberOfStudyRelatedSeries { dict["NumberOfStudyRelatedSeries"] = v }
-                if let v = study.numberOfStudyRelatedInstances { dict["NumberOfStudyRelatedInstances"] = v }
-                if !study.modalitiesInStudy.isEmpty { dict["ModalitiesInStudy"] = study.modalitiesInStudy }
-                if let v = study.patientBirthDate { dict["PatientBirthDate"] = v }
-                if let v = study.patientSex { dict["PatientSex"] = v }
-                return dict
-            }
-            return formatJSON(dicts)
-        case .csv:
-            return formatStudyCSV(results.results)
-        }
+        QIDOResultFormatter().formatStudies(results.results, format: format.asQIDO)
     }
-    
+
     private func formatSeriesResults(_ results: QIDOSeriesResults, format: OutputFormat) -> String {
-        switch format {
-        case .table:
-            return formatSeriesTable(results.results)
-        case .json:
-            let dicts: [[String: Any]] = results.results.map { s in
-                var dict: [String: Any] = [:]
-                if let v = s.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
-                if let v = s.studyInstanceUID { dict["StudyInstanceUID"] = v }
-                if let v = s.modality { dict["Modality"] = v }
-                if let v = s.seriesNumber { dict["SeriesNumber"] = v }
-                if let v = s.seriesDescription { dict["SeriesDescription"] = v }
-                if let v = s.bodyPartExamined { dict["BodyPartExamined"] = v }
-                if let v = s.performedProcedureStepStartDate { dict["PerformedProcedureStepStartDate"] = v }
-                if let v = s.numberOfSeriesRelatedInstances { dict["NumberOfSeriesRelatedInstances"] = v }
-                return dict
-            }
-            return formatJSON(dicts)
-        case .csv:
-            return formatSeriesCSV(results.results)
-        }
+        QIDOResultFormatter().formatSeries(results.results, format: format.asQIDO)
     }
-    
+
     private func formatInstanceResults(_ results: QIDOInstanceResults, format: OutputFormat) -> String {
-        switch format {
-        case .table:
-            return formatInstanceTable(results.results)
-        case .json:
-            let dicts: [[String: Any]] = results.results.map { instance in
-                var dict: [String: Any] = [:]
-                if let v = instance.sopInstanceUID { dict["SOPInstanceUID"] = v }
-                if let v = instance.sopClassUID { dict["SOPClassUID"] = v }
-                if let v = instance.instanceNumber { dict["InstanceNumber"] = v }
-                if let v = instance.numberOfFrames { dict["NumberOfFrames"] = v }
-                if let v = instance.rows { dict["Rows"] = v }
-                if let v = instance.columns { dict["Columns"] = v }
-                if let v = instance.seriesInstanceUID { dict["SeriesInstanceUID"] = v }
-                if let v = instance.studyInstanceUID { dict["StudyInstanceUID"] = v }
-                return dict
-            }
-            return formatJSON(dicts)
-        case .csv:
-            return formatInstanceCSV(results.results)
-        }
-    }
-    
-    private func formatStudyTable(_ studies: [QIDOStudyResult]) -> String {
-        var output = ""
-        output += String(repeating: "=", count: 120) + "\n"
-        output += pad("Study UID", 20) + " " + pad("Patient Name", 30) + " " + pad("Study Date", 20) + " " + pad("Modality", 10) + " " + pad("# Series", 10) + "\n"
-        output += String(repeating: "=", count: 120) + "\n"
-        
-        for study in studies {
-            let studyUID = truncate(study.studyInstanceUID ?? "", maxLength: 20)
-            let patientName = truncate(study.patientName ?? "", maxLength: 30)
-            let studyDate = study.studyDate ?? ""
-            let modality = truncate(study.modalitiesInStudy.joined(separator: ", "), maxLength: 10)
-            let numSeries = study.numberOfStudyRelatedSeries ?? 0
-            
-            output += pad(studyUID, 20) + " " + pad(patientName, 30) + " " + pad(studyDate, 20) + " " + pad(modality, 10) + " " + pad("\(numSeries)", 10) + "\n"
-        }
-        
-        output += String(repeating: "=", count: 120) + "\n"
-        return output
-    }
-    
-    private func formatSeriesTable(_ series: [QIDOSeriesResult]) -> String {
-        var output = ""
-        output += String(repeating: "=", count: 100) + "\n"
-        output += pad("Series UID", 25) + " " + pad("Modality", 10) + " " + pad("Description", 30) + " " + pad("# Images", 10) + "\n"
-        output += String(repeating: "=", count: 100) + "\n"
-        
-        for s in series {
-            let seriesUID = truncate(s.seriesInstanceUID ?? "", maxLength: 25)
-            let modality = s.modality ?? ""
-            let description = truncate(s.seriesDescription ?? "", maxLength: 30)
-            let numInstances = s.numberOfSeriesRelatedInstances ?? 0
-            
-            output += pad(seriesUID, 25) + " " + pad(modality, 10) + " " + pad(description, 30) + " " + pad("\(numInstances)", 10) + "\n"
-        }
-        
-        output += String(repeating: "=", count: 100) + "\n"
-        return output
-    }
-    
-    private func formatInstanceTable(_ instances: [QIDOInstanceResult]) -> String {
-        var output = ""
-        output += String(repeating: "=", count: 80) + "\n"
-        output += pad("SOP Instance UID", 30) + " " + pad("SOP Class", 15) + " " + pad("# Frames", 10) + "\n"
-        output += String(repeating: "=", count: 80) + "\n"
-        
-        for instance in instances {
-            let sopUID = truncate(instance.sopInstanceUID ?? "", maxLength: 30)
-            let sopClass = truncate(instance.sopClassUID ?? "", maxLength: 15)
-            let numFrames = instance.numberOfFrames ?? 1
-            
-            output += pad(sopUID, 30) + " " + pad(sopClass, 15) + " " + pad("\(numFrames)", 10) + "\n"
-        }
-        
-        output += String(repeating: "=", count: 80) + "\n"
-        return output
-    }
-    
-    private func formatStudyCSV(_ studies: [QIDOStudyResult]) -> String {
-        var output = "StudyInstanceUID,PatientName,PatientID,StudyDate,StudyDescription,ModalitiesInStudy,NumberOfSeries\n"
-        for study in studies {
-            let studyUID = csvEscape(study.studyInstanceUID ?? "")
-            let patientName = csvEscape(study.patientName ?? "")
-            let patientID = csvEscape(study.patientID ?? "")
-            let studyDate = study.studyDate ?? ""
-            let description = csvEscape(study.studyDescription ?? "")
-            let modalities = csvEscape(study.modalitiesInStudy.joined(separator: ";"))
-            let numSeries = study.numberOfStudyRelatedSeries ?? 0
-            
-            output += "\(studyUID),\(patientName),\(patientID),\(studyDate),\(description),\(modalities),\(numSeries)\n"
-        }
-        return output
-    }
-    
-    private func formatSeriesCSV(_ series: [QIDOSeriesResult]) -> String {
-        var output = "SeriesInstanceUID,StudyInstanceUID,Modality,SeriesNumber,SeriesDescription,NumberOfInstances\n"
-        for s in series {
-            let seriesUID = csvEscape(s.seriesInstanceUID ?? "")
-            let studyUID = csvEscape(s.studyInstanceUID ?? "")
-            let modality = s.modality ?? ""
-            let seriesNumber = s.seriesNumber ?? 0
-            let description = csvEscape(s.seriesDescription ?? "")
-            let numInstances = s.numberOfSeriesRelatedInstances ?? 0
-            
-            output += "\(seriesUID),\(studyUID),\(modality),\(seriesNumber),\(description),\(numInstances)\n"
-        }
-        return output
-    }
-    
-    private func formatInstanceCSV(_ instances: [QIDOInstanceResult]) -> String {
-        var output = "SOPInstanceUID,SeriesInstanceUID,SOPClassUID,InstanceNumber,NumberOfFrames\n"
-        for instance in instances {
-            let sopUID = csvEscape(instance.sopInstanceUID ?? "")
-            let seriesUID = csvEscape(instance.seriesInstanceUID ?? "")
-            let sopClass = csvEscape(instance.sopClassUID ?? "")
-            let instanceNumber = instance.instanceNumber ?? 0
-            let numFrames = instance.numberOfFrames ?? 1
-            
-            output += "\(sopUID),\(seriesUID),\(sopClass),\(instanceNumber),\(numFrames)\n"
-        }
-        return output
-    }
-    
-    private func formatJSON(_ data: [[String: Any]]) -> String {
-        guard let jsonData = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys]),
-              let jsonString = String(data: jsonData, encoding: .utf8) else {
-            return "[]"
-        }
-        return jsonString
+        QIDOResultFormatter().formatInstances(results.results, format: format.asQIDO)
     }
 }
 
@@ -838,14 +680,17 @@ struct StoreCommand: AsyncParsableCommand {
         )
         
         let client = DICOMwebClient(configuration: config)
-        
+
+        // Console rendering is delegated to the SHARED STOWResultFormatter (DICOMWeb) —
+        // the single store-output renderer the CLI Workshop's in-app STOW upload also
+        // calls, so the CLI and app output pipelines cannot drift (mirrors
+        // QIDOResultFormatter for the query subcommand). The "Upload Summary" block is a
+        // parity contract parsed by CLIParityWADOComparator.parseStore.
+        let stowFmt = STOWResultFormatter()
+
         if verbose {
-            fprintln("DICOMweb Server: \(baseURL)")
-            if let studyUID = study {
-                fprintln("Target Study: \(studyUID)")
-            }
-            fprintln("Files to upload: \(filesToUpload.count)")
-            fprintln("Batch size: \(batch)")
+            fprintln(stowFmt.header(baseURL: baseURL, targetStudyUID: study,
+                                    fileCount: filesToUpload.count, batchSize: batch))
             fprintln("")
         }
         
@@ -855,7 +700,7 @@ struct StoreCommand: AsyncParsableCommand {
         
         for (batchIndex, batchFiles) in filesToUpload.chunked(into: batch).enumerated() {
             if verbose {
-                fprintln("Batch \(batchIndex + 1): Uploading \(batchFiles.count) file(s)...")
+                fprintln(stowFmt.batchStart(batchNumber: batchIndex + 1, fileCount: batchFiles.count))
             }
             
             // Load batch files
@@ -887,12 +732,11 @@ struct StoreCommand: AsyncParsableCommand {
                 totalFailure += failureCount
                 
                 if verbose {
-                    fprintln("  Success: \(successCount), Failure: \(failureCount)")
-                    if !response.failedInstances.isEmpty {
-                        for failure in response.failedInstances {
-                            let reason = failure.failureDescription ?? (failure.failureReason.map { "Code \($0)" } ?? "unknown error")
-                            fprintln("    Failed: \(failure.sopInstanceUID ?? "unknown") - \(reason)")
-                        }
+                    fprintln(stowFmt.batchResult(success: successCount, failure: failureCount))
+                    for failure in response.failedInstances {
+                        let reason = stowFmt.failureReason(description: failure.failureDescription,
+                                                           code: failure.failureReason)
+                        fprintln(stowFmt.failureDetail(sopInstanceUID: failure.sopInstanceUID, reason: reason))
                     }
                 }
             } catch {
@@ -907,10 +751,7 @@ struct StoreCommand: AsyncParsableCommand {
         }
         
         // Summary
-        fprintln("\nUpload Summary:")
-        fprintln("  Total files: \(filesToUpload.count)")
-        fprintln("  Successful: \(totalSuccess)")
-        fprintln("  Failed: \(totalFailure)")
+        fprintln(stowFmt.summary(total: filesToUpload.count, succeeded: totalSuccess, failed: totalFailure))
         
         if totalFailure > 0 && !continueOnError {
             throw ExitCode.failure
@@ -1087,43 +928,28 @@ struct UPSCommand: AsyncParsableCommand {
     }
     
     private func searchWorkitems(client: DICOMwebClient) async throws {
-        // Build query using fluent API
-        var query = UPSQuery()
-        
-        if let filterStateStr = filterState {
-            // Parse state string to UPSState
-            switch filterStateStr.uppercased() {
-            case "SCHEDULED":
-                query = query.state(.scheduled)
-            case "IN_PROGRESS", "INPROGRESS":
-                query = query.state(.inProgress)
-            case "COMPLETED":
-                query = query.state(.completed)
-            case "CANCELED":
-                query = query.state(.canceled)
-            default:
-                throw ValidationError("Invalid state: \(filterStateStr). Valid states: SCHEDULED, IN_PROGRESS, COMPLETED, CANCELED")
-            }
+        // Build query via the SHARED UPSQuery.workitemSearch builder (DICOMWeb) — the
+        // single source of truth the CLI Workshop's in-app search and the CLI-parity
+        // reference also call, so the three issue an IDENTICAL UPS-RS query. Maps only
+        // the two real search flags (--filter-state / --scheduled-station).
+        let query: UPSQuery
+        do {
+            query = try UPSQuery.workitemSearch(filterState: filterState, scheduledStation: scheduledStation)
+        } catch let error as UPSSearchFilterError {
+            throw ValidationError(error.description)
         }
-        if let scheduledStation = scheduledStation {
-            query = query.scheduledStationName(scheduledStation)
-        }
-        
+
         if verbose {
             fprintln("Searching worklist items...")
         }
-        
+
         let results = try await client.searchWorkitems(query: query)
-        
-        switch format {
-        case .table:
-            print(formatWorkitemTable(results.workitems))
-        case .json:
-            print(formatWorkitemJSON(results.workitems))
-        case .csv:
-            print(formatWorkitemCSV(results.workitems))
-        }
-        
+
+        // Render via the SHARED UPSResultFormatter — the single workitem-search renderer
+        // the CLI Workshop also calls, so the CLI and app output pipelines cannot drift
+        // (mirrors QIDOResultFormatter for the query subcommand).
+        print(UPSResultFormatter().format(results.workitems, format: format.asUPS))
+
         if verbose {
             fprintln("\nFound \(results.workitems.count) worklist item(s)")
         }
@@ -1133,15 +959,16 @@ struct UPSCommand: AsyncParsableCommand {
         if verbose {
             fprintln("Retrieving worklist item: \(uid)")
         }
-        
-        let workitem = try await client.retrieveWorkitem(uid: uid)
-        
-        let jsonData = try JSONSerialization.data(
-            withJSONObject: workitem,
-            options: [.prettyPrinted, .sortedKeys]
-        )
-        if let jsonString = String(data: jsonData, encoding: .utf8) {
-            print(jsonString)
+
+        // Render via the SHARED UPSResultFormatter, honoring --format (table/json/csv) —
+        // the SAME renderer --search uses, so get and search share one output pipeline and
+        // the CLI Workshop's in-app get cannot drift. retrieveWorkitemResult returns the
+        // WorkitemResult the formatter consumes (mirrors the package's UPS --format contract).
+        let result = try await client.retrieveWorkitemResult(uid: uid)
+        print(UPSResultFormatter().format([result], format: format.asUPS))
+
+        if verbose {
+            fprintln("\nRetrieved worklist item \(uid)")
         }
     }
     
@@ -1346,79 +1173,34 @@ struct UPSCommand: AsyncParsableCommand {
             if let tx = effectiveTxUID { fprintln("  Transaction UID: \(tx)") }
         }
         
-        // Per PS3.4 CC.2.1.3/Table CC.2.5-3, the SCP validates that
-        // Unified Procedure Step Performed Procedure Sequence (0074,1216)
-        // is populated before allowing transition to COMPLETED.
-        // Send a minimal Update Workitem (PS3.18 §11.5) to satisfy this.
+        // Per PS3.4 CC.2.1.3/Table CC.2.5-3, the SCP validates that the Unified
+        // Procedure Step Performed Procedure Sequence (0074,1216) is populated
+        // before allowing transition to COMPLETED. The shared client helper sends
+        // a minimal Update Workitem (PS3.18 §11.5) to satisfy this and then
+        // performs the Change State — a single source of truth shared with the
+        // CLI-parity reference so the two cannot drift.
+        let response: UPSStateChangeResponse
         if newState == .completed, let txUID = effectiveTxUID {
             if verbose {
                 fprintln("Updating workitem with Final State attributes (required before COMPLETED)...")
             }
-            
-            let nowDT: String = {
-                let f = DateFormatter()
-                f.dateFormat = "yyyyMMddHHmmss.SSS000"
-                f.locale = Locale(identifier: "en_US_POSIX")
-                f.timeZone = TimeZone.current
-                return f.string(from: Date())
-            }()
-            
-            let performedBody: [String: Any] = [
-                UPSTag.transactionUID: [
-                    "vr": "UI", "Value": [txUID]
-                ] as [String: Any],
-                UPSTag.unifiedProcedureStepPerformedProcedureSequence: [
-                    "vr": "SQ",
-                    "Value": [
-                        [
-                            UPSTag.performedProcedureStepStartDateTime: [
-                                "vr": "DT", "Value": [nowDT]
-                            ] as [String: Any],
-                            UPSTag.performedProcedureStepEndDateTime: [
-                                "vr": "DT", "Value": [nowDT]
-                            ] as [String: Any],
-                            UPSTag.performedWorkitemCodeSequence: [
-                                "vr": "SQ",
-                                "Value": [
-                                    [
-                                        UPSTag.codeValue: ["vr": "SH", "Value": ["12345"]],
-                                        UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
-                                        UPSTag.codeMeaning: ["vr": "LO", "Value": ["Procedure Step Performed"]]
-                                    ] as [String: Any]
-                                ] as [[String: Any]]
-                            ] as [String: Any],
-                            UPSTag.performedStationNameCodeSequence: [
-                                "vr": "SQ",
-                                "Value": [
-                                    [
-                                        UPSTag.codeValue: ["vr": "SH", "Value": ["STATION01"]],
-                                        UPSTag.codingSchemeDesignator: ["vr": "SH", "Value": ["99LOCAL"]],
-                                        UPSTag.codeMeaning: ["vr": "LO", "Value": ["Default Performing Station"]]
-                                    ] as [String: Any]
-                                ] as [[String: Any]]
-                            ] as [String: Any],
-                            UPSTag.outputInformationSequence: [
-                                "vr": "SQ",
-                                "Value": [] as [[String: Any]]
-                            ] as [String: Any]
-                        ] as [String: Any]
-                    ] as [[String: Any]]
-                ] as [String: Any]
-            ]
-            
-            try await client.updateWorkitem(uid: uid, updates: performedBody, transactionUID: txUID)
+            response = try await client.completeWorkitem(
+                uid: uid,
+                transactionUID: txUID,
+                requestingAE: requestingAE
+            )
             if verbose {
                 fprintln("Final State attributes updated successfully")
             }
+        } else {
+            response = try await client.changeWorkitemState(
+                uid: uid,
+                state: newState,
+                transactionUID: effectiveTxUID,
+                requestingAE: requestingAE
+            )
         }
-        
-        let response = try await client.changeWorkitemState(
-            uid: uid,
-            state: newState,
-            transactionUID: effectiveTxUID,
-            requestingAE: requestingAE
-        )
-        
+
         fprintln("Successfully updated worklist item \(uid) to \(newState.rawValue)")
         if let txUID = response.transactionUID {
             fprintln("Transaction UID: \(txUID)")
@@ -1495,74 +1277,6 @@ struct UPSCommand: AsyncParsableCommand {
         }
     }
     
-    private func formatWorkitemTable(_ workitems: [WorkitemResult]) -> String {
-        // Compute dynamic column width for UID based on longest value
-        let maxUIDLength = workitems.reduce(12) { max($0, $1.workitemUID.count) }  // min 12 for header
-        let uidWidth = min(maxUIDLength, 70)  // cap at 70 to avoid excessive width
-        let totalWidth = uidWidth + 1 + 20 + 1 + 30 + 1 + 20
-
-        var output = ""
-        output += String(repeating: "=", count: totalWidth) + "\n"
-        output += pad("Worklist UID", uidWidth) + " " + pad("State", 20) + " " + pad("Label", 30) + " " + pad("Patient", 20) + "\n"
-        output += String(repeating: "=", count: totalWidth) + "\n"
-        
-        for item in workitems {
-            let uid = truncate(item.workitemUID, maxLength: uidWidth)
-            let state = item.state?.rawValue ?? ""
-            let label = truncate(item.procedureStepLabel ?? "", maxLength: 30)
-            let patient = truncate(item.patientName ?? "", maxLength: 20)
-            
-            output += pad(uid, uidWidth) + " " + pad(state, 20) + " " + pad(label, 30) + " " + pad(patient, 20) + "\n"
-        }
-        
-        output += String(repeating: "=", count: totalWidth) + "\n"
-        return output
-    }
-    
-    private func formatWorkitemJSON(_ workitems: [WorkitemResult]) -> String {
-        var items: [[String: Any]] = []
-        for item in workitems {
-            var dict: [String: Any] = ["workitemUID": item.workitemUID]
-            if let s = item.state { dict["state"] = s.rawValue }
-            if let p = item.priority { dict["priority"] = p.rawValue }
-            if let pp = item.progressPercentage { dict["progressPercentage"] = pp }
-            if let pd = item.progressDescription { dict["progressDescription"] = pd }
-            if let sd = item.scheduledStartDateTime { dict["scheduledStartDateTime"] = sd }
-            if let ec = item.expectedCompletionDateTime { dict["expectedCompletionDateTime"] = ec }
-            if let md = item.modificationDateTime { dict["modificationDateTime"] = md }
-            if let l = item.procedureStepLabel { dict["procedureStepLabel"] = l }
-            if let wl = item.worklistLabel { dict["worklistLabel"] = wl }
-            if let sid = item.scheduledProcedureStepID { dict["scheduledProcedureStepID"] = sid }
-            if let pn = item.patientName { dict["patientName"] = pn }
-            if let pid = item.patientID { dict["patientID"] = pid }
-            if let dob = item.patientBirthDate { dict["patientBirthDate"] = dob }
-            if let sex = item.patientSex { dict["patientSex"] = sex }
-            if let suid = item.studyInstanceUID { dict["studyInstanceUID"] = suid }
-            if let acc = item.accessionNumber { dict["accessionNumber"] = acc }
-            if let ref = item.referringPhysicianName { dict["referringPhysicianName"] = ref }
-            if let tx = item.transactionUID { dict["transactionUID"] = tx }
-            items.append(dict)
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted, .sortedKeys]),
-              let str = String(data: data, encoding: .utf8) else {
-            return "[]"
-        }
-        return str
-    }
-    
-    private func formatWorkitemCSV(_ workitems: [WorkitemResult]) -> String {
-        var output = "WorkitemUID,State,ProcedureStepLabel,PatientName,PatientID\n"
-        for item in workitems {
-            let uid = csvEscape(item.workitemUID)
-            let state = csvEscape(item.state?.rawValue ?? "")
-            let label = csvEscape(item.procedureStepLabel ?? "")
-            let patient = csvEscape(item.patientName ?? "")
-            let patientID = csvEscape(item.patientID ?? "")
-            
-            output += "\(uid),\(state),\(label),\(patient),\(patientID)\n"
-        }
-        return output
-    }
 }
 
 // MARK: - Supporting Types
@@ -1577,6 +1291,14 @@ enum OutputFormat: String, ExpressibleByArgument {
     case table
     case json
     case csv
+
+    /// Bridges the CLI's `--format` to the shared `QIDOResultFormatter` (DICOMWeb).
+    /// The cases line up 1:1, so the rawValue maps directly (table is the fallback).
+    var asQIDO: QIDOOutputFormat { QIDOOutputFormat(rawValue: rawValue) ?? .table }
+
+    /// Bridges the CLI's `--format` to the shared `UPSResultFormatter` (DICOMWeb).
+    /// The cases line up 1:1, so the rawValue maps directly (table is the fallback).
+    var asUPS: UPSOutputFormat { UPSOutputFormat(rawValue: rawValue) ?? .table }
 }
 
 enum MetadataFormat: String, ExpressibleByArgument {
@@ -1596,28 +1318,6 @@ func fprintln(_ message: String = "", to stream: Stream = .standardOutput) {
 enum Stream {
     case standardOutput
     case standardError
-}
-
-func truncate(_ string: String, maxLength: Int) -> String {
-    if string.count <= maxLength {
-        return string
-    }
-    let endIndex = string.index(string.startIndex, offsetBy: maxLength - 3)
-    return String(string[..<endIndex]) + "..."
-}
-
-func pad(_ string: String, _ width: Int) -> String {
-    if string.count >= width {
-        return string
-    }
-    return string + String(repeating: " ", count: width - string.count)
-}
-
-func csvEscape(_ string: String) -> String {
-    if string.contains(",") || string.contains("\"") || string.contains("\n") {
-        return "\"\(string.replacingOccurrences(of: "\"", with: "\"\""))\""
-    }
-    return string
 }
 
 extension Array {

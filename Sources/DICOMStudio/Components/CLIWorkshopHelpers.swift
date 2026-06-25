@@ -555,12 +555,10 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Show what would be sent without actually sending",
                     isAdvanced: true
                 ),
-                CLIParameterDefinition(
-                    id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
-                    parameterType: .enumPicker, placeholder: "Any (negotiate)",
-                    helpText: "Preferred transfer syntax proposed during C-STORE presentation context negotiation (PS3.8 §9.3.2)",
-                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "htj2k-lossless", "htj2k-rpcl", "htj2k", "rle-lossless", "deflate"]
-                ),
+                // NOTE: the `--transfer-syntax` flag is intentionally NOT exposed for
+                // dicom-send. The file is always sent in its OWN transfer syntax — the
+                // package negotiates the file's TS (with standard fallbacks) and never
+                // forces a preferred one. Don't re-add this without a deliberate reason.
                 CLIParameterDefinition(
                     id: "verbose", flag: "--verbose", displayName: "Verbose",
                     parameterType: .booleanToggle, placeholder: "",
@@ -822,13 +820,6 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "date-from", flag: "--date", displayName: "Date",
                     parameterType: .textField, placeholder: "today / YYYYMMDD",
                     helpText: "Scheduled date filter — use 'today', 'tomorrow', or YYYYMMDD format (0040,0002)",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
-                ),
-                CLIParameterDefinition(
-                    id: "date-to", flag: "--date-to", displayName: "Date To",
-                    parameterType: .textField, placeholder: "tomorrow / YYYYMMDD",
-                    helpText: "End of scheduled date range (inclusive) — used by DICOMStudio's internal execution only",
-                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
@@ -1132,46 +1123,9 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
-                    id: "modality", flag: "--modality", displayName: "Modality",
-                    parameterType: .enumPicker, placeholder: "CT",
-                    helpText: "Modality being performed (0008,0060) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    defaultValue: "CT",
-                    allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "procedure-id", flag: "--procedure-id", displayName: "Procedure Step ID",
-                    parameterType: .textField, placeholder: "e.g. SPS001",
-                    helpText: "Performed Procedure Step ID (0040,0253) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "procedure-desc", flag: "--procedure-desc", displayName: "Procedure Description",
-                    parameterType: .textField, placeholder: "e.g. CT Head Without Contrast",
-                    helpText: "Performed Procedure Step Description (0040,0254) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
                     id: "accession-number", flag: "--accession-number", displayName: "Accession Number",
                     parameterType: .textField, placeholder: "e.g. ACC12345",
                     helpText: "Accession Number (0008,0050) — links the MPPS to the imaging order and helps the server match the MWL item",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "performing-physician", flag: "--physician", displayName: "Performing Physician",
-                    parameterType: .textField, placeholder: "e.g. SMITH^JANE",
-                    helpText: "Name of performing physician (0008,1050) — sent via DICOMStudio internal execution",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
-                ),
-                CLIParameterDefinition(
-                    id: "station-name", flag: "--station-name", displayName: "Station Name",
-                    parameterType: .textField, placeholder: "e.g. CT_SCANNER_1",
-                    helpText: "Performing Station Name (0008,1010) — sent via DICOMStudio internal execution",
-                    isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 // ----- N-SET parameters -----
@@ -1181,12 +1135,25 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "MPPS SOP Instance UID from a previous create — required for update (N-SET)",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
+                // An N-CREATE always starts the performed procedure step IN PROGRESS, so the
+                // create operation offers only that status; the final COMPLETED / DISCONTINUED
+                // transitions belong to the update (N-SET) operation (status-update below).
+                // Both map to --status but only one is ever visible (and emitted) per operation.
                 CLIParameterDefinition(
                     id: "status", flag: "--status", displayName: "Status",
                     parameterType: .enumPicker, placeholder: "IN PROGRESS",
-                    helpText: "Performed Procedure Step Status (0040,0252) — IN PROGRESS for create; COMPLETED or DISCONTINUED for update",
+                    helpText: "Performed Procedure Step Status (0040,0252) — an N-CREATE always starts the step IN PROGRESS",
                     defaultValue: "IN PROGRESS",
-                    allowedValues: ["IN PROGRESS", "COMPLETED", "DISCONTINUED"]
+                    allowedValues: ["IN PROGRESS"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                ),
+                CLIParameterDefinition(
+                    id: "status-update", flag: "--status", displayName: "Status",
+                    parameterType: .enumPicker, placeholder: "COMPLETED",
+                    helpText: "Final Performed Procedure Step Status (0040,0252) for the N-SET update — COMPLETED or DISCONTINUED",
+                    defaultValue: "COMPLETED",
+                    allowedValues: ["COMPLETED", "DISCONTINUED"],
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
                     id: "series-uid", flag: "--series-uid", displayName: "Series Instance UID",
@@ -1198,13 +1165,6 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "image-uids", flag: "--image-uids", displayName: "Image SOP Instance UIDs",
                     parameterType: .textField, placeholder: "UID1,UID2,...",
                     helpText: "Comma-separated SOP Instance UIDs of acquired images — sent via DICOMStudio internal execution (CLI uses --image-uid, repeatable)",
-                    isInternal: true,
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
-                ),
-                CLIParameterDefinition(
-                    id: "discontinue-reason", flag: "--discontinue-reason", displayName: "Discontinuation Reason",
-                    parameterType: .textField, placeholder: "e.g. Patient refused",
-                    helpText: "Reason for discontinuation (0040,0281) — sent via DICOMStudio internal execution",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
@@ -1503,12 +1463,20 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "operation", flag: "", displayName: "Operation",
                     parameterType: .enumPicker, placeholder: "search",
-                    helpText: "UPS-RS operation: search workitems, get details, create workitem, change state, or subscribe to events",
+                    helpText: "UPS-RS operation: search workitems, get details, create workitem, change state, or subscribe to / unsubscribe from events",
                     isRequired: true, isInternal: true,
                     defaultValue: "search",
-                    allowedValues: ["search", "get", "create-workitem", "change-state", "subscribe"],
+                    allowedValues: ["search", "get", "create-workitem", "change-state", "subscribe", "unsubscribe"],
+                    // Each operation that maps to a bare CLI flag is emitted here, keyed off the
+                    // selected operation, so picking the tab auto-adds the flag to the command
+                    // (buildCommand applies the operation's defaultValue; a separate booleanToggle
+                    // would NOT be emitted unless the user manually checked it). "get"/"change-state"
+                    // carry their UID via --get/--update value flags instead, so they are not mapped.
                     cliMapping: [
+                        "search": "--search",
+                        "create-workitem": "--create-workitem",
                         "subscribe": "--subscribe",
+                        "unsubscribe": "--unsubscribe",
                     ]
                 ),
 
@@ -1518,14 +1486,8 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "DICOMweb server base URL (PS3.18 §6.5)",
                     isRequired: true
                 ),
-                // --search flag (shown when operation=search)
-                CLIParameterDefinition(
-                    id: "search-flag", flag: "--search", displayName: "Search",
-                    parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Search for worklist items",
-                    defaultValue: "true",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["search"])
-                ),
+                // --search is emitted automatically via the operation cliMapping above
+                // when the "search" tab is selected (no manual toggle needed).
                 // --get <uid> (shown when operation=get)
                 CLIParameterDefinition(
                     id: "get-uid", flag: "--get", displayName: "Get Workitem UID",
@@ -1534,14 +1496,8 @@ public enum ToolCatalogHelpers: Sendable {
                     isRequired: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["get"])
                 ),
-                // --create-workitem flag (shown when operation=create-workitem)
-                CLIParameterDefinition(
-                    id: "create-workitem-flag", flag: "--create-workitem", displayName: "Create Workitem",
-                    parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Create a new worklist item from command-line options",
-                    defaultValue: "true",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
-                ),
+                // --create-workitem is emitted automatically via the operation cliMapping
+                // above when the "create-workitem" tab is selected (no manual toggle needed).
                 // --update <uid> (shown when operation=change-state)
                 CLIParameterDefinition(
                     id: "update-uid", flag: "--update", displayName: "Update Workitem UID",
@@ -1555,7 +1511,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "workitem-uid", flag: "--workitem-uid", displayName: "Workitem UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619... (auto-generated if empty)",
                     helpText: "UPS Workitem SOP Instance UID — auto-generated for create if omitted",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem", "subscribe"])
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem", "subscribe", "unsubscribe"])
                 ),
                 CLIParameterDefinition(
                     id: "subscribe-aet", flag: "--aet", displayName: "AE Title",
@@ -1563,7 +1519,7 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Local Application Entity Title for subscribe/unsubscribe",
                     isRequired: true,
                     defaultValue: "DICOM_STUDIO",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["subscribe"])
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["subscribe", "unsubscribe"])
                 ),
                 // --workitem-uid also visible for change-state (used in command preview)
                 // Note: change-state uses --update <uid> from update-uid parameter, not --workitem-uid
@@ -3616,13 +3572,22 @@ case "dicom-script":
         rawParameterDefinitions(for: toolID).map { def in
             guard def.defaultValue.isEmpty else { return def }
             var d = def
-            if def.parameterType == .filePath, inputFileParameterIDs.contains(def.id) {
+            if def.parameterType == .filePath, inputFileParameterIDs.contains(def.id),
+               !isFileListParameter(toolID: toolID, paramID: def.id) {
                 d.defaultValue = defaultInputFilePath
             } else if def.parameterType == .outputPath {
                 d.defaultValue = defaultOutputDirectory
             }
             return d
         }
+    }
+
+    /// Parameters that take a TEXT FILE listing paths (one per line) rather than a
+    /// primary DICOM file, so they must NOT be pre-filled with the default CT.dcm
+    /// testing path — they start empty for the user to supply a list file.
+    /// Currently just `dicom-wado store --input` (the "Input File List" advanced field).
+    private static func isFileListParameter(toolID: String, paramID: String) -> Bool {
+        toolID == "dicom-stow" && paramID == "input"
     }
 }
 

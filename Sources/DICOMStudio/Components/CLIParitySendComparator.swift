@@ -36,8 +36,12 @@ public enum CLIParitySendComparator {
             return nil
         }
         if dryRun {
-            // "Found N file(s) to send" + "Dry run complete."
-            return SendSemantics(dryRun: true, sent: intAfter("Found") ?? 0, succeeded: 0, failed: 0)
+            // The shared formatter's dry-run path (NetworkConsole.sendHeader +
+            // sendDryRunLine) no longer prints "Found N file(s) to send". The gathered
+            // count is now the header's "Files: N" field, printed BEFORE the per-file
+            // "[i/N] name (size)" listing — so the first "Files:" line is the count
+            // (= filesToSend.count, the same shared-gatherer count the reference reports).
+            return SendSemantics(dryRun: true, sent: intAfter("Files:") ?? 0, succeeded: 0, failed: 0)
         }
         return SendSemantics(
             dryRun: false,

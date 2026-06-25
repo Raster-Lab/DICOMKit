@@ -69,10 +69,15 @@ enum CLIToolBuilder {
         return (proc.terminationStatus, String(data: data, encoding: .utf8) ?? "")
     }
 
-    /// Builds the given products (debug by default — output parity is independent of
-    /// optimization level, and debug builds fastest) and returns the exact bin dir to
+    /// Builds the given products (RELEASE by default) and returns the exact bin dir to
     /// run them from. On failure the caller MUST NOT fall back to a stale binary.
-    static func build(products: [String], configuration: String = "debug") -> BuildOutcome {
+    ///
+    /// Release — not debug — is the default on purpose: release is the configuration that
+    /// actually ships (Homebrew / installers), so the parity & Compare-CLI screens must
+    /// rebuild and compare against the *shipped* artifact, and keeping `.build/release`
+    /// fresh means a later `swift build -c release` or install can't pick up a stale
+    /// binary. (The incremental rebuild is near-instant when nothing changed.)
+    static func build(products: [String], configuration: String = "release") -> BuildOutcome {
         guard let swift = swiftPath() else {
             return BuildOutcome(success: false, binDir: nil,
                 log: "Could not locate the `swift` toolchain. Set DICOM_SWIFT_PATH to the swift driver.")
