@@ -361,6 +361,9 @@ struct DICOMConvert: AsyncParsableCommand {
             return .jpegLSLossless
         case "jpeglsnearlossless", "jpeg-ls-near-lossless", "jpegls-near":
             return .jpegLSNearLossless
+        // JPEG XL (lossless-only encode)
+        case "jpegxl", "jpeg-xl", "jxl", "jpegxllossless", "jpeg-xl-lossless", "jxl-lossless":
+            return .jpegXLLossless
         // RLE
         case "rlelossless", "rle-lossless", "rle":
             return .rleLossless
@@ -372,6 +375,7 @@ struct DICOMConvert: AsyncParsableCommand {
                   JPEG:         JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1
                   JPEG 2000:    JPEG2000Lossless, JPEG2000, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K
                   JPEG-LS:      JPEGLSLossless, JPEGLSNearLossless
+                  JPEG XL:      JPEGXLLossless
                   RLE:          RLELossless
                 """)
         }

@@ -1682,6 +1682,711 @@
       "toolId" : "dicom-convert"
     },
     {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-lossless",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-lossless",
+      "label" : "syn-ct.dcm · compress-jpeg-lossless",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "jpeg-lossless",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-lossless-sv1",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-lossless-sv1",
+      "label" : "syn-ct.dcm · compress-jpeg-lossless-sv1",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "jpeg-lossless-sv1",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-ls-lossless",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-ls-lossless",
+      "label" : "syn-ct.dcm · compress-jpeg-ls-lossless",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "jpeg-ls-lossless",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-xl-lossless",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-xl-lossless",
+      "label" : "syn-ct.dcm · compress-jpeg-xl-lossless",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "jpeg-xl-lossless",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg2000-lossless",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg2000-lossless",
+      "label" : "syn-ct.dcm · compress-jpeg2000-lossless",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "jpeg2000-lossless",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "j2k-part2-lossless",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-j2k-part2-lossless",
+      "label" : "syn-ct.dcm · compress-j2k-part2-lossless",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "j2k-part2-lossless",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "htj2k-lossless",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-htj2k-lossless",
+      "label" : "syn-ct.dcm · compress-htj2k-lossless",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "htj2k-lossless",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "htj2k-rpcl",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-htj2k-rpcl",
+      "label" : "syn-ct.dcm · compress-htj2k-rpcl",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "htj2k-rpcl",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "deflate",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-deflate",
+      "label" : "syn-ct.dcm · compress-deflate",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "deflate",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "explicit-le",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-explicit-le",
+      "label" : "syn-ct.dcm · compress-explicit-le",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "explicit-le",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "implicit-le",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-implicit-le",
+      "label" : "syn-ct.dcm · compress-implicit-le",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "implicit-le",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-extended",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-extended",
+      "label" : "syn-ct.dcm · compress-jpeg-extended",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "7a2463e2b460c13c09745e0512ace24565d38d2707474be23334f04190399767",
+      "studioParams" : {
+        "codec" : "jpeg-extended",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-baseline",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct8.dcm",
+      "id" : "syn-ct8__dicom-compress-compress-jpeg-baseline",
+      "label" : "syn-ct8.dcm · compress-jpeg-baseline",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct8.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "1ed122a6fe98ab426002fa3c09b79b450a03cf67eec3fc339927fe5921fb4e22",
+      "studioParams" : {
+        "codec" : "jpeg-baseline",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-ls",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-ls",
+      "label" : "syn-ct.dcm · compress-jpeg-ls",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "a2d3ec9c80bf82e795529f56890f56f3cfa43407c8108b77920b3f2332d5e981",
+      "studioParams" : {
+        "codec" : "jpeg-ls",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-extended",
+        "--quality",
+        "maximum",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-extended-quality-maximum",
+      "label" : "syn-ct.dcm · compress-jpeg-extended-quality-maximum",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "jpeg-extended",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT",
+        "quality" : "maximum"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-extended",
+        "--quality",
+        "low",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-extended-quality-low",
+      "label" : "syn-ct.dcm · compress-jpeg-extended-quality-low",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "c10c1de6cffab18943d0707750a09d42f36d085912a92a253baa76b7be656cd9",
+      "studioParams" : {
+        "codec" : "jpeg-extended",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT",
+        "quality" : "low"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-lossless",
+        "--output",
+        "OUTPUT",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-lossless-verbose",
+      "label" : "syn-ct.dcm · compress-jpeg-lossless-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-lossless\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 881 B\nRatio: 100.1%\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "codec" : "jpeg-lossless",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "rle",
+        "--output",
+        "OUTPUT",
+        "--backend",
+        "scalar"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-rle-backend-scalar",
+      "label" : "syn-ct.dcm · compress-rle-backend-scalar",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "backend" : "scalar",
+        "codec" : "rle",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "compress",
+        "FIXTURE",
+        "-c",
+        "jpeg-extended",
+        "--quality",
+        "high",
+        "--output",
+        "OUTPUT",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-compress-compress-jpeg-extended-quality-verbose",
+      "label" : "syn-ct.dcm · compress-jpeg-extended-quality-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-extended\nQuality: high\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 955 B\nRatio: 108.5%\n",
+      "stdout" : "7a2463e2b460c13c09745e0512ace24565d38d2707474be23334f04190399767",
+      "studioParams" : {
+        "codec" : "jpeg-extended",
+        "input" : "FIXTURE",
+        "operation" : "compress",
+        "output" : "OUTPUT",
+        "quality" : "high",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "decompress",
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--syntax",
+        "implicit-le"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct-rle.dcm",
+      "id" : "syn-ct-rle__dicom-compress-decompress-rle-implicit",
+      "label" : "syn-ct-rle.dcm · decompress-rle-implicit",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "operation" : "decompress",
+        "output" : "OUTPUT",
+        "syntax" : "implicit-le"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "decompress",
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--verbose"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct-rle.dcm",
+      "id" : "syn-ct-rle__dicom-compress-decompress-rle-verbose",
+      "label" : "syn-ct-rle.dcm · decompress-rle-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Decompressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTarget syntax: Explicit VR Little Endian\nDecompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nInput size:  918 B\nOutput size: 886 B\n",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "operation" : "decompress",
+        "output" : "OUTPUT",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "dicom-multi",
+      "artifactName" : "compressed",
+      "cliArgs" : [
+        "batch",
+        "FIXTURE",
+        "--codec",
+        "rle",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-compress-batch-compress-rle",
+      "label" : "syn-studyset · batch-compress-rle",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Found 4 DICOM file(s)\nCompressed: 4 succeeded, 0 failed out of 4 files\n",
+      "stdout" : "Frames: 4\n=== frame 0 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.1\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n=== frame 1 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.2\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.2\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.1\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 2\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n=== frame 2 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.2\n(0020,0011) Series Number                            VR=IS 2\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n=== frame 3 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.2\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.2\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.2\n(0020,0011) Series Number                            VR=IS 2\n(0020,0013) Instance Number                          VR=IS 2\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n",
+      "studioParams" : {
+        "batchCodec" : "rle",
+        "inputDir" : "FIXTURE",
+        "operation" : "batch",
+        "outputDir" : "OUTPUT"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "artifactKind" : "dicom-multi",
+      "artifactName" : "compressed",
+      "cliArgs" : [
+        "batch",
+        "FIXTURE",
+        "--codec",
+        "rle",
+        "--recursive",
+        "--verbose",
+        "--output",
+        "OUTPUT"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-studyset",
+      "id" : "syn-studyset__dicom-compress-batch-compress-recursive-verbose",
+      "label" : "syn-studyset · batch-compress-recursive-verbose",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "Found 4 DICOM file(s)\n  ✅ s1i1.dcm\n  ✅ s1i2.dcm\n  ✅ s2i1.dcm\n  ✅ s2i2.dcm\nCompressed: 4 succeeded, 0 failed out of 4 files\n",
+      "stdout" : "Frames: 4\n=== frame 0 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.1\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n=== frame 1 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.2\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.1.2\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.1\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 2\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n=== frame 2 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.2\n(0020,0011) Series Number                            VR=IS 2\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n=== frame 3 ===\n=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 169\n(0002,0001) File Meta Information Version            VR=OB 00 01\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.2\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.5\n(0002,0012) Implementation Class UID                 VR=UI 1.2.826.0.1.3680043.10.1\n(0002,0013) Implementation Version Name              VR=SH DICOMKIT-1.0\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.41.1.2.2\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY STUDY SET 1\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^STUDY1\n(0010,0020) Patient ID                               VR=LO SYN-STD-1\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.41.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.41.1.2\n(0020,0011) Series Number                            VR=IS 2\n(0020,0013) Instance Number                          VR=IS 2\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OB\n",
+      "studioParams" : {
+        "batchCodec" : "rle",
+        "inputDir" : "FIXTURE",
+        "operation" : "batch",
+        "outputDir" : "OUTPUT",
+        "recursive" : "true",
+        "verbose" : "true"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "cliArgs" : [
+        "info",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct-rle.dcm",
+      "id" : "syn-ct-rle__dicom-compress-info-rle",
+      "label" : "syn-ct-rle.dcm · info-rle",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "File: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTransfer Syntax: RLE Lossless\nTransfer Syntax UID: 1.2.840.10008.1.2.5\nCompressed: Yes\nLossless: Yes\nCodec: RLE\nPixel Data Size: 132 B\nImage Dimensions: 8 x 8\nBits Allocated: 16\nBits Stored: 12\nSamples Per Pixel: 1\nPhotometric Interpretation: MONOCHROME2\n",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "operation" : "info"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
+      "cliArgs" : [
+        "info",
+        "--json",
+        "FIXTURE"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct-rle.dcm",
+      "id" : "syn-ct-rle__dicom-compress-info-rle-json",
+      "label" : "syn-ct-rle.dcm · info-rle-json",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "{\n  \"bitsAllocated\" : 16,\n  \"bitsStored\" : 12,\n  \"codec\" : \"RLE\",\n  \"columns\" : 8,\n  \"compressed\" : true,\n  \"file\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct-rle.dcm\",\n  \"lossless\" : true,\n  \"photometricInterpretation\" : \"MONOCHROME2\",\n  \"pixelDataSize\" : 132,\n  \"rows\" : 8,\n  \"samplesPerPixel\" : 1,\n  \"transferSyntax\" : \"RLE Lossless\",\n  \"transferSyntaxUID\" : \"1.2.840.10008.1.2.5\"\n}",
+      "studioParams" : {
+        "input" : "FIXTURE",
+        "json" : "true",
+        "operation" : "info"
+      },
+      "toolId" : "dicom-compress"
+    },
+    {
       "cliArgs" : [
         "FIXTURE",
         "FIXTURE2",

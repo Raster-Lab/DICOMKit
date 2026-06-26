@@ -4,6 +4,7 @@
 // DICOM Studio — Platform-independent helpers for CLI Tools Workshop (Milestone 16)
 
 import Foundation
+import DICOMKit
 
 // MARK: - 16.1 Network Configuration Helpers
 
@@ -3224,6 +3225,20 @@ case "dicom-export":
                 ),
             ]
 case "dicom-compress":
+    // Single source of truth: derive the codec list straight from DICOMKit's
+    // CompressionManager (which is itself driven by DICOMCore's TransferSyntax
+    // catalog + the registered CodecRegistry encoders). This guarantees the app
+    // picker always lists exactly the transfer syntaxes the shared compression
+    // engine — and the `dicom-compress` CLI — can actually produce, covering all
+    // four JPEG Swift libraries (JLISwift, J2KSwift, JLSwift/JPEG-LS, JXLSwift)
+    // plus RLE and the uncompressed targets. Never hand-maintain this list again.
+    //
+    // ONE entry per producible transfer syntax — the canonical name only. The CLI
+    // aliases (jxl/jpeg-xl-lossless, j2k, jls, …) all still resolve via
+    // CompressionManager.transferSyntax(for:), but listing them in the picker just
+    // duplicates the same target (e.g. 4 JPEG-XL look-alikes), so they're dropped
+    // here to keep the dropdown = the 18 actual transfer syntaxes.
+    let compressCodecValues = CompressionManager.supportedCodecs().map { $0.name }
     return [
         CLIParameterDefinition(
             id: "operation", flag: "", displayName: "Operation",
@@ -3282,7 +3297,7 @@ case "dicom-compress":
             helpText: "Target codec / transfer syntax",
             isRequired: true,
             defaultValue: "jpeg-lossless",
-            allowedValues: ["jpeg", "jpeg-baseline", "jpeg-extended", "jpeg-lossless", "jpeg-lossless-sv1", "jpeg2000", "j2k", "jpeg2000-lossless", "j2k-lossless", "j2k-part2", "j2k-part2-lossless", "htj2k", "htj2k-lossy", "htj2k-lossless", "htj2k-rpcl", "htj2k-lossless-rpcl", "rle", "deflate", "explicit-le", "implicit-le"],
+            allowedValues: compressCodecValues,
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compress"])
         ),
         CLIParameterDefinition(
@@ -3290,7 +3305,7 @@ case "dicom-compress":
             parameterType: .enumPicker, placeholder: "jpeg-lossless",
             helpText: "Target codec for compression (omit and enable Decompress to decode)",
             defaultValue: "",
-            allowedValues: ["", "jpeg", "jpeg-baseline", "jpeg-extended", "jpeg-lossless", "jpeg-lossless-sv1", "jpeg2000", "j2k", "jpeg2000-lossless", "j2k-lossless", "j2k-part2", "j2k-part2-lossless", "htj2k", "htj2k-lossy", "htj2k-lossless", "htj2k-rpcl", "htj2k-lossless-rpcl", "rle", "deflate", "explicit-le", "implicit-le"],
+            allowedValues: [""] + compressCodecValues,
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["batch"])
         ),
 
