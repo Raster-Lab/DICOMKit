@@ -3361,6 +3361,8 @@ private func executeDicomCompressInfo() async {
             let isLossless = info.isLossless
             let isJPEG = info.isJPEG
             let isJPEG2000 = info.isJPEG2000
+            let isJPEGLS = info.isJPEGLS
+            let isJPEGXL = info.isJPEGXL
             let isRLE = info.isRLE
             let isDeflated = info.isDeflated
             let pixelDataSize = info.pixelDataSize
@@ -3382,6 +3384,8 @@ private func executeDicomCompressInfo() async {
                 ]
                 if isJPEG { dict["codec"] = "JPEG" }
                 else if isJPEG2000 { dict["codec"] = "JPEG 2000" }
+                else if isJPEGLS { dict["codec"] = "JPEG-LS" }
+                else if isJPEGXL { dict["codec"] = "JPEG XL" }
                 else if isRLE { dict["codec"] = "RLE" }
                 else if isDeflated { dict["codec"] = "Deflate" }
                 else { dict["codec"] = "None" }
@@ -3408,6 +3412,8 @@ private func executeDicomCompressInfo() async {
                 if tsUID.hasPrefix("1.2.840.10008.1.2.4.20") { lines.append("Codec: HTJ2K (High-Throughput JPEG 2000)") }
                 else { lines.append("Codec: JPEG 2000") }
             }
+            else if isJPEGLS { lines.append("Codec: JPEG-LS") }
+            else if isJPEGXL { lines.append("Codec: JPEG XL") }
             else if isRLE { lines.append("Codec: RLE") }
             else if isDeflated { lines.append("Codec: Deflate") }
             else { lines.append("Codec: None (uncompressed)") }
@@ -5316,6 +5322,9 @@ case "dicom-study":
             return .jpegLSLossless
         case "jpeglsnearlossless", "jpeg-ls-near-lossless", "jpegls-near":
             return .jpegLSNearLossless
+        // JPEG XL (lossless-only encode)
+        case "jpegxl", "jpeg-xl", "jxl", "jpegxllossless", "jpeg-xl-lossless", "jxl-lossless":
+            return .jpegXLLossless
         // RLE
         case "rlelossless", "rle-lossless", "rle":
             return .rleLossless

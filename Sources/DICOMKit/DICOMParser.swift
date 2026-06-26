@@ -952,8 +952,47 @@ extension Data {
             guard decompressedSize > 0 else {
                 return nil
             }
-            
+
             return Data(bytes: destinationBuffer, count: decompressedSize)
+        }
+    }
+
+    /// Compresses data using the raw deflate algorithm (RFC 1951).
+    ///
+    /// Produces the exact bitstream `decompress()` consumes — raw DEFLATE with no
+    /// zlib header/trailer (Apple's `COMPRESSION_ZLIB` operates on raw DEFLATE),
+    /// so the two are a faithful inverse pair. Used to write the Data Set of a
+    /// Deflated Explicit VR Little Endian file (the File Meta Information is never
+    /// deflated). Returns nil if encoding fails.
+    /// Reference: PS3.5 Section A.5 - Deflated Explicit VR Little Endian
+    func deflateCompressed() -> Data? {
+        if isEmpty { return Data() }
+        return self.withUnsafeBytes { sourceBuffer -> Data? in
+            guard let sourcePointer = sourceBuffer.baseAddress else {
+                return nil
+            }
+
+            // Deflate output is bounded by input + ~0.1% + a few bytes per 64 KB
+            // stored block; a 1.5× buffer + 64 B is always sufficient and avoids a
+            // spurious 0-return on incompressible data (e.g. uncompressed pixels).
+            let destinationCapacity = Swift.max(count + count / 2 + 64, 1024)
+            let destinationBuffer = UnsafeMutablePointer<UInt8>.allocate(capacity: destinationCapacity)
+            defer { destinationBuffer.deallocate() }
+
+            let compressedSize = compression_encode_buffer(
+                destinationBuffer,
+                destinationCapacity,
+                sourcePointer.assumingMemoryBound(to: UInt8.self),
+                count,
+                nil,
+                COMPRESSION_ZLIB
+            )
+
+            guard compressedSize > 0 else {
+                return nil
+            }
+
+            return Data(bytes: destinationBuffer, count: compressedSize)
         }
     }
 }
@@ -969,6 +1008,16 @@ extension Data {
     func decompress() -> Data? {
         // Decompression not available on this platform
         // The parser will throw an appropriate error
+        return nil
+    }
+
+    /// Compresses data using the deflate algorithm (RFC 1951)
+    ///
+    /// On platforms without Compression framework, this returns nil so callers can
+    /// surface a clear "deflate unsupported on this platform" error rather than
+    /// writing a mislabeled file.
+    /// Reference: PS3.5 Section A.5 - Deflated Explicit VR Little Endian
+    func deflateCompressed() -> Data? {
         return nil
     }
 }

@@ -17,6 +17,8 @@ public struct CompressionInfo {
     public let isLossless: Bool
     public let isJPEG: Bool
     public let isJPEG2000: Bool
+    public let isJPEGLS: Bool
+    public let isJPEGXL: Bool
     public let isRLE: Bool
     public let isDeflated: Bool
     public let pixelDataSize: Int?
@@ -50,6 +52,14 @@ public struct CompressionManager {
         (["htj2k", "htj2k-lossy"], .htj2kLossy),
         (["htj2k-lossless"], .htj2kLossless),
         (["htj2k-rpcl", "htj2k-lossless-rpcl"], .htj2kRPCLLossless),
+        (["jpeg-ls-lossless", "jpegls-lossless", "jls-lossless"], .jpegLSLossless),
+        (["jpeg-ls", "jpegls", "jls"], .jpegLSNearLossless),
+        // JPEG XL ENCODE is lossless-only (JXLSwift Modular, distance 0); the general/
+        // lossy JXL .112 and recompression .111 are decode-only / unsupported. So the
+        // canonical name is the explicit `jpeg-xl-lossless` — `jpeg-xl`/`jxl` remain
+        // accepted aliases but, unlike `jpeg2000`/`htj2k` (whose generic name → lossy),
+        // they resolve to the lossless syntax because there is no lossy JXL to produce.
+        (["jpeg-xl-lossless", "jpeg-xl", "jxl", "jxl-lossless"], .jpegXLLossless),
         (["rle"], .rleLossless),
         (["explicit-le"], .explicitVRLittleEndian),
         (["implicit-le"], .implicitVRLittleEndian),
@@ -107,6 +117,16 @@ public struct CompressionManager {
             return "HTJ2K RPCL Lossless"
         case TransferSyntax.htj2kLossy.uid:
             return "HTJ2K"
+        case TransferSyntax.jpegLSLossless.uid:
+            return "JPEG-LS Lossless"
+        case TransferSyntax.jpegLSNearLossless.uid:
+            return "JPEG-LS Near-Lossless"
+        case TransferSyntax.jpegXLLossless.uid:
+            return "JPEG XL Lossless"
+        case TransferSyntax.jpegXL.uid:
+            return "JPEG XL"
+        case TransferSyntax.jpegXLRecompression.uid:
+            return "JPEG XL JPEG Recompression"
         case TransferSyntax.rleLossless.uid:
             return "RLE Lossless"
         default:
@@ -130,7 +150,24 @@ public struct CompressionManager {
         let syntax = TransferSyntax.from(uid: tsUID)
 
         let pixelElement = file.dataSet[.pixelData]
-        let pixelDataSize = pixelElement.map { Int($0.length) }
+
+        // Pixel Data size: for native (non-encapsulated) data the element length
+        // is the byte count. For encapsulated data the length field is the
+        // 0xFFFFFFFF undefined-length sentinel — not a byte count — so report the
+        // actual compressed payload, the sum of the encapsulated fragment sizes
+        // (the Basic Offset Table is metadata, not pixel bytes). Without this,
+        // every compressed file reported the sentinel literally as ≈4.0 GB.
+        let pixelDataSize: Int? = pixelElement.map { element in
+            if let fragments = element.encapsulatedFragments {
+                return fragments.reduce(0) { $0 + $1.count }
+            }
+            // Defend against a stray undefined-length sentinel with no parsed
+            // fragments (malformed input): fall back to the actual value bytes.
+            if element.length == 0xFFFFFFFF {
+                return element.valueData.count
+            }
+            return Int(element.length)
+        }
 
         return CompressionInfo(
             transferSyntaxUID: tsUID,
@@ -139,6 +176,8 @@ public struct CompressionManager {
             isLossless: syntax?.isLossless ?? true,
             isJPEG: syntax?.isJPEG ?? false,
             isJPEG2000: syntax?.isJPEG2000 ?? false,
+            isJPEGLS: syntax?.isJPEGLS ?? false,
+            isJPEGXL: syntax?.isJPEGXL ?? false,
             isRLE: syntax?.isRLE ?? false,
             isDeflated: syntax?.isDeflated ?? false,
             pixelDataSize: pixelDataSize,
@@ -656,9 +695,23 @@ struct TransferSyntaxHelper {
         output.append(try writeElement(groupLengthElement, writer: metaWriter))
         output.append(metaData)
 
-        // Write main dataset with target transfer syntax
+        // Write main dataset with target transfer syntax. A Deflated Explicit VR
+        // Little Endian target (PS3.5 A.5) serializes the Data Set as Explicit VR
+        // LE and then DEFLATE-compresses it — the File Meta Information above stays
+        // uncompressed. Without this the file was labeled 1.2.840.10008.1.2.1.99
+        // but carried raw (un-deflated) bytes, so readers failed with
+        // "Failed to decompress deflated data".
         let dataWriter = createWriter(for: targetSyntax)
-        let dataSetData = try writeDataSet(dataSet, writer: dataWriter)
+        var dataSetData = try writeDataSet(dataSet, writer: dataWriter)
+        if targetSyntax.isDeflated {
+            guard let deflated = dataSetData.deflateCompressed() else {
+                throw CompressionError.conversionFailed(
+                    "Failed to deflate the Data Set for \(targetSyntax.uid). "
+                    + "Deflate compression is unavailable on this platform."
+                )
+            }
+            dataSetData = deflated
+        }
         output.append(dataSetData)
 
         return output

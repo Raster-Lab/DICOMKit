@@ -48,7 +48,8 @@ enum SyntheticFixtures {
     static func image(sopInstanceUID: String, studyUID: String, seriesUID: String,
                       patientName: String, patientID: String, studyDescription: String,
                       seriesNumber: Int, instanceNumber: Int,
-                      frames: Int = 1, rows: Int = 8, cols: Int = 8) -> Data {
+                      frames: Int = 1, rows: Int = 8, cols: Int = 8,
+                      bits: Int = 16) -> Data {
         let ctSOP = "1.2.840.10008.5.1.4.1.1.2"
         let explicitLE = "1.2.840.10008.1.2.1"
 
@@ -74,17 +75,25 @@ enum SyntheticFixtures {
         if frames > 1 { main += str(0x0028, 0x0008, "IS", String(frames)) }
         main += us(0x0028, 0x0010, UInt16(rows))            // Rows
         main += us(0x0028, 0x0011, UInt16(cols))            // Columns
-        main += us(0x0028, 0x0100, 16)                      // BitsAllocated
-        main += us(0x0028, 0x0101, 12)                      // BitsStored
-        main += us(0x0028, 0x0102, 11)                      // HighBit
-        main += us(0x0028, 0x0103, 0)                       // PixelRepresentation
+        // 8-bit (jpeg-baseline-compatible) vs the default 12-bit-stored/16-bit CT.
+        let eightBit = (bits == 8)
+        main += us(0x0028, 0x0100, UInt16(eightBit ? 8 : 16))   // BitsAllocated
+        main += us(0x0028, 0x0101, UInt16(eightBit ? 8 : 12))   // BitsStored
+        main += us(0x0028, 0x0102, UInt16(eightBit ? 7 : 11))   // HighBit
+        main += us(0x0028, 0x0103, 0)                           // PixelRepresentation (unsigned)
 
-        // Deterministic 16-bit pixel ramp.
+        // Deterministic pixel ramp: 1 byte/pixel (OB) at 8-bit, else 2 bytes/pixel (OW).
         let count = rows * cols * max(1, frames)
         var px: [UInt8] = []
-        px.reserveCapacity(count * 2)
-        for i in 0..<count { px += u16(UInt16(i % 4096)) }
-        main += elemLong(0x7FE0, 0x0010, "OW", px)
+        if eightBit {
+            px.reserveCapacity(count)
+            for i in 0..<count { px.append(UInt8(i % 256)) }
+            main += elemLong(0x7FE0, 0x0010, "OB", px)
+        } else {
+            px.reserveCapacity(count * 2)
+            for i in 0..<count { px += u16(UInt16(i % 4096)) }
+            main += elemLong(0x7FE0, 0x0010, "OW", px)
+        }
 
         // File meta (group 0002), Explicit VR LE.
         var meta: [UInt8] = []
@@ -112,6 +121,18 @@ enum SyntheticFixtures {
               patientName: "PARITY^SYNTH", patientID: "SYN-0001",
               studyDescription: "PARITY SYNTHETIC CT",
               seriesNumber: 1, instanceNumber: 1)
+    }
+
+    /// 8-bit unsigned MONOCHROME2 CT — the ONLY codec on the parity matrix that
+    /// rejects the default 16-bit fixture is JPEG Baseline (8-bit only), so this
+    /// gives `dicom-compress compress --codec jpeg/jpeg-baseline` a valid input.
+    static func singleFrame8bitCT() -> Data {
+        image(sopInstanceUID: "1.2.826.0.1.3680043.10.999.6.1.1",
+              studyUID: "1.2.826.0.1.3680043.10.999.6.1",
+              seriesUID: "1.2.826.0.1.3680043.10.999.6.2",
+              patientName: "PARITY^SYNTH8", patientID: "SYN-0008",
+              studyDescription: "PARITY SYNTHETIC CT 8BIT",
+              seriesNumber: 6, instanceNumber: 1, bits: 8)
     }
 
     /// Same shape as `singleFrameCT` but different patient/UIDs/description — the

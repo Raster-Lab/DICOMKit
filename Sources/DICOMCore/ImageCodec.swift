@@ -310,16 +310,22 @@ public struct CodecRegistry: Sendable {
         var decoderRegistry: [String: any ImageCodec] = [:]
         var encoderRegistry: [String: any ImageEncoder] = [:]
         
-        // Register Apple-native baseline JPEG codecs when available.
-        #if canImport(ImageIO)
-        let jpegCodec = NativeJPEGCodec()
-        for uid in NativeJPEGCodec.supportedTransferSyntaxes {
-            decoderRegistry[uid] = jpegCodec
+        // JPEG codec — JLISwift, the pure-Swift ITU-T T.81 implementation, covers
+        // all four DICOM JPEG transfer syntaxes for both decode and encode. One
+        // decoder serves every SOF mode (the marker drives it); encoders are
+        // per-syntax — the target UID selects baseline/extended lossy DCT vs
+        // lossless SOF3 — mirroring the J2KSwiftCodec wiring below. This replaces
+        // the prior ImageIO-only path, so JPEG encode/decode now works identically
+        // on every platform (and adds Extended/Lossless/SV1 *encoding*, which the
+        // ImageIO path never supported). NativeJPEGCodec remains in the tree as a
+        // standalone Apple codec, no longer wired into the registry.
+        let jpegDecoder = JLICodec()
+        for uid in JLICodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = jpegDecoder
         }
-        for uid in NativeJPEGCodec.supportedEncodingTransferSyntaxes {
-            encoderRegistry[uid] = jpegCodec
+        for uid in JLICodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = JLICodec(encodingTransferSyntaxUID: uid)
         }
-        #endif
 
         // Register the preferred JPEG 2000 adapter.
         // Phase 1 uses J2KSwift directly; the native Apple codec remains available
@@ -367,6 +373,15 @@ public struct CodecRegistry: Sendable {
         }
         for uid in JP3DCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = JP3DCodec(compressionMode: uid == TransferSyntax.jp3dLossless.uid ? .lossless : .lossy())
+        }
+
+        // JPEG XL codec (JXLSwift pure-Swift — lossless encode, lossless + lossy decode)
+        let jxlCodec = JXLCodec()
+        for uid in JXLCodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = jxlCodec
+        }
+        for uid in JXLCodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = jxlCodec
         }
         
         self.codecs = decoderRegistry

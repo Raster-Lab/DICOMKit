@@ -52,6 +52,9 @@ extension DICOMCompress {
                   htj2k-lossless         HTJ2K Lossless
                   htj2k-rpcl,            HTJ2K RPCL Lossless Only
                     htj2k-lossless-rpcl
+                  jpeg-ls-lossless       JPEG-LS Lossless
+                  jpeg-ls, jls           JPEG-LS Near-Lossless
+                  jpeg-xl, jxl           JPEG XL Lossless (pure-Swift)
                   rle                    RLE Lossless
                   deflate                Deflated Explicit VR Little Endian
                   explicit-le            Explicit VR Little Endian
@@ -272,6 +275,8 @@ extension DICOMCompress {
                     print("Codec: JPEG 2000")
                 }
             }
+            else if info.isJPEGLS { print("Codec: JPEG-LS") }
+            else if info.isJPEGXL { print("Codec: JPEG XL") }
             else if info.isRLE { print("Codec: RLE") }
             else if info.isDeflated { print("Codec: Deflate") }
             else { print("Codec: None (uncompressed)") }
@@ -313,6 +318,8 @@ extension DICOMCompress {
 
             if info.isJPEG { dict["codec"] = "JPEG" }
             else if info.isJPEG2000 { dict["codec"] = "JPEG 2000" }
+            else if info.isJPEGLS { dict["codec"] = "JPEG-LS" }
+            else if info.isJPEGXL { dict["codec"] = "JPEG XL" }
             else if info.isRLE { dict["codec"] = "RLE" }
             else if info.isDeflated { dict["codec"] = "Deflate" }
             else { dict["codec"] = "None" }
