@@ -651,6 +651,12 @@ public final class CLIParityRunnerViewModel {
         for id in toolIds {
             guard let tool = tools.first(where: { $0.id == id }) else { continue }
             let r = CLIParityEngine.compare(tool: tool, contracts: contracts)
+            // No CLI contract for this tool (its `--experimental-dump-help` could not be
+            // dumped) → we have nothing to judge input-contract parity against, so do NOT
+            // manufacture INPUT_DRIFT (compare() lists every studio flag as extraInStudio
+            // when the contract is absent). Without this guard a tool with a broken
+            // contract would mark every flag-bearing scenario as drift.
+            guard r.status != .noCliData else { continue }
             out[id] = Set(r.rows.filter { $0.status == .extraInStudio }.map { $0.flag })
         }
         return out

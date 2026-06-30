@@ -510,11 +510,20 @@ public final class ImageViewerViewModel {
             detailedError = error.localizedDescription
         }
 
-        // Fall back to auto-windowing if explicit windowing fails
+        // Fallback 1: automatic windowing from the frame's actual pixel range.
+        // This recovers from a degenerate explicit window far more usefully than the
+        // raw stored window, which — for modalities with a large Rescale Intercept
+        // (e.g. CT) — clips almost everything to black and looks like a blank image.
+        if image == nil, let auto = try? file.tryRenderFrame(currentFrameIndex) {
+            image = auto
+            detailedError = nil
+        }
+
+        // Fallback 2: the header's stored window, as a last resort.
         if image == nil {
             do {
                 image = try file.tryRenderFrameWithStoredWindow(currentFrameIndex)
-                detailedError = nil   // auto-windowing succeeded – clear any earlier error
+                detailedError = nil
             } catch let e as PixelDataError {
                 if detailedError == nil { detailedError = e.description }
             } catch {
@@ -525,11 +534,23 @@ public final class ImageViewerViewModel {
         lastRenderTime = Date().timeIntervalSince(start)
         currentImage = image
 
-        if image == nil && errorMessage == nil {
-            let tsInfo = transferSyntaxName.isEmpty ? "" : " Transfer Syntax: \(transferSyntaxName)."
-            errorMessage = detailedError
-                ?? "Unable to render pixel data.\(tsInfo) The file may use an unsupported transfer syntax or contain no displayable image data."
-        } else if image != nil {
+        if image == nil {
+            // Never fail to a silent blank: name the exact reason. A missing codec
+            // for an encapsulated transfer syntax is the signature of a build whose
+            // linked codec registry is stale (e.g. predating Part 2 / HTJ2K support)
+            // — surface that explicitly so it's actionable instead of mysterious.
+            let tsUID = file.transferSyntaxUID ?? ""
+            let isEncapsulated = TransferSyntax.from(uid: tsUID)?.isEncapsulated ?? false
+            if isEncapsulated && !CodecRegistry.shared.hasCodec(for: tsUID) {
+                let name = transferSyntaxName.isEmpty ? tsUID : transferSyntaxName
+                errorMessage = "No decoder registered for \(name) (\(tsUID)) in this build. "
+                    + "Rebuild the app so the current codec registry is linked."
+            } else if errorMessage == nil {
+                let tsInfo = transferSyntaxName.isEmpty ? "" : " Transfer Syntax: \(transferSyntaxName)."
+                errorMessage = detailedError
+                    ?? "Unable to render pixel data.\(tsInfo) The file may use an unsupported transfer syntax or contain no displayable image data."
+            }
+        } else {
             // Clear any previous rendering error upon success
             errorMessage = nil
         }

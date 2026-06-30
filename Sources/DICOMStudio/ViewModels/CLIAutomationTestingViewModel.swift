@@ -193,6 +193,7 @@ public final class CLIAutomationTestingViewModel {
         // of files) at the OUTPUT placeholder; we compare the produced file(s).
         let isDicomMulti = scenario.artifactKind == "dicom-multi"
         let isDicomTree = scenario.artifactKind == "dicom-tree"
+        let isImageRasterMulti = scenario.artifactKind == "image-raster-multi"
         var artifactURL: URL? = nil
         var scratchDir: URL? = nil
         // A scratch dir is needed for the compared artifact AND/OR an OUTPUT2 secondary output.
@@ -203,7 +204,7 @@ public final class CLIAutomationTestingViewModel {
             scratchDir = dir
             if let art = scenario.artifactName, !art.isEmpty {
                 artifactURL = dir.appendingPathComponent(art)
-                if (isDicomMulti || isDicomTree), let u = artifactURL {   // OUTPUT is a directory the producer fills
+                if (isDicomMulti || isDicomTree || isImageRasterMulti), let u = artifactURL {   // OUTPUT is a directory the producer fills
                     try? FileManager.default.createDirectory(at: u, withIntermediateDirectories: true)
                 }
             }
@@ -278,6 +279,27 @@ public final class CLIAutomationTestingViewModel {
             // image producers (dicom-export): compare the decoded raster (sha256),
             // which strips non-deterministic encoder metadata (EXIF/ICC) (plan §4b).
             studioRaw = CLIParityEngine.imageRasterHash(fileURL: u) ?? "<image-decode-failed>"
+        } else if let u = artifactURL, isImageRasterMulti {
+            // OUTPUT is a directory of images (e.g. dicom-convert --format png --recursive).
+            // Hash each produced file's decoded raster, sorted by relative path for stable
+            // pairing, with index headers — must match cli-parity-gen's image-raster-multi.
+            var rels: [String] = []
+            if let en = FileManager.default.enumerator(atPath: u.path) {
+                while let p = en.nextObject() as? String {
+                    var isDir: ObjCBool = false
+                    if FileManager.default.fileExists(atPath: u.appendingPathComponent(p).path, isDirectory: &isDir),
+                       !isDir.boolValue {
+                        rels.append(p)
+                    }
+                }
+            }
+            rels.sort()
+            var combined = "Images: \(rels.count)\n"
+            for (i, rel) in rels.enumerated() {
+                let h = CLIParityEngine.imageRasterHash(fileURL: u.appendingPathComponent(rel)) ?? "<image-decode-failed>"
+                combined += "=== image \(i) ===\n" + h + "\n"
+            }
+            studioRaw = combined
         } else if let u = artifactURL, isDicomArtifact {
             studioRaw = await dump(u)
         } else if let u = artifactURL {

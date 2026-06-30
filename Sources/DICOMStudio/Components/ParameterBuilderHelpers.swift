@@ -4,6 +4,7 @@
 // DICOM Studio — Helper enums for Dynamic GUI Controls & Parameter Builder (Milestone 21)
 
 import Foundation
+import DICOMKit
 
 // MARK: - ParameterValidationHelpers
 
@@ -141,8 +142,9 @@ public enum ParameterCatalogHelpers {
             parameters: [
                 param("--input", "Input File", "Source DICOM file.", type: .filePath(allowedExtensions: ["dcm", "dicom"]), required: true),
                 param("--output", "Output File", "Destination file path.", type: .outputPath(defaultExtension: "dcm")),
+                // Single source of truth: the shared DICOMConverter target catalog (DICOMKit).
                 param("--transfer-syntax", "Transfer Syntax", "Target transfer syntax.",
-                      type: .picker(options: options(["explicit-vr-le", "jpeg-baseline", "jpeg2000", "rle-lossless", "deflate"]))),
+                      type: .picker(options: options(DICOMConverter.aliasTokens))),
                 param("--force", "Force", "Overwrite existing output file.", type: .toggle)
             ],
             subcommands: []

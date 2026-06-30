@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Shared CLI ↔ App Orchestration: CompressionConsole, DICOMConverter, DICOMDIRDumpFormatter, DICOMDIRWorkflow, EncapsulatedDocumentWorkflow
+
+- **`CompressionConsole`** (`Sources/DICOMKit/Compression/CompressionConsole.swift`): Pure shared formatter and input-parser for `dicom-compress`. Both the CLI binary and DICOMStudio's CLI Workshop call this single type for `--quality` / `--backend` parsing, binary byte formatting, and every console line (compress header, stats, batch totals). Replaces duplicated inline formatting on both sides. Mirrors the `NetworkConsole` shared-formatter pattern.
+- **`DICOMConverter`** (`Sources/DICOMKit/DICOMConverter.swift`): Single source of truth for the `dicom-convert` transfer-syntax conversion API — the ordered target catalog (UID, CamelCase CLI tokens, kebab aliases), `parseTarget(_:)`, `cliTokens`/`aliasTokens` picker lists, and the shared `convertToDICOM(dicomFile:to:stripPrivate:)` pipeline. Both the CLI (`dicom-convert`) and the DICOMStudio CLI Workshop call this directly so conversion bytes are identical and the `--transfer-syntax` help text cannot drift from the picker.
+- **`DICOMDIRDumpFormatter`** (`Sources/DICOMKit/DICOMDIRDumpFormatter.swift`): Shared renderer for `dicom-dcmdir dump` output (tree / json / text formats). The CLI and the CLI Workshop both call `DICOMDIRDumpFormatter.render(_:format:verbose:)` so their output pipelines cannot drift.
+- **`DICOMDIRWorkflow`** (`Sources/DICOMKit/DICOMDIRWorkflow.swift`): Shared orchestration helpers for `dicom-dcmdir` — recursive DICOM file discovery (skipping the existing DICOMDIR, sorting by path), the create build-loop (read, compute relative path, add to `DICOMDirectory.Builder`, emit summary), and the validate report (statistics + file-set + record-type breakdown). Both the CLI and the Workshop call these helpers, eliminating hand-mirrored orchestration that could silently diverge.
+- **`EncapsulatedDocumentWorkflow`** (`Sources/DICOMKit/EncapsulatedDocument/EncapsulatedDocumentWorkflow.swift`): Shared orchestration helpers for `dicom-pdf` — `EncapsulatedDocumentType.fileExtension`, `defaultModality`, the `--show-metadata` report block, and the human-readable file-size formatter. Both the CLI and the Workshop call these helpers so the `dicom-pdf` parity surface cannot drift.
+- **Synthetic DICOMDIR fixture** (`Sources/DICOMStudio/Resources/CLIParity/synthetic/syn-dicomdir`): Pre-built minimal DICOMDIR file added to the synthetic corpus for the offline `dicom-dcmdir` parity scenario, making the dcmdir dump/validate scenarios runnable without a real PACS file hierarchy.
+
+### Fixed — DICOMWriter Drops Encapsulated Pixel Data
+
+- **`DICOMWriter.serializeElement(_:)` now emits encapsulated pixel data** (`Sources/DICOMCore/DICOMWriter.swift`): The generic serializer previously skipped any undefined-length (`0xFFFFFFFF`) element that was not `.SQ`, silently emitting an empty PixelData shell. This caused `DICOMConverter`/`dicom-convert` to fail on ANY compressed source — the decoder saw zero fragments and threw "Frame 0 starts beyond data bounds" — and would have corrupted any `DataSet.write()` / `DICOMFile.write()` rewrite of a compressed dataset. Fixed by adding a dedicated `serializeEncapsulatedPixelData(_:fragments:)` branch that emits the full Basic Offset Table Item + one Item per codestream fragment (odd fragments padded to even length per PS3.5 A.4) + the Sequence Delimitation Item.
+
+### Fixed — DICOMFile.pixelData() No Longer Relabels YBR as RGB
+
+- **Removed stale YBR→RGB photometric relabel** (`Sources/DICOMKit/DICOMFile+PixelData.swift`): The previous code relabelled YBR pixel data as RGB for transfer syntaxes that the retired ImageIO-based codecs once handled (JPEG 50/51/57/70, JPEG 2000 90/91). The current registry uses pure-Swift codecs (JLISwift, J2KSwiftCodec, JPEG-LS, RLE) that decode to the *source* photometric interpretation and leave YBR→RGB conversion to `PixelDataRenderer`. The relabel suppressed that renderer conversion and washed out/blanked colour compressed previews. Removing it restores correct colour rendering for all compressed sources while preserving the existing `isImageIODecodedTransferSyntax` helper (unused after this change).
+
+### Fixed — JPEG-LS NEAR Parameter Overflow for 16-bit Sources
+
+- **JPEG-LS NEAR clamped to 255** (`Sources/DICOMCore/JPEGLSCodec.swift`): JLSwift's `JPEGLSEncoder.Configuration` rejects a NEAR value above 255. For a 16-bit source at high quality, the formula `maxVal * (1 - quality) * 0.1` could yield NEAR ≈ 655, causing the encode to throw. Added a `maxNear = 255` clamp so lossy JPEG-LS encoding of 16-bit images at any quality level succeeds.
+
+### Fixed — PixelEditor Handles Compressed Sources
+
+- **`PixelEditor` decodes encapsulated sources before editing** (`Sources/DICOMKit/PixelEditing/PixelEditor.swift`): Editing a compressed (encapsulated) PixelData element in place corrupts the encoded bitstream; the output — still tagged as the compressed transfer syntax — cannot be decoded by a viewer. `PixelEditor` now detects an encapsulated source, decodes it to native pixels first, and emits the edited result as uncompressed Explicit VR Little Endian. Multi-frame sources are handled correctly.
+
+### Added — DICOMKitTests: Parity and Regression Test Suite
+
+Seven new test files added to the `DICOMKitTests` target (`Package.swift` sources updated):
+
+- **`EncapsulatedPixelDataWriteTests`**: Regression for the `DICOMWriter` encapsulated pixel data fix — asserts the full BOT + fragment structure is emitted, odd fragments are padded, a zero-fragment BOT writes cleanly, and a round-trip `DataSet.write()` → `DICOMParser.parse()` recovers the original fragments.
+- **`CompressionManagerImplicitVRTests`**: Regression for `CompressionManager` on Implicit VR Little Endian sources — pins that the shared `DICOMWriter` path re-encodes sequences from parsed items (not raw bytes) and promotes oversized short-VR values to UN, preventing byte-stream desync and the "No pixel data found" failure on decompress.
+- **`CompressedPreviewRenderParityTests`**: Parity regression that the `DICOMFile.pixelData()` return value for a freshly compressed file matches the value after a round-trip decompress, for every codec — so the photometric-relabel removal cannot silently reintroduce colour corruption.
+- **`CompressionConsoleTests`**: Contract tests that lock the exact `dicom-compress` console strings produced by `CompressionConsole` — byte formatting, quality parsing, header lines, compressed-result lines — so the CLI and CLI Workshop cannot drift.
+- **`DICOMConverterTests`**: Contract tests for the shared `DICOMConverter` API — every catalog token (cliToken / aliasToken / UID / extraAliases) round-trips through `parseTarget`; picker token lists are exactly the catalog; `CLIContracts.json` entry is regenerable from the catalog; DEFLATE converts without error.
+- **`ExportWindowParityTests`**: Regression that `DICOMImageExporter.renderFrameForExport` and `determineWindowSettings` rescale-adjust the VOI window (HU → stored via Rescale Slope/Intercept), so a CT with a non-zero Rescale Intercept exports with the correct contrast — not washed out.
+- **`PixelEditorTests`**: Regression that `PixelEditor` decodes encapsulated sources to native pixels before editing, emits Explicit VR Little Endian output, and preserves tag edits in the serialized file.
+
 ### Added — WADORetrieveConsoleFormatter (Shared WADO-RS / WADO-URI Retrieve Renderer)
 
 - **`WADORetrieveConsoleFormatter`** (`Sources/DICOMWeb/WADORetrieveConsoleFormatter.swift`): Shared output renderer for WADO-RS / WADO-URI retrieve — verbose preamble blocks, per-mode status lines (metadata / rendered / thumbnail / frames / instances / WADO-URI result), and the metadata body (JSON pretty-printed + PS3.19 Native DICOM Model XML). Mirrors `QIDOResultFormatter` (query) and `UPSResultFormatter` (ups): a SINGLE formatter both sides call, so the `dicom-wado retrieve` CLI binary and DICOMStudio's in-app retrieve cannot produce different output.

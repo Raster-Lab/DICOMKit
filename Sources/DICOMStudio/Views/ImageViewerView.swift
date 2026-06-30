@@ -398,12 +398,23 @@ public struct ImageViewerView: View {
 
 #if os(macOS)
 /// Zero-size NSView that installs a local NSEvent monitor for scroll-wheel events.
+///
+/// The monitor is application-wide, so it must self-scope: a scroll only zooms the
+/// image when the cursor is actually over this view *in the viewer's own window*.
+/// Sheets, popovers and other popups are presented in separate windows, so scrolling
+/// inside them no longer leaks through and zooms the image behind them.
 private struct ScrollWheelHandler: NSViewRepresentable {
     let onScroll: (CGFloat) -> Void
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
-        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak view] event in
+            guard let view, let window = view.window else { return event }
+            // Reject scrolls aimed at a different window (sheet / popover / popup).
+            guard let eventWindow = event.window, eventWindow === window else { return event }
+            // Only zoom when the cursor is over the image view itself.
+            let pointInView = view.convert(event.locationInWindow, from: nil)
+            guard view.bounds.contains(pointInView) else { return event }
             onScroll(event.deltaY)
             return event
         }
