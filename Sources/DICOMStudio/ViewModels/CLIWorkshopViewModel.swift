@@ -1834,19 +1834,15 @@ private func executeDicomDcmdir() async {
         let outputAccessing = outputScopedURL?.startAccessingSecurityScopedResource() ?? false
         defer { if outputAccessing { outputScopedURL?.stopAccessingSecurityScopedResource() } }
 
-        // Resolve output URL: explicit output, security-scoped output, or DICOMDIR inside input.
-        let outputURL: URL
-        let outputDisplayPath: String
-        if let scoped = outputScopedURL {
-            outputURL = scoped
-            outputDisplayPath = outputArg.isEmpty ? scoped.path : outputArg
-        } else if !outputArg.isEmpty {
-            outputURL = URL(fileURLWithPath: outputArg)
-            outputDisplayPath = outputArg
-        } else {
-            outputURL = inputURL.appendingPathComponent("DICOMDIR")
-            outputDisplayPath = inputDirectory + "/DICOMDIR"
-        }
+        // Resolve the OUTPUT to a DICOMDIR *file* path. When the user chose/typed a
+        // folder (or a trailing-slash path), the DICOMDIR is written INSIDE it — writing
+        // onto a directory path is what produced "the file … couldn't be saved in the
+        // folder …". Default: a DICOMDIR inside the input directory. (Scope is active.)
+        let intendedOutputPath: String
+        if !outputArg.isEmpty { intendedOutputPath = outputArg }
+        else if let scoped = outputScopedURL { intendedOutputPath = scoped.path }
+        else { intendedOutputPath = inputURL.appendingPathComponent("DICOMDIR").path }
+        let outputFilePath = DICOMDIRWorkflow.resolvedDICOMDIRPath(intendedOutputPath)
 
         let fsID = fileSetIDArg.isEmpty ? inputURL.lastPathComponent : fileSetIDArg
 
@@ -1868,105 +1864,45 @@ private func executeDicomDcmdir() async {
             if verbose {
                 out += "Creating DICOMDIR...\n"
                 out += "  Input directory: \(inputDirectory)\n"
-                out += "  Output file: \(outputDisplayPath)\n"
+                out += "  Output file: \(outputFilePath)\n"
                 out += "  File-set ID: \(fsID)\n"
                 out += "  Profile: \(profileStr)\n"
                 out += "  Recursive: \(recursive)\n\n"
             }
 
-            // Enumerate DICOM files (mirrors the CLI's findDICOMFiles).
-            let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey]
-            var dicomFiles: [URL] = []
+            // Build the DICOMDIR via the shared DICOMDIRWorkflow — identical file
+            // discovery, build loop, and relative-path computation as the dicom-dcmdir
+            // CLI, so the two surfaces produce a byte-identical DICOMDIR.
+            let result: DICOMDIRWorkflow.CreateResult
             do {
-                if recursive {
-                    guard let enumerator = FileManager.default.enumerator(
-                        at: inputURL,
-                        includingPropertiesForKeys: resourceKeys,
-                        options: [.skipsHiddenFiles]
-                    ) else {
-                        return ("Error: Cannot enumerate directory: \(inputURL.path)\n", 1)
-                    }
-                    while let fileURL = enumerator.nextObject() as? URL {
-                        let values = try fileURL.resourceValues(forKeys: Set(resourceKeys))
-                        if values.isRegularFile == true {
-                            if fileURL.lastPathComponent == "DICOMDIR" { continue }
-                            dicomFiles.append(fileURL)
-                        }
-                    }
-                } else {
-                    let contents = try FileManager.default.contentsOfDirectory(
-                        at: inputURL,
-                        includingPropertiesForKeys: resourceKeys,
-                        options: [.skipsHiddenFiles]
-                    )
-                    for fileURL in contents {
-                        let values = try fileURL.resourceValues(forKeys: Set(resourceKeys))
-                        if values.isRegularFile == true {
-                            if fileURL.lastPathComponent == "DICOMDIR" { continue }
-                            dicomFiles.append(fileURL)
-                        }
-                    }
-                }
+                result = try DICOMDIRWorkflow.buildDirectory(
+                    fromFilesIn: inputURL, recursive: recursive, strict: strict,
+                    fileSetID: fsID, profile: dicomProfile,
+                    verbose: verbose, progress: { out += $0 })
+            } catch DICOMDIRWorkflow.WorkflowError.noDICOMFiles {
+                return (out + "Error: No DICOM files found in directory: \(inputDirectory)\n", 1)
             } catch {
                 return (out + "Error: \(error.localizedDescription)\n", 1)
             }
-            dicomFiles.sort { $0.path < $1.path }
 
-            if dicomFiles.isEmpty {
-                return (out + "Error: No DICOM files found in directory: \(inputDirectory)\n", 1)
-            }
-
-            if verbose {
-                out += "Found \(dicomFiles.count) DICOM files\n\n"
-            }
-
-            var builder = DICOMDirectory.Builder(fileSetID: fsID, profile: dicomProfile)
-            var successCount = 0
-            var failureCount = 0
-
-            for (index, fileURL) in dicomFiles.enumerated() {
-                if verbose {
-                    out += "[\(index + 1)/\(dicomFiles.count)] Processing \(fileURL.lastPathComponent)...\n"
-                }
-                do {
-                    let fileData = try Data(contentsOf: fileURL)
-                    let dicomFile = try DICOMFile.read(from: fileData, force: !strict)
-                    let relativePath = fileURL.path.replacingOccurrences(of: inputURL.path + "/", with: "")
-                    let pathComponents = relativePath.components(separatedBy: "/")
-                    try builder.addFile(dicomFile, relativePath: pathComponents)
-                    successCount += 1
-                } catch {
-                    failureCount += 1
-                    if verbose {
-                        out += "  Failed: \(error.localizedDescription)\n"
-                    }
-                }
-            }
-
-            let directory = builder.build()
-
+            // Serialize the DICOMDIR, then write it sandbox/TCC-resiliently via
+            // OutputAccess: it writes INSIDE a security-scoped folder (the common case
+            // for the output picker) and falls back to ~/Downloads/DICOMStudio with a
+            // visible note when the destination isn't writable — never onto a directory
+            // path, which is what produced "couldn't be saved in the folder …".
+            let writtenURL: URL
             do {
-                // Sandbox/TCC-resilient: resolve a writable destination (scoped URL, else
-                // probe the typed path, else ~/Downloads/DICOMStudio) for the library writer.
-                let dest = OutputAccess.resolveWritableURL(forPath: outputURL.path, scopedURL: outputScopedURL, subfolder: "DICOMDIR")
-                if let note = dest.note { out += note + "\n" }
-                try DICOMDIRWriter.write(directory, to: dest.url)
+                let dicomdirData = try DICOMDIRWriter.write(result.directory)
+                let written = try OutputAccess.write(dicomdirData, toPath: outputFilePath,
+                                                     scopedURL: outputScopedURL, subfolder: "DICOMDIR")
+                if let note = written.note { out += note + "\n" }
+                writtenURL = written.url
             } catch {
                 return (out + "Error: Failed to write DICOMDIR: \(error.localizedDescription)\n", 1)
             }
 
-            out += "\nDICOMDIR created successfully\n\n"
-            out += "Summary:\n"
-            out += "  Files processed: \(successCount)/\(dicomFiles.count)\n"
-            if failureCount > 0 {
-                out += "  Failed: \(failureCount)\n"
-            }
-            let stats = directory.statistics()
-            out += "  Patients: \(stats.patientCount)\n"
-            out += "  Studies: \(stats.studyCount)\n"
-            out += "  Series: \(stats.seriesCount)\n"
-            out += "  Images: \(stats.imageCount)\n\n"
-            out += "Output: \(outputDisplayPath)\n"
+            // Append the shared summary block (showing where the file actually landed).
+            out += DICOMDIRWorkflow.renderCreateSummary(result, outputPath: writtenURL.path)
             return (out, 0)
         }.value
 
@@ -1992,11 +1928,12 @@ private func executeDicomDcmdir() async {
         let scopedURL = securityScopedURLs["dicomdirPath"]
         let accessing = scopedURL?.startAccessingSecurityScopedResource() ?? false
         defer { if accessing { scopedURL?.stopAccessingSecurityScopedResource() } }
-        let fileURL = scopedURL ?? URL(fileURLWithPath: dicomdirPath)
+        // Accept either a DICOMDIR file or the media directory that contains it.
+        let fileURL = DICOMDIRWorkflow.resolvedDICOMDIRURL(scopedURL ?? URL(fileURLWithPath: dicomdirPath))
 
         let (output, exitCode): (String, Int) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
             var out = ""
-            out += "Validating DICOMDIR: \(dicomdirPath)\n\n"
+            out += "Validating DICOMDIR: \(fileURL.path)\n\n"
 
             let directory: DICOMDirectory
             do {
@@ -2009,37 +1946,14 @@ private func executeDicomDcmdir() async {
 
             do {
                 try directory.validate(checkFileExistence: checkFiles)
-                out += "DICOMDIR structure is valid\n"
             } catch {
                 out += "Validation failed: \(error.localizedDescription)\n"
                 return (out, 1)
             }
 
-            out += "\nStatistics:\n"
-            let stats = directory.statistics()
-            out += "  Patients: \(stats.patientCount)\n"
-            out += "  Studies: \(stats.studyCount)\n"
-            out += "  Series: \(stats.seriesCount)\n"
-            out += "  Images: \(stats.imageCount)\n"
-            out += "  Total records: \(stats.totalRecordCount)\n"
-            out += "  Active records: \(stats.activeRecordCount)\n"
-            out += "  Inactive records: \(stats.inactiveRecordCount)\n"
-            out += "\nFile-set:\n"
-            out += "  ID: \(directory.fileSetID.isEmpty ? "<none>" : directory.fileSetID)\n"
-            out += "  Profile: \(directory.profile.rawValue)\n"
-            out += "  Consistent: \(directory.isConsistent ? "Yes" : "No")\n"
-
-            if detailed {
-                out += "\nRecords by type:\n"
-                let allRecords = directory.allRecords()
-                let recordTypes = Set(allRecords.map { $0.recordType })
-                for recordType in recordTypes.sorted(by: { $0.rawValue < $1.rawValue }) {
-                    let count = allRecords.filter { $0.recordType == recordType }.count
-                    out += "  \(recordType.rawValue): \(count)\n"
-                }
-            }
-
-            out += "\nValidation complete\n"
+            // Append the shared validation report — the single source of truth
+            // shared with the dicom-dcmdir CLI.
+            out += DICOMDIRWorkflow.renderValidationReport(directory, detailed: detailed)
             return (out, 0)
         }.value
 
@@ -2065,7 +1979,8 @@ private func executeDicomDcmdir() async {
         let scopedURL = securityScopedURLs["dicomdirPath"]
         let accessing = scopedURL?.startAccessingSecurityScopedResource() ?? false
         defer { if accessing { scopedURL?.stopAccessingSecurityScopedResource() } }
-        let fileURL = scopedURL ?? URL(fileURLWithPath: dicomdirPath)
+        // Accept either a DICOMDIR file or the media directory that contains it.
+        let fileURL = DICOMDIRWorkflow.resolvedDICOMDIRURL(scopedURL ?? URL(fileURLWithPath: dicomdirPath))
 
         let (output, exitCode): (String, Int) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
             var out = ""
@@ -2079,119 +1994,14 @@ private func executeDicomDcmdir() async {
                 return (out, 1)
             }
 
-            func formatRecordName(_ record: DirectoryRecord) -> String {
-                var name = record.recordType.rawValue
-                switch record.recordType {
-                case .patient:
-                    if let patientName = record.attribute(for: .patientName)?.stringValue {
-                        name += " - \(patientName)"
-                    }
-                    if let patientID = record.attribute(for: .patientID)?.stringValue {
-                        name += " (ID: \(patientID))"
-                    }
-                case .study:
-                    if let studyDesc = record.attribute(for: .studyDescription)?.stringValue {
-                        name += " - \(studyDesc)"
-                    }
-                    if let studyDate = record.attribute(for: .studyDate)?.stringValue {
-                        name += " [\(studyDate)]"
-                    }
-                case .series:
-                    if let modality = record.attribute(for: .modality)?.stringValue {
-                        name += " - \(modality)"
-                    }
-                    if let seriesDesc = record.attribute(for: .seriesDescription)?.stringValue {
-                        name += " - \(seriesDesc)"
-                    }
-                case .image:
-                    if let instanceNum = record.attribute(for: .instanceNumber)?.stringValue {
-                        name += " #\(instanceNum)"
-                    }
-                    if let filePath = record.referencedFilePath() {
-                        name += " (\(filePath))"
-                    }
-                default:
-                    break
-                }
-                return name
-            }
-
-            func printRecord(_ record: DirectoryRecord, prefix: String, isLast: Bool) {
-                let connector = isLast ? "└── " : "├── "
-                out += "\(prefix)\(connector)\(formatRecordName(record))\n"
-                if verbose {
-                    for (tag, element) in record.attributes.sorted(by: { $0.key < $1.key }) {
-                        if let stringValue = element.stringValue {
-                            let attrPrefix = isLast ? "    " : "│   "
-                            out += "\(prefix)\(attrPrefix)    \(tag): \(stringValue)\n"
-                        }
-                    }
-                }
-                let childPrefix = prefix + (isLast ? "    " : "│   ")
-                for (index, child) in record.children.enumerated() {
-                    let childIsLast = index == record.children.count - 1
-                    printRecord(child, prefix: childPrefix, isLast: childIsLast)
-                }
-            }
-
-            switch format.lowercased() {
-            case "tree":
-                out += "DICOMDIR: \(directory.fileSetID)\n"
-                out += "├─ Profile: \(directory.profile.rawValue)\n"
-                out += "├─ Consistent: \(directory.isConsistent)\n"
-                out += "└─ Records:\n"
-                for (index, patient) in directory.rootRecords.enumerated() {
-                    let isLast = index == directory.rootRecords.count - 1
-                    printRecord(patient, prefix: isLast ? "    " : "│   ", isLast: true)
-                }
-            case "json":
-                let stats = directory.statistics()
-                out += "{\n"
-                out += "  \"fileSetID\": \"\(directory.fileSetID)\",\n"
-                out += "  \"profile\": \"\(directory.profile.rawValue)\",\n"
-                out += "  \"isConsistent\": \(directory.isConsistent),\n"
-                out += "  \"statistics\": {\n"
-                out += "    \"patients\": \(stats.patientCount),\n"
-                out += "    \"studies\": \(stats.studyCount),\n"
-                out += "    \"series\": \(stats.seriesCount),\n"
-                out += "    \"images\": \(stats.imageCount)\n"
-                out += "  },\n"
-                out += "  \"recordCount\": \(stats.totalRecordCount)\n"
-                out += "}\n"
-            case "text":
-                out += "DICOMDIR Information\n"
-                out += "====================\n\n"
-                out += "File-set ID: \(directory.fileSetID.isEmpty ? "<none>" : directory.fileSetID)\n"
-                out += "Profile: \(directory.profile.rawValue)\n"
-                out += "Consistent: \(directory.isConsistent)\n\n"
-                let stats = directory.statistics()
-                out += "Statistics:\n"
-                out += "  Patients: \(stats.patientCount)\n"
-                out += "  Studies: \(stats.studyCount)\n"
-                out += "  Series: \(stats.seriesCount)\n"
-                out += "  Images: \(stats.imageCount)\n"
-                out += "  Total records: \(stats.totalRecordCount)\n\n"
-                if verbose {
-                    out += "All Records:\n"
-                    out += "------------\n"
-                    for record in directory.allRecords() {
-                        out += "\n"
-                        out += "Type: \(record.recordType.rawValue)\n"
-                        if let filePath = record.referencedFilePath() {
-                            out += "File: \(filePath)\n"
-                        }
-                        for (tag, element) in record.attributes {
-                            if let value = element.stringValue {
-                                out += "  \(tag): \(value)\n"
-                            }
-                        }
-                    }
-                }
-            default:
+            // Render via the shared DICOMDIRDumpFormatter — the single source of
+            // truth shared with the dicom-dcmdir CLI so the dump output (tree /
+            // json / text) cannot drift between the two surfaces.
+            guard let rendered = DICOMDIRDumpFormatter.render(directory, format: format, verbose: verbose) else {
                 out += "Error: Invalid format: \(format). Use tree, json, or text\n"
                 return (out, 1)
             }
-
+            out += rendered
             return (out, 0)
         }.value
 
@@ -2271,65 +2081,15 @@ private func executeDicomDcmdir() async {
         let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
             let fm = FileManager.default
 
-            // MARK: helpers (mirror the CLI exactly)
-
-            func formatFileSize(_ bytes: Int64) -> String {
-                let kb = Double(bytes) / 1024
-                let mb = kb / 1024
-                if mb >= 1 { return String(format: "%.2f MB", mb) }
-                else if kb >= 1 { return String(format: "%.2f KB", kb) }
-                else { return "\(bytes) bytes" }
-            }
-
-            func extensionForDocumentType(_ type: DICOMKit.EncapsulatedDocumentType) -> String {
-                switch type {
-                case .pdf: return "pdf"
-                case .cda: return "xml"
-                case .stl: return "stl"
-                case .obj: return "obj"
-                case .mtl: return "mtl"
-                case .unknown: return "bin"
-                }
-            }
-
-            func documentTypeFromExtension(_ ext: String) -> DICOMKit.EncapsulatedDocumentType {
-                switch ext.lowercased() {
-                case "pdf": return .pdf
-                case "xml": return .cda
-                case "stl": return .stl
-                case "obj": return .obj
-                case "mtl": return .mtl
-                default:    return .unknown
-                }
-            }
+            // MARK: helpers
+            //
+            // Document-type ↔ extension mapping, default modality, the byte-size
+            // formatter, the `--show-metadata` report, and the builder option chain
+            // all come from DICOMKit's shared `EncapsulatedDocumentWorkflow`, so this
+            // reimplementation and the `dicom-pdf` CLI share one source of truth and
+            // cannot drift. UID generation uses the shared `UIDGenerator` (DICOMCore).
 
             func generateUID() -> String { UIDGenerator.generateUID().value }
-
-            func documentMetadata(_ document: EncapsulatedDocument) -> String {
-                var s = ""
-                s += "\n"
-                s += "Document Metadata:\n"
-                s += "  Type: \(document.documentType)\n"
-                s += "  MIME Type: \(document.mimeType)\n"
-                s += "  Size: \(formatFileSize(Int64(document.documentData.count)))\n"
-                s += "  SOP Class: \(document.sopClassUID)\n"
-                s += "  SOP Instance: \(document.sopInstanceUID)\n"
-                if let title = document.documentTitle { s += "  Title: \(title)\n" }
-                s += "\n"
-                s += "Patient Information:\n"
-                if let pn = document.patientName { s += "  Name: \(pn)\n" }
-                if let pid = document.patientID { s += "  ID: \(pid)\n" }
-                s += "\n"
-                s += "Study/Series:\n"
-                s += "  Study UID: \(document.studyInstanceUID)\n"
-                s += "  Series UID: \(document.seriesInstanceUID)\n"
-                if let m = document.modality { s += "  Modality: \(m)\n" }
-                if let sd = document.seriesDescription { s += "  Series Description: \(sd)\n" }
-                if let sn = document.seriesNumber { s += "  Series Number: \(sn)\n" }
-                if let inum = document.instanceNumber { s += "  Instance Number: \(inum)\n" }
-                s += "\n"
-                return s
-            }
 
             // MARK: input classification
 
@@ -2348,7 +2108,7 @@ private func executeDicomDcmdir() async {
                     let dicomFile = try DICOMFile.read(from: data, force: false)
                     let document = try EncapsulatedDocumentParser.parse(from: dicomFile.dataSet)
 
-                    if showMeta { log += documentMetadata(document) }
+                    if showMeta { log += document.metadataReport() }
 
                     // Determine output path.
                     let finalOutputPath: String
@@ -2357,7 +2117,7 @@ private func executeDicomDcmdir() async {
                         var d: ObjCBool = false
                         if fm.fileExists(atPath: specified, isDirectory: &d), d.boolValue {
                             let baseName = srcURL.deletingPathExtension().lastPathComponent
-                            let ext = extensionForDocumentType(document.documentType)
+                            let ext = document.documentType.fileExtension
                             finalOutputPath = URL(fileURLWithPath: specified)
                                 .appendingPathComponent("\(baseName).\(ext)").path
                         } else {
@@ -2365,7 +2125,7 @@ private func executeDicomDcmdir() async {
                         }
                     } else {
                         let baseName = srcURL.deletingPathExtension().lastPathComponent
-                        let ext = extensionForDocumentType(document.documentType)
+                        let ext = document.documentType.fileExtension
                         finalOutputPath = srcURL.deletingLastPathComponent()
                             .appendingPathComponent("\(baseName).\(ext)").path
                     }
@@ -2375,7 +2135,7 @@ private func executeDicomDcmdir() async {
                     if let note = writeRes.note { log += note + "\n" }
 
                     if verbose {
-                        log += "✓ Extracted \(document.documentType) (\(formatFileSize(Int64(document.documentData.count))))\n"
+                        log += "✓ Extracted \(document.documentType) (\(EncapsulatedDocumentFormatting.fileSize(Int64(document.documentData.count))))\n"
                         log += "  Output: \(writeRes.url.path)\n"
                     } else {
                         log += "Extracted: \(writeRes.url.path)\n"
@@ -2402,20 +2162,12 @@ private func executeDicomDcmdir() async {
 
                 do {
                     let documentData = try Data(contentsOf: srcURL)
-                    let documentType = documentTypeFromExtension(srcURL.pathExtension)
+                    let documentType = DICOMKit.EncapsulatedDocumentType(fileExtension: srcURL.pathExtension)
 
                     let finalStudyUID  = studyUID.isEmpty  ? generateUID() : studyUID
                     let finalSeriesUID = seriesUID.isEmpty ? generateUID() : seriesUID
 
-                    let finalModality: String
-                    if !modality.isEmpty {
-                        finalModality = modality
-                    } else {
-                        switch documentType {
-                        case .stl, .obj, .mtl: finalModality = "M3D"
-                        default:               finalModality = "DOC"
-                        }
-                    }
+                    let finalModality = modality.isEmpty ? documentType.defaultModality : modality
 
                     let builder = EncapsulatedDocumentBuilder(
                         documentData: documentData,
@@ -2424,14 +2176,15 @@ private func executeDicomDcmdir() async {
                         studyInstanceUID: finalStudyUID,
                         seriesInstanceUID: finalSeriesUID
                     )
-                    .setPatientName(patientName)
-                    .setPatientID(patientID)
-                    .setModality(finalModality)
-
-                    if !title.isEmpty { _ = builder.setDocumentTitle(title) }
-                    if !seriesDesc.isEmpty { _ = builder.setSeriesDescription(seriesDesc) }
-                    if let sn = seriesNumber { _ = builder.setSeriesNumber(sn) }
-                    if let inum = instanceNumber { _ = builder.setInstanceNumber(inum) }
+                    .applyStandardOptions(
+                        patientName: patientName,
+                        patientID: patientID,
+                        modality: finalModality,
+                        title: title,
+                        seriesDescription: seriesDesc,
+                        seriesNumber: seriesNumber,
+                        instanceNumber: instanceNumber
+                    )
 
                     let dataSet = try builder.buildDataSet()
                     let dicomFile = DICOMFile.create(
@@ -2461,8 +2214,8 @@ private func executeDicomDcmdir() async {
                     if let note = writeRes.note { log += note + "\n" }
 
                     if verbose {
-                        log += "✓ Encapsulated \(documentType) (\(formatFileSize(Int64(documentData.count))))\n"
-                        log += "  DICOM size: \(formatFileSize(Int64(dicomData.count)))\n"
+                        log += "✓ Encapsulated \(documentType) (\(EncapsulatedDocumentFormatting.fileSize(Int64(documentData.count))))\n"
+                        log += "  DICOM size: \(EncapsulatedDocumentFormatting.fileSize(Int64(dicomData.count)))\n"
                         log += "  Patient: \(patientName) [\(patientID)]\n"
                         log += "  Study UID: \(finalStudyUID)\n"
                         log += "  Output: \(writeRes.url.path)\n"
@@ -2518,7 +2271,7 @@ private func executeDicomDcmdir() async {
                         let dicomFile = try DICOMFile.read(from: data, force: false)
                         let document = try EncapsulatedDocumentParser.parse(from: dicomFile.dataSet)
                         let baseName = f.deletingPathExtension().lastPathComponent
-                        let ext = extensionForDocumentType(document.documentType)
+                        let ext = document.documentType.fileExtension
                         let outFile = outDir.appendingPathComponent("\(baseName).\(ext)")
                         try document.documentData.write(to: outFile)
                         success += 1
@@ -2565,22 +2318,14 @@ private func executeDicomDcmdir() async {
                 let finalSeriesUID = seriesUID.isEmpty ? generateUID() : seriesUID
 
                 for f in enumerateFiles(dir) {
-                    let docType = documentTypeFromExtension(f.pathExtension)
+                    let docType = DICOMKit.EncapsulatedDocumentType(fileExtension: f.pathExtension)
                     guard docType != .unknown else {
                         if verbose { log += "⊘ \(f.lastPathComponent): Unsupported file type\n" }
                         continue
                     }
                     do {
                         let documentData = try Data(contentsOf: f)
-                        let finalModality: String
-                        if !modality.isEmpty {
-                            finalModality = modality
-                        } else {
-                            switch docType {
-                            case .stl, .obj, .mtl: finalModality = "M3D"
-                            default:               finalModality = "DOC"
-                            }
-                        }
+                        let finalModality = modality.isEmpty ? docType.defaultModality : modality
                         let builder = EncapsulatedDocumentBuilder(
                             documentData: documentData,
                             mimeType: docType.expectedMIMEType,
@@ -2588,14 +2333,15 @@ private func executeDicomDcmdir() async {
                             studyInstanceUID: finalStudyUID,
                             seriesInstanceUID: finalSeriesUID
                         )
-                        .setPatientName(patientName)
-                        .setPatientID(patientID)
-                        .setModality(finalModality)
-                        .setInstanceNumber(instNum)
-
-                        if !title.isEmpty { _ = builder.setDocumentTitle(title) }
-                        if !seriesDesc.isEmpty { _ = builder.setSeriesDescription(seriesDesc) }
-                        if let sn = seriesNumber { _ = builder.setSeriesNumber(sn) }
+                        .applyStandardOptions(
+                            patientName: patientName,
+                            patientID: patientID,
+                            modality: finalModality,
+                            title: title,
+                            seriesDescription: seriesDesc,
+                            seriesNumber: seriesNumber,
+                            instanceNumber: instNum
+                        )
 
                         let dataSet = try builder.buildDataSet()
                         let dicomFile = DICOMFile.create(
@@ -3312,24 +3058,16 @@ private func executeDicomCompress() async {
 
 // MARK: - dicom-compress display helpers (the compression engine now lives in DICOMKit's CompressionManager)
 
+// dicom-compress input parsing + byte formatting are owned by the shared
+// DICOMKit `CompressionConsole` (single source of truth — the CLI uses the same
+// helpers) so the Workshop and the CLI never drift. These thin wrappers keep the
+// existing call sites readable.
 private nonisolated static func dcCompressFormatBytes(_ bytes: Int) -> String {
-    if bytes < 1024 { return "\(bytes) B" }
-    if bytes < 1024 * 1024 { return String(format: "%.1f KB", Double(bytes) / 1024.0) }
-    if bytes < 1024 * 1024 * 1024 { return String(format: "%.1f MB", Double(bytes) / (1024.0 * 1024.0)) }
-    return String(format: "%.1f GB", Double(bytes) / (1024.0 * 1024.0 * 1024.0))
+    CompressionConsole.formatBytes(bytes)
 }
 
 private nonisolated static func dcCompressParseQuality(_ q: String?) throws -> CompressionQuality? {
-    guard let qs = q?.trimmingCharacters(in: .whitespaces), !qs.isEmpty else { return nil }
-    switch qs.lowercased() {
-    case "maximum": return .maximum
-    case "high":    return .high
-    case "medium":  return .medium
-    case "low":     return .low
-    default:
-        if let v = Double(qs), v >= 0.0, v <= 1.0 { return .custom(v) }
-        throw NSError(domain: "dicom-compress", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid quality '\(qs)'. Use maximum, high, medium, low, or a value 0.0-1.0"])
-    }
+    try CompressionConsole.parseQuality(q)
 }
 
 // MARK: - dicom-compress: info
@@ -3489,12 +3227,12 @@ private func executeDicomCompressCompress() async {
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
         var log = ""
         do {
-            let quality = try Self.dcCompressParseQuality(qualityStr)
+            let quality = try CompressionConsole.parseQuality(qualityStr)
+            // All console text comes from the shared DICOMKit CompressionConsole so
+            // the Workshop and the CLI render byte-for-byte identical output.
             if verbose {
-                log += "Compressing: \(inputPath)\n"
-                log += "Codec: \(codec)\n"
-                if let q = qualityStr.trimmingCharacters(in: .whitespaces) as String?, !q.isEmpty { log += "Quality: \(q)\n" }
-                log += "Backend: \(backendName)\n"
+                log += CompressionConsole.compressPreamble(
+                    input: inputPath, codec: codec, quality: qualityStr, backendDisplayName: backendName)
             }
             let inputData = try Data(contentsOf: inputURL)
             // Compress via the shared DICOMKit engine (same code the CLI runs).
@@ -3502,16 +3240,9 @@ private func executeDicomCompressCompress() async {
             // Sandbox/TCC-resilient write (prefer scoped URL; else fall back to ~/Downloads).
             let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Compressed")
             if let note = writeRes.note { log += note + "\n" }
-            log += "Compressed: \(inputPath) → \(writeRes.url.path)\n"
+            log += CompressionConsole.compressResultLine(input: inputPath, output: writeRes.url.path)
             if verbose {
-                let inSize = inputData.count
-                let outSize = outputData.count
-                log += "Input size:  \(Self.dcCompressFormatBytes(inSize))\n"
-                log += "Output size: \(Self.dcCompressFormatBytes(outSize))\n"
-                if inSize > 0 {
-                    let ratio = Double(outSize) / Double(inSize) * 100.0
-                    log += "Ratio: \(String(format: "%.1f%%", ratio))\n"
-                }
+                log += CompressionConsole.compressStats(inputSize: inputData.count, outputSize: outputData.count)
             }
             return (log, 0)
         } catch {
@@ -3570,18 +3301,16 @@ private func executeDicomCompressDecompress() async {
         var log = ""
         do {
             if verbose {
-                log += "Decompressing: \(inputPath)\n"
-                log += "Target syntax: \(targetName)\n"
+                log += CompressionConsole.decompressPreamble(input: inputPath, targetSyntaxName: targetName)
             }
             let inputData = try Data(contentsOf: inputURL)
             // Decompress via the shared DICOMKit engine (same code the CLI runs).
             let outputData = try CompressionManager().decompressData(inputData, syntax: targetSyntax)
             let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Decompressed")
             if let note = writeRes.note { log += note + "\n" }
-            log += "Decompressed: \(inputPath) → \(writeRes.url.path)\n"
+            log += CompressionConsole.decompressResultLine(input: inputPath, output: writeRes.url.path)
             if verbose {
-                log += "Input size:  \(Self.dcCompressFormatBytes(inputData.count))\n"
-                log += "Output size: \(Self.dcCompressFormatBytes(outputData.count))\n"
+                log += CompressionConsole.decompressStats(inputSize: inputData.count, outputSize: outputData.count)
             }
             return (log, 0)
         } catch {
@@ -3651,7 +3380,7 @@ private func executeDicomCompressBatch() async {
         let fm = FileManager.default
         do {
             try fm.createDirectory(at: outputBase, withIntermediateDirectories: true)
-            let quality = try Self.dcCompressParseQuality(qualityStr)
+            let quality = try CompressionConsole.parseQuality(qualityStr)
 
             // Discover DICOM files
             func isDICOM(_ url: URL) -> Bool {
@@ -3693,7 +3422,7 @@ private func executeDicomCompressBatch() async {
                 log += "No DICOM files found in: \(inputDir)\n"
                 return (log, 1)
             }
-            log += "Found \(files.count) DICOM file(s)\n"
+            log += CompressionConsole.batchFoundLine(count: files.count)
 
             let basePath = inputBase.path
             var successCount = 0
@@ -3722,14 +3451,14 @@ private func executeDicomCompressBatch() async {
                     }
                     try outputData.write(to: outURL)
                     successCount += 1
-                    if verbose { log += "  OK \(relativePath)\n" }
+                    if verbose { log += CompressionConsole.batchProgressLine(success: true, relativePath: relativePath, error: nil) }
                 } catch {
                     failCount += 1
-                    if verbose { log += "  FAIL \(relativePath): \(error.localizedDescription)\n" }
+                    if verbose { log += CompressionConsole.batchProgressLine(success: false, relativePath: relativePath, error: "\(error)") }
                 }
             }
-            let action = decompress ? "Decompressed" : "Compressed"
-            log += "\(action): \(successCount) succeeded, \(failCount) failed out of \(files.count) files\n"
+            log += CompressionConsole.batchSummaryLine(
+                decompress: decompress, success: successCount, fail: failCount, total: files.count)
             return (log, failCount > 0 ? 1 : 0)
         } catch {
             log += "Error: \(error.localizedDescription)\n"
@@ -4392,10 +4121,6 @@ private func executeDicomStudy() async {
             // comes from the shared DICOMKit DICOMImageExporter; these thin
             // wrappers keep the orchestration call sites unchanged.
 
-            func sanitizePathComponent(_ value: String) -> String {
-                DICOMImageExporter.sanitizePathComponent(value)
-            }
-
             func buildEXIFMetadata(from file: DICOMFile, fields: [String]?) -> CFDictionary {
                 DICOMImageExporter.buildEXIFMetadata(from: file, fields: fields)
             }
@@ -4411,22 +4136,6 @@ private func executeDicomStudy() async {
                                  center: Double?, width: Double?) -> WindowSettings {
                 DICOMImageExporter.determineWindowSettings(from: file, pixelData: pixelData,
                                                            frameIndex: frameIndex, windowCenter: center, windowWidth: width)
-            }
-
-            func renderFrame(file: DICOMFile, frameIndex: Int, applyWindow: Bool,
-                             center: Double?, width: Double?) throws -> CGImage? {
-                if applyWindow {
-                    if let c = center, let w = width {
-                        return try file.tryRenderFrame(frameIndex, window: WindowSettings(center: c, width: w))
-                    } else if let pd = file.pixelData() {
-                        let window = determineWindow(from: file, pixelData: pd, frameIndex: frameIndex, center: center, width: width)
-                        return try file.tryRenderFrame(frameIndex, window: window)
-                    } else {
-                        return try file.tryRenderFrameWithStoredWindow(frameIndex)
-                    }
-                } else {
-                    return try file.tryRenderFrame(frameIndex)
-                }
             }
 
             // Collect DICOM files from a directory (used by contact-sheet & bulk).
@@ -4461,11 +4170,11 @@ private func executeDicomStudy() async {
                     guard frameIndex >= 0 && frameIndex < totalFrames else {
                         return ("Error: Invalid frame \(frameIndex). File has \(totalFrames) frames (0-\(totalFrames - 1))\n", 1)
                     }
-                    guard let image = try renderFrame(file: dicomFile, frameIndex: frameIndex,
-                                                      applyWindow: applyWindow,
-                                                      center: windowCenter, width: windowWidth) else {
-                        return ("Error: Failed to render pixel data to image\n", 1)
-                    }
+                    // Shared "one render decision" — identical window resolution as the CLI.
+                    let image = try DICOMImageExporter.renderFrameForExport(
+                        file: dicomFile, pixelData: pixelData, frameIndex: frameIndex,
+                        applyWindow: applyWindow, windowCenter: windowCenter, windowWidth: windowWidth
+                    )
                     // Determine output path; if output looks like a directory, derive filename.
                     var finalOutput = outputURL
                     var outIsDir: ObjCBool = false
@@ -4499,10 +4208,13 @@ private func executeDicomStudy() async {
                     guard !inputs.isEmpty else {
                         return ("Error: No input files specified\n", 1)
                     }
-                    let rows = max(1, (inputs.count + columns - 1) / columns)
-                    let labelHeight = labels ? 20 : 0
-                    let totalWidth = columns * thumbnailSize + (columns + 1) * spacing
-                    let totalHeight = rows * (thumbnailSize + labelHeight) + (rows + 1) * spacing
+                    let layout = DICOMImageExporter.contactSheetLayout(
+                        imageCount: inputs.count, columns: columns,
+                        thumbnailSize: thumbnailSize, spacing: spacing, includeLabels: labels
+                    )
+                    let rows = layout.rows
+                    let totalWidth = layout.totalWidth
+                    let totalHeight = layout.totalHeight
 
                     let colorSpace = CGColorSpaceCreateDeviceRGB()
                     guard let context = CGContext(
@@ -4516,12 +4228,12 @@ private func executeDicomStudy() async {
                     context.fill(CGRect(x: 0, y: 0, width: totalWidth, height: totalHeight))
 
                     for (index, inPath) in inputs.enumerated() {
-                        let col = index % columns
-                        let row = index / columns
-                        let x = spacing + col * (thumbnailSize + spacing)
-                        let y = spacing + row * (thumbnailSize + labelHeight + spacing)
-                        let flippedY = totalHeight - y - thumbnailSize
-                        let rect = CGRect(x: x, y: flippedY, width: thumbnailSize, height: thumbnailSize)
+                        let pos = DICOMImageExporter.thumbnailPosition(
+                            index: index, columns: columns,
+                            thumbnailSize: thumbnailSize, spacing: spacing, includeLabels: labels
+                        )
+                        let flippedY = totalHeight - pos.y - thumbnailSize
+                        let rect = CGRect(x: pos.x, y: flippedY, width: thumbnailSize, height: thumbnailSize)
                         do {
                             let fileData = try Data(contentsOf: inPath)
                             let dicomFile = try DICOMFile.read(from: fileData)
@@ -4559,12 +4271,15 @@ private func executeDicomStudy() async {
                     guard totalFrames > 0 else {
                         return ("Error: No frames available in DICOM file\n", 1)
                     }
-                    let clampedStart = max(0, min(startFrame, totalFrames - 1))
-                    let clampedEnd: Int
-                    if let e = endFrame { clampedEnd = max(clampedStart, min(e, totalFrames - 1)) }
-                    else { clampedEnd = totalFrames - 1 }
+                    guard let range = DICOMImageExporter.validatedFrameRange(
+                        start: startFrame, end: endFrame, totalFrames: totalFrames
+                    ) else {
+                        return ("Error: No frames available in DICOM file\n", 1)
+                    }
+                    let clampedStart = range.start
+                    let clampedEnd = range.end
                     let clampedScale = max(0.1, min(2.0, scale))
-                    let delay = fps > 0 ? 1.0 / fps : 0.1
+                    let delay = DICOMImageExporter.gifFrameDelay(fps: fps)
                     let frameCount = clampedEnd - clampedStart + 1
 
                     try? FileManager.default.createDirectory(at: outputURL.deletingLastPathComponent(),
@@ -4637,38 +4352,25 @@ private func executeDicomStudy() async {
                         do {
                             let fileData = try Data(contentsOf: fileURL)
                             let dicomFile = try DICOMFile.read(from: fileData)
-                            guard dicomFile.pixelData() != nil else {
+                            guard let pixelDataObj = dicomFile.pixelData() else {
                                 if verbose { log += "⚠ Skipping (no pixel data): \(fileURL.lastPathComponent)\n" }
                                 continue
                             }
-                            guard let image = try renderFrame(file: dicomFile, frameIndex: 0,
-                                                              applyWindow: applyWindow,
-                                                              center: nil, width: nil) else {
-                                if verbose { log += "✗ Render failed: \(fileURL.lastPathComponent)\n" }
-                                errorCount += 1
-                                continue
-                            }
+                            let image = try DICOMImageExporter.renderFrameForExport(
+                                file: dicomFile, pixelData: pixelDataObj, frameIndex: 0,
+                                applyWindow: applyWindow, windowCenter: nil, windowWidth: nil
+                            )
                             let patientName = dicomFile.dataSet.string(for: .patientName)
                             let studyUID = dicomFile.dataSet.string(for: .studyInstanceUID)
                             let seriesUID = dicomFile.dataSet.string(for: .seriesInstanceUID)
                             let baseName = fileURL.deletingPathExtension().lastPathComponent + "." + fileExtension(formatSel)
-
-                            // Build organized relative path.
-                            let relative: String
-                            switch organizeBy {
-                            case "patient":
-                                relative = sanitizePathComponent(patientName ?? "UNKNOWN") + "/" + baseName
-                            case "study":
-                                relative = sanitizePathComponent(patientName ?? "UNKNOWN") + "/"
-                                    + sanitizePathComponent(studyUID ?? "UNKNOWN") + "/" + baseName
-                            case "series":
-                                relative = sanitizePathComponent(patientName ?? "UNKNOWN") + "/"
-                                    + sanitizePathComponent(studyUID ?? "UNKNOWN") + "/"
-                                    + sanitizePathComponent(seriesUID ?? "UNKNOWN") + "/" + baseName
-                            default:
-                                relative = baseName
-                            }
-                            let outFileURL = outputURL.appendingPathComponent(relative)
+                            let scheme = OrganizationScheme(rawValue: organizeBy) ?? .flat
+                            let outputPath = DICOMImageExporter.buildOrganizedPath(
+                                baseOutput: outputURL.path, scheme: scheme,
+                                patientName: patientName, studyUID: studyUID,
+                                seriesUID: seriesUID, filename: baseName
+                            )
+                            let outFileURL = URL(fileURLWithPath: outputPath)
                             try FileManager.default.createDirectory(at: outFileURL.deletingLastPathComponent(),
                                                                     withIntermediateDirectories: true)
                             var metadata: CFDictionary? = nil
@@ -5053,69 +4755,17 @@ case "dicom-study":
                 throw ConvertError.missingTransferSyntax
             }
             let targetSyntax = try parseTransferSyntax(transferSyntax)
-            var dataSet = dicomFile.dataSet
 
+            // Shared process → output pipeline (identical bytes in CLI and app).
+            let outcome = try DICOMConverter.convertToDICOM(
+                dicomFile: dicomFile,
+                to: targetSyntax,
+                stripPrivate: stripPrivate
+            )
             if stripPrivate {
-                let publicTags = dataSet.tags.filter { !$0.isPrivate }
-                var filtered = DataSet()
-                for tag in publicTags {
-                    if let element = dataSet[tag] {
-                        filtered[tag] = element
-                    }
-                }
-                let removedCount = dataSet.tags.count - publicTags.count
-                dataSet = filtered
-                appendConsoleOutput("  Stripped \(removedCount) private tag(s)\n")
+                appendConsoleOutput("  Stripped \(outcome.strippedPrivateTagCount) private tag(s)\n")
             }
-
-            // Determine source transfer syntax from the file
-            let sourceSyntaxUID = dicomFile.transferSyntaxUID ?? TransferSyntax.explicitVRLittleEndian.uid
-            let sourceSyntax = TransferSyntax.from(uid: sourceSyntaxUID) ?? .explicitVRLittleEndian
-
-            // Use DICOMCore TransferSyntaxConverter for full transcoding (pixel data included)
-            // Use lossless compression config for lossless targets, default for lossy
-            let compressionConfig: DICOMCore.CompressionConfiguration = targetSyntax.isLossless
-                ? .lossless
-                : .default
-            let converter = TransferSyntaxConverter(
-                configuration: TranscodingConfiguration(
-                    preferredSyntaxes: [targetSyntax],
-                    allowLossyCompression: !targetSyntax.isLossless,
-                    preservePixelDataFidelity: targetSyntax.isLossless
-                ),
-                compressionConfiguration: compressionConfig
-            )
-
-            // Serialize the dataset to bytes in the source transfer syntax
-            let sourceWriter = DICOMWriter(
-                byteOrder: sourceSyntax.byteOrder,
-                explicitVR: sourceSyntax.isExplicitVR
-            )
-            let dataSetBytes = dataSet.write(using: sourceWriter)
-
-            // Transcode
-            let result = try converter.transcode(
-                dataSetData: dataSetBytes,
-                from: sourceSyntax,
-                to: targetSyntax
-            )
-
-            // Build output file: preamble + DICM + file meta info + transcoded dataset
-            let sopClassUID = dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.7"
-            let sopInstanceUID = dataSet.string(for: .sopInstanceUID) ?? UIDGenerator.generateSOPInstanceUID().value
-            let outputFile = DICOMFile.create(
-                dataSet: dataSet,
-                sopClassUID: sopClassUID,
-                sopInstanceUID: sopInstanceUID,
-                transferSyntaxUID: targetSyntax.uid
-            )
-
-            var outputData = Data()
-            outputData.append(Data(repeating: 0, count: 128))  // Preamble
-            outputData.append(contentsOf: "DICM".utf8)          // DICM prefix
-            let fmiWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
-            outputData.append(outputFile.fileMetaInformation.write(using: fmiWriter))
-            outputData.append(result.data)
+            let outputData = outcome.data
 
             // Create output directory if needed
             let outputDir = outputURL.deletingLastPathComponent()
@@ -5123,10 +4773,10 @@ case "dicom-study":
 
             try outputData.write(to: outputURL)
             appendConsoleOutput("  Wrote \(outputURL.lastPathComponent) (\(ByteCountFormatter.string(fromByteCount: Int64(outputData.count), countStyle: .file)))\n")
-            let lossInfo = result.isLossless ? "lossless" : "lossy"
-            appendConsoleOutput("  Transfer Syntax: \(targetSyntax.uid) (\(lossInfo))\n")
-            if result.wasTranscoded {
-                appendConsoleOutput("  Transcoded from \(sourceSyntax.uid)\n")
+            let lossInfo = outcome.isLossless ? "lossless" : "lossy"
+            appendConsoleOutput("  Transfer Syntax: \(outcome.targetSyntax.uid) (\(lossInfo))\n")
+            if outcome.wasTranscoded {
+                appendConsoleOutput("  Transcoded from \(outcome.sourceSyntax.uid)\n")
             }
 
             if validateOutput {
@@ -5153,49 +4803,22 @@ case "dicom-study":
 
         appendConsoleOutput("  Exporting frame \(frameIndex) of \(pixelData.descriptor.numberOfFrames) as \(format.uppercased())\n")
 
-        let cgImage: CGImage?
-        if applyWindow {
-            if let center = windowCenter, let width = windowWidth {
-                let window = WindowSettings(center: center, width: width)
-                cgImage = try dicomFile.tryRenderFrame(frameIndex, window: window)
-            } else {
-                cgImage = try dicomFile.tryRenderFrameWithStoredWindow(frameIndex)
-            }
-        } else {
-            cgImage = try dicomFile.tryRenderFrame(frameIndex)
-        }
-
-        guard let image = cgImage else {
-            throw ConvertError.renderFailed
-        }
-
-        let utType: String
-        switch format {
-        case "png":  utType = "public.png"
-        case "jpeg": utType = "public.jpeg"
-        case "tiff": utType = "public.tiff"
-        default:     utType = "public.png"
+        guard let imageFormat = ExportImageFormat(rawValue: format) else {
+            throw ConvertError.exportFailed
         }
 
         // Create output directory if needed
         let outputDir = outputURL.deletingLastPathComponent()
         try FileManager.default.createDirectory(at: outputDir, withIntermediateDirectories: true)
 
-        guard let destination = CGImageDestinationCreateWithURL(
-            outputURL as CFURL, utType as CFString, 1, nil
-        ) else {
-            throw ConvertError.exportFailed
-        }
-
-        var options: [CFString: Any] = [:]
-        if format == "jpeg" {
-            options[kCGImageDestinationLossyCompressionQuality] = Double(quality) / 100.0
-        }
-
-        CGImageDestinationAddImage(destination, image, options as CFDictionary)
-        guard CGImageDestinationFinalize(destination) else {
-            throw ConvertError.exportFailed
-        }
+        // Shared render (incl. window resolution) + shared encode → identical raster in CLI and app.
+        let image = try DICOMImageExporter.renderFrameForExport(
+            file: dicomFile, pixelData: pixelData, frameIndex: frameIndex,
+            applyWindow: applyWindow, windowCenter: windowCenter, windowWidth: windowWidth
+        )
+        try DICOMImageExporter.exportCGImage(
+            image, to: outputURL, format: imageFormat, quality: quality, metadata: nil
+        )
 
         appendConsoleOutput("  Wrote \(outputURL.lastPathComponent) (\(image.width)×\(image.height))\n")
         if format == "jpeg" {
@@ -5286,51 +4909,15 @@ case "dicom-study":
     }
 
     /// Parses a transfer syntax name string to a TransferSyntax value.
+    ///
+    /// Single source of truth: the shared ``DICOMConverter`` target catalog (DICOMKit),
+    /// so the CLI Workshop accepts exactly the same tokens (UID / CamelCase / kebab /
+    /// short aliases) as the `dicom-convert` CLI.
     private func parseTransferSyntax(_ name: String) throws -> TransferSyntax {
-        switch name.lowercased() {
-        // Uncompressed
-        case "explicitvrlittleendian", "explicit", "evle":
-            return .explicitVRLittleEndian
-        case "implicitvrlittleendian", "implicit", "ivle":
-            return .implicitVRLittleEndian
-        case "explicitvrbigendian", "evbe":
-            return .explicitVRBigEndian
-        case "deflate", "deflated":
-            return .deflatedExplicitVRLittleEndian
-        // JPEG
-        case "jpegbaseline", "jpeg-baseline", "jpeg":
-            return .jpegBaseline
-        case "jpegextended", "jpeg-extended":
-            return .jpegExtended
-        case "jpeglossless", "jpeg-lossless":
-            return .jpegLossless
-        case "jpeglosslesssv1", "jpeg-lossless-sv1":
-            return .jpegLosslessSV1
-        // JPEG 2000
-        case "jpeg2000lossless", "jpeg2000-lossless", "j2k-lossless":
-            return .jpeg2000Lossless
-        case "jpeg2000", "jpeg2000-lossy", "j2k":
-            return .jpeg2000
-        case "htj2klossless", "htj2k-lossless":
-            return .htj2kLossless
-        case "htj2krpcllossless", "htj2k-rpcl", "htj2k-lossless-rpcl":
-            return .htj2kRPCLLossless
-        case "htj2k", "htj2k-lossy":
-            return .htj2kLossy
-        // JPEG-LS
-        case "jpeglslossless", "jpeg-ls-lossless", "jpegls":
-            return .jpegLSLossless
-        case "jpeglsnearlossless", "jpeg-ls-near-lossless", "jpegls-near":
-            return .jpegLSNearLossless
-        // JPEG XL (lossless-only encode)
-        case "jpegxl", "jpeg-xl", "jxl", "jpegxllossless", "jpeg-xl-lossless", "jxl-lossless":
-            return .jpegXLLossless
-        // RLE
-        case "rlelossless", "rle-lossless", "rle":
-            return .rleLossless
-        default:
+        guard let syntax = DICOMConverter.parseTarget(name) else {
             throw ConvertError.unknownTransferSyntax(name)
         }
+        return syntax
     }
 
     // MARK: - Local SCP Listener Management
@@ -9918,7 +9505,8 @@ enum ConvertError: LocalizedError {
         case .missingTransferSyntax:
             return "Transfer syntax is required for DICOM output format"
         case .unknownTransferSyntax(let name):
-            return "Unknown transfer syntax: \(name). Use: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, or DEFLATE"
+            // Shared list keeps the Workshop's error identical to the dicom-convert CLI.
+            return DICOMConverter.unknownTargetMessage(name)
         case .invalidFrame(let requested, let total):
             return "Invalid frame \(requested). File has \(total) frame(s) (0-\(total - 1))"
         case .renderFailed:

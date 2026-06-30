@@ -58,7 +58,11 @@ extension DICOMDCMDIR {
         @Option(name: .long, help: "Application profile (STD-GEN-CD, STD-GEN-DVD, STD-GEN-USB)")
         var profile: String = "STD-GEN-CD"
         
-        @Flag(name: .long, help: "Recursive scan of subdirectories")
+        // `.inversion` is required by ArgumentParser for a Bool flag whose default is
+        // `true` (a plain `@Flag … = true` would always be true and is rejected at
+        // validation, breaking the whole `create` command). This keeps recursion ON by
+        // default while exposing `--no-recursive` to disable it.
+        @Flag(inversion: .prefixedNo, help: "Recursively scan subdirectories (default: on)")
         var recursive: Bool = true
         
         @Flag(name: .long, help: "Include only valid DICOM files")
@@ -80,13 +84,11 @@ extension DICOMDCMDIR {
                 throw ValidationError("Input path is not a directory: \(inputDirectory)")
             }
             
-            // Determine output path
-            let outputPath: String
-            if let output = output {
-                outputPath = output
-            } else {
-                outputPath = inputDirectory + "/DICOMDIR"
-            }
+            // Determine the output DICOMDIR file path. When --output points at a
+            // directory (or a trailing-slash path), the DICOMDIR is written INSIDE it;
+            // writing onto a directory path otherwise fails ("couldn't be saved in the
+            // folder …"). Default: a DICOMDIR inside the input directory.
+            let outputPath = DICOMDIRWorkflow.resolvedDICOMDIRPath(output ?? (inputDirectory + "/DICOMDIR"))
             
             // Determine file-set ID
             let fsID: String
@@ -111,122 +113,29 @@ extension DICOMDCMDIR {
                 print("")
             }
             
-            // Create DICOMDIR builder
-            var builder = DICOMDirectory.Builder(fileSetID: fsID, profile: dicomProfile)
-            
-            // Find all DICOM files
-            let dicomFiles = try findDICOMFiles(in: inputURL, recursive: recursive, verbose: verbose)
-            
-            if dicomFiles.isEmpty {
+            // Build the DICOMDIR via the shared DICOMDIRWorkflow — the single source
+            // of truth shared with DICOMStudio's CLI Workshop (file discovery, the
+            // build loop, and the relative-path computation), so the produced
+            // DICOMDIR cannot drift between the two surfaces.
+            let result: DICOMDIRWorkflow.CreateResult
+            do {
+                result = try DICOMDIRWorkflow.buildDirectory(
+                    fromFilesIn: inputURL, recursive: recursive, strict: strict,
+                    fileSetID: fsID, profile: dicomProfile,
+                    verbose: verbose, progress: { print($0, terminator: "") })
+            } catch DICOMDIRWorkflow.WorkflowError.noDICOMFiles {
                 throw ValidationError("No DICOM files found in directory: \(inputDirectory)")
             }
-            
-            if verbose {
-                print("Found \(dicomFiles.count) DICOM files")
-                print("")
-            }
-            
-            // Add files to builder
-            var successCount = 0
-            var failureCount = 0
-            
-            for (index, fileURL) in dicomFiles.enumerated() {
-                if verbose {
-                    print("[\(index + 1)/\(dicomFiles.count)] Processing \(fileURL.lastPathComponent)...")
-                }
-                
-                do {
-                    let fileData = try Data(contentsOf: fileURL)
-                    let dicomFile = try DICOMFile.read(from: fileData, force: !strict)
-                    
-                    // Calculate relative path from input directory to this file
-                    let relativePath = fileURL.path.replacingOccurrences(of: inputURL.path + "/", with: "")
-                    let pathComponents = relativePath.components(separatedBy: "/")
-                    
-                    try builder.addFile(dicomFile, relativePath: pathComponents)
-                    successCount += 1
-                } catch {
-                    failureCount += 1
-                    if verbose {
-                        print("  ⚠️  Failed: \(error.localizedDescription)")
-                    }
-                }
-            }
-            
-            // Build DICOMDIR
-            let directory = builder.build()
-            
-            // Write to file
-            try DICOMDIRWriter.write(directory, to: URL(fileURLWithPath: outputPath))
-            
-            // Print summary
-            print("")
-            print("✅ DICOMDIR created successfully")
-            print("")
-            print("Summary:")
-            print("  Files processed: \(successCount)/\(dicomFiles.count)")
-            if failureCount > 0 {
-                print("  Failed: \(failureCount)")
-            }
-            
-            let stats = directory.statistics()
-            print("  Patients: \(stats.patientCount)")
-            print("  Studies: \(stats.studyCount)")
-            print("  Series: \(stats.seriesCount)")
-            print("  Images: \(stats.imageCount)")
-            print("")
-            print("Output: \(outputPath)")
-        }
-        
-        private func findDICOMFiles(in directory: URL, recursive: Bool, verbose: Bool) throws -> [URL] {
-            var files: [URL] = []
-            
-            let fileManager = FileManager.default
-            let resourceKeys: [URLResourceKey] = [.isRegularFileKey, .isDirectoryKey]
-            
-            if recursive {
-                guard let enumerator = fileManager.enumerator(
-                    at: directory,
-                    includingPropertiesForKeys: resourceKeys,
-                    options: [.skipsHiddenFiles]
-                ) else {
-                    throw ValidationError("Cannot enumerate directory: \(directory.path)")
-                }
-                
-                for case let fileURL as URL in enumerator {
-                    let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
-                    
-                    if resourceValues.isRegularFile == true {
-                        // Skip DICOMDIR files
-                        if fileURL.lastPathComponent == "DICOMDIR" {
-                            continue
-                        }
-                        
-                        files.append(fileURL)
-                    }
-                }
-            } else {
-                let contents = try fileManager.contentsOfDirectory(
-                    at: directory,
-                    includingPropertiesForKeys: resourceKeys,
-                    options: [.skipsHiddenFiles]
-                )
-                
-                for fileURL in contents {
-                    let resourceValues = try fileURL.resourceValues(forKeys: Set(resourceKeys))
-                    
-                    if resourceValues.isRegularFile == true {
-                        // Skip DICOMDIR files
-                        if fileURL.lastPathComponent == "DICOMDIR" {
-                            continue
-                        }
-                        
-                        files.append(fileURL)
-                    }
-                }
-            }
-            
-            return files.sorted { $0.path < $1.path }
+
+            // Write to file (creating intermediate directories so a fresh --output
+            // path doesn't fail on a missing parent).
+            let outputFileURL = URL(fileURLWithPath: outputPath)
+            try? FileManager.default.createDirectory(
+                at: outputFileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try DICOMDIRWriter.write(result.directory, to: outputFileURL)
+
+            // Print the shared summary block.
+            print(DICOMDIRWorkflow.renderCreateSummary(result, outputPath: outputPath), terminator: "")
         }
     }
 }
@@ -250,13 +159,17 @@ extension DICOMDCMDIR {
         var detailed: Bool = false
         
         mutating func run() throws {
-            let fileURL = URL(fileURLWithPath: dicomdirPath)
-            
-            guard FileManager.default.fileExists(atPath: dicomdirPath) else {
-                throw ValidationError("DICOMDIR file not found: \(dicomdirPath)")
+            // Accept either a DICOMDIR file or the media DIRECTORY that contains it.
+            let resolvedPath = DICOMDIRWorkflow.resolvedDICOMDIRPath(dicomdirPath)
+            let fileURL = URL(fileURLWithPath: resolvedPath)
+
+            guard FileManager.default.fileExists(atPath: resolvedPath) else {
+                throw ValidationError(resolvedPath == dicomdirPath
+                    ? "DICOMDIR file not found: \(dicomdirPath)"
+                    : "No DICOMDIR found in directory: \(dicomdirPath)")
             }
-            
-            print("Validating DICOMDIR: \(dicomdirPath)")
+
+            print("Validating DICOMDIR: \(resolvedPath)")
             print("")
             
             // Read DICOMDIR
@@ -271,42 +184,14 @@ extension DICOMDCMDIR {
             // Validate structure
             do {
                 try directory.validate(checkFileExistence: checkFiles)
-                print("✅ DICOMDIR structure is valid")
             } catch {
                 print("❌ Validation failed: \(error.localizedDescription)")
                 throw ExitCode(1)
             }
-            
-            // Print statistics
-            print("")
-            print("Statistics:")
-            let stats = directory.statistics()
-            print("  Patients: \(stats.patientCount)")
-            print("  Studies: \(stats.studyCount)")
-            print("  Series: \(stats.seriesCount)")
-            print("  Images: \(stats.imageCount)")
-            print("  Total records: \(stats.totalRecordCount)")
-            print("  Active records: \(stats.activeRecordCount)")
-            print("  Inactive records: \(stats.inactiveRecordCount)")
-            print("")
-            print("File-set:")
-            print("  ID: \(directory.fileSetID.isEmpty ? "<none>" : directory.fileSetID)")
-            print("  Profile: \(directory.profile.rawValue)")
-            print("  Consistent: \(directory.isConsistent ? "Yes" : "No")")
-            
-            if detailed {
-                print("")
-                print("Records by type:")
-                let allRecords = directory.allRecords()
-                let recordTypes = Set(allRecords.map { $0.recordType })
-                for recordType in recordTypes.sorted(by: { $0.rawValue < $1.rawValue }) {
-                    let count = allRecords.filter { $0.recordType == recordType }.count
-                    print("  \(recordType.rawValue): \(count)")
-                }
-            }
-            
-            print("")
-            print("✅ Validation complete")
+
+            // Render the shared validation report — the single source of truth
+            // shared with DICOMStudio's CLI Workshop.
+            print(DICOMDIRWorkflow.renderValidationReport(directory, detailed: detailed), terminator: "")
         }
     }
 }
@@ -330,12 +215,16 @@ extension DICOMDCMDIR {
         var verbose: Bool = false
         
         mutating func run() throws {
-            let fileURL = URL(fileURLWithPath: dicomdirPath)
-            
-            guard FileManager.default.fileExists(atPath: dicomdirPath) else {
-                throw ValidationError("DICOMDIR file not found: \(dicomdirPath)")
+            // Accept either a DICOMDIR file or the media DIRECTORY that contains it.
+            let resolvedPath = DICOMDIRWorkflow.resolvedDICOMDIRPath(dicomdirPath)
+            let fileURL = URL(fileURLWithPath: resolvedPath)
+
+            guard FileManager.default.fileExists(atPath: resolvedPath) else {
+                throw ValidationError(resolvedPath == dicomdirPath
+                    ? "DICOMDIR file not found: \(dicomdirPath)"
+                    : "No DICOMDIR found in directory: \(dicomdirPath)")
             }
-            
+
             // Read DICOMDIR
             let directory: DICOMDirectory
             do {
@@ -345,145 +234,13 @@ extension DICOMDCMDIR {
                 throw ExitCode(1)
             }
             
-            // Output based on format
-            switch format.lowercased() {
-            case "tree":
-                printTree(directory, verbose: verbose)
-            case "json":
-                printJSON(directory)
-            case "text":
-                printText(directory, verbose: verbose)
-            default:
+            // Render via the shared DICOMDIRDumpFormatter (single source of truth
+            // shared with DICOMStudio's CLI Workshop). Empty terminator so the
+            // formatter's own trailing newline is not doubled.
+            guard let rendered = DICOMDIRDumpFormatter.render(directory, format: format, verbose: verbose) else {
                 throw ValidationError("Invalid format: \(format). Use tree, json, or text")
             }
-        }
-        
-        private func printTree(_ directory: DICOMDirectory, verbose: Bool) {
-            print("DICOMDIR: \(directory.fileSetID)")
-            print("├─ Profile: \(directory.profile.rawValue)")
-            print("├─ Consistent: \(directory.isConsistent)")
-            print("└─ Records:")
-            
-            for (index, patient) in directory.rootRecords.enumerated() {
-                let isLast = index == directory.rootRecords.count - 1
-                printRecord(patient, prefix: isLast ? "    " : "│   ", isLast: true, verbose: verbose)
-            }
-        }
-        
-        private func printRecord(_ record: DirectoryRecord, prefix: String, isLast: Bool, verbose: Bool) {
-            let connector = isLast ? "└── " : "├── "
-            let name = formatRecordName(record)
-            print("\(prefix)\(connector)\(name)")
-            
-            if verbose {
-                // Show attributes
-                for (tag, element) in record.attributes.sorted(by: { $0.key < $1.key }) {
-                    if let stringValue = element.stringValue {
-                        let attrPrefix = isLast ? "    " : "│   "
-                        print("\(prefix)\(attrPrefix)    \(tag): \(stringValue)")
-                    }
-                }
-            }
-            
-            // Print children
-            let childPrefix = prefix + (isLast ? "    " : "│   ")
-            for (index, child) in record.children.enumerated() {
-                let childIsLast = index == record.children.count - 1
-                printRecord(child, prefix: childPrefix, isLast: childIsLast, verbose: verbose)
-            }
-        }
-        
-        private func formatRecordName(_ record: DirectoryRecord) -> String {
-            var name = record.recordType.rawValue
-            
-            switch record.recordType {
-            case .patient:
-                if let patientName = record.attribute(for: .patientName)?.stringValue {
-                    name += " - \(patientName)"
-                }
-                if let patientID = record.attribute(for: .patientID)?.stringValue {
-                    name += " (ID: \(patientID))"
-                }
-            case .study:
-                if let studyDesc = record.attribute(for: .studyDescription)?.stringValue {
-                    name += " - \(studyDesc)"
-                }
-                if let studyDate = record.attribute(for: .studyDate)?.stringValue {
-                    name += " [\(studyDate)]"
-                }
-            case .series:
-                if let modality = record.attribute(for: .modality)?.stringValue {
-                    name += " - \(modality)"
-                }
-                if let seriesDesc = record.attribute(for: .seriesDescription)?.stringValue {
-                    name += " - \(seriesDesc)"
-                }
-            case .image:
-                if let instanceNum = record.attribute(for: .instanceNumber)?.stringValue {
-                    name += " #\(instanceNum)"
-                }
-                if let filePath = record.referencedFilePath() {
-                    name += " (\(filePath))"
-                }
-            default:
-                break
-            }
-            
-            return name
-        }
-        
-        private func printJSON(_ directory: DICOMDirectory) {
-            // Simple JSON representation
-            print("{")
-            print("  \"fileSetID\": \"\(directory.fileSetID)\",")
-            print("  \"profile\": \"\(directory.profile.rawValue)\",")
-            print("  \"isConsistent\": \(directory.isConsistent),")
-            
-            let stats = directory.statistics()
-            print("  \"statistics\": {")
-            print("    \"patients\": \(stats.patientCount),")
-            print("    \"studies\": \(stats.studyCount),")
-            print("    \"series\": \(stats.seriesCount),")
-            print("    \"images\": \(stats.imageCount)")
-            print("  },")
-            print("  \"recordCount\": \(stats.totalRecordCount)")
-            print("}")
-        }
-        
-        private func printText(_ directory: DICOMDirectory, verbose: Bool) {
-            print("DICOMDIR Information")
-            print("====================")
-            print("")
-            print("File-set ID: \(directory.fileSetID.isEmpty ? "<none>" : directory.fileSetID)")
-            print("Profile: \(directory.profile.rawValue)")
-            print("Consistent: \(directory.isConsistent)")
-            print("")
-            
-            let stats = directory.statistics()
-            print("Statistics:")
-            print("  Patients: \(stats.patientCount)")
-            print("  Studies: \(stats.studyCount)")
-            print("  Series: \(stats.seriesCount)")
-            print("  Images: \(stats.imageCount)")
-            print("  Total records: \(stats.totalRecordCount)")
-            print("")
-            
-            if verbose {
-                print("All Records:")
-                print("------------")
-                for record in directory.allRecords() {
-                    print("")
-                    print("Type: \(record.recordType.rawValue)")
-                    if let filePath = record.referencedFilePath() {
-                        print("File: \(filePath)")
-                    }
-                    for (tag, element) in record.attributes {
-                        if let value = element.stringValue {
-                            print("  \(tag): \(value)")
-                        }
-                    }
-                }
-            }
+            print(rendered, terminator: "")
         }
     }
 }

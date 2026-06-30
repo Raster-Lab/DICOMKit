@@ -323,7 +323,14 @@ let package = Package(
             dependencies: ["DICOMKit", "DICOMCore"],
             sources: [
                 "JP3DVolumeDocumentTests.swift",
-                "JPIPTests.swift"
+                "JPIPTests.swift",
+                "DICOMConverterTests.swift",
+                "PixelEditorTests.swift",
+                "CompressionManagerImplicitVRTests.swift",
+                "CompressedPreviewRenderParityTests.swift",
+                "CompressionConsoleTests.swift",
+                "ExportWindowParityTests.swift",
+                "EncapsulatedPixelDataWriteTests.swift"
             ]
         ),
         // .testTarget(

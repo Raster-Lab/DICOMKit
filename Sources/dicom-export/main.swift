@@ -105,19 +105,10 @@ extension DICOMExport {
                 throw ExportError.invalidFrame(frameIndex, totalFrames)
             }
 
-            let cgImage: CGImage?
-            if applyWindow {
-                let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pixelData,
-                                                      frameIndex: frameIndex,
-                                                      windowCenter: windowCenter, windowWidth: windowWidth)
-                cgImage = try dicomFile.tryRenderFrame(frameIndex, window: window)
-            } else {
-                cgImage = try dicomFile.tryRenderFrame(frameIndex)
-            }
-
-            guard let image = cgImage else {
-                throw ExportError.renderFailed
-            }
+            let image = try DICOMImageExporter.renderFrameForExport(
+                file: dicomFile, pixelData: pixelData, frameIndex: frameIndex,
+                applyWindow: applyWindow, windowCenter: windowCenter, windowWidth: windowWidth
+            )
 
             // Determine output path
             let outputPath: String
@@ -494,21 +485,10 @@ extension DICOMExport {
                         continue
                     }
 
-                    let cgImage: CGImage?
-                    if applyWindow {
-                        let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pixelDataObj,
-                                                              frameIndex: 0,
-                                                              windowCenter: nil, windowWidth: nil)
-                        cgImage = try dicomFile.tryRenderFrame(0, window: window)
-                    } else {
-                        cgImage = try dicomFile.tryRenderFrame(0)
-                    }
-
-                    guard let image = cgImage else {
-                        if verbose { print("✗ Render failed: \(fileURL.lastPathComponent)") }
-                        errorCount += 1
-                        continue
-                    }
+                    let image = try DICOMImageExporter.renderFrameForExport(
+                        file: dicomFile, pixelData: pixelDataObj, frameIndex: 0,
+                        applyWindow: applyWindow, windowCenter: nil, windowWidth: nil
+                    )
 
                     // Build output path
                     let patientName = dicomFile.dataSet.string(for: .patientName)

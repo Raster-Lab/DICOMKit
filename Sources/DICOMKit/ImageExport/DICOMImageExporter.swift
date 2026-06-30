@@ -230,15 +230,33 @@ public enum DICOMImageExporter {
 
     /// Resolves window settings for a frame: explicit values, the file's own
     /// window, the frame's pixel range, or a 16-bit fallback.
+    ///
+    /// Window Center / Width (whether supplied explicitly or read from the file's
+    /// (0028,1050)/(0028,1051)) are expressed in **output (rescaled) units**, but
+    /// `PixelDataRenderer` applies the window to the **stored** pixel values it reads
+    /// from the frame. We therefore convert HU→stored using Rescale Slope/Intercept
+    /// — exactly as the on-screen viewer does (`(center - intercept) / slope`) — so
+    /// the exported raster matches what the viewer shows. Without this, a CT with a
+    /// non-zero Rescale Intercept (e.g. −1024 / −8192) renders with a window centred
+    /// far from the data, producing a washed-out or near-blank image. The pixel-range
+    /// and 16-bit fallbacks are already computed in stored space, so they are used
+    /// as-is. Reference: DICOM PS3.3 C.11.2 (VOI LUT) + C.11.1 (Modality LUT).
     public static func determineWindowSettings(
         from file: DICOMFile, pixelData: PixelData, frameIndex: Int,
         windowCenter: Double?, windowWidth: Double?
     ) -> WindowSettings {
+        let slope = file.rescaleSlope()
+        let intercept = file.rescaleIntercept()
+        func toStored(center: Double, width: Double) -> WindowSettings {
+            guard slope != 0 else { return WindowSettings(center: center, width: width) }
+            return WindowSettings(center: (center - intercept) / slope, width: width / abs(slope))
+        }
+
         if let center = windowCenter, let width = windowWidth {
-            return WindowSettings(center: center, width: width)
+            return toStored(center: center, width: width)
         }
         if let windowFromFile = file.windowSettings() {
-            return windowFromFile
+            return toStored(center: windowFromFile.center, width: windowFromFile.width)
         }
         if let range = pixelData.pixelRange(forFrame: frameIndex) {
             let center = Double(range.min + range.max) / 2.0
@@ -249,6 +267,47 @@ public enum DICOMImageExporter {
         let maxPixelValue = (1 << assumedBitDepth) - 1
         return WindowSettings(center: Double(maxPixelValue) / 2.0, width: max(1.0, Double(maxPixelValue)))
     }
+
+    // MARK: - Frame rendering
+
+    #if canImport(CoreGraphics)
+    /// Renders a single frame for image export, applying the shared window-resolution
+    /// policy. This is the ONE render decision used by both the `dicom-convert` CLI and
+    /// DICOMStudio's CLI Workshop, so their exported raster is byte-for-byte identical
+    /// (CLI ↔ app parity) instead of each adapter picking its own windowing fallback.
+    ///
+    /// - When `applyWindow` is false the frame is rendered with the renderer's default
+    ///   (no explicit window).
+    /// - When `applyWindow` is true the window is resolved via ``determineWindowSettings(from:pixelData:frameIndex:windowCenter:windowWidth:)``
+    ///   (explicit center/width → the file's stored window → the frame's pixel range →
+    ///   a 16-bit fallback) and the frame is rendered with it.
+    ///
+    /// The caller owns frame-bounds validation, file/console I/O, and encoding (via
+    /// ``exportCGImage(_:to:format:quality:metadata:)``).
+    public static func renderFrameForExport(
+        file: DICOMFile, pixelData: PixelData, frameIndex: Int,
+        applyWindow: Bool, windowCenter: Double?, windowWidth: Double?
+    ) throws -> CGImage {
+        // Always resolve a clinically-appropriate window through the shared policy
+        // (explicit center/width → the file's VOI window, rescale-adjusted → the
+        // frame's pixel range → a 16-bit fallback). Honouring the file's stored
+        // Window Center/Width by DEFAULT — rather than auto-stretching the full
+        // pixel range when `--apply-window` is absent — makes the exported raster
+        // match the on-screen viewer (and Horos), which always apply the file's VOI
+        // window. For images without a stored window the policy degrades to the same
+        // pixel-range auto-window the renderer used before, so windowless sources are
+        // unaffected. `applyWindow` only gates whether explicit center/width override.
+        let window = determineWindowSettings(
+            from: file, pixelData: pixelData, frameIndex: frameIndex,
+            windowCenter: applyWindow ? windowCenter : nil,
+            windowWidth: applyWindow ? windowWidth : nil
+        )
+        guard let image = try file.tryRenderFrame(frameIndex, window: window) else {
+            throw ExportError.renderFailed
+        }
+        return image
+    }
+    #endif
 
     // MARK: - Image encoding
 

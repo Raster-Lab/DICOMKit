@@ -51,29 +51,28 @@ public struct ProgressiveImageView: View {
     private var progressiveCanvas: some View {
         #if canImport(CoreGraphics)
         if let cgImage = viewModel.progressiveImage ?? viewModel.currentImage {
-            Canvas { context, size in
-                let imageSize = CGSize(
-                    width: CGFloat(cgImage.width),
-                    height: CGFloat(cgImage.height)
+            // Render through a plain resizable `Image`, identical to the standard
+            // (uncompressed) viewer path in ImageViewerView. The previous
+            // `Canvas { context.draw(...) }` implementation blanked J2K/HTJ2K
+            // previews: a `Canvas` has no intrinsic size, so combined with
+            // `.aspectRatio` its closure `size` could resolve to zero and nothing
+            // was drawn — producing an empty image for *every* progressively-decoded
+            // (encapsulated J2K) file while uncompressed files rendered fine.
+            // `Image(decorative:)` derives its size from the CGImage, so it draws
+            // reliably. Reference: matches ImageViewerView.imageContent.
+            Image(decorative: cgImage, scale: 1.0)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .scaleEffect(viewModel.zoomLevel)
+                .offset(
+                    x: viewModel.panOffsetX,
+                    y: viewModel.panOffsetY
                 )
-                let drawRect = aspectFitRect(imageSize: imageSize, canvasSize: size)
-                let resolved = context.resolve(Image(decorative: cgImage, scale: 1.0))
-                context.draw(resolved, in: drawRect)
-            }
-            .aspectRatio(
-                CGFloat(cgImage.width) / max(1, CGFloat(cgImage.height)),
-                contentMode: .fit
-            )
-            .scaleEffect(viewModel.zoomLevel)
-            .offset(
-                x: viewModel.panOffsetX,
-                y: viewModel.panOffsetY
-            )
-            .rotationEffect(.degrees(viewModel.rotationAngle))
-            .scaleEffect(
-                x: viewModel.isFlippedHorizontal ? -1 : 1,
-                y: viewModel.isFlippedVertical   ? -1 : 1
-            )
+                .rotationEffect(.degrees(viewModel.rotationAngle))
+                .scaleEffect(
+                    x: viewModel.isFlippedHorizontal ? -1 : 1,
+                    y: viewModel.isFlippedVertical   ? -1 : 1
+                )
         } else {
             Color.black
         }
@@ -106,23 +105,6 @@ public struct ProgressiveImageView: View {
         .accessibilityAddTraits(.updatesFrequently)
     }
 
-    // MARK: - Layout Helpers
-
-    /// Computes an aspect-preserving `CGRect` that fits `imageSize` inside `canvasSize`.
-    private func aspectFitRect(imageSize: CGSize, canvasSize: CGSize) -> CGRect {
-        guard imageSize.width > 0, imageSize.height > 0,
-              canvasSize.width > 0, canvasSize.height > 0 else {
-            return CGRect(origin: .zero, size: canvasSize)
-        }
-        let scaleX = canvasSize.width  / imageSize.width
-        let scaleY = canvasSize.height / imageSize.height
-        let scale  = min(scaleX, scaleY)
-        let fitW   = imageSize.width  * scale
-        let fitH   = imageSize.height * scale
-        let originX = (canvasSize.width  - fitW) / 2.0
-        let originY = (canvasSize.height - fitH) / 2.0
-        return CGRect(x: originX, y: originY, width: fitW, height: fitH)
-    }
 }
 
 // MARK: - Preview Support

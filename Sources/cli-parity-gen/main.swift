@@ -287,6 +287,19 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-compress", label: "batch-decompress-recursive", cliArgs: ["batch", "FIXTURE", "--decompress", "--recursive", "--output", "OUTPUT"], studioParams: ["operation": "batch", "inputDir": "FIXTURE", "outputDir": "OUTPUT", "decompress": "true", "recursive": "true"], fixture: "rledir", portable: false, artifactName: "decompressed", artifactKind: "dicom-multi"),
     Template(tool: "dicom-pixedit", label: "apply-window", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--window-center", "40", "--window-width", "400", "--apply-window"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "window-center": "40", "window-width": "400", "apply-window": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-pixedit", label: "edit-verbose", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--mask-region", "0,0,4,4", "--fill-value", "0", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "mask-region": "0,0,4,4", "fill-value": "0", "verbose": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
+    // dicom-pixedit invert / crop on the single-frame uncompressed CT. (These curated
+    // scenarios also pin the --invert / --crop flags, so the contract-driven auto-gen no
+    // longer emits its own auto-invert / auto-crop — the curated set supersedes them.)
+    Template(tool: "dicom-pixedit", label: "invert", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--invert"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "invert": "true"], artifactName: "out.dcm", artifactKind: "dicom"),
+    Template(tool: "dicom-pixedit", label: "crop", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--crop", "0,0,4,4"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "crop": "0,0,4,4"], artifactName: "out.dcm", artifactKind: "dicom"),
+    // dicom-pixedit on a COMPRESSED source (RLE): editing pixels requires decoding the
+    // encapsulated bitstream → the shared PixelEditor emits uncompressed Explicit VR LE.
+    // Both CLI and Workshop run the same DICOMKit.PixelEditor so the rewritten bytes match.
+    Template(tool: "dicom-pixedit", label: "invert-rle", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--invert"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "invert": "true"], fixture: "ctrle", artifactName: "out.dcm", artifactKind: "dicom"),
+    // dicom-pixedit on a MULTI-FRAME source: invert must touch every frame; crop must crop
+    // every frame and preserve Number of Frames (0028,0008).
+    Template(tool: "dicom-pixedit", label: "invert-mf", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--invert"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "invert": "true"], fixture: "mf", artifactName: "out.dcm", artifactKind: "dicom"),
+    Template(tool: "dicom-pixedit", label: "crop-mf", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--crop", "0,0,4,4"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "crop": "0,0,4,4"], fixture: "mf", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-merge", label: "format-enhanced-ct", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "enhanced-ct"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "enhanced-ct"], fixture: "studyset", artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-merge", label: "sort-recursive-verbose", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--sort-by", "InstanceNumber", "--order", "descending", "--recursive", "--verbose"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "sort-by": "InstanceNumber", "order": "descending", "recursive": "true", "verbose": "true"], fixture: "studyset", artifactName: "out.dcm", artifactKind: "dicom"),
     // merge --validate on a homogeneous single-series set → one merged file (default --level
@@ -382,10 +395,8 @@ let curatedTemplates: [Template] = [
     Template(tool: "dicom-anon", label: "basic", cliArgs: ["--profile", "basic", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "basic", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
     Template(tool: "dicom-anon", label: "clinical-trial", cliArgs: ["--profile", "clinical-trial", "--output", "OUTPUT", "FIXTURE"], studioParams: ["inputPath": "FIXTURE", "profile": "clinical-trial", "output": "OUTPUT"], artifactName: "out.dcm", artifactKind: "dicom"),
 
-    // dicom-convert — uncompressed↔uncompressed transfer-syntax change keeps pixel bytes identical.
-    Template(tool: "dicom-convert", label: "implicit-le", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "ImplicitVRLittleEndian"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "ImplicitVRLittleEndian"], artifactName: "out.dcm", artifactKind: "dicom"),
-    // convert DICOM→JPEG at --quality 95 (lossy); compare the DECODED raster (same encoder → same pixels).
-    Template(tool: "dicom-convert", label: "jpeg-quality", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "jpeg", "--quality", "95"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "jpeg", "quality": "95"], portable: false, artifactName: "out.jpg", artifactKind: "image-raster-hash"),
+    // dicom-convert — full --transfer-syntax × --format × flag matrix lives in
+    // `dicomConvertMatrix` below (mirrors the dicom-compress matrix). Not here.
 
     // dicom-split — multiframe → MULTIPLE single-frame files (multi-file artifact).
     // Each produced frame is re-dumped and compared (volatile SOP UIDs masked).
@@ -395,6 +406,24 @@ let curatedTemplates: [Template] = [
     // dicom-merge — a directory of single-frame files → one multiframe (multi-input
     // via a directory fixture; fresh SOP UID masked).
     Template(tool: "dicom-merge", label: "studyset", cliArgs: ["FIXTURE", "--output", "OUTPUT"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT"], fixture: "studyset", artifactName: "out.dcm", artifactKind: "dicom"),
+
+    // dicom-dcmdir — DICOMDIR management. Both surfaces share DICOMKit's
+    // DICOMDIRWorkflow (create build-loop + summary, validate report) and
+    // DICOMDIRDumpFormatter (dump), so the output cannot drift.
+    //   • dump (tree/json/text/verbose) reads the committed `syn-dicomdir` fixture
+    //     and renders via the shared formatter → path-free, deterministic, COMMITTED.
+    //   • create re-dumps the produced DICOMDIR (volatile SOP UID masked); the
+    //     freshly-minted UID makes the gen run non-deterministic, so it stays in the
+    //     local superset (portable:false) — it still exercises the shared Builder/
+    //     Writer in the live panel.
+    //   • validate echoes the input path → kept local-only (portable:false).
+    Template(tool: "dicom-dcmdir", label: "dump-tree", cliArgs: ["dump", "FIXTURE", "--format", "tree"], studioParams: ["subcommand": "dump", "dicomdirPath": "FIXTURE", "format": "tree"], fixture: "dicomdir"),
+    Template(tool: "dicom-dcmdir", label: "dump-json", cliArgs: ["dump", "FIXTURE", "--format", "json"], studioParams: ["subcommand": "dump", "dicomdirPath": "FIXTURE", "format": "json"], fixture: "dicomdir"),
+    Template(tool: "dicom-dcmdir", label: "dump-text", cliArgs: ["dump", "FIXTURE", "--format", "text"], studioParams: ["subcommand": "dump", "dicomdirPath": "FIXTURE", "format": "text"], fixture: "dicomdir"),
+    Template(tool: "dicom-dcmdir", label: "dump-tree-verbose", cliArgs: ["dump", "FIXTURE", "--format", "tree", "--verbose"], studioParams: ["subcommand": "dump", "dicomdirPath": "FIXTURE", "format": "tree", "dumpVerbose": "true"], fixture: "dicomdir"),
+    Template(tool: "dicom-dcmdir", label: "validate", cliArgs: ["validate", "FIXTURE"], studioParams: ["subcommand": "validate", "dicomdirPath": "FIXTURE"], fixture: "dicomdir", portable: false),
+    Template(tool: "dicom-dcmdir", label: "validate-detailed", cliArgs: ["validate", "FIXTURE", "--detailed"], studioParams: ["subcommand": "validate", "dicomdirPath": "FIXTURE", "detailed": "true"], fixture: "dicomdir", portable: false),
+    Template(tool: "dicom-dcmdir", label: "create", cliArgs: ["create", "FIXTURE", "--output", "OUTPUT"], studioParams: ["subcommand": "create", "inputDirectory": "FIXTURE", "output": "OUTPUT"], fixture: "studyset", portable: false, artifactName: "DICOMDIR", artifactKind: "dicom"),
 ]
 
 // MARK: - dicom-compress full subcommand × flag matrix (curated; REAL per-codec coverage)
@@ -536,6 +565,147 @@ let dicomCompressMatrix: [Template] = dcCompressTemplates + [
              cliArgs: ["info", "--json", "FIXTURE"],
              studioParams: ["operation": "info", "input": "FIXTURE", "json": "true"],
              fixture: "ctrle", portable: true),
+]
+
+// MARK: - dicom-convert full --transfer-syntax × --format × flag matrix (curated; REAL coverage)
+//
+// dicom-convert has TWO pipelines, BOTH now backed by shared DICOMKit APIs so the app
+// (CLIWorkshopViewModel.executeDicomConvert) and the CLI (dicom-convert) produce identical
+// bytes — no hand-mirrored reference (see [[cli-parity-test-purpose]]):
+//   • --format dicom  → DICOMConverter.convertToDICOM (transfer-syntax transcode, incl. pixel
+//     re-encode). Compared by `decoded-pixel-hash` (sha256 of fully-decoded PixelData) — the SAME
+//     encoding-agnostic rule dicom-compress uses; flag-combination scenarios that must verify TAG
+//     content (strip-private/validate/force) use `dicom` (re-dump) on an UNCOMPRESSED target so no
+//     encapsulated fragment lengths leak. Portability mirrors the compress matrix
+//     (see [[dicom-compress-parity-matrix]]):
+//       - lossless / uncompressed transcodes → decoded pixels == source on every host → committed.
+//       - lossy but arch-deterministic (JLISwift JPEGLI baseline/extended, JLSwift JPEG-LS near) → committed.
+//       - lossy with cross-host encode variance (J2KSwift jpeg2000 / part2 / htj2k lossy) → local-only.
+//   • --format png|jpeg|tiff → DICOMImageExporter.renderFrameForExport + exportCGImage (image
+//     export — the window-resolution + render decision is now ONE shared call, previously the app
+//     used tryRenderFrameWithStoredWindow while the CLI used determineWindowSettings). Compared by
+//     `image-raster-hash` (sha256 of the decoded raster). The CoreGraphics raster isn't validated
+//     cross-machine deterministic → portable:false (local superset only), same as dicom-export.
+//
+// `ct` = syn-ct (16-bit MONOCHROME2) + the local real CT; `ct8` = the 8-bit fixture (JPEG Baseline
+// is 8-bit only); `mf` = synthetic multiframe (frame selection); `studyset` = flat dir (--recursive).
+
+// (CamelCase --transfer-syntax token, decoded-pixel-hash cross-host portable, input fixture).
+let dcTransferSyntaxMatrix: [(syntax: String, portable: Bool, fixture: String)] = [
+    // ----- Uncompressed / lossless → decoded pixels == source on every host → committed -----
+    ("ExplicitVRLittleEndian",  true,  "ct"),
+    ("ImplicitVRLittleEndian",  true,  "ct"),
+    // ExplicitVRBigEndian: decoded-pixel-hash legitimately DIFFERS from the LE variants
+    // because `decodedPixelHash` hashes raw PixelData bytes and BE stores 16-bit pixels
+    // byte-swapped. It is still deterministic + cross-host reproducible (committed) and the
+    // transcode is provably correct — an LE→BE→LE round-trip is byte-identical to the source.
+    ("ExplicitVRBigEndian",     true,  "ct"),
+    ("DEFLATE",                 true,  "ct"),
+    ("JPEGLossless",            true,  "ct"),
+    ("JPEGLosslessSV1",         true,  "ct"),
+    ("JPEGLSLossless",          true,  "ct"),
+    ("JPEGXLLossless",          true,  "ct"),   // JXL encode is lossless-only
+    ("JPEG2000Lossless",        true,  "ct"),
+    ("JPEG2000Part2Lossless",   true,  "ct"),
+    ("HTJ2KLossless",           true,  "ct"),
+    ("HTJ2KRPCLLossless",       true,  "ct"),
+    ("RLELossless",             true,  "ct"),
+    // ----- Lossy but arch-deterministic → committed on the single-arch gate -----
+    ("JPEGExtended",            true,  "ct"),    // JLISwift JPEGLI (lossy DCT, Extended SOF1)
+    ("JPEGBaseline",            true,  "ct8"),   // JLISwift JPEGLI (lossy DCT, Baseline SOF0; 8-bit only)
+    ("JPEGLSNearLossless",      true,  "ct"),    // JLSwift near-lossless (integer LOCO-I)
+    // ----- Lossy + documented cross-host encode variance → local superset only -----
+    ("JPEG2000",                false, "ct"),
+    ("JPEG2000Part2",           false, "ct"),
+    ("HTJ2K",                   false, "ct"),
+]
+let dcTransferSyntaxTemplates: [Template] = dcTransferSyntaxMatrix.map { spec in
+    Template(tool: "dicom-convert", label: "ts-\(spec.syntax)",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", spec.syntax],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": spec.syntax],
+             fixture: spec.fixture, portable: spec.portable,
+             artifactName: "out.dcm", artifactKind: "decoded-pixel-hash")
+}
+
+let dicomConvertMatrix: [Template] = dcTransferSyntaxTemplates + [
+    // ===== --format dicom flag combinations =====
+    // --strip-private on an UNCOMPRESSED target → re-dump ("dicom") so the tag-removal RESULT is
+    // compared (private tags gone identically on both sides), not merely the flag exercised.
+    Template(tool: "dicom-convert", label: "strip-private-explicit-le",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "ExplicitVRLittleEndian", "--strip-private"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "ExplicitVRLittleEndian", "strip-private": "true"],
+             artifactName: "out.dcm", artifactKind: "dicom"),
+    // --validate re-reads the written file (no content change) → re-dump still matches.
+    Template(tool: "dicom-convert", label: "validate-implicit-le",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "ImplicitVRLittleEndian", "--validate"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "ImplicitVRLittleEndian", "validate": "true"],
+             artifactName: "out.dcm", artifactKind: "dicom"),
+    // --force (parse files w/o DICM preamble) on a normal DICM file → no-op; exercises the flag.
+    Template(tool: "dicom-convert", label: "force-explicit-le",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "ExplicitVRLittleEndian", "--force"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "ExplicitVRLittleEndian", "force": "true"],
+             artifactName: "out.dcm", artifactKind: "dicom"),
+    // --strip-private + --validate together over a lossless COMPRESSED target → decoded-pixel-hash
+    // (encapsulated, so a re-dump would leak fragment lengths; pixels are the right comparison).
+    Template(tool: "dicom-convert", label: "strip-validate-rle",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "RLELossless", "--strip-private", "--validate"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "RLELossless", "strip-private": "true", "validate": "true"],
+             artifactName: "out.dcm", artifactKind: "decoded-pixel-hash"),
+
+    // ===== --recursive directory conversion (dir → dir; one .dcm per input) =====
+    // dicom-multi re-dumps each produced file (sorted, name-independent); uncompressed → committed.
+    Template(tool: "dicom-convert", label: "recursive-explicit-le",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "ExplicitVRLittleEndian", "--recursive"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "ExplicitVRLittleEndian", "recursive": "true"],
+             fixture: "studyset", artifactName: "converted", artifactKind: "dicom-multi"),
+
+    // ===== --format png|jpeg|tiff image export (image-raster-hash; local-only) =====
+    // Default window (no --apply-window).
+    Template(tool: "dicom-convert", label: "img-png",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "png"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "png"],
+             portable: false, artifactName: "out.png", artifactKind: "image-raster-hash"),
+    Template(tool: "dicom-convert", label: "img-tiff",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "tiff"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "tiff"],
+             portable: false, artifactName: "out.tiff", artifactKind: "image-raster-hash"),
+    Template(tool: "dicom-convert", label: "img-jpeg-quality",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "jpeg", "--quality", "95"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "jpeg", "quality": "95"],
+             portable: false, artifactName: "out.jpg", artifactKind: "image-raster-hash"),
+    Template(tool: "dicom-convert", label: "img-jpeg-quality-low",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "jpeg", "--quality", "50"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "jpeg", "quality": "50"],
+             portable: false, artifactName: "out.jpg", artifactKind: "image-raster-hash"),
+    // --apply-window WITHOUT explicit center/width — exercises the SHARED window-resolution
+    // fallback (file window → pixel range → 16-bit). This is the path that previously diverged
+    // (app used tryRenderFrameWithStoredWindow; CLI used determineWindowSettings) → now unified.
+    Template(tool: "dicom-convert", label: "img-png-apply-window",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "png", "--apply-window"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "png", "apply-window": "true"],
+             portable: false, artifactName: "out.png", artifactKind: "image-raster-hash"),
+    // --apply-window WITH explicit --window-center / --window-width.
+    Template(tool: "dicom-convert", label: "img-png-window-explicit",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "png", "--apply-window", "--window-center", "40", "--window-width", "400"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "png", "apply-window": "true", "window-center": "40", "window-width": "400"],
+             portable: false, artifactName: "out.png", artifactKind: "image-raster-hash"),
+    // --frame selection on a MULTIFRAME source.
+    Template(tool: "dicom-convert", label: "img-png-frame",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "png", "--frame", "1"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "png", "frame": "1"],
+             fixture: "mf", portable: false, artifactName: "out.png", artifactKind: "image-raster-hash"),
+    // ALL image flags together on a multiframe source (frame + window + quality).
+    Template(tool: "dicom-convert", label: "img-jpeg-allflags",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "jpeg", "--quality", "80", "--apply-window", "--window-center", "40", "--window-width", "400", "--frame", "0"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "jpeg", "quality": "80", "apply-window": "true", "window-center": "40", "window-width": "400", "frame": "0"],
+             fixture: "mf", portable: false, artifactName: "out.jpg", artifactKind: "image-raster-hash"),
+    // --format png + --recursive: directory of DICOM → directory of images (the recursive
+    // image-export dispatch in convertDirectory). image-raster-multi hashes each produced
+    // file's decoded raster (sorted, name-independent). Local-only (CoreGraphics raster).
+    Template(tool: "dicom-convert", label: "img-png-recursive",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--format", "png", "--recursive"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "format": "png", "recursive": "true"],
+             fixture: "studyset", portable: false, artifactName: "converted", artifactKind: "image-raster-multi"),
 ]
 
 // MARK: - Phase 2: contract-driven auto-generation of output scenarios
@@ -742,7 +912,7 @@ private func autoTemplates(curated: [Template]) -> [Template] {
     return out
 }
 
-let allCurated: [Template] = curatedTemplates + dicomCompressMatrix
+let allCurated: [Template] = curatedTemplates + dicomCompressMatrix + dicomConvertMatrix
 let templates: [Template] = allCurated + autoTemplates(curated: allCurated)
 
 // MARK: - Discover dicom-* binaries
@@ -873,6 +1043,29 @@ func writeSyntheticSet(_ dirName: String, _ files: [(name: String, data: Data)])
 }
 let synStudy  = writeSyntheticSet("syn-studyset",  SyntheticFixtures.studySet(studyIndex: 1))
 let synStudy2 = writeSyntheticSet("syn-studyset2", SyntheticFixtures.studySet(studyIndex: 2))
+
+// DICOMDIR built from the synthetic study set — the committed input for the
+// dicom-dcmdir `dump` and `validate` scenarios (which need a DICOMDIR file, not a
+// folder of DICOM files). Built in-process via the shared DICOMKit Builder/Writer
+// so it is a real, conformant DICOMDIR; its (otherwise random) Media Storage SOP
+// Instance UID is then frozen to a fixed value so the committed fixture is
+// byte-deterministic across regenerations, like every other synthetic fixture.
+let synDICOMDIR: ConcreteFixture? = {
+    var builder = DICOMDirectory.Builder(fileSetID: "SYN-DICOMDIR", profile: .standardGeneralCD)
+    for (name, data) in SyntheticFixtures.studySet(studyIndex: 1) {
+        guard let file = try? DICOMFile.read(from: data, force: true) else { continue }
+        try? builder.addFile(file, relativePath: [name])
+    }
+    let directory = builder.build()
+    guard let raw = try? DICOMDIRWriter.write(directory),
+          let parsed = try? DICOMFile.read(from: raw, force: true) else { return nil }
+    var fmi = parsed.fileMetaInformation
+    fmi[.mediaStorageSOPInstanceUID] = DataElement.string(
+        tag: .mediaStorageSOPInstanceUID, vr: .UI,
+        value: "1.2.826.0.1.3680043.10.999.50.1")
+    guard let fixed = try? DICOMFile(fileMetaInformation: fmi, dataSet: parsed.dataSet).write() else { return nil }
+    return writeSynthetic("syn-dicomdir", fixed)
+}()
 // Single-series set (one series, 3 instances) — homogeneous input for dicom-merge
 // --validate (passes) and --level series (one deterministic output). Logical id `series`.
 let synSeries = writeSyntheticSet("syn-series", SyntheticFixtures.studySet(studyIndex: 3, series: 1, instances: 3))
@@ -1025,6 +1218,7 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "importset":return archiveFixture.map { [(synStudy, $0)] } ?? []   // files (studyset) + archive (already holds them → skip-dup)
     case "ctpair":   return [(synCT, synCT2)]
     case "studyset": return [(synStudy, nil)]
+    case "dicomdir": return synDICOMDIR.map { [($0, ConcreteFixture?.none)] } ?? []
     case "studypair":return [(synStudy, synStudy2)]
     case "series":   return [(synSeries, nil)]
     case "archive":  return archiveFixture.map { [($0, ConcreteFixture?.none)] } ?? []
@@ -1146,6 +1340,33 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
             combined += "=== \(rel) ===\n" + d + "\n"
         }
         return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "dicom-tree")
+    }
+
+    if t.artifactKind == "image-raster-multi" {
+        // OUTPUT is a DIRECTORY the producer fills with image files (e.g. dicom-convert
+        // --format png --recursive). Each output keeps its SOURCE basename, so a recursive
+        // image export writes image bytes to a *.dcm-named file — hash the DECODED raster of
+        // every regular file (ImageIO sniffs content, not extension), sorted by relative path
+        // for stable pairing, with index headers (name-independent, like dicom-multi).
+        let dir = tmp.appendingPathComponent(artifact, isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        let r = run(bin, resolve(dir.path))
+        var rels: [String] = []
+        if let en = fm.enumerator(atPath: dir.path) {
+            while let p = en.nextObject() as? String {
+                var isDir: ObjCBool = false
+                if fm.fileExists(atPath: dir.appendingPathComponent(p).path, isDirectory: &isDir), !isDir.boolValue {
+                    rels.append(p)
+                }
+            }
+        }
+        rels.sort()
+        var combined = "Images: \(rels.count)\n"
+        for (i, rel) in rels.enumerated() {
+            let h = imageRasterHash(ofFileAt: dir.appendingPathComponent(rel).path) ?? "<image-decode-failed>"
+            combined += "=== image \(i) ===\n" + h + "\n"
+        }
+        return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "image-raster-multi")
     }
 
     let outPath = tmp.appendingPathComponent(artifact).path

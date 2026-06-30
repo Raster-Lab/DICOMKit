@@ -682,7 +682,7 @@ struct TransferSyntaxHelper {
 
         // Write file meta information (always Explicit VR Little Endian)
         let metaWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
-        let metaData = try writeDataSet(fileMeta, writer: metaWriter)
+        let metaData = writeDataSet(fileMeta, writer: metaWriter)
 
         // File Meta Information Group Length
         let lengthData = metaWriter.serializeUInt32(UInt32(metaData.count))
@@ -692,7 +692,7 @@ struct TransferSyntaxHelper {
             length: UInt32(lengthData.count),
             valueData: lengthData
         )
-        output.append(try writeElement(groupLengthElement, writer: metaWriter))
+        output.append(metaWriter.serializeElement(groupLengthElement))
         output.append(metaData)
 
         // Write main dataset with target transfer syntax. A Deflated Explicit VR
@@ -723,21 +723,45 @@ struct TransferSyntaxHelper {
         return DICOMWriter(byteOrder: byteOrder, explicitVR: explicitVR)
     }
 
-    private func writeDataSet(_ dataSet: DataSet, writer: DICOMWriter) throws -> Data {
+    private func writeDataSet(_ dataSet: DataSet, writer: DICOMWriter) -> Data {
         var output = Data()
         for tag in dataSet.tags.sorted() {
             guard let element = dataSet[tag] else { continue }
-            // v9.1 fix: serialise encapsulated pixel data with its
-            // BOT + Item-tagged fragments + Sequence Delimitation
-            // structure rather than dumping the empty `valueData`.
+            // Encapsulated (compressed) PixelData needs the BOT + Item-tagged
+            // fragment + Sequence Delimitation structure, which the shared
+            // DICOMWriter does not emit (it skips undefined-length values), so it
+            // keeps its dedicated serializer.
             if element.tag == .pixelData
                 && element.encapsulatedFragments != nil {
                 output.append(serializeEncapsulatedPixelData(element, writer: writer))
                 continue
             }
-            output.append(try writeElement(element, writer: writer))
+            // Everything else goes through the library's real element serializer.
+            // The previous bespoke writer dumped each element's raw `valueData`
+            // under the *target* framing — which corrupted sequences carried over
+            // from an Implicit VR source (their bytes are implicit-encoded) and
+            // truncated the declared length of >64 KB 16-bit-VR elements, both of
+            // which desynced the reader so it stopped before PixelData ("No pixel
+            // data found in DICOM file"). DICOMWriter re-encodes sequences from
+            // their parsed items; the sanitizer keeps oversized short-VR values
+            // representable under Explicit VR.
+            output.append(writer.serializeElement(
+                sanitizedForExplicitVR(element, explicitVR: writer.explicitVR)))
         }
         return output
+    }
+
+    /// Promotes an element whose value exceeds the 0xFFFF that a 16-bit Explicit
+    /// VR length field can hold — legal under Implicit VR's 32-bit length — to UN,
+    /// which carries a 32-bit length. Without this, transcoding Implicit→Explicit
+    /// VR either silently truncated the declared length (desyncing every later
+    /// element, including PixelData) or trapped on `UInt16(overflow)`.
+    private func sanitizedForExplicitVR(_ element: DataElement, explicitVR: Bool) -> DataElement {
+        guard explicitVR, element.vr != .SQ, !element.vr.uses32BitLength,
+              element.valueData.count > 0xFFFF else { return element }
+        return DataElement(tag: element.tag, vr: .UN,
+                           length: UInt32(element.valueData.count),
+                           valueData: element.valueData)
     }
 
     /// Serialises an encapsulated PixelData element per DICOM PS3.5 A.4
@@ -846,6 +870,7 @@ public enum CompressionError: Error, CustomStringConvertible {
     case encoderNotAvailable(String)
     case decoderNotAvailable(String)
     case unsupportedPixelDataConfiguration(String)
+    case invalidQuality(String)
 
     public var description: String {
         switch self {
@@ -867,6 +892,9 @@ public enum CompressionError: Error, CustomStringConvertible {
                 + "Cannot decompress source pixel data."
         case .unsupportedPixelDataConfiguration(let detail):
             return "Encoder rejected pixel-data configuration: \(detail)"
+        case .invalidQuality(let value):
+            return "Invalid --quality value '\(value)'. "
+                + "Use maximum / high / medium / low, or a number in 0.0...1.0."
         }
     }
 }

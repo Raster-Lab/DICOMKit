@@ -1690,22 +1690,9 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
                     parameterType: .enumPicker, placeholder: "Target transfer syntax",
                     helpText: "Target transfer syntax for DICOM-to-DICOM conversion — supports uncompressed and compressed encoding (PS3.5 §10)",
-                    allowedValues: [
-                        "",
-                        "ExplicitVRLittleEndian",
-                        "ImplicitVRLittleEndian",
-                        "ExplicitVRBigEndian",
-                        "DEFLATE",
-                        "JPEGBaseline",
-                        "JPEGExtended",
-                        "JPEGLossless",
-                        "JPEGLosslessSV1",
-                        "JPEG2000Lossless",
-                        "JPEG2000",
-                        "JPEGLSLossless",
-                        "JPEGLSNearLossless",
-                        "RLELossless",
-                    ],
+                    // Single source of truth: the shared DICOMConverter target catalog
+                    // (DICOMKit), so the picker stays in step with the dicom-convert CLI.
+                    allowedValues: [""] + DICOMConverter.cliTokens,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "format", values: ["dicom"])
                 ),
                 CLIParameterDefinition(

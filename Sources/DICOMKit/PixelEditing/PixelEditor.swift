@@ -28,11 +28,17 @@ struct PixelEditDescriptor {
     let highBit: Int
     let pixelRepresentation: Int
     let samplesPerPixel: Int
+    let numberOfFrames: Int
 
     var bytesPerSample: Int { bitsAllocated / 8 }
     var bytesPerPixel: Int { bytesPerSample * samplesPerPixel }
     var maxValue: Int { (1 << bitsStored) - 1 }
     var isSigned: Bool { pixelRepresentation == 1 }
+
+    /// Samples in a single frame (rows × columns × samples-per-pixel).
+    var frameSampleCount: Int { rows * columns * samplesPerPixel }
+    /// Bytes in a single frame.
+    var frameByteCount: Int { frameSampleCount * bytesPerSample }
 }
 
 /// Pixel data editor for DICOM files.
@@ -70,12 +76,60 @@ public struct PixelEditor {
         let dicomFile = try DICOMFile.read(from: inputData)
 
         var dataSet = dicomFile.dataSet
-        let descriptor = try extractDescriptor(from: dataSet)
+        var fileMeta = dicomFile.fileMetaInformation
 
         guard let pixelElement = dataSet[.pixelData] else {
             throw PixelEditError.noPixelData
         }
-        var pixelData = pixelElement.valueData
+
+        // Pixel-edit operations work on raw, uncompressed samples. If the source uses
+        // an encapsulated (compressed) transfer syntax — RLE, JPEG, JPEG 2000, JPEG-LS,
+        // JPEG XL — its Pixel Data element holds a fragmented/compressed bitstream, not a
+        // flat pixel array. Editing those bytes in place corrupts the bitstream, and the
+        // result (still tagged as the compressed syntax) can't be decoded by a viewer like
+        // Horos, so the image fails to display. So decode the source to native pixels via
+        // the shared codec path and emit uncompressed Explicit VR Little Endian — the same
+        // representation every viewer/CLI expects after a pixel edit.
+        let sourceSyntax = dicomFile.transferSyntaxUID.flatMap { TransferSyntax.from(uid: $0) }
+        let isEncapsulated = (sourceSyntax?.isEncapsulated ?? false)
+            || (pixelElement.encapsulatedFragments?.isEmpty == false)
+
+        let descriptor: PixelEditDescriptor
+        var pixelData: Data
+        let pixelVR: VR
+
+        if isEncapsulated {
+            // Decodes every frame to native samples (and maps YBR JPEG/J2K to RGB).
+            let decoded = try dicomFile.tryPixelData()
+            let d = decoded.descriptor
+            descriptor = PixelEditDescriptor(
+                rows: d.rows, columns: d.columns,
+                bitsAllocated: d.bitsAllocated, bitsStored: d.bitsStored,
+                highBit: d.highBit, pixelRepresentation: d.isSigned ? 1 : 0,
+                samplesPerPixel: d.samplesPerPixel, numberOfFrames: d.numberOfFrames
+            )
+            pixelData = decoded.data
+            // Native Pixel Data VR: OW for >8-bit samples, OB for 8-bit.
+            pixelVR = d.bitsAllocated > 8 ? .OW : .OB
+            // Reflect the decoded format in the data set — decoding can change the
+            // photometric interpretation and sample layout (e.g. a YBR JPEG becomes RGB).
+            dataSet.setString(d.photometricInterpretation.rawValue, for: .photometricInterpretation, vr: .CS)
+            dataSet.setUInt16(UInt16(d.samplesPerPixel), for: .samplesPerPixel)
+            if d.samplesPerPixel > 1 {
+                dataSet.setUInt16(UInt16(d.planarConfiguration), for: .planarConfiguration)
+            } else {
+                dataSet.remove(tag: .planarConfiguration)
+            }
+            // Emit uncompressed Explicit VR Little Endian.
+            fileMeta = uncompressedFileMeta(from: fileMeta)
+            if verbose {
+                log("Decoded compressed pixel data (\(sourceSyntax?.displayName ?? "compressed")) → Explicit VR Little Endian")
+            }
+        } else {
+            descriptor = try extractDescriptor(from: dataSet)
+            pixelData = pixelElement.valueData
+            pixelVR = pixelElement.vr
+        }
 
         if verbose {
             log("Image: \(descriptor.columns)x\(descriptor.rows), \(descriptor.bitsAllocated)-bit, \(descriptor.samplesPerPixel) sample(s)")
@@ -123,8 +177,9 @@ public struct PixelEditor {
             }
         }
 
-        // Update pixel data element (preserving original VR)
-        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: pixelElement.vr, data: pixelData)
+        // Update pixel data element (native VR: as-read for native sources, OW/OB for
+        // sources that were just decoded from a compressed transfer syntax).
+        dataSet[.pixelData] = DataElement.data(tag: .pixelData, vr: pixelVR, data: pixelData)
 
         // Update rows/columns if changed by crop
         if currentRows != descriptor.rows {
@@ -134,7 +189,7 @@ public struct PixelEditor {
             dataSet.setUInt16(UInt16(currentColumns), for: .columns)
         }
 
-        let updatedFile = DICOMFile(fileMetaInformation: dicomFile.fileMetaInformation, dataSet: dataSet)
+        let updatedFile = DICOMFile(fileMetaInformation: fileMeta, dataSet: dataSet)
         let outputData = try updatedFile.write()
         let info = PixelEditInfo(columns: currentColumns, rows: currentRows,
                                  bitsAllocated: descriptor.bitsAllocated, samplesPerPixel: descriptor.samplesPerPixel)
@@ -169,12 +224,16 @@ public struct PixelEditor {
         let startX = max(region.x, 0)
         let startY = max(region.y, 0)
 
-        for y in startY..<endY {
-            for x in startX..<endX {
-                let pixelOffset = y * descriptor.columns + x
-                for s in 0..<descriptor.samplesPerPixel {
-                    let sampleIndex = pixelOffset * descriptor.samplesPerPixel + s
-                    setPixelValue(in: &pixelData, at: sampleIndex, value: fillValue, descriptor: descriptor)
+        // Mask the same region on every frame.
+        for frame in 0..<descriptor.numberOfFrames {
+            let frameBase = frame * descriptor.frameSampleCount
+            for y in startY..<endY {
+                for x in startX..<endX {
+                    let pixelOffset = y * descriptor.columns + x
+                    for s in 0..<descriptor.samplesPerPixel {
+                        let sampleIndex = frameBase + pixelOffset * descriptor.samplesPerPixel + s
+                        setPixelValue(in: &pixelData, at: sampleIndex, value: fillValue, descriptor: descriptor)
+                    }
                 }
             }
         }
@@ -194,19 +253,24 @@ public struct PixelEditor {
         let newWidth = endX - startX
         let newHeight = endY - startY
 
-        var croppedData = Data(capacity: newWidth * newHeight * descriptor.bytesPerPixel)
+        let frameByteCount = descriptor.frameByteCount
+        var croppedData = Data(capacity: newWidth * newHeight * descriptor.bytesPerPixel * descriptor.numberOfFrames)
 
-        for y in startY..<endY {
-            let srcRowStart = (y * descriptor.columns + startX) * descriptor.bytesPerPixel
-            let srcRowEnd = srcRowStart + newWidth * descriptor.bytesPerPixel
+        // Crop the same region out of every frame and concatenate.
+        for frame in 0..<descriptor.numberOfFrames {
+            let frameBase = frame * frameByteCount
+            for y in startY..<endY {
+                let srcRowStart = frameBase + (y * descriptor.columns + startX) * descriptor.bytesPerPixel
+                let srcRowEnd = srcRowStart + newWidth * descriptor.bytesPerPixel
 
-            guard srcRowEnd <= pixelData.count else {
-                throw PixelEditError.pixelDataTruncated
+                guard srcRowEnd <= pixelData.count else {
+                    throw PixelEditError.pixelDataTruncated
+                }
+
+                let lower = pixelData.index(pixelData.startIndex, offsetBy: srcRowStart)
+                let upper = pixelData.index(pixelData.startIndex, offsetBy: srcRowEnd)
+                croppedData.append(pixelData[lower..<upper])
             }
-
-            let lower = pixelData.index(pixelData.startIndex, offsetBy: srcRowStart)
-            let upper = pixelData.index(pixelData.startIndex, offsetBy: srcRowEnd)
-            croppedData.append(pixelData[lower..<upper])
         }
 
         return (croppedData, newWidth, newHeight)
@@ -218,10 +282,10 @@ public struct PixelEditor {
             throw PixelEditError.invalidWindowWidth
         }
 
-        let totalPixels = descriptor.rows * descriptor.columns * descriptor.samplesPerPixel
+        let totalSamples = descriptor.frameSampleCount * descriptor.numberOfFrames
         let maxOutput = Double(descriptor.maxValue)
 
-        for i in 0..<totalPixels {
+        for i in 0..<totalSamples {
             let rawValue = getPixelValue(from: pixelData, at: i, descriptor: descriptor)
             let input = Double(rawValue)
 
@@ -243,10 +307,10 @@ public struct PixelEditor {
     }
 
     func applyInvert(pixelData: inout Data, descriptor: PixelEditDescriptor) throws {
-        let totalPixels = descriptor.rows * descriptor.columns * descriptor.samplesPerPixel
+        let totalSamples = descriptor.frameSampleCount * descriptor.numberOfFrames
         let maxVal = descriptor.maxValue
 
-        for i in 0..<totalPixels {
+        for i in 0..<totalSamples {
             let value = getPixelValue(from: pixelData, at: i, descriptor: descriptor)
             let inverted = maxVal - value
             setPixelValue(in: &pixelData, at: i, value: inverted, descriptor: descriptor)
@@ -268,6 +332,7 @@ public struct PixelEditor {
         let highBit = dataSet.uint16(for: .highBit) ?? (bitsStored - 1)
         let pixelRep = dataSet.uint16(for: .pixelRepresentation) ?? 0
         let samplesPerPixel = dataSet.uint16(for: .samplesPerPixel) ?? 1
+        let numberOfFrames = max(1, dataSet.numberOfFrames ?? 1)
 
         return PixelEditDescriptor(
             rows: Int(rows),
@@ -276,8 +341,24 @@ public struct PixelEditor {
             bitsStored: Int(bitsStored),
             highBit: Int(highBit),
             pixelRepresentation: Int(pixelRep),
-            samplesPerPixel: Int(samplesPerPixel)
+            samplesPerPixel: Int(samplesPerPixel),
+            numberOfFrames: numberOfFrames
         )
+    }
+
+    /// Returns a copy of the File Meta Information re-pointed at Explicit VR Little
+    /// Endian, with the group length (0002,0000) recomputed so the FMI stays
+    /// self-consistent after the transfer-syntax change.
+    private func uncompressedFileMeta(from meta: DataSet) -> DataSet {
+        var fmi = meta
+        fmi.setString(TransferSyntax.explicitVRLittleEndian.uid, for: .transferSyntaxUID, vr: .UI)
+        // Recompute group length over everything that follows it.
+        fmi.remove(tag: .fileMetaInformationGroupLength)
+        let writer = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+        let bytes = fmi.write(using: writer)
+        fmi[.fileMetaInformationGroupLength] = DataElement.uint32(
+            tag: .fileMetaInformationGroupLength, value: UInt32(bytes.count))
+        return fmi
     }
 
     private func descriptorWith(_ base: PixelEditDescriptor, rows: Int, columns: Int) -> PixelEditDescriptor {
@@ -288,7 +369,8 @@ public struct PixelEditor {
             bitsStored: base.bitsStored,
             highBit: base.highBit,
             pixelRepresentation: base.pixelRepresentation,
-            samplesPerPixel: base.samplesPerPixel
+            samplesPerPixel: base.samplesPerPixel,
+            numberOfFrames: base.numberOfFrames
         )
     }
 

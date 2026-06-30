@@ -103,17 +103,16 @@ extension DICOMCompress {
         mutating func run() throws {
             let manager = CompressionManager()
 
-            let backendPref = parseBackendPreference(backend)
+            // Input parsing + all console text come from the shared
+            // CompressionConsole so the CLI and the Studio Workshop never drift.
+            let backendPref = CompressionConsole.backendPreference(for: backend)
             if verbose {
-                fprintln("Compressing: \(input)")
-                fprintln("Codec: \(codec)")
-                if let q = quality {
-                    fprintln("Quality: \(q)")
-                }
-                fprintln("Backend: \(backendPref.effective.displayName)")
+                fprint(CompressionConsole.compressPreamble(
+                    input: input, codec: codec, quality: quality,
+                    backendDisplayName: backendPref.effective.displayName))
             }
 
-            let qualityPreset = try parseQuality(quality)
+            let qualityPreset = try CompressionConsole.parseQuality(quality)
 
             do {
                 try manager.compressFile(
@@ -122,17 +121,12 @@ extension DICOMCompress {
                     codec: codec,
                     quality: qualityPreset
                 )
-                fprintln("Compressed: \(input) → \(output)")
+                fprint(CompressionConsole.compressResultLine(input: input, output: output))
 
                 if verbose {
                     let inputSize = try FileManager.default.attributesOfItem(atPath: input)[.size] as? Int ?? 0
                     let outputSize = try FileManager.default.attributesOfItem(atPath: output)[.size] as? Int ?? 0
-                    fprintln("Input size:  \(formatBytes(inputSize))")
-                    fprintln("Output size: \(formatBytes(outputSize))")
-                    if inputSize > 0 {
-                        let ratio = Double(outputSize) / Double(inputSize) * 100.0
-                        fprintln("Ratio: \(String(format: "%.1f%%", ratio))")
-                    }
+                    fprint(CompressionConsole.compressStats(inputSize: inputSize, outputSize: outputSize))
                 }
             } catch {
                 fprintln("Error: \(error)")
@@ -188,8 +182,9 @@ extension DICOMCompress {
             let targetSyntax = CompressionManager.transferSyntax(for: syntax)!
 
             if verbose {
-                fprintln("Decompressing: \(input)")
-                fprintln("Target syntax: \(CompressionManager.transferSyntaxDisplayName(targetSyntax))")
+                fprint(CompressionConsole.decompressPreamble(
+                    input: input,
+                    targetSyntaxName: CompressionManager.transferSyntaxDisplayName(targetSyntax)))
             }
 
             do {
@@ -198,13 +193,12 @@ extension DICOMCompress {
                     outputPath: output,
                     syntax: targetSyntax
                 )
-                fprintln("Decompressed: \(input) → \(output)")
+                fprint(CompressionConsole.decompressResultLine(input: input, output: output))
 
                 if verbose {
                     let inputSize = try FileManager.default.attributesOfItem(atPath: input)[.size] as? Int ?? 0
                     let outputSize = try FileManager.default.attributesOfItem(atPath: output)[.size] as? Int ?? 0
-                    fprintln("Input size:  \(formatBytes(inputSize))")
-                    fprintln("Output size: \(formatBytes(outputSize))")
+                    fprint(CompressionConsole.decompressStats(inputSize: inputSize, outputSize: outputSize))
                 }
             } catch {
                 fprintln("Error: \(error)")
@@ -282,7 +276,7 @@ extension DICOMCompress {
             else { print("Codec: None (uncompressed)") }
 
             if let size = info.pixelDataSize {
-                print("Pixel Data Size: \(formatBytes(size))")
+                print("Pixel Data Size: \(CompressionConsole.formatBytes(size))")
             } else {
                 print("Pixel Data Size: N/A (no pixel data)")
             }
@@ -428,9 +422,9 @@ extension DICOMCompress {
                 throw ExitCode.failure
             }
 
-            fprintln("Found \(files.count) DICOM file(s)")
+            fprint(CompressionConsole.batchFoundLine(count: files.count))
 
-            let qualityPreset = try parseQuality(quality)
+            let qualityPreset = try CompressionConsole.parseQuality(quality)
             var successCount = 0
             var failCount = 0
 
@@ -472,18 +466,18 @@ extension DICOMCompress {
                     }
                     successCount += 1
                     if verbose {
-                        fprintln("  ✅ \(relativePath)")
+                        fprint(CompressionConsole.batchProgressLine(success: true, relativePath: relativePath, error: nil))
                     }
                 } catch {
                     failCount += 1
                     if verbose {
-                        fprintln("  ❌ \(relativePath): \(error)")
+                        fprint(CompressionConsole.batchProgressLine(success: false, relativePath: relativePath, error: "\(error)"))
                     }
                 }
             }
 
-            let action = decompress ? "Decompressed" : "Compressed"
-            fprintln("\(action): \(successCount) succeeded, \(failCount) failed out of \(files.count) files")
+            fprint(CompressionConsole.batchSummaryLine(
+                decompress: decompress, success: successCount, fail: failCount, total: files.count))
 
             if failCount > 0 {
                 throw ExitCode.failure
@@ -498,41 +492,11 @@ private func fprintln(_ message: String) {
     FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
 
-private func formatBytes(_ bytes: Int) -> String {
-    if bytes < 1024 {
-        return "\(bytes) B"
-    } else if bytes < 1024 * 1024 {
-        return String(format: "%.1f KB", Double(bytes) / 1024.0)
-    } else if bytes < 1024 * 1024 * 1024 {
-        return String(format: "%.1f MB", Double(bytes) / (1024.0 * 1024.0))
-    } else {
-        return String(format: "%.1f GB", Double(bytes) / (1024.0 * 1024.0 * 1024.0))
-    }
-}
-
-@available(macOS 10.15, *)
-private func parseQuality(_ qualityString: String?) throws -> CompressionQuality? {
-    guard let qs = qualityString else { return nil }
-    switch qs.lowercased() {
-    case "maximum": return .maximum
-    case "high": return .high
-    case "medium": return .medium
-    case "low": return .low
-    default:
-        if let value = Double(qs), value >= 0.0, value <= 1.0 {
-            return .custom(value)
-        }
-        throw ValidationError("Invalid quality '\(qs)'. Use maximum, high, medium, low, or a value 0.0-1.0")
-    }
-}
-
-private func parseBackendPreference(_ rawValue: String) -> CodecBackendPreference {
-    switch rawValue.lowercased() {
-    case "metal":       return .metal
-    case "accelerate":  return .accelerate
-    case "scalar":      return .scalar
-    default:            return .auto
-    }
+/// Writes pre-formatted text (already newline-terminated) to stderr verbatim.
+/// Used with `CompressionConsole` builders so the CLI emits byte-for-byte the
+/// same text DICOMStudio's Workshop renders. See CompressionConsole.swift.
+private func fprint(_ message: String) {
+    FileHandle.standardError.write(message.data(using: .utf8) ?? Data())
 }
 
 // MARK: - Backends subcommand

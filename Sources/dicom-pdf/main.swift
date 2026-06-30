@@ -133,9 +133,10 @@ struct DICOMPdf: ParsableCommand {
         
         // Show metadata if requested
         if showMetadata {
-            printDocumentMetadata(document)
+            // Shared renderer (DICOMKit) — emitted verbatim by the Studio reimplementation too.
+            print(document.metadataReport(), terminator: "")
         }
-        
+
         // Determine output path
         let finalOutputPath: String
         if let specifiedOutput = outputPath {
@@ -144,17 +145,17 @@ struct DICOMPdf: ParsableCommand {
             // Auto-generate output filename based on document type
             let inputURL = URL(fileURLWithPath: inputPath)
             let baseName = inputURL.deletingPathExtension().lastPathComponent
-            let fileExtension = extensionForDocumentType(document.documentType)
+            let fileExtension = document.documentType.fileExtension
             finalOutputPath = inputURL.deletingLastPathComponent()
                 .appendingPathComponent("\(baseName).\(fileExtension)")
                 .path
         }
-        
+
         // Write document data
         try document.documentData.write(to: URL(fileURLWithPath: finalOutputPath))
-        
+
         if verbose {
-            print("✓ Extracted \(document.documentType) (\(formatFileSize(Int64(document.documentData.count))))")
+            print("✓ Extracted \(document.documentType) (\(EncapsulatedDocumentFormatting.fileSize(Int64(document.documentData.count))))")
             print("  Output: \(finalOutputPath)")
         } else {
             print("Extracted: \(finalOutputPath)")
@@ -207,7 +208,7 @@ struct DICOMPdf: ParsableCommand {
                 
                 // Generate output filename
                 let baseName = fileURL.deletingPathExtension().lastPathComponent
-                let fileExtension = extensionForDocumentType(document.documentType)
+                let fileExtension = document.documentType.fileExtension
                 let outputFileURL = outputDirURL.appendingPathComponent("\(baseName).\(fileExtension)")
                 
                 // Write document data
@@ -247,38 +248,32 @@ struct DICOMPdf: ParsableCommand {
         // Read document file
         let documentData = try Data(contentsOf: URL(fileURLWithPath: inputPath))
         
-        // Detect document type from file extension
+        // Detect document type from file extension (shared DICOMKit mapping)
         let inputURL = URL(fileURLWithPath: inputPath)
-        let fileExtension = inputURL.pathExtension.lowercased()
-        let documentType = documentTypeFromExtension(fileExtension)
-        
+        let documentType = EncapsulatedDocumentType(fileExtension: inputURL.pathExtension)
+
         // Validate required metadata for encapsulation
         guard let patientName = patientName, !patientName.isEmpty else {
             throw ValidationError("Patient Name is required for encapsulation (--patient-name)")
         }
-        
+
         guard let patientId = patientId, !patientId.isEmpty else {
             throw ValidationError("Patient ID is required for encapsulation (--patient-id)")
         }
-        
-        // Generate UIDs if not provided
-        let finalStudyUID = studyUid ?? generateUID()
-        let finalSeriesUID = seriesUid ?? generateUID()
-        
-        // Determine modality
+
+        // Generate UIDs if not provided (shared UIDGenerator — same as the app).
+        let finalStudyUID = studyUid ?? UIDGenerator.generateUID().value
+        let finalSeriesUID = seriesUid ?? UIDGenerator.generateUID().value
+
+        // Determine modality (explicit override, else the document-type default).
         let finalModality: String
-        if let specifiedModality = modality {
-            finalModality = specifiedModality
+        if let m = modality, !m.isEmpty {
+            finalModality = m
         } else {
-            switch documentType {
-            case .stl, .obj, .mtl:
-                finalModality = "M3D"
-            default:
-                finalModality = "DOC"
-            }
+            finalModality = documentType.defaultModality
         }
-        
-        // Build encapsulated document
+
+        // Build encapsulated document (shared option chain).
         let builder = EncapsulatedDocumentBuilder(
             documentData: documentData,
             mimeType: documentType.expectedMIMEType,
@@ -286,24 +281,16 @@ struct DICOMPdf: ParsableCommand {
             studyInstanceUID: finalStudyUID,
             seriesInstanceUID: finalSeriesUID
         )
-        .setPatientName(patientName)
-        .setPatientID(patientId)
-        .setModality(finalModality)
-        
-        // Add optional metadata
-        if let title = title {
-            _ = builder.setDocumentTitle(title)
-        }
-        if let seriesDesc = seriesDescription {
-            _ = builder.setSeriesDescription(seriesDesc)
-        }
-        if let seriesNum = seriesNumber {
-            _ = builder.setSeriesNumber(seriesNum)
-        }
-        if let instanceNum = instanceNumber {
-            _ = builder.setInstanceNumber(instanceNum)
-        }
-        
+        .applyStandardOptions(
+            patientName: patientName,
+            patientID: patientId,
+            modality: finalModality,
+            title: title,
+            seriesDescription: seriesDescription,
+            seriesNumber: seriesNumber,
+            instanceNumber: instanceNumber
+        )
+
         let dataSet = try builder.buildDataSet()
         
         // Create DICOM file
@@ -329,8 +316,8 @@ struct DICOMPdf: ParsableCommand {
         try dicomData.write(to: URL(fileURLWithPath: finalOutputPath))
         
         if verbose {
-            print("✓ Encapsulated \(documentType) (\(formatFileSize(Int64(documentData.count))))")
-            print("  DICOM size: \(formatFileSize(Int64(dicomData.count)))")
+            print("✓ Encapsulated \(documentType) (\(EncapsulatedDocumentFormatting.fileSize(Int64(documentData.count))))")
+            print("  DICOM size: \(EncapsulatedDocumentFormatting.fileSize(Int64(dicomData.count)))")
             print("  Patient: \(patientName) [\(patientId)]")
             print("  Study UID: \(finalStudyUID)")
             print("  Output: \(finalOutputPath)")
@@ -372,9 +359,9 @@ struct DICOMPdf: ParsableCommand {
         var failureCount = 0
         var instanceNum = instanceNumber ?? 1
         
-        // Generate series UIDs once for the batch
-        let finalStudyUID = studyUid ?? generateUID()
-        let finalSeriesUID = seriesUid ?? generateUID()
+        // Generate series UIDs once for the batch (shared UIDGenerator — same as the app).
+        let finalStudyUID = studyUid ?? UIDGenerator.generateUID().value
+        let finalSeriesUID = seriesUid ?? UIDGenerator.generateUID().value
         
         // Enumerate document files
         let enumerator = FileManager.default.enumerator(
@@ -390,34 +377,28 @@ struct DICOMPdf: ParsableCommand {
                 continue
             }
             
-            // Check if it's a supported document type
-            let fileExtension = fileURL.pathExtension.lowercased()
-            let documentType = documentTypeFromExtension(fileExtension)
+            // Check if it's a supported document type (shared DICOMKit mapping)
+            let documentType = EncapsulatedDocumentType(fileExtension: fileURL.pathExtension)
             guard documentType != .unknown else {
                 if verbose {
                     print("⊘ \(fileURL.lastPathComponent): Unsupported file type")
                 }
                 continue
             }
-            
+
             // Try to encapsulate this file
             do {
                 let documentData = try Data(contentsOf: fileURL)
-                
-                // Determine modality
+
+                // Determine modality (explicit override, else the document-type default).
                 let finalModality: String
-                if let specifiedModality = modality {
-                    finalModality = specifiedModality
+                if let m = modality, !m.isEmpty {
+                    finalModality = m
                 } else {
-                    switch documentType {
-                    case .stl, .obj, .mtl:
-                        finalModality = "M3D"
-                    default:
-                        finalModality = "DOC"
-                    }
+                    finalModality = documentType.defaultModality
                 }
-                
-                // Build encapsulated document
+
+                // Build encapsulated document (shared option chain; batch uses the running instance counter).
                 let builder = EncapsulatedDocumentBuilder(
                     documentData: documentData,
                     mimeType: documentType.expectedMIMEType,
@@ -425,22 +406,16 @@ struct DICOMPdf: ParsableCommand {
                     studyInstanceUID: finalStudyUID,
                     seriesInstanceUID: finalSeriesUID
                 )
-                .setPatientName(patientName)
-                .setPatientID(patientId)
-                .setModality(finalModality)
-                .setInstanceNumber(instanceNum)
-                
-                // Add optional metadata
-                if let title = title {
-                    _ = builder.setDocumentTitle(title)
-                }
-                if let seriesDesc = seriesDescription {
-                    _ = builder.setSeriesDescription(seriesDesc)
-                }
-                if let seriesNum = seriesNumber {
-                    _ = builder.setSeriesNumber(seriesNum)
-                }
-                
+                .applyStandardOptions(
+                    patientName: patientName,
+                    patientID: patientId,
+                    modality: finalModality,
+                    title: title,
+                    seriesDescription: seriesDescription,
+                    seriesNumber: seriesNumber,
+                    instanceNumber: instanceNum
+                )
+
                 let dataSet = try builder.buildDataSet()
                 
                 // Create DICOM file
@@ -485,103 +460,12 @@ struct DICOMPdf: ParsableCommand {
     }
     
     // MARK: - Helper Methods
-    
-    private func printDocumentMetadata(_ document: EncapsulatedDocument) {
-        print()
-        print("Document Metadata:")
-        print("  Type: \(document.documentType)")
-        print("  MIME Type: \(document.mimeType)")
-        print("  Size: \(formatFileSize(Int64(document.documentData.count)))")
-        print("  SOP Class: \(document.sopClassUID)")
-        print("  SOP Instance: \(document.sopInstanceUID)")
-        
-        if let title = document.documentTitle {
-            print("  Title: \(title)")
-        }
-        
-        print()
-        print("Patient Information:")
-        if let patientName = document.patientName {
-            print("  Name: \(patientName)")
-        }
-        if let patientID = document.patientID {
-            print("  ID: \(patientID)")
-        }
-        
-        print()
-        print("Study/Series:")
-        print("  Study UID: \(document.studyInstanceUID)")
-        print("  Series UID: \(document.seriesInstanceUID)")
-        if let modality = document.modality {
-            print("  Modality: \(modality)")
-        }
-        if let seriesDesc = document.seriesDescription {
-            print("  Series Description: \(seriesDesc)")
-        }
-        if let seriesNum = document.seriesNumber {
-            print("  Series Number: \(seriesNum)")
-        }
-        if let instanceNum = document.instanceNumber {
-            print("  Instance Number: \(instanceNum)")
-        }
-        print()
-    }
-    
-    private func extensionForDocumentType(_ type: EncapsulatedDocumentType) -> String {
-        switch type {
-        case .pdf:
-            return "pdf"
-        case .cda:
-            return "xml"
-        case .stl:
-            return "stl"
-        case .obj:
-            return "obj"
-        case .mtl:
-            return "mtl"
-        case .unknown:
-            return "bin"
-        }
-    }
-    
-    private func documentTypeFromExtension(_ extension: String) -> EncapsulatedDocumentType {
-        switch `extension` {
-        case "pdf":
-            return .pdf
-        case "xml":
-            return .cda
-        case "stl":
-            return .stl
-        case "obj":
-            return .obj
-        case "mtl":
-            return .mtl
-        default:
-            return .unknown
-        }
-    }
-    
-    private func formatFileSize(_ bytes: Int64) -> String {
-        let kb = Double(bytes) / 1024
-        let mb = kb / 1024
-        
-        if mb >= 1 {
-            return String(format: "%.2f MB", mb)
-        } else if kb >= 1 {
-            return String(format: "%.2f KB", kb)
-        } else {
-            return "\(bytes) bytes"
-        }
-    }
-    
-    private func generateUID() -> String {
-        // Generate a DICOM UID
-        // Using a simple timestamp-based UID for now
-        // In production, should use proper UID root and ensure uniqueness
-        let timestamp = Date().timeIntervalSince1970
-        let random = UInt32.random(in: 0...999999)
-        return "2.25.\(Int(timestamp * 1000000)).\(random)"
-    }
+    //
+    // Document-type ↔ file-extension mapping, default modality, the byte-size
+    // formatter, the `--show-metadata` report, and the builder option chain all
+    // moved to DICOMKit's shared `EncapsulatedDocumentWorkflow` so the CLI and the
+    // Studio reimplementation cannot drift. UID generation now uses the shared
+    // `UIDGenerator` (DICOMCore) — the same generator the app uses.
 }
 
 enum ExportFormat: String, ExpressibleByArgument {
