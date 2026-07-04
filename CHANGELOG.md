@@ -7,6 +7,91 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed — P2/P3 Console-Builder and Dir-Walk Dedup (2026-07-04)
+
+Follow-up to the remediation batch: every remaining hand-duplicated console block and directory
+walk now lives in one shared builder/gatherer that both the CLI and the Workshop call, so the two
+surfaces can no longer drift (`CLI_TOOLS_SHARED_CORE_VERIFICATION.md` → *P — duplication*).
+
+- **New shared console builders (CLI text canonical):** `AnonConsole` (+ shared
+  `Anonymizer.parseFlexibleTag`), `PixelEditConsole`, `ImageConsole`, `ExportConsole`,
+  `UIDConsole`, `CompressionConsole.infoText/infoJSON/backendsText/backendsJSON`,
+  `NetworkConsole` qr-line additions, `UPSConsole` (DICOMWeb), and
+  `NetworkConsole.mwlCreateDetailBlock` (dedups the app's HL7/REST MWL-create branches).
+- **New shared gatherers:** `FileGatherer.regularFiles(under:recursive:)` (sorted,
+  content-agnostic walk — anon/validate/convert/pdf/export/image on both surfaces) and
+  `FrameMerger.gatherInputFiles(from:recursive:)` + `FrameMerger.isDICOMFile` (dicom-merge).
+- **Real drift found and fixed while hoisting** (all previously hiding in un-goldened paths):
+  the app's pixedit executor double-printed the Image line, added an "Edited pixel data:" line
+  and a byte-size suffix the CLI never prints; anon's per-file verbose text and single-file
+  failure behavior differed from the CLI; UPS create-workitem/change-state used app-invented
+  wording instead of the CLI's response text; dicom-merge sorted its inputs in-app but not in
+  the CLI, so merged instance order could differ between surfaces (both now sort).
+- **Deterministic batch order:** all shared walks sort by path, so directory-mode output order
+  is stable run-to-run on both surfaces (previously filesystem enumeration order).
+- App-only additions that have no CLI counterpart (sandbox redirect notes, UPS pre-flight
+  guidance and error hints, MWL create banners) are unchanged.
+
+### Changed — Three-Axis Shared-Core Remediation Batch (2026-07-04)
+
+Follow-up to the three-axis verification of all 40 tools (`CLI_TOOLS_SHARED_CORE_VERIFICATION.md`,
+full per-claim outcomes in its *Remediation outcomes* section). Eleven tools were held by user
+triage (measure, viewer, 3d, ai, report, gateway, cloud, server, j2k, jpip, print) and the network
+port/hostname workflow was left untouched as planned. Highlights:
+
+- **New shared surfaces (CLI + Workshop call one implementation):**
+  - `DataExchangeWorkflow` (DICOMWeb) — the entire dicom-json/dicom-xml pipeline (default output
+    path, always-write-file behavior, tag filtering, metadata-only, verbose lines). Fixes the app's
+    divergent print-to-console/refuse-reverse behavior.
+  - `ConvertConsole` (DICOMKit) — dicom-convert's terse console (transcode line, batch ✓/✗ +
+    `Conversion complete:` summary); the app's extra Read/Wrote/Transfer-Syntax chrome removed.
+  - `TagEditConsole` (DICOMKit) — dicom-tags change block + `Output written to:` completion line
+    (the app previously printed an unconditional count and `Saved:`).
+  - `QRSessionState` (DICOMNetwork) — dicom-qr's save-state model hoisted from the executable;
+    `--save-state` now also works in the Workshop and app-saved states resume via `dicom-qr resume`.
+  - App validate now renders via the shared `ValidationReport` (the drifted app copy with its
+    `Exit code:` annotation block was deleted); app compress batch uses the shared
+    `findDICOMFiles`; app uid/pixedit call the shared `validateFileUIDs`/`parseRegion`.
+- **Formerly-inert flags implemented:** `dicom-merge --format enhanced-ct/mr/xa` (Enhanced SOP
+  Class + Shared/Per-frame Functional Groups), `dicom-script run --parallel` (concurrent pipeline
+  commands with source-order output replay), `dicom-compress --backend`
+  (`CompressionConfiguration.forcedBackend` → J2K/HTJ2K Metal GPU encode; other codecs unaffected),
+  `dicom-image --use-exif` under `--split-pages` (per-page EXIF), `dicom-dcmdir update`
+  (real implementation via `DICOMDIRWorkflow.updateDirectory`), `dicom-query
+  --referring-physician` (now a study-level C-FIND matching key on both surfaces).
+- **Removed (declared no-ops):** `dicom-json --format standard|dicomweb` and `--stream` (goldens
+  proved byte-identical output for every value; the encoder always emits the DICOMweb PS3.18 JSON
+  model); the app-only qido timeout field.
+- **Wire/exit-code correctness:** app mpps update no longer sends a `studyInstanceUID` the CLI
+  never sets; anon in-app exit code is now structured (any failed file → 1) instead of sniffed
+  from output text; dump's No-Color toggle is honored (defaults ON in-app with a truthful
+  `--no-color` preview).
+- **Surface adds:** uid regenerate accepts multiple inputs in-app (cross-file UID mapping like the
+  CLI); ups gains the CLI's `--create <json-file>` form; qido gains `--verbose`.
+- **New round-trip oracles:** merge enhanced-format (SOP class + functional groups + standard
+  unchanged), script parallel-pipeline (rendezvous concurrency + source-order replay + failure
+  propagation), dcmdir update (add + prune-missing).
+
+### Added — JPEG XL Lossy Encode (Transfer Syntax …4.112) in dicom-compress
+
+- **`dicom-compress compress --codec jpeg-xl`** now produces **lossy** JPEG XL (`1.2.840.10008.1.2.4.112`, general JPEG XL) via JXLSwift's VarDCT encoder, alongside the existing lossless JPEG XL (`…4.110`). Both the `dicom-compress` CLI and the DICOMStudio CLI Workshop drive the identical shared `CompressionManager` / `CodecRegistry` path, so the two surfaces cannot drift. `--quality maximum|high|medium|low|0.0–1.0` maps to the JPEG XL quality/distance curve (mirroring the `--quality` mapping already used by the JPEG and JPEG-LS lossy codecs).
+  - **Codec naming** aligns with the rest of the family (`jpeg2000`/`htj2k`): the bare `jpeg-xl`/`jxl` names now resolve to the **lossy** syntax (`…4.112`); the explicit `jpeg-xl-lossless`/`jxl-lossless` names select the lossless syntax (`…4.110`). `jpeg-xl-lossy`/`jxl-lossy` are accepted aliases for the lossy target. (Behaviour change: `jpeg-xl`/`jxl` previously encoded lossless.)
+  - **`JXLCodec`** (`Sources/DICOMCore/JXLCodec.swift`): added `…4.112` to `supportedEncodingTransferSyntaxes`, a per-instance `encodingTransferSyntaxUID` that selects the encode mode (…4.110 → lossless Modular, distance 0; …4.112 → lossy VarDCT at a quality-derived distance), and a `jxlQuality(from:)` mapping. JXLSwift's VarDCT lossy encoder covers 8-/16-bit RGB/RGBA within its size limits; for inputs it can't take (grayscale, oversized) it transparently falls back to the lossless Modular path, so a `…4.112` encode always yields a valid — and conformant, since the general syntax permits both — JPEG XL codestream.
+  - **`CodecRegistry`** (`Sources/DICOMCore/ImageCodec.swift`): the JPEG XL encoder is now wired per-UID (`JXLCodec(encodingTransferSyntaxUID: uid)` for `…4.110` and `…4.112`), mirroring the per-syntax encoder wiring already used for JLISwift / J2KSwift.
+  - **`CompressionManager`** (`Sources/DICOMKit/Compression/CompressionManager.swift`): codec-name map splits JPEG XL into a lossless entry (`jpeg-xl-lossless`/`jxl-lossless` → `…4.110`) and a lossy entry (`jpeg-xl`/`jxl`/`jpeg-xl-lossy`/`jxl-lossy` → `…4.112`). Flows automatically to the CLI validator, the `--help` codec list, and the DICOMStudio Workshop codec picker (which derives from `supportedCodecs()`).
+  - **DICOMStudio** (`Sources/DICOMStudio/Views/DataExchangeView.swift`): the Data Exchange compression-algorithm picker gains "JPEG XL Lossless" and "JPEG XL Lossy" entries, with `jpeg-xl` marked lossy.
+  - **Tests** (`Tests/DICOMCoreTests/JXLCodecRegistryTests.swift`, `CompressionCodecMapTests.swift`): registry now exposes an encoder for `…4.112`; new round-trips prove an RGB lossy encode decodes back to source dimensions and a grayscale lossy request falls back to lossless (bit-exact); the codec-map parity test pins `jpeg-xl` → `…4.112` and `jpeg-xl-lossless` → `…4.110`.
+  - **Note:** `dicom-convert`'s `jpeg-xl`/`jxl` `--transfer-syntax` aliases remain **lossless** (`…4.112` is not yet a convert target) — this change is scoped to `dicom-compress`.
+
+### Added — JPEG XL JPEG Recompression (Transfer Syntax …4.111) in dicom-convert
+
+- **`dicom-convert --transfer-syntax JPEGXLRecompression`** now losslessly transcodes a JPEG Baseline (…4.50) file to JPEG XL JPEG Recompression (`1.2.840.10008.1.2.4.111`) and back. Unlike every other codec, recompression is not a pixel operation: it wraps the existing JPEG bitstream in a JPEG XL container (with a `jbrd` reconstruction box) so the original JPEG is recovered **byte-for-byte** — no additional loss on top of the JPEG the file already carries. The reverse (`…4.111` → `JPEGBaseline`) reconstructs the byte-identical original JPEG.
+  - **`JXLCodec`** (`Sources/DICOMCore/JXLCodec.swift`): added the fragment-level `recompressJPEGFragment(_:)` / `reconstructJPEGFragment(_:)` helpers (backed by JXLSwift's `encodeLosslessJPEG` / `decodeLosslessJPEG`), added `…4.111` to the decodable transfer syntaxes, and routed the `…4.111` pixel decode through JPEG reconstruction → the JPEG codec so decoded pixels match the wrapped JPEG with the descriptor's channel layout (rather than the VarDCT bridge's colour-space representation). The forward encode is deliberately NOT registered as a pixel `ImageEncoder` (recompression takes JPEG bytes, not pixels).
+  - **`TransferSyntaxConverter`** (`Sources/DICOMCore/TransferSyntaxConverter.swift`): added `isJXLRecompressionForward` / `isJXLRecompressionReverse` predicates (gated to JPEG Baseline ↔ …4.111, matching JXLSwift's baseline-DCT scope), a fragment-level `transcodeJXLRecompression(…)` path (no pixel decode/re-encode — structurally mirrors the J2K↔HTJ2K fast path), the `canTranscode` admission for these pairs, and a lossless-guard bypass so a lossy-Baseline → …4.111 wrap is correctly treated as lossless (it adds no loss).
+  - **`DICOMConverter`** (`Sources/DICOMKit/DICOMConverter.swift`): added `JPEGXLRecompression` to the shared convert target catalog, so the new target flows automatically to the CLI `--transfer-syntax` help, the DICOMStudio CLI Workshop picker, the representative parameter catalog, and `parseTarget(_:)` — the CLI and the Workshop share one code path. It is convert-only (not a `dicom-compress`/`CompressionManager` pixel codec).
+  - **CLI parity**: `CLIContracts.json` transfer-syntax abstract updated; `cli-parity-gen` gains a derived `syn-ct-baseline.dcm` JPEG-Baseline fixture (`ctbaseline`) and a `dicom-convert ts-JPEGXLRecompression` decoded-pixel-hash scenario exercising the shared path in both surfaces.
+  - **Tests** (`Tests/DICOMRoundTripTest/ConvertRoundTripTests.swift`): oracle round-trips proving byte-identical JPEG reconstruction through the …4.111 wrap, …4.111 pixel decode equals the wrapped JPEG's pixels, onward transcode …4.111 → J2K Lossless, and rejection of a non-JPEG source.
+
 ### Added — Shared CLI ↔ App Orchestration: CompressionConsole, DICOMConverter, DICOMDIRDumpFormatter, DICOMDIRWorkflow, EncapsulatedDocumentWorkflow
 
 - **`CompressionConsole`** (`Sources/DICOMKit/Compression/CompressionConsole.swift`): Pure shared formatter and input-parser for `dicom-compress`. Both the CLI binary and DICOMStudio's CLI Workshop call this single type for `--quality` / `--backend` parsing, binary byte formatting, and every console line (compress header, stats, batch totals). Replaces duplicated inline formatting on both sides. Mirrors the `NetworkConsole` shared-formatter pattern.
@@ -31,6 +116,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed — PixelEditor Handles Compressed Sources
 
 - **`PixelEditor` decodes encapsulated sources before editing** (`Sources/DICOMKit/PixelEditing/PixelEditor.swift`): Editing a compressed (encapsulated) PixelData element in place corrupts the encoded bitstream; the output — still tagged as the compressed transfer syntax — cannot be decoded by a viewer. `PixelEditor` now detects an encapsulated source, decodes it to native pixels first, and emits the edited result as uncompressed Explicit VR Little Endian. Multi-frame sources are handled correctly.
+
+### Fixed — dicom-pixedit `--invert` Rendered Solid White
+
+- **`PixelEditor` now inverts the VOI window and uses the correct signed pivot** (`Sources/DICOMKit/PixelEditing/PixelEditor.swift`): `dicom-pixedit --invert` (and the CLI Workshop "Invert" toggle, which shares `PixelEditor.processData`) produced a solid-white image. `applyInvert` inverted stored pixels around `2^bitsStored − 1` but never updated the file's VOI Window Center (0028,1050); because the viewer, image exporter, and Horos all honour the stored window by default (`DICOMImageExporter.determineWindowSettings`, rescale-adjusted), every inverted pixel fell outside the unchanged window and clamped to white. Signed data was additionally clamped because the pivot used the unsigned max instead of `−1`. Fixes: (1) invert around `isSigned ? −1 : maxValue`; (2) re-point each Window Center to `slope·pivot + 2·intercept − center` (output-unit equivalent of inverting the stored center around the pivot), leaving Window Width unchanged and no-op when the file carries no stored window; (3) `--apply-window` now bakes into — and resets the stored VOI window to — the full *representable* stored range (signed-aware: `[0, 2^b−1]` unsigned, `[−2^(b−1), 2^(b−1)−1]` signed), so a baked signed image is no longer written into only half the range and rendered ~2× too dark. `formatDS` guards against non-finite values from pathological rescale metadata. Regression tests in `PixelEditorTests` render the inverted frame through the shared viewer/export window policy and assert a true photographic negative (not solid white) for both MONOCHROME2 and MONOCHROME1, plus the signed window-bake range.
 
 ### Added — DICOMKitTests: Parity and Regression Test Suite
 

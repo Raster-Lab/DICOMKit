@@ -35,6 +35,11 @@ struct PixelEditDescriptor {
     var maxValue: Int { (1 << bitsStored) - 1 }
     var isSigned: Bool { pixelRepresentation == 1 }
 
+    /// Lowest representable stored value: 0 unsigned, −2^(bitsStored−1) signed.
+    var storedMin: Int { isSigned ? -(1 << (bitsStored - 1)) : 0 }
+    /// Highest representable stored value: 2^bitsStored−1 unsigned, 2^(bitsStored−1)−1 signed.
+    var storedMax: Int { isSigned ? (1 << (bitsStored - 1)) - 1 : (1 << bitsStored) - 1 }
+
     /// Samples in a single frame (rows × columns × samples-per-pixel).
     var frameSampleCount: Int { rows * columns * samplesPerPixel }
     /// Bytes in a single frame.
@@ -164,6 +169,11 @@ public struct PixelEditor {
                 let currentDescriptor = descriptorWith(descriptor, rows: currentRows, columns: currentColumns)
                 try applyWindowLevel(pixelData: &pixelData, descriptor: currentDescriptor,
                                      center: center, width: width)
+                // Baking a window remaps stored pixels across the full representable stored
+                // range (signed-aware), so the file's old VOI Window Center/Width now
+                // describes the pre-bake mapping and would clip the result. Re-point the
+                // stored VOI window to that range so the baked contrast is what a viewer shows.
+                resetVOIWindowAfterBake(in: &dataSet, descriptor: currentDescriptor)
                 if verbose {
                     log("Applied window/level: center=\(center), width=\(width)")
                 }
@@ -171,6 +181,12 @@ public struct PixelEditor {
             case .invert:
                 let currentDescriptor = descriptorWith(descriptor, rows: currentRows, columns: currentColumns)
                 try applyInvert(pixelData: &pixelData, descriptor: currentDescriptor)
+                // Inverting stored pixel values without also inverting the file's VOI window
+                // pushes every value to the far side of the (unchanged) Window Center, so a
+                // viewer that honours the stored window — DICOMStudio's viewer, the image
+                // exporter, Horos — renders the image solid white. Re-point the window so the
+                // inverted pixels display as a true photographic negative.
+                invertVOIWindow(in: &dataSet, descriptor: currentDescriptor)
                 if verbose {
                     log("Inverted pixel values")
                 }
@@ -206,7 +222,7 @@ public struct PixelEditor {
         try outputData.write(to: outputURL)
 
         if verbose {
-            log("Written: \(outputURL.path)")
+            log(PixelEditConsole.writtenLine(path: outputURL.path))
         }
     }
 
@@ -283,36 +299,44 @@ public struct PixelEditor {
         }
 
         let totalSamples = descriptor.frameSampleCount * descriptor.numberOfFrames
-        let maxOutput = Double(descriptor.maxValue)
+        // Bake into the FULL representable stored range: [0, maxValue] for unsigned,
+        // [−2^(b−1), 2^(b−1)−1] for signed. Scaling to the unsigned max for signed data
+        // would exceed the signed storage clamp, leaving the baked image in only half the
+        // range → it renders ~2× too dark. For unsigned this is identical to the previous
+        // [0, maxValue] mapping.
+        let outMin = Double(descriptor.storedMin)
+        let outMax = Double(descriptor.storedMax)
+        let span = outMax - outMin
 
         for i in 0..<totalSamples {
             let rawValue = getPixelValue(from: pixelData, at: i, descriptor: descriptor)
             let input = Double(rawValue)
 
-            // DICOM window/level formula (PS3.3 C.11.2.1.2)
-            let output: Double
+            // DICOM window/level formula (PS3.3 C.11.2.1.2), normalised to [0, 1].
+            let normalized: Double
             if width <= 1.0 {
-                output = input <= center - 0.5 ? 0.0 : maxOutput
+                normalized = input <= center - 0.5 ? 0.0 : 1.0
             } else if input <= center - 0.5 - (width - 1.0) / 2.0 {
-                output = 0.0
+                normalized = 0.0
             } else if input > center - 0.5 + (width - 1.0) / 2.0 {
-                output = maxOutput
+                normalized = 1.0
             } else {
-                output = ((input - (center - 0.5)) / (width - 1.0) + 0.5) * maxOutput
+                normalized = (input - (center - 0.5)) / (width - 1.0) + 0.5
             }
 
-            let clamped = Int(max(0.0, min(maxOutput, output)))
+            let output = outMin + normalized * span
+            let clamped = Int(max(outMin, min(outMax, output)))
             setPixelValue(in: &pixelData, at: i, value: clamped, descriptor: descriptor)
         }
     }
 
     func applyInvert(pixelData: inout Data, descriptor: PixelEditDescriptor) throws {
         let totalSamples = descriptor.frameSampleCount * descriptor.numberOfFrames
-        let maxVal = descriptor.maxValue
+        let pivot = invertPivot(for: descriptor)
 
         for i in 0..<totalSamples {
             let value = getPixelValue(from: pixelData, at: i, descriptor: descriptor)
-            let inverted = maxVal - value
+            let inverted = pivot - value
             setPixelValue(in: &pixelData, at: i, value: inverted, descriptor: descriptor)
         }
     }
@@ -372,6 +396,72 @@ public struct PixelEditor {
             samplesPerPixel: base.samplesPerPixel,
             numberOfFrames: base.numberOfFrames
         )
+    }
+
+    // MARK: - VOI window (0028,1050/0028,1051) maintenance
+
+    /// The stored value `p` such that `p − stored` reverses the stored-value range onto
+    /// itself — the pivot both the pixel inversion and the VOI-window inversion use.
+    ///
+    /// - Unsigned: the highest stored value, `2^bitsStored − 1`.
+    /// - Signed (two's complement): `min + max = −1`, independent of `bitsStored`
+    ///   (e.g. 16-bit signed spans −32768…32767, whose sum is −1). Using the unsigned
+    ///   `maxValue` here would push every signed sample past the positive clamp, i.e.
+    ///   render the whole frame white — the very bug this fixes.
+    private func invertPivot(for descriptor: PixelEditDescriptor) -> Int {
+        descriptor.isSigned ? -1 : descriptor.maxValue
+    }
+
+    /// Re-points the VOI Window Center so an inverted image displays as a true negative.
+    ///
+    /// Viewers apply the VOI window in *stored* space after the Modality LUT, so a stored
+    /// center `Cs` becomes `pivot − Cs` under the inversion `s' = pivot − s`. Window Center
+    /// is persisted in *output* units (Rescale Slope·stored + Intercept); the equivalent
+    /// output-space transform is `C' = slope·pivot + 2·intercept − C`. Window Width is a
+    /// span and is unchanged. No stored window ⇒ nothing to do (viewers auto-window from the
+    /// pixel range, which already tracks the inverted data). Reference: PS3.3 C.11.2.
+    private func invertVOIWindow(in dataSet: inout DataSet, descriptor: PixelEditDescriptor) {
+        guard let centers = dataSet.decimalStrings(for: .windowCenter), !centers.isEmpty else { return }
+        let slope = dataSet.rescaleSlope()
+        let intercept = dataSet.rescaleIntercept()
+        let k = slope * Double(invertPivot(for: descriptor)) + 2.0 * intercept
+        let newCenters = centers.map { formatDS(k - $0.value) }
+        dataSet.setStrings(newCenters, for: .windowCenter, vr: .DS)
+        if verbose {
+            log("Inverted VOI window center(s) → \(newCenters.joined(separator: "\\")) so the negative displays correctly")
+        }
+    }
+
+    /// Replaces the VOI window after a window/level bake, which has already flattened the
+    /// chosen window across the full representable stored range (`[0, maxValue]` unsigned,
+    /// `[−2^(b−1), 2^(b−1)−1]` signed). A viewer honouring the pre-bake window would re-clip
+    /// the result, so set the stored window to that same full range (stored center
+    /// `(storedMin+storedMax)/2`, width `storedMax−storedMin`, rescaled to output units) —
+    /// exactly the baked contrast. Any per-window explanation no longer applies and is dropped.
+    private func resetVOIWindowAfterBake(in dataSet: inout DataSet, descriptor: PixelEditDescriptor) {
+        let slope = dataSet.rescaleSlope()
+        let intercept = dataSet.rescaleIntercept()
+        let storedCenter = Double(descriptor.storedMin + descriptor.storedMax) / 2.0
+        let storedWidth = Swift.max(1.0, Double(descriptor.storedMax - descriptor.storedMin))
+        let center = slope * storedCenter + intercept
+        let width = Swift.max(1.0, abs(slope) * storedWidth)
+        dataSet.setString(formatDS(center), for: .windowCenter, vr: .DS)
+        dataSet.setString(formatDS(width), for: .windowWidth, vr: .DS)
+        dataSet.remove(tag: .windowCenterWidthExplanation)
+    }
+
+    /// Formats a value as a DICOM Decimal String (DS, ≤ 16 bytes): integral values print
+    /// without a fractional part, others with compact significant-digit precision. Non-finite
+    /// values (only reachable from pathological rescale metadata) degrade to "0" rather than
+    /// emit a non-conformant "nan"/"inf" token.
+    private func formatDS(_ value: Double) -> String {
+        guard value.isFinite else { return "0" }
+        if value == value.rounded(), abs(value) < 1e15 {
+            return String(Int(value.rounded()))
+        }
+        var s = String(format: "%.8g", value)
+        if s.count > 16 { s = String(s.prefix(16)) }
+        return s
     }
 
     private func getPixelValue(from data: Data, at sampleIndex: Int, descriptor: PixelEditDescriptor) -> Int {
@@ -442,5 +532,28 @@ public enum PixelEditError: Error, LocalizedError {
         case .invalidWindowWidth:
             return "Window width must be greater than 0"
         }
+    }
+}
+
+// MARK: - Shared console output (dicom-pixedit CLI ⇄ Workshop executor)
+
+/// Builds the console lines `dicom-pixedit` prints around the engine's own
+/// verbose log (which is shared already via the `PixelEditor` log closure).
+/// The CLI text is canonical; the Workshop executor renders identical strings.
+/// All lines are verbose-gated on both surfaces — a non-verbose run is silent.
+public enum PixelEditConsole {
+    /// Verbose run header (input path, output path, operation count).
+    public static func headerLines(input: String, output: String, operationCount: Int) -> [String] {
+        ["Input: \(input)", "Output: \(output)", "Operations: \(operationCount)"]
+    }
+
+    /// Verbose confirmation after the output file is written.
+    public static func writtenLine(path: String) -> String {
+        "Written: \(path)"
+    }
+
+    /// Verbose end-of-run line.
+    public static func doneLine() -> String {
+        "Done."
     }
 }

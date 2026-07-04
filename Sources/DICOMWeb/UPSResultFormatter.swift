@@ -121,3 +121,52 @@ public struct UPSResultFormatter {
         return string
     }
 }
+
+// MARK: - Shared console output (dicom-wado ups CLI ⇄ Workshop UPS executor)
+
+/// Builds the console text for UPS create and change-state operations. The CLI
+/// text is canonical and the Workshop executor renders identical strings, so the
+/// two surfaces cannot drift.
+public enum UPSConsole {
+    /// The create-workitem response block (UID, optional retrieve URL, warnings).
+    public static func createResponseText(_ response: UPSCreateResponse) -> String {
+        var out = "Created worklist item:\n"
+        out += "  UID: \(response.workitemUID)\n"
+        if let url = response.retrieveURL {
+            out += "  Retrieve URL: \(url)\n"
+        }
+        if !response.warnings.isEmpty {
+            out += "  Warnings:\n"
+            for warning in response.warnings {
+                out += "    - \(warning)\n"
+            }
+        }
+        return out
+    }
+
+    /// Verbose header before a change-state request.
+    public static func updateVerboseHeader(uid: String, stateRaw: String, requestingAE: String?, transactionUID: String?) -> String {
+        var out = "Updating worklist item \(uid) to state: \(stateRaw)\n"
+        if let ae = requestingAE { out += "  Requesting AE: \(ae)\n" }
+        if let tx = transactionUID { out += "  Transaction UID: \(tx)\n" }
+        return out
+    }
+
+    /// Verbose line before the Final State attribute update that precedes COMPLETED.
+    public static func finalStateUpdatingLine() -> String {
+        "Updating workitem with Final State attributes (required before COMPLETED)...\n"
+    }
+
+    /// Verbose line after the Final State attribute update succeeds.
+    public static func finalStateUpdatedLine() -> String {
+        "Final State attributes updated successfully\n"
+    }
+
+    /// The change-state result block (success line, optional transaction UID, warnings).
+    public static func updateResultText(uid: String, stateRaw: String, transactionUID: String?, warnings: [String]) -> String {
+        var out = "Successfully updated worklist item \(uid) to \(stateRaw)\n"
+        if let tx = transactionUID { out += "Transaction UID: \(tx)\n" }
+        for warning in warnings { out += "Warning: \(warning)\n" }
+        return out
+    }
+}

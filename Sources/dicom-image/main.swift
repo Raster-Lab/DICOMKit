@@ -145,9 +145,7 @@ struct DICOMImage: ParsableCommand {
         try FileManager.default.createDirectory(at: outputDirURL, withIntermediateDirectories: true)
 
         if verbose {
-            print("Converting images from: \(inputPath)")
-            print("Output directory: \(outputDirURL.path)")
-            print()
+            print(ImageConsole.batchHeader(inputPath: inputPath, outputDir: outputDirURL.path), terminator: "")
         }
 
         guard let patientName = patientName, !patientName.isEmpty else {
@@ -164,21 +162,12 @@ struct DICOMImage: ParsableCommand {
         let finalStudyUID = studyUid ?? ImageConverter.generateUID()
         let finalSeriesUID = seriesUid ?? ImageConverter.generateUID()
 
-        let enumerator = FileManager.default.enumerator(
-            at: inputURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
+        let fileURLs = FileGatherer.regularFiles(under: inputURL) ?? []
 
-        while let fileURL = enumerator?.nextObject() as? URL {
-            guard let isRegularFile = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile,
-                  isRegularFile else {
-                continue
-            }
-
+        for fileURL in fileURLs {
             guard ImageConverter.isImageFile(fileURL) else {
                 if verbose {
-                    print("⊘ \(fileURL.lastPathComponent): Not a supported image file")
+                    print(ImageConsole.skippedLine(fileName: fileURL.lastPathComponent))
                 }
                 continue
             }
@@ -198,25 +187,20 @@ struct DICOMImage: ParsableCommand {
                 instanceNum += 1
 
                 if verbose {
-                    print("✓ \(fileURL.lastPathComponent) → \(outputFileURL.lastPathComponent)")
+                    print(ImageConsole.fileSuccessLine(inputName: fileURL.lastPathComponent, outputName: outputFileURL.lastPathComponent))
                 }
             } catch {
                 failureCount += 1
                 if verbose {
-                    print("✗ \(fileURL.lastPathComponent): \(error.localizedDescription)")
+                    print(ImageConsole.fileFailureLine(inputName: fileURL.lastPathComponent, message: error.localizedDescription))
                 }
             }
         }
 
-        print()
-        print("Conversion complete:")
-        print("  Successful: \(successCount)")
-        if failureCount > 0 {
-            print("  Failed: \(failureCount)")
-        }
-        print("  Study UID: \(finalStudyUID)")
-        print("  Series UID: \(finalSeriesUID)")
-        print("  Output directory: \(outputDirURL.path)")
+        print(ImageConsole.batchSummary(
+            successful: successCount, failed: failureCount,
+            studyUID: finalStudyUID, seriesUID: finalSeriesUID, outputDir: outputDirURL.path
+        ), terminator: "")
     }
 
     // MARK: - File Processing
@@ -245,7 +229,7 @@ struct DICOMImage: ParsableCommand {
             let outputURL = URL(fileURLWithPath: finalOutputPath)
 
             if verbose {
-                print("Converting image: \(inputPath)")
+                print(ImageConsole.convertingLine(inputPath: inputPath))
             }
 
             let data = try ImageConverter.secondaryCaptureData(
@@ -257,11 +241,7 @@ struct DICOMImage: ParsableCommand {
                 useExif: useExif)
             try data.write(to: outputURL)
 
-            if verbose {
-                print("✓ Converted to: \(finalOutputPath)")
-            } else {
-                print("Converted: \(finalOutputPath)")
-            }
+            print(ImageConsole.convertedLine(outputPath: finalOutputPath, verbose: verbose))
         }
     }
 
@@ -284,10 +264,7 @@ struct DICOMImage: ParsableCommand {
         try FileManager.default.createDirectory(at: outputDirURL, withIntermediateDirectories: true)
 
         if verbose {
-            print("Splitting multi-page TIFF: \(inputURL.lastPathComponent)")
-            print("Pages: \(pageCount)")
-            print("Output directory: \(outputDirURL.path)")
-            print()
+            print(ImageConsole.tiffHeader(fileName: inputURL.lastPathComponent, pages: pageCount, outputDir: outputDirURL.path), terminator: "")
         }
 
         let finalStudyUID = studyUid ?? ImageConverter.generateUID()
@@ -304,23 +281,22 @@ struct DICOMImage: ParsableCommand {
                     metadata: metadata(studyUID: finalStudyUID, seriesUID: finalSeriesUID,
                                        instanceNumber: (instanceNumber ?? 1) + pageIndex,
                                        patientName: patientName, patientID: patientID),
-                    useExif: false)
+                    // Honor --use-exif per page: ImageConverter reads each page's
+                    // own EXIF via CGImageSourceCopyPropertiesAtIndex(pageIndex).
+                    useExif: useExif)
                 try data.write(to: outputFileURL)
 
                 if verbose {
-                    print("✓ Page \(pageIndex + 1) → \(outputFileName)")
+                    print(ImageConsole.pageSuccessLine(page: pageIndex + 1, outputName: outputFileName))
                 }
             } catch {
                 if verbose {
-                    print("✗ Page \(pageIndex + 1): \(error.localizedDescription)")
+                    print(ImageConsole.pageFailureLine(page: pageIndex + 1, message: error.localizedDescription))
                 }
             }
         }
 
-        print()
-        print("Multi-page TIFF conversion complete:")
-        print("  Pages: \(pageCount)")
-        print("  Output directory: \(outputDirURL.path)")
+        print(ImageConsole.tiffSummary(pages: pageCount, outputDir: outputDirURL.path), terminator: "")
     }
     #endif
 }

@@ -26,7 +26,7 @@ final class CompressionConsoleTests: XCTestCase {
             XCTAssertEqual(v, 0.8, accuracy: 1e-9)
         } else { XCTFail("expected .custom(0.8)") }
         XCTAssertThrowsError(try CompressionConsole.parseQuality("nope")) { err in
-            XCTAssertEqual("\(err)", "Invalid quality 'nope'. Use maximum, high, medium, low, or a value 0.0-1.0")
+            XCTAssertEqual("\(err)", "Invalid --quality value 'nope'. Use maximum / high / medium / low, or a number in 0.0...1.0.")
         }
     }
 
@@ -40,10 +40,21 @@ final class CompressionConsoleTests: XCTestCase {
         XCTAssertTrue(String(describing: CompressionConsole.backendPreference(for: "weird")).contains("nil"))
     }
 
+    func testElapsedFormatting() {
+        XCTAssertEqual(CompressionConsole.formatElapsed(0.001),   "0.001s")
+        XCTAssertEqual(CompressionConsole.formatElapsed(0.123),   "0.123s")
+        XCTAssertEqual(CompressionConsole.formatElapsed(1.0),     "1.000s")
+        XCTAssertEqual(CompressionConsole.formatElapsed(1.234),   "1.234s")
+        XCTAssertEqual(CompressionConsole.formatElapsed(59.999),  "59.999s")
+        XCTAssertEqual(CompressionConsole.formatElapsed(60.0),    "1m 0.000s")
+        XCTAssertEqual(CompressionConsole.formatElapsed(83.456),  "1m 23.456s")
+    }
+
     func testCompressLines() {
         XCTAssertEqual(
             CompressionConsole.compressResultLine(input: "/in.dcm", output: "/out.dcm"),
             "Compressed: /in.dcm → /out.dcm\n")
+        // Normal compress preamble (source uncompressed)
         XCTAssertEqual(
             CompressionConsole.compressPreamble(input: "/in.dcm", codec: "htj2k-lossless",
                                                 quality: nil, backendDisplayName: "Metal (GPU)"),
@@ -52,9 +63,47 @@ final class CompressionConsoleTests: XCTestCase {
             CompressionConsole.compressPreamble(input: "/in.dcm", codec: "htj2k",
                                                 quality: " high ", backendDisplayName: "Scalar (CPU)"),
             "Compressing: /in.dcm\nCodec: htj2k\nQuality: high\nBackend: Scalar (CPU)\n")
+        // Recompression preamble (source already compressed): header stays
+        // "Compressing:" (no "Recompressing" wording), plus Source/Target codec lines.
         XCTAssertEqual(
-            CompressionConsole.compressStats(inputSize: 528_924, outputSize: 174_400),
-            "Input size:  516.5 KB\nOutput size: 170.3 KB\nRatio: 33.0%\n")
+            CompressionConsole.compressPreamble(input: "/in.dcm", codec: "jpeg-ls-lossless",
+                                                quality: nil, backendDisplayName: "Metal (GPU)",
+                                                sourceTransferSyntaxName: "JPEG 2000 Lossless"),
+            "Compressing: /in.dcm\nSource codec: JPEG 2000 Lossless (compressed)\nTarget codec: jpeg-ls-lossless\nBackend: Metal (GPU)\n")
+        // Recompress note (non-verbose always-shown line)
+        XCTAssertEqual(
+            CompressionConsole.recompressNoteLine(sourceName: "JPEG 2000 Lossless"),
+            "Note: Source is already compressed (JPEG 2000 Lossless) — decompressing to native pixels first, then re-encoding\n")
+
+        // Compression phase ratio/time lines (time's double space aligns its value
+        // under the one-char-longer ratio label).
+        XCTAssertEqual(CompressionConsole.compressRatioLine(inputSize: 528_924, outputSize: 174_400),
+                       "Compression ratio: 33.0%\n")
+        XCTAssertEqual(CompressionConsole.compressTimeLine(elapsed: 1.234), "Compression time:  1.234s\n")
+        // No input bytes → no ratio line
+        XCTAssertEqual(CompressionConsole.compressRatioLine(inputSize: 0, outputSize: 100), "")
+
+        // Plain compress (uncompressed source): single compression ratio + time.
+        XCTAssertEqual(
+            CompressionConsole.compressSummary(inputSize: 528_924, intermediateSize: nil, outputSize: 174_400,
+                                               decompressElapsed: nil, compressElapsed: 0.5),
+            "Compression ratio: 33.0%\nCompression time:  0.500s\n")
+        XCTAssertEqual(
+            CompressionConsole.compressStats(inputSize: 528_924, intermediateSize: nil, outputSize: 174_400,
+                                             decompressElapsed: nil, compressElapsed: 0.5),
+            "Input size:  516.5 KB\nOutput size: 170.3 KB\nCompression ratio: 33.0%\nCompression time:  0.500s\n")
+
+        // Recompression (already-compressed source → different codec): BOTH phases —
+        // decompression (source→native) then compression (native→target).
+        // input=170.3 KB compressed, native=516.5 KB, target=255.0 KB.
+        XCTAssertEqual(
+            CompressionConsole.compressSummary(inputSize: 174_400, intermediateSize: 528_924, outputSize: 261_120,
+                                               decompressElapsed: 0.042, compressElapsed: 1.234),
+            "Decompression ratio: 303.3%\nDecompression time:  0.042s\nCompression ratio: 49.4%\nCompression time:  1.234s\n")
+        XCTAssertEqual(
+            CompressionConsole.compressStats(inputSize: 174_400, intermediateSize: 528_924, outputSize: 261_120,
+                                             decompressElapsed: 0.042, compressElapsed: 1.234),
+            "Input size:        170.3 KB\nDecompressed size: 516.5 KB\nOutput size:       255.0 KB\nDecompression ratio: 303.3%\nDecompression time:  0.042s\nCompression ratio: 49.4%\nCompression time:  1.234s\n")
     }
 
     func testDecompressLines() {
@@ -64,9 +113,21 @@ final class CompressionConsoleTests: XCTestCase {
         XCTAssertEqual(
             CompressionConsole.decompressPreamble(input: "/c.dcm", targetSyntaxName: "Explicit VR Little Endian"),
             "Decompressing: /c.dcm\nTarget syntax: Explicit VR Little Endian\n")
+        // Expansion ratio + time (input=170.3 KB compressed → output=516.5 KB uncompressed).
+        XCTAssertEqual(CompressionConsole.decompressRatioLine(inputSize: 174_400, outputSize: 528_924),
+                       "Decompression ratio: 303.3%\n")
+        XCTAssertEqual(CompressionConsole.decompressTimeLine(elapsed: 0.042), "Decompression time:  0.042s\n")
+        // Non-verbose summary (ratio + time)
+        XCTAssertEqual(
+            CompressionConsole.decompressSummary(inputSize: 174_400, outputSize: 528_924, elapsed: 0.042),
+            "Decompression ratio: 303.3%\nDecompression time:  0.042s\n")
+        // Verbose stats now include the expansion ratio; ratio shows even without elapsed.
         XCTAssertEqual(
             CompressionConsole.decompressStats(inputSize: 174_400, outputSize: 528_924),
-            "Input size:  170.3 KB\nOutput size: 516.5 KB\n")
+            "Input size:  170.3 KB\nOutput size: 516.5 KB\nDecompression ratio: 303.3%\n")
+        XCTAssertEqual(
+            CompressionConsole.decompressStats(inputSize: 174_400, outputSize: 528_924, elapsed: 0.042),
+            "Input size:  170.3 KB\nOutput size: 516.5 KB\nDecompression ratio: 303.3%\nDecompression time:  0.042s\n")
     }
 
     func testBatchLines() {

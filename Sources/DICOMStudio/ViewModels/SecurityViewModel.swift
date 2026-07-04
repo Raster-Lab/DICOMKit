@@ -109,6 +109,10 @@ public final class SecurityViewModel {
     public var anonVerbose: Bool = false
     /// Running flag
     public var anonIsRunning: Bool = false
+    /// Structured exit code of the last anonymization run (CLI rule: any failed
+    /// file → 1). Read by the Workshop executor instead of sniffing the output
+    /// text for "error" strings.
+    public var anonLastExitCode: Int = 0
     /// Output text (matches dicom-anon printSummary() format)
     public var anonOutput: String = ""
 
@@ -381,6 +385,7 @@ public final class SecurityViewModel {
     public func runAnonymization() {
         guard !anonInputPath.isEmpty else {
             anonOutput = "Error: Input path is required.\n"
+            anonLastExitCode = 1
             return
         }
         anonIsRunning = true
@@ -419,7 +424,8 @@ public final class SecurityViewModel {
                 force: force,
                 verbose: verbose
             )
-            self.anonOutput = result
+            self.anonOutput = result.output
+            self.anonLastExitCode = result.exitCode
             self.anonIsRunning = false
         }
     }
@@ -445,7 +451,7 @@ public final class SecurityViewModel {
         auditLogPath: String,
         force: Bool,
         verbose: Bool
-    ) async -> String {
+    ) async -> (output: String, exitCode: Int) {
         // Start security-scoped resource access so the sandbox allows reading
         // the user-selected input and writing to the chosen output directory.
         let inputAccessing  = anonInputScopedURL?.startAccessingSecurityScopedResource()  ?? false
@@ -471,26 +477,43 @@ public final class SecurityViewModel {
         // Resolve file list
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: inputPath, isDirectory: &isDir) else {
-            return "Error: Input path not found: \(inputPath)\n"
+            return ("Error: Input path not found: \(inputPath)\n", 1)
+        }
+
+        // Validate every --remove/--replace/--keep spec up front, mirroring the CLI's
+        // parseCustomActions/parsePreserveTags: unparseable input must ERROR (the CLI
+        // throws ValidationError), never be silently compactMap-dropped while the run
+        // still reports success.
+        for spec in removeTags where Self.parseTag(spec) == nil {
+            return (output + "Error: Invalid tag format: \(spec)\n", 1)
+        }
+        for pair in replacePairs {
+            let parts = pair.split(separator: "=", maxSplits: 1)
+            guard parts.count == 2 else {
+                return (output + "Error: Invalid replace format: \(pair). Use TAG=VALUE\n", 1)
+            }
+            if Self.parseTag(String(parts[0])) == nil {
+                return (output + "Error: Invalid tag format: \(parts[0])\n", 1)
+            }
+        }
+        for spec in keepTags where Self.parseTag(spec) == nil {
+            return (output + "Error: Invalid tag format: \(spec)\n", 1)
         }
 
         var fileURLs: [URL] = []
         if isDir.boolValue {
             guard recursive else {
-                return "Error: Directory anonymization requires --recursive flag\n"
+                return ("Error: Directory anonymization requires --recursive flag\n", 1)
             }
             guard !outputPath.isEmpty else {
-                return "Error: Directory anonymization requires --output directory\n"
+                return ("Error: Directory anonymization requires --output directory\n", 1)
             }
-            let enumerator = FileManager.default.enumerator(
-                at: URL(fileURLWithPath: inputPath),
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            )
-            while let url = enumerator?.nextObject() as? URL {
-                let rv = try? url.resourceValues(forKeys: [.isRegularFileKey])
-                if rv?.isRegularFile == true { fileURLs.append(url) }
+            // Shared, sorted directory walk — the exact gatherer dicom-anon uses,
+            // so both surfaces process the same files in the same order.
+            guard let gathered = FileGatherer.regularFiles(under: URL(fileURLWithPath: inputPath)) else {
+                return ("Error: Failed to enumerate directory: \(inputPath)\n", 1)
             }
+            fileURLs = gathered
         } else {
             fileURLs = [URL(fileURLWithPath: inputPath)]
         }
@@ -511,7 +534,11 @@ public final class SecurityViewModel {
 
         for fileURL in fileURLs {
             totalFiles += 1
-            if verbose { output += "Processing: \(fileURL.lastPathComponent)\n" }
+            // CLI parity: dicom-anon computes the path relative to the input directory
+            // for its verbose per-file lines (directory mode only).
+            let relativePath = String(
+                fileURL.path.replacingOccurrences(of: inputPath, with: "").drop(while: { $0 == "/" })
+            )
 
             do {
                 let data = try Data(contentsOf: fileURL)
@@ -527,52 +554,76 @@ public final class SecurityViewModel {
                 modifiedTagNames.append(contentsOf: changed)
 
                 if !dryRun {
-                    let destURL: URL
+                    // Mirror the CLI's `if !dryRun, let outputURL = outputURL` write guard
+                    // (dicom-anon main.swift): a single file with no --output is analyzed
+                    // and summarized but never written — do NOT fall back to overwriting
+                    // the input file in place.
+                    let destURL: URL?
                     if isDir.boolValue {
-                        let relative = fileURL.path.replacingOccurrences(of: inputPath, with: "").drop(while: { $0 == "/" })
-                        destURL = URL(fileURLWithPath: effectiveOutputPath).appendingPathComponent(String(relative))
-                        try FileManager.default.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        let dirDest = URL(fileURLWithPath: effectiveOutputPath).appendingPathComponent(relativePath)
+                        try FileManager.default.createDirectory(at: dirDest.deletingLastPathComponent(), withIntermediateDirectories: true)
+                        destURL = dirDest
                     } else {
-                        destURL = effectiveOutputPath.isEmpty ? fileURL : URL(fileURLWithPath: effectiveOutputPath)
+                        destURL = effectiveOutputPath.isEmpty ? nil : URL(fileURLWithPath: effectiveOutputPath)
                     }
-                    if backup {
-                        let backupURL = fileURL.appendingPathExtension("backup")
-                        try? FileManager.default.copyItem(at: fileURL, to: backupURL)
+                    if let destURL {
+                        // Backup lands next to the OUTPUT file (`<output>.backup`),
+                        // matching the CLI — and only when a write actually happens.
+                        if backup {
+                            let backupURL = destURL.appendingPathExtension("backup")
+                            try? FileManager.default.copyItem(at: fileURL, to: backupURL)
+                        }
+                        let outData = try anonFile.write()
+                        // Sandbox/TCC-resilient write: the earlier resolveWritableOutput uses POSIX
+                        // checks that miss TCC, so retry at write time and fall back to ~/Downloads.
+                        let wr = try OutputAccess.write(outData, toPath: destURL.path, scopedURL: nil, subfolder: "Anonymized")
+                        if let note = wr.note { warnings.append(note) }
                     }
-                    let outData = try anonFile.write()
-                    // Sandbox/TCC-resilient write: the earlier resolveWritableOutput uses POSIX
-                    // checks that miss TCC, so retry at write time and fall back to ~/Downloads.
-                    let wr = try OutputAccess.write(outData, toPath: destURL.path, scopedURL: nil, subfolder: "Anonymized")
-                    if let note = wr.note { warnings.append(note) }
                 }
 
                 successful += 1
-                if verbose { output += "  ✓ \(changed.count) tags modified\n" }
+                // CLI parity: dicom-anon emits per-file verbose lines only in
+                // directory mode ("✓ <relative path>"); single files get no per-file line.
+                if verbose && isDir.boolValue {
+                    output += AnonConsole.fileSuccessLine(relativePath: relativePath) + "\n"
+                }
 
             } catch {
+                // CLI parity: a single-file failure propagates out of dicom-anon's run()
+                // as a fatal error (no summary); directory mode records the failure with
+                // the bare error message as the warning and continues.
+                guard isDir.boolValue else {
+                    return (output + "Error: \(error.localizedDescription)\n", 1)
+                }
                 failed += 1
-                warnings.append("\(fileURL.lastPathComponent): \(error.localizedDescription)")
-                if verbose { output += "  ✗ \(error.localizedDescription)\n" }
+                warnings.append(error.localizedDescription)
+                if verbose {
+                    output += AnonConsole.fileFailureLine(relativePath: relativePath, message: error.localizedDescription) + "\n"
+                }
             }
         }
 
         // Write audit log via the SHARED Anonymizer (the exact detailed per-tag log the
         // dicom-anon CLI writes), not a generic summary — so the app and CLI audit files
-        // are byte-identical (timestamps aside).
-        if !auditLogPath.isEmpty && !dryRun {
+        // are byte-identical (timestamps aside). Like the CLI, the log is written even
+        // under --dry-run: dry-run auditing is a primary use case.
+        var auditNote = ""
+        if !auditLogPath.isEmpty {
             try? anonymizer.writeAuditLog(to: URL(fileURLWithPath: auditLogPath))
+            if verbose { auditNote = AnonConsole.auditLogLine(path: auditLogPath) + "\n" }
         }
 
-        let summary = AnonHelpers.renderSummary(
+        let summary = AnonConsole.summary(
             totalFiles: totalFiles,
             successful: successful,
             failed: failed,
             dryRun: dryRun,
             warnings: warnings,
-            modifiedTags: Array(Set(modifiedTagNames)),
+            modifiedTags: Set(modifiedTagNames),
             verbose: verbose
         )
-        return output + summary
+        // CLI exit rule (dicom-anon main.swift): any failed file → exit 1.
+        return (output + summary + auditNote, failed > 0 ? 1 : 0)
     }
 
     // MARK: - Anon Engine Helpers
@@ -624,15 +675,8 @@ public final class SecurityViewModel {
     }
 
     private static func parseTag(_ string: String) -> Tag? {
-        let clean = string
-            .replacingOccurrences(of: ",", with: "")
-            .replacingOccurrences(of: "(", with: "")
-            .replacingOccurrences(of: ")", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        guard clean.count == 8, let value = UInt32(clean, radix: 16) else { return nil }
-        let group   = UInt16((value >> 16) & 0xFFFF)
-        let element = UInt16(value & 0xFFFF)
-        return Tag(group: group, element: element)
+        // Shared parser (hex + keyword map) — same code path as the dicom-anon CLI.
+        DICOMKit.Anonymizer.parseFlexibleTag(string)
     }
 
     // MARK: - Engine mapping (UI profile + flag strings -> shared DICOMKit engine)

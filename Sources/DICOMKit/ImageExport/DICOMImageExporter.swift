@@ -341,3 +341,44 @@ public enum DICOMImageExporter {
     }
     #endif
 }
+
+// MARK: - Shared console output (dicom-export CLI ⇄ Workshop executor)
+
+/// Builds every console line `dicom-export` prints. The CLI text is canonical and
+/// the Workshop executor renders identical strings, so the two surfaces cannot drift.
+public enum ExportConsole {
+    /// Single-image success line.
+    public static func exportedLine(path: String) -> String {
+        "Exported: \(path)"
+    }
+
+    /// Contact-sheet success line.
+    public static func contactSheetLine(path: String, imageCount: Int, columns: Int, rows: Int) -> String {
+        "Contact sheet exported: \(path) (\(imageCount) images, \(columns)x\(rows) grid)"
+    }
+
+    /// Animated-GIF success line.
+    public static func animatedGIFLine(path: String, frameCount: Int, fps: Double) -> String {
+        "Animated GIF exported: \(path) (\(frameCount) frames, \(fps) fps)"
+    }
+
+    /// Verbose bulk line for a file with no pixel data.
+    public static func bulkSkipLine(fileName: String) -> String {
+        "⚠ Skipping (no pixel data): \(fileName)"
+    }
+
+    /// Verbose bulk per-file success line (full output path).
+    public static func bulkSuccessLine(path: String) -> String {
+        "✓ \(path)"
+    }
+
+    /// Verbose bulk per-file failure line.
+    public static func bulkFailureLine(fileName: String, message: String) -> String {
+        "✗ \(fileName): \(message)"
+    }
+
+    /// The unconditional end-of-bulk summary line.
+    public static func bulkSummaryLine(success: Int, total: Int, failed: Int) -> String {
+        "Bulk export complete: \(success)/\(total) succeeded, \(failed) failed"
+    }
+}

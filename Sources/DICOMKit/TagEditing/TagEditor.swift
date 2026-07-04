@@ -156,3 +156,27 @@ public struct TagEditor {
         DataElementDictionary.lookup(tag: tag)?.vr.first ?? .LO
     }
 }
+
+// MARK: - Shared console lines
+
+/// Console lines for `dicom-tags` — the single source of truth used by BOTH the
+/// CLI and DICOMStudio's Workshop executor, so their output cannot drift.
+/// (An earlier app copy printed an unconditional count line and "Saved:" where
+/// the CLI prints "Output written to:".)
+public enum TagEditConsole {
+    /// The change-preview block: one line per change plus the count line,
+    /// emitted only under `--verbose` or `--dry-run` (the CLI gate).
+    public static func changesBlock(_ changes: [String], verbose: Bool, dryRun: Bool) -> String {
+        guard verbose || dryRun else { return "" }
+        var out = ""
+        for change in changes { out += change + "\n" }
+        out += "\(changes.count) change(s) applied.\n"
+        return out
+    }
+
+    /// The completion line: dry-run notice, or the written-output path.
+    public static func completionLine(dryRun: Bool, outputPath: String) -> String {
+        dryRun ? "Dry run complete — no files modified.\n"
+               : "Output written to: \(outputPath)\n"
+    }
+}

@@ -296,6 +296,7 @@ public enum DICOMQueryService {
         modality: String = "",
         accession: String = "",
         studyDescription: String = "",
+        referringPhysician: String = "",
         studyUID: String = "",
         seriesUID: String = "",
         seriesDate: String = "",
@@ -321,7 +322,11 @@ public enum DICOMQueryService {
             keys = modality.isEmpty ? keys.requestModalitiesInStudy() : keys.modalitiesInStudy(modality)
             keys = accession.isEmpty ? keys.requestAccessionNumber() : keys.accessionNumber(accession)
             keys = studyDescription.isEmpty ? keys.requestStudyDescription() : keys.studyDescription(studyDescription)
-            keys = keys.requestStudyTime().requestStudyID().requestReferringPhysicianName()
+            // Referring physician (0008,0090) is a study-level attribute: a non-empty
+            // value becomes a matching key, otherwise it stays a return key.
+            keys = referringPhysician.isEmpty ? keys.requestReferringPhysicianName()
+                                              : keys.referringPhysicianName(referringPhysician)
+            keys = keys.requestStudyTime().requestStudyID()
                 .requestNumberOfStudyRelatedSeries().requestNumberOfStudyRelatedInstances()
 
         case .series:

@@ -98,10 +98,9 @@ struct DICOMTags: ParsableCommand {
             dryRun: dryRun
         )
 
-        if verbose || dryRun {
-            for change in changes { fprintln(change) }
-            fprintln("\(changes.count) change(s) applied.")
-        }
+        // Console lines via the SHARED TagEditConsole (DICOMKit) — the same
+        // builders the Workshop executor uses, so app and CLI stay text-exact.
+        fprint(TagEditConsole.changesBlock(changes, verbose: verbose, dryRun: dryRun))
 
         let destPath = OutputPathResolver.resolveFileOutput(output: output, input: input)
         if !dryRun {
@@ -113,18 +112,15 @@ struct DICOMTags: ParsableCommand {
             try outputData.write(to: destURL)
         }
 
-        if dryRun {
-            fprintln("Dry run complete — no files modified.")
-        } else {
-            fprintln("Output written to: \(destPath)")
-        }
+        fprint(TagEditConsole.completionLine(dryRun: dryRun, outputPath: destPath))
     }
 }
 
-private func fprintln(_ message: String) {
+private func fprint(_ message: String) {
     // Route the change preview / dry-run summary to STDOUT so the CLI and DICOMStudio
     // (which shows it in-console) are text-exact. These are results, not errors.
-    print(message)
+    // The shared TagEditConsole builders already terminate their lines.
+    print(message, terminator: "")
 }
 
 DICOMTags.main()

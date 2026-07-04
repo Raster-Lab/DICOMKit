@@ -418,3 +418,87 @@ public class Anonymizer {
     }
 }
 
+// MARK: - Flexible tag parsing (shared by dicom-anon CLI and the Workshop executor)
+
+extension Anonymizer {
+    /// Parses a user-supplied tag spec: hex `(0010,0010)` / `0010,0010` / `00100010`,
+    /// or one of the well-known keyword names the anon tool accepts.
+    /// Returns nil when the spec is unparseable (callers decide how to error).
+    public static func parseFlexibleTag(_ string: String) -> Tag? {
+        let clean = string
+            .replacingOccurrences(of: ",", with: "")
+            .replacingOccurrences(of: "(", with: "")
+            .replacingOccurrences(of: ")", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        if clean.count == 8, let value = UInt32(clean, radix: 16) {
+            let group = UInt16((value >> 16) & 0xFFFF)
+            let element = UInt16(value & 0xFFFF)
+            return Tag(group: group, element: element)
+        }
+        let keywordMap: [String: Tag] = [
+            "PatientName": .patientName,
+            "PatientID": .patientID,
+            "PatientBirthDate": .patientBirthDate,
+            "StudyDate": .studyDate,
+            "SeriesDate": .seriesDate,
+            "Modality": .modality,
+            "StudyDescription": .studyDescription,
+            "SeriesDescription": .seriesDescription,
+            "StudyInstanceUID": .studyInstanceUID,
+            "SeriesInstanceUID": .seriesInstanceUID,
+            "SOPInstanceUID": .sopInstanceUID
+        ]
+        return keywordMap[string] ?? keywordMap[string.lowercased()]
+    }
+}
+
+// MARK: - Shared console output (dicom-anon CLI ⇄ Workshop Security executor)
+
+/// Builds every console line `dicom-anon` prints. The CLI text is canonical and the
+/// Workshop executor renders the identical strings, so the two surfaces cannot drift.
+public enum AnonConsole {
+    /// Per-file verbose line in directory mode (success).
+    public static func fileSuccessLine(relativePath: String) -> String {
+        "✓ \(relativePath)"
+    }
+
+    /// Per-file verbose line in directory mode (failure).
+    public static func fileFailureLine(relativePath: String, message: String) -> String {
+        "✗ \(relativePath): \(message)"
+    }
+
+    /// Verbose confirmation after the audit log is written.
+    public static func auditLogLine(path: String) -> String {
+        "Audit log written to: \(path)"
+    }
+
+    /// The end-of-run summary block (leading blank line, every line newline-terminated).
+    /// The "Modified tags" section appears whenever verbose ran over at least one file,
+    /// even with zero modified tags — matching the CLI.
+    public static func summary(
+        totalFiles: Int,
+        successful: Int,
+        failed: Int,
+        dryRun: Bool,
+        warnings: [String],
+        modifiedTags: Set<String>,
+        verbose: Bool
+    ) -> String {
+        var out = "\nAnonymization Summary:\n"
+        out += "  Total files: \(totalFiles)\n"
+        out += "  Successful: \(successful)\n"
+        out += "  Failed: \(failed)\n"
+        if dryRun { out += "  (DRY RUN - no files modified)\n" }
+        if !warnings.isEmpty {
+            out += "\nWarnings:\n"
+            for warning in warnings.prefix(10) { out += "  ⚠️  \(warning)\n" }
+            if warnings.count > 10 { out += "  ... and \(warnings.count - 10) more warnings\n" }
+        }
+        if verbose && totalFiles > 0 {
+            out += "\nModified tags (\(modifiedTags.count)):\n"
+            for tag in modifiedTags.sorted().prefix(20) { out += "  - \(tag)\n" }
+        }
+        return out
+    }
+}
+

@@ -1730,7 +1730,7 @@ public final class CLIParityRunnerViewModel {
         scope.accession = sp["accession"] ?? ""
         scope.spsID = sp["sps-id"] ?? ""
         scope.seriesUID = sp["series-uid"] ?? ""
-        scope.imageUIDs = (sp["image-uids"] ?? "").split(separator: ",").map(String.init).filter { !$0.isEmpty }
+        scope.imageUIDs = CommandBuilderHelpers.splitMultiValue(sp["image-uid"] ?? "")
 
         // ---- REFERENCE side: drive DICOMMPPSService.create (→ .update) directly. ----
         let netUnits = lifecycle ? 2 : 1

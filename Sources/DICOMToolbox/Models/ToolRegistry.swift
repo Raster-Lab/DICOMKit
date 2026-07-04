@@ -352,10 +352,8 @@ public enum ToolRegistry {
         parameters: [
             ParameterDefinition(id: "input", cliFlag: "@argument", label: "Input File", help: "Input file", type: .file, isRequired: true),
             ParameterDefinition(id: "output", cliFlag: "--output", label: "Output File", help: "Output file", type: .file),
-            ParameterDefinition(id: "format", cliFlag: "--format", label: "Format", help: "JSON format", type: .enumeration, enumValues: [
-                EnumValue(label: "Standard", value: "standard"),
-                EnumValue(label: "DICOMweb", value: "dicomweb"),
-            ]),
+            // (--format removed: the CLI dropped it — it was a declared no-op;
+            // output is always the DICOMweb PS3.18 JSON model.)
             ParameterDefinition(id: "reverse", cliFlag: "--reverse", label: "Reverse", help: "Convert JSON to DICOM", type: .boolean),
             ParameterDefinition(id: "pretty", cliFlag: "--pretty", label: "Pretty Print", help: "Pretty-print JSON output", type: .boolean),
             ParameterDefinition(id: "metadata-only", cliFlag: "--metadata-only", label: "Metadata Only", help: "Export metadata only", type: .boolean),

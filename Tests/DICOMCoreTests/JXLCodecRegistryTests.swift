@@ -4,17 +4,18 @@ import Foundation
 
 /// Verifies that JXLSwift is wired into `CodecRegistry` for the DICOM JPEG XL
 /// transfer syntaxes added in Supplement 232 (DICOM 2024d): JPEG XL Lossless
-/// (.110) is both decodable and encodable, the general JPEG XL syntax (.112) is
-/// decode-only, and JPEG XL JPEG Recompression (.111) is intentionally absent
-/// (faithful handling needs JPEG-bitstream reconstruction, not a generic
-/// pixel (de)code). Complements the bench-level direct-call coverage in
-/// `MultiCodecBenchAdaptersTests`.
+/// (.110) encodes (Modular) + decodes, the general JPEG XL syntax (.112) encodes
+/// (lossy VarDCT, with a lossless Modular fallback) + decodes, and JPEG XL JPEG
+/// Recompression (.111) is decode-only at the registry level (its pixel decode
+/// reconstructs the wrapped JPEG; the forward *encode* is a fragment-level
+/// JPEG-bitstream wrap driven by `TransferSyntaxConverter`, not a pixel encoder).
+/// Complements the bench-level direct-call coverage in `MultiCodecBenchAdaptersTests`.
 @Suite("JXLSwift JPEG XL codec — registry wiring")
 struct JXLCodecRegistryTests {
 
     private let lossless = TransferSyntax.jpegXLLossless.uid            // .110  encode + decode
-    private let general = TransferSyntax.jpegXL.uid                     // .112  decode only
-    private let recompression = TransferSyntax.jpegXLRecompression.uid  // .111  unsupported
+    private let general = TransferSyntax.jpegXL.uid                     // .112  encode (lossy) + decode
+    private let recompression = TransferSyntax.jpegXLRecompression.uid  // .111  decode only (pixel)
 
     // MARK: - Fixtures
 
@@ -61,19 +62,25 @@ struct JXLCodecRegistryTests {
         #expect(reg.codec(for: general) is JXLCodec)
     }
 
-    @Test("CodecRegistry exposes a JXLSwift encoder for Lossless (.110) only")
+    @Test("CodecRegistry exposes a JXLSwift encoder for Lossless (.110) and general/lossy (.112)")
     func encoderWiring() {
         let reg = CodecRegistry.shared
         #expect(reg.hasEncoder(for: lossless))
         #expect(reg.encoder(for: lossless) is JXLCodec)
-        // General JPEG XL (.112) is decode-only — lossless output must use .110.
-        #expect(!reg.hasEncoder(for: general))
+        // General JPEG XL (.112) now encodes too — lossy VarDCT (grayscale/oversized
+        // inputs fall back to lossless Modular inside JXLSwift).
+        #expect(reg.hasEncoder(for: general))
+        #expect(reg.encoder(for: general) is JXLCodec)
     }
 
-    @Test("JPEG XL JPEG Recompression (.111) is not registered (unsupported)")
-    func recompressionAbsent() {
+    @Test("JPEG XL JPEG Recompression (.111) is decode-only (no pixel encoder)")
+    func recompressionDecoderOnly() {
         let reg = CodecRegistry.shared
-        #expect(!reg.hasCodec(for: recompression))
+        // Pixel decode IS registered — a recompressed JXL reconstructs to pixels.
+        #expect(reg.hasCodec(for: recompression))
+        #expect(reg.codec(for: recompression) is JXLCodec)
+        // There is NO pixel encoder: forward recompression wraps a JPEG bitstream at the
+        // fragment level (TransferSyntaxConverter), not via the ImageEncoder path.
         #expect(!reg.hasEncoder(for: recompression))
     }
 
@@ -112,6 +119,69 @@ struct JXLCodecRegistryTests {
         let generalDecoder = try #require(reg.codec(for: general))
         let encoded = try encoder.encodeFrame(original, descriptor: d, frameIndex: 0, configuration: .lossless)
         let decoded = try generalDecoder.decodeFrame(encoded, descriptor: d, frameIndex: 0)
+        #expect(decoded == original)
+    }
+
+    // MARK: - Lossy encode through the registry (.112)
+
+    @Test("General JPEG XL (.112) grayscale lossy request falls back to lossless (bit-exact)")
+    func lossyGrayscaleFallsBackBitExact() throws {
+        let reg = CodecRegistry.shared
+        let d = descriptor(40, 32, bitsAllocated: 8, bitsStored: 8, spp: 1)
+        let original = frame(40, 32, bitsStored: 8, spp: 1, bytesPerSample: 1)
+
+        // JXLSwift's VarDCT lossy encoder is RGB-only; a grayscale frame transparently
+        // falls back to the lossless Modular path, so even a lossy (.112) request
+        // round-trips bit-exact. This documents (and pins) that fallback behaviour.
+        let encoder = try #require(reg.encoder(for: general))
+        let decoder = try #require(reg.codec(for: general))
+        let lossyCfg = CompressionConfiguration(quality: .high, speed: .balanced)
+        #expect(encoder.canEncode(with: lossyCfg, descriptor: d))
+        let encoded = try encoder.encodeFrame(original, descriptor: d, frameIndex: 0, configuration: lossyCfg)
+        let decoded = try decoder.decodeFrame(encoded, descriptor: d, frameIndex: 0)
+        #expect(decoded == original)
+    }
+
+    @Test("General JPEG XL (.112) RGB lossy encode produces a codestream that decodes to the source dimensions")
+    func lossyRGBRoundTripsToCorrectSize() throws {
+        let reg = CodecRegistry.shared
+        let d = descriptor(64, 64, bitsAllocated: 8, bitsStored: 8, spp: 3)
+        let original = frame(64, 64, bitsStored: 8, spp: 3, bytesPerSample: 1)
+
+        // RGB 8-bit routes through the true VarDCT lossy path. Lossy output is not
+        // bit-exact, so assert a valid, non-empty codestream that decodes back to a
+        // frame of the correct size (dimensions/channels preserved) — the wiring
+        // contract. VarDCT fidelity itself is covered by JXLSwift's own tests.
+        let encoder = try #require(reg.encoder(for: general))
+        let decoder = try #require(reg.codec(for: general))
+        let lossyCfg = CompressionConfiguration(quality: .high, speed: .balanced)
+        let encoded = try encoder.encodeFrame(original, descriptor: d, frameIndex: 0, configuration: lossyCfg)
+        #expect(!encoded.isEmpty)
+        let decoded = try decoder.decodeFrame(encoded, descriptor: d, frameIndex: 0)
+        #expect(decoded.count == original.count)
+    }
+
+    @Test("A …4.111 decoder does NOT silently fall back to the pixel path when reconstruction fails")
+    func recompressionDecoderThrowsOnNonRecompressedInput() throws {
+        let reg = CodecRegistry.shared
+        let d = descriptor(40, 32, bitsAllocated: 8, bitsStored: 8, spp: 1)
+        let original = frame(40, 32, bitsStored: 8, spp: 1, bytesPerSample: 1)
+
+        // A valid lossless (.110) JXL codestream carries NO `jbrd` box, so JPEG
+        // reconstruction cannot succeed. A …4.111-wired decoder must SURFACE that as an
+        // error rather than silently decoding it via the VarDCT pixel path (which would
+        // desync the channel count from Samples per Pixel) — the whole point of the reroute.
+        let encoder = try #require(reg.encoder(for: lossless))
+        let notRecompressed = try encoder.encodeFrame(original, descriptor: d, frameIndex: 0, configuration: .lossless)
+
+        let recompressionDecoder = JXLCodec(decodingTransferSyntaxUID: recompression)
+        #expect(throws: (any Error).self) {
+            _ = try recompressionDecoder.decodeFrame(notRecompressed, descriptor: d, frameIndex: 0)
+        }
+
+        // Contrast: the SAME bytes decode fine through a …4.110 pixel decoder (bit-exact).
+        let losslessDecoder = try #require(reg.codec(for: lossless))
+        let decoded = try losslessDecoder.decodeFrame(notRecompressed, descriptor: d, frameIndex: 0)
         #expect(decoded == original)
     }
 

@@ -1,0 +1,433 @@
+// DcmdirRoundTripTests.swift
+// Oracle-based round-trip tests for the `dicom-dcmdir` tool.
+//
+// Tests call the DICOMKit library directly (DICOMDIRWorkflow / DICOMDIRWriter /
+// DICOMDIRReader / DICOMDIRDumpFormatter / DICOMDirectory.Builder). They never
+// spawn the CLI. Every assertion is a mathematical/semantic oracle (counts,
+// hierarchy invariants, serialize→parse identity), never a comparison against a
+// re-implementation of the tool.
+//
+// Shared helpers (makeGrayscale8, writeTempDICOM, makeTempDir, rtUID, …) live in
+// RoundTripFixture.swift and are used, not redefined.
+
+import XCTest
+import Foundation
+@testable import DICOMKit
+@testable import DICOMCore
+
+final class DcmdirRoundTripTests: XCTestCase {
+
+    // MARK: - Private helpers (class-scoped, never global)
+
+    /// Builds a minimal conformant single-frame DICOM file with fully controllable
+    /// hierarchy UIDs. `DICOMFile.create` copies the sopInstanceUID into the file
+    /// meta information, which is where the DICOMDIR Builder reads the instance UID,
+    /// so distinct sopInstanceUID values yield distinct IMAGE records.
+    private func makeInstance(
+        patientID: String, studyUID: String, seriesUID: String, sopInstanceUID: String
+    ) -> DICOMFile {
+        var ds = DataSet()
+        ds.setString("1.2.840.10008.5.1.4.1.1.2", for: .sopClassUID, vr: .UI)
+        ds.setString(sopInstanceUID, for: .sopInstanceUID, vr: .UI)
+        ds.setString(studyUID, for: .studyInstanceUID, vr: .UI)
+        ds.setString(seriesUID, for: .seriesInstanceUID, vr: .UI)
+        ds.setString("CT", for: .modality, vr: .CS)
+        ds.setString("RoundTrip^Patient", for: .patientName, vr: .PN)
+        ds.setString(patientID, for: .patientID, vr: .LO)
+        ds.setUInt16(4, for: .rows)
+        ds.setUInt16(4, for: .columns)
+        ds.setUInt16(8, for: .bitsAllocated)
+        ds.setUInt16(8, for: .bitsStored)
+        ds.setUInt16(7, for: .highBit)
+        ds.setUInt16(0, for: .pixelRepresentation)
+        ds.setUInt16(1, for: .samplesPerPixel)
+        ds.setString("MONOCHROME2", for: .photometricInterpretation, vr: .CS)
+        ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OB, data: Data(count: 16))
+        return DICOMFile.create(
+            dataSet: ds,
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            sopInstanceUID: sopInstanceUID)
+    }
+
+    /// Writes `count` synthetic DICOM files, each with its own distinct patient /
+    /// study / series / SOP Instance UID (the DICOMDIR Builder groups by patient and
+    /// keeps only the first series+image per patient, so distinct patients is the
+    /// reliable way to produce N distinct IMAGE records). Returns (dir, [fileNames]).
+    private func makeCorpusDir(count: Int) throws -> (URL, [String]) {
+        let dir = try makeTempDir()
+        var names: [String] = []
+        for i in 0..<count {
+            let file = makeInstance(
+                patientID: "RT\(i)", studyUID: rtUID(),
+                seriesUID: rtUID(), sopInstanceUID: rtUID())
+            let name = "img\(i).dcm"
+            try file.write().write(to: dir.appendingPathComponent(name))
+            names.append(name)
+        }
+        return (dir, names)
+    }
+
+    /// Builds a directory manually with `patients` PATIENT records, each holding
+    /// one STUDY → one SERIES → one IMAGE. Deterministic (no Dictionary ordering).
+    private func makeManualDirectory(patients: Int) -> DICOMDirectory {
+        var roots: [DirectoryRecord] = []
+        for p in 0..<patients {
+            let image = DirectoryRecord.image(
+                referencedFileID: ["PT\(p)", "ST0", "SE0", "IMG0.dcm"],
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                sopInstanceUID: rtUID(),
+                transferSyntaxUID: "1.2.840.10008.1.2.1",
+                instanceNumber: "\(p + 1)"
+            )
+            let series = DirectoryRecord.series(
+                seriesInstanceUID: rtUID(), modality: "CT", children: [image])
+            let study = DirectoryRecord.study(
+                studyInstanceUID: rtUID(), children: [series])
+            let patient = DirectoryRecord.patient(
+                patientID: "PID\(p)", patientName: "Patient^\(p)", children: [study])
+            roots.append(patient)
+        }
+        return DICOMDirectory(fileSetID: "MANUAL", profile: .standardGeneralCD, rootRecords: roots)
+    }
+
+    // MARK: - create → statistics oracle
+
+    // Oracle: create over N files with distinct patients → N patients/studies/series/images.
+    func testCreateStatisticsCountImages() throws {
+        let (dir, names) = try makeCorpusDir(count: 3)
+        let result = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: true, strict: false,
+            fileSetID: "TEST", profile: .standardGeneralCD)
+        let stats = result.directory.statistics()
+        XCTAssertEqual(result.processed, names.count)
+        XCTAssertEqual(result.failed, 0)
+        XCTAssertEqual(stats.patientCount, names.count)
+        XCTAssertEqual(stats.studyCount, names.count)
+        XCTAssertEqual(stats.seriesCount, names.count)
+        XCTAssertEqual(stats.imageCount, names.count)
+    }
+
+    // Oracle: create then dump — every input file name appears in the tree dump.
+    func testCreateThenDumpListsAllFiles() throws {
+        let (dir, names) = try makeCorpusDir(count: 3)
+        let result = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: true, strict: false,
+            fileSetID: "TEST", profile: .standardGeneralCD)
+        let tree = DICOMDIRDumpFormatter.render(result.directory, format: .tree, verbose: false)
+        for name in names {
+            XCTAssertTrue(tree.contains(name), "dump tree should list \(name)")
+        }
+    }
+
+    // Oracle: a freshly created directory passes validation (no throw).
+    func testCreateThenValidatePasses() throws {
+        let (dir, _) = try makeCorpusDir(count: 3)
+        let result = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: true, strict: false,
+            fileSetID: "TEST", profile: .standardGeneralCD)
+        XCTAssertNoThrow(try result.directory.validate(checkFileExistence: false))
+    }
+
+    // Oracle: an empty directory yields WorkflowError.noDICOMFiles.
+    func testCreateEmptyDirectoryThrowsNoDICOMFiles() throws {
+        let dir = try makeTempDir()
+        XCTAssertThrowsError(
+            try DICOMDIRWorkflow.buildDirectory(
+                fromFilesIn: dir, recursive: true, strict: false,
+                fileSetID: "TEST", profile: .standardGeneralCD)
+        ) { error in
+            guard case DICOMDIRWorkflow.WorkflowError.noDICOMFiles = error else {
+                return XCTFail("expected noDICOMFiles, got \(error)")
+            }
+        }
+    }
+
+    // MARK: - write → read round trip (serialize/parse identity)
+
+    // Oracle: build → write → read preserves every statistics count.
+    func testWriteReadStatisticsRoundTrip() throws {
+        let original = makeManualDirectory(patients: 2)
+        let data = try DICOMDIRWriter.write(original)
+        let readBack = try DICOMDIRReader.read(from: data)
+
+        let o = original.statistics()
+        let r = readBack.statistics()
+        XCTAssertEqual(o.patientCount, r.patientCount)
+        XCTAssertEqual(o.studyCount, r.studyCount)
+        XCTAssertEqual(o.seriesCount, r.seriesCount)
+        XCTAssertEqual(o.imageCount, r.imageCount)
+        // Manual layout: 2 patients × (1 study + 1 series + 1 image) + 2 patients = 8 records.
+        XCTAssertEqual(o.patientCount, 2)
+        XCTAssertEqual(o.studyCount, 2)
+        XCTAssertEqual(o.seriesCount, 2)
+        XCTAssertEqual(o.imageCount, 2)
+    }
+
+    // Oracle: the serialized DICOMDIR is a valid Part 10 file — preamble(128) + "DICM".
+    func testSerializedDICOMDIRIsPart10() throws {
+        let directory = makeManualDirectory(patients: 1)
+        let data = try DICOMDIRWriter.write(directory)
+        XCTAssertGreaterThan(data.count, 132)
+        let magic = data.subdata(in: (data.startIndex + 128)..<(data.startIndex + 132))
+        XCTAssertEqual(magic, Data("DICM".utf8))
+        // First 128 bytes are the zero preamble.
+        let preamble = data.subdata(in: data.startIndex..<(data.startIndex + 128))
+        XCTAssertEqual(preamble, Data(count: 128))
+    }
+
+    // Oracle: serialized DICOMDIR declares the Media Storage Directory SOP Class UID.
+    func testSerializedDICOMDIRSOPClassUID() throws {
+        let directory = makeManualDirectory(patients: 1)
+        let data = try DICOMDIRWriter.write(directory)
+        let file = try DICOMFile.read(from: data)
+        XCTAssertEqual(
+            file.fileMetaInformation.string(for: .mediaStorageSOPClassUID),
+            "1.2.840.10008.1.3.10")
+    }
+
+    // Oracle: write → read preserves the file-set ID (tag 0004,1130).
+    func testWriteReadPreservesFileSetID() throws {
+        let directory = DICOMDirectory(
+            fileSetID: "MYSET",
+            rootRecords: makeManualDirectory(patients: 1).rootRecords)
+        let readBack = try DICOMDIRReader.read(from: try DICOMDIRWriter.write(directory))
+        XCTAssertEqual(readBack.fileSetID, "MYSET")
+    }
+
+    // MARK: - hierarchy / record invariants
+
+    // Oracle: rootRecords are PATIENT, children are STUDY, then SERIES, then IMAGE.
+    func testHierarchyInvariant() throws {
+        let directory = makeManualDirectory(patients: 1)
+        let patient = try XCTUnwrap(directory.rootRecords.first)
+        XCTAssertEqual(patient.recordType, .patient)
+        let study = try XCTUnwrap(patient.children.first)
+        XCTAssertEqual(study.recordType, .study)
+        let series = try XCTUnwrap(study.children.first)
+        XCTAssertEqual(series.recordType, .series)
+        let image = try XCTUnwrap(series.children.first)
+        XCTAssertEqual(image.recordType, .image)
+    }
+
+    // Oracle: totalRecordCount == sum of level counts; active+inactive == total.
+    func testStatisticsCountsAreConsistent() throws {
+        let directory = makeManualDirectory(patients: 3)
+        let s = directory.statistics()
+        XCTAssertEqual(
+            s.totalRecordCount,
+            s.patientCount + s.studyCount + s.seriesCount + s.imageCount)
+        XCTAssertEqual(s.activeRecordCount + s.inactiveRecordCount, s.totalRecordCount)
+    }
+
+    // Oracle: referencedFilePath() joins the referencedFileID components with '/'.
+    func testReferencedFilePathJoinsComponents() throws {
+        let image = DirectoryRecord.image(
+            referencedFileID: ["A", "B", "C.dcm"],
+            sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+            sopInstanceUID: rtUID(),
+            transferSyntaxUID: "1.2.840.10008.1.2.1")
+        XCTAssertEqual(image.referencedFilePath(), "A/B/C.dcm")
+    }
+
+    // Oracle: DirectoryRecord.patient factory populates PatientID/PatientName attributes.
+    func testPatientFactoryAttributes() throws {
+        let patient = DirectoryRecord.patient(patientID: "PID9", patientName: "Doe^John")
+        XCTAssertEqual(patient.recordType, .patient)
+        XCTAssertEqual(patient.attribute(for: .patientID)?.stringValue, "PID9")
+        XCTAssertEqual(patient.attribute(for: .patientName)?.stringValue, "Doe^John")
+    }
+
+    // Oracle: allRecords() flattens the tree — count equals total record count.
+    func testAllRecordsFlattensTree() throws {
+        let directory = makeManualDirectory(patients: 2)
+        XCTAssertEqual(directory.allRecords().count, directory.statistics().totalRecordCount)
+    }
+
+    // MARK: - validate: duplicate detection
+
+    // Oracle: duplicate referenced SOP Instance UID fails validation.
+    func testValidateRejectsDuplicateSOPInstanceUID() throws {
+        let dupUID = rtUID()
+        func image() -> DirectoryRecord {
+            DirectoryRecord.image(
+                referencedFileID: ["x.dcm"],
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                sopInstanceUID: dupUID,
+                transferSyntaxUID: "1.2.840.10008.1.2.1")
+        }
+        let series = DirectoryRecord.series(
+            seriesInstanceUID: rtUID(), modality: "CT", children: [image(), image()])
+        let study = DirectoryRecord.study(studyInstanceUID: rtUID(), children: [series])
+        let patient = DirectoryRecord.patient(
+            patientID: "P", patientName: "N", children: [study])
+        let directory = DICOMDirectory(rootRecords: [patient])
+        XCTAssertThrowsError(try directory.validate(checkFileExistence: false))
+    }
+
+    // MARK: - dump formatter
+
+    // Oracle: dump render is deterministic (identical output across two calls).
+    func testDumpIsDeterministic() throws {
+        let directory = makeManualDirectory(patients: 2)
+        let a = DICOMDIRDumpFormatter.render(directory, format: .tree, verbose: true)
+        let b = DICOMDIRDumpFormatter.render(directory, format: .tree, verbose: true)
+        XCTAssertEqual(a, b)
+    }
+
+    // Oracle: JSON dump parses as JSON and echoes the statistics counts.
+    func testDumpJSONParsesWithStatistics() throws {
+        let directory = makeManualDirectory(patients: 2)
+        let json = DICOMDIRDumpFormatter.render(directory, format: .json, verbose: false)
+        let obj = try JSONSerialization.jsonObject(
+            with: Data(json.utf8)) as? [String: Any]
+        let root = try XCTUnwrap(obj)
+        let statistics = try XCTUnwrap(root["statistics"] as? [String: Any])
+        XCTAssertEqual(statistics["patients"] as? Int, 2)
+        XCTAssertEqual(statistics["images"] as? Int, 2)
+        XCTAssertEqual(root["recordCount"] as? Int, directory.statistics().totalRecordCount)
+    }
+
+    // Oracle: render(format:String) returns nil for an unrecognized format.
+    func testDumpUnknownFormatReturnsNil() throws {
+        let directory = makeManualDirectory(patients: 1)
+        XCTAssertNil(DICOMDIRDumpFormatter.render(directory, format: "bogus", verbose: false))
+        XCTAssertNotNil(DICOMDIRDumpFormatter.render(directory, format: "tree", verbose: false))
+    }
+
+    // Oracle: all three dump formats produce non-empty output for a populated directory.
+    func testDumpAllFormatsNonEmpty() throws {
+        let directory = makeManualDirectory(patients: 1)
+        for format in DICOMDIRDumpFormatter.Format.allCases {
+            let out = DICOMDIRDumpFormatter.render(directory, format: format, verbose: false)
+            XCTAssertFalse(out.isEmpty, "\(format.rawValue) output should not be empty")
+        }
+    }
+
+    // MARK: - Builder API
+
+    // Oracle: Builder groups distinct patients into distinct PATIENT/IMAGE records.
+    func testBuilderGroupsByPatient() throws {
+        var builder = DICOMDirectory.Builder(fileSetID: "B", profile: .standardGeneralCD)
+        try builder.addFile(
+            makeInstance(patientID: "PA", studyUID: rtUID(), seriesUID: rtUID(), sopInstanceUID: rtUID()),
+            relativePath: ["a.dcm"])
+        try builder.addFile(
+            makeInstance(patientID: "PB", studyUID: rtUID(), seriesUID: rtUID(), sopInstanceUID: rtUID()),
+            relativePath: ["b.dcm"])
+        let stats = builder.build().statistics()
+        XCTAssertEqual(stats.patientCount, 2)
+        XCTAssertEqual(stats.imageCount, 2)
+    }
+
+    // MARK: - corpus-backed realism
+
+    // Oracle: a real corpus CT file round-trips through create → validate with no error.
+    func testCorpusCreateValidateRoundTrip() throws {
+        let f = try loadCorpus(.ct)
+        try XCTSkipIf(f == nil, "corpus absent")
+        let file = try XCTUnwrap(f)
+        let dir = try makeTempDir()
+        try file.write().write(to: dir.appendingPathComponent("CT.dcm"))
+        let result = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: true, strict: false,
+            fileSetID: "CORPUS", profile: .standardGeneralCD)
+        XCTAssertEqual(result.processed, 1)
+        XCTAssertEqual(result.directory.statistics().imageCount, 1)
+        let readBack = try DICOMDIRReader.read(from: try DICOMDIRWriter.write(result.directory))
+        XCTAssertNoThrow(try readBack.validate(checkFileExistence: false))
+        XCTAssertEqual(readBack.statistics().imageCount, 1)
+    }
+
+    // MARK: - profile / recursion options
+
+    // Oracle: the requested application profile is honored — building with STD-GEN-DVD
+    // and STD-GEN-USB yields a directory carrying that profile, not the default CD.
+    func testBuildHonorsDVDAndUSBProfiles() throws {
+        let (dir, _) = try makeCorpusDir(count: 2)
+        for profile in [DICOMDIRProfile.standardGeneralDVD, .standardGeneralUSB] {
+            let result = try DICOMDIRWorkflow.buildDirectory(
+                fromFilesIn: dir, recursive: true, strict: false,
+                fileSetID: "TEST", profile: profile)
+            XCTAssertEqual(result.directory.profile, profile,
+                           "built directory must carry the requested profile \(profile.rawValue)")
+        }
+    }
+
+    // Oracle: --no-recursive (recursive:false) excludes files nested in subdirectories,
+    // while recursive:true includes them.
+    func testNoRecursiveExcludesSubdirectoryFiles() throws {
+        let dir = try makeTempDir()
+        try makeInstance(patientID: "TOP", studyUID: rtUID(), seriesUID: rtUID(), sopInstanceUID: rtUID())
+            .write().write(to: dir.appendingPathComponent("top.dcm"))
+        let sub = dir.appendingPathComponent("sub")
+        try FileManager.default.createDirectory(at: sub, withIntermediateDirectories: true)
+        try makeInstance(patientID: "NESTED", studyUID: rtUID(), seriesUID: rtUID(), sopInstanceUID: rtUID())
+            .write().write(to: sub.appendingPathComponent("nested.dcm"))
+
+        let nonRecursive = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: false, strict: false, fileSetID: "T", profile: .standardGeneralCD)
+        XCTAssertEqual(nonRecursive.processed, 1, "non-recursive must only see the top-level file")
+
+        let recursive = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: true, strict: false, fileSetID: "T", profile: .standardGeneralCD)
+        XCTAssertEqual(recursive.processed, 2, "recursive must also include the nested file")
+    }
+
+    // MARK: - Oracle: update re-indexes existing entries and adds new files
+
+    // `update` was a stub on both surfaces; it now parses the existing DICOMDIR,
+    // unions its referenced files with --add, and rebuilds deterministically.
+    // Oracle: after update, the re-read DICOMDIR references old + new files, the
+    // file-set ID is preserved, and counts are exact.
+    func testUpdateAddsNewFileToExistingDICOMDIR() throws {
+        let (dir, _) = try makeCorpusDir(count: 2)
+        let build = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: true, strict: false,
+            fileSetID: "UPDATE_RT", profile: .standardGeneralCD)
+        let dicomdirURL = dir.appendingPathComponent("DICOMDIR")
+        try DICOMDIRWriter.write(build.directory, to: dicomdirURL)
+
+        // Drop a NEW instance into the media folder after the initial build.
+        let newFile = makeInstance(
+            patientID: "PAT_NEW", studyUID: rtUID(), seriesUID: rtUID(), sopInstanceUID: rtUID())
+        let newURL = dir.appendingPathComponent("added.dcm")
+        try newFile.write().write(to: newURL)
+
+        let result = try DICOMDIRWorkflow.updateDirectory(
+            dicomdirURL: dicomdirURL, addPath: newURL.path)
+        try DICOMDIRWriter.write(result.directory, to: dicomdirURL)
+
+        XCTAssertEqual(result.reindexed, 2, "both original files re-indexed")
+        XCTAssertEqual(result.added, 1, "the new file added")
+        XCTAssertEqual(result.missing, 0)
+        XCTAssertEqual(result.failed, 0)
+
+        let reread = try DICOMDIRReader.read(from: dicomdirURL)
+        XCTAssertEqual(reread.fileSetID, "UPDATE_RT", "file-set ID preserved across update")
+        let referenced = reread.allReferencedFiles()
+        XCTAssertEqual(referenced.count, 3, "old + new files all referenced")
+        XCTAssertTrue(referenced.contains("added.dcm"), "new file's relative File ID present")
+    }
+
+    // MARK: - Oracle: update drops entries whose files vanished from disk
+
+    func testUpdateDropsMissingFilesFromIndex() throws {
+        let (dir, names) = try makeCorpusDir(count: 3)
+        let build = try DICOMDIRWorkflow.buildDirectory(
+            fromFilesIn: dir, recursive: true, strict: false,
+            fileSetID: "PRUNE_RT", profile: .standardGeneralCD)
+        let dicomdirURL = dir.appendingPathComponent("DICOMDIR")
+        try DICOMDIRWriter.write(build.directory, to: dicomdirURL)
+
+        // Remove one referenced file from disk, then update with no --add.
+        try FileManager.default.removeItem(at: dir.appendingPathComponent(names[0]))
+        let result = try DICOMDIRWorkflow.updateDirectory(dicomdirURL: dicomdirURL, addPath: nil)
+
+        XCTAssertEqual(result.missing, 1, "vanished file counted as missing")
+        XCTAssertEqual(result.reindexed, 2, "surviving files re-indexed")
+        XCTAssertEqual(result.added, 0)
+        XCTAssertFalse(result.directory.allReferencedFiles().contains(names[0]),
+                       "vanished file dropped from the rebuilt index")
+    }
+}
+

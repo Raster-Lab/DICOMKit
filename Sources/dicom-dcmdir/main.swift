@@ -264,15 +264,25 @@ extension DICOMDCMDIR {
         var verbose: Bool = false
         
         mutating func run() throws {
-            print("⚠️  Update functionality not yet implemented")
-            print("")
-            print("To update a DICOMDIR:")
-            print("  1. Extract its structure")
-            print("  2. Add new files")
-            print("  3. Recreate the DICOMDIR")
-            print("")
-            print("For now, use 'dicom-dcmdir create' to recreate from scratch.")
-            throw ExitCode(1)
+            // Entire update via the SHARED DICOMDIRWorkflow (DICOMKit) — the
+            // same code the Studio Workshop executor runs: parse the existing
+            // DICOMDIR, union its referenced files with --add, rebuild with the
+            // original file-set ID/profile, write back.
+            let dicomdirURL = DICOMDIRWorkflow.resolvedDICOMDIRURL(URL(fileURLWithPath: dicomdirPath))
+            guard FileManager.default.fileExists(atPath: dicomdirURL.path) else {
+                throw ValidationError("DICOMDIR not found: \(dicomdirURL.path)")
+            }
+            if verbose {
+                print("Updating DICOMDIR: \(dicomdirURL.path)")
+                if let add { print("Adding from: \(add)") }
+                print("")
+            }
+            let result = try DICOMDIRWorkflow.updateDirectory(
+                dicomdirURL: dicomdirURL, addPath: add,
+                verbose: verbose, progress: { print($0, terminator: "") }
+            )
+            try DICOMDIRWriter.write(result.directory, to: dicomdirURL)
+            print(DICOMDIRWorkflow.renderUpdateSummary(result, outputPath: dicomdirURL.path), terminator: "")
         }
     }
 }

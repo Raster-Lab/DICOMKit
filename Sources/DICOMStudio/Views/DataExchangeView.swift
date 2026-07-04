@@ -1040,10 +1040,13 @@ public enum CompressionAlgorithmHelpers: Sendable {
         ("JPEG 2000 Lossless (1.2.840.10008.1.2.4.90)", "j2k-lossless"),
         ("JPEG 2000 Lossy (1.2.840.10008.1.2.4.91)", "j2k"),
         ("High-Throughput J2K (1.2.840.10008.1.2.4.202)", "htj2k"),
+        ("JPEG XL Lossless (1.2.840.10008.1.2.4.110)", "jpeg-xl-lossless"),
+        ("JPEG XL Lossy (1.2.840.10008.1.2.4.112)", "jpeg-xl"),
     ]
 
     public static func isLossy(_ cliToken: String) -> Bool {
-        return cliToken == "jpeg-baseline" || cliToken == "jpeg-ls" || cliToken == "j2k" || cliToken == "htj2k"
+        return cliToken == "jpeg-baseline" || cliToken == "jpeg-ls" || cliToken == "j2k"
+            || cliToken == "htj2k" || cliToken == "jpeg-xl"
     }
 }
 #endif

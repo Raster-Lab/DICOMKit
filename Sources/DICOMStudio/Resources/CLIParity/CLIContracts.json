@@ -3341,7 +3341,7 @@
               }
             ],
             "commandName" : "compress",
-            "discussion" : "Compress uncompressed DICOM images to various codecs.\n\nSupported codecs:\n  jpeg, jpeg-baseline    JPEG Baseline (lossy, 8-bit)\n  jpeg-extended          JPEG Extended (lossy, 8\/12-bit)\n  jpeg-lossless          JPEG Lossless (Process 14)\n  jpeg-lossless-sv1      JPEG Lossless SV1 (default lossless JPEG)\n  jpeg2000, j2k          JPEG 2000 (lossy)\n  jpeg2000-lossless,     JPEG 2000 Lossless\n    j2k-lossless\n  j2k-part2              JPEG 2000 Part 2 (MCT, lossy)\n  j2k-part2-lossless     JPEG 2000 Part 2 Lossless\n  htj2k, htj2k-lossy     High-Throughput JPEG 2000 (lossy)\n  htj2k-lossless         HTJ2K Lossless\n  htj2k-rpcl,            HTJ2K RPCL Lossless Only\n    htj2k-lossless-rpcl\n  jpeg-ls-lossless       JPEG-LS Lossless\n  jpeg-ls, jls           JPEG-LS Near-Lossless\n  jpeg-xl, jxl           JPEG XL Lossless (pure-Swift)\n  rle                    RLE Lossless\n  deflate                Deflated Explicit VR Little Endian\n  explicit-le            Explicit VR Little Endian\n  implicit-le            Implicit VR Little Endian\n\nExamples:\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg2000 --quality high\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k --quality 0.9",
+            "discussion" : "Compress uncompressed DICOM images to various codecs.\n\nSupported codecs:\n  jpeg, jpeg-baseline    JPEG Baseline (lossy, 8-bit)\n  jpeg-extended          JPEG Extended (lossy, 8\/12-bit)\n  jpeg-lossless          JPEG Lossless (Process 14)\n  jpeg-lossless-sv1      JPEG Lossless SV1 (default lossless JPEG)\n  jpeg2000, j2k          JPEG 2000 (lossy)\n  jpeg2000-lossless,     JPEG 2000 Lossless\n    j2k-lossless\n  j2k-part2              JPEG 2000 Part 2 (MCT, lossy)\n  j2k-part2-lossless     JPEG 2000 Part 2 Lossless\n  htj2k, htj2k-lossy     High-Throughput JPEG 2000 (lossy)\n  htj2k-lossless         HTJ2K Lossless\n  htj2k-rpcl,            HTJ2K RPCL Lossless Only\n    htj2k-lossless-rpcl\n  jpeg-ls-lossless       JPEG-LS Lossless\n  jpeg-ls, jls           JPEG-LS Near-Lossless\n  jpeg-xl, jxl           JPEG XL (lossy, pure-Swift)\n  jpeg-xl-lossless       JPEG XL Lossless (pure-Swift)\n  rle                    RLE Lossless\n  deflate                Deflated Explicit VR Little Endian\n  explicit-le            Explicit VR Little Endian\n  implicit-le            Implicit VR Little Endian\n\nExamples:\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg2000 --quality high\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k --quality 0.9",
             "shouldDisplay" : true,
             "superCommands" : [
               "dicom-compress"
@@ -3952,7 +3952,7 @@
             "valueName" : "output"
           },
           {
-            "abstract" : "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, JPEG2000Part2Lossless, JPEG2000Part2, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, JPEGXLLossless, RLELossless",
+            "abstract" : "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, JPEG2000Part2Lossless, JPEG2000Part2, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, JPEGXLLossless, JPEGXLRecompression, RLELossless",
             "isOptional" : true,
             "isRepeating" : false,
             "kind" : "option",
@@ -10505,26 +10505,6 @@
             "valueName" : "no-sort-keys"
           },
           {
-            "abstract" : "JSON format: standard or dicomweb",
-            "defaultValue" : "Standard DICOM JSON Model",
-            "isOptional" : true,
-            "isRepeating" : false,
-            "kind" : "option",
-            "names" : [
-              {
-                "kind" : "long",
-                "name" : "format"
-              }
-            ],
-            "parsingStrategy" : "default",
-            "preferredName" : {
-              "kind" : "long",
-              "name" : "format"
-            },
-            "shouldDisplay" : true,
-            "valueName" : "format"
-          },
-          {
             "abstract" : "Include empty values in JSON",
             "isOptional" : true,
             "isRepeating" : false,
@@ -10581,25 +10561,6 @@
             },
             "shouldDisplay" : true,
             "valueName" : "bulk-data-url"
-          },
-          {
-            "abstract" : "Use streaming for large files",
-            "isOptional" : true,
-            "isRepeating" : false,
-            "kind" : "flag",
-            "names" : [
-              {
-                "kind" : "long",
-                "name" : "stream"
-              }
-            ],
-            "parsingStrategy" : "default",
-            "preferredName" : {
-              "kind" : "long",
-              "name" : "stream"
-            },
-            "shouldDisplay" : true,
-            "valueName" : "stream"
           },
           {
             "abstract" : "Only include metadata (exclude pixel data)",
@@ -10702,7 +10663,7 @@
           }
         ],
         "commandName" : "dicom-json",
-        "discussion" : "Converts DICOM files to JSON format (DICOM JSON Model) and vice versa.\nSupports DICOMweb JSON format with bulk data handling.\n\nExamples:\n  dicom-json file.dcm --output file.json\n  dicom-json file.json --output file.dcm --reverse\n  dicom-json file.dcm --format dicomweb --pretty\n  dicom-json large.dcm --output large.json --stream",
+        "discussion" : "Converts DICOM files to JSON format (DICOM JSON Model, PS3.18 Annex F)\nand vice versa, with bulk data handling.\n\nExamples:\n  dicom-json file.dcm --output file.json\n  dicom-json file.json --output file.dcm --reverse\n  dicom-json file.dcm --pretty",
         "shouldDisplay" : true,
         "subcommands" : [
           {

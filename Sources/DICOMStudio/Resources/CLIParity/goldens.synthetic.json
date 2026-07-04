@@ -415,7 +415,7 @@
       "label" : "syn-ct.dcm · compress-rle",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 104.3%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "rle",
@@ -443,7 +443,7 @@
       "label" : "syn-ct-rle.dcm · decompress-rle",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nDecompression ratio: 96.5%\nDecompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "input" : "FIXTURE",
@@ -476,6 +476,35 @@
       "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 00 00 00 00 00 00 04 00 05 00 06 00 07 00 00 00 00 00 00 00 00 00 ... (128 bytes)\n",
       "studioParams" : {
         "fill-value" : "0",
+        "inputPath" : "FIXTURE",
+        "mask-region" : "0,0,4,4",
+        "output" : "OUTPUT"
+      },
+      "toolId" : "dicom-pixedit"
+    },
+    {
+      "artifactKind" : "dicom",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--mask-region",
+        "0,0,4,4",
+        "--fill-value",
+        "255"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct.dcm",
+      "id" : "syn-ct__dicom-pixedit-mask-region-fill-255",
+      "label" : "syn-ct.dcm · mask-region-fill-255",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW FF 00 FF 00 FF 00 FF 00 04 00 05 00 06 00 07 00 FF 00 FF 00 FF 00 FF 00 ... (128 bytes)\n",
+      "studioParams" : {
+        "fill-value" : "255",
         "inputPath" : "FIXTURE",
         "mask-region" : "0,0,4,4",
         "output" : "OUTPUT"
@@ -1161,7 +1190,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 6A 06 74 06 7E 06 88 06 93 06 9D 06 A7 06 B1 06 BC 06 C6 06 D0 06 DB 06 ... (128 bytes)\n",
+      "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(0028,1050) Window Center                            VR=DS 2047.5\n(0028,1051) Window Width                             VR=DS 4095\n(7FE0,0010) Pixel Data                               VR=OW 6A 06 74 06 7E 06 88 06 93 06 9D 06 A7 06 B1 06 BC 06 C6 06 D0 06 DB 06 ... (128 bytes)\n",
       "studioParams" : {
         "apply-window" : "true",
         "inputPath" : "FIXTURE",
@@ -1894,7 +1923,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-lossless",
@@ -1922,7 +1951,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-lossless-sv1",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-lossless-sv1",
@@ -1950,7 +1979,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-ls-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 96.9%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-ls-lossless",
@@ -1978,7 +2007,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-xl-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 99.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-xl-lossless",
@@ -2006,7 +2035,7 @@
       "label" : "syn-ct.dcm · compress-jpeg2000-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 103.8%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg2000-lossless",
@@ -2034,7 +2063,7 @@
       "label" : "syn-ct.dcm · compress-j2k-part2-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 103.8%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "j2k-part2-lossless",
@@ -2062,7 +2091,7 @@
       "label" : "syn-ct.dcm · compress-htj2k-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 110.5%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "htj2k-lossless",
@@ -2090,7 +2119,7 @@
       "label" : "syn-ct.dcm · compress-htj2k-rpcl",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 110.5%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "htj2k-rpcl",
@@ -2118,7 +2147,7 @@
       "label" : "syn-ct.dcm · compress-deflate",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 77.2%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "deflate",
@@ -2146,7 +2175,7 @@
       "label" : "syn-ct.dcm · compress-explicit-le",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.7%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "explicit-le",
@@ -2174,7 +2203,7 @@
       "label" : "syn-ct.dcm · compress-implicit-le",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.0%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "implicit-le",
@@ -2202,7 +2231,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 108.5%\nCompression time:  <dur>\n",
       "stdout" : "7a2463e2b460c13c09745e0512ace24565d38d2707474be23334f04190399767",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2230,7 +2259,7 @@
       "label" : "syn-ct8.dcm · compress-jpeg-baseline",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct8.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct8.dcm → <tmp>\/out.dcm\nCompression ratio: 116.7%\nCompression time:  <dur>\n",
       "stdout" : "1ed122a6fe98ab426002fa3c09b79b450a03cf67eec3fc339927fe5921fb4e22",
       "studioParams" : {
         "codec" : "jpeg-baseline",
@@ -2258,7 +2287,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-ls",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 95.1%\nCompression time:  <dur>\n",
       "stdout" : "a2d3ec9c80bf82e795529f56890f56f3cfa43407c8108b77920b3f2332d5e981",
       "studioParams" : {
         "codec" : "jpeg-ls",
@@ -2288,7 +2317,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended-quality-maximum",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 108.5%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2319,7 +2348,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended-quality-low",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 108.1%\nCompression time:  <dur>\n",
       "stdout" : "c10c1de6cffab18943d0707750a09d42f36d085912a92a253baa76b7be656cd9",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2349,7 +2378,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-lossless-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-lossless\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 881 B\nRatio: 100.1%\n",
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-lossless\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 881 B\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-lossless",
@@ -2380,7 +2409,7 @@
       "label" : "syn-ct.dcm · compress-rle-backend-scalar",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 104.3%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "backend" : "scalar",
@@ -2412,7 +2441,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended-quality-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-extended\nQuality: high\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 955 B\nRatio: 108.5%\n",
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-extended\nQuality: high\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 955 B\nCompression ratio: 108.5%\nCompression time:  <dur>\n",
       "stdout" : "7a2463e2b460c13c09745e0512ace24565d38d2707474be23334f04190399767",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2442,7 +2471,7 @@
       "label" : "syn-ct-rle.dcm · decompress-rle-implicit",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\n",
+      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nDecompression ratio: 95.9%\nDecompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "input" : "FIXTURE",
@@ -2469,7 +2498,7 @@
       "label" : "syn-ct-rle.dcm · decompress-rle-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Decompressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTarget syntax: Explicit VR Little Endian\nDecompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nInput size:  918 B\nOutput size: 886 B\n",
+      "stderr" : "Decompressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTarget syntax: Explicit VR Little Endian\nDecompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nInput size:  918 B\nOutput size: 886 B\nDecompression ratio: 96.5%\nDecompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "input" : "FIXTURE",
@@ -3112,6 +3141,32 @@
       "toolId" : "dicom-convert"
     },
     {
+      "artifactKind" : "decoded-pixel-hash",
+      "artifactName" : "out.dcm",
+      "cliArgs" : [
+        "FIXTURE",
+        "--output",
+        "OUTPUT",
+        "--transfer-syntax",
+        "JPEGXLRecompression"
+      ],
+      "deterministic" : true,
+      "exitCode" : 0,
+      "fixtureFile" : "syn-ct-baseline.dcm",
+      "id" : "syn-ct-baseline__dicom-convert-ts-JPEGXLRecompression",
+      "label" : "syn-ct-baseline.dcm · ts-JPEGXLRecompression",
+      "phiSafe" : true,
+      "portable" : true,
+      "stderr" : "",
+      "stdout" : "1ed122a6fe98ab426002fa3c09b79b450a03cf67eec3fc339927fe5921fb4e22",
+      "studioParams" : {
+        "inputPath" : "FIXTURE",
+        "output" : "OUTPUT",
+        "transfer-syntax" : "JPEGXLRecompression"
+      },
+      "toolId" : "dicom-convert"
+    },
+    {
       "artifactKind" : "dicom-multi",
       "artifactName" : "converted",
       "cliArgs" : [
@@ -3628,58 +3683,6 @@
         "FIXTURE",
         "--output",
         "OUTPUT",
-        "--format",
-        "standard"
-      ],
-      "deterministic" : true,
-      "exitCode" : 0,
-      "fixtureFile" : "syn-ct.dcm",
-      "id" : "syn-ct__dicom-json-auto-format-standard",
-      "label" : "syn-ct.dcm · auto-format-standard",
-      "phiSafe" : true,
-      "portable" : true,
-      "stderr" : "",
-      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
-      "studioParams" : {
-        "format" : "standard",
-        "inputPath" : "FIXTURE",
-        "output" : "OUTPUT"
-      },
-      "toolId" : "dicom-json"
-    },
-    {
-      "artifactKind" : "text",
-      "artifactName" : "out.json",
-      "cliArgs" : [
-        "FIXTURE",
-        "--output",
-        "OUTPUT",
-        "--format",
-        "dicomweb"
-      ],
-      "deterministic" : true,
-      "exitCode" : 0,
-      "fixtureFile" : "syn-ct.dcm",
-      "id" : "syn-ct__dicom-json-auto-format-dicomweb",
-      "label" : "syn-ct.dcm · auto-format-dicomweb",
-      "phiSafe" : true,
-      "portable" : true,
-      "stderr" : "",
-      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
-      "studioParams" : {
-        "format" : "dicomweb",
-        "inputPath" : "FIXTURE",
-        "output" : "OUTPUT"
-      },
-      "toolId" : "dicom-json"
-    },
-    {
-      "artifactKind" : "text",
-      "artifactName" : "out.json",
-      "cliArgs" : [
-        "FIXTURE",
-        "--output",
-        "OUTPUT",
         "--no-sort-keys"
       ],
       "deterministic" : true,
@@ -3798,31 +3801,6 @@
         "filter-tag" : "0008,0060",
         "inputPath" : "FIXTURE",
         "output" : "OUTPUT"
-      },
-      "toolId" : "dicom-json"
-    },
-    {
-      "artifactKind" : "text",
-      "artifactName" : "out.json",
-      "cliArgs" : [
-        "FIXTURE",
-        "--output",
-        "OUTPUT",
-        "--stream"
-      ],
-      "deterministic" : true,
-      "exitCode" : 0,
-      "fixtureFile" : "syn-ct.dcm",
-      "id" : "syn-ct__dicom-json-auto-stream",
-      "label" : "syn-ct.dcm · auto-stream",
-      "phiSafe" : true,
-      "portable" : true,
-      "stderr" : "",
-      "stdout" : "{\n  \"7FE00010\" : {\n    \"Value\" : [\n      {\n        \"InlineBinary\" : \"AAABAAIAAwAEAAUABgAHAAgACQAKAAsADAANAA4ADwAQABEAEgATABQAFQAWABcAGAAZABoAGwAcAB0AHgAfACAAIQAiACMAJAAlACYAJwAoACkAKgArACwALQAuAC8AMAAxADIAMwA0ADUANgA3ADgAOQA6ADsAPAA9AD4APwA=\"\n      }\n    ],\n    \"vr\" : \"OW\"\n  },\n  \"0008103E\" : {\n    \"Value\" : [\n      \"PARITY SERIES\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"0020000D\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"0020000E\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080016\" : {\n    \"Value\" : [\n      \"1.2.840.10008.5.1.4.1.1.2\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080018\" : {\n    \"Value\" : [\n      \"1.2.826.0.1.3680043.10.999.1.1.1\"\n    ],\n    \"vr\" : \"UI\"\n  },\n  \"00080020\" : {\n    \"Value\" : [\n      \"20200101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00080030\" : {\n    \"Value\" : [\n      \"120000\"\n    ],\n    \"vr\" : \"TM\"\n  },\n  \"00080060\" : {\n    \"Value\" : [\n      \"CT\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00080070\" : {\n    \"Value\" : [\n      \"DICOMKit Parity\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00081030\" : {\n    \"Value\" : [\n      \"PARITY SYNTHETIC CT\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100010\" : {\n    \"Value\" : [\n      {\n        \"Alphabetic\" : \"PARITY^SYNTH\"\n      }\n    ],\n    \"vr\" : \"PN\"\n  },\n  \"00100020\" : {\n    \"Value\" : [\n      \"SYN-0001\"\n    ],\n    \"vr\" : \"LO\"\n  },\n  \"00100030\" : {\n    \"Value\" : [\n      \"19800101\"\n    ],\n    \"vr\" : \"DA\"\n  },\n  \"00100040\" : {\n    \"Value\" : [\n      \"O\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00200011\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00200013\" : {\n    \"Value\" : [\n      \"1\"\n    ],\n    \"vr\" : \"IS\"\n  },\n  \"00280002\" : {\n    \"Value\" : [\n      1\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280004\" : {\n    \"Value\" : [\n      \"MONOCHROME2\"\n    ],\n    \"vr\" : \"CS\"\n  },\n  \"00280010\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280011\" : {\n    \"Value\" : [\n      8\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280100\" : {\n    \"Value\" : [\n      16\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280101\" : {\n    \"Value\" : [\n      12\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280102\" : {\n    \"Value\" : [\n      11\n    ],\n    \"vr\" : \"US\"\n  },\n  \"00280103\" : {\n    \"Value\" : [\n      0\n    ],\n    \"vr\" : \"US\"\n  }\n}",
-      "studioParams" : {
-        "inputPath" : "FIXTURE",
-        "output" : "OUTPUT",
-        "stream" : "true"
       },
       "toolId" : "dicom-json"
     },
