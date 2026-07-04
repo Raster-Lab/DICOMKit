@@ -80,17 +80,9 @@ extension DICOMUID {
             let uids = manager.generateUIDs(count: count, root: root, type: type)
 
             if json {
-                let jsonData = try JSONSerialization.data(
-                    withJSONObject: uids,
-                    options: [.prettyPrinted, .sortedKeys]
-                )
-                if let jsonString = String(data: jsonData, encoding: .utf8) {
-                    print(jsonString)
-                }
+                print(try UIDConsole.generatedJSON(uids: uids), terminator: "")
             } else {
-                for uid in uids {
-                    print(uid)
-                }
+                print(UIDConsole.generatedList(uids: uids), terminator: "")
             }
         }
     }
@@ -149,43 +141,10 @@ extension DICOMUID {
             }
 
             if json {
-                let jsonResults = results.map { result -> [String: Any] in
-                    var dict: [String: Any] = [
-                        "uid": result.uid,
-                        "valid": result.isValid,
-                    ]
-                    if !result.errors.isEmpty {
-                        dict["errors"] = result.errors
-                    }
-                    if let name = result.registryName {
-                        dict["registryName"] = name
-                    }
-                    return dict
-                }
-                let jsonData = try JSONSerialization.data(
-                    withJSONObject: jsonResults,
-                    options: [.prettyPrinted, .sortedKeys]
-                )
-                if let jsonString = String(data: jsonData, encoding: .utf8) {
-                    print(jsonString)
-                }
+                print(try UIDConsole.validationJSON(results: results), terminator: "")
             } else {
-                var allValid = true
-                for result in results {
-                    if result.isValid {
-                        var line = "✅ \(result.uid)"
-                        if checkRegistry, let name = result.registryName {
-                            line += " [\(name)]"
-                        }
-                        print(line)
-                    } else {
-                        allValid = false
-                        print("❌ \(result.uid)")
-                        for error in result.errors {
-                            print("   - \(error)")
-                        }
-                    }
-                }
+                let (text, allValid) = UIDConsole.validationText(results: results, checkRegistry: checkRegistry)
+                print(text, terminator: "")
                 if !allValid {
                     throw ExitCode.failure
                 }
@@ -241,26 +200,14 @@ extension DICOMUID {
             if let uidValue = uid {
                 // Single UID lookup
                 if let entry = dictionary.lookup(uid: uidValue) {
+                    let typeName = UIDManager.uidTypeDescription(entry.type)
                     if json {
-                        let dict: [String: String] = [
-                            "uid": uidValue,
-                            "name": entry.name,
-                            "type": UIDManager.uidTypeDescription(entry.type),
-                        ]
-                        let jsonData = try JSONSerialization.data(
-                            withJSONObject: dict,
-                            options: [.prettyPrinted, .sortedKeys]
-                        )
-                        if let jsonString = String(data: jsonData, encoding: .utf8) {
-                            print(jsonString)
-                        }
+                        print(try UIDConsole.lookupEntryJSON(uid: uidValue, name: entry.name, type: typeName), terminator: "")
                     } else {
-                        print("UID:  \(uidValue)")
-                        print("Name: \(entry.name)")
-                        print("Type: \(UIDManager.uidTypeDescription(entry.type))")
+                        print(UIDConsole.lookupEntryText(uid: uidValue, name: entry.name, type: typeName), terminator: "")
                     }
                 } else {
-                    fprintln("UID not found in DICOM registry (not a standard Transfer Syntax or SOP Class UID): \(uidValue)")
+                    fprintln(UIDConsole.lookupNotFoundLine(uid: uidValue))
                     throw ExitCode.failure
                 }
             } else if listAll || search != nil {
@@ -275,7 +222,7 @@ extension DICOMUID {
                     case "sop-class", "sopclass":
                         entries = dictionary.sopClasses
                     default:
-                        fprintln("Unknown type filter '\(typeFilter)'. Valid types: transfer-syntax, sop-class")
+                        fprintln(UIDConsole.unknownTypeFilterLine(typeFilter))
                         throw ExitCode.failure
                     }
                 }
@@ -290,32 +237,20 @@ extension DICOMUID {
                 }
 
                 if entries.isEmpty {
-                    fprintln("No UIDs found matching criteria")
+                    fprintln(UIDConsole.noMatchesLine())
                     throw ExitCode.failure
                 }
 
                 if json {
-                    let jsonEntries = entries.map { entry -> [String: String] in
-                        [
-                            "uid": entry.uid,
-                            "name": entry.name,
-                            "type": UIDManager.uidTypeDescription(entry.type),
-                        ]
-                    }
-                    let jsonData = try JSONSerialization.data(
-                        withJSONObject: jsonEntries,
-                        options: [.prettyPrinted, .sortedKeys]
-                    )
-                    if let jsonString = String(data: jsonData, encoding: .utf8) {
-                        print(jsonString)
-                    }
+                    let rows = entries.map { (uid: $0.uid, name: $0.name, type: UIDManager.uidTypeDescription($0.type)) }
+                    print(try UIDConsole.listingJSON(entries: rows), terminator: "")
                 } else {
                     for entry in entries {
-                        print("\(entry.uid)  \(entry.name)  (\(UIDManager.uidTypeDescription(entry.type)))")
+                        print(UIDConsole.listingLine(uid: entry.uid, name: entry.name, type: UIDManager.uidTypeDescription(entry.type)))
                     }
                     // Result summary belongs on stdout (with the listing), consistent
                     // with how DICOMStudio renders it — keeps app/CLI output in parity.
-                    print("\n\(entries.count) UIDs found")
+                    print(UIDConsole.listingSummary(count: entries.count))
                 }
             }
         }
@@ -392,7 +327,7 @@ extension DICOMUID {
 
             for inputPath in inputs {
                 guard FileManager.default.fileExists(atPath: inputPath) else {
-                    fprintln("Warning: File not found: \(inputPath), skipping")
+                    fprintln(UIDConsole.fileNotFoundWarning(path: inputPath))
                     continue
                 }
 
@@ -405,7 +340,7 @@ extension DICOMUID {
                 }
 
                 if verbose {
-                    fprintln("Processing: \(inputPath)")
+                    fprintln(UIDConsole.processingLine(path: inputPath))
                 }
 
                 if dryRun {
@@ -427,12 +362,12 @@ extension DICOMUID {
 
                     if verbose {
                         for mapping in mappings {
-                            fprintln("  \(mapping.tagName): \(mapping.oldUID) → \(mapping.newUID)")
+                            fprintln(UIDConsole.mappingLine(tagName: mapping.tagName, oldUID: mapping.oldUID, newUID: mapping.newUID))
                         }
                     }
 
                     let outDescription = outputPath ?? inputPath
-                    fprintln("Wrote: \(outDescription) (\(mappings.count) UIDs regenerated)")
+                    fprintln(UIDConsole.wroteLine(path: outDescription, count: mappings.count))
                 }
             }
 
@@ -442,11 +377,11 @@ extension DICOMUID {
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
                 let mapData = try encoder.encode(allMappings)
                 try mapData.write(to: URL(fileURLWithPath: mapPath))
-                fprintln("UID mapping exported to: \(mapPath)")
+                fprintln(UIDConsole.mapExportedLine(path: mapPath))
             }
 
             if dryRun {
-                fprintln("Dry run complete — no files modified.")
+                fprintln(UIDConsole.dryRunCompleteLine())
             }
         }
     }

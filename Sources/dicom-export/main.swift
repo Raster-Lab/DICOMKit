@@ -105,19 +105,10 @@ extension DICOMExport {
                 throw ExportError.invalidFrame(frameIndex, totalFrames)
             }
 
-            let cgImage: CGImage?
-            if applyWindow {
-                let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pixelData,
-                                                      frameIndex: frameIndex,
-                                                      windowCenter: windowCenter, windowWidth: windowWidth)
-                cgImage = try dicomFile.tryRenderFrame(frameIndex, window: window)
-            } else {
-                cgImage = try dicomFile.tryRenderFrame(frameIndex)
-            }
-
-            guard let image = cgImage else {
-                throw ExportError.renderFailed
-            }
+            let image = try DICOMImageExporter.renderFrameForExport(
+                file: dicomFile, pixelData: pixelData, frameIndex: frameIndex,
+                applyWindow: applyWindow, windowCenter: windowCenter, windowWidth: windowWidth
+            )
 
             // Determine output path
             let outputPath: String
@@ -137,7 +128,7 @@ extension DICOMExport {
             }
 
             try DICOMImageExporter.exportCGImage(image, to: outputURL, format: format, quality: quality, metadata: metadata)
-            print("Exported: \(outputPath)")
+            print(ExportConsole.exportedLine(path: outputPath))
             #else
             throw ExportError.unsupportedPlatform
             #endif
@@ -252,7 +243,7 @@ extension DICOMExport {
 
             let outputURL = URL(fileURLWithPath: output)
             try DICOMImageExporter.exportCGImage(sheetImage, to: outputURL, format: format, quality: quality, metadata: nil)
-            print("Contact sheet exported: \(output) (\(inputs.count) images, \(columns)x\(layout.rows) grid)")
+            print(ExportConsole.contactSheetLine(path: output, imageCount: inputs.count, columns: columns, rows: layout.rows))
             #else
             throw ExportError.unsupportedPlatform
             #endif
@@ -394,7 +385,7 @@ extension DICOMExport {
                 throw ExportError.exportFailed
             }
 
-            print("Animated GIF exported: \(output) (\(frameCount) frames, \(fps) fps)")
+            print(ExportConsole.animatedGIFLine(path: output, frameCount: frameCount, fps: fps))
             #else
             throw ExportError.unsupportedPlatform
             #endif
@@ -453,23 +444,8 @@ extension DICOMExport {
                 withIntermediateDirectories: true
             )
 
-            // Enumerate files
-            let enumerator: FileManager.DirectoryEnumerator?
-            if recursive {
-                enumerator = FileManager.default.enumerator(
-                    at: inputURL,
-                    includingPropertiesForKeys: [.isRegularFileKey],
-                    options: [.skipsHiddenFiles]
-                )
-            } else {
-                enumerator = FileManager.default.enumerator(
-                    at: inputURL,
-                    includingPropertiesForKeys: [.isRegularFileKey],
-                    options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
-                )
-            }
-
-            guard let dirEnum = enumerator else {
+            // Enumerate files via the shared, sorted gatherer (same walk as the Workshop).
+            guard let fileURLs = FileGatherer.regularFiles(under: inputURL, recursive: recursive) else {
                 throw ExportError.invalidInput("Failed to enumerate directory: \(input)")
             }
 
@@ -477,10 +453,7 @@ extension DICOMExport {
             var successCount = 0
             var errorCount = 0
 
-            for case let fileURL as URL in dirEnum {
-                let resourceValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-                guard resourceValues.isRegularFile == true else { continue }
-
+            for fileURL in fileURLs {
                 fileCount += 1
 
                 do {
@@ -489,26 +462,15 @@ extension DICOMExport {
 
                     guard let pixelDataObj = dicomFile.pixelData() else {
                         if verbose {
-                            print("⚠ Skipping (no pixel data): \(fileURL.lastPathComponent)")
+                            print(ExportConsole.bulkSkipLine(fileName: fileURL.lastPathComponent))
                         }
                         continue
                     }
 
-                    let cgImage: CGImage?
-                    if applyWindow {
-                        let window = DICOMImageExporter.determineWindowSettings(from: dicomFile, pixelData: pixelDataObj,
-                                                              frameIndex: 0,
-                                                              windowCenter: nil, windowWidth: nil)
-                        cgImage = try dicomFile.tryRenderFrame(0, window: window)
-                    } else {
-                        cgImage = try dicomFile.tryRenderFrame(0)
-                    }
-
-                    guard let image = cgImage else {
-                        if verbose { print("✗ Render failed: \(fileURL.lastPathComponent)") }
-                        errorCount += 1
-                        continue
-                    }
+                    let image = try DICOMImageExporter.renderFrameForExport(
+                        file: dicomFile, pixelData: pixelDataObj, frameIndex: 0,
+                        applyWindow: applyWindow, windowCenter: nil, windowWidth: nil
+                    )
 
                     // Build output path
                     let patientName = dicomFile.dataSet.string(for: .patientName)
@@ -538,14 +500,14 @@ extension DICOMExport {
 
                     try DICOMImageExporter.exportCGImage(image, to: outputURL, format: format, quality: quality, metadata: metadata)
                     successCount += 1
-                    if verbose { print("✓ \(outputPath)") }
+                    if verbose { print(ExportConsole.bulkSuccessLine(path: outputPath)) }
                 } catch {
                     errorCount += 1
-                    if verbose { print("✗ \(fileURL.lastPathComponent): \(error.localizedDescription)") }
+                    if verbose { print(ExportConsole.bulkFailureLine(fileName: fileURL.lastPathComponent, message: error.localizedDescription)) }
                 }
             }
 
-            print("Bulk export complete: \(successCount)/\(fileCount) succeeded, \(errorCount) failed")
+            print(ExportConsole.bulkSummaryLine(success: successCount, total: fileCount, failed: errorCount))
             #else
             throw ExportError.unsupportedPlatform
             #endif

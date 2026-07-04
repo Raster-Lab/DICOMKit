@@ -90,7 +90,6 @@ struct EndToEndWorkflowTests {
         let values: [String: String] = [
             "input": "study.dcm",
             "output": "study.json",
-            "format": "dicomweb",
             "pretty": "true",
         ]
         #expect(builder.isValid(values: values))
@@ -98,7 +97,6 @@ struct EndToEndWorkflowTests {
         #expect(command.contains("dicom-json"))
         #expect(command.contains("study.dcm"))
         #expect(command.contains("--output study.json"))
-        #expect(command.contains("--format dicomweb"))
         #expect(command.contains("--pretty"))
     }
 

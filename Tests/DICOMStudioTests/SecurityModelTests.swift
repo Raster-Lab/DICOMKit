@@ -194,9 +194,9 @@ struct SecurityModelTests {
         }
     }
 
-    @Test("AnonymizationProfile has 3 cases")
+    @Test("AnonymizationProfile has 5 cases")
     func testAnonymizationProfileCaseCount() {
-        #expect(AnonymizationProfile.allCases.count == 3)
+        #expect(AnonymizationProfile.allCases.count == 5)
     }
 
     // MARK: - TagAction

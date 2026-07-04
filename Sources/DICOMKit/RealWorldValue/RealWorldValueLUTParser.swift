@@ -221,12 +221,6 @@ public struct RealWorldValueLUTParser {
     }
 }
 
-// MARK: - Tag Extensions
-
-extension Tag {
-    /// Shared Functional Groups Sequence (5200,9229)
-    static let sharedFunctionalGroupsSequence = Tag(group: 0x5200, element: 0x9229)
-    
-    /// Per-Frame Functional Groups Sequence (5200,9230)
-    static let perFrameFunctionalGroupsSequence = Tag(group: 0x5200, element: 0x9230)
-}
+// NOTE: sharedFunctionalGroupsSequence / perFrameFunctionalGroupsSequence are
+// defined publicly in DICOMCore (Tag+Segmentation.swift) — the internal copies
+// that used to live here were removed to avoid ambiguity under @testable.

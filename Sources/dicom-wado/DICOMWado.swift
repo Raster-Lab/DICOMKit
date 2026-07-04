@@ -1073,17 +1073,8 @@ struct UPSCommand: AsyncParsableCommand {
     }
     
     private func printCreateResponse(_ response: UPSCreateResponse) {
-        fprintln("Created worklist item:")
-        fprintln("  UID: \(response.workitemUID)")
-        if let url = response.retrieveURL {
-            fprintln("  Retrieve URL: \(url)")
-        }
-        if !response.warnings.isEmpty {
-            fprintln("  Warnings:")
-            for warning in response.warnings {
-                fprintln("    - \(warning)")
-            }
-        }
+        // Shared builder (UPSConsole) — the Workshop renders the same bytes.
+        fprint(UPSConsole.createResponseText(response))
     }
     
     private func parsePriority(_ value: String) throws -> UPSPriority {
@@ -1168,9 +1159,9 @@ struct UPSCommand: AsyncParsableCommand {
         let requestingAE = aet
         
         if verbose {
-            fprintln("Updating worklist item \(uid) to state: \(newState.rawValue)")
-            if let ae = requestingAE { fprintln("  Requesting AE: \(ae)") }
-            if let tx = effectiveTxUID { fprintln("  Transaction UID: \(tx)") }
+            fprint(UPSConsole.updateVerboseHeader(
+                uid: uid, stateRaw: newState.rawValue,
+                requestingAE: requestingAE, transactionUID: effectiveTxUID))
         }
         
         // Per PS3.4 CC.2.1.3/Table CC.2.5-3, the SCP validates that the Unified
@@ -1182,7 +1173,7 @@ struct UPSCommand: AsyncParsableCommand {
         let response: UPSStateChangeResponse
         if newState == .completed, let txUID = effectiveTxUID {
             if verbose {
-                fprintln("Updating workitem with Final State attributes (required before COMPLETED)...")
+                fprint(UPSConsole.finalStateUpdatingLine())
             }
             response = try await client.completeWorkitem(
                 uid: uid,
@@ -1190,7 +1181,7 @@ struct UPSCommand: AsyncParsableCommand {
                 requestingAE: requestingAE
             )
             if verbose {
-                fprintln("Final State attributes updated successfully")
+                fprint(UPSConsole.finalStateUpdatedLine())
             }
         } else {
             response = try await client.changeWorkitemState(
@@ -1201,15 +1192,9 @@ struct UPSCommand: AsyncParsableCommand {
             )
         }
 
-        fprintln("Successfully updated worklist item \(uid) to \(newState.rawValue)")
-        if let txUID = response.transactionUID {
-            fprintln("Transaction UID: \(txUID)")
-        }
-        if !response.warnings.isEmpty {
-            for warning in response.warnings {
-                fprintln("Warning: \(warning)")
-            }
-        }
+        fprint(UPSConsole.updateResultText(
+            uid: uid, stateRaw: newState.rawValue,
+            transactionUID: response.transactionUID, warnings: response.warnings))
     }
     
     private func subscribeToWorkitem(client: DICOMwebClient) async throws {
@@ -1311,6 +1296,16 @@ enum MetadataFormat: String, ExpressibleByArgument {
 func fprintln(_ message: String = "", to stream: Stream = .standardOutput) {
     let handle = stream == .standardOutput ? FileHandle.standardOutput : FileHandle.standardError
     if let data = (message + "\n").data(using: .utf8) {
+        handle.write(data)
+    }
+}
+
+/// Writes pre-formatted text (already newline-terminated) verbatim. Used with
+/// shared console builders (e.g. `UPSConsole`) so the CLI emits byte-for-byte
+/// the same text DICOMStudio's Workshop renders.
+func fprint(_ message: String, to stream: Stream = .standardOutput) {
+    let handle = stream == .standardOutput ? FileHandle.standardOutput : FileHandle.standardError
+    if let data = message.data(using: .utf8) {
         handle.write(data)
     }
 }

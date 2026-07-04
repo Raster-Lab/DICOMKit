@@ -292,8 +292,12 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
                 transferSyntaxUID: encodingTransferSyntaxUID
             )
         )
+        // --backend metal → the J2KSwift GPU encode path; every other
+        // preference (auto/accelerate/scalar) runs the default CPU encoder.
+        let useGPU = configuration.forcedBackend == .metal
         let encoded = try Self.awaitJ2KResult {
-            try await encoder.encode(image)
+            useGPU ? try await encoder.encodeGPU(image)
+                   : try await encoder.encode(image)
         }
         try Self.verifyEncodedRoundTrip(encoded, original: frameData, descriptor: descriptor, configuration: configuration)
         return encoded

@@ -136,7 +136,7 @@ final class CLIParityMPPSParityTests: XCTestCase {
         let img = scs.first { $0.scenarioId == "dicom-mpps_net_lifecycle-completed-images" }
         XCTAssertNotNil(img)
         XCTAssertEqual(img?.studioParams["series-uid"], "1.2.3.4")
-        XCTAssertEqual(img?.studioParams["image-uids"], "1.2.3.4.5,1.2.3.4.6")
+        XCTAssertEqual(img?.studioParams["image-uid"], "1.2.3.4.5;1.2.3.4.6")
     }
 
     /// Every scenario's CLI argv is the N-CREATE command (subcommand `create`, status

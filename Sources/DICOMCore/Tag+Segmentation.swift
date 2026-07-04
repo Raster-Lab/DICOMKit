@@ -118,7 +118,17 @@ extension Tag {
     /// Frame Content Sequence (0020,9111)
     /// Contains frame-specific temporal and organizational information
     public static let frameContentSequence = Tag(group: 0x0020, element: 0x9111)
-    
+
+    /// Pixel Measures Sequence (0028,9110)
+    /// Contains Pixel Spacing / Slice Thickness / Spacing Between Slices
+    public static let pixelMeasuresSequence = Tag(group: 0x0028, element: 0x9110)
+
+    /// Stack ID (0020,9056)
+    public static let stackID = Tag(group: 0x0020, element: 0x9056)
+
+    /// In-Stack Position Number (0020,9057)
+    public static let inStackPositionNumber = Tag(group: 0x0020, element: 0x9057)
+
     /// Frame Acquisition Number (0020,9156)
     public static let frameAcquisitionNumber = Tag(group: 0x0020, element: 0x9156)
     

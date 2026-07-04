@@ -64,32 +64,17 @@ extension DICOMFile {
             }
         }
         
-        // ImageIO-based codecs (JPEG, JPEG 2000) automatically convert YCbCr to RGB
-        // during decompression via CGContext.draw with CGColorSpaceCreateDeviceRGB.
-        // Update the descriptor's photometric interpretation to reflect the actual
-        // output color space so the renderer does not apply YBR→RGB conversion again.
+        // The registry's pure-Swift codecs (JLISwift for JPEG, J2KSwiftCodec for
+        // JPEG 2000 / HTJ2K, plus JPEG-LS / RLE) decode to the *source* photometric
+        // interpretation — they do NOT implicitly convert YBR→RGB the way the retired
+        // ImageIO codecs did. So the decoded bytes still match the data set's
+        // Photometric Interpretation, and the renderer performs any YBR→RGB conversion
+        // itself (see PixelDataRenderer.convertYBRToRGB). Relabelling YBR as RGB here
+        // would suppress that conversion and wash out colour previews.
         // Reference: DICOM PS3.3 C.7.6.3.1.2
-        let outputDescriptor: PixelDataDescriptor
-        if descriptor.photometricInterpretation.isYBR && Self.isImageIODecodedTransferSyntax(tsUID) {
-            outputDescriptor = PixelDataDescriptor(
-                rows: descriptor.rows,
-                columns: descriptor.columns,
-                numberOfFrames: descriptor.numberOfFrames,
-                bitsAllocated: descriptor.bitsAllocated,
-                bitsStored: descriptor.bitsStored,
-                highBit: descriptor.highBit,
-                isSigned: descriptor.isSigned,
-                samplesPerPixel: descriptor.samplesPerPixel,
-                photometricInterpretation: .rgb,
-                planarConfiguration: descriptor.planarConfiguration
-            )
-        } else {
-            outputDescriptor = descriptor
-        }
-        
-        return PixelData(data: decompressedData, descriptor: outputDescriptor)
+        return PixelData(data: decompressedData, descriptor: descriptor)
     }
-    
+
     /// Extracts pixel data from the DICOM file, throwing detailed errors on failure
     ///
     /// Returns the uncompressed pixel data along with its descriptor.
@@ -183,29 +168,14 @@ extension DICOMFile {
             }
         }
         
-        // ImageIO-based codecs (JPEG, JPEG 2000) automatically convert YCbCr to RGB
-        // during decompression. Update photometric interpretation accordingly.
-        let outputDescriptor: PixelDataDescriptor
-        if descriptor.photometricInterpretation.isYBR && Self.isImageIODecodedTransferSyntax(tsUID) {
-            outputDescriptor = PixelDataDescriptor(
-                rows: descriptor.rows,
-                columns: descriptor.columns,
-                numberOfFrames: descriptor.numberOfFrames,
-                bitsAllocated: descriptor.bitsAllocated,
-                bitsStored: descriptor.bitsStored,
-                highBit: descriptor.highBit,
-                isSigned: descriptor.isSigned,
-                samplesPerPixel: descriptor.samplesPerPixel,
-                photometricInterpretation: .rgb,
-                planarConfiguration: descriptor.planarConfiguration
-            )
-        } else {
-            outputDescriptor = descriptor
-        }
-        
-        return PixelData(data: decompressedData, descriptor: outputDescriptor)
+        // The registry's pure-Swift codecs decode to the *source* photometric
+        // interpretation (no implicit YBR→RGB like the retired ImageIO codecs), so
+        // the decoded bytes still match the data set's Photometric Interpretation and
+        // the renderer performs any YBR→RGB conversion itself. See the matching note
+        // in `pixelData()`. Reference: DICOM PS3.3 C.7.6.3.1.2
+        return PixelData(data: decompressedData, descriptor: descriptor)
     }
-    
+
     /// Creates a PixelDataDescriptor from the file's image pixel attributes
     ///
     /// - Returns: PixelDataDescriptor if all required attributes are present
@@ -563,23 +533,4 @@ extension DICOMFile {
         return nonImageSOPClasses.contains(sopClassUID)
     }
     
-    // MARK: - ImageIO Codec Detection
-    
-    /// Transfer syntaxes decoded by Apple's ImageIO framework (via NativeJPEGCodec / NativeJPEG2000Codec).
-    /// These codecs use CGContext.draw with CGColorSpaceCreateDeviceRGB which automatically
-    /// converts YCbCr colour data to RGB during decompression.
-    private static let imageIODecodedTransferSyntaxes: Set<String> = [
-        TransferSyntax.jpegBaseline.uid,      // 1.2.840.10008.1.2.4.50
-        TransferSyntax.jpegExtended.uid,      // 1.2.840.10008.1.2.4.51
-        TransferSyntax.jpegLossless.uid,      // 1.2.840.10008.1.2.4.57
-        TransferSyntax.jpegLosslessSV1.uid,   // 1.2.840.10008.1.2.4.70
-        TransferSyntax.jpeg2000Lossless.uid,  // 1.2.840.10008.1.2.4.90
-        TransferSyntax.jpeg2000.uid,          // 1.2.840.10008.1.2.4.91
-    ]
-    
-    /// Whether the given transfer syntax UID is decoded by an ImageIO-based codec
-    /// that automatically converts YCbCr to RGB during decompression.
-    private static func isImageIODecodedTransferSyntax(_ uid: String) -> Bool {
-        return imageIODecodedTransferSyntaxes.contains(uid)
-    }
 }

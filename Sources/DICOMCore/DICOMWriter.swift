@@ -295,21 +295,93 @@ public struct DICOMWriter: Sendable {
     /// - Returns: Serialized data element including header and value
     public func serializeElement(_ element: DataElement) -> Data {
         var data = Data()
-        
+
         // Handle sequences specially
         if element.vr == .SQ {
             data.append(serializeSequence(element))
             return data
         }
-        
+
+        // Handle encapsulated (compressed) pixel data: an undefined-length element
+        // carrying a Basic Offset Table + Item-tagged codestream fragments + a
+        // Sequence Delimitation Item (PS3.5 A.4). The generic value path below skips
+        // undefined-length values, so without this branch the compressed pixels are
+        // silently dropped whenever a compressed data set is re-serialized (e.g.
+        // dicom-convert transcoding or DICOMFile.write()).
+        if element.length == 0xFFFFFFFF,
+           let fragments = element.encapsulatedFragments {
+            data.append(serializeEncapsulatedPixelData(element, fragments: fragments))
+            return data
+        }
+
         // Write header
         data.append(serializeElementHeader(tag: element.tag, vr: element.vr, length: element.length))
-        
+
         // Write value data
         if element.length != 0xFFFFFFFF {
             data.append(element.valueData)
         }
-        
+
+        return data
+    }
+
+    /// Serializes an encapsulated PixelData element per DICOM PS3.5 A.4
+    /// (Encapsulation of Encoded Pixel Data). Layout:
+    ///
+    ///   (7FE0,0010) OB  undefined length (0xFFFFFFFF)
+    ///   (FFFE,E000) Item  <BOT length>   <BOT bytes>
+    ///   (FFFE,E000) Item  <frag-1 length><frag-1 bytes>
+    ///   ...
+    ///   (FFFE,E0DD) Sequence Delimitation Item, length 0
+    ///
+    /// Encapsulated pixel data is always Explicit VR Little Endian (the
+    /// encapsulated transfer syntaxes are all Explicit VR LE), so the header is
+    /// emitted as OB with a 2-byte reserved field regardless of the writer's
+    /// `explicitVR`/byte-order configuration — matching the encoder/transcoder
+    /// serializers so all three produce byte-identical output.
+    private func serializeEncapsulatedPixelData(_ element: DataElement, fragments: [Data]) -> Data {
+        var data = Data()
+
+        // PixelData element header: tag + VR(OB) + 2 reserved + undefined length.
+        data.append(serializeUInt16(element.tag.group))
+        data.append(serializeUInt16(element.tag.element))
+        data.append(contentsOf: "OB".utf8)
+        data.append(contentsOf: [0x00, 0x00])
+        data.append(serializeUInt32(0xFFFFFFFF))
+
+        // Basic Offset Table (BOT) Item: (FFFE,E000) + length + offsets (or empty).
+        let offsetTable = element.encapsulatedOffsetTable ?? []
+        var botBytes = Data()
+        for offset in offsetTable {
+            botBytes.append(serializeUInt32(offset))
+        }
+        data.append(serializeUInt16(0xFFFE))
+        data.append(serializeUInt16(0xE000))
+        data.append(serializeUInt32(UInt32(botBytes.count)))
+        data.append(botBytes)
+
+        // One Item per codestream fragment, padded to even length (PS3.5 requires
+        // even-length items; pad an odd fragment with a trailing 0x00).
+        for fragment in fragments {
+            data.append(serializeUInt16(0xFFFE))
+            data.append(serializeUInt16(0xE000))
+            let padded: Data
+            if fragment.count % 2 != 0 {
+                var p = fragment
+                p.append(0x00)
+                padded = p
+            } else {
+                padded = fragment
+            }
+            data.append(serializeUInt32(UInt32(padded.count)))
+            data.append(padded)
+        }
+
+        // Sequence Delimitation Item (FFFE,E0DD), length 0.
+        data.append(serializeUInt16(0xFFFE))
+        data.append(serializeUInt16(0xE0DD))
+        data.append(serializeUInt32(0))
+
         return data
     }
     

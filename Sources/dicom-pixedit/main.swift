@@ -102,15 +102,15 @@ struct DICOMPixedit: ParsableCommand {
         }
         
         if verbose {
-            fprintln("Input: \(input)")
-            fprintln("Output: \(output)")
-            fprintln("Operations: \(operations.count)")
+            for line in PixelEditConsole.headerLines(input: input, output: output, operationCount: operations.count) {
+                fprintln(line)
+            }
         }
-        
+
         try editor.processFile(inputPath: input, outputPath: output, operations: operations)
-        
+
         if verbose {
-            fprintln("Done.")
+            fprintln(PixelEditConsole.doneLine())
         }
     }
 }

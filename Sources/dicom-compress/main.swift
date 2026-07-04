@@ -52,6 +52,10 @@ extension DICOMCompress {
                   htj2k-lossless         HTJ2K Lossless
                   htj2k-rpcl,            HTJ2K RPCL Lossless Only
                     htj2k-lossless-rpcl
+                  jpeg-ls-lossless       JPEG-LS Lossless
+                  jpeg-ls, jls           JPEG-LS Near-Lossless
+                  jpeg-xl, jxl           JPEG XL (lossy, pure-Swift)
+                  jpeg-xl-lossless       JPEG XL Lossless (pure-Swift)
                   rle                    RLE Lossless
                   deflate                Deflated Explicit VR Little Endian
                   explicit-le            Explicit VR Little Endian
@@ -99,37 +103,52 @@ extension DICOMCompress {
 
         mutating func run() throws {
             let manager = CompressionManager()
-
-            let backendPref = parseBackendPreference(backend)
-            if verbose {
-                fprintln("Compressing: \(input)")
-                fprintln("Codec: \(codec)")
-                if let q = quality {
-                    fprintln("Quality: \(q)")
-                }
-                fprintln("Backend: \(backendPref.effective.displayName)")
-            }
-
-            let qualityPreset = try parseQuality(quality)
+            let backendPref = CompressionConsole.backendPreference(for: backend)
+            let qualityPreset = try CompressionConsole.parseQuality(quality)
 
             do {
-                try manager.compressFile(
-                    inputPath: input,
-                    outputPath: output,
-                    codec: codec,
-                    quality: qualityPreset
-                )
-                fprintln("Compressed: \(input) → \(output)")
+                // Read input once — reused for source-info detection and compression
+                // so the file is not read twice.
+                let inputData = try Data(contentsOf: URL(fileURLWithPath: input))
 
+                // Detect recompression (source already compressed → target also a
+                // compressed syntax, so the engine decodes to native pixels then
+                // re-encodes). Detection lives once in CompressionManager so the CLI
+                // and the Studio Workshop agree without re-deriving it.
+                let sourceInfo = try? manager.getCompressionInfo(data: inputData)
+                let isRecompression = CompressionManager.isRecompression(sourceInfo: sourceInfo, targetCodec: codec)
+                let sourceCodecName = isRecompression ? sourceInfo?.transferSyntaxName : nil
+
+                // All console text comes from the shared CompressionConsole so the
+                // CLI and the Studio Workshop never drift.
                 if verbose {
-                    let inputSize = try FileManager.default.attributesOfItem(atPath: input)[.size] as? Int ?? 0
-                    let outputSize = try FileManager.default.attributesOfItem(atPath: output)[.size] as? Int ?? 0
-                    fprintln("Input size:  \(formatBytes(inputSize))")
-                    fprintln("Output size: \(formatBytes(outputSize))")
-                    if inputSize > 0 {
-                        let ratio = Double(outputSize) / Double(inputSize) * 100.0
-                        fprintln("Ratio: \(String(format: "%.1f%%", ratio))")
-                    }
+                    fprint(CompressionConsole.compressPreamble(
+                        input: input, codec: codec, quality: quality,
+                        backendDisplayName: backendPref.effective.displayName,
+                        sourceTransferSyntaxName: sourceCodecName))
+                } else if let name = sourceCodecName {
+                    fprint(CompressionConsole.recompressNoteLine(sourceName: name))
+                }
+
+                // Engine returns per-phase metrics (a recompression is timed/sized as a
+                // decompress phase + a compress phase); the console text is derived from
+                // them in DICOMKit core so the CLI and Studio never drift.
+                let (outputData, metrics) = try manager.compressDataWithMetrics(
+                    inputData, codec: codec, quality: qualityPreset, sourceInfo: sourceInfo,
+                    backend: backendPref)
+                try outputData.write(to: URL(fileURLWithPath: output))
+
+                fprint(CompressionConsole.compressResultLine(input: input, output: output))
+                if verbose {
+                    fprint(CompressionConsole.compressStats(
+                        inputSize: metrics.inputSize, intermediateSize: metrics.intermediateSize,
+                        outputSize: metrics.outputSize, decompressElapsed: metrics.decompressElapsed,
+                        compressElapsed: metrics.compressElapsed))
+                } else {
+                    fprint(CompressionConsole.compressSummary(
+                        inputSize: metrics.inputSize, intermediateSize: metrics.intermediateSize,
+                        outputSize: metrics.outputSize, decompressElapsed: metrics.decompressElapsed,
+                        compressElapsed: metrics.compressElapsed))
                 }
             } catch {
                 fprintln("Error: \(error)")
@@ -185,23 +204,26 @@ extension DICOMCompress {
             let targetSyntax = CompressionManager.transferSyntax(for: syntax)!
 
             if verbose {
-                fprintln("Decompressing: \(input)")
-                fprintln("Target syntax: \(CompressionManager.transferSyntaxDisplayName(targetSyntax))")
+                fprint(CompressionConsole.decompressPreamble(
+                    input: input,
+                    targetSyntaxName: CompressionManager.transferSyntaxDisplayName(targetSyntax)))
             }
 
             do {
-                try manager.decompressFile(
-                    inputPath: input,
-                    outputPath: output,
-                    syntax: targetSyntax
-                )
-                fprintln("Decompressed: \(input) → \(output)")
+                let inputData = try Data(contentsOf: URL(fileURLWithPath: input))
 
+                let start = Date()
+                let outputData = try manager.decompressData(inputData, syntax: targetSyntax)
+                let elapsed = Date().timeIntervalSince(start)
+                try outputData.write(to: URL(fileURLWithPath: output))
+
+                fprint(CompressionConsole.decompressResultLine(input: input, output: output))
                 if verbose {
-                    let inputSize = try FileManager.default.attributesOfItem(atPath: input)[.size] as? Int ?? 0
-                    let outputSize = try FileManager.default.attributesOfItem(atPath: output)[.size] as? Int ?? 0
-                    fprintln("Input size:  \(formatBytes(inputSize))")
-                    fprintln("Output size: \(formatBytes(outputSize))")
+                    fprint(CompressionConsole.decompressStats(
+                        inputSize: inputData.count, outputSize: outputData.count, elapsed: elapsed))
+                } else {
+                    fprint(CompressionConsole.decompressSummary(
+                        inputSize: inputData.count, outputSize: outputData.count, elapsed: elapsed))
                 }
             } catch {
                 fprintln("Error: \(error)")
@@ -246,92 +268,13 @@ extension DICOMCompress {
                 let info = try manager.getCompressionInfo(path: input)
 
                 if json {
-                    try printJSON(info)
+                    print(try CompressionConsole.infoJSON(info, filePath: input), terminator: "")
                 } else {
-                    printText(info)
+                    print(CompressionConsole.infoText(info, filePath: input), terminator: "")
                 }
             } catch {
-                fprintln("Error reading file: \(error)")
+                fprint(CompressionConsole.infoErrorLine(error))
                 throw ExitCode.failure
-            }
-        }
-
-        private func printText(_ info: CompressionInfo) {
-            print("File: \(input)")
-            print("Transfer Syntax: \(info.transferSyntaxName)")
-            print("Transfer Syntax UID: \(info.transferSyntaxUID)")
-            print("Compressed: \(info.isCompressed ? "Yes" : "No")")
-            print("Lossless: \(info.isLossless ? "Yes" : "No")")
-
-            if info.isJPEG { print("Codec: JPEG") }
-            else if info.isJPEG2000 {
-                let uid = info.transferSyntaxUID
-                if uid.hasPrefix("1.2.840.10008.1.2.4.20") {
-                    print("Codec: HTJ2K (High-Throughput JPEG 2000)")
-                } else {
-                    print("Codec: JPEG 2000")
-                }
-            }
-            else if info.isRLE { print("Codec: RLE") }
-            else if info.isDeflated { print("Codec: Deflate") }
-            else { print("Codec: None (uncompressed)") }
-
-            if let size = info.pixelDataSize {
-                print("Pixel Data Size: \(formatBytes(size))")
-            } else {
-                print("Pixel Data Size: N/A (no pixel data)")
-            }
-
-            if let rows = info.rows, let cols = info.columns {
-                print("Image Dimensions: \(cols) x \(rows)")
-            }
-            if let ba = info.bitsAllocated {
-                print("Bits Allocated: \(ba)")
-            }
-            if let bs = info.bitsStored {
-                print("Bits Stored: \(bs)")
-            }
-            if let spp = info.samplesPerPixel {
-                print("Samples Per Pixel: \(spp)")
-            }
-            if let pi = info.photometricInterpretation {
-                print("Photometric Interpretation: \(pi)")
-            }
-            if let nf = info.numberOfFrames {
-                print("Number of Frames: \(nf)")
-            }
-        }
-
-        private func printJSON(_ info: CompressionInfo) throws {
-            var dict: [String: Any] = [
-                "file": input,
-                "transferSyntax": info.transferSyntaxName,
-                "transferSyntaxUID": info.transferSyntaxUID,
-                "compressed": info.isCompressed,
-                "lossless": info.isLossless,
-            ]
-
-            if info.isJPEG { dict["codec"] = "JPEG" }
-            else if info.isJPEG2000 { dict["codec"] = "JPEG 2000" }
-            else if info.isRLE { dict["codec"] = "RLE" }
-            else if info.isDeflated { dict["codec"] = "Deflate" }
-            else { dict["codec"] = "None" }
-
-            if let size = info.pixelDataSize { dict["pixelDataSize"] = size }
-            if let rows = info.rows { dict["rows"] = rows }
-            if let cols = info.columns { dict["columns"] = cols }
-            if let ba = info.bitsAllocated { dict["bitsAllocated"] = ba }
-            if let bs = info.bitsStored { dict["bitsStored"] = bs }
-            if let spp = info.samplesPerPixel { dict["samplesPerPixel"] = spp }
-            if let pi = info.photometricInterpretation { dict["photometricInterpretation"] = pi }
-            if let nf = info.numberOfFrames { dict["numberOfFrames"] = nf }
-
-            let jsonData = try JSONSerialization.data(
-                withJSONObject: dict,
-                options: [.prettyPrinted, .sortedKeys]
-            )
-            if let jsonString = String(data: jsonData, encoding: .utf8) {
-                print(jsonString)
             }
         }
     }
@@ -421,9 +364,9 @@ extension DICOMCompress {
                 throw ExitCode.failure
             }
 
-            fprintln("Found \(files.count) DICOM file(s)")
+            fprint(CompressionConsole.batchFoundLine(count: files.count))
 
-            let qualityPreset = try parseQuality(quality)
+            let qualityPreset = try CompressionConsole.parseQuality(quality)
             var successCount = 0
             var failCount = 0
 
@@ -465,18 +408,18 @@ extension DICOMCompress {
                     }
                     successCount += 1
                     if verbose {
-                        fprintln("  ✅ \(relativePath)")
+                        fprint(CompressionConsole.batchProgressLine(success: true, relativePath: relativePath, error: nil))
                     }
                 } catch {
                     failCount += 1
                     if verbose {
-                        fprintln("  ❌ \(relativePath): \(error)")
+                        fprint(CompressionConsole.batchProgressLine(success: false, relativePath: relativePath, error: "\(error)"))
                     }
                 }
             }
 
-            let action = decompress ? "Decompressed" : "Compressed"
-            fprintln("\(action): \(successCount) succeeded, \(failCount) failed out of \(files.count) files")
+            fprint(CompressionConsole.batchSummaryLine(
+                decompress: decompress, success: successCount, fail: failCount, total: files.count))
 
             if failCount > 0 {
                 throw ExitCode.failure
@@ -491,41 +434,11 @@ private func fprintln(_ message: String) {
     FileHandle.standardError.write((message + "\n").data(using: .utf8) ?? Data())
 }
 
-private func formatBytes(_ bytes: Int) -> String {
-    if bytes < 1024 {
-        return "\(bytes) B"
-    } else if bytes < 1024 * 1024 {
-        return String(format: "%.1f KB", Double(bytes) / 1024.0)
-    } else if bytes < 1024 * 1024 * 1024 {
-        return String(format: "%.1f MB", Double(bytes) / (1024.0 * 1024.0))
-    } else {
-        return String(format: "%.1f GB", Double(bytes) / (1024.0 * 1024.0 * 1024.0))
-    }
-}
-
-@available(macOS 10.15, *)
-private func parseQuality(_ qualityString: String?) throws -> CompressionQuality? {
-    guard let qs = qualityString else { return nil }
-    switch qs.lowercased() {
-    case "maximum": return .maximum
-    case "high": return .high
-    case "medium": return .medium
-    case "low": return .low
-    default:
-        if let value = Double(qs), value >= 0.0, value <= 1.0 {
-            return .custom(value)
-        }
-        throw ValidationError("Invalid quality '\(qs)'. Use maximum, high, medium, low, or a value 0.0-1.0")
-    }
-}
-
-private func parseBackendPreference(_ rawValue: String) -> CodecBackendPreference {
-    switch rawValue.lowercased() {
-    case "metal":       return .metal
-    case "accelerate":  return .accelerate
-    case "scalar":      return .scalar
-    default:            return .auto
-    }
+/// Writes pre-formatted text (already newline-terminated) to stderr verbatim.
+/// Used with `CompressionConsole` builders so the CLI emits byte-for-byte the
+/// same text DICOMStudio's Workshop renders. See CompressionConsole.swift.
+private func fprint(_ message: String) {
+    FileHandle.standardError.write(message.data(using: .utf8) ?? Data())
 }
 
 // MARK: - Backends subcommand
@@ -550,33 +463,10 @@ extension DICOMCompress {
         var json: Bool = false
 
         mutating func run() throws {
-            let best = CodecBackendProbe.bestAvailable
-            let available = CodecBackendProbe.availableBackends
-
             if json {
-                var items: [[String: Any]] = []
-                for backend in CodecBackend.allCases {
-                    let isAvail = CodecBackendProbe.isAvailable(backend)
-                    items.append([
-                        "backend": backend.rawValue,
-                        "available": isAvail,
-                        "active": backend == best,
-                        "displayName": backend.displayName
-                    ])
-                }
-                let data = try JSONSerialization.data(withJSONObject: items, options: [.prettyPrinted])
-                print(String(data: data, encoding: .utf8) ?? "")
+                print(try CompressionConsole.backendsJSON(), terminator: "")
             } else {
-                print("Available hardware acceleration backends:")
-                print("")
-                for backend in CodecBackend.allCases {
-                    let isAvail = CodecBackendProbe.isAvailable(backend)
-                    let marker = isAvail ? (backend == best ? "✓ (active)" : "✓") : "✗"
-                    print("  [\(marker)] \(backend.rawValue.padding(toLength: 12, withPad: " ", startingAt: 0))\(backend.displayName)")
-                }
-                print("")
-                print("Active backend: \(best.displayName)")
-                print("Use --backend <name> on the compress command to select a specific backend.")
+                print(CompressionConsole.backendsText(), terminator: "")
             }
         }
     }
