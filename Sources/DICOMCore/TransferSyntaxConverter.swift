@@ -229,10 +229,17 @@ public struct TransferSyntaxConverter: Sendable {
 
         // Recompression: compressed to compressed
         if source.isEncapsulated && target.isEncapsulated {
+            // JPEG XL JPEG Recompression is a lossless bitstream wrap/unwrap, not a
+            // pixel re-encode: JPEG Baseline ↔ …4.111. …4.111 has no pixel encoder, so
+            // it is admitted here explicitly rather than via the encoder registry.
+            if Self.isJXLRecompressionForward(from: source, to: target)
+                || Self.isJXLRecompressionReverse(from: source, to: target) {
+                return true
+            }
             return CodecRegistry.shared.hasCodec(for: source.uid)
                 && CodecRegistry.shared.hasEncoder(for: target.uid)
         }
-        
+
         return false
     }
     
@@ -312,8 +319,13 @@ public struct TransferSyntaxConverter: Sendable {
             throw TranscodingError.unsupportedTargetSyntax(targetSyntax.uid)
         }
         
-        // Check lossy constraint
-        let isLossless = sourceSyntax.isLossless && targetSyntax.isLossless
+        // Check lossy constraint. JPEG XL JPEG Recompression (…4.111) adds NO loss —
+        // it losslessly rewraps an already-encoded JPEG bitstream (and reverses it
+        // byte-for-byte) — so it counts as lossless even when the wrapped JPEG is a
+        // lossy Baseline (whose `isLossless` is false).
+        let isRecompression = Self.isJXLRecompressionForward(from: sourceSyntax, to: targetSyntax)
+            || Self.isJXLRecompressionReverse(from: sourceSyntax, to: targetSyntax)
+        let isLossless = isRecompression || (sourceSyntax.isLossless && targetSyntax.isLossless)
         if !configuration.allowLossyCompression && !isLossless {
             throw TranscodingError.lossyCompressionNotAllowed
         }
@@ -359,6 +371,16 @@ public struct TransferSyntaxConverter: Sendable {
                     dataSetData: dataSetData,
                     from: sourceSyntax,
                     to: targetSyntax
+                )
+            } else if isRecompression {
+                // JPEG XL JPEG Recompression: wrap/unwrap the JPEG bitstream directly at
+                // the encapsulated-fragment level (no pixel decode/re-encode). Forward =
+                // JPEG Baseline → …4.111; reverse = …4.111 → JPEG Baseline (byte-exact).
+                transcodedData = try transcodeJXLRecompression(
+                    dataSetData: dataSetData,
+                    from: sourceSyntax,
+                    to: targetSyntax,
+                    forward: Self.isJXLRecompressionForward(from: sourceSyntax, to: targetSyntax)
                 )
             } else {
                 // Slow path: full decode to uncompressed then re-encode
@@ -489,6 +511,96 @@ public struct TransferSyntaxConverter: Sendable {
         }
 
         // Write elements in target transfer syntax (all HTJ2K/J2K use Explicit VR LE)
+        let writer = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
+        var outputData = Data()
+        for element in outputElements {
+            outputData.append(writer.serializeElement(element))
+        }
+        return outputData
+    }
+
+    // MARK: - JPEG XL JPEG Recompression (…4.111)
+
+    /// Whether this is a forward JPEG → JPEG XL JPEG Recompression (…4.111) transcode.
+    ///
+    /// Recompression losslessly wraps an existing JPEG bitstream; JXLSwift's
+    /// `encodeLosslessJPEG` covers baseline-DCT JPEG, so only DICOM JPEG Baseline
+    /// (…4.50) is offered as a recompression source. Other JPEG flavours (Extended,
+    /// Lossless, SV1) are outside the supported bridge scope and fall through to the
+    /// generic (encoder-registry) path, which correctly rejects …4.111 as a target.
+    static func isJXLRecompressionForward(from source: TransferSyntax, to target: TransferSyntax) -> Bool {
+        source.uid == TransferSyntax.jpegBaseline.uid
+            && target.uid == TransferSyntax.jpegXLRecompression.uid
+    }
+
+    /// Whether this is a reverse JPEG XL JPEG Recompression (…4.111) → JPEG transcode,
+    /// reconstructing the byte-identical original JPEG bitstream. Targets DICOM JPEG
+    /// Baseline (…4.50), matching the forward recompression source.
+    static func isJXLRecompressionReverse(from source: TransferSyntax, to target: TransferSyntax) -> Bool {
+        source.uid == TransferSyntax.jpegXLRecompression.uid
+            && target.uid == TransferSyntax.jpegBaseline.uid
+    }
+
+    /// Transcodes between JPEG Baseline and JPEG XL JPEG Recompression (…4.111) at the
+    /// encapsulated-fragment level — each JPEG frame is wrapped (`forward`) or the
+    /// original JPEG frame is reconstructed byte-for-byte (`!forward`) without any pixel
+    /// decode/re-encode. Structurally mirrors ``transcodeFastPath(dataSetData:from:to:)``.
+    private func transcodeJXLRecompression(
+        dataSetData: Data,
+        from source: TransferSyntax,
+        to target: TransferSyntax,
+        forward: Bool
+    ) throws -> Data {
+        // Parse elements including the encapsulated pixel data.
+        let elements = try parseDataElements(from: dataSetData, transferSyntax: source)
+
+        var outputElements: [DataElement] = []
+
+        for element in elements {
+            if element.tag == .pixelData && element.isEncapsulated,
+               let fragments = element.encapsulatedFragments {
+                // Wrap / unwrap each JPEG ↔ JXL frame fragment.
+                var transcodedFragments: [Data] = []
+                for fragment in fragments {
+                    let transcoded: Data
+                    do {
+                        transcoded = forward
+                            ? try JXLCodec.recompressJPEGFragment(fragment)
+                            : try JXLCodec.reconstructJPEGFragment(fragment)
+                    } catch {
+                        throw TranscodingError.encodingFailed(
+                            "JPEG XL JPEG recompression \(forward ? "wrap" : "reconstruct") "
+                            + "failed: \(error)")
+                    }
+                    transcodedFragments.append(transcoded)
+                }
+
+                // Build new encapsulated pixel data element.
+                let newElement = DataElement(
+                    tag: element.tag,
+                    vr: element.vr,
+                    length: 0xFFFFFFFF,
+                    valueData: Data(),
+                    encapsulatedFragments: transcodedFragments,
+                    encapsulatedOffsetTable: buildOffsetTable(for: transcodedFragments)
+                )
+                outputElements.append(newElement)
+            } else if element.tag == Tag.transferSyntaxUID {
+                // Update Transfer Syntax UID in File Meta.
+                let uidData = Data(target.uid.utf8)
+                let newElement = DataElement(
+                    tag: element.tag,
+                    vr: .UI,
+                    length: UInt32(uidData.count),
+                    valueData: uidData
+                )
+                outputElements.append(newElement)
+            } else {
+                outputElements.append(element)
+            }
+        }
+
+        // Write elements in target transfer syntax (both …4.50 and …4.111 use Explicit VR LE).
         let writer = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
         var outputData = Data()
         for element in outputElements {

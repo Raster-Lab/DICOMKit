@@ -1,9 +1,9 @@
 {
   "broken" : {
-    "dicom-dcmdir" : "Validation failed for `Create`:"
+
   },
   "schemaVersion" : 1,
-  "toolCount" : 35,
+  "toolCount" : 36,
   "tools" : {
     "dicom-3d" : {
       "command" : {
@@ -3341,7 +3341,7 @@
               }
             ],
             "commandName" : "compress",
-            "discussion" : "Compress uncompressed DICOM images to various codecs.\n\nSupported codecs:\n  jpeg, jpeg-baseline    JPEG Baseline (lossy, 8-bit)\n  jpeg-extended          JPEG Extended (lossy, 8\/12-bit)\n  jpeg-lossless          JPEG Lossless (Process 14)\n  jpeg-lossless-sv1      JPEG Lossless SV1 (default lossless JPEG)\n  jpeg2000, j2k          JPEG 2000 (lossy)\n  jpeg2000-lossless,     JPEG 2000 Lossless\n    j2k-lossless\n  j2k-part2              JPEG 2000 Part 2 (MCT, lossy)\n  j2k-part2-lossless     JPEG 2000 Part 2 Lossless\n  htj2k, htj2k-lossy     High-Throughput JPEG 2000 (lossy)\n  htj2k-lossless         HTJ2K Lossless\n  htj2k-rpcl,            HTJ2K RPCL Lossless Only\n    htj2k-lossless-rpcl\n  rle                    RLE Lossless\n  deflate                Deflated Explicit VR Little Endian\n  explicit-le            Explicit VR Little Endian\n  implicit-le            Implicit VR Little Endian\n\nExamples:\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg2000 --quality high\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k --quality 0.9",
+            "discussion" : "Compress uncompressed DICOM images to various codecs.\n\nSupported codecs:\n  jpeg, jpeg-baseline    JPEG Baseline (lossy, 8-bit)\n  jpeg-extended          JPEG Extended (lossy, 8\/12-bit)\n  jpeg-lossless          JPEG Lossless (Process 14)\n  jpeg-lossless-sv1      JPEG Lossless SV1 (default lossless JPEG)\n  jpeg2000, j2k          JPEG 2000 (lossy)\n  jpeg2000-lossless,     JPEG 2000 Lossless\n    j2k-lossless\n  j2k-part2              JPEG 2000 Part 2 (MCT, lossy)\n  j2k-part2-lossless     JPEG 2000 Part 2 Lossless\n  htj2k, htj2k-lossy     High-Throughput JPEG 2000 (lossy)\n  htj2k-lossless         HTJ2K Lossless\n  htj2k-rpcl,            HTJ2K RPCL Lossless Only\n    htj2k-lossless-rpcl\n  jpeg-ls-lossless       JPEG-LS Lossless\n  jpeg-ls, jls           JPEG-LS Near-Lossless\n  jpeg-xl, jxl           JPEG XL (lossy, pure-Swift)\n  jpeg-xl-lossless       JPEG XL Lossless (pure-Swift)\n  rle                    RLE Lossless\n  deflate                Deflated Explicit VR Little Endian\n  explicit-le            Explicit VR Little Endian\n  implicit-le            Implicit VR Little Endian\n\nExamples:\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec jpeg2000 --quality high\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k-lossless\n  dicom-compress compress input.dcm --output output.dcm --codec htj2k --quality 0.9",
             "shouldDisplay" : true,
             "superCommands" : [
               "dicom-compress"
@@ -3952,7 +3952,7 @@
             "valueName" : "output"
           },
           {
-            "abstract" : "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, RLELossless",
+            "abstract" : "Target transfer syntax: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE, JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1, JPEG2000Lossless, JPEG2000, JPEG2000Part2Lossless, JPEG2000Part2, HTJ2KLossless, HTJ2KRPCLLossless, HTJ2K, JPEGLSLossless, JPEGLSNearLossless, JPEGXLLossless, JPEGXLRecompression, RLELossless",
             "isOptional" : true,
             "isRepeating" : false,
             "kind" : "option",
@@ -4270,6 +4270,626 @@
             "shouldDisplay" : true,
             "superCommands" : [
               "dicom-convert"
+            ]
+          }
+        ]
+      },
+      "serializationVersion" : 0
+    },
+    "dicom-dcmdir" : {
+      "command" : {
+        "abstract" : "DICOMDIR management tool for media storage directories",
+        "arguments" : [
+          {
+            "abstract" : "Show the version.",
+            "isOptional" : true,
+            "isRepeating" : false,
+            "kind" : "flag",
+            "names" : [
+              {
+                "kind" : "long",
+                "name" : "version"
+              }
+            ],
+            "parsingStrategy" : "default",
+            "preferredName" : {
+              "kind" : "long",
+              "name" : "version"
+            },
+            "shouldDisplay" : true,
+            "valueName" : "version"
+          },
+          {
+            "abstract" : "Show help information.",
+            "isOptional" : true,
+            "isRepeating" : false,
+            "kind" : "flag",
+            "names" : [
+              {
+                "kind" : "short",
+                "name" : "h"
+              },
+              {
+                "kind" : "long",
+                "name" : "help"
+              }
+            ],
+            "parsingStrategy" : "default",
+            "preferredName" : {
+              "kind" : "long",
+              "name" : "help"
+            },
+            "shouldDisplay" : true,
+            "valueName" : "help"
+          }
+        ],
+        "commandName" : "dicom-dcmdir",
+        "discussion" : "Create, update, validate, and manage DICOMDIR files for CD\/DVD\/USB media.\n\nDICOMDIR is a special DICOM file that provides an index of all DICOM files\non removable media, enabling efficient browsing without reading all files.\n\nExamples:\n  # Create DICOMDIR for a directory of DICOM files\n  dicom-dcmdir create study_folder\/ --output DICOMDIR\n  \n  # Validate an existing DICOMDIR\n  dicom-dcmdir validate \/media\/cdrom\/DICOMDIR\n  \n  # Display DICOMDIR structure\n  dicom-dcmdir dump DICOMDIR --format tree\n  \n  # Update DICOMDIR with new files\n  dicom-dcmdir update DICOMDIR --add new_series\/",
+        "shouldDisplay" : true,
+        "subcommands" : [
+          {
+            "abstract" : "Create a DICOMDIR from a directory of DICOM files",
+            "arguments" : [
+              {
+                "abstract" : "Directory containing DICOM files",
+                "isOptional" : false,
+                "isRepeating" : false,
+                "kind" : "positional",
+                "parsingStrategy" : "default",
+                "shouldDisplay" : true,
+                "valueName" : "input-directory"
+              },
+              {
+                "abstract" : "Output DICOMDIR path (default: DICOMDIR in input directory)",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "option",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "output"
+                  },
+                  {
+                    "kind" : "short",
+                    "name" : "o"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "output"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "output"
+              },
+              {
+                "abstract" : "File-set ID (default: derived from directory name)",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "option",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "file-set-id"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "file-set-id"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "file-set-id"
+              },
+              {
+                "abstract" : "Application profile (STD-GEN-CD, STD-GEN-DVD, STD-GEN-USB)",
+                "defaultValue" : "STD-GEN-CD",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "option",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "profile"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "profile"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "profile"
+              },
+              {
+                "abstract" : "Recursively scan subdirectories (default: on)",
+                "defaultValue" : "--recursive",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "recursive"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "recursive"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "recursive"
+              },
+              {
+                "abstract" : "Recursively scan subdirectories (default: on)",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "no-recursive"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "no-recursive"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "no-recursive"
+              },
+              {
+                "abstract" : "Include only valid DICOM files",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "strict"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "strict"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "strict"
+              },
+              {
+                "abstract" : "Verbose output",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "verbose"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "verbose"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "verbose"
+              },
+              {
+                "abstract" : "Show the version.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "version"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "version"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "version"
+              },
+              {
+                "abstract" : "Show help information.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "short",
+                    "name" : "h"
+                  },
+                  {
+                    "kind" : "long",
+                    "name" : "help"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "help"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "help"
+              }
+            ],
+            "commandName" : "create",
+            "shouldDisplay" : true,
+            "superCommands" : [
+              "dicom-dcmdir"
+            ]
+          },
+          {
+            "abstract" : "Validate a DICOMDIR file",
+            "arguments" : [
+              {
+                "abstract" : "Path to DICOMDIR file",
+                "isOptional" : false,
+                "isRepeating" : false,
+                "kind" : "positional",
+                "parsingStrategy" : "default",
+                "shouldDisplay" : true,
+                "valueName" : "dicomdir-path"
+              },
+              {
+                "abstract" : "Check if referenced files exist",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "check-files"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "check-files"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "check-files"
+              },
+              {
+                "abstract" : "Detailed validation output",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "detailed"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "detailed"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "detailed"
+              },
+              {
+                "abstract" : "Show the version.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "version"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "version"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "version"
+              },
+              {
+                "abstract" : "Show help information.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "short",
+                    "name" : "h"
+                  },
+                  {
+                    "kind" : "long",
+                    "name" : "help"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "help"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "help"
+              }
+            ],
+            "commandName" : "validate",
+            "shouldDisplay" : true,
+            "superCommands" : [
+              "dicom-dcmdir"
+            ]
+          },
+          {
+            "abstract" : "Display DICOMDIR structure",
+            "arguments" : [
+              {
+                "abstract" : "Path to DICOMDIR file",
+                "isOptional" : false,
+                "isRepeating" : false,
+                "kind" : "positional",
+                "parsingStrategy" : "default",
+                "shouldDisplay" : true,
+                "valueName" : "dicomdir-path"
+              },
+              {
+                "abstract" : "Output format: tree, json, text",
+                "defaultValue" : "tree",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "option",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "format"
+                  },
+                  {
+                    "kind" : "short",
+                    "name" : "f"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "format"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "format"
+              },
+              {
+                "abstract" : "Show all attributes for each record",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "verbose"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "verbose"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "verbose"
+              },
+              {
+                "abstract" : "Show the version.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "version"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "version"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "version"
+              },
+              {
+                "abstract" : "Show help information.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "short",
+                    "name" : "h"
+                  },
+                  {
+                    "kind" : "long",
+                    "name" : "help"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "help"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "help"
+              }
+            ],
+            "commandName" : "dump",
+            "shouldDisplay" : true,
+            "superCommands" : [
+              "dicom-dcmdir"
+            ]
+          },
+          {
+            "abstract" : "Update an existing DICOMDIR with new files",
+            "arguments" : [
+              {
+                "abstract" : "Path to existing DICOMDIR file",
+                "isOptional" : false,
+                "isRepeating" : false,
+                "kind" : "positional",
+                "parsingStrategy" : "default",
+                "shouldDisplay" : true,
+                "valueName" : "dicomdir-path"
+              },
+              {
+                "abstract" : "Directory with new DICOM files to add",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "option",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "add"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "add"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "add"
+              },
+              {
+                "abstract" : "Verbose output",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "verbose"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "verbose"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "verbose"
+              },
+              {
+                "abstract" : "Show the version.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "version"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "version"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "version"
+              },
+              {
+                "abstract" : "Show help information.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "short",
+                    "name" : "h"
+                  },
+                  {
+                    "kind" : "long",
+                    "name" : "help"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "help"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "help"
+              }
+            ],
+            "commandName" : "update",
+            "shouldDisplay" : true,
+            "superCommands" : [
+              "dicom-dcmdir"
+            ]
+          },
+          {
+            "abstract" : "Show subcommand help information.",
+            "arguments" : [
+              {
+                "isOptional" : true,
+                "isRepeating" : true,
+                "kind" : "positional",
+                "parsingStrategy" : "default",
+                "shouldDisplay" : true,
+                "valueName" : "subcommands"
+              },
+              {
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "short",
+                    "name" : "h"
+                  },
+                  {
+                    "kind" : "long",
+                    "name" : "help"
+                  },
+                  {
+                    "kind" : "longWithSingleDash",
+                    "name" : "help"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "help"
+                },
+                "shouldDisplay" : false,
+                "valueName" : "help"
+              },
+              {
+                "abstract" : "Show the version.",
+                "isOptional" : true,
+                "isRepeating" : false,
+                "kind" : "flag",
+                "names" : [
+                  {
+                    "kind" : "long",
+                    "name" : "version"
+                  }
+                ],
+                "parsingStrategy" : "default",
+                "preferredName" : {
+                  "kind" : "long",
+                  "name" : "version"
+                },
+                "shouldDisplay" : true,
+                "valueName" : "version"
+              }
+            ],
+            "commandName" : "help",
+            "shouldDisplay" : true,
+            "superCommands" : [
+              "dicom-dcmdir"
             ]
           }
         ]
@@ -9885,26 +10505,6 @@
             "valueName" : "no-sort-keys"
           },
           {
-            "abstract" : "JSON format: standard or dicomweb",
-            "defaultValue" : "Standard DICOM JSON Model",
-            "isOptional" : true,
-            "isRepeating" : false,
-            "kind" : "option",
-            "names" : [
-              {
-                "kind" : "long",
-                "name" : "format"
-              }
-            ],
-            "parsingStrategy" : "default",
-            "preferredName" : {
-              "kind" : "long",
-              "name" : "format"
-            },
-            "shouldDisplay" : true,
-            "valueName" : "format"
-          },
-          {
             "abstract" : "Include empty values in JSON",
             "isOptional" : true,
             "isRepeating" : false,
@@ -9961,25 +10561,6 @@
             },
             "shouldDisplay" : true,
             "valueName" : "bulk-data-url"
-          },
-          {
-            "abstract" : "Use streaming for large files",
-            "isOptional" : true,
-            "isRepeating" : false,
-            "kind" : "flag",
-            "names" : [
-              {
-                "kind" : "long",
-                "name" : "stream"
-              }
-            ],
-            "parsingStrategy" : "default",
-            "preferredName" : {
-              "kind" : "long",
-              "name" : "stream"
-            },
-            "shouldDisplay" : true,
-            "valueName" : "stream"
           },
           {
             "abstract" : "Only include metadata (exclude pixel data)",
@@ -10082,7 +10663,7 @@
           }
         ],
         "commandName" : "dicom-json",
-        "discussion" : "Converts DICOM files to JSON format (DICOM JSON Model) and vice versa.\nSupports DICOMweb JSON format with bulk data handling.\n\nExamples:\n  dicom-json file.dcm --output file.json\n  dicom-json file.json --output file.dcm --reverse\n  dicom-json file.dcm --format dicomweb --pretty\n  dicom-json large.dcm --output large.json --stream",
+        "discussion" : "Converts DICOM files to JSON format (DICOM JSON Model, PS3.18 Annex F)\nand vice versa, with bulk data handling.\n\nExamples:\n  dicom-json file.dcm --output file.json\n  dicom-json file.json --output file.dcm --reverse\n  dicom-json file.dcm --pretty",
         "shouldDisplay" : true,
         "subcommands" : [
           {
@@ -12264,7 +12845,7 @@
                 "valueName" : "patient-id"
               },
               {
-                "abstract" : "Initial status (default: IN PROGRESS)",
+                "abstract" : "Initial status — must be IN PROGRESS; N-CREATE always starts the step (default: IN PROGRESS)",
                 "defaultValue" : "IN PROGRESS",
                 "isOptional" : true,
                 "isRepeating" : false,
@@ -19902,7 +20483,7 @@
               }
             ],
             "commandName" : "retrieve",
-            "discussion" : "Downloads studies, series, instances, frames, or metadata from DICOMweb server.\n\nBy default uses WADO-RS (RESTful paths). Use --uri for legacy WADO-URI servers\n(e.g. dcm4chee2) that expect query-parameter URLs.\n\nWADO-RS examples:\n  dicom-wado retrieve https:\/\/server\/dicom-web --study 1.2.3.4.5 -o study\/\n  dicom-wado retrieve https:\/\/server\/dicom-web --study 1.2.3 --series 1.2.3.4 -o series\/\n  dicom-wado retrieve https:\/\/server\/dicom-web --study 1.2.3 --metadata --format json\n\nWADO-URI examples (legacy):\n  dicom-wado retrieve http:\/\/server:8080\/wado --uri --study 1.2.3 --series 1.2.3.4 --instance 1.2.3.4.5 -o out\/\n  dicom-wado retrieve http:\/\/server:8080\/wado --uri --study 1.2.3 --series 1.2.3.4 --instance 1.2.3.4.5 --content-type image\/jpeg -o out\/",
+            "discussion" : "Downloads studies, series, instances, frames, or metadata from DICOMweb server.\n\nBy default uses WADO-RS (RESTful paths). Use --uri for legacy WADO-URI servers\n(e.g. dcm4chee2) that expect query-parameter URLs.\n\nWADO-URI endpoint: dcm4chee-arc serves WADO-URI from its `\/wado` servlet, not the\nRESTful `\/rs` endpoint. If a `\/rs` base URL is supplied with --uri it is rewritten\nto `\/wado` automatically (so `…\/aets\/AET\/rs` becomes `…\/aets\/AET\/wado`); dcm4chee2's\nroot `\/wado` and other paths are used as-is.\n\nWADO-RS examples:\n  dicom-wado retrieve https:\/\/server\/dicom-web --study 1.2.3.4.5 -o study\/\n  dicom-wado retrieve https:\/\/server\/dicom-web --study 1.2.3 --series 1.2.3.4 -o series\/\n  dicom-wado retrieve https:\/\/server\/dicom-web --study 1.2.3 --metadata --format json\n\nWADO-URI examples (legacy):\n  dicom-wado retrieve http:\/\/server:8080\/wado --uri --study 1.2.3 --series 1.2.3.4 --instance 1.2.3.4.5 -o out\/\n  dicom-wado retrieve http:\/\/server:8080\/wado --uri --study 1.2.3 --series 1.2.3.4 --instance 1.2.3.4.5 --content-type image\/jpeg -o out\/",
             "shouldDisplay" : true,
             "superCommands" : [
               "dicom-wado"

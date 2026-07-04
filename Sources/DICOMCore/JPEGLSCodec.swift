@@ -93,13 +93,22 @@ public struct JPEGLSCodec: ImageCodec, ImageEncoder, Sendable {
 
     /// Derives the JPEG-LS NEAR value from a DICOM compression configuration.
     /// Lossless (or lossless-preferring) configurations map to NEAR = 0.
+    ///
+    /// JLSwift's encoder caps NEAR at 255 regardless of sample precision
+    /// (`JPEGLSEncoder.Configuration` rejects NEAR > 255), so the derived value
+    /// is clamped to that range — otherwise a 16-bit source at, e.g., "high"
+    /// quality would yield NEAR ≈ 655 and the encode would throw.
     private func nearParameter(for configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) -> Int {
         if configuration.preferLossless || configuration.quality.isLossless {
             return 0
         }
         let maxVal = descriptor.bitsAllocated == 8 ? 255 : (1 << descriptor.bitsStored) - 1
-        return max(0, Int(Double(maxVal) * (1.0 - configuration.quality.value) * 0.1))
+        let scaled = Int(Double(maxVal) * (1.0 - configuration.quality.value) * 0.1)
+        return min(Self.maxNear, max(0, scaled))
     }
+
+    /// Largest NEAR value JLSwift's `JPEGLSEncoder.Configuration` accepts.
+    private static let maxNear = 255
 
     // MARK: - Pixel (de)serialization
 

@@ -104,20 +104,16 @@ public final class ValidationViewModel {
                 if outputAccessing { outputScopedURL?.stopAccessingSecurityScopedResource() }
             }
             do {
-                let results = try await validateInput()
-                let output: String
-                if format == .json {
-                    output = (try? ValidationHelpers.renderJSON(results: results)) ?? ""
-                } else {
-                    output = ValidationHelpers.renderText(
-                        results: results,
-                        detailed: detailed,
-                        strict: strict
-                    )
-                }
-                let hasErrors   = results.contains { !$0.errors.isEmpty }
-                let hasWarnings = results.contains { !$0.warnings.isEmpty }
-                let code: Int32 = hasErrors ? 1 : (strict && hasWarnings ? 2 : 0)
+                let sharedResults = try await validateInput()
+                // Render + exit code via the SHARED DICOMKit.ValidationReport — the
+                // exact renderer dicom-validate uses — so the app console is
+                // byte-identical to the CLI (no app-only "Exit code:" annotation).
+                let report = DICOMKit.ValidationReport(
+                    results: sharedResults, detailed: detailed, strict: strict)
+                let output = (try? report.render(format: format == .json ? .json : .text)) ?? ""
+                let code = report.exitCode()
+                // Map to the display model for the results list / history UI.
+                let results = sharedResults.map(Self.mapResult)
 
                 // Save to history
                 let record = ValidationRunRecord(
@@ -139,12 +135,20 @@ public final class ValidationViewModel {
                 // write never silently fails (the old `try?` swallowed TCC denials).
                 var writeNote: String? = nil
                 if !outputPath.isEmpty {
+                    // Resolve a directory-valued --output to <dir>/<input-stem>.json|.txt via
+                    // the shared resolver — the exact call dicom-validate makes — so the app
+                    // and the CLI write the same file path.
+                    let resolvedOutputPath = OutputPathResolver.resolveFileOutput(
+                        output: outputPath,
+                        input: inputPath,
+                        fileExtension: format == .json ? "json" : "txt"
+                    )
                     do {
-                        writeNote = try OutputAccess.writeString(output, toPath: outputPath,
+                        writeNote = try OutputAccess.writeString(output, toPath: resolvedOutputPath,
                                                                  scopedURL: outputScopedURL,
                                                                  subfolder: "Validate").note
                     } catch {
-                        writeNote = "⚠ Could not write report to \(outputPath): \(error.localizedDescription)"
+                        writeNote = "⚠ Could not write report to \(resolvedOutputPath): \(error.localizedDescription)"
                     }
                 }
 
@@ -182,7 +186,7 @@ public final class ValidationViewModel {
     // library results are mapped onto ValidationFileResult for display so the app
     // and the CLI can never disagree on what is valid.
 
-    private func validateInput() async throws -> [ValidationFileResult] {
+    private func validateInput() async throws -> [DICOMKit.ValidationResult] {
         let url = URL(fileURLWithPath: inputPath)
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: inputPath, isDirectory: &isDir) else {
@@ -208,38 +212,25 @@ public final class ValidationViewModel {
         }
     }
 
-    private func validateDirectory(url: URL, validator: DICOMKit.DICOMValidator) -> [ValidationFileResult] {
-        // Collect URLs synchronously to avoid NSDirectoryEnumerator's makeIterator
-        // unavailability in an async context.
-        let fileURLs: [URL] = {
-            var collected: [URL] = []
-            guard let enumerator = FileManager.default.enumerator(
-                at: url,
-                includingPropertiesForKeys: [.isRegularFileKey],
-                options: [.skipsHiddenFiles]
-            ) else { return [] }
-            for case let fileURL as URL in enumerator {
-                let rv = try? fileURL.resourceValues(forKeys: [.isRegularFileKey])
-                if rv?.isRegularFile == true { collected.append(fileURL) }
-            }
-            return collected
-        }()
-
+    private func validateDirectory(url: URL, validator: DICOMKit.DICOMValidator) -> [DICOMKit.ValidationResult] {
+        // Shared, sorted directory walk — the same gatherer the dicom-validate CLI
+        // uses, so both surfaces validate the same files in the same order.
+        let fileURLs = FileGatherer.regularFiles(under: url) ?? []
         return fileURLs.map { validateFile(url: $0, validator: validator) }
     }
 
-    /// Validates one file through the shared DICOMKit engine and maps the library
-    /// result onto the view model's display model.
-    private func validateFile(url: URL, validator: DICOMKit.DICOMValidator) -> ValidationFileResult {
+    /// Validates one file through the shared DICOMKit engine, wrapping read
+    /// failures in a synthetic result exactly like the dicom-validate CLI does.
+    private func validateFile(url: URL, validator: DICOMKit.DICOMValidator) -> DICOMKit.ValidationResult {
         do {
             let data = try Data(contentsOf: url)
-            let result = try validator.validate(data: data, filePath: url.path)
-            return Self.mapResult(result)
+            return try validator.validate(data: data, filePath: url.path)
         } catch {
-            return ValidationFileResult(
+            return DICOMKit.ValidationResult(
                 filePath: url.path,
                 isValid: false,
-                errors: [ValidationIssueEntry(level: .error, message: error.localizedDescription)]
+                errors: [DICOMKit.ValidationIssue(level: .error, message: error.localizedDescription, tag: nil)],
+                warnings: []
             )
         }
     }

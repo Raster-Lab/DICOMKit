@@ -325,3 +325,133 @@ public struct UIDManager {
         }
     }
 }
+
+// MARK: - Shared console output (dicom-uid CLI ⇄ Workshop executors)
+
+/// Builds every console line `dicom-uid` prints (generate / validate / lookup /
+/// regenerate). The CLI text is canonical and the Workshop executors render
+/// identical strings, so the two surfaces cannot drift.
+public enum UIDConsole {
+    // MARK: generate
+
+    /// Plain listing — one UID per line (trailing newline).
+    public static func generatedList(uids: [String]) -> String {
+        uids.map { $0 + "\n" }.joined()
+    }
+
+    /// `--json` output (pretty-printed, sorted keys, trailing newline).
+    public static func generatedJSON(uids: [String]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: uids, options: [.prettyPrinted, .sortedKeys])
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
+    }
+
+    // MARK: validate
+
+    /// Text listing for validation results. Registry names appear only under
+    /// `--check-registry`. Returns the block and whether every UID was valid.
+    public static func validationText(results: [UIDValidationResult], checkRegistry: Bool) -> (text: String, allValid: Bool) {
+        var out = ""
+        var allValid = true
+        for result in results {
+            if result.isValid {
+                var line = "✅ \(result.uid)"
+                if checkRegistry, let name = result.registryName {
+                    line += " [\(name)]"
+                }
+                out += line + "\n"
+            } else {
+                allValid = false
+                out += "❌ \(result.uid)\n"
+                for error in result.errors {
+                    out += "   - \(error)\n"
+                }
+            }
+        }
+        return (out, allValid)
+    }
+
+    /// `--json` output for validation results (trailing newline).
+    public static func validationJSON(results: [UIDValidationResult]) throws -> String {
+        let jsonResults = results.map { result -> [String: Any] in
+            var dict: [String: Any] = [
+                "uid": result.uid,
+                "valid": result.isValid,
+            ]
+            if !result.errors.isEmpty { dict["errors"] = result.errors }
+            if let name = result.registryName { dict["registryName"] = name }
+            return dict
+        }
+        let data = try JSONSerialization.data(withJSONObject: jsonResults, options: [.prettyPrinted, .sortedKeys])
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
+    }
+
+    // MARK: lookup
+
+    /// Single-UID hit (three lines).
+    public static func lookupEntryText(uid: String, name: String, type: String) -> String {
+        "UID:  \(uid)\nName: \(name)\nType: \(type)\n"
+    }
+
+    /// Single-UID hit as `--json` (trailing newline).
+    public static func lookupEntryJSON(uid: String, name: String, type: String) throws -> String {
+        let dict: [String: String] = ["uid": uid, "name": name, "type": type]
+        let data = try JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys])
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
+    }
+
+    public static func lookupNotFoundLine(uid: String) -> String {
+        "UID not found in DICOM registry (not a standard Transfer Syntax or SOP Class UID): \(uid)"
+    }
+
+    public static func unknownTypeFilterLine(_ filter: String) -> String {
+        "Unknown type filter '\(filter)'. Valid types: transfer-syntax, sop-class"
+    }
+
+    public static func noMatchesLine() -> String {
+        "No UIDs found matching criteria"
+    }
+
+    /// One listing row of `--list-all`/`--search` output.
+    public static func listingLine(uid: String, name: String, type: String) -> String {
+        "\(uid)  \(name)  (\(type))"
+    }
+
+    /// The trailing result count (leading blank line).
+    public static func listingSummary(count: Int) -> String {
+        "\n\(count) UIDs found"
+    }
+
+    /// `--list-all`/`--search` as `--json` (trailing newline).
+    public static func listingJSON(entries: [(uid: String, name: String, type: String)]) throws -> String {
+        let jsonEntries = entries.map { ["uid": $0.uid, "name": $0.name, "type": $0.type] }
+        let data = try JSONSerialization.data(withJSONObject: jsonEntries, options: [.prettyPrinted, .sortedKeys])
+        return (String(data: data, encoding: .utf8) ?? "") + "\n"
+    }
+
+    // MARK: regenerate
+
+    public static func fileNotFoundWarning(path: String) -> String {
+        "Warning: File not found: \(path), skipping"
+    }
+
+    public static func processingLine(path: String) -> String {
+        "Processing: \(path)"
+    }
+
+    /// Verbose per-mapping line.
+    public static func mappingLine(tagName: String, oldUID: String, newUID: String) -> String {
+        "  \(tagName): \(oldUID) → \(newUID)"
+    }
+
+    public static func wroteLine(path: String, count: Int) -> String {
+        "Wrote: \(path) (\(count) UIDs regenerated)"
+    }
+
+    public static func mapExportedLine(path: String) -> String {
+        "UID mapping exported to: \(path)"
+    }
+
+    public static func dryRunCompleteLine() -> String {
+        "Dry run complete — no files modified."
+    }
+}

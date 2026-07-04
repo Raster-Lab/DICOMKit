@@ -277,6 +277,14 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     /// intact.  Leave `false` for options the CLI itself comma-splits (e.g.
     /// `dicom-tags --tags`).
     public var isRepeatable: Bool
+    /// The CLI token emitted when a ``CLIParameterType/booleanToggle`` is
+    /// explicitly **off**.  Used for inverted flags declared with
+    /// `@Flag(inversion: .prefixedNo)` and a `true` default (e.g.
+    /// `dicom-dcmdir create --recursive/--no-recursive`): toggling OFF must
+    /// emit the negated token (`--no-recursive`) — omitting it would make the
+    /// pasted command silently re-enable the behavior the user disabled.
+    /// `nil` (the default) keeps the standard emit-only-when-true behavior.
+    public var negatedFlag: String?
     public var defaultValue: String
     public var allowedValues: [String]
     public var minValue: Int?
@@ -285,11 +293,15 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     /// currently has one of the specified values.
     public var visibleWhen: CLIParameterVisibilityCondition?
     /// Maps internal enum values to CLI argument strings for the command
-    /// preview.  Only used when ``isInternal`` is `true`.  Each entry maps
+    /// preview.  Used when ``isInternal`` is `true`, and also consulted by
+    /// ``CLIParameterType/flagPicker`` parameters to override the literal
+    /// `--<value>` token when the in-app state executes as a different CLI
+    /// mode (e.g. dicom-qr `["interactive": "--auto"]`).  Each entry maps
     /// an ``allowedValues`` element to the literal CLI tokens that should
     /// appear in the preview (e.g. `["wado-uri": "--uri"]`).  Values
     /// that do not appear in the dictionary (or that map to an empty
-    /// string) are silently omitted.
+    /// string) are silently omitted (for flag pickers, the literal
+    /// `--<value>` is emitted instead).
     public var cliMapping: [String: String]
 
     public init(
@@ -303,6 +315,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         isAdvanced: Bool = false,
         isInternal: Bool = false,
         isRepeatable: Bool = false,
+        negatedFlag: String? = nil,
         defaultValue: String = "",
         allowedValues: [String] = [],
         minValue: Int? = nil,
@@ -320,6 +333,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         self.isAdvanced = isAdvanced
         self.isInternal = isInternal
         self.isRepeatable = isRepeatable
+        self.negatedFlag = negatedFlag
         self.defaultValue = defaultValue
         self.allowedValues = allowedValues
         self.minValue = minValue

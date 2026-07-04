@@ -53,4 +53,70 @@ final class OutputAccessTests: XCTestCase {
         XCTAssertNil(res.note)
         XCTAssertEqual(res.url.path, tmp.path)
     }
+
+    // MARK: - Directory-scope handling (the output Browse picker grants a folder)
+
+    /// Regression: the output Browse picker uses `allowedContentTypes: [.folder]`, so
+    /// the scoped URL is the DIRECTORY the user chose, while the typed path adds the
+    /// filename. The writer must place the file INSIDE the directory — not write the
+    /// bytes onto the directory URL (which failed with
+    /// "The file <dir> couldn't be saved in the folder <parent>").
+    func testScopedDirectoryWritesFileInsideIt() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("oa-scopedir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        // Typed path = the chosen folder + a filename (exactly the screenshot case).
+        let typed = dir.appendingPathComponent("output.dcm")
+        let res = try OutputAccess.write(Data("dcm".utf8), toPath: typed.path, scopedURL: dir, subfolder: "Compressed")
+
+        XCTAssertNil(res.note, "writing inside the granted folder must not be redirected")
+        XCTAssertEqual(res.url.path, typed.path, "file should land inside the scoped directory")
+        XCTAssertEqual(try String(contentsOf: typed, encoding: .utf8), "dcm")
+    }
+
+    /// A typed path nested below the scoped directory keeps its relative subpath.
+    func testScopedDirectoryPreservesRelativeSubpath() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("oa-scopesub-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let typed = dir.appendingPathComponent("sub").appendingPathComponent("out.dcm")
+        let res = try OutputAccess.write(Data("x".utf8), toPath: typed.path, scopedURL: dir, subfolder: "Compressed")
+        XCTAssertNil(res.note)
+        XCTAssertEqual(res.url.path, typed.path)
+        XCTAssertEqual(try String(contentsOf: typed, encoding: .utf8), "x")
+    }
+
+    /// When the user browses a folder but appends no filename (typed path == the
+    /// scoped directory), the writer still produces a file inside it (default name)
+    /// rather than failing by writing onto the directory.
+    func testScopedDirectoryWithNoFilenameUsesDefault() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("oa-scopedef-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let res = try OutputAccess.write(Data("y".utf8), toPath: dir.path, scopedURL: dir, subfolder: "Compressed")
+        XCTAssertNil(res.note)
+        XCTAssertEqual(res.url.deletingLastPathComponent().path, dir.path, "file must be created inside the directory")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: res.url.path))
+    }
+
+    /// When the scope already refers to a regular FILE, the bytes are written to it
+    /// directly (the writer must not append a filename to a file path).
+    func testScopedFileIsWrittenDirectly() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("oa-scopefile-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let file = dir.appendingPathComponent("explicit.dcm")
+        let res = try OutputAccess.write(Data("z".utf8), toPath: file.path, scopedURL: file, subfolder: "Compressed")
+        XCTAssertNil(res.note)
+        XCTAssertEqual(res.url.path, file.path)
+        XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "z")
+    }
 }

@@ -305,6 +305,55 @@ public enum NetworkConsole {
         return out
     }
 
+    public static func qrNoStudies() -> String {
+        "No studies found matching the query criteria.\n"
+    }
+
+    /// "Found N study(ies):" plus the separating blank line before the study list.
+    public static func qrFound(count: Int) -> String {
+        "Found \(count) study(ies):\n\n"
+    }
+
+    public static func qrReviewComplete(count: Int) -> String {
+        "Review complete. \(count) study(ies) found.\n"
+    }
+
+    /// The two-line confirmation after `--save-state` writes a query state
+    /// (leading blank line included, matching the CLI).
+    public static func qrStateSaved(path: String) -> String {
+        "\nQuery state saved to: \(path)\nTo retrieve later, use: dicom-qr resume --state \(path)\n"
+    }
+
+    public static func qrNoSelection() -> String {
+        "No studies selected for retrieval.\n"
+    }
+
+    /// "Retrieving N study(ies)..." plus the separating blank line.
+    public static func qrRetrieving(count: Int) -> String {
+        "Retrieving \(count) study(ies)...\n\n"
+    }
+
+    public static func qrMissingStudyUID(index: Int, total: Int) -> String {
+        "[\(index)/\(total)] ⚠️ Missing Study UID\n"
+    }
+
+    /// Post-retrieval validation header (leading blank line included).
+    public static func qrValidatingHeader() -> String {
+        "\nValidating retrieved files...\n"
+    }
+
+    public static func qrValidateCannotEnumerate() -> String {
+        "  ⚠️  Cannot enumerate directory\n"
+    }
+
+    public static func qrValidateInvalidFile(name: String) -> String {
+        "  ⚠️  Invalid file: \(name)\n"
+    }
+
+    public static func qrValidateSummary(valid: Int, invalid: Int) -> String {
+        "  Validation: \(valid) valid, \(invalid) invalid\n"
+    }
+
     // MARK: - Modality Worklist (dicom-mwl query — MWL C-FIND)
 
     /// Header for `dicom-mwl query`: the title rule, connection fields, applied
@@ -389,6 +438,39 @@ public enum NetworkConsole {
         return "⚠️  The result count (\(count)) may be capped by a server-side limit.\n"
             + "    Check your PACS server configuration (e.g., LimitFindResults in Orthanc,\n"
             + "    or max_worklist_results in dcm4chee) to increase or remove the limit.\n"
+    }
+
+    /// The MWL-create scheduled-item detail block, shared by the HL7 (MLLP) and
+    /// REST create flows (leading blank line before "Patient Name"; optional
+    /// fields are omitted when empty). One builder so the two branches — and any
+    /// future CLI create — cannot drift.
+    public static func mwlCreateDetailBlock(
+        patientName: String, patientID: String,
+        patientDOB: String, patientSex: String,
+        accessionNumber: String, referringPhysician: String,
+        modality: String, scheduledDate: String, scheduledTime: String,
+        stationAET: String, stationName: String,
+        spsID: String, spsDescription: String,
+        procedureID: String, procedureDescription: String,
+        performingPhysician: String
+    ) -> String {
+        var out = "\n  Patient Name:     \(patientName)\n"
+        out += "  Patient ID:       \(patientID)\n"
+        if !patientDOB.isEmpty          { out += "  Date of Birth:    \(patientDOB)\n" }
+        if !patientSex.isEmpty          { out += "  Patient Sex:      \(patientSex)\n" }
+        if !accessionNumber.isEmpty     { out += "  Accession Number: \(accessionNumber)\n" }
+        if !referringPhysician.isEmpty  { out += "  Referring Phys:   \(referringPhysician)\n" }
+        out += "  Modality:         \(modality)\n"
+        out += "  Scheduled Date:   \(scheduledDate)\n"
+        if !scheduledTime.isEmpty       { out += "  Scheduled Time:   \(scheduledTime)\n" }
+        if !stationAET.isEmpty          { out += "  Station AET:      \(stationAET)\n" }
+        if !stationName.isEmpty         { out += "  Station Name:     \(stationName)\n" }
+        if !spsID.isEmpty               { out += "  SPS ID:           \(spsID)\n" }
+        if !spsDescription.isEmpty      { out += "  SPS Description:  \(spsDescription)\n" }
+        if !procedureID.isEmpty         { out += "  Procedure ID:     \(procedureID)\n" }
+        if !procedureDescription.isEmpty { out += "  Procedure Desc:   \(procedureDescription)\n" }
+        if !performingPhysician.isEmpty { out += "  Performing Phys:  \(performingPhysician)\n" }
+        return out
     }
 
     /// The worklist items as a pretty-printed JSON array. The keys (notably

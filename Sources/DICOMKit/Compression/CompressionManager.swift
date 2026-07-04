@@ -17,6 +17,8 @@ public struct CompressionInfo {
     public let isLossless: Bool
     public let isJPEG: Bool
     public let isJPEG2000: Bool
+    public let isJPEGLS: Bool
+    public let isJPEGXL: Bool
     public let isRLE: Bool
     public let isDeflated: Bool
     public let pixelDataSize: Int?
@@ -50,6 +52,15 @@ public struct CompressionManager {
         (["htj2k", "htj2k-lossy"], .htj2kLossy),
         (["htj2k-lossless"], .htj2kLossless),
         (["htj2k-rpcl", "htj2k-lossless-rpcl"], .htj2kRPCLLossless),
+        (["jpeg-ls-lossless", "jpegls-lossless", "jls-lossless"], .jpegLSLossless),
+        (["jpeg-ls", "jpegls", "jls"], .jpegLSNearLossless),
+        // JPEG XL encodes both lossless (…4.110, JXLSwift Modular) and lossy (…4.112,
+        // JXLSwift VarDCT). Following the same convention as jpeg2000/htj2k, the bare
+        // `jpeg-xl`/`jxl` names resolve to the LOSSY syntax; the explicit `-lossless`
+        // spelling selects the lossless one. (JPEG Recompression …4.111 is produced only
+        // by dicom-convert from a JPEG source, never by a --codec name here.)
+        (["jpeg-xl-lossless", "jxl-lossless"], .jpegXLLossless),
+        (["jpeg-xl", "jxl", "jpeg-xl-lossy", "jxl-lossy"], .jpegXL),
         (["rle"], .rleLossless),
         (["explicit-le"], .explicitVRLittleEndian),
         (["implicit-le"], .implicitVRLittleEndian),
@@ -64,6 +75,20 @@ public struct CompressionManager {
             }
         }
         return nil
+    }
+
+    /// Returns whether compressing a source described by `sourceInfo` to `targetCodec`
+    /// will *recompress* — i.e. the source is already compressed AND the target codec
+    /// is a DIFFERENT encapsulated (compressed) syntax, so the engine must decode to
+    /// native pixels and then re-encode. Both the CLI and the Studio Workshop call
+    /// this so the recompression detection lives in one place (never re-derived at the
+    /// call site). Returns `false` for a nil `sourceInfo` (unreadable source) and for
+    /// a same-syntax target (compressData passes those bytes through unchanged — no
+    /// decode/re-encode — so it is not a recompression).
+    public static func isRecompression(sourceInfo: CompressionInfo?, targetCodec: String) -> Bool {
+        guard let info = sourceInfo, info.isCompressed else { return false }
+        guard let target = transferSyntax(for: targetCodec), target.isEncapsulated else { return false }
+        return target.uid != info.transferSyntaxUID
     }
 
     static func codecName(for syntax: TransferSyntax) -> String {
@@ -107,6 +132,16 @@ public struct CompressionManager {
             return "HTJ2K RPCL Lossless"
         case TransferSyntax.htj2kLossy.uid:
             return "HTJ2K"
+        case TransferSyntax.jpegLSLossless.uid:
+            return "JPEG-LS Lossless"
+        case TransferSyntax.jpegLSNearLossless.uid:
+            return "JPEG-LS Near-Lossless"
+        case TransferSyntax.jpegXLLossless.uid:
+            return "JPEG XL Lossless"
+        case TransferSyntax.jpegXL.uid:
+            return "JPEG XL"
+        case TransferSyntax.jpegXLRecompression.uid:
+            return "JPEG XL JPEG Recompression"
         case TransferSyntax.rleLossless.uid:
             return "RLE Lossless"
         default:
@@ -130,7 +165,24 @@ public struct CompressionManager {
         let syntax = TransferSyntax.from(uid: tsUID)
 
         let pixelElement = file.dataSet[.pixelData]
-        let pixelDataSize = pixelElement.map { Int($0.length) }
+
+        // Pixel Data size: for native (non-encapsulated) data the element length
+        // is the byte count. For encapsulated data the length field is the
+        // 0xFFFFFFFF undefined-length sentinel — not a byte count — so report the
+        // actual compressed payload, the sum of the encapsulated fragment sizes
+        // (the Basic Offset Table is metadata, not pixel bytes). Without this,
+        // every compressed file reported the sentinel literally as ≈4.0 GB.
+        let pixelDataSize: Int? = pixelElement.map { element in
+            if let fragments = element.encapsulatedFragments {
+                return fragments.reduce(0) { $0 + $1.count }
+            }
+            // Defend against a stray undefined-length sentinel with no parsed
+            // fragments (malformed input): fall back to the actual value bytes.
+            if element.length == 0xFFFFFFFF {
+                return element.valueData.count
+            }
+            return Int(element.length)
+        }
 
         return CompressionInfo(
             transferSyntaxUID: tsUID,
@@ -139,6 +191,8 @@ public struct CompressionManager {
             isLossless: syntax?.isLossless ?? true,
             isJPEG: syntax?.isJPEG ?? false,
             isJPEG2000: syntax?.isJPEG2000 ?? false,
+            isJPEGLS: syntax?.isJPEGLS ?? false,
+            isJPEGXL: syntax?.isJPEGXL ?? false,
             isRLE: syntax?.isRLE ?? false,
             isDeflated: syntax?.isDeflated ?? false,
             pixelDataSize: pixelDataSize,
@@ -169,7 +223,10 @@ public struct CompressionManager {
 
     /// In-memory compress (no file I/O) — used by DICOMStudio, which writes the
     /// result through its sandbox-aware OutputAccess path.
-    public func compressData(_ inputData: Data, codec: String, quality: CompressionQuality?) throws -> Data {
+    /// `backend` forces a codec execution path where one exists (J2K/HTJ2K
+    /// Metal GPU encode); codecs without a matching path run their default.
+    public func compressData(_ inputData: Data, codec: String, quality: CompressionQuality?,
+                             backend: CodecBackendPreference = .auto) throws -> Data {
         guard let targetSyntax = CompressionManager.transferSyntax(for: codec) else {
             throw CompressionError.unknownCodec(codec)
         }
@@ -193,7 +250,8 @@ public struct CompressionManager {
             try CompressionManager.encodePixelDataInPlace(
                 dataSet: &workingDataSet,
                 targetSyntax: targetSyntax,
-                quality: quality
+                quality: quality,
+                backend: backend
             )
         } else if targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated
                   && targetSyntax.uid != sourceSyntax.uid {
@@ -202,7 +260,8 @@ public struct CompressionManager {
                 dataSet: &workingDataSet,
                 sourceSyntax: sourceSyntax,
                 targetSyntax: targetSyntax,
-                quality: quality
+                quality: quality,
+                backend: backend
             )
         } else if !targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated {
             // Decompress: decode pixel data into uncompressed bytes.
@@ -224,6 +283,85 @@ public struct CompressionManager {
             to: targetSyntax,
             preservePixelData: true
         )
+    }
+
+    /// Per-phase metrics for a compress run, so the console can report the sizes and
+    /// timings of each phase. A plain compress (uncompressed source) has a single
+    /// compression phase (`intermediateSize`/`decompressElapsed` are nil). A
+    /// recompression (already-compressed source → a different codec) has TWO phases —
+    /// first the source is decompressed to native pixels, then those are re-encoded to
+    /// the target — so it also carries the intermediate (decompressed) size and the
+    /// decompression time.
+    public struct CompressMetrics: Sendable {
+        public let inputSize: Int                    // source file bytes
+        public let outputSize: Int                   // final output file bytes
+        public let isRecompression: Bool
+        public let sourceTransferSyntaxName: String? // set only for a recompression
+        public let intermediateSize: Int?            // decompressed (native) file bytes; nil for plain compress
+        public let decompressElapsed: TimeInterval?  // decompression phase; nil for plain compress
+        public let compressElapsed: TimeInterval     // compression phase (full run for a plain compress)
+
+        public init(inputSize: Int, outputSize: Int, isRecompression: Bool,
+                    sourceTransferSyntaxName: String?, intermediateSize: Int?,
+                    decompressElapsed: TimeInterval?, compressElapsed: TimeInterval) {
+            self.inputSize = inputSize
+            self.outputSize = outputSize
+            self.isRecompression = isRecompression
+            self.sourceTransferSyntaxName = sourceTransferSyntaxName
+            self.intermediateSize = intermediateSize
+            self.decompressElapsed = decompressElapsed
+            self.compressElapsed = compressElapsed
+        }
+    }
+
+    /// Compress `inputData` to `codec`, returning the output bytes AND per-phase
+    /// `CompressMetrics` (sizes + timings) for the console. This is the entry point the
+    /// `dicom-compress` CLI and the Studio Workshop use so the timing/size split is
+    /// produced once, in core, rather than re-derived per surface.
+    ///
+    /// For a recompression it performs the two phases EXPLICITLY — decompress the
+    /// source to native pixels (Explicit VR LE), then compress those to the target —
+    /// which is exactly the behaviour the console's "decompressing to native pixels
+    /// first, then re-encoding" note describes, and lets each phase be timed and its
+    /// intermediate size measured. The produced pixels are identical to a direct
+    /// `compressData` transcode (both decode the same source and feed the same native
+    /// pixels to the same encoder). Pass `sourceInfo` if already computed to avoid a
+    /// redundant parse.
+    public func compressDataWithMetrics(
+        _ inputData: Data,
+        codec: String,
+        quality: CompressionQuality?,
+        sourceInfo: CompressionInfo? = nil,
+        backend: CodecBackendPreference = .auto
+    ) throws -> (data: Data, metrics: CompressMetrics) {
+        guard CompressionManager.transferSyntax(for: codec) != nil else {
+            throw CompressionError.unknownCodec(codec)
+        }
+        let info = sourceInfo ?? (try? getCompressionInfo(data: inputData))
+
+        if CompressionManager.isRecompression(sourceInfo: info, targetCodec: codec) {
+            // Phase 1 — decompress the source to native pixels (Explicit VR LE).
+            let d0 = Date()
+            let intermediate = try decompressData(inputData, syntax: .explicitVRLittleEndian)
+            let decompressElapsed = Date().timeIntervalSince(d0)
+            // Phase 2 — compress the native pixels to the target codec.
+            let c0 = Date()
+            let output = try compressData(intermediate, codec: codec, quality: quality, backend: backend)
+            let compressElapsed = Date().timeIntervalSince(c0)
+            return (output, CompressMetrics(
+                inputSize: inputData.count, outputSize: output.count, isRecompression: true,
+                sourceTransferSyntaxName: info?.transferSyntaxName, intermediateSize: intermediate.count,
+                decompressElapsed: decompressElapsed, compressElapsed: compressElapsed))
+        }
+
+        // Plain compress (uncompressed source, or a same-syntax passthrough).
+        let c0 = Date()
+        let output = try compressData(inputData, codec: codec, quality: quality, backend: backend)
+        let compressElapsed = Date().timeIntervalSince(c0)
+        return (output, CompressMetrics(
+            inputSize: inputData.count, outputSize: output.count, isRecompression: false,
+            sourceTransferSyntaxName: nil, intermediateSize: nil,
+            decompressElapsed: nil, compressElapsed: compressElapsed))
     }
 
     // MARK: - Codec dispatch helpers (v9.1 fix)
@@ -262,7 +400,8 @@ public struct CompressionManager {
     static func encodePixelDataInPlace(
         dataSet: inout DataSet,
         targetSyntax: TransferSyntax,
-        quality: CompressionQuality?
+        quality: CompressionQuality?,
+        backend: CodecBackendPreference = .auto
     ) throws {
         guard let encoder = CodecRegistry.shared.encoder(for: targetSyntax.uid) else {
             throw CompressionError.encoderNotAvailable(targetSyntax.uid)
@@ -278,14 +417,19 @@ public struct CompressionManager {
         let descriptor = try buildPixelDataDescriptor(from: dataSet)
 
         let configuration: CompressionConfiguration = {
+            // --backend rides along in the config (nil = auto); only codecs
+            // with an alternate execution path (J2K/HTJ2K Metal) act on it.
+            let forced = backend.forced
             if targetSyntax.isLossless {
-                return .lossless
+                return CompressionConfiguration(
+                    quality: .maximum, speed: .balanced,
+                    preferLossless: true, forcedBackend: forced)
             }
             // For lossy paths honour the user's --quality if supplied.
             if let q = quality {
-                return CompressionConfiguration(quality: q, speed: .balanced)
+                return CompressionConfiguration(quality: q, speed: .balanced, forcedBackend: forced)
             }
-            return .default
+            return CompressionConfiguration(forcedBackend: forced)
         }()
 
         guard encoder.canEncode(with: configuration, descriptor: descriptor) else {
@@ -379,7 +523,8 @@ public struct CompressionManager {
         dataSet: inout DataSet,
         sourceSyntax: TransferSyntax,
         targetSyntax: TransferSyntax,
-        quality: CompressionQuality?
+        quality: CompressionQuality?,
+        backend: CodecBackendPreference = .auto
     ) throws {
         // Step 1: decode to uncompressed bytes.
         try decodePixelDataInPlace(
@@ -391,7 +536,8 @@ public struct CompressionManager {
         try encodePixelDataInPlace(
             dataSet: &dataSet,
             targetSyntax: targetSyntax,
-            quality: quality
+            quality: quality,
+            backend: backend
         )
     }
 
@@ -643,7 +789,7 @@ struct TransferSyntaxHelper {
 
         // Write file meta information (always Explicit VR Little Endian)
         let metaWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
-        let metaData = try writeDataSet(fileMeta, writer: metaWriter)
+        let metaData = writeDataSet(fileMeta, writer: metaWriter)
 
         // File Meta Information Group Length
         let lengthData = metaWriter.serializeUInt32(UInt32(metaData.count))
@@ -653,12 +799,26 @@ struct TransferSyntaxHelper {
             length: UInt32(lengthData.count),
             valueData: lengthData
         )
-        output.append(try writeElement(groupLengthElement, writer: metaWriter))
+        output.append(metaWriter.serializeElement(groupLengthElement))
         output.append(metaData)
 
-        // Write main dataset with target transfer syntax
+        // Write main dataset with target transfer syntax. A Deflated Explicit VR
+        // Little Endian target (PS3.5 A.5) serializes the Data Set as Explicit VR
+        // LE and then DEFLATE-compresses it — the File Meta Information above stays
+        // uncompressed. Without this the file was labeled 1.2.840.10008.1.2.1.99
+        // but carried raw (un-deflated) bytes, so readers failed with
+        // "Failed to decompress deflated data".
         let dataWriter = createWriter(for: targetSyntax)
-        let dataSetData = try writeDataSet(dataSet, writer: dataWriter)
+        var dataSetData = try writeDataSet(dataSet, writer: dataWriter)
+        if targetSyntax.isDeflated {
+            guard let deflated = dataSetData.deflateCompressed() else {
+                throw CompressionError.conversionFailed(
+                    "Failed to deflate the Data Set for \(targetSyntax.uid). "
+                    + "Deflate compression is unavailable on this platform."
+                )
+            }
+            dataSetData = deflated
+        }
         output.append(dataSetData)
 
         return output
@@ -670,21 +830,45 @@ struct TransferSyntaxHelper {
         return DICOMWriter(byteOrder: byteOrder, explicitVR: explicitVR)
     }
 
-    private func writeDataSet(_ dataSet: DataSet, writer: DICOMWriter) throws -> Data {
+    private func writeDataSet(_ dataSet: DataSet, writer: DICOMWriter) -> Data {
         var output = Data()
         for tag in dataSet.tags.sorted() {
             guard let element = dataSet[tag] else { continue }
-            // v9.1 fix: serialise encapsulated pixel data with its
-            // BOT + Item-tagged fragments + Sequence Delimitation
-            // structure rather than dumping the empty `valueData`.
+            // Encapsulated (compressed) PixelData needs the BOT + Item-tagged
+            // fragment + Sequence Delimitation structure, which the shared
+            // DICOMWriter does not emit (it skips undefined-length values), so it
+            // keeps its dedicated serializer.
             if element.tag == .pixelData
                 && element.encapsulatedFragments != nil {
                 output.append(serializeEncapsulatedPixelData(element, writer: writer))
                 continue
             }
-            output.append(try writeElement(element, writer: writer))
+            // Everything else goes through the library's real element serializer.
+            // The previous bespoke writer dumped each element's raw `valueData`
+            // under the *target* framing — which corrupted sequences carried over
+            // from an Implicit VR source (their bytes are implicit-encoded) and
+            // truncated the declared length of >64 KB 16-bit-VR elements, both of
+            // which desynced the reader so it stopped before PixelData ("No pixel
+            // data found in DICOM file"). DICOMWriter re-encodes sequences from
+            // their parsed items; the sanitizer keeps oversized short-VR values
+            // representable under Explicit VR.
+            output.append(writer.serializeElement(
+                sanitizedForExplicitVR(element, explicitVR: writer.explicitVR)))
         }
         return output
+    }
+
+    /// Promotes an element whose value exceeds the 0xFFFF that a 16-bit Explicit
+    /// VR length field can hold — legal under Implicit VR's 32-bit length — to UN,
+    /// which carries a 32-bit length. Without this, transcoding Implicit→Explicit
+    /// VR either silently truncated the declared length (desyncing every later
+    /// element, including PixelData) or trapped on `UInt16(overflow)`.
+    private func sanitizedForExplicitVR(_ element: DataElement, explicitVR: Bool) -> DataElement {
+        guard explicitVR, element.vr != .SQ, !element.vr.uses32BitLength,
+              element.valueData.count > 0xFFFF else { return element }
+        return DataElement(tag: element.tag, vr: .UN,
+                           length: UInt32(element.valueData.count),
+                           valueData: element.valueData)
     }
 
     /// Serialises an encapsulated PixelData element per DICOM PS3.5 A.4
@@ -793,6 +977,7 @@ public enum CompressionError: Error, CustomStringConvertible {
     case encoderNotAvailable(String)
     case decoderNotAvailable(String)
     case unsupportedPixelDataConfiguration(String)
+    case invalidQuality(String)
 
     public var description: String {
         switch self {
@@ -814,6 +999,9 @@ public enum CompressionError: Error, CustomStringConvertible {
                 + "Cannot decompress source pixel data."
         case .unsupportedPixelDataConfiguration(let detail):
             return "Encoder rejected pixel-data configuration: \(detail)"
+        case .invalidQuality(let value):
+            return "Invalid --quality value '\(value)'. "
+                + "Use maximum / high / medium / low, or a number in 0.0...1.0."
         }
     }
 }

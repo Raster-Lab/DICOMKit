@@ -897,30 +897,6 @@ public enum AnonHelpers: Sendable {
         return cmd
     }
 
-    /// Renders anonymization summary text matching dicom-anon printSummary().
-    public static func renderSummary(
-        totalFiles: Int,
-        successful: Int,
-        failed: Int,
-        dryRun: Bool,
-        warnings: [String],
-        modifiedTags: [String],
-        verbose: Bool
-    ) -> String {
-        var out = "\nAnonymization Summary:\n"
-        out += "  Total files: \(totalFiles)\n"
-        out += "  Successful: \(successful)\n"
-        out += "  Failed: \(failed)\n"
-        if dryRun { out += "  (DRY RUN - no files modified)\n" }
-        if !warnings.isEmpty {
-            out += "\nWarnings:\n"
-            for w in warnings.prefix(10) { out += "  ⚠️  \(w)\n" }
-            if warnings.count > 10 { out += "  ... and \(warnings.count - 10) more warnings\n" }
-        }
-        if verbose && !modifiedTags.isEmpty {
-            out += "\nModified tags (\(modifiedTags.count)):\n"
-            for tag in modifiedTags.sorted().prefix(20) { out += "  - \(tag)\n" }
-        }
-        return out
-    }
+    // Summary rendering lives in the shared `AnonConsole` (DICOMKit) — the same
+    // builder the dicom-anon CLI prints from — so the two surfaces cannot drift.
 }

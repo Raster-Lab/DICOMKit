@@ -34,32 +34,96 @@ public enum OutputAccess {
     @discardableResult
     public static func write(_ data: Data, toPath path: String, scopedURL: URL?,
                              subfolder: String = "Output") throws -> (url: URL, note: String?) {
-        // 1. Security-scoped URL from the picker — always granted for writing.
+        // 1. Security-scoped URL from the picker — preferred (granted writable).
         if let scoped = scopedURL {
             let accessing = scoped.startAccessingSecurityScopedResource()
             defer { if accessing { scoped.stopAccessingSecurityScopedResource() } }
-            try writeCreatingParents(data, to: scoped)
-            return (scoped, nil)
+            // The output Browse picker grants a FOLDER (`allowedContentTypes:
+            // [.folder]`), so `scoped` is normally the *directory* the user chose —
+            // the file must be written INSIDE it, named from the typed path. Writing
+            // the bytes straight onto the directory URL is what produced
+            // "The file <dir> couldn't be saved in the folder <parent>". When the
+            // scope already refers to a regular file we write it directly. Mirrors
+            // `readFileData`'s directory-scope handling.
+            let destination = destinationWithinScope(scoped, typedPath: path)
+            do {
+                try writeCreatingParents(data, to: destination)
+                return (destination, nil)
+            } catch {
+                // Scoped write still failed (stale bookmark, read-only volume, …):
+                // don't surface a raw error — fall through to the typed path /
+                // Downloads bucket so the user still gets their file, with a note.
+                return try writeToTypedOrDownloads(data, path: path, subfolder: subfolder,
+                                                   reason: error.localizedDescription)
+            }
         }
 
+        return try writeToTypedOrDownloads(data, path: path, subfolder: subfolder, reason: nil)
+    }
+
+    /// Writes to the typed path, falling back to ~/Downloads/DICOMStudio/<subfolder>/
+    /// when that path is empty or not writable (sandbox/TCC). `reason`, when set,
+    /// carries the upstream failure (e.g. a denied security scope) so the redirect
+    /// note explains why the original destination was bypassed.
+    private static func writeToTypedOrDownloads(_ data: Data, path: String, subfolder: String,
+                                                reason: String?) throws -> (url: URL, note: String?) {
         guard !path.isEmpty else {
-            // No destination at all → fall straight to the Downloads bucket.
+            // No usable destination → fall straight to the Downloads bucket.
             let fallback = fallbackURL(forName: "output.dat", subfolder: subfolder)
             try writeCreatingParents(data, to: fallback)
-            return (fallback, redirectNote(from: nil, to: fallback, reason: "no output path was provided"))
+            return (fallback, redirectNote(from: nil, to: fallback,
+                                           reason: reason ?? "no output path was provided"))
         }
 
         // 2. Try the typed path as-is.
         let target = URL(fileURLWithPath: path)
         do {
             try writeCreatingParents(data, to: target)
+            // A non-nil reason means we already bypassed a scoped destination; the
+            // typed path worked, so report success without a spurious redirect note.
             return (target, nil)
         } catch {
             // 3. Fall back to ~/Downloads/DICOMStudio/<subfolder>/<filename>.
             let fallback = fallbackURL(forName: target.lastPathComponent, subfolder: subfolder)
             try writeCreatingParents(data, to: fallback)
-            return (fallback, redirectNote(from: target, to: fallback, reason: error.localizedDescription))
+            return (fallback, redirectNote(from: target, to: fallback,
+                                           reason: reason ?? error.localizedDescription))
         }
+    }
+
+    /// Resolves the actual file URL to write when the picker granted a security
+    /// scope. The output Browse picker uses `allowedContentTypes: [.folder]`, so the
+    /// scope is normally the *directory* the user chose; the file is written inside it
+    /// using the filename from the typed path. Returns the scope unchanged only when
+    /// it already refers to a regular file.
+    private static func destinationWithinScope(_ scoped: URL, typedPath: String) -> URL {
+        var isDir: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: scoped.path, isDirectory: &isDir)
+        let scopedIsDirectory = (exists && isDir.boolValue) || (!exists && scoped.hasDirectoryPath)
+        guard scopedIsDirectory else { return scoped }   // scope is the file itself
+
+        let scopedDir = scoped.standardizedFileURL
+        let typed = URL(fileURLWithPath: typedPath).standardizedFileURL
+        let scopedComponents = scopedDir.pathComponents
+        let typedComponents = typed.pathComponents
+
+        // If the typed path lies inside the scoped directory, preserve the relative
+        // remainder (browsed …/Out, typed …/Out/sub/file.dcm → write sub/file.dcm
+        // within the grant). This is the common case: the typed field holds the
+        // chosen folder plus a filename.
+        if typedComponents.count > scopedComponents.count,
+           Array(typedComponents.prefix(scopedComponents.count)) == scopedComponents {
+            return typedComponents.dropFirst(scopedComponents.count)
+                .reduce(scoped) { $0.appendingPathComponent($1) }
+        }
+
+        // Otherwise honor the grant and write a single file inside it, named from
+        // the typed path (or a default when the path is just the directory itself).
+        let fileName = typed.lastPathComponent
+        if fileName.isEmpty || typed == scopedDir {
+            return scoped.appendingPathComponent("output.dat")
+        }
+        return scoped.appendingPathComponent(fileName)
     }
 
     /// Convenience for text output (UTF-8).

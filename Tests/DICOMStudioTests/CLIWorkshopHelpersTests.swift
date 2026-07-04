@@ -318,6 +318,47 @@ struct CLIWorkshopHelpersTests {
         #expect(cmd == "dicom-tags --tags PatientName,PatientID")
     }
 
+    @Test("buildCommand expands repeatable empty-flag definition into variadic positional tokens")
+    func testBuildCommandRepeatablePositionalExpansion() {
+        // An empty flag + isRepeatable models a variadic positional list
+        // (`@Argument var inputs: [String]`): each semicolon-separated item
+        // must become its own shell-escaped token, not one joined token.
+        let defs = [
+            CLIParameterDefinition(id: "inputs", flag: "", displayName: "Input Files",
+                                   parameterType: .filePath, isRepeatable: true)
+        ]
+        let vals = [CLIParameterValue(parameterID: "inputs", stringValue: "in put.dcm; b.dcm")]
+        let cmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-validate", parameterValues: vals, parameterDefinitions: defs)
+        #expect(cmd == "dicom-validate 'in put.dcm' b.dcm")
+
+        // Same contract for the non-file default branch (e.g. `dicom-uid validate <uid> <uid>`).
+        let textDefs = [
+            CLIParameterDefinition(id: "uids", flag: "", displayName: "UIDs",
+                                   parameterType: .textField, isRepeatable: true)
+        ]
+        let textVals = [CLIParameterValue(parameterID: "uids", stringValue: "1.2.840.10008.1.2; 1.2.840.10008.1.2.1")]
+        let textCmd = CommandBuilderHelpers.buildCommand(toolName: "dicom-uid", parameterValues: textVals, parameterDefinitions: textDefs)
+        #expect(textCmd == "dicom-uid 1.2.840.10008.1.2 1.2.840.10008.1.2.1")
+    }
+
+    @Test("buildCommand booleanToggle with negatedFlag emits inverted token when off")
+    func testBuildCommandBooleanToggleNegatedFlag() {
+        // Inverted CLI flag (`@Flag(inversion: .prefixedNo)`, default true):
+        // toggling OFF must emit the negated token (`--no-recursive`) so the
+        // pasted command does not silently re-enable the disabled behavior.
+        let defs = [
+            CLIParameterDefinition(id: "recursive", flag: "--recursive", displayName: "Recursive",
+                                   parameterType: .booleanToggle,
+                                   negatedFlag: "--no-recursive", defaultValue: "true")
+        ]
+        let valsTrue = [CLIParameterValue(parameterID: "recursive", stringValue: "true")]
+        let valsFalse = [CLIParameterValue(parameterID: "recursive", stringValue: "false")]
+        let cmdTrue = CommandBuilderHelpers.buildCommand(toolName: "dicom-dcmdir", parameterValues: valsTrue, parameterDefinitions: defs)
+        let cmdFalse = CommandBuilderHelpers.buildCommand(toolName: "dicom-dcmdir", parameterValues: valsFalse, parameterDefinitions: defs)
+        #expect(cmdTrue == "dicom-dcmdir --recursive")
+        #expect(cmdFalse == "dicom-dcmdir --no-recursive")
+    }
+
     @Test("splitMultiValue splits on semicolons and preserves commas/spaces in values")
     func testSplitMultiValueSemicolon() {
         // Tag numbers keep their comma; names keep spaces and apostrophes.

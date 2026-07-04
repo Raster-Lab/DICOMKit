@@ -121,7 +121,13 @@ public struct CompressionConfiguration: Sendable, Hashable {
     
     /// Maximum number of bits per sample (for formats that support variable bit depth)
     public let maxBitsPerSample: Int?
-    
+
+    /// Backend the encoder should prefer (`nil` = auto / best available).
+    /// Only meaningful for codecs with multiple execution paths (J2K/HTJ2K
+    /// Metal GPU encode); codecs without a matching path ignore it and run
+    /// their default (CPU) implementation.
+    public let forcedBackend: CodecBackend?
+
     /// Default configuration with high quality and balanced speed
     public static let `default` = CompressionConfiguration(
         quality: .high,
@@ -167,13 +173,15 @@ public struct CompressionConfiguration: Sendable, Hashable {
         speed: CompressionSpeed = .balanced,
         progressive: Bool = false,
         preferLossless: Bool = false,
-        maxBitsPerSample: Int? = nil
+        maxBitsPerSample: Int? = nil,
+        forcedBackend: CodecBackend? = nil
     ) {
         self.quality = quality
         self.speed = speed
         self.progressive = progressive
         self.preferLossless = preferLossless
         self.maxBitsPerSample = maxBitsPerSample
+        self.forcedBackend = forcedBackend
     }
 }
 
@@ -183,6 +191,7 @@ extension CompressionConfiguration: CustomStringConvertible {
         if progressive { parts.append("progressive") }
         if preferLossless { parts.append("preferLossless") }
         if let maxBits = maxBitsPerSample { parts.append("maxBits=\(maxBits)") }
+        if let backend = forcedBackend { parts.append("backend=\(backend.rawValue)") }
         return "CompressionConfiguration(\(parts.joined(separator: ", ")))"
     }
 }
@@ -310,16 +319,22 @@ public struct CodecRegistry: Sendable {
         var decoderRegistry: [String: any ImageCodec] = [:]
         var encoderRegistry: [String: any ImageEncoder] = [:]
         
-        // Register Apple-native baseline JPEG codecs when available.
-        #if canImport(ImageIO)
-        let jpegCodec = NativeJPEGCodec()
-        for uid in NativeJPEGCodec.supportedTransferSyntaxes {
-            decoderRegistry[uid] = jpegCodec
+        // JPEG codec — JLISwift, the pure-Swift ITU-T T.81 implementation, covers
+        // all four DICOM JPEG transfer syntaxes for both decode and encode. One
+        // decoder serves every SOF mode (the marker drives it); encoders are
+        // per-syntax — the target UID selects baseline/extended lossy DCT vs
+        // lossless SOF3 — mirroring the J2KSwiftCodec wiring below. This replaces
+        // the prior ImageIO-only path, so JPEG encode/decode now works identically
+        // on every platform (and adds Extended/Lossless/SV1 *encoding*, which the
+        // ImageIO path never supported). NativeJPEGCodec remains in the tree as a
+        // standalone Apple codec, no longer wired into the registry.
+        let jpegDecoder = JLICodec()
+        for uid in JLICodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = jpegDecoder
         }
-        for uid in NativeJPEGCodec.supportedEncodingTransferSyntaxes {
-            encoderRegistry[uid] = jpegCodec
+        for uid in JLICodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = JLICodec(encodingTransferSyntaxUID: uid)
         }
-        #endif
 
         // Register the preferred JPEG 2000 adapter.
         // Phase 1 uses J2KSwift directly; the native Apple codec remains available
@@ -367,6 +382,20 @@ public struct CodecRegistry: Sendable {
         }
         for uid in JP3DCodec.supportedEncodingTransferSyntaxes {
             encoderRegistry[uid] = JP3DCodec(compressionMode: uid == TransferSyntax.jp3dLossless.uid ? .lossless : .lossy())
+        }
+
+        // JPEG XL codec (JXLSwift pure-Swift — lossless + lossy encode, lossless + lossy decode).
+        // Decoders are wired per-UID so the codec knows its source syntax: a …4.111 JPEG
+        // Recompression instance reconstructs the wrapped JPEG (and treats a reconstruction
+        // failure as a hard error), while …4.110 / …4.112 take the pixel path directly.
+        for uid in JXLCodec.supportedTransferSyntaxes {
+            decoderRegistry[uid] = JXLCodec(decodingTransferSyntaxUID: uid)
+        }
+        // Encoders are wired per-UID so the codec knows its target mode: …4.110 → lossless
+        // Modular, …4.112 → lossy VarDCT (quality-driven). Mirrors the per-syntax encoder
+        // wiring for JLISwift / J2KSwift above.
+        for uid in JXLCodec.supportedEncodingTransferSyntaxes {
+            encoderRegistry[uid] = JXLCodec(encodingTransferSyntaxUID: uid)
         }
         
         self.codecs = decoderRegistry

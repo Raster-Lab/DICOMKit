@@ -692,9 +692,11 @@ public enum CLIParityNetworkScenarios {
             "sps-id": scope.spsID,
         ]
         // Referenced images flow to the N-SET only for the with-images lifecycle row.
+        // Semicolon-joined — the Workshop's shared multi-value convention (the app
+        // param is `image-uid`, one `--image-uid` per value in the CLI).
         if withImages {
             sp["series-uid"] = scope.seriesUID
-            sp["image-uids"] = scope.imageUIDs.joined(separator: ",")
+            sp["image-uid"] = scope.imageUIDs.joined(separator: ";")
         }
         if verbose { sp["verbose"] = "true" }
 

@@ -26,15 +26,20 @@ public struct CorpusIndex: Sendable, Hashable {
     public let studyDirs: [String]         // dirs containing ≥1 DICOM (root + subfolders)
     public let pdfFiles: [String]
     public let scriptFiles: [String]
+    public let imageFiles: [String]        // standard images (png/jpg/tif/…) — input for dicom-image
+    public let imageDirs: [String]         // dirs containing ≥1 image (root + subfolders) — dicom-image --recursive
+    public let multipageTiffs: [String]    // TIFFs with >1 page — dicom-image --split-pages
     public let totalFiles: Int             // regular files seen
     public let classifyCappedAt: Int?      // non-nil if the multiframe/RLE probe was capped
 
     public init(rootDir: String, dicomFiles: [String], multiframeFiles: [String],
                 rleFiles: [String], studyDirs: [String], pdfFiles: [String],
-                scriptFiles: [String], totalFiles: Int, classifyCappedAt: Int?) {
+                scriptFiles: [String], totalFiles: Int, classifyCappedAt: Int?,
+                imageFiles: [String] = [], imageDirs: [String] = [], multipageTiffs: [String] = []) {
         self.rootDir = rootDir; self.dicomFiles = dicomFiles
         self.multiframeFiles = multiframeFiles; self.rleFiles = rleFiles
         self.studyDirs = studyDirs; self.pdfFiles = pdfFiles; self.scriptFiles = scriptFiles
+        self.imageFiles = imageFiles; self.imageDirs = imageDirs; self.multipageTiffs = multipageTiffs
         self.totalFiles = totalFiles; self.classifyCappedAt = classifyCappedAt
     }
 
@@ -54,8 +59,15 @@ public struct CorpusIndex: Sendable, Hashable {
         case "archive":   return nil   // an archive structure can't be derived from loose files
         case "pdf":       return pdfFiles.first.map { ($0, nil) }
         case "script":    return scriptFiles.first.map { ($0, nil) }
+        // dicom-image inputs (kind names per CLIParityScenarioGenerator.fixtureKind):
+        // a single image (`framepng`), a directory of images (`pngdir`, --recursive),
+        // or a multi-page TIFF (`multitiff`, --split-pages). Drawn from the user's own
+        // corpus when present; nil → the runner falls back to the bundled image.
+        case "framepng":  return imageFiles.first.map { ($0, nil) }
+        case "pngdir":    return imageDirs.first.map { ($0, nil) }
+        case "multitiff": return multipageTiffs.first.map { ($0, nil) }
         // No input, or a format-specific shape the corpus can't safely supply
-        // (json/xml/png/tiff/dirs) — use the bundled fixture instead.
+        // (json/xml derived fixtures, etc.) — use the bundled fixture instead.
         default:          return nil
         }
     }
@@ -64,8 +76,13 @@ public struct CorpusIndex: Sendable, Hashable {
     public var summary: String {
         var parts = ["\(dicomFiles.count) DICOM"]
         if !multiframeFiles.isEmpty { parts.append("\(multiframeFiles.count) multiframe") }
+        if !imageFiles.isEmpty {
+            let mp = multipageTiffs.isEmpty ? "" : ", \(multipageTiffs.count) multipage TIFF"
+            parts.append("\(imageFiles.count) image\(imageFiles.count == 1 ? "" : "s")\(mp)")
+        }
         parts.append("\(studyDirs.count) study folder\(studyDirs.count == 1 ? "" : "s")")
         parts.append("RLE \(rleFiles.isEmpty ? "✗" : "✓")")
+        parts.append("image \(imageFiles.isEmpty ? "✗" : "✓")")
         parts.append("PDF \(pdfFiles.isEmpty ? "✗" : "✓")")
         parts.append("script \(scriptFiles.isEmpty ? "✗" : "✓")")
         return parts.joined(separator: " · ")
@@ -112,11 +129,21 @@ public enum CLIParityCorpusScanner {
         var dicom: [String] = []
         var pdf: [String] = []
         var script: [String] = []
+        var image: [String] = []
         var dirsWithDicom: Set<String> = []
+        var dirsWithImage: Set<String> = []
+        // Matches DICOMKit.ImageConverter.isImageFile so the corpus classifies an
+        // image exactly the way dicom-image would accept it.
+        let imageExts: Set<String> = ["jpg", "jpeg", "png", "tif", "tiff", "bmp", "gif"]
         for u in files {
             let ext = u.pathExtension.lowercased()
             if ext == "pdf" { pdf.append(u.path); continue }
             if ext == "dcmscript" { script.append(u.path); continue }
+            if imageExts.contains(ext) {
+                image.append(u.path)
+                dirsWithImage.insert(u.deletingLastPathComponent().path)
+                continue
+            }
             if isDICOM(u) {
                 dicom.append(u.path)
                 dirsWithDicom.insert(u.deletingLastPathComponent().path)
@@ -145,9 +172,30 @@ public enum CLIParityCorpusScanner {
         studyDirs += dirsWithDicom.filter { $0 != root.path }.sorted()
         if studyDirs.isEmpty && !dicom.isEmpty { studyDirs.append(root.path) }
 
+        // Image directories (root + any subfolder holding images) — the input shape
+        // for dicom-image --recursive (batch image → Secondary Capture).
+        var imageDirs: [String] = []
+        if dirsWithImage.contains(root.path) { imageDirs.append(root.path) }
+        imageDirs += dirsWithImage.filter { $0 != root.path }.sorted()
+
+        // Multi-page TIFF probe (dicom-image --split-pages): first TIFF with >1 page,
+        // bounded by the same maxClassify budget and early-exiting on the first hit.
+        var multipageTiffs: [String] = []
+        #if canImport(CoreGraphics)
+        var imgClassified = 0
+        for p in image where ["tif", "tiff"].contains((p as NSString).pathExtension.lowercased()) {
+            if imgClassified >= maxClassify { break }
+            imgClassified += 1
+            if let n = try? ImageConverter.pageCount(of: URL(fileURLWithPath: p)), n > 1 {
+                multipageTiffs.append(p); break
+            }
+        }
+        #endif
+
         return CorpusIndex(
             rootDir: root.path, dicomFiles: dicom, multiframeFiles: mf, rleFiles: rle,
             studyDirs: studyDirs, pdfFiles: pdf, scriptFiles: script,
-            totalFiles: files.count, classifyCappedAt: capped)
+            totalFiles: files.count, classifyCappedAt: capped,
+            imageFiles: image, imageDirs: imageDirs, multipageTiffs: multipageTiffs)
     }
 }

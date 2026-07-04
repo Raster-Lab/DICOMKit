@@ -298,6 +298,51 @@ extension TransferSyntax {
         isEncapsulated: true
     )
     
+    // MARK: - JPEG XL Transfer Syntaxes
+
+    /// JPEG XL Lossless Image Compression (1.2.840.10008.1.2.4.110)
+    ///
+    /// Mathematically lossless JPEG XL compression that preserves the exact bits
+    /// of the original image.
+    ///
+    /// Reference: PS3.5 Section 10.19 and A.4.12 (Supplement 232, DICOM 2024d),
+    /// ISO/IEC 18181 (JPEG XL)
+    public static let jpegXLLossless = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.110",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG XL JPEG Recompression (1.2.840.10008.1.2.4.111)
+    ///
+    /// Losslessly transcodes existing (possibly lossy) JPEG-encoded data into
+    /// JPEG XL, preserving the exact bits of the original JPEG encoding so the
+    /// source JPEG can be reconstructed without any additional loss.
+    ///
+    /// Reference: PS3.5 Section 10.19 and A.4.12 (Supplement 232, DICOM 2024d),
+    /// ISO/IEC 18181 (JPEG XL)
+    public static let jpegXLRecompression = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.111",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
+    /// JPEG XL Image Compression (1.2.840.10008.1.2.4.112)
+    ///
+    /// General JPEG XL compression scheme permitting any JPEG XL mode — lossy,
+    /// lossless, or JPEG recompression. Treated as potentially lossy.
+    ///
+    /// Reference: PS3.5 Section 10.19 and A.4.12 (Supplement 232, DICOM 2024d),
+    /// ISO/IEC 18181 (JPEG XL)
+    public static let jpegXL = TransferSyntax(
+        uid: "1.2.840.10008.1.2.4.112",
+        isExplicitVR: true,
+        byteOrder: .littleEndian,
+        isEncapsulated: true
+    )
+
     // MARK: - RLE Transfer Syntax
     
     /// RLE Lossless (1.2.840.10008.1.2.5)
@@ -447,6 +492,13 @@ extension TransferSyntax {
             return .jpegLSLossless
         case jpegLSNearLossless.uid:
             return .jpegLSNearLossless
+        // JPEG XL
+        case jpegXLLossless.uid:
+            return .jpegXLLossless
+        case jpegXLRecompression.uid:
+            return .jpegXLRecompression
+        case jpegXL.uid:
+            return .jpegXL
         // RLE
         case rleLossless.uid:
             return .rleLossless
@@ -523,6 +575,13 @@ extension TransferSyntax {
             return .jpegLSLossless
         case "jpeg-ls", "jpegls", "jls":
             return .jpegLSNearLossless
+        case "jpeg-xl-lossless", "jpegxl-lossless", "jxl-lossless":
+            return .jpegXLLossless
+        case "jpeg-xl-recompression", "jpegxl-recompression",
+             "jpeg-xl-jpeg-recompression", "jxl-recompression":
+            return .jpegXLRecompression
+        case "jpeg-xl", "jpegxl", "jxl":
+            return .jpegXL
         case "rle", "rle-lossless":
             return .rleLossless
         case "jp3d-lossless", "jp3dlossless":
@@ -625,7 +684,19 @@ extension TransferSyntax {
             return false
         }
     }
-    
+
+    /// Whether this transfer syntax uses JPEG XL compression
+    public var isJPEGXL: Bool {
+        switch uid {
+        case TransferSyntax.jpegXLLossless.uid,
+             TransferSyntax.jpegXLRecompression.uid,
+             TransferSyntax.jpegXL.uid:
+            return true
+        default:
+            return false
+        }
+    }
+
     /// Whether this transfer syntax uses RLE compression
     public var isRLE: Bool {
         uid == TransferSyntax.rleLossless.uid
@@ -693,6 +764,8 @@ extension TransferSyntax {
              TransferSyntax.htj2kLossless.uid,
              TransferSyntax.htj2kRPCLLossless.uid,
              TransferSyntax.jpegLSLossless.uid,
+             TransferSyntax.jpegXLLossless.uid,
+             TransferSyntax.jpegXLRecompression.uid,
              TransferSyntax.rleLossless.uid,
              TransferSyntax.jp3dLossless.uid:
             return true
@@ -730,6 +803,8 @@ extension TransferSyntax {
         .htj2kLossless, .htj2kRPCLLossless, .htj2kLossy,
         // JPEG-LS
         .jpegLSLossless, .jpegLSNearLossless,
+        // JPEG XL
+        .jpegXLLossless, .jpegXLRecompression, .jpegXL,
         // RLE
         .rleLossless,
         // Video
@@ -763,6 +838,9 @@ extension TransferSyntax {
         case TransferSyntax.htj2kLossy.uid:                    return "HTJ2K"
         case TransferSyntax.jpegLSLossless.uid:                return "JPEG-LS Lossless"
         case TransferSyntax.jpegLSNearLossless.uid:            return "JPEG-LS Near-Lossless"
+        case TransferSyntax.jpegXLLossless.uid:                return "JPEG XL Lossless"
+        case TransferSyntax.jpegXLRecompression.uid:           return "JPEG XL JPEG Recompression"
+        case TransferSyntax.jpegXL.uid:                        return "JPEG XL"
         case TransferSyntax.rleLossless.uid:                   return "RLE Lossless"
         case TransferSyntax.mpeg2MainProfile.uid:              return "MPEG2 Main Profile @ Main Level"
         case TransferSyntax.mpeg2MainProfileHighLevel.uid:     return "MPEG2 Main Profile @ High Level"

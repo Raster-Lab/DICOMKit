@@ -27,6 +27,7 @@ public enum CLIParityScenarioGenerator {
         case "syn-mf.dcm":                        return "mf"
         case "syn-ct-rle.dcm":                    return "ctrle"
         case "syn-studyset", "syn-studyset2":     return "studyset"
+        case "syn-dicomdir":                      return "dicomdir"
         case "syn-series":                        return "series"
         case "syn-archive":                       return "archive"
         case "syn-doc.pdf":                       return "pdf"
@@ -44,8 +45,10 @@ public enum CLIParityScenarioGenerator {
     }
 
     /// Kinds the user corpus may supply (so the live test runs on real data).
-    /// Format-specific kinds (json/xml/png/tiff/dirs) always use the bundled fixture.
-    static let userOverridableKinds: Set<String> = ["ct", "ctpair"]
+    /// Includes the dicom-image image shapes (a single image, a directory of images,
+    /// a multi-page TIFF) which the corpus scanner now classifies. Derived-fixture
+    /// kinds (json/xml) still always use the bundled fixture.
+    static let userOverridableKinds: Set<String> = ["ct", "ctpair", "framepng", "pngdir", "multitiff"]
 
     /// Kinds whose input is a DIRECTORY (used for the UI hint / skip messaging).
     static let directoryKinds: Set<String> = ["studyset", "series", "archive", "pdfdcmdir", "pngdir", "rledir"]
@@ -57,6 +60,7 @@ public enum CLIParityScenarioGenerator {
         case "dicom-diff":              return "two DICOM files"
         case "dicom-study", "dicom-merge": return "study directory"
         case "dicom-archive":           return "archive directory"
+        case "dicom-dcmdir":            return "DICOMDIR file or study directory"
         case "dicom-pdf":               return "PDF / encapsulated DICOM"
         case "dicom-script":            return "no input / .dcmscript"
         case "dicom-uid":               return "UID / DICOM file"

@@ -176,6 +176,19 @@ extension DICOMQR {
                 throw ValidationError("Invalid method: \(method). Use c-move or c-get")
             }
             
+            // Resolve the requested transfer syntax via the SHARED DICOMCore parser
+            // (TransferSyntax.parse) — the identical alias map dicom-retrieve and the
+            // in-app executor use; an unrecognized name is an error, never a silent nil.
+            let preferredTransferSyntaxUID: String?
+            if let transferSyntax, !transferSyntax.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                guard let syntax = TransferSyntax.parse(transferSyntax) else {
+                    throw ValidationError("Unknown transfer syntax: \(transferSyntax)")
+                }
+                preferredTransferSyntaxUID = syntax.uid
+            } else {
+                preferredTransferSyntaxUID = nil
+            }
+
             // Parse server
             let serverInfo = resolveHostPort()
 
@@ -206,12 +219,11 @@ extension DICOMQR {
             let results = try await queryExecutor.executeQuery(level: .study, queryKeys: queryKeys)
             
             if results.isEmpty {
-                print("No studies found matching the query criteria.")
+                print(NetworkConsole.qrNoStudies(), terminator: "")
                 return
             }
 
-            print("Found \(results.count) study(ies):")
-            print("")
+            print(NetworkConsole.qrFound(count: results.count), terminator: "")
 
             // Study list via the SHARED NetworkConsole formatter (DICOMNetwork). Uses
             // toStudyResult() (and ModalitiesInStudy, the key actually requested) so the
@@ -227,12 +239,10 @@ extension DICOMQR {
 
             // Handle different modes
             if review {
-                print("Review complete. \(results.count) study(ies) found.")
+                print(NetworkConsole.qrReviewComplete(count: results.count), terminator: "")
                 if let statePath = saveState {
                     try saveQueryState(results: results, path: statePath)
-                    print("")
-                    print("Query state saved to: \(statePath)")
-                    print("To retrieve later, use: dicom-qr resume --state \(statePath)")
+                    print(NetworkConsole.qrStateSaved(path: statePath), terminator: "")
                 }
                 return
             }
@@ -246,12 +256,11 @@ extension DICOMQR {
             }
 
             if studiesToRetrieve.isEmpty {
-                print("No studies selected for retrieval.")
+                print(NetworkConsole.qrNoSelection(), terminator: "")
                 return
             }
 
-            print("Retrieving \(studiesToRetrieve.count) study(ies)...")
-            print("")
+            print(NetworkConsole.qrRetrieving(count: studiesToRetrieve.count), terminator: "")
 
             // Create retrieve executor
             let retrieveExecutor = RetrieveExecutor(
@@ -263,9 +272,10 @@ extension DICOMQR {
                 timeout: TimeInterval(timeout),
                 outputPath: output,
                 hierarchical: hierarchical,
-                verbose: verbose
+                verbose: verbose,
+                preferredTransferSyntaxUID: preferredTransferSyntaxUID
             )
-            
+
             // Save state if requested before retrieval
             if let statePath = saveState {
                 try saveRetrievalState(
@@ -289,7 +299,7 @@ extension DICOMQR {
             for (index, result) in studiesToRetrieve.enumerated() {
                 let s = result.toStudyResult()
                 guard let studyUID = s.studyInstanceUID else {
-                    print("[\(index + 1)/\(studiesToRetrieve.count)] ⚠️ Missing Study UID")
+                    print(NetworkConsole.qrMissingStudyUID(index: index + 1, total: studiesToRetrieve.count), terminator: "")
                     failureCount += 1
                     continue
                 }
@@ -313,8 +323,7 @@ extension DICOMQR {
                 total: studiesToRetrieve.count, success: successCount, failed: failureCount), terminator: "")
 
             if validate && successCount > 0 {
-                print("")
-                print("Validating retrieved files...")
+                print(NetworkConsole.qrValidatingHeader(), terminator: "")
                 try validateRetrievedFiles(in: output)
             }
             #else
@@ -426,11 +435,9 @@ extension DICOMQR {
         }
         
         private func saveQueryState(results: [GenericQueryResult], path: String) throws {
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let studies = results.map { QueryState.StudyInfo(from: $0) }
-            let state = QueryState(studies: studies)
-            let data = try encoder.encode(state)
+            // Shared state model + canonical encoding (DICOMNetwork.QRSessionState)
+            // so the app and CLI write byte-identical, mutually-resumable files.
+            let data = try QRSessionState.encode(QRQueryState(results: results))
             try data.write(to: URL(fileURLWithPath: path))
         }
         
@@ -446,9 +453,9 @@ extension DICOMQR {
             hierarchical: Bool,
             path: String
         ) throws {
-            let studyInfos = studies.map { QueryState.StudyInfo(from: $0) }
-            let state = RetrievalState(
-                studies: studyInfos,
+            // Shared state model + canonical encoding (DICOMNetwork.QRSessionState).
+            let state = QRRetrievalState(
+                studies: studies.map(QRStudyInfo.init(from:)),
                 host: host,
                 port: port,
                 callingAE: callingAE,
@@ -458,10 +465,7 @@ extension DICOMQR {
                 outputPath: outputPath,
                 hierarchical: hierarchical
             )
-            
-            let encoder = JSONEncoder()
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(state)
+            let data = try QRSessionState.encode(state)
             try data.write(to: URL(fileURLWithPath: path))
         }
         
@@ -474,7 +478,7 @@ extension DICOMQR {
                 includingPropertiesForKeys: [.isRegularFileKey],
                 options: [.skipsHiddenFiles]
             ) else {
-                print("  ⚠️  Cannot enumerate directory")
+                print(NetworkConsole.qrValidateCannotEnumerate(), terminator: "")
                 return
             }
             
@@ -496,11 +500,11 @@ extension DICOMQR {
                     validCount += 1
                 } catch {
                     invalidCount += 1
-                    print("  ⚠️  Invalid file: \(fileURL.lastPathComponent)")
+                    print(NetworkConsole.qrValidateInvalidFile(name: fileURL.lastPathComponent), terminator: "")
                 }
             }
-            
-            print("  Validation: \(validCount) valid, \(invalidCount) invalid")
+
+            print(NetworkConsole.qrValidateSummary(valid: validCount, invalid: invalidCount), terminator: "")
         }
     }
 }
@@ -525,8 +529,7 @@ extension DICOMQR {
             print("Loading retrieval state from: \(state)")
             
             let data = try Data(contentsOf: URL(fileURLWithPath: state))
-            let decoder = JSONDecoder()
-            let retrievalState = try decoder.decode(RetrievalState.self, from: data)
+            let retrievalState = try QRSessionState.decodeRetrievalState(data)
             
             print("Resuming retrieval of \(retrievalState.studies.count) studies")
             print("")
@@ -541,7 +544,8 @@ extension DICOMQR {
                 timeout: 60,
                 outputPath: retrievalState.outputPath,
                 hierarchical: retrievalState.hierarchical,
-                verbose: verbose
+                verbose: verbose,
+                preferredTransferSyntaxUID: nil
             )
             
             var successCount = 0
@@ -609,77 +613,12 @@ private func resolveHostPort(host: String, port: UInt16?) -> (host: String, port
 
 // MARK: - State Types
 
-struct QueryState: Codable {
-    let studies: [StudyInfo]
-    
-    struct StudyInfo: Codable {
-        let studyInstanceUID: String?
-        let patientName: String?
-        let patientID: String?
-        let studyDate: String?
-        let studyDescription: String?
-        let accessionNumber: String?
-        let modality: String?
-        
-        init(from result: GenericQueryResult) {
-            self.studyInstanceUID = result.studyInstanceUID
-            self.patientName = result.patientName
-            self.patientID = result.patientID
-            self.studyDate = result.studyDate
-            self.studyDescription = result.studyDescription
-            self.accessionNumber = result.accessionNumber
-            self.modality = result.modality
-        }
-    }
-}
-
-struct RetrievalState: Codable {
-    let studies: [QueryState.StudyInfo]
-    let host: String
-    let port: UInt16
-    let callingAE: String
-    let calledAE: String
-    let moveDestination: String?
-    let method: RetrievalMethod
-    let outputPath: String
-    let hierarchical: Bool
-}
-
-// Extension to add study-level accessors to GenericQueryResult
-extension GenericQueryResult {
-    var studyInstanceUID: String? {
-        uid(for: .studyInstanceUID)
-    }
-    
-    var patientName: String? {
-        string(for: .patientName)
-    }
-    
-    var patientID: String? {
-        string(for: .patientID)
-    }
-    
-    var studyDate: String? {
-        string(for: .studyDate)
-    }
-    
-    var studyDescription: String? {
-        string(for: .studyDescription)
-    }
-    
-    var accessionNumber: String? {
-        string(for: .accessionNumber)
-    }
-    
-    var modality: String? {
-        string(for: .modality)
-    }
-}
-
-enum RetrievalMethod: String, Codable, ExpressibleByArgument {
-    case cMove = "c-move"
-    case cGet = "c-get"
-}
+// The save-state model (QRQueryState / QRRetrievalState / QRStudyInfo), the
+// retrieval-method enum, and the GenericQueryResult study accessors were
+// hoisted into DICOMNetwork (QRSessionState.swift) so DICOMStudio's Workshop
+// reads/writes the SAME format — a state saved on either surface resumes on
+// the other. Local names are kept as typealiases.
+typealias RetrievalMethod = QRRetrievalMethod
 
 enum DICOMQRError: Error, CustomStringConvertible {
     case missingMoveDestination
@@ -734,7 +673,11 @@ struct RetrieveExecutor {
     let outputPath: String
     let hierarchical: Bool
     let verbose: Bool
-    
+    /// Preferred transfer syntax UID for C-GET presentation-context negotiation
+    /// (parsed from `--transfer-syntax` via the shared `TransferSyntax.parse`).
+    /// C-MOVE is unaffected: the destination SCP negotiates its own contexts.
+    let preferredTransferSyntaxUID: String?
+
     func retrieveStudy(studyUID: String, method: RetrievalMethod) async throws {
         // Silent per-study retrieval: the calling loop renders the `[i/N] Retrieving…`
         // line and the ✅/❌ outcome via the shared NetworkConsole formatter, so this
@@ -761,6 +704,7 @@ struct RetrieveExecutor {
                 callingAE: callingAE,
                 calledAE: calledAE,
                 studyInstanceUID: studyUID,
+                preferredTransferSyntaxUID: preferredTransferSyntaxUID,
                 timeout: timeout
             )
             for await event in stream {

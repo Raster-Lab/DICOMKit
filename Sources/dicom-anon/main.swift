@@ -121,7 +121,7 @@ struct DICOMAnon: ParsableCommand {
             let auditURL = URL(fileURLWithPath: auditLogPath)
             try anonymizer.writeAuditLog(to: auditURL)
             if verbose {
-                print("Audit log written to: \(auditLogPath)")
+                print(AnonConsole.auditLogLine(path: auditLogPath))
             }
         }
         
@@ -179,43 +179,10 @@ struct DICOMAnon: ParsableCommand {
     }
     
     private func parseTag(_ string: String) throws -> Tag {
-        // Try parsing as hex format (0010,0010) or 00100010
-        let cleanString = string.replacingOccurrences(of: ",", with: "")
-            .replacingOccurrences(of: "(", with: "")
-            .replacingOccurrences(of: ")", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        
-        if cleanString.count == 8, let value = UInt32(cleanString, radix: 16) {
-            let group = UInt16((value >> 16) & 0xFFFF)
-            let element = UInt16(value & 0xFFFF)
-            return Tag(group: group, element: element)
+        guard let tag = Anonymizer.parseFlexibleTag(string) else {
+            throw ValidationError("Invalid tag format: \(string)")
         }
-        
-        // Try well-known tags by name
-        if let tag = tagFromKeyword(string) {
-            return tag
-        }
-        
-        throw ValidationError("Invalid tag format: \(string)")
-    }
-    
-    private func tagFromKeyword(_ keyword: String) -> Tag? {
-        // Map common keywords to tags
-        let keywordMap: [String: Tag] = [
-            "PatientName": .patientName,
-            "PatientID": .patientID,
-            "PatientBirthDate": .patientBirthDate,
-            "StudyDate": .studyDate,
-            "SeriesDate": .seriesDate,
-            "Modality": .modality,
-            "StudyDescription": .studyDescription,
-            "SeriesDescription": .seriesDescription,
-            "StudyInstanceUID": .studyInstanceUID,
-            "SeriesInstanceUID": .seriesInstanceUID,
-            "SOPInstanceUID": .sopInstanceUID
-        ]
-        
-        return keywordMap[keyword] ?? keywordMap[keyword.lowercased()]
+        return tag
     }
     
     private func anonymizeDirectory(
@@ -226,22 +193,13 @@ struct DICOMAnon: ParsableCommand {
         // Create output directory
         try FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
         
-        let enumerator = FileManager.default.enumerator(
-            at: inputURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-        
-        guard let enumerator = enumerator else {
+        guard let fileURLs = FileGatherer.regularFiles(under: inputURL) else {
             throw ValidationError("Failed to enumerate directory: \(inputURL.path)")
         }
-        
+
         var results: [AnonymizationResult] = []
-        
-        for case let fileURL as URL in enumerator {
-            let resourceValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-            guard resourceValues.isRegularFile == true else { continue }
-            
+
+        for fileURL in fileURLs {
             // Calculate relative path
             guard let relativePath = fileURL.path.replacingOccurrences(
                 of: inputURL.path,
@@ -265,11 +223,11 @@ struct DICOMAnon: ParsableCommand {
                 results.append(result)
                 
                 if verbose {
-                    print("✓ \(relativePath)")
+                    print(AnonConsole.fileSuccessLine(relativePath: String(relativePath)))
                 }
             } catch {
                 if verbose {
-                    print("✗ \(relativePath): \(error.localizedDescription)")
+                    print(AnonConsole.fileFailureLine(relativePath: String(relativePath), message: error.localizedDescription))
                 }
                 results.append(AnonymizationResult(
                     filePath: fileURL.path,
@@ -312,38 +270,15 @@ struct DICOMAnon: ParsableCommand {
     }
     
     private func printSummary(results: [AnonymizationResult]) {
-        let successful = results.filter { $0.success }.count
-        let failed = results.filter { !$0.success }.count
-        
-        print("\nAnonymization Summary:")
-        print("  Total files: \(results.count)")
-        print("  Successful: \(successful)")
-        print("  Failed: \(failed)")
-        
-        if dryRun {
-            print("  (DRY RUN - no files modified)")
-        }
-        
-        // Show warnings if any
-        let allWarnings = results.flatMap { $0.warnings }
-        if !allWarnings.isEmpty {
-            print("\nWarnings:")
-            for warning in allWarnings.prefix(10) {
-                print("  ⚠️  \(warning)")
-            }
-            if allWarnings.count > 10 {
-                print("  ... and \(allWarnings.count - 10) more warnings")
-            }
-        }
-        
-        // Show changed tags summary if verbose
-        if verbose && !results.isEmpty {
-            let allChangedTags = Set(results.flatMap { $0.changedTags })
-            print("\nModified tags (\(allChangedTags.count)):")
-            for tag in allChangedTags.sorted().prefix(20) {
-                print("  - \(tag)")
-            }
-        }
+        print(AnonConsole.summary(
+            totalFiles: results.count,
+            successful: results.filter { $0.success }.count,
+            failed: results.filter { !$0.success }.count,
+            dryRun: dryRun,
+            warnings: results.flatMap { $0.warnings },
+            modifiedTags: Set(results.flatMap { $0.changedTags }.map { "\($0)" }),
+            verbose: verbose
+        ), terminator: "")
     }
 }
 
