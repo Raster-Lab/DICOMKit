@@ -38,11 +38,12 @@ struct DICOMConverterTests {
             .jpegBaseline, .jpegExtended, .jpegLossless, .jpegLosslessSV1,
             .jpeg2000Lossless, .jpeg2000, .jpeg2000Part2Lossless, .jpeg2000Part2,
             .htj2kLossless, .htj2kRPCLLossless, .htj2kLossy,
-            .jpegLSLossless, .jpegLSNearLossless, .jpegXLLossless, .rleLossless,
+            .jpegLSLossless, .jpegLSNearLossless, .jpegXLLossless, .jpegXLRecompression, .rleLossless,
         ]
         for s in expected { #expect(uids.contains(s.uid), "missing target \(s.displayName)") }
         // Non-encodable / out-of-scope syntaxes must NOT be offered as convert targets.
-        for s: TransferSyntax in [.mpeg2MainProfile, .jpipReferenced, .jp3dLossless, .jpegXL, .jpegXLRecompression] {
+        // (JPEG XL Recompression …4.111 IS a target — it losslessly rewraps a JPEG source.)
+        for s: TransferSyntax in [.mpeg2MainProfile, .jpipReferenced, .jp3dLossless, .jpegXL] {
             #expect(!uids.contains(s.uid), "\(s.displayName) must not be a convert target")
             #expect(DICOMConverter.parseTarget(s.uid) == nil, "\(s.displayName) UID must not parse as a target")
         }

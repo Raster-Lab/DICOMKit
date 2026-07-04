@@ -24,8 +24,10 @@ import DICOMCore
 final class CompressionManagerImplicitVRTests: XCTestCase {
 
     /// Lossless encapsulated codecs available in-process (pure-Swift reference
-    /// encoders for JPEG 2000 / JPEG / JPEG-LS / JPEG XL).
-    private let losslessCodecs = ["jpeg2000-lossless", "jpeg-lossless", "jpeg-ls-lossless", "jpeg-xl"]
+    /// encoders for JPEG 2000 / JPEG / JPEG-LS / JPEG XL). JPEG XL uses the explicit
+    /// `jpeg-xl-lossless` name — the bare `jpeg-xl`/`jxl` now resolve to the LOSSY
+    /// (…4.112) syntax, matching the jpeg2000/htj2k convention.
+    private let losslessCodecs = ["jpeg2000-lossless", "jpeg-lossless", "jpeg-ls-lossless", "jpeg-xl-lossless"]
 
     private let requestAttributesSequence = Tag(group: 0x0040, element: 0x0275)
     private let institutionName = Tag(group: 0x0008, element: 0x0080)   // dictionary VR LO (16-bit length)

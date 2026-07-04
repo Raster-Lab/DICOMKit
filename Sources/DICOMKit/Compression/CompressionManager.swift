@@ -54,12 +54,13 @@ public struct CompressionManager {
         (["htj2k-rpcl", "htj2k-lossless-rpcl"], .htj2kRPCLLossless),
         (["jpeg-ls-lossless", "jpegls-lossless", "jls-lossless"], .jpegLSLossless),
         (["jpeg-ls", "jpegls", "jls"], .jpegLSNearLossless),
-        // JPEG XL ENCODE is lossless-only (JXLSwift Modular, distance 0); the general/
-        // lossy JXL .112 and recompression .111 are decode-only / unsupported. So the
-        // canonical name is the explicit `jpeg-xl-lossless` — `jpeg-xl`/`jxl` remain
-        // accepted aliases but, unlike `jpeg2000`/`htj2k` (whose generic name → lossy),
-        // they resolve to the lossless syntax because there is no lossy JXL to produce.
-        (["jpeg-xl-lossless", "jpeg-xl", "jxl", "jxl-lossless"], .jpegXLLossless),
+        // JPEG XL encodes both lossless (…4.110, JXLSwift Modular) and lossy (…4.112,
+        // JXLSwift VarDCT). Following the same convention as jpeg2000/htj2k, the bare
+        // `jpeg-xl`/`jxl` names resolve to the LOSSY syntax; the explicit `-lossless`
+        // spelling selects the lossless one. (JPEG Recompression …4.111 is produced only
+        // by dicom-convert from a JPEG source, never by a --codec name here.)
+        (["jpeg-xl-lossless", "jxl-lossless"], .jpegXLLossless),
+        (["jpeg-xl", "jxl", "jpeg-xl-lossy", "jxl-lossy"], .jpegXL),
         (["rle"], .rleLossless),
         (["explicit-le"], .explicitVRLittleEndian),
         (["implicit-le"], .implicitVRLittleEndian),
@@ -74,6 +75,20 @@ public struct CompressionManager {
             }
         }
         return nil
+    }
+
+    /// Returns whether compressing a source described by `sourceInfo` to `targetCodec`
+    /// will *recompress* — i.e. the source is already compressed AND the target codec
+    /// is a DIFFERENT encapsulated (compressed) syntax, so the engine must decode to
+    /// native pixels and then re-encode. Both the CLI and the Studio Workshop call
+    /// this so the recompression detection lives in one place (never re-derived at the
+    /// call site). Returns `false` for a nil `sourceInfo` (unreadable source) and for
+    /// a same-syntax target (compressData passes those bytes through unchanged — no
+    /// decode/re-encode — so it is not a recompression).
+    public static func isRecompression(sourceInfo: CompressionInfo?, targetCodec: String) -> Bool {
+        guard let info = sourceInfo, info.isCompressed else { return false }
+        guard let target = transferSyntax(for: targetCodec), target.isEncapsulated else { return false }
+        return target.uid != info.transferSyntaxUID
     }
 
     static func codecName(for syntax: TransferSyntax) -> String {
@@ -208,7 +223,10 @@ public struct CompressionManager {
 
     /// In-memory compress (no file I/O) — used by DICOMStudio, which writes the
     /// result through its sandbox-aware OutputAccess path.
-    public func compressData(_ inputData: Data, codec: String, quality: CompressionQuality?) throws -> Data {
+    /// `backend` forces a codec execution path where one exists (J2K/HTJ2K
+    /// Metal GPU encode); codecs without a matching path run their default.
+    public func compressData(_ inputData: Data, codec: String, quality: CompressionQuality?,
+                             backend: CodecBackendPreference = .auto) throws -> Data {
         guard let targetSyntax = CompressionManager.transferSyntax(for: codec) else {
             throw CompressionError.unknownCodec(codec)
         }
@@ -232,7 +250,8 @@ public struct CompressionManager {
             try CompressionManager.encodePixelDataInPlace(
                 dataSet: &workingDataSet,
                 targetSyntax: targetSyntax,
-                quality: quality
+                quality: quality,
+                backend: backend
             )
         } else if targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated
                   && targetSyntax.uid != sourceSyntax.uid {
@@ -241,7 +260,8 @@ public struct CompressionManager {
                 dataSet: &workingDataSet,
                 sourceSyntax: sourceSyntax,
                 targetSyntax: targetSyntax,
-                quality: quality
+                quality: quality,
+                backend: backend
             )
         } else if !targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated {
             // Decompress: decode pixel data into uncompressed bytes.
@@ -263,6 +283,85 @@ public struct CompressionManager {
             to: targetSyntax,
             preservePixelData: true
         )
+    }
+
+    /// Per-phase metrics for a compress run, so the console can report the sizes and
+    /// timings of each phase. A plain compress (uncompressed source) has a single
+    /// compression phase (`intermediateSize`/`decompressElapsed` are nil). A
+    /// recompression (already-compressed source → a different codec) has TWO phases —
+    /// first the source is decompressed to native pixels, then those are re-encoded to
+    /// the target — so it also carries the intermediate (decompressed) size and the
+    /// decompression time.
+    public struct CompressMetrics: Sendable {
+        public let inputSize: Int                    // source file bytes
+        public let outputSize: Int                   // final output file bytes
+        public let isRecompression: Bool
+        public let sourceTransferSyntaxName: String? // set only for a recompression
+        public let intermediateSize: Int?            // decompressed (native) file bytes; nil for plain compress
+        public let decompressElapsed: TimeInterval?  // decompression phase; nil for plain compress
+        public let compressElapsed: TimeInterval     // compression phase (full run for a plain compress)
+
+        public init(inputSize: Int, outputSize: Int, isRecompression: Bool,
+                    sourceTransferSyntaxName: String?, intermediateSize: Int?,
+                    decompressElapsed: TimeInterval?, compressElapsed: TimeInterval) {
+            self.inputSize = inputSize
+            self.outputSize = outputSize
+            self.isRecompression = isRecompression
+            self.sourceTransferSyntaxName = sourceTransferSyntaxName
+            self.intermediateSize = intermediateSize
+            self.decompressElapsed = decompressElapsed
+            self.compressElapsed = compressElapsed
+        }
+    }
+
+    /// Compress `inputData` to `codec`, returning the output bytes AND per-phase
+    /// `CompressMetrics` (sizes + timings) for the console. This is the entry point the
+    /// `dicom-compress` CLI and the Studio Workshop use so the timing/size split is
+    /// produced once, in core, rather than re-derived per surface.
+    ///
+    /// For a recompression it performs the two phases EXPLICITLY — decompress the
+    /// source to native pixels (Explicit VR LE), then compress those to the target —
+    /// which is exactly the behaviour the console's "decompressing to native pixels
+    /// first, then re-encoding" note describes, and lets each phase be timed and its
+    /// intermediate size measured. The produced pixels are identical to a direct
+    /// `compressData` transcode (both decode the same source and feed the same native
+    /// pixels to the same encoder). Pass `sourceInfo` if already computed to avoid a
+    /// redundant parse.
+    public func compressDataWithMetrics(
+        _ inputData: Data,
+        codec: String,
+        quality: CompressionQuality?,
+        sourceInfo: CompressionInfo? = nil,
+        backend: CodecBackendPreference = .auto
+    ) throws -> (data: Data, metrics: CompressMetrics) {
+        guard CompressionManager.transferSyntax(for: codec) != nil else {
+            throw CompressionError.unknownCodec(codec)
+        }
+        let info = sourceInfo ?? (try? getCompressionInfo(data: inputData))
+
+        if CompressionManager.isRecompression(sourceInfo: info, targetCodec: codec) {
+            // Phase 1 — decompress the source to native pixels (Explicit VR LE).
+            let d0 = Date()
+            let intermediate = try decompressData(inputData, syntax: .explicitVRLittleEndian)
+            let decompressElapsed = Date().timeIntervalSince(d0)
+            // Phase 2 — compress the native pixels to the target codec.
+            let c0 = Date()
+            let output = try compressData(intermediate, codec: codec, quality: quality, backend: backend)
+            let compressElapsed = Date().timeIntervalSince(c0)
+            return (output, CompressMetrics(
+                inputSize: inputData.count, outputSize: output.count, isRecompression: true,
+                sourceTransferSyntaxName: info?.transferSyntaxName, intermediateSize: intermediate.count,
+                decompressElapsed: decompressElapsed, compressElapsed: compressElapsed))
+        }
+
+        // Plain compress (uncompressed source, or a same-syntax passthrough).
+        let c0 = Date()
+        let output = try compressData(inputData, codec: codec, quality: quality, backend: backend)
+        let compressElapsed = Date().timeIntervalSince(c0)
+        return (output, CompressMetrics(
+            inputSize: inputData.count, outputSize: output.count, isRecompression: false,
+            sourceTransferSyntaxName: nil, intermediateSize: nil,
+            decompressElapsed: nil, compressElapsed: compressElapsed))
     }
 
     // MARK: - Codec dispatch helpers (v9.1 fix)
@@ -301,7 +400,8 @@ public struct CompressionManager {
     static func encodePixelDataInPlace(
         dataSet: inout DataSet,
         targetSyntax: TransferSyntax,
-        quality: CompressionQuality?
+        quality: CompressionQuality?,
+        backend: CodecBackendPreference = .auto
     ) throws {
         guard let encoder = CodecRegistry.shared.encoder(for: targetSyntax.uid) else {
             throw CompressionError.encoderNotAvailable(targetSyntax.uid)
@@ -317,14 +417,19 @@ public struct CompressionManager {
         let descriptor = try buildPixelDataDescriptor(from: dataSet)
 
         let configuration: CompressionConfiguration = {
+            // --backend rides along in the config (nil = auto); only codecs
+            // with an alternate execution path (J2K/HTJ2K Metal) act on it.
+            let forced = backend.forced
             if targetSyntax.isLossless {
-                return .lossless
+                return CompressionConfiguration(
+                    quality: .maximum, speed: .balanced,
+                    preferLossless: true, forcedBackend: forced)
             }
             // For lossy paths honour the user's --quality if supplied.
             if let q = quality {
-                return CompressionConfiguration(quality: q, speed: .balanced)
+                return CompressionConfiguration(quality: q, speed: .balanced, forcedBackend: forced)
             }
-            return .default
+            return CompressionConfiguration(forcedBackend: forced)
         }()
 
         guard encoder.canEncode(with: configuration, descriptor: descriptor) else {
@@ -418,7 +523,8 @@ public struct CompressionManager {
         dataSet: inout DataSet,
         sourceSyntax: TransferSyntax,
         targetSyntax: TransferSyntax,
-        quality: CompressionQuality?
+        quality: CompressionQuality?,
+        backend: CodecBackendPreference = .auto
     ) throws {
         // Step 1: decode to uncompressed bytes.
         try decodePixelDataInPlace(
@@ -430,7 +536,8 @@ public struct CompressionManager {
         try encodePixelDataInPlace(
             dataSet: &dataSet,
             targetSyntax: targetSyntax,
-            quality: quality
+            quality: quality,
+            backend: backend
         )
     }
 

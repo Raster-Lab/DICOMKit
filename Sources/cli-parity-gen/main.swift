@@ -219,6 +219,10 @@ let curatedTemplates: [Template] = [
     // dicom-pixedit — edits pixel data (mask a region) and rewrites the DICOM.
     // Deterministic (preserves UIDs/dates); compared via the DICOM-semantic re-dump.
     Template(tool: "dicom-pixedit", label: "mask-region", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--mask-region", "0,0,4,4", "--fill-value", "0"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "mask-region": "0,0,4,4", "fill-value": "0"], artifactName: "out.dcm", artifactKind: "dicom"),
+    // Non-zero fill (register #11): the fill-value field was unreachable in-app
+    // (unsatisfiable visibleWhen), so goldens sweeping only `--fill-value 0`
+    // masked the bug — this scenario pins a non-default fill on both surfaces.
+    Template(tool: "dicom-pixedit", label: "mask-region-fill-255", cliArgs: ["FIXTURE", "--output", "OUTPUT", "--mask-region", "0,0,4,4", "--fill-value", "255"], studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "mask-region": "0,0,4,4", "fill-value": "255"], artifactName: "out.dcm", artifactKind: "dicom"),
     // dicom-pdf encapsulate — wraps a PDF into an Encapsulated PDF DICOM. Study/Series
     // UIDs fixed via args; the auto SOP Instance UID is volatile → masked at compare
     // (so this lands local-only via the determinism probe). DICOM-semantic re-dump.
@@ -446,7 +450,8 @@ let curatedTemplates: [Template] = [
 //   • stdout (artifactName == nil) = info/backends console text.
 //
 // `ct` expands to syn-ct (16-bit) + the local real CT; `ct8` is the 8-bit fixture JPEG Baseline
-// needs; `ctrle`/`rledir`/`studyset` reuse existing fixtures.
+// needs; `ctbaseline` is the derived JPEG-Baseline copy of ct8 (the JPEG-source input JPEG XL
+// Recompression needs); `ctrle`/`rledir`/`studyset` reuse existing fixtures.
 
 // (codec --codec value, cross-host portable via decoded-pixel-hash, input fixture).
 //
@@ -467,7 +472,7 @@ let dcCodecMatrix: [(codec: String, portable: Bool, fixture: String)] = [
     ("jpeg-lossless",      true,  "ct"),
     ("jpeg-lossless-sv1",  true,  "ct"),
     ("jpeg-ls-lossless",   true,  "ct"),
-    ("jpeg-xl-lossless",   true,  "ct"),   // canonical (JXL encode is lossless-only)
+    ("jpeg-xl-lossless",   true,  "ct"),   // JXLSwift Modular (bit-exact lossless)
     ("jpeg2000-lossless",  true,  "ct"),
     ("j2k-part2-lossless", true,  "ct"),
     ("htj2k-lossless",     true,  "ct"),
@@ -483,6 +488,14 @@ let dcCodecMatrix: [(codec: String, portable: Bool, fixture: String)] = [
     ("jpeg2000",           false, "ct"),
     ("j2k-part2",          false, "ct"),
     ("htj2k",              false, "ct"),
+    // JXLSwift VarDCT (…4.112). Kept LOCAL-ONLY (not committed) for two reasons: the
+    // synthetic `ct` fixture is 16-bit MONOCHROME2, and JXLSwift's VarDCT lossy encoder
+    // is RGB-only today, so this currently falls back to lossless Modular — the moment
+    // grayscale VarDCT lands upstream the decoded pixels stop matching the source and the
+    // golden would churn; and true (colour) VarDCT lossy has the same cross-host encode
+    // variance as J2K/HTJ2K. It still exercises the CLI↔Workshop shared-engine parity for
+    // the new `…4.112` target locally. A colour fixture would exercise true VarDCT lossy.
+    ("jpeg-xl",            false, "ct"),
 ]
 let dcCompressTemplates: [Template] = dcCodecMatrix.map { spec in
     Template(tool: "dicom-compress", label: "compress-\(spec.codec)",
@@ -588,7 +601,8 @@ let dicomCompressMatrix: [Template] = dcCompressTemplates + [
 //     cross-machine deterministic → portable:false (local superset only), same as dicom-export.
 //
 // `ct` = syn-ct (16-bit MONOCHROME2) + the local real CT; `ct8` = the 8-bit fixture (JPEG Baseline
-// is 8-bit only); `mf` = synthetic multiframe (frame selection); `studyset` = flat dir (--recursive).
+// is 8-bit only); `ctbaseline` = derived JPEG-Baseline copy of ct8 (JPEG XL Recompression source);
+// `mf` = synthetic multiframe (frame selection); `studyset` = flat dir (--recursive).
 
 // (CamelCase --transfer-syntax token, decoded-pixel-hash cross-host portable, input fixture).
 let dcTransferSyntaxMatrix: [(syntax: String, portable: Bool, fixture: String)] = [
@@ -651,6 +665,17 @@ let dicomConvertMatrix: [Template] = dcTransferSyntaxTemplates + [
              cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "RLELossless", "--strip-private", "--validate"],
              studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "RLELossless", "strip-private": "true", "validate": "true"],
              artifactName: "out.dcm", artifactKind: "decoded-pixel-hash"),
+
+    // ===== JPEG XL JPEG Recompression (…4.111) — JPEG-source-only target =====
+    // Recompression losslessly rewraps the JPEG-Baseline source's bitstream in JXL; the
+    // decoded pixels are unchanged (the wrapped JPEG is byte-identical), so decoded-pixel-hash
+    // is the right cross-host-portable comparison — and it exercises the SHARED
+    // DICOMConverter.convertToDICOM recompression path in both the CLI and the Workshop.
+    // Source is the derived JPEG-Baseline fixture (`ctbaseline`), not uncompressed `ct8`.
+    Template(tool: "dicom-convert", label: "ts-JPEGXLRecompression",
+             cliArgs: ["FIXTURE", "--output", "OUTPUT", "--transfer-syntax", "JPEGXLRecompression"],
+             studioParams: ["inputPath": "FIXTURE", "output": "OUTPUT", "transfer-syntax": "JPEGXLRecompression"],
+             fixture: "ctbaseline", artifactName: "out.dcm", artifactKind: "decoded-pixel-hash"),
 
     // ===== --recursive directory conversion (dir → dir; one .dcm per input) =====
     // dicom-multi re-dumps each produced file (sorted, name-independent); uncompressed → committed.
@@ -994,6 +1019,27 @@ let synCtRLE: ConcreteFixture? = {
     return ConcreteFixture(bundledName: "syn-ct-rle.dcm", path: dest.path, phiSafe: true)
 }()
 
+// JPEG-Baseline (…4.50) copy of the 8-bit syn-ct8, the input for the JPEG XL JPEG
+// Recompression scenario (…4.111 losslessly rewraps an existing JPEG bitstream, so its
+// source must be a real JPEG — not uncompressed pixels). Built by the real dicom-convert
+// binary via the shared DICOMConverter path; JLISwift JPEGLI Baseline is arch-deterministic
+// on the single-arch gate → committable (phiSafe). Skipped if dicom-convert isn't built.
+let synCtBaseline: ConcreteFixture? = {
+    let convertBin = binDir.appendingPathComponent("dicom-convert")
+    guard FileManager.default.isExecutableFile(atPath: convertBin.path) else {
+        errln("→ dicom-convert not built; skipping syn-ct-baseline.dcm fixture")
+        return nil
+    }
+    let dest = syntheticDir.appendingPathComponent("syn-ct-baseline.dcm")
+    try? FileManager.default.removeItem(at: dest)
+    _ = run(convertBin, [synCT8.path, "--output", dest.path, "--transfer-syntax", "JPEGBaseline"])
+    guard FileManager.default.fileExists(atPath: dest.path) else {
+        errln("→ failed to build syn-ct-baseline.dcm"); return nil
+    }
+    errln("→ wrote synthetic JPEG Baseline fixture: syn-ct-baseline.dcm")
+    return ConcreteFixture(bundledName: "syn-ct-baseline.dcm", path: dest.path, phiSafe: true)
+}()
+
 /// SHA-256 (hex) of a produced DICOM file's fully-decoded PixelData (all frames).
 /// Mirrors `CLIParityEngine.decodedPixelHash` byte-for-byte so the committed golden
 /// hash matches what the Studio reimplementation computes at test time.
@@ -1205,6 +1251,7 @@ func expandFixture(_ id: String) -> [(primary: ConcreteFixture?, secondary: Conc
     case "mf":       return [(synMF, nil)]
     case "ct8":      return [(synCT8, nil)]
     case "ctrle":    return synCtRLE.map { [($0, ConcreteFixture?.none)] } ?? []
+    case "ctbaseline": return synCtBaseline.map { [($0, ConcreteFixture?.none)] } ?? []
     case "pdf":      return [(synDoc, nil)]
     case "script":   return [(synScript, nil)]
     case "png":      return synPNG.map { [($0, ConcreteFixture?.none)] } ?? []
@@ -1264,6 +1311,19 @@ func canonicalJSON(_ s: String) -> String {
     return str
 }
 
+/// Canonicalizes the volatile bits of a captured stderr before it is stored in the
+/// golden: the random temp OUTPUT path (→ `<tmp>`) and the elapsed-time values that
+/// dicom-compress/decompress now print ("Compression time:  0.123s" → "…  <dur>"),
+/// both of which legitimately differ run-to-run. Mirrors CLIParityEngine.normalize's
+/// masks so the committed golden stays deterministic across regenerations. (The stderr
+/// field is informational — the parity diff runs on the produced artifact — but a
+/// committed file must not churn on every regen.)
+func scrubErr(_ err: String, tmp: URL) -> String {
+    var s = err.replacingOccurrences(of: tmp.path, with: "<tmp>")
+    s = s.replacingOccurrences(of: "[0-9]+\\.[0-9]+\\s?s\\b", with: "<dur>", options: .regularExpression)
+    return s
+}
+
 /// Sniff a produced file's type from its magic bytes, so a tool whose output type
 /// depends on a flag (e.g. dicom-convert --format) can be routed per scenario:
 /// "dicom" (Part-10 "DICM" at offset 128), "image-raster-hash" (PNG/JPEG/GIF/TIFF),
@@ -1318,7 +1378,7 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
             let d = run(info, [dir.appendingPathComponent(f).path]).out.trimmingCharacters(in: .whitespacesAndNewlines)
             combined += "=== frame \(i) ===\n" + d + "\n"
         }
-        return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "dicom-multi")
+        return (combined, scrubErr(r.err, tmp: tmp), r.code, "dicom-multi")
     }
 
     if t.artifactKind == "dicom-tree" {
@@ -1339,7 +1399,7 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
             let d = run(info, [dir.appendingPathComponent(rel).path]).out.trimmingCharacters(in: .whitespacesAndNewlines)
             combined += "=== \(rel) ===\n" + d + "\n"
         }
-        return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "dicom-tree")
+        return (combined, scrubErr(r.err, tmp: tmp), r.code, "dicom-tree")
     }
 
     if t.artifactKind == "image-raster-multi" {
@@ -1366,14 +1426,15 @@ func produce(_ bin: URL, _ t: Template, _ rf: (primary: ConcreteFixture?, second
             let h = imageRasterHash(ofFileAt: dir.appendingPathComponent(rel).path) ?? "<image-decode-failed>"
             combined += "=== image \(i) ===\n" + h + "\n"
         }
-        return (combined, r.err.replacingOccurrences(of: tmp.path, with: "<tmp>"), r.code, "image-raster-multi")
+        return (combined, scrubErr(r.err, tmp: tmp), r.code, "image-raster-multi")
     }
 
     let outPath = tmp.appendingPathComponent(artifact).path
     let r = run(bin, resolve(outPath))
-    // Stderr often echoes the (random) temp output path ("Output written to: …"),
-    // which would make the stored golden non-deterministic. Canonicalize it.
-    let cleanErr = r.err.replacingOccurrences(of: tmp.path, with: "<tmp>")
+    // Stderr often echoes the (random) temp output path ("Output written to: …") and
+    // the compress/decompress elapsed time, which would make the stored golden
+    // non-deterministic. Canonicalize both.
+    let cleanErr = scrubErr(r.err, tmp: tmp)
     // "auto" → detect the produced type from the file (the type depends on a flag, e.g.
     // dicom-convert --format dicom|png|jpeg). Fall back to text if the file is absent.
     let kind = t.artifactKind == "auto" ? (detectArtifactKind(outPath) ?? "text") : t.artifactKind

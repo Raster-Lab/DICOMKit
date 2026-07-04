@@ -94,24 +94,17 @@ struct DICOMConvert: AsyncParsableCommand {
         // Create output directory if needed
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         
-        let enumerator = FileManager.default.enumerator(
-            at: input,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-        
-        guard let enumerator = enumerator else {
+        // Shared, sorted directory walk — the same gatherer the Workshop uses, so
+        // both surfaces convert the same files in the same order.
+        guard let fileURLs = FileGatherer.regularFiles(under: input) else {
             throw ValidationError("Failed to enumerate directory: \(input.path)")
         }
-        
+
         var fileCount = 0
         var successCount = 0
         var errorCount = 0
-        
-        for case let fileURL as URL in enumerator {
-            let resourceValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-            guard resourceValues.isRegularFile == true else { continue }
-            
+
+        for fileURL in fileURLs {
             fileCount += 1
             
             // Calculate relative path
@@ -127,14 +120,14 @@ struct DICOMConvert: AsyncParsableCommand {
             do {
                 try convertFile(input: fileURL, output: outputFileURL)
                 successCount += 1
-                print("✓ \(relativePath)")
+                print(ConvertConsole.batchProgressLine(success: true, relativePath: relativePath, error: nil), terminator: "")
             } catch {
                 errorCount += 1
-                print("✗ \(relativePath): \(error.localizedDescription)")
+                print(ConvertConsole.batchProgressLine(success: false, relativePath: relativePath, error: error.localizedDescription), terminator: "")
             }
         }
-        
-        print("\nConversion complete: \(successCount)/\(fileCount) succeeded, \(errorCount) failed")
+
+        print(ConvertConsole.batchSummary(succeeded: successCount, total: fileCount, failed: errorCount), terminator: "")
     }
     
     private func convertFile(input: URL, output: URL) throws {
@@ -174,10 +167,12 @@ struct DICOMConvert: AsyncParsableCommand {
 
         try outcome.data.write(to: output)
 
-        if outcome.wasTranscoded {
-            let lossInfo = outcome.isLossless ? "lossless" : "lossy"
-            print("Transcoded from \(outcome.sourceSyntax.uid) to \(outcome.targetSyntax.uid) (\(lossInfo))")
-        }
+        // Result line via the SHARED ConvertConsole (DICOMKit) — the same builder
+        // the Workshop executor uses, so app and CLI stay text-exact.
+        print(ConvertConsole.transcodeLine(
+            wasTranscoded: outcome.wasTranscoded,
+            sourceUID: outcome.sourceSyntax.uid, targetUID: outcome.targetSyntax.uid,
+            isLossless: outcome.isLossless), terminator: "")
     }
     
     private func exportImage(dicomFile: DICOMFile, output: URL) throws {

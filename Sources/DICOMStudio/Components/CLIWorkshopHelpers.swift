@@ -514,9 +514,10 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "files", flag: "", displayName: "DICOM Files",
-                    parameterType: .filePath, placeholder: "Drag and drop DICOM files or directories",
-                    helpText: "DICOM files or directories to send (C-STORE)",
-                    isRequired: true
+                    parameterType: .filePath, placeholder: "e.g. a.dcm; b.dcm or a directory",
+                    helpText: "DICOM files or directories to send (C-STORE). Separate with “ ; ”. Picked/dropped files are mirrored into the previewed command.",
+                    isRequired: true,
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "recursive", flag: "--recursive", displayName: "Recursive Scan",
@@ -656,7 +657,9 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
                     parameterType: .enumPicker, placeholder: "Any (negotiate)",
                     helpText: "Requested transfer syntax for retrieved files — negotiated during association setup (PS3.8 §9.3.2)",
-                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless"]
+                    // Every token must parse via the shared TransferSyntax.parse
+                    // (DICOMCore) — the SAME parser the CLI uses.
+                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "htj2k-lossless", "htj2k-rpcl", "htj2k", "rle-lossless"]
                 ),
                 CLIParameterDefinition(
                     id: "verbose", flag: "--verbose", displayName: "Verbose",
@@ -694,9 +697,14 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "mode", flag: "", displayName: "Operation Mode",
                     parameterType: .flagPicker, placeholder: "interactive",
-                    helpText: "Interactive: select studies; Auto: retrieve all matches; Review: query only",
+                    helpText: "Interactive: in-app retrieves all results without a prompt (previews as --auto); Auto: retrieve all matches; Review: query only",
                     defaultValue: "interactive",
-                    allowedValues: ["interactive", "auto", "review"]
+                    allowedValues: ["interactive", "auto", "review"],
+                    // The app cannot prompt for a study selection, so its
+                    // "interactive" state behaves as --auto — preview the
+                    // truthful token rather than a --interactive the pasted
+                    // command would answer differently.
+                    cliMapping: ["interactive": "--auto"]
                 ),
                 CLIParameterDefinition(
                     id: "method", flag: "--method", displayName: "Retrieval Method",
@@ -724,6 +732,11 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "study-date", flag: "--study-date", displayName: "Study Date",
                     parameterType: .textField, placeholder: "e.g. 20260101 or 20260101-20260310",
                     helpText: "Study date or range in YYYYMMDD format (0008,0020)"
+                ),
+                CLIParameterDefinition(
+                    id: "accession", flag: "--accession-number", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession Number (0008,0050)"
                 ),
                 CLIParameterDefinition(
                     id: "modality", flag: "--modality", displayName: "Modality",
@@ -778,7 +791,15 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
                     parameterType: .enumPicker, placeholder: "Any (negotiate)",
                     helpText: "Requested transfer syntax for retrieved files — negotiated during association setup (PS3.8 §9.3.2)",
-                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "rle-lossless"]
+                    // Every token must parse via the shared TransferSyntax.parse
+                    // (DICOMCore) — the SAME parser the CLI uses.
+                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "htj2k-lossless", "htj2k-rpcl", "htj2k", "rle-lossless"]
+                ),
+                CLIParameterDefinition(
+                    id: "save-state", flag: "--save-state", displayName: "Save State File",
+                    parameterType: .outputPath, placeholder: "query.state",
+                    helpText: "Save the query/retrieval state to a JSON file — resumable later with `dicom-qr resume --state <file>` (shared format, so an app-saved state resumes in the terminal)",
+                    isAdvanced: true
                 ),
             ]
         case "dicom-mwl":
@@ -1114,8 +1135,8 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
-                    helpText: "Study Instance UID for the procedure step (0020,000D) — required for N-CREATE",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
+                    helpText: "Study Instance UID (0020,000D) — required for N-CREATE; for update (N-SET) it identifies the referenced study (with --series-uid) for the Referenced SOP Sequence",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create", "update"])
                 ),
                 CLIParameterDefinition(
                     id: "sps-id", flag: "--sps-id", displayName: "Scheduled Procedure Step ID",
@@ -1163,10 +1184,10 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
-                    id: "image-uids", flag: "--image-uids", displayName: "Image SOP Instance UIDs",
-                    parameterType: .textField, placeholder: "UID1,UID2,...",
-                    helpText: "Comma-separated SOP Instance UIDs of acquired images — sent via DICOMStudio internal execution (CLI uses --image-uid, repeatable)",
-                    isInternal: true,
+                    id: "image-uid", flag: "--image-uid", displayName: "Image SOP Instance UIDs",
+                    parameterType: .textField, placeholder: "UID1; UID2",
+                    helpText: "SOP Instance UIDs of acquired images — used in N-SET for the Referenced SOP Sequence (one --image-uid per value). Separate with “ ; ”.",
+                    isRepeatable: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["update"])
                 ),
                 CLIParameterDefinition(
@@ -1224,6 +1245,16 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Study Instance UID to filter results (0020,000D)"
                 ),
                 CLIParameterDefinition(
+                    id: "series-uid", flag: "--series", displayName: "Series Instance UID",
+                    parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
+                    helpText: "Series Instance UID to filter results (0020,000E)"
+                ),
+                CLIParameterDefinition(
+                    id: "accession", flag: "--accession-number", displayName: "Accession Number",
+                    parameterType: .textField, placeholder: "e.g. ACC12345",
+                    helpText: "Accession number filter (0008,0050)"
+                ),
+                CLIParameterDefinition(
                     id: "study-description", flag: "--study-description", displayName: "Study Description",
                     parameterType: .textField, placeholder: "e.g. Chest CT or CHEST*",
                     helpText: "Study description filter — supports wildcards (0008,1030)",
@@ -1249,16 +1280,27 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "none",
                     allowedValues: ["none", "basic", "bearer"]
                 ),
+                // #45: the CLI's `--token` is Bearer-only, so the flag is emitted
+                // (and the field shown) ONLY when auth=bearer. Basic auth runs
+                // in-app through the internal username/password fields below —
+                // it has no CLI-representable form.
                 CLIParameterDefinition(
-                    id: "token", flag: "--token", displayName: "Token / Password",
-                    parameterType: .secureField, placeholder: "Bearer token or password",
-                    helpText: "Authentication token (bearer) or password (basic auth)",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                    id: "token", flag: "--token", displayName: "Bearer Token",
+                    parameterType: .secureField, placeholder: "Bearer token",
+                    helpText: "OAuth2 bearer token for authentication",
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["bearer"])
                 ),
                 CLIParameterDefinition(
                     id: "username", flag: "--username", displayName: "Username",
                     parameterType: .textField, placeholder: "e.g. admin",
                     helpText: "Username for basic authentication",
+                    isInternal: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "password", flag: "", displayName: "Password",
+                    parameterType: .secureField, placeholder: "Password",
+                    helpText: "Password for basic authentication (in-app only — the dicom-wado CLI has no basic-auth flags)",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
                 ),
@@ -1270,13 +1312,13 @@ public enum ToolCatalogHelpers: Sendable {
                     allowedValues: ["table", "json", "csv"]
                 ),
                 CLIParameterDefinition(
-                    id: "timeout", flag: "--timeout", displayName: "Timeout (s)",
-                    parameterType: .enumPicker, placeholder: "30",
-                    helpText: "HTTP request timeout in seconds",
-                    isInternal: true,
-                    defaultValue: "30",
-                    allowedValues: ["5", "10", "15", "30", "60", "120", "300"]
+                    id: "verbose", flag: "--verbose", displayName: "Verbose",
+                    parameterType: .booleanToggle, placeholder: "",
+                    helpText: "Show the query header and result-count lines (the CLI's verbose chrome)"
                 ),
+                // (No timeout field: the dicom-wado `query` subcommand has no
+                // --timeout option, and the executor never read one — removed to
+                // keep the app surface truthful to the CLI.)
             ]
         case "dicom-wado":
             return [
@@ -1370,16 +1412,27 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "none",
                     allowedValues: ["none", "basic", "bearer"]
                 ),
+                // #45: the CLI's `--token` is Bearer-only, so the flag is emitted
+                // (and the field shown) ONLY when auth=bearer. Basic auth runs
+                // in-app through the internal username/password fields below —
+                // it has no CLI-representable form.
                 CLIParameterDefinition(
-                    id: "token", flag: "--token", displayName: "Token / Password",
-                    parameterType: .secureField, placeholder: "Bearer token or password",
+                    id: "token", flag: "--token", displayName: "Bearer Token",
+                    parameterType: .secureField, placeholder: "Bearer token",
                     helpText: "OAuth2 bearer token for authentication",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["bearer"])
                 ),
                 CLIParameterDefinition(
                     id: "username", flag: "--username", displayName: "Username",
                     parameterType: .textField, placeholder: "e.g. admin",
                     helpText: "Username for basic authentication",
+                    isInternal: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "password", flag: "", displayName: "Password",
+                    parameterType: .secureField, placeholder: "Password",
+                    helpText: "Password for basic authentication (in-app only — the dicom-wado CLI has no basic-auth flags)",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
                 ),
@@ -1406,9 +1459,10 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "files", flag: "", displayName: "DICOM Files",
-                    parameterType: .filePath, placeholder: "Drag and drop DICOM files or directories",
-                    helpText: "DICOM files or directories to upload via STOW-RS (PS3.18 §10.5)",
-                    isRequired: true
+                    parameterType: .filePath, placeholder: "e.g. a.dcm; b.dcm or a directory",
+                    helpText: "DICOM files or directories to upload via STOW-RS (PS3.18 §10.5). Separate with “ ; ”.",
+                    isRequired: true,
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study", displayName: "Target Study UID",
@@ -1440,16 +1494,27 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "none",
                     allowedValues: ["none", "basic", "bearer"]
                 ),
+                // #45: the CLI's `--token` is Bearer-only, so the flag is emitted
+                // (and the field shown) ONLY when auth=bearer. Basic auth runs
+                // in-app through the internal username/password fields below —
+                // it has no CLI-representable form.
                 CLIParameterDefinition(
-                    id: "token", flag: "--token", displayName: "Token / Password",
-                    parameterType: .secureField, placeholder: "Bearer token or password",
+                    id: "token", flag: "--token", displayName: "Bearer Token",
+                    parameterType: .secureField, placeholder: "Bearer token",
                     helpText: "OAuth2 bearer token for authentication",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["bearer"])
                 ),
                 CLIParameterDefinition(
                     id: "username", flag: "--username", displayName: "Username",
                     parameterType: .textField, placeholder: "e.g. admin",
                     helpText: "Username for basic authentication",
+                    isInternal: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "password", flag: "", displayName: "Password",
+                    parameterType: .secureField, placeholder: "Password",
+                    helpText: "Password for basic authentication (in-app only — the dicom-wado CLI has no basic-auth flags)",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
                 ),
@@ -1464,10 +1529,10 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "operation", flag: "", displayName: "Operation",
                     parameterType: .enumPicker, placeholder: "search",
-                    helpText: "UPS-RS operation: search workitems, get details, create workitem, change state, or subscribe to / unsubscribe from events",
+                    helpText: "UPS-RS operation: search workitems, get details, create workitem (from options or a JSON file), change state, or subscribe to / unsubscribe from events",
                     isRequired: true, isInternal: true,
                     defaultValue: "search",
-                    allowedValues: ["search", "get", "create-workitem", "change-state", "subscribe", "unsubscribe"],
+                    allowedValues: ["search", "get", "create-workitem", "create-json", "change-state", "subscribe", "unsubscribe"],
                     // Each operation that maps to a bare CLI flag is emitted here, keyed off the
                     // selected operation, so picking the tab auto-adds the flag to the command
                     // (buildCommand applies the operation's defaultValue; a separate booleanToggle
@@ -1496,6 +1561,14 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Get specific worklist item by UID",
                     isRequired: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["get"])
+                ),
+                // --create <json-file> (shown when operation=create-json)
+                CLIParameterDefinition(
+                    id: "create-json-file", flag: "--create", displayName: "Workitem JSON File",
+                    parameterType: .filePath, placeholder: "workitem.json",
+                    helpText: "Create a worklist item from a DICOM-JSON file (the CLI's --create <file> form)",
+                    isRequired: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-json"])
                 ),
                 // --create-workitem is emitted automatically via the operation cliMapping
                 // above when the "create-workitem" tab is selected (no manual toggle needed).
@@ -1544,6 +1617,20 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
                 ),
                 CLIParameterDefinition(
+                    id: "create-patient-birth-date", flag: "--patient-birth-date", displayName: "Patient Birth Date",
+                    parameterType: .textField, placeholder: "e.g. 19800115",
+                    helpText: "Patient birth date in YYYYMMDD format (0010,0030)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-patient-sex", flag: "--patient-sex", displayName: "Patient Sex",
+                    parameterType: .textField, placeholder: "M, F, or O",
+                    helpText: "Patient sex: M, F, O (0010,0040)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
                     id: "create-priority", flag: "--priority", displayName: "Priority",
                     parameterType: .enumPicker, placeholder: "MEDIUM",
                     helpText: "Scheduled Procedure Step Priority (0074,1200)",
@@ -1559,6 +1646,13 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
                 ),
                 CLIParameterDefinition(
+                    id: "create-expected-completion", flag: "--expected-completion", displayName: "Expected Completion",
+                    parameterType: .textField, placeholder: "e.g. 2026-03-20T15:00:00",
+                    helpText: "Expected completion date/time in ISO 8601 format",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
                     id: "create-study-uid", flag: "--study-uid", displayName: "Study Instance UID",
                     parameterType: .textField, placeholder: "e.g. 1.2.840.113619...",
                     helpText: "Study Instance UID for the workitem",
@@ -1568,6 +1662,34 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "create-accession", flag: "--accession-number", displayName: "Accession Number",
                     parameterType: .textField, placeholder: "e.g. ACC12345",
                     helpText: "Accession number (0008,0050)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-referring-physician", flag: "--referring-physician", displayName: "Referring Physician",
+                    parameterType: .textField, placeholder: "e.g. Smith^John",
+                    helpText: "Referring physician name (0008,0090)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-procedure-id", flag: "--procedure-id", displayName: "Procedure ID",
+                    parameterType: .textField, placeholder: "e.g. RP001",
+                    helpText: "Requested procedure ID (0040,1001)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-step-id", flag: "--step-id", displayName: "Step ID",
+                    parameterType: .textField, placeholder: "e.g. SPS001",
+                    helpText: "Scheduled procedure step ID (0040,0009)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-worklist-label", flag: "--worklist-label", displayName: "Worklist Label",
+                    parameterType: .textField, placeholder: "e.g. WL_CT",
+                    helpText: "Worklist label (0074,1202)",
                     isAdvanced: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
                 ),
@@ -1586,9 +1708,23 @@ public enum ToolCatalogHelpers: Sendable {
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
                 ),
                 CLIParameterDefinition(
+                    id: "create-performer-organization", flag: "--performer-organization", displayName: "Performer Organization",
+                    parameterType: .textField, placeholder: "e.g. Radiology Dept",
+                    helpText: "Scheduled human performer organization",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
                     id: "create-comments", flag: "--comments", displayName: "Comments",
                     parameterType: .textField, placeholder: "e.g. Patient prepped for contrast",
                     helpText: "Comments on the scheduled procedure step (0040,0400)",
+                    isAdvanced: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
+                ),
+                CLIParameterDefinition(
+                    id: "create-admission-id", flag: "--admission-id", displayName: "Admission ID",
+                    parameterType: .textField, placeholder: "e.g. ADM001",
+                    helpText: "Admission ID (0038,0010)",
                     isAdvanced: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create-workitem"])
                 ),
@@ -1638,16 +1774,27 @@ public enum ToolCatalogHelpers: Sendable {
                     defaultValue: "none",
                     allowedValues: ["none", "basic", "bearer"]
                 ),
+                // #45: the CLI's `--token` is Bearer-only, so the flag is emitted
+                // (and the field shown) ONLY when auth=bearer. Basic auth runs
+                // in-app through the internal username/password fields below —
+                // it has no CLI-representable form.
                 CLIParameterDefinition(
-                    id: "token", flag: "--token", displayName: "Token / Password",
-                    parameterType: .secureField, placeholder: "Bearer token or password",
+                    id: "token", flag: "--token", displayName: "Bearer Token",
+                    parameterType: .secureField, placeholder: "Bearer token",
                     helpText: "OAuth2 bearer token for authentication",
-                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic", "bearer"])
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["bearer"])
                 ),
                 CLIParameterDefinition(
                     id: "username", flag: "--username", displayName: "Username",
                     parameterType: .textField, placeholder: "e.g. admin",
                     helpText: "Username for basic authentication",
+                    isInternal: true,
+                    visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
+                ),
+                CLIParameterDefinition(
+                    id: "password", flag: "", displayName: "Password",
+                    parameterType: .secureField, placeholder: "Password",
+                    helpText: "Password for basic authentication (in-app only — the dicom-wado CLI has no basic-auth flags)",
                     isInternal: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "auth", values: ["basic"])
                 ),
@@ -1842,22 +1989,25 @@ public enum ToolCatalogHelpers: Sendable {
                     isAdvanced: true
                 ),
                 CLIParameterDefinition(
-                    id: "remove", flag: "--remove", displayName: "Remove Tag",
-                    parameterType: .textField, placeholder: "e.g. 0010,0040 or PatientSex",
-                    helpText: "Additional tag to remove (can be specified multiple times; comma-separate multiple tags here)",
-                    isAdvanced: true
+                    id: "remove", flag: "--remove", displayName: "Remove Tag(s)",
+                    parameterType: .textField, placeholder: "e.g. 0010,0040; PatientName",
+                    helpText: "Additional tags to remove (GGGG,EEEE or keyword). Separate with “ ; ”.",
+                    isAdvanced: true,
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
-                    id: "replace", flag: "--replace", displayName: "Replace Tag",
-                    parameterType: .textField, placeholder: "e.g. 0010,0010=ANON",
-                    helpText: "Replace a tag with a fixed value in tag=value format (comma-separate multiple pairs)",
-                    isAdvanced: true
+                    id: "replace", flag: "--replace", displayName: "Replace Tag(s)",
+                    parameterType: .textField, placeholder: "e.g. 0010,0010=ANON; 0010,0020=ID001",
+                    helpText: "Replace tags with fixed values in TAG=VALUE format. Separate pairs with “ ; ”.",
+                    isAdvanced: true,
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
-                    id: "keep", flag: "--keep", displayName: "Keep Tag",
-                    parameterType: .textField, placeholder: "e.g. 0008,0060 or Modality",
-                    helpText: "Preserve a tag that the profile would otherwise remove (comma-separate multiple tags)",
-                    isAdvanced: true
+                    id: "keep", flag: "--keep", displayName: "Keep Tag(s)",
+                    parameterType: .textField, placeholder: "e.g. 0008,0060; Modality",
+                    helpText: "Preserve tags the profile would otherwise remove (GGGG,EEEE or keyword). Separate with “ ; ”.",
+                    isAdvanced: true,
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "recursive", flag: "--recursive", displayName: "Recursive",
@@ -1974,7 +2124,8 @@ public enum ToolCatalogHelpers: Sendable {
                 CLIParameterDefinition(
                     id: "no-color", flag: "--no-color", displayName: "No Color",
                     parameterType: .booleanToggle, placeholder: "",
-                    helpText: "Disable ANSI color in the hex dump (plain text output)"
+                    helpText: "Disable ANSI color in the hex dump (plain text output). Default ON in-app — the console does not render ANSI; turn OFF to get the CLI's colored bytes.",
+                    defaultValue: "true"
                 ),
                 CLIParameterDefinition(
                     id: "annotate", flag: "--annotate", displayName: "Annotate Tags",
@@ -2166,9 +2317,10 @@ public enum ToolCatalogHelpers: Sendable {
             return [
                 CLIParameterDefinition(
                     id: "inputPath", flag: "", displayName: "Input File(s)",
-                    parameterType: .filePath, placeholder: "DICOM file or directory",
-                    helpText: "Input DICOM file(s) or directory to merge (use --recursive for directories)",
-                    isRequired: true
+                    parameterType: .filePath, placeholder: "e.g. a.dcm; b.dcm or a directory",
+                    helpText: "Input DICOM files or directories to merge. Separate with “ ; ” (use --recursive for directories).",
+                    isRequired: true,
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output File",
@@ -2248,8 +2400,9 @@ public enum ToolCatalogHelpers: Sendable {
                 ),
                 CLIParameterDefinition(
                     id: "files", flag: "", displayName: "Files to Import",
-                    parameterType: .filePath, placeholder: "DICOM file or directory",
-                    helpText: "Files/directories to import into the archive",
+                    parameterType: .filePath, placeholder: "e.g. path1; path2",
+                    helpText: "Files/directories to import into the archive. Separate with “ ; ”.",
+                    isRepeatable: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["import"])
                 ),
                 CLIParameterDefinition(
@@ -2351,7 +2504,7 @@ case "dicom-json":
         CLIParameterDefinition(
             id: "output", flag: "--output", displayName: "Output File",
             parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/ExportedFile.json",
-            helpText: "Output file path. If omitted, the result is printed to the console (DICOM->JSON only).",
+            helpText: "Output file path. Defaults to the input name with .json (or .dcm when --reverse).",
             isRequired: false,
             defaultValue: "/Users/raster/Desktop/DICOM_Output/ExportedFile.json"
         ),
@@ -2360,14 +2513,9 @@ case "dicom-json":
             parameterType: .booleanToggle, placeholder: "",
             helpText: "Convert from JSON back to a DICOM Part-10 file instead of DICOM -> JSON."
         ),
-        CLIParameterDefinition(
-            id: "format", flag: "--format", displayName: "JSON Format",
-            parameterType: .enumPicker, placeholder: "standard",
-            helpText: "JSON format flavor: standard DICOM JSON Model or DICOMweb JSON.",
-            defaultValue: "standard",
-            allowedValues: ["standard", "dicomweb"],
-            visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
-        ),
+        // (--format and --stream were removed from the dicom-json CLI: both were
+        // declared-but-never-read no-ops — the encoder always emits the DICOMweb
+        // PS3.18 JSON model and no streaming path exists.)
         CLIParameterDefinition(
             id: "pretty", flag: "--pretty", displayName: "Pretty Print",
             parameterType: .booleanToggle, placeholder: "",
@@ -2411,16 +2559,11 @@ case "dicom-json":
         ),
         CLIParameterDefinition(
             id: "filter-tag", flag: "--filter-tag", displayName: "Filter Tags",
-            parameterType: .arrayField, placeholder: "PatientName or 0010,0010",
-            helpText: "Filter to specific tags by keyword (e.g. PatientName) or hex (e.g. 0010,0010). One per line.",
+            parameterType: .arrayField, placeholder: "e.g. PatientName; 0010,0010",
+            helpText: "Filter to specific tags by keyword (e.g. PatientName) or hex (e.g. 0010,0010). Separate with “ ; ”.",
             isAdvanced: true,
+            isRepeatable: true,
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
-        ),
-        CLIParameterDefinition(
-            id: "stream", flag: "--stream", displayName: "Streaming",
-            parameterType: .booleanToggle, placeholder: "",
-            helpText: "Use streaming for large files (no effect on in-process conversion).",
-            isAdvanced: true
         ),
         CLIParameterDefinition(
             id: "verbose", flag: "--verbose", displayName: "Verbose",
@@ -2488,9 +2631,10 @@ case "dicom-json":
                 ),
                 CLIParameterDefinition(
                     id: "filter-tag", flag: "--filter-tag", displayName: "Filter Tag(s)",
-                    parameterType: .arrayField, placeholder: "e.g. PatientName, 0010,0010",
-                    helpText: "Keep only these tags (keyword or GGGG,EEEE). Multiple values allowed.",
+                    parameterType: .arrayField, placeholder: "e.g. PatientName; 0010,0010",
+                    helpText: "Keep only these tags (keyword or GGGG,EEEE). Separate with “ ; ”.",
                     isAdvanced: true,
+                    isRepeatable: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "reverse", values: ["false", ""])
                 ),
                 CLIParameterDefinition(
@@ -2543,8 +2687,9 @@ case "dicom-uid":
         // ----- validate -----
         CLIParameterDefinition(
             id: "uids", flag: "", displayName: "UIDs",
-            parameterType: .arrayField, placeholder: "1.2.840.10008.1.2.1",
-            helpText: "One or more UIDs to validate (space/comma separated)",
+            parameterType: .arrayField, placeholder: "1.2.840.10008.1.1; 1.2.3.4",
+            helpText: "One or more UIDs to validate. Separate with “ ; ”.",
+            isRepeatable: true,
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["validate"])
         ),
         CLIParameterDefinition(
@@ -2590,17 +2735,24 @@ case "dicom-uid":
 
         // ----- regenerate -----
         CLIParameterDefinition(
-            id: "inputPath", flag: "", displayName: "Input File",
+            id: "inputPath", flag: "", displayName: "Input File(s)",
             parameterType: .filePath, placeholder: "/Users/raster/Desktop/DICOM_Input/CT/CT_01_CT_Study1_0001-0001.dcm",
-            helpText: "Input DICOM file whose instance UIDs will be regenerated",
+            helpText: "Input DICOM file(s) whose instance UIDs will be regenerated. Separate multiple paths with “ ; ” — cross-file UID mapping is maintained across them (like the CLI's variadic <inputs>).",
+            isRepeatable: true,
             defaultValue: "/Users/raster/Desktop/DICOM_Input/CT/CT_01_CT_Study1_0001-0001.dcm",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
-            id: "output", flag: "--output", displayName: "Output File",
+            id: "output", flag: "--output", displayName: "Output File/Directory",
             parameterType: .outputPath, placeholder: "/Users/raster/Desktop/DICOM_Output/CT_New.dcm",
-            helpText: "Output DICOM file path (defaults to overwriting the input)",
+            helpText: "Output file path (single input) or directory (multiple inputs). Defaults to overwriting the input(s).",
             defaultValue: "/Users/raster/Desktop/DICOM_Output/CT_New.dcm",
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
+        ),
+        CLIParameterDefinition(
+            id: "maintain-relationships", flag: "--maintain-relationships", displayName: "Maintain Relationships",
+            parameterType: .booleanToggle, placeholder: "",
+            helpText: "Maintain UID relationships across files (same old UID maps to same new UID)",
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["regenerate"])
         ),
         CLIParameterDefinition(
@@ -2666,6 +2818,9 @@ case "dicom-dcmdir":
                     id: "recursive", flag: "--recursive", displayName: "Recursive",
                     parameterType: .booleanToggle, placeholder: "",
                     helpText: "Recursively scan subdirectories for DICOM files (default: on)",
+                    // The CLI flag is `@Flag(inversion: .prefixedNo)` with a `true`
+                    // default — toggling OFF must emit `--no-recursive`.
+                    negatedFlag: "--no-recursive",
                     defaultValue: "true",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["create"])
                 ),
@@ -2723,7 +2878,7 @@ case "dicom-dcmdir":
                 CLIParameterDefinition(
                     id: "add", flag: "--add", displayName: "Add Directory",
                     parameterType: .filePath, placeholder: "directory with new files",
-                    helpText: "Directory with new DICOM files to add (update is not yet implemented)",
+                    helpText: "File or directory (inside the media folder) with new DICOM files to add to the index",
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "subcommand", values: ["update"])
                 ),
                 CLIParameterDefinition(
@@ -2906,8 +3061,7 @@ case "dicom-pixedit":
             id: "fill-value", flag: "--fill-value", displayName: "Fill Value",
             parameterType: .integerField, placeholder: "0",
             helpText: "Pixel value written into the masked region (default: 0)",
-            defaultValue: "0", minValue: 0, maxValue: 65535,
-            visibleWhen: CLIParameterVisibilityCondition(parameterId: "mask-region", values: [])
+            defaultValue: "0", minValue: 0, maxValue: 65535
         ),
         CLIParameterDefinition(
             id: "crop", flag: "--crop", displayName: "Crop Region",
@@ -3041,9 +3195,10 @@ case "dicom-export":
                 ),
                 CLIParameterDefinition(
                     id: "inputPath", flag: "", displayName: "Input File/Directory",
-                    parameterType: .filePath, placeholder: "Path to DICOM file or directory",
-                    helpText: "DICOM file (single/animate) or directory of DICOM files (contact-sheet/bulk)",
-                    isRequired: true
+                    parameterType: .filePath, placeholder: "Path to DICOM file(s) or directory",
+                    helpText: "DICOM file (single/animate) or directory of DICOM files (contact-sheet/bulk). Contact-sheet accepts several files — separate with “ ; ”.",
+                    isRequired: true,
+                    isRepeatable: true
                 ),
                 CLIParameterDefinition(
                     id: "output", flag: "--output", displayName: "Output Path",
@@ -3507,8 +3662,9 @@ case "dicom-script":
                 // ----- run: variables -----
                 CLIParameterDefinition(
                     id: "variables", flag: "--variables", displayName: "Variables",
-                    parameterType: .arrayField, placeholder: "KEY=VALUE",
-                    helpText: "Variable substitutions in KEY=VALUE format (e.g. PATIENT_ID=12345)",
+                    parameterType: .arrayField, placeholder: "KEY=VALUE; KEY2=VALUE2",
+                    helpText: "Variable substitutions in KEY=VALUE format (e.g. PATIENT_ID=12345). Separate with “ ; ”.",
+                    isRepeatable: true,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["run"])
                 ),
                 CLIParameterDefinition(
@@ -3686,15 +3842,36 @@ public enum CommandBuilderHelpers: Sendable {
             case .booleanToggle:
                 if value.stringValue == "true" {
                     parts.append(def.flag)
+                } else if value.stringValue == "false", let negated = def.negatedFlag, !negated.isEmpty {
+                    // Inverted CLI flag (`@Flag(inversion: .prefixedNo)`, default
+                    // true): toggling OFF must emit the negated token (e.g.
+                    // `--no-recursive`) — omitting it would make the pasted
+                    // command silently re-enable the disabled behavior.
+                    parts.append(negated)
                 }
             case .flagPicker:
-                // Flag pickers emit "--<value>" (e.g. "--interactive") instead of "--flag value"
-                parts.append("--\(value.stringValue)")
+                // Flag pickers emit "--<value>" (e.g. "--auto") instead of "--flag value".
+                // A cliMapping entry overrides the literal token when the in-app state
+                // executes as a different CLI mode (e.g. dicom-qr's "interactive" state
+                // cannot prompt in-app — it retrieves all matches, so it previews as
+                // the truthful --auto).
+                if let mapped = def.cliMapping[value.stringValue], !mapped.isEmpty {
+                    parts.append(mapped)
+                } else {
+                    parts.append("--\(value.stringValue)")
+                }
             case .filePath, .outputPath:
                 if def.flag.isEmpty {
-                    parts.append(shellEscape(value.stringValue))
+                    // Positional argument(s). A repeatable definition models a
+                    // variadic positional list (`@Argument var x: [String]`) —
+                    // emit one escaped token per semicolon-separated item so the
+                    // pasted command carries every path, not one joined token.
+                    let tokens = def.isRepeatable
+                        ? splitMultiValue(value.stringValue).map { shellEscape($0) }
+                        : [shellEscape(value.stringValue)]
+                    parts.append(contentsOf: tokens)
                     // Flush deferred internal tokens after positional arg (URL)
-                    if !positionalSeen {
+                    if !positionalSeen && !tokens.isEmpty {
                         positionalSeen = true
                         parts.append(contentsOf: deferredMappedTokens)
                         deferredMappedTokens.removeAll()
@@ -3710,9 +3887,15 @@ public enum CommandBuilderHelpers: Sendable {
                 }
             default:
                 if def.flag.isEmpty {
-                    parts.append(shellEscape(value.stringValue))
+                    // Positional argument(s) — same variadic expansion as the
+                    // .filePath/.outputPath branch above (e.g. `dicom-uid
+                    // validate <uid> <uid> …`).
+                    let tokens = def.isRepeatable
+                        ? splitMultiValue(value.stringValue).map { shellEscape($0) }
+                        : [shellEscape(value.stringValue)]
+                    parts.append(contentsOf: tokens)
                     // Flush deferred internal tokens after positional arg (URL)
-                    if !positionalSeen {
+                    if !positionalSeen && !tokens.isEmpty {
                         positionalSeen = true
                         parts.append(contentsOf: deferredMappedTokens)
                         deferredMappedTokens.removeAll()

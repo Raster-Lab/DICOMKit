@@ -63,7 +63,8 @@ struct CompressionCodecMapTests {
             ("htj2k-lossless", TransferSyntax.htj2kLossless.uid),        // J2KSwift (HTJ2KCodec)
             ("jpeg-ls-lossless", TransferSyntax.jpegLSLossless.uid),     // JLSwift
             ("jpeg-ls", TransferSyntax.jpegLSNearLossless.uid),          // JLSwift
-            ("jpeg-xl-lossless", TransferSyntax.jpegXLLossless.uid),     // JXLSwift
+            ("jpeg-xl-lossless", TransferSyntax.jpegXLLossless.uid),     // JXLSwift (lossless, Modular)
+            ("jpeg-xl", TransferSyntax.jpegXL.uid),                      // JXLSwift (lossy, VarDCT)
           ])
     func allFourLibrariesReachable(codec: String, expectedUID: String) {
         #expect(CompressionManager.transferSyntax(for: codec)?.uid == expectedUID,

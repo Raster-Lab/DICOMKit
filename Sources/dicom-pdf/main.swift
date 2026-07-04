@@ -186,20 +186,10 @@ struct DICOMPdf: ParsableCommand {
         var failureCount = 0
         var extractedFiles: [String] = []
         
-        // Enumerate DICOM files
-        let enumerator = FileManager.default.enumerator(
-            at: inputURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-        
-        while let fileURL = enumerator?.nextObject() as? URL {
-            // Skip non-files
-            guard let isRegularFile = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile,
-                  isRegularFile else {
-                continue
-            }
-            
+        // Enumerate DICOM files via the shared, sorted gatherer (same walk as the Workshop).
+        let fileURLs = FileGatherer.regularFiles(under: inputURL) ?? []
+
+        for fileURL in fileURLs {
             // Try to extract from this file
             do {
                 let inputData = try Data(contentsOf: fileURL)
@@ -363,20 +353,10 @@ struct DICOMPdf: ParsableCommand {
         let finalStudyUID = studyUid ?? UIDGenerator.generateUID().value
         let finalSeriesUID = seriesUid ?? UIDGenerator.generateUID().value
         
-        // Enumerate document files
-        let enumerator = FileManager.default.enumerator(
-            at: inputURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-        
-        while let fileURL = enumerator?.nextObject() as? URL {
-            // Skip non-files
-            guard let isRegularFile = try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile,
-                  isRegularFile else {
-                continue
-            }
-            
+        // Enumerate document files via the shared, sorted gatherer (same walk as the Workshop).
+        let documentURLs = FileGatherer.regularFiles(under: inputURL) ?? []
+
+        for fileURL in documentURLs {
             // Check if it's a supported document type (shared DICOMKit mapping)
             let documentType = EncapsulatedDocumentType(fileExtension: fileURL.pathExtension)
             guard documentType != .unknown else {

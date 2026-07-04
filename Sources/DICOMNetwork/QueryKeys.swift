@@ -262,6 +262,14 @@ public struct QueryKeys: Sendable, Hashable {
         returning(.studyID, vr: .SH)
     }
     
+    /// Matches Referring Physician Name (0008,0090)
+    ///
+    /// - Parameter value: Physician name pattern (may include wildcards)
+    /// - Returns: Updated query keys
+    public func referringPhysicianName(_ value: String) -> QueryKeys {
+        matching(.referringPhysicianName, value: value, vr: .PN)
+    }
+
     /// Requests Referring Physician Name be returned
     public func requestReferringPhysicianName() -> QueryKeys {
         returning(.referringPhysicianName, vr: .PN)

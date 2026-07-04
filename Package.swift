@@ -227,7 +227,7 @@ let package = Package(
         // of v1.0.1: the library target dropped its CompressionFamily dependency
         // (v1.0.0 referenced it via a local path, which SwiftPM rejected for a
         // stable-versioned consumer). Provides the `JXLSwift` product.
-        .package(url: "https://github.com/Raster-Lab/JXLSwift.git", from: "1.1.0")
+        .package(url: "https://github.com/Raster-Lab/JXLSwift.git", from: "1.3.0")
     ],
     targets: [
         // OpenJPEG 2.x system library (https://www.openjpeg.org)
@@ -284,7 +284,9 @@ let package = Package(
         ),
         .target(
             name: "DICOMWeb",
-            dependencies: ["DICOMCore", "DICOMKit"]
+            // DICOMDictionary: keyword→tag resolution for the shared JSON/XML
+            // conversion workflows' --filter-tag handling.
+            dependencies: ["DICOMCore", "DICOMKit", "DICOMDictionary"]
         ),
         .target(
             name: "DICOMKit",
@@ -327,6 +329,7 @@ let package = Package(
                 "DICOMConverterTests.swift",
                 "PixelEditorTests.swift",
                 "CompressionManagerImplicitVRTests.swift",
+                "CompressionManagerMetricsTests.swift",
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
                 "ExportWindowParityTests.swift",
@@ -857,6 +860,25 @@ let package = Package(
                 "DICOMKit",
                 .product(name: "J2KCore", package: "J2KSwift")
             ]
+        ),
+        // Oracle-based round-trip tests for the local (non-network) dicom-* tools.
+        // Calls the DICOMKit library directly (not the CLI binaries). See
+        // ROUND_TRIP_TESTS_PLAN.md and ROUND_TRIP_TEST_DATA.md.
+        // Path is singular "DICOMRoundTripTest" (where the anonymized corpus lives);
+        // the corpus is resolved at runtime via #filePath (skip-if-absent), so it is
+        // excluded from compiled sources rather than bundled.
+        .testTarget(
+            name: "DICOMRoundTripTests",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMDictionary",
+                "DICOMWeb",
+                .product(name: "J2KCore", package: "J2KSwift"),
+                .product(name: "J2KCodec", package: "J2KSwift")
+            ],
+            path: "Tests/DICOMRoundTripTest",
+            exclude: ["Corpus"]
         )
     ]
 )

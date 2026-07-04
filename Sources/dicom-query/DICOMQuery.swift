@@ -134,9 +134,10 @@ struct DICOMQuery: AsyncParsableCommand {
         add("Series UID:", seriesUid)
         add("Accession:", accessionNumber)
         add("Study Desc:", studyDescription)
+        add("Referring Physician:", referringPhysician)
         return f
     }
-    
+
     func buildQueryKeys() -> QueryKeys {
         // Single shared mapping (DICOMNetwork) used by the CLI, the app, and the
         // CLI-parity reference — so input→C-FIND keys cannot drift. (This is also
@@ -149,6 +150,7 @@ struct DICOMQuery: AsyncParsableCommand {
             modality: modality ?? "",
             accession: accessionNumber ?? "",
             studyDescription: studyDescription ?? "",
+            referringPhysician: referringPhysician ?? "",
             studyUID: studyUid ?? "",
             seriesUID: seriesUid ?? ""
         )

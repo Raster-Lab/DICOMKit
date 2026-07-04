@@ -54,9 +54,15 @@ public enum DICOMConverter {
     /// The canonical, UI-ordered list of transfer syntaxes `dicom-convert` can target.
     ///
     /// Ordering mirrors ``DICOMCore/TransferSyntax/allKnown`` (uncompressed, JPEG,
-    /// JPEG 2000 / HTJ2K, JPEG-LS, JPEG XL, RLE). JPEG XL encode is lossless-only
+    /// JPEG 2000 / HTJ2K, JPEG-LS, JPEG XL, RLE). JPEG XL *pixel* encode is lossless-only
     /// (there is no lossy JXL encoder), so the generic `jpeg-xl`/`jxl` aliases resolve
     /// to the lossless syntax — matching `CompressionManager`'s codec map.
+    ///
+    /// `JPEGXLRecompression` (…4.111) is a distinct target that losslessly rewraps an
+    /// existing JPEG bitstream rather than encoding pixels; it therefore applies only to
+    /// a JPEG Baseline (…4.50) *source* (``DICOMCore/TransferSyntaxConverter`` rejects the
+    /// transcode with a clear error for any other source). It is convert-only — not a
+    /// `CompressionManager`/`dicom-compress` codec, since that path is pixel-based.
     public static let targets: [Target] = [
         // Uncompressed
         Target(.explicitVRLittleEndian,          cli: "ExplicitVRLittleEndian",  alias: "explicit-vr-le", extra: ["explicit", "evle"]),
@@ -79,8 +85,9 @@ public enum DICOMConverter {
         // JPEG-LS
         Target(.jpegLSLossless,                  cli: "JPEGLSLossless",          alias: "jpeg-ls-lossless",        extra: ["jpegls", "jpegls-lossless", "jls-lossless"]),
         Target(.jpegLSNearLossless,              cli: "JPEGLSNearLossless",      alias: "jpeg-ls-near-lossless",   extra: ["jpegls-near"]),
-        // JPEG XL (encode is lossless-only)
+        // JPEG XL (pixel encode is lossless-only; Recompression wraps a JPEG bitstream)
         Target(.jpegXLLossless,                  cli: "JPEGXLLossless",          alias: "jpeg-xl-lossless",        extra: ["jpeg-xl", "jxl", "jxl-lossless", "jpegxl"]),
+        Target(.jpegXLRecompression,             cli: "JPEGXLRecompression",     alias: "jpeg-xl-recompression",   extra: ["jxl-recompression", "jpegxl-recompression", "jpeg-xl-jpeg-recompression"]),
         // RLE
         Target(.rleLossless,                     cli: "RLELossless",             alias: "rle-lossless",            extra: ["rle"]),
     ]

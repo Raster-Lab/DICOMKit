@@ -112,22 +112,15 @@ struct DICOMValidate: AsyncParsableCommand {
     }
     
     private func validateDirectory(url: URL) throws -> [ValidationResult] {
-        let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )
-        
-        guard let enumerator = enumerator else {
+        // Shared, sorted directory walk — the same gatherer the Workshop uses, so
+        // both surfaces validate the same files in the same order.
+        guard let fileURLs = FileGatherer.regularFiles(under: url) else {
             throw ValidationError("Failed to enumerate directory: \(url.path)")
         }
-        
+
         var results: [ValidationResult] = []
-        
-        for case let fileURL as URL in enumerator {
-            let resourceValues = try fileURL.resourceValues(forKeys: [.isRegularFileKey])
-            guard resourceValues.isRegularFile == true else { continue }
-            
+
+        for fileURL in fileURLs {
             do {
                 let result = try validateFile(url: fileURL)
                 results.append(result)

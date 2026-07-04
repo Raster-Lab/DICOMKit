@@ -285,8 +285,47 @@ public struct ScriptExecutor {
 
     private func executePipeline(_ command: PipelineCommand, context: inout ScriptContext) throws {
         context.logger.log("Executing pipeline with \(command.commands.count) commands")
-        // Sequential execution (parallel flag is accepted but treated the same as
-        // in the original engine).
+
+        // --parallel: a pipeline's tool commands are independent by construction
+        // (no variable writes can occur between them), so run them concurrently
+        // and REPLAY their log lines in source order — output stays byte-stable
+        // versus a sequential run. Dry runs stay sequential (nothing to overlap).
+        // The injected CommandRunner must be safe to call from multiple threads
+        // (the CLI's Process-based runner is; each invocation is independent).
+        if context.parallel && !context.dryRun && command.commands.count > 1 {
+            let snapshot = context
+            var results = [(lines: [String], error: Error?)](
+                repeating: ([], nil), count: command.commands.count)
+            let lock = NSLock()
+            DispatchQueue.concurrentPerform(iterations: command.commands.count) { index in
+                let toolCmd = command.commands[index]
+                let expandedArgs = toolCmd.arguments.map { expandVariables($0, context: snapshot) }
+                let fullCommand = ([toolCmd.tool] + expandedArgs).joined(separator: " ")
+                var lines = ["Executing: \(fullCommand)"]
+                var failure: Error? = nil
+                do {
+                    let result = try runCommand(toolCmd.tool, expandedArgs)
+                    if !result.output.isEmpty { lines.append("Output: \(result.output)") }
+                    if result.exitCode != 0 {
+                        failure = ScriptError.executionError(
+                            "Command failed with status \(result.exitCode): \(fullCommand)")
+                    }
+                } catch {
+                    failure = error
+                }
+                lock.lock()
+                results[index] = (lines, failure)
+                lock.unlock()
+            }
+            for entry in results {
+                for line in entry.lines { context.logger.log(line) }
+            }
+            if let firstError = results.compactMap(\.error).first {
+                throw firstError
+            }
+            return
+        }
+
         for toolCmd in command.commands {
             try executeToolCommand(toolCmd, context: &context)
         }
@@ -477,14 +516,12 @@ public struct TemplateGenerator {
         PATIENT_ID=12345
 
         # Query PACS
-        dicom-query --host ${PACS_HOST} --port ${PACS_PORT} \\
-            --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} \\
-            --patient-id ${PATIENT_ID} --level STUDY
+        # (one command per line: the script language splits on newlines and does
+        # not support backslash line-continuations)
+        dicom-query --host ${PACS_HOST} --port ${PACS_PORT} --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} --patient-id ${PATIENT_ID} --level STUDY
 
         # Retrieve studies
-        dicom-retrieve --host ${PACS_HOST} --port ${PACS_PORT} \\
-            --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} \\
-            --patient-id ${PATIENT_ID} --output studies/
+        dicom-retrieve --host ${PACS_HOST} --port ${PACS_PORT} --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} --patient-id ${PATIENT_ID} --output studies/
 
         # Validate retrieved files
         dicom-validate studies/*.dcm --level 2
@@ -508,15 +545,12 @@ public struct TemplateGenerator {
         LOCAL_AET=WORKSTATION
 
         # Query by patient name
-        dicom-query --host ${PACS_HOST} --port ${PACS_PORT} \\
-            --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} \\
-            --patient-name "DOE*" --level PATIENT
+        # (one command per line: the script language splits on newlines and does
+        # not support backslash line-continuations)
+        dicom-query --host ${PACS_HOST} --port ${PACS_PORT} --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} --patient-name "DOE*" --level PATIENT
 
         # Query by date range
-        dicom-query --host ${PACS_HOST} --port ${PACS_PORT} \\
-            --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} \\
-            --study-date-from 20240101 --study-date-to 20241231 \\
-            --level STUDY
+        dicom-query --host ${PACS_HOST} --port ${PACS_PORT} --called-aet ${PACS_AET} --calling-aet ${LOCAL_AET} --study-date-from 20240101 --study-date-to 20241231 --level STUDY
         """
     }
 

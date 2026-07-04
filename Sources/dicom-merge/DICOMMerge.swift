@@ -124,78 +124,9 @@ struct DICOMMerge: AsyncParsableCommand {
     }
     
     func gatherInputFiles(from paths: [String], recursive: Bool) throws -> [String] {
-        var files: [String] = []
-        let fileManager = FileManager.default
-        
-        for path in paths {
-            var isDirectory: ObjCBool = false
-            guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory) else {
-                continue
-            }
-            
-            if isDirectory.boolValue {
-                // Directory - gather files
-                if recursive {
-                    // Recursive scan
-                    guard let enumerator = fileManager.enumerator(atPath: path) else {
-                        throw ValidationError("Failed to enumerate directory: \(path)")
-                    }
-                    
-                    for case let item as String in enumerator {
-                        let fullPath = (path as NSString).appendingPathComponent(item)
-                        var itemIsDirectory: ObjCBool = false
-                        
-                        if fileManager.fileExists(atPath: fullPath, isDirectory: &itemIsDirectory),
-                           !itemIsDirectory.boolValue,
-                           isDICOMFile(fullPath) {
-                            files.append(fullPath)
-                        }
-                    }
-                } else {
-                    // Only direct children
-                    let contents = try fileManager.contentsOfDirectory(atPath: path)
-                    for item in contents {
-                        let fullPath = (path as NSString).appendingPathComponent(item)
-                        var itemIsDirectory: ObjCBool = false
-                        
-                        if fileManager.fileExists(atPath: fullPath, isDirectory: &itemIsDirectory),
-                           !itemIsDirectory.boolValue,
-                           isDICOMFile(fullPath) {
-                            files.append(fullPath)
-                        }
-                    }
-                }
-            } else {
-                // Single file
-                if isDICOMFile(path) {
-                    files.append(path)
-                }
-            }
-        }
-        
-        return files
-    }
-    
-    func isDICOMFile(_ path: String) -> Bool {
-        // Check file extension
-        let ext = (path as NSString).pathExtension.lowercased()
-        if ["dcm", "dicom", "dic"].contains(ext) {
-            return true
-        }
-        
-        // Check for DICM magic bytes
-        guard let fileHandle = FileHandle(forReadingAtPath: path),
-              let data = try? fileHandle.read(upToCount: 132) else {
-            return false
-        }
-        
-        // DICOM files have "DICM" at byte 128
-        if data.count >= 132 {
-            let magic = data[128..<132]
-            return magic == Data([0x44, 0x49, 0x43, 0x4D]) // "DICM"
-        }
-        
-        return false
+        // Shared, sorted gatherer (FrameMerger) — the exact walk the Workshop uses,
+        // so both surfaces merge the same files in the same deterministic order.
+        try FrameMerger.gatherInputFiles(from: paths, recursive: recursive)
     }
 }
 

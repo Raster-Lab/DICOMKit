@@ -158,7 +158,15 @@ public enum DICOMDIRWorkflow {
             do {
                 let fileData = try Data(contentsOf: fileURL)
                 let dicomFile = try DICOMFile.read(from: fileData, force: !strict)
-                let relativePath = fileURL.path.replacingOccurrences(of: inputURL.path + "/", with: "")
+                // Compute the File ID via standardized prefix-stripping. The old
+                // `replacingOccurrences(of: inputURL.path + "/")` corrupted IDs
+                // whenever the enumerator resolved a symlinked input (e.g.
+                // /tmp → /private/tmp gave "privateimg0.dcm").
+                let basePath = inputURL.standardizedFileURL.path + "/"
+                let fullPath = fileURL.standardizedFileURL.path
+                let relativePath = fullPath.hasPrefix(basePath)
+                    ? String(fullPath.dropFirst(basePath.count))
+                    : fileURL.lastPathComponent
                 let pathComponents = relativePath.components(separatedBy: "/")
                 try builder.addFile(dicomFile, relativePath: pathComponents)
                 processed += 1
@@ -184,6 +192,139 @@ public enum DICOMDIRWorkflow {
         s += "\n"
         s += "Summary:\n"
         s += "  Files processed: \(result.processed)/\(result.total)\n"
+        if result.failed > 0 { s += "  Failed: \(result.failed)\n" }
+        s += "  Patients: \(stats.patientCount)\n"
+        s += "  Studies: \(stats.studyCount)\n"
+        s += "  Series: \(stats.seriesCount)\n"
+        s += "  Images: \(stats.imageCount)\n"
+        s += "\n"
+        s += "Output: \(outputPath)\n"
+        return s
+    }
+
+    // MARK: - Update
+
+    /// The outcome of updating an existing DICOMDIR with new files.
+    public struct UpdateResult: Sendable {
+        public let directory: DICOMDirectory
+        /// Previously-referenced files re-indexed into the rebuilt directory.
+        public let reindexed: Int
+        /// New files added to the index.
+        public let added: Int
+        /// Previously-referenced files that no longer exist on disk (dropped).
+        public let missing: Int
+        /// Files that could not be read/added (unreadable / non-conformant).
+        public let failed: Int
+    }
+
+    public enum UpdateError: Error, CustomStringConvertible {
+        /// A `--add` path lies outside the DICOMDIR's media folder, so no
+        /// relative File ID can be recorded for it.
+        case outsideMediaFolder(String)
+        /// The `--add` path does not exist.
+        case addPathNotFound(String)
+        public var description: String {
+            switch self {
+            case .outsideMediaFolder(let p):
+                return "Cannot add \(p): it is outside the DICOMDIR's media folder"
+            case .addPathNotFound(let p):
+                return "Add path not found: \(p)"
+            }
+        }
+    }
+
+    /// Updates an existing DICOMDIR: parses it, unions its referenced files with
+    /// the DICOM files under `addPath` (a file or a directory inside the media
+    /// folder), and rebuilds the index with the same file-set ID and profile.
+    /// Rebuilding (rather than patching records in place) keeps the record order
+    /// deterministic — identical to what `create` would produce for the same
+    /// file set. Previously-referenced files that have disappeared from disk are
+    /// dropped (and counted in `missing`). The caller writes the result (the CLI
+    /// directly, the app via its sandbox-aware path).
+    public static func updateDirectory(
+        dicomdirURL: URL,
+        addPath: String?,
+        verbose: Bool = false,
+        progress: ((String) -> Void)? = nil
+    ) throws -> UpdateResult {
+        let existing = try DICOMDIRReader.read(from: dicomdirURL)
+        let mediaFolder = dicomdirURL.deletingLastPathComponent()
+
+        // Existing entries: slash-joined File IDs relative to the media folder.
+        var relativePaths: [String] = []
+        var seen = Set<String>()
+        for rel in existing.allReferencedFiles() where !seen.contains(rel) {
+            seen.insert(rel)
+            relativePaths.append(rel)
+        }
+
+        // New files from --add (file, or directory scanned recursively).
+        if let addPath, !addPath.isEmpty {
+            let fm = FileManager.default
+            var isDir: ObjCBool = false
+            guard fm.fileExists(atPath: addPath, isDirectory: &isDir) else {
+                throw UpdateError.addPathNotFound(addPath)
+            }
+            let addURLs: [URL] = isDir.boolValue
+                ? try findDICOMFiles(in: URL(fileURLWithPath: addPath), recursive: true)
+                : [URL(fileURLWithPath: addPath)]
+            let basePrefix = mediaFolder.standardizedFileURL.path + "/"
+            for url in addURLs {
+                let full = url.standardizedFileURL.path
+                guard full.hasPrefix(basePrefix) else {
+                    throw UpdateError.outsideMediaFolder(url.path)
+                }
+                let rel = String(full.dropFirst(basePrefix.count))
+                if !seen.contains(rel) {
+                    seen.insert(rel)
+                    relativePaths.append(rel)
+                }
+            }
+        }
+
+        // Deterministic record order: same sort as create's file discovery.
+        relativePaths.sort()
+
+        var builder = DICOMDirectory.Builder(fileSetID: existing.fileSetID, profile: existing.profile)
+        var reindexed = 0, added = 0, missing = 0, failed = 0
+        let existingSet = Set(existing.allReferencedFiles())
+
+        for (index, rel) in relativePaths.enumerated() {
+            let fileURL = mediaFolder.appendingPathComponent(rel)
+            let wasExisting = existingSet.contains(rel)
+            if verbose { progress?("[\(index + 1)/\(relativePaths.count)] Processing \(rel)...\n") }
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                missing += 1
+                if verbose { progress?("  Missing on disk — dropped from index\n") }
+                continue
+            }
+            do {
+                let fileData = try Data(contentsOf: fileURL)
+                let dicomFile = try DICOMFile.read(from: fileData, force: true)
+                try builder.addFile(dicomFile, relativePath: rel.components(separatedBy: "/"))
+                if wasExisting { reindexed += 1 } else { added += 1 }
+            } catch {
+                failed += 1
+                if verbose { progress?("  Failed: \(error.localizedDescription)\n") }
+            }
+        }
+
+        return UpdateResult(directory: builder.build(), reindexed: reindexed,
+                            added: added, missing: missing, failed: failed)
+    }
+
+    /// Renders the update summary block, shared verbatim by the CLI and the
+    /// Studio reimplementation (same conventions as `renderCreateSummary`).
+    public static func renderUpdateSummary(_ result: UpdateResult, outputPath: String) -> String {
+        let stats = result.directory.statistics()
+        var s = ""
+        s += "\n"
+        s += "✅ DICOMDIR updated successfully\n"
+        s += "\n"
+        s += "Summary:\n"
+        s += "  Existing files re-indexed: \(result.reindexed)\n"
+        s += "  New files added: \(result.added)\n"
+        if result.missing > 0 { s += "  Missing (dropped): \(result.missing)\n" }
         if result.failed > 0 { s += "  Failed: \(result.failed)\n" }
         s += "  Patients: \(stats.patientCount)\n"
         s += "  Studies: \(stats.studyCount)\n"
