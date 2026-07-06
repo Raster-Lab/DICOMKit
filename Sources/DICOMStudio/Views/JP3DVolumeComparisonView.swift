@@ -432,7 +432,7 @@ public struct JP3DVolumeComparisonView: View {
                 .foregroundStyle(Color(white: 0.50))
                 .frame(width: 28, alignment: .leading)
             Slider(
-                value: Binding(get: { value }, set: onChange),
+                value: Binding(get: { value }, set: { onChange($0) }),
                 in: range, step: 1
             )
             Text(String(format: "%.0f", value))

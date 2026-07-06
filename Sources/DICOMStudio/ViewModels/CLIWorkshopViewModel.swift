@@ -2974,7 +2974,6 @@ private func executeDicomCompressCompress() async {
         if accessingOut { outputScopedURL?.stopAccessingSecurityScopedResource() }
     }
     let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-    let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
     // Shared backend resolution (same helper the CLI uses) — the preference is
     // both displayed AND forwarded into the engine (J2K/HTJ2K honor metal→GPU).
     let backendPref = CompressionConsole.backendPreference(for: backendRaw)
@@ -3071,7 +3070,6 @@ private func executeDicomCompressDecompress() async {
         if accessingOut { outputScopedURL?.stopAccessingSecurityScopedResource() }
     }
     let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
-    let outputURL = outputScopedURL ?? URL(fileURLWithPath: outputPath)
     let targetName = CompressionManager.transferSyntaxDisplayName(targetSyntax)
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in

@@ -343,29 +343,31 @@ public actor ImageResizer {
                 }
             }
             
-            // Create vImage buffers
-            var sourceBuffer = vImage_Buffer(
-                data: &sourceChannel,
-                height: vImagePixelCount(sourceHeight),
-                width: vImagePixelCount(sourceWidth),
-                rowBytes: sourceWidth
-            )
-            
             var destChannel = [UInt8](repeating: 0, count: targetWidth * targetHeight)
-            var destBuffer = vImage_Buffer(
-                data: &destChannel,
-                height: vImagePixelCount(targetHeight),
-                width: vImagePixelCount(targetWidth),
-                rowBytes: targetWidth
-            )
             
-            // Scale using vImage
-            let error = vImageScale_Planar8(
-                &sourceBuffer,
-                &destBuffer,
-                nil,
-                vImage_Flags(kvImageHighQualityResampling)
-            )
+            // Scale using vImage with pointers whose lifetime spans the call.
+            let error: vImage_Error = sourceChannel.withUnsafeMutableBytes { sourceBytes in
+                destChannel.withUnsafeMutableBytes { destBytes in
+                    var sourceBuffer = vImage_Buffer(
+                        data: sourceBytes.baseAddress,
+                        height: vImagePixelCount(sourceHeight),
+                        width: vImagePixelCount(sourceWidth),
+                        rowBytes: sourceWidth
+                    )
+                    var destBuffer = vImage_Buffer(
+                        data: destBytes.baseAddress,
+                        height: vImagePixelCount(targetHeight),
+                        width: vImagePixelCount(targetWidth),
+                        rowBytes: targetWidth
+                    )
+                    return vImageScale_Planar8(
+                        &sourceBuffer,
+                        &destBuffer,
+                        nil,
+                        vImage_Flags(kvImageHighQualityResampling)
+                    )
+                }
+            }
             
             guard error == kvImageNoError else {
                 throw ImageResizingError.accelerateError(Int(error))

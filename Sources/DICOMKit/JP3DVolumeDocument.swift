@@ -209,7 +209,7 @@ public enum JP3DVolumeDocument: Sendable {
 
         // Use Explicit VR Little Endian for the container file
         let tsUID = TransferSyntax.explicitVRLittleEndian.uid
-        return try DICOMFile.create(
+        return DICOMFile.create(
             dataSet: ds,
             sopClassUID: sopClassUID,
             sopInstanceUID: instanceUID,
@@ -453,7 +453,7 @@ public enum JP3DVolumeDocument: Sendable {
             // Pixel data (uncompressed)
             ds[.pixelData] = DataElement.data(tag: .pixelData, vr: .OW, data: frameData)
 
-            let sliceFile = try DICOMFile.create(
+            let sliceFile = DICOMFile.create(
                 dataSet: ds,
                 sopClassUID: template.dataSet.string(for: .sopClassUID) ?? "1.2.840.10008.5.1.4.1.1.2",
                 sopInstanceUID: ds.string(for: .sopInstanceUID) ?? UIDGenerator.generateUID().value,

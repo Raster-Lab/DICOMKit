@@ -422,29 +422,25 @@ struct DICOMViewer: ParsableCommand {
         // Bridge the async JPIP client into the synchronous CLI context.
         let jpipURLCopy = jpipURL
 
-        final class JPIPResultBox: @unchecked Sendable {
-            var image: DICOMJPIPImage?
-            var error: Error?
-        }
-        let box = JPIPResultBox()
         let sema = DispatchSemaphore(value: 0)
+        // The semaphore's signal->wait is a happens-before edge, so this manually
+        // synchronized capture is visible after sema.wait().
+        nonisolated(unsafe) var result: Result<DICOMJPIPImage, Error>?
 
         Task { @MainActor in
-            do {
-                let client = DICOMJPIPClient(serverURL: jpipURLCopy)
-                box.image = try await client.fetchImage(jpipURI: jpipURLCopy)
-            } catch {
-                box.error = error
-            }
+            let client = DICOMJPIPClient(serverURL: jpipURLCopy)
+            result = await Task { @MainActor in
+                try await client.fetchImage(jpipURI: jpipURLCopy)
+            }.result
             sema.signal()
         }
         sema.wait()
 
-        if let err = box.error {
+        if case .failure(let err) = result {
             fputs("Error fetching JPIP image: \(err)\n", stderr)
             throw ExitCode.failure
         }
-        guard let result = box.image else {
+        guard case .success(let result) = result else {
             fputs("Error: no image returned from JPIP server\n", stderr)
             throw ExitCode.failure
         }

@@ -114,8 +114,6 @@ public actor ImagePreprocessor {
             throw ImagePreprocessingError.invalidPixelData
         }
         
-        let width = descriptor.columns
-        let height = descriptor.rows
         let photometric = descriptor.photometricInterpretation
         
         // Handle different photometric interpretations
@@ -267,9 +265,6 @@ public actor ImagePreprocessor {
         dataSet: DataSet,
         colorMode: PrintColorMode
     ) async throws -> PreparedImage {
-        let width = descriptor.columns
-        let height = descriptor.rows
-        
         // For palette color, we'll do a simplified conversion
         // Full implementation requires extracting LUT descriptors and data from the dataset
         // This is planned for a future enhancement

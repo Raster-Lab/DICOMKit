@@ -254,7 +254,6 @@ extension DICOMDirectory {
             }
             
             // Find or create study record
-            let studyKey = studyInstanceUID
             var study: DirectoryRecord?
             for (index, child) in patient.children.enumerated() {
                 if child.recordType == .study,
@@ -309,7 +308,7 @@ extension DICOMDirectory {
                 }
                 
                 // Update study with series
-                if var currentSeries = series {
+                if let currentSeries = series {
                     let seriesExists = currentStudy.children.contains { $0.recordType == .series && $0.attribute(for: .seriesInstanceUID)?.stringValue == seriesInstanceUID }
                     if !seriesExists {
                         currentStudy.addChild(currentSeries)
@@ -320,7 +319,7 @@ extension DICOMDirectory {
             }
             
             // Update patient with study
-            if var currentStudy = study {
+            if let currentStudy = study {
                 let studyExists = patient.children.contains { $0.recordType == .study && $0.attribute(for: .studyInstanceUID)?.stringValue == studyInstanceUID }
                 if !studyExists {
                     patient.addChild(currentStudy)

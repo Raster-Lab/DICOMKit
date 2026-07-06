@@ -88,7 +88,6 @@ public enum JP3DVolumeBridge: Sendable {
 
         // Extract pixel spacing from first slice
         let (pixelSpacingRow, pixelSpacingCol) = extractPixelSpacing(from: ref)
-        let origin = extractImagePosition(from: ref)
 
         // Build voxel data by stacking pixel data from each slice
         let bytesPerPixel = Int(bitsAllocated) / 8

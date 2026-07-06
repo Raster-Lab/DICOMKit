@@ -809,7 +809,7 @@ struct TransferSyntaxHelper {
         // but carried raw (un-deflated) bytes, so readers failed with
         // "Failed to decompress deflated data".
         let dataWriter = createWriter(for: targetSyntax)
-        var dataSetData = try writeDataSet(dataSet, writer: dataWriter)
+        var dataSetData = writeDataSet(dataSet, writer: dataWriter)
         if targetSyntax.isDeflated {
             guard let deflated = dataSetData.deflateCompressed() else {
                 throw CompressionError.conversionFailed(

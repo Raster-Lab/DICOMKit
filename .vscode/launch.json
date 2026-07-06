@@ -839,6 +839,66 @@
             "target": "dicom-j2k",
             "configuration": "release",
             "preLaunchTask": "swift: Build Release dicom-j2k"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug studio-cli-introspect",
+            "target": "studio-cli-introspect",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug studio-cli-introspect"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release studio-cli-introspect",
+            "target": "studio-cli-introspect",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release studio-cli-introspect"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug cli-parity-gen",
+            "target": "cli-parity-gen",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug cli-parity-gen"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release cli-parity-gen",
+            "target": "cli-parity-gen",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release cli-parity-gen"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Debug cli-parity-docs",
+            "target": "cli-parity-docs",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug cli-parity-docs"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:DICOMKit}",
+            "name": "Release cli-parity-docs",
+            "target": "cli-parity-docs",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release cli-parity-docs"
         }
     ]
 }

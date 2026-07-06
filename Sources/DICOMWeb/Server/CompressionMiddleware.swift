@@ -312,14 +312,13 @@ public struct CompressionMiddleware: Sendable {
     /// - Returns: The compressed data, or nil if compression failed
     public func compress(data: Data, using algorithm: CompressionAlgorithm) -> Data? {
         #if canImport(Compression)
-        let compressionAlgorithm: compression_algorithm
         switch algorithm {
         case .gzip:
             // Note: Compression framework uses ZLIB internally
             // For proper gzip format, we need to add gzip header/trailer
             return compressGzip(data: data)
         case .deflate:
-            compressionAlgorithm = COMPRESSION_ZLIB
+            break
         }
         
         // For deflate, use the Compression framework directly

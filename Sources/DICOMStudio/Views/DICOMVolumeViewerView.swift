@@ -479,7 +479,7 @@ public struct DICOMVolumeViewerView: View {
         HStack(spacing: 8) {
             Text(label).font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Color(white: 0.45)).frame(width: 26, alignment: .leading)
-            Slider(value: Binding(get: { value }, set: onChange), in: range, step: 1)
+            Slider(value: Binding(get: { value }, set: { onChange($0) }), in: range, step: 1)
             Text(String(format: "%.0f", value))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Color(white: 0.40)).frame(width: 44, alignment: .trailing)

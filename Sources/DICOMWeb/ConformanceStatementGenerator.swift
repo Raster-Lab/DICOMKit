@@ -448,7 +448,7 @@ extension ConformanceStatementGenerator {
     /// - Parameter server: The DICOMweb server (provides access to configuration)
     /// - Returns: A conformance statement
     public static func generate(for server: DICOMwebServer) async -> ConformanceStatement {
-        let configuration = await server.configuration
+        let configuration = server.configuration
         let capabilities = DICOMwebCapabilities.dicomKitServer
         
         return generate(

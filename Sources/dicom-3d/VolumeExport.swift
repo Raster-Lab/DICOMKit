@@ -35,7 +35,7 @@ extension VolumeData {
         data.append(Data(bytes: &dimInfo, count: 1))
         
         // dim[8] - dimensions (16 bytes)
-        var dims: [Int16] = [3, Int16(dimensions.width), Int16(dimensions.height), Int16(dimensions.depth), 1, 0, 0, 0]
+        let dims: [Int16] = [3, Int16(dimensions.width), Int16(dimensions.height), Int16(dimensions.depth), 1, 0, 0, 0]
         for i in 0..<8 {
             var d = dims[i]
             data.append(Data(bytes: &d, count: 2))
@@ -66,7 +66,7 @@ extension VolumeData {
         data.append(Data(bytes: &sliceStart, count: 2))
         
         // pixdim[8] - pixel dimensions (32 bytes)
-        var pixdims: [Float] = [-1.0, Float(spacing.x), Float(spacing.y), Float(spacing.z), 0, 0, 0, 0]
+        let pixdims: [Float] = [-1.0, Float(spacing.x), Float(spacing.y), Float(spacing.z), 0, 0, 0, 0]
         for i in 0..<8 {
             var p = pixdims[i]
             data.append(Data(bytes: &p, count: 4))
@@ -139,9 +139,9 @@ extension VolumeData {
         data.append(Data(bytes: &qoffsetZ, count: 4))
         
         // srow_x, srow_y, srow_z (48 bytes) - affine transform
-        var srowX: [Float] = [Float(spacing.x), 0, 0, Float(origin.x)]
-        var srowY: [Float] = [0, Float(spacing.y), 0, Float(origin.y)]
-        var srowZ: [Float] = [0, 0, Float(spacing.z), Float(origin.z)]
+        let srowX: [Float] = [Float(spacing.x), 0, 0, Float(origin.x)]
+        let srowY: [Float] = [0, Float(spacing.y), 0, Float(origin.y)]
+        let srowZ: [Float] = [0, 0, Float(spacing.z), Float(origin.z)]
         
         for i in 0..<4 {
             var x = srowX[i]

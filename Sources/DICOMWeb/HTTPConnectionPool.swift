@@ -353,8 +353,8 @@ actor HTTPConnectionPool {
             try? await Task.sleep(nanoseconds: 30_000_000_000)
             
             guard !Task.isCancelled else { break }
-            
-            await cleanupConnections()
+
+            cleanupConnections()
         }
     }
     

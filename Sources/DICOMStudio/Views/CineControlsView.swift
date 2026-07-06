@@ -172,8 +172,12 @@ public struct CineControlsView: View {
         stopTimer()
         guard viewModel.playbackState == .playing else { return }
         let interval = CinePlaybackHelpers.timerInterval(for: viewModel.playbackFPS)
+        let viewModel = viewModel
         timer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { _ in
-            viewModel.advanceCineFrame()
+            // Scheduled from the main actor, so the timer fires on the main run loop.
+            MainActor.assumeIsolated {
+                viewModel.advanceCineFrame()
+            }
         }
     }
 

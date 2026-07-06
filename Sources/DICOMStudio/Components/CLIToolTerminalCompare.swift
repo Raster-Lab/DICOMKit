@@ -209,8 +209,10 @@ enum CLIToolTerminalCompare {
         // when the child fills the stderr buffer (~64 KB) while we're still blocked
         // reading stdout — neither side can make progress. A background read of
         // stderr removes that hazard for large outputs.
-        var outData = Data()
-        var errData = Data()
+        // The DispatchGroup signal->wait is a happens-before edge, so these
+        // manually synchronized captures are visible after group.wait().
+        nonisolated(unsafe) var outData = Data()
+        nonisolated(unsafe) var errData = Data()
         let group = DispatchGroup()
         let queue = DispatchQueue(label: "dicomkit.cli-compare.pipe-read", attributes: .concurrent)
         queue.async(group: group) { outData = outPipe.fileHandleForReading.readDataToEndOfFile() }

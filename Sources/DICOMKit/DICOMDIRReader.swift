@@ -82,7 +82,6 @@ public struct DICOMDIRReader {
         }
         
         // Parse each item as a directory record
-        var records: [DirectoryRecord] = []
         var recordMap: [Int: (record: DirectoryRecord, nextOffset: UInt32?, lowerOffset: UInt32?)] = [:]
         
         // First pass: Parse all records and build a map
@@ -107,14 +106,14 @@ public struct DICOMDIRReader {
         var currentSeries: DirectoryRecord?
         
         for (_, entry) in recordMap.sorted(by: { $0.key < $1.key }) {
-            var record = entry.record
+            let record = entry.record
             
             switch record.recordType {
             case .patient:
                 // Save previous patient if any
                 if var patient = currentPatient {
                     if var study = currentStudy {
-                        if var series = currentSeries {
+                        if let series = currentSeries {
                             study.addChild(series)
                             currentSeries = nil
                         }
@@ -128,7 +127,7 @@ public struct DICOMDIRReader {
             case .study:
                 // Save previous study if any
                 if var patient = currentPatient, var study = currentStudy {
-                    if var series = currentSeries {
+                    if let series = currentSeries {
                         study.addChild(series)
                         currentSeries = nil
                     }
@@ -138,14 +137,14 @@ public struct DICOMDIRReader {
                 
             case .series:
                 // Save previous series if any
-                if var study = currentStudy, var series = currentSeries {
+                if var study = currentStudy, let series = currentSeries {
                     study.addChild(series)
                 }
                 currentSeries = record
                 
             case .image, .presentation, .srDocument, .waveform, .rtDose, .rtStructureSet, .rtPlan:
                 // Add to current series
-                if var series = currentSeries {
+                    if var series = currentSeries {
                     series.addChild(record)
                     currentSeries = series
                 }
@@ -159,7 +158,7 @@ public struct DICOMDIRReader {
         // Save final records
         if var patient = currentPatient {
             if var study = currentStudy {
-                if var series = currentSeries {
+                if let series = currentSeries {
                     study.addChild(series)
                 }
                 patient.addChild(study)
