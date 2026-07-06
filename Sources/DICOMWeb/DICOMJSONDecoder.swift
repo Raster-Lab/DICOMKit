@@ -218,7 +218,7 @@ public struct DICOMJSONDecoder: Sendable {
             throw DICOMwebError.invalidBulkDataReference(uri: nil)
         }
         
-        guard let url = URL(string: uriString) else {
+        guard URL(string: uriString) != nil else {
             throw DICOMwebError.invalidBulkDataReference(uri: uriString)
         }
         

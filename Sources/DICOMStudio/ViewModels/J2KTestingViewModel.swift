@@ -103,7 +103,7 @@ public final class J2KTestingViewModel {
     /// Display name for the J2KSwift codec, including its library version
     /// (e.g. "J2KSwift 10.7.0"). Sourced from `J2KCore.getVersion()` so the
     /// comparison UI always shows the J2KSwift build under test.
-    public static let j2kSwiftCodecName = "J2KSwift \(J2KCore.getVersion())"
+    public nonisolated static let j2kSwiftCodecName = "J2KSwift \(J2KCore.getVersion())"
 
     // MARK: - Benchmark
 
@@ -457,7 +457,7 @@ public final class J2KTestingViewModel {
 
     /// Converts raw pixel bytes + descriptor into a displayable CGImage.
     /// 8-bit data is used directly; 16-bit is auto-normalised to 8-bit.
-    private static func makePreviewImage(pixels: Data, descriptor: PixelDataDescriptor) -> CGImage? {
+    private nonisolated static func makePreviewImage(pixels: Data, descriptor: PixelDataDescriptor) -> CGImage? {
         #if canImport(CoreGraphics)
         let w = descriptor.columns
         let h = descriptor.rows
@@ -787,7 +787,7 @@ extension J2KTestingViewModel {
     /// J2KSwift cross-host bench methodology: 2 untimed warmups + 7 timed runs,
     /// median of 7 reported. `warmup: false` falls back to a single timed call
     /// (no warmups) for the quick path.
-    private static func timedDecode(
+    private nonisolated static func timedDecode(
         warmup: Bool,
         _ decode: () throws -> Data
     ) -> (data: Data?, ms: Double, error: String?) {
@@ -829,7 +829,7 @@ extension J2KTestingViewModel {
     }
 
     /// Builds a CodecComparisonEntry from a `timedDecode` result, comparing against the reference.
-    private static func makeEntry(
+    private nonisolated static func makeEntry(
         name: String,
         result: (data: Data?, ms: Double, error: String?),
         reference: Data?,
@@ -847,7 +847,7 @@ extension J2KTestingViewModel {
                 matchesReference: matches, psnrDb: psnr)))
     }
 
-    private static func failedEntries(_ msg: String) -> [CodecComparisonEntry] {
+    private nonisolated static func failedEntries(_ msg: String) -> [CodecComparisonEntry] {
         var entries = [CodecComparisonEntry(codecName: j2kSwiftCodecName, state: .failed(msg))]
         #if canImport(COpenJPEG) && os(macOS)
         entries.append(CodecComparisonEntry(codecName: "OpenJPEG", state: .failed(msg)))
@@ -865,7 +865,7 @@ extension J2KTestingViewModel {
 
     /// Computes PSNR in dB between two raw pixel buffers.
     /// Returns `nil` (infinity) when buffers are identical (lossless perfect match).
-    private static func computePSNR(_ a: Data, _ b: Data, descriptor: PixelDataDescriptor) -> Double? {
+    private nonisolated static func computePSNR(_ a: Data, _ b: Data, descriptor: PixelDataDescriptor) -> Double? {
         guard a.count == b.count, !a.isEmpty else { return nil }
         let maxVal: Double = descriptor.bitsAllocated <= 8 ? 255.0 : 65535.0
         var mse: Double = 0

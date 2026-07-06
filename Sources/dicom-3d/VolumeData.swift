@@ -297,9 +297,9 @@ class VolumeLoader {
             sliceSpacing = dist
         } else {
             // Try to get from Slice Thickness or Spacing Between Slices
-            if let thickness = try? firstFile.dataSet.decimalString(for: .sliceThickness) {
+            if let thickness = firstFile.dataSet.decimalString(for: .sliceThickness) {
                 sliceSpacing = thickness.value
-            } else if let spacing = try? firstFile.dataSet.decimalString(for: .spacingBetweenSlices) {
+            } else if let spacing = firstFile.dataSet.decimalString(for: .spacingBetweenSlices) {
                 sliceSpacing = spacing.value
             } else {
                 sliceSpacing = 1.0
@@ -317,13 +317,13 @@ class VolumeLoader {
         let bitsAllocated = Int(bitsAllocatedValue)
         let bitsStored = Int(bitsStoredValue)
         let pixelRepresentation = Int(pixelRepValue)
-        let photometricInterpretation = try firstFile.dataSet.string(for: .photometricInterpretation) ?? "MONOCHROME2"
-        
-        let windowCenter = try? firstFile.dataSet.decimalString(for: .windowCenter)
-        let windowWidth = try? firstFile.dataSet.decimalString(for: .windowWidth)
-        
-        let rescaleSlope = (try? firstFile.dataSet.decimalString(for: .rescaleSlope))?.value ?? 1.0
-        let rescaleIntercept = (try? firstFile.dataSet.decimalString(for: .rescaleIntercept))?.value ?? 0.0
+        let photometricInterpretation = firstFile.dataSet.string(for: .photometricInterpretation) ?? "MONOCHROME2"
+
+        let windowCenter = firstFile.dataSet.decimalString(for: .windowCenter)
+        let windowWidth = firstFile.dataSet.decimalString(for: .windowWidth)
+
+        let rescaleSlope = firstFile.dataSet.decimalString(for: .rescaleSlope)?.value ?? 1.0
+        let rescaleIntercept = firstFile.dataSet.decimalString(for: .rescaleIntercept)?.value ?? 0.0
         
         if verbose {
             print("Volume dimensions: \(dimensions.width)x\(dimensions.height)x\(dimensions.depth)")

@@ -56,7 +56,7 @@ struct SliceImage {
         }
         
         // Create grayscale image
-        var mutablePixels = displayPixels
+        let mutablePixels = displayPixels
         guard let providerRef = CGDataProvider(data: Data(mutablePixels) as CFData) else {
             throw SliceError.imageCreationFailed
         }

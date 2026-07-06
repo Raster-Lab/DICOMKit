@@ -470,7 +470,7 @@ public struct JP3DComparisonView: View {
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(Color(white: 0.45))
                 .frame(width: 28, alignment: .leading)
-            Slider(value: Binding(get: { value }, set: onChange), in: range, step: 1)
+            Slider(value: Binding(get: { value }, set: { onChange($0) }), in: range, step: 1)
             Text(String(format: "%.0f", value))
                 .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(Color(white: 0.40))

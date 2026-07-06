@@ -95,17 +95,16 @@ private func j2kCodestream(from dicom: DICOMFile, frameIndex: Int = 0) -> Data? 
 @discardableResult
 private func runAsync<T: Sendable>(_ block: @escaping @Sendable () async throws -> T) throws -> T {
     let sema = DispatchSemaphore(value: 0)
-    var result: Result<T, Error>?
+    // The semaphore's signal->wait is a happens-before edge, so this manually
+    // synchronized capture is visible after sema.wait().
+    nonisolated(unsafe) var result: Result<T, Error>?
+    let task = Task { try await block() }
     Task {
-        do { result = .success(try await block()) }
-        catch { result = .failure(error) }
+        result = await task.result
         sema.signal()
     }
     sema.wait()
-    switch result! {
-    case .success(let v): return v
-    case .failure(let e): throw e
-    }
+    return try result!.get()
 }
 
 /// Decode a J2K codestream synchronously using J2KDecoder.

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.1] - 2026-07-06
+
+Patch release: strict-concurrency bridge fix plus package-wide warning cleanup.
+Both `swift build` and `swift build -Xswiftc -warnings-as-errors` pass cleanly;
+no runtime behavior changes.
+
+### Fixed — Swift 6 Strict-Concurrency Task Bridge in CLI Targets
+
+- Fixed the `DispatchSemaphore` + `Task {}` async-to-sync bridge pattern used by CLI entry points so Swift 6 strict-concurrency no longer flags data-race sendability risks for `waitForTask`/`runAsync` helpers. The bridge now uses `Task.result` and an explicitly documented manually-synchronized capture (`nonisolated(unsafe)`), preserving runtime behavior while satisfying the compiler's model.
+- Updated affected targets:
+  - `Sources/dicom-jpip/main.swift`
+  - `Sources/dicom-3d/main.swift`
+  - `Sources/dicom-j2k/main.swift`
+  - `Sources/dicom-viewer/main.swift`
+- Also cleaned up adjacent strict/warnings-as-errors diagnostics surfaced during validation in shared runtime files (`ScriptEngine`, `DICOMDIRReader`/`DICOMDIRWriter`, `ImagePreprocessor`, `ImageResizer`, `JP3DVolumeBridge`, `JP3DVolumeDocument`, `StudyManager`, gateway mapping/converter helpers, and compression manager) without changing intended behavior.
+
+### Fixed — Remaining `-warnings-as-errors` Diagnostics Across the Package
+
+- `dicom-3d`: never-mutated `var` locals converted to `let` (`VolumeExport`, `MPRGenerator`); redundant `try`/`try?` removed from non-throwing `DataSet` accessor calls (`VolumeData`).
+- `DICOMWeb`: redundant `await` removed from synchronous same-isolation calls (`ConformanceStatementGenerator`, `HTTPConnectionPool`, `HTTPRequestPipeline`); unused `guard let url` binding replaced with a `URL(string:) != nil` existence test (`DICOMJSONDecoder`); unused locals dropped (`CompressionMiddleware`, `HTTPRequestPipeline`).
+- `DICOMStudio`: pure static J2K test helpers marked `nonisolated` — they already executed off the main actor at runtime (`J2KTestingViewModel`); pipe-drain captures in `CLIToolTerminalCompare` use the same documented `nonisolated(unsafe)` + happens-before pattern as the CLI bridge; cine timer callback wrapped in `MainActor.assumeIsolated` (timer is scheduled on the main run loop); slider `Binding` setters pass closures instead of non-`@Sendable` function values (`DICOMVolumeViewerView`, `JP3DComparisonView`, `JP3DVolumeComparisonView`); unused locals removed (`CLIWorkshopViewModel`, `JP3DMPRView`).
+
+## [2.2.0] - 2026-07-04
+
+CLI parity harness, JPEG XL lossy/recompression, and round-trip regression suite.
+
 ### Changed — P2/P3 Console-Builder and Dir-Walk Dedup (2026-07-04)
 
 Follow-up to the remediation batch: every remaining hand-duplicated console block and directory
@@ -212,6 +238,12 @@ Seven new test files added to the `DICOMKitTests` target (`Package.swift` source
 - **Run-identity guard** (`streamGeneration` / `portScanGeneration`): Each run captures a generation counter; `onChunk` closures and completion assignments check `self.streamGeneration == gen` and discard stale deliveries from cancelled or superseded runs.
 - **SIGKILL escalation**: Both the wall-clock watchdog and `ProcessKillBox.cancel()` send SIGTERM then escalate to SIGKILL after a 3-second grace period, preventing hung processes from blocking the UI indefinitely.
 - **Watchdog liveness guard**: The watchdog `DispatchWorkItem` checks `proc.isRunning` before acting, preventing a process that exits naturally at the deadline from being mislabelled as timed out.
+
+## [2.1.0] - 2026-05-21
+
+DICOMStudio: J2K Test Bench, responsive layout, and imaging-first navigation.
+
+## [2.0.0] - 2026-05-21
 
 ### Added — J2KSwift v3.2.0 Integration (Phases 1–9)
 

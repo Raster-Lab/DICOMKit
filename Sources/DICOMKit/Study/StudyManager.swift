@@ -163,11 +163,11 @@ public enum StudyScanner {
         guard let studyUID = ds.string(for: Tag.studyInstanceUID) else { return nil }
         let seriesUID = ds.string(for: Tag.seriesInstanceUID) ?? "UNKNOWN"
         let sopUID = ds.string(for: Tag.sopInstanceUID) ?? "UNKNOWN"
-        let size = (try? FileManager.default.attributesOfItem(atPath: filePath)[.size] as? Int64) ?? 0
+        let size = ((try? FileManager.default.attributesOfItem(atPath: filePath))?[.size] as? Int64) ?? 0
         let inst = InstanceMetadata(
             sopInstanceUID: sopUID,
             instanceNumber: ds.string(for: Tag.instanceNumber),
-            filePath: filePath, fileSize: size ?? 0)
+            filePath: filePath, fileSize: size)
         let series = SeriesMetadata(
             seriesInstanceUID: seriesUID,
             seriesNumber: ds.string(for: Tag.seriesNumber),

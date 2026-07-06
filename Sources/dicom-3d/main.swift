@@ -891,21 +891,15 @@ struct InspectCommand: ParsableCommand {
 
 private func waitForTask<T>(_ task: Task<T, Error>) throws -> T {
     let sema = DispatchSemaphore(value: 0)
-    var result: Result<T, Error>?
+    // The semaphore's signal->wait is a happens-before edge, so this manually
+    // synchronized capture is visible after sema.wait().
+    nonisolated(unsafe) var result: Result<T, Error>?
     Task {
-        do {
-            let value = try await task.value
-            result = .success(value)
-        } catch {
-            result = .failure(error)
-        }
+        result = await task.result
         sema.signal()
     }
     sema.wait()
-    switch result! {
-    case .success(let value): return value
-    case .failure(let error): throw error
-    }
+    return try result!.get()
 }
 
 // MARK: - Input resolution

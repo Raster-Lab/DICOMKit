@@ -334,7 +334,7 @@ struct MappingEngine {
             tag = tagByName(field)
         }
         
-        guard let dicomTag = tag else {
+        guard tag != nil else {
             throw GatewayError.invalidConfiguration("Unknown DICOM tag: \(field)")
         }
         

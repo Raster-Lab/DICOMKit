@@ -236,7 +236,7 @@ actor HTTPRequestPipeline {
             )
             
             Task {
-                await self.addToPipeline(pipelinedRequest, for: host)
+                self.addToPipeline(pipelinedRequest, for: host)
             }
         }
     }
@@ -306,13 +306,13 @@ actor HTTPRequestPipeline {
                 // Return responses in request order
                 for request in hostQueue {
                     if let result = responses[request.id] {
-                        await completeRequest(request.id, result: result)
+                        completeRequest(request.id, result: result)
                     }
                 }
             } else {
                 // Return responses as they arrive (already done above)
                 for (id, result) in responses {
-                    await completeRequest(id, result: result)
+                    completeRequest(id, result: result)
                 }
             }
         }
@@ -345,7 +345,7 @@ actor HTTPRequestPipeline {
             
             // Flush all non-empty pipelines
             let hosts = Array(pendingRequests.keys)
-            for host in hosts {
+            for _ in hosts {
                 // Note: We can't capture executor here, so this will be handled differently
                 // For now, we'll just track that we should flush
             }

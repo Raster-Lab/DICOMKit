@@ -56,7 +56,6 @@ class DICOMToHL7Converter {
         
         // PV1 - Patient Visit
         let accessionNumber = extractString(from: dicomFile, tag: .accessionNumber) ?? ""
-        let studyDescription = extractString(from: dicomFile, tag: .studyDescription) ?? ""
         
         _  = builder.addSegment(id: "PV1", fields: [
             "",  // Set ID

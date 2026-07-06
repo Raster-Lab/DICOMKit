@@ -348,7 +348,7 @@ private struct JP3DPlanePanel: View {
                     // location is in view coordinates; approximate mapping via ratio
                     // This is a simplified mapping; production code would use GeometryReader
                     guard let dims = viewModel.dimensions else { return }
-                    let (sw, sh) = MPRHelpers.sliceDimensions(plane: plane, dimensions: dims)
+                    _ = MPRHelpers.sliceDimensions(plane: plane, dimensions: dims)
                     // We don't have the view size here without GeometryReader; use a fixed estimate
                     // In the full integration, wrap in GeometryReader for precise mapping
                     let vx = Int(location.x)

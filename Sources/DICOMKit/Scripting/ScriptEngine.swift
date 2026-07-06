@@ -32,27 +32,27 @@ public enum ScriptError: Error, LocalizedError {
 
 // MARK: - Script Models
 
-public enum ScriptCommand {
+public enum ScriptCommand: Sendable {
     case toolCommand(ToolCommand)
     case conditional(ConditionalCommand)
     case pipeline(PipelineCommand)
     case setVariable(String, String)
 }
 
-public struct ToolCommand {
+public struct ToolCommand: Sendable {
     public let tool: String
     public let arguments: [String]
     public let inputVariable: String?
     public let outputVariable: String?
 }
 
-public struct ConditionalCommand {
+public struct ConditionalCommand: Sendable {
     public let condition: String
     public let thenCommands: [ScriptCommand]
     public let elseCommands: [ScriptCommand]?
 }
 
-public struct PipelineCommand {
+public struct PipelineCommand: Sendable {
     public let commands: [ToolCommand]
 }
 
@@ -293,18 +293,48 @@ public struct ScriptExecutor {
         // The injected CommandRunner must be safe to call from multiple threads
         // (the CLI's Process-based runner is; each invocation is independent).
         if context.parallel && !context.dryRun && command.commands.count > 1 {
-            let snapshot = context
-            var results = [(lines: [String], error: Error?)](
-                repeating: ([], nil), count: command.commands.count)
-            let lock = NSLock()
-            DispatchQueue.concurrentPerform(iterations: command.commands.count) { index in
-                let toolCmd = command.commands[index]
-                let expandedArgs = toolCmd.arguments.map { expandVariables($0, context: snapshot) }
+            final class CommandRunnerBox: @unchecked Sendable {
+                let run: CommandRunner
+
+                init(_ run: @escaping CommandRunner) {
+                    self.run = run
+                }
+            }
+
+            final class PipelineResultsBox: @unchecked Sendable {
+                private var entries: [(lines: [String], error: Error?)]
+                private let lock = NSLock()
+
+                init(count: Int) {
+                    entries = Array(repeating: ([], nil), count: count)
+                }
+
+                func set(index: Int, lines: [String], error: Error?) {
+                    lock.lock()
+                    entries[index] = (lines, error)
+                    lock.unlock()
+                }
+
+                var snapshot: [(lines: [String], error: Error?)] {
+                    lock.lock()
+                    defer { lock.unlock() }
+                    return entries
+                }
+            }
+
+            let commands = command.commands
+            let snapshotVariables = context.variables
+            let runnerBox = CommandRunnerBox(self.runCommand)
+            let resultsBox = PipelineResultsBox(count: commands.count)
+
+            DispatchQueue.concurrentPerform(iterations: commands.count) { index in
+                let toolCmd = commands[index]
+                let expandedArgs = toolCmd.arguments.map { Self.expandVariables($0, variables: snapshotVariables) }
                 let fullCommand = ([toolCmd.tool] + expandedArgs).joined(separator: " ")
                 var lines = ["Executing: \(fullCommand)"]
                 var failure: Error? = nil
                 do {
-                    let result = try runCommand(toolCmd.tool, expandedArgs)
+                    let result = try runnerBox.run(toolCmd.tool, expandedArgs)
                     if !result.output.isEmpty { lines.append("Output: \(result.output)") }
                     if result.exitCode != 0 {
                         failure = ScriptError.executionError(
@@ -313,10 +343,9 @@ public struct ScriptExecutor {
                 } catch {
                     failure = error
                 }
-                lock.lock()
-                results[index] = (lines, failure)
-                lock.unlock()
+                resultsBox.set(index: index, lines: lines, error: failure)
             }
+            let results = resultsBox.snapshot
             for entry in results {
                 for line in entry.lines { context.logger.log(line) }
             }
@@ -367,8 +396,12 @@ public struct ScriptExecutor {
     }
 
     private func expandVariables(_ string: String, context: ScriptContext) -> String {
+        Self.expandVariables(string, variables: context.variables)
+    }
+
+    private static func expandVariables(_ string: String, variables: [String: String]) -> String {
         var result = string
-        for (key, value) in context.variables {
+        for (key, value) in variables {
             result = result.replacingOccurrences(of: "${\(key)}", with: value)
             result = result.replacingOccurrences(of: "$\(key)", with: value)
         }
