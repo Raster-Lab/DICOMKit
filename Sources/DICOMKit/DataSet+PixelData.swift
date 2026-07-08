@@ -167,8 +167,10 @@ extension DataSet {
               !element.valueData.isEmpty else {
             return nil
         }
-        
-        return PixelData(data: element.valueData, descriptor: descriptor)
+
+        let bytes = Self.nativePixelBytesLittleEndian(
+            element.valueData, byteOrder: element.byteOrder, bitsAllocated: descriptor.bitsAllocated)
+        return PixelData(data: bytes, descriptor: descriptor)
     }
     
     /// Extracts uncompressed pixel data from the data set, throwing detailed errors on failure
@@ -192,12 +194,36 @@ extension DataSet {
         guard !element.valueData.isEmpty else {
             throw PixelDataError.missingPixelData
         }
-        
-        return PixelData(data: element.valueData, descriptor: descriptor)
+
+        let bytes = Self.nativePixelBytesLittleEndian(
+            element.valueData, byteOrder: element.byteOrder, bitsAllocated: descriptor.bitsAllocated)
+        return PixelData(data: bytes, descriptor: descriptor)
     }
     
+    // MARK: - Native Pixel Byte Order
+
+    /// Normalizes native (uncompressed) pixel bytes to LITTLE ENDIAN.
+    ///
+    /// Uncompressed pixel samples are stored in the data set's byte order, so a data set that
+    /// uses the retired **Explicit VR Big Endian** transfer syntax (1.2.840.10008.1.2.2) has
+    /// big-endian 16-bit samples. Consumers (this library's renderer and downstream callers)
+    /// assume little endian, so a big-endian frame would otherwise read byte-swapped (noise).
+    /// This swaps each 16-bit sample so callers always see one convention. 8-bit samples are
+    /// byte-order independent and 32-bit float pixels (rare) fall through unchanged here — only
+    /// the common 16-bit case is normalized. Reference: PS3.5 §7.1.2, PS3.3 C.7.6.3.1.2.
+    static func nativePixelBytesLittleEndian(_ data: Data, byteOrder: ByteOrder, bitsAllocated: Int) -> Data {
+        guard byteOrder == .bigEndian, bitsAllocated == 16 else { return data }
+        var bytes = [UInt8](data)
+        var i = 0
+        while i + 1 < bytes.count {
+            bytes.swapAt(i, i + 1)
+            i += 2
+        }
+        return Data(bytes)
+    }
+
     // MARK: - Encapsulated Pixel Data Extraction
-    
+
     /// Extracts encapsulated (compressed) pixel data from the data set
     ///
     /// Returns the encapsulated pixel data including offset table and fragments.

@@ -21,7 +21,17 @@ public struct DataElement: Sendable {
     
     /// Raw value data
     public let valueData: Data
-    
+
+    /// Byte order the raw `valueData` is encoded in, used by the numeric value accessors.
+    ///
+    /// Almost always `.littleEndian`. It is `.bigEndian` only for elements parsed from a
+    /// dataset that uses the retired **Explicit VR Big Endian** transfer syntax
+    /// (1.2.840.10008.1.2.2), so multi-byte numeric values (US/UL/SS/SL/FL/FD, …) decode in
+    /// the correct order rather than silently byte-swapping. Defaults to `.littleEndian` for
+    /// source compatibility with all existing constructors.
+    /// Reference: PS3.5 §7.1.1 / §7.1.2.
+    public let byteOrder: ByteOrder
+
     /// Sequence items for SQ (Sequence) VR elements
     ///
     /// Contains the parsed sequence items when this element has VR of SQ.
@@ -53,11 +63,12 @@ public struct DataElement: Sendable {
     ///   - vr: Value Representation
     ///   - length: Value length (use 0xFFFFFFFF for undefined length)
     ///   - valueData: Raw value data
-    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data) {
+    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data, byteOrder: ByteOrder = .littleEndian) {
         self.tag = tag
         self.vr = vr
         self.length = length
         self.valueData = valueData
+        self.byteOrder = byteOrder
         self.sequenceItems = nil
         self.encapsulatedFragments = nil
         self.encapsulatedOffsetTable = nil
@@ -70,11 +81,12 @@ public struct DataElement: Sendable {
     ///   - length: Value length (use 0xFFFFFFFF for undefined length)
     ///   - valueData: Raw value data
     ///   - sequenceItems: Parsed sequence items
-    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data, sequenceItems: [SequenceItem]) {
+    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data, sequenceItems: [SequenceItem], byteOrder: ByteOrder = .littleEndian) {
         self.tag = tag
         self.vr = vr
         self.length = length
         self.valueData = valueData
+        self.byteOrder = byteOrder
         self.sequenceItems = sequenceItems
         self.encapsulatedFragments = nil
         self.encapsulatedOffsetTable = nil
@@ -88,11 +100,12 @@ public struct DataElement: Sendable {
     ///   - valueData: Raw value data (typically empty for encapsulated)
     ///   - encapsulatedFragments: Compressed pixel data fragments
     ///   - encapsulatedOffsetTable: Basic offset table
-    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data, encapsulatedFragments: [Data], encapsulatedOffsetTable: [UInt32]) {
+    public init(tag: Tag, vr: VR, length: UInt32, valueData: Data, encapsulatedFragments: [Data], encapsulatedOffsetTable: [UInt32], byteOrder: ByteOrder = .littleEndian) {
         self.tag = tag
         self.vr = vr
         self.length = length
         self.valueData = valueData
+        self.byteOrder = byteOrder
         self.sequenceItems = nil
         self.encapsulatedFragments = encapsulatedFragments
         self.encapsulatedOffsetTable = encapsulatedOffsetTable
@@ -188,6 +201,31 @@ public struct DataElement: Sendable {
     /// pixel descriptor attributes with different VRs than strictly specified.
     /// Some DICOM implementations incorrectly encode US attributes as OB or IS.
     /// Reference: PS3.5 Section 6.2
+    // MARK: - Byte-order-aware numeric readers
+    //
+    // Decode multi-byte numeric values honoring `byteOrder`, so an element parsed from an
+    // Explicit VR Big Endian dataset (1.2.840.10008.1.2.2) yields correct values instead of
+    // byte-swapped ones. Little-endian is the default/fast path.
+
+    private func readUInt16(at offset: Int) -> UInt16? {
+        byteOrder == .bigEndian ? valueData.readUInt16BE(at: offset) : valueData.readUInt16LE(at: offset)
+    }
+    private func readUInt32(at offset: Int) -> UInt32? {
+        byteOrder == .bigEndian ? valueData.readUInt32BE(at: offset) : valueData.readUInt32LE(at: offset)
+    }
+    private func readInt16(at offset: Int) -> Int16? {
+        byteOrder == .bigEndian ? valueData.readInt16BE(at: offset) : valueData.readInt16LE(at: offset)
+    }
+    private func readInt32(at offset: Int) -> Int32? {
+        byteOrder == .bigEndian ? valueData.readInt32BE(at: offset) : valueData.readInt32LE(at: offset)
+    }
+    private func readFloat32(at offset: Int) -> Float32? {
+        byteOrder == .bigEndian ? valueData.readFloat32BE(at: offset) : valueData.readFloat32LE(at: offset)
+    }
+    private func readFloat64(at offset: Int) -> Float64? {
+        byteOrder == .bigEndian ? valueData.readFloat64BE(at: offset) : valueData.readFloat64LE(at: offset)
+    }
+
     public var uint16Value: UInt16? {
         // Accept VRs that can contain 16-bit integer data
         switch vr {
@@ -195,13 +233,13 @@ public struct DataElement: Sendable {
             guard valueData.count >= 2 else {
                 return nil
             }
-            return valueData.readUInt16LE(at: 0)
+            return readUInt16(at: 0)
         case .OB:
             // Support OB with exactly 2 bytes as some DICOM files incorrectly use OB for US values
             guard valueData.count == 2 else {
                 return nil
             }
-            return valueData.readUInt16LE(at: 0)
+            return readUInt16(at: 0)
         case .IS:
             // Support IS (Integer String) for non-compliant DICOM files that encode
             // pixel attributes like Rows, Columns, Bits Allocated, etc. as IS instead of US
@@ -231,7 +269,7 @@ public struct DataElement: Sendable {
             guard valueData.count >= 4 else {
                 return nil
             }
-            return valueData.readUInt32LE(at: 0)
+            return readUInt32(at: 0)
         default:
             return nil
         }
@@ -242,7 +280,7 @@ public struct DataElement: Sendable {
         guard vr == .SS && valueData.count >= 2 else {
             return nil
         }
-        return valueData.readInt16LE(at: 0)
+        return readInt16(at: 0)
     }
     
     /// Extracts the value as a 32-bit signed integer (for SL VR)
@@ -250,7 +288,7 @@ public struct DataElement: Sendable {
         guard vr == .SL && valueData.count >= 4 else {
             return nil
         }
-        return valueData.readInt32LE(at: 0)
+        return readInt32(at: 0)
     }
     
     /// Extracts the value as a 32-bit floating point (for FL VR)
@@ -258,7 +296,7 @@ public struct DataElement: Sendable {
         guard vr == .FL && valueData.count >= 4 else {
             return nil
         }
-        return valueData.readFloat32LE(at: 0)
+        return readFloat32(at: 0)
     }
     
     /// Extracts the value as a 64-bit floating point (for FD VR)
@@ -266,7 +304,7 @@ public struct DataElement: Sendable {
         guard vr == .FD && valueData.count >= 8 else {
             return nil
         }
-        return valueData.readFloat64LE(at: 0)
+        return readFloat64(at: 0)
     }
     
     /// Extracts multiple 16-bit unsigned integer values
@@ -301,7 +339,7 @@ public struct DataElement: Sendable {
         
         var values: [UInt16] = []
         for i in 0..<count {
-            if let value = valueData.readUInt16LE(at: i * 2) {
+            if let value = readUInt16(at: i * 2) {
                 values.append(value)
             }
         }
@@ -334,7 +372,7 @@ public struct DataElement: Sendable {
         
         var values: [UInt32] = []
         for i in 0..<count {
-            if let value = valueData.readUInt32LE(at: i * 4) {
+            if let value = readUInt32(at: i * 4) {
                 values.append(value)
             }
         }
@@ -355,7 +393,7 @@ public struct DataElement: Sendable {
         
         var values: [Int16] = []
         for i in 0..<count {
-            if let value = valueData.readInt16LE(at: i * 2) {
+            if let value = readInt16(at: i * 2) {
                 values.append(value)
             }
         }
@@ -376,7 +414,7 @@ public struct DataElement: Sendable {
         
         var values: [Int32] = []
         for i in 0..<count {
-            if let value = valueData.readInt32LE(at: i * 4) {
+            if let value = readInt32(at: i * 4) {
                 values.append(value)
             }
         }
@@ -397,7 +435,7 @@ public struct DataElement: Sendable {
         
         var values: [Float32] = []
         for i in 0..<count {
-            if let value = valueData.readFloat32LE(at: i * 4) {
+            if let value = readFloat32(at: i * 4) {
                 values.append(value)
             }
         }
@@ -418,7 +456,7 @@ public struct DataElement: Sendable {
         
         var values: [Float64] = []
         for i in 0..<count {
-            if let value = valueData.readFloat64LE(at: i * 8) {
+            if let value = readFloat64(at: i * 8) {
                 values.append(value)
             }
         }

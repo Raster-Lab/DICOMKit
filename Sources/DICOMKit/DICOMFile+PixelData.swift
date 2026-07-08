@@ -126,9 +126,14 @@ extension DICOMFile {
             throw PixelDataError.missingPixelData
         }
         
-        // Try to get uncompressed pixel data directly
+        // Try to get uncompressed pixel data directly. Native samples are stored in the data
+        // set's byte order; normalize 16-bit big-endian samples to little endian so the
+        // descriptor and pixels agree (Explicit VR Big Endian, retired — PS3.5 §7.1.2).
         if !pixelDataElement.valueData.isEmpty {
-            return PixelData(data: pixelDataElement.valueData, descriptor: descriptor)
+            let bytes = DataSet.nativePixelBytesLittleEndian(
+                pixelDataElement.valueData, byteOrder: pixelDataElement.byteOrder,
+                bitsAllocated: descriptor.bitsAllocated)
+            return PixelData(data: bytes, descriptor: descriptor)
         }
         
         // Check if we have encapsulated (compressed) pixel data

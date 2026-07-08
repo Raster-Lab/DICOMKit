@@ -245,7 +245,7 @@ struct DICOMParser {
                 vr = .OB
                 offset -= 2 // backtrack
                 valueLength = 0xFFFFFFFF
-                return DataElement(tag: tag, vr: vr, length: valueLength, valueData: Data())
+                return DataElement(tag: tag, vr: vr, length: valueLength, valueData: Data(), byteOrder: byteOrder)
             }
             vr = parsedVR
             
@@ -274,7 +274,7 @@ struct DICOMParser {
             }
             let valueData = data.subdata(in: offset..<offset + Int(valueLength))
             offset += Int(valueLength)
-            return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData)
+            return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData, byteOrder: byteOrder)
         }
         
         // Parse the Basic Offset Table (first item)
@@ -347,7 +347,8 @@ struct DICOMParser {
             length: valueLength,
             valueData: Data(),
             encapsulatedFragments: fragments,
-            encapsulatedOffsetTable: offsetTable
+            encapsulatedOffsetTable: offsetTable,
+            byteOrder: byteOrder
         )
     }
     
@@ -395,7 +396,7 @@ struct DICOMParser {
                 vr = .OB
                 offset -= 2 // backtrack
                 valueLength = 0
-                return DataElement(tag: tag, vr: vr, length: 0, valueData: Data())
+                return DataElement(tag: tag, vr: vr, length: 0, valueData: Data(), byteOrder: byteOrder)
             }
             vr = parsedVR
             
@@ -447,7 +448,7 @@ struct DICOMParser {
         }
         
         // Return element with metadata but no value data
-        return DataElement(tag: tag, vr: vr, length: valueLength, valueData: Data())
+        return DataElement(tag: tag, vr: vr, length: valueLength, valueData: Data(), byteOrder: byteOrder)
     }
     
     /// Reads an Item or Delimiter tag
@@ -621,7 +622,7 @@ struct DICOMParser {
         let valueData = data.subdata(in: offset..<offset + Int(valueLength))
         offset += Int(valueLength)
         
-        return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData)
+        return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData, byteOrder: byteOrder)
     }
     
     /// Parses a single data element with Explicit VR encoding
@@ -705,7 +706,7 @@ struct DICOMParser {
         let valueData = data.subdata(in: offset..<offset + Int(valueLength))
         offset += Int(valueLength)
         
-        return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData)
+        return DataElement(tag: tag, vr: vr, length: valueLength, valueData: valueData, byteOrder: byteOrder)
     }
     
     // MARK: - Sequence Parsing
@@ -738,7 +739,8 @@ struct DICOMParser {
             vr: vr,
             length: valueLength,
             valueData: valueData,
-            sequenceItems: sequenceItems
+            sequenceItems: sequenceItems,
+            byteOrder: byteOrder
         )
     }
     
