@@ -79,7 +79,42 @@ public struct UIDDictionary {
             keyword: "JPEG2000",
             type: .transferSyntax
         )
-        
+
+        dict["1.2.840.10008.1.2.4.92"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.92",
+            name: "JPEG 2000 Part 2 Multi-component Image Compression (Lossless Only)",
+            keyword: "JPEG2000Part2MultiComponentLossless",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.93"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.93",
+            name: "JPEG 2000 Part 2 Multi-component Image Compression",
+            keyword: "JPEG2000Part2MultiComponent",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.201"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.201",
+            name: "High-Throughput JPEG 2000 Image Compression (Lossless Only)",
+            keyword: "HTJ2KLossless",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.202"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.202",
+            name: "High-Throughput JPEG 2000 with RPCL Options Image Compression (Lossless Only)",
+            keyword: "HTJ2KLosslessRPCL",
+            type: .transferSyntax
+        )
+
+        dict["1.2.840.10008.1.2.4.203"] = UIDEntry(
+            uid: "1.2.840.10008.1.2.4.203",
+            name: "High-Throughput JPEG 2000 Image Compression",
+            keyword: "HTJ2K",
+            type: .transferSyntax
+        )
+
         // Transfer Syntax UIDs - RLE
         dict["1.2.840.10008.1.2.5"] = UIDEntry(
             uid: "1.2.840.10008.1.2.5",

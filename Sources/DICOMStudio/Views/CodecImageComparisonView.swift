@@ -18,8 +18,9 @@ public struct CodecImageComparisonView: View {
     @Bindable var viewModel: J2KTestingViewModel
     @Environment(\.dismiss) private var dismiss
 
-    /// The transfer-syntax UID whose images are currently being shown.
-    @State private var selectedUID: String = ""
+    /// The round-trip entry id (`SelectableEncoding.id`) whose images are currently
+    /// being shown. Keyed on id, not the bare UID, so the two `.91` rows stay distinct.
+    @State private var selectedID: String = ""
 
     // Shared zoom / pan state (affects all panels simultaneously)
     @State private var zoom: CGFloat = 1.0
@@ -33,11 +34,11 @@ public struct CodecImageComparisonView: View {
 
     // MARK: - Derived
 
-    private var encodedImage: CGImage? { viewModel.encodedImages[selectedUID] }
-    private var decodedImage: CGImage? { viewModel.decodedImages[selectedUID] }
+    private var encodedImage: CGImage? { viewModel.encodedImages[selectedID] }
+    private var decodedImage: CGImage? { viewModel.decodedImages[selectedID] }
 
     private var selectedEntry: J2KRoundTripEntry? {
-        viewModel.roundTripResults.first(where: { $0.uid == selectedUID })
+        viewModel.roundTripResults.first(where: { $0.id == selectedID })
     }
 
     private var passedStatus: Bool? {
@@ -121,11 +122,11 @@ public struct CodecImageComparisonView: View {
 
     @ViewBuilder
     private func codecTab(entry: J2KRoundTripEntry) -> some View {
-        let isSelected = entry.uid == selectedUID
+        let isSelected = entry.id == selectedID
         let isRunning: Bool = { if case .running = entry.state { return true }; return false }()
 
         Button {
-            selectedUID = entry.uid
+            selectedID = entry.id
         } label: {
             HStack(spacing: 5) {
                 if isRunning {
@@ -311,8 +312,8 @@ public struct CodecImageComparisonView: View {
 
     private func selectInitialUID() {
         guard !viewModel.roundTripResults.isEmpty else { return }
-        if !viewModel.roundTripResults.contains(where: { $0.uid == selectedUID }) {
-            selectedUID = viewModel.roundTripResults[0].uid
+        if !viewModel.roundTripResults.contains(where: { $0.id == selectedID }) {
+            selectedID = viewModel.roundTripResults[0].id
         }
     }
 

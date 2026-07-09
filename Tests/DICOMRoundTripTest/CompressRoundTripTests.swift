@@ -83,14 +83,28 @@ final class CompressRoundTripTests: XCTestCase {
         let inputData = try source.write()
 
         let manager = CompressionManager()
+        // Symmetric naming: `jpeg2000-lossless` now encodes reversibly INTO the general
+        // .91 UID; `jpeg2000-lossless-only` targets the reversible-only .90 UID. Both are
+        // bit-exact — assert each below.
         let compressed = try manager.compressData(inputData, codec: "jpeg2000-lossless", quality: nil)
-        XCTAssertEqual(try transferSyntaxUID(of: compressed), j2kLossless)
+        XCTAssertEqual(try transferSyntaxUID(of: compressed), j2kLossy)   // .91 general, reversible
+        let compressedOnly = try manager.compressData(inputData, codec: "jpeg2000-lossless-only", quality: nil)
+        XCTAssertEqual(try transferSyntaxUID(of: compressedOnly), j2kLossless) // .90 reversible-only
 
         let decompressed = try manager.decompressData(
             compressed, syntax: try XCTUnwrap(TransferSyntax.from(uid: explicitLE)))
         let restored = pixelBytes(try DICOMFile.read(from: decompressed))
-        // Lossless oracle: bit-exact pixel identity.
+        // Lossless oracle: bit-exact pixel identity for the reversibly-encoded general .91.
         XCTAssertEqual(restored, original)
+
+        // The reversible-only .90 path is bit-exact too.
+        let decompressedOnly = try manager.decompressData(
+            compressedOnly, syntax: try XCTUnwrap(TransferSyntax.from(uid: explicitLE)))
+        XCTAssertEqual(pixelBytes(try DICOMFile.read(from: decompressedOnly)), original)
+
+        // A reversible encode must NOT stamp the lossy-compression attributes.
+        let f91 = try DICOMFile.read(from: compressed)
+        XCTAssertNil(f91.dataSet.string(for: .lossyImageCompression))
     }
 
     // MARK: - Oracle: lossless compress→decompress is bit-exact (RLE)

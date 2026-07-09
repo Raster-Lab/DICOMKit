@@ -72,7 +72,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
       "studioParams" : {
         "inputPath" : "FIXTURE"
       },
@@ -92,7 +92,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "{\n  \"files\" : [\n    {\n      \"errorCount\" : 0,\n      \"errors\" : [\n\n      ],\n      \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct.dcm\",\n      \"isValid\" : true,\n      \"warningCount\" : 1,\n      \"warnings\" : [\n        {\n          \"message\" : \"Unexpected VR OW for tag (7FE0,0010) (expected: OB)\",\n          \"tag\" : \"(7FE0,0010)\"\n        }\n      ]\n    }\n  ],\n  \"invalidFiles\" : 0,\n  \"totalErrors\" : 0,\n  \"totalFiles\" : 1,\n  \"totalWarnings\" : 1,\n  \"validFiles\" : 1\n}",
+      "stdout" : "{\n  \"files\" : [\n    {\n      \"errorCount\" : 0,\n      \"errors\" : [\n\n      ],\n      \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit_V2.2.0\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct.dcm\",\n      \"isValid\" : true,\n      \"warningCount\" : 1,\n      \"warnings\" : [\n        {\n          \"message\" : \"Unexpected VR OW for tag (7FE0,0010) (expected: OB)\",\n          \"tag\" : \"(7FE0,0010)\"\n        }\n      ]\n    }\n  ],\n  \"invalidFiles\" : 0,\n  \"totalErrors\" : 0,\n  \"totalFiles\" : 1,\n  \"totalWarnings\" : 1,\n  \"validFiles\" : 1\n}",
       "studioParams" : {
         "format" : "json",
         "inputPath" : "FIXTURE"
@@ -112,7 +112,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
       "studioParams" : {
         "detailed" : "true",
         "inputPath" : "FIXTURE"
@@ -328,7 +328,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (2):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n  • Specific Character Set not specified (ISO_IR 100 or UTF-8 recommended) [(0008,0005)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (2):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n  • Specific Character Set not specified (ISO_IR 100 or UTF-8 recommended) [(0008,0005)]\n\n",
       "studioParams" : {
         "inputPath" : "FIXTURE",
         "level" : "5"
@@ -348,7 +348,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
       "studioParams" : {
         "inputPath" : "FIXTURE",
         "strict" : "true"
@@ -368,7 +368,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "File: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nTransfer Syntax: Explicit VR Little Endian\nTransfer Syntax UID: 1.2.840.10008.1.2.1\nCompressed: No\nLossless: Yes\nCodec: None (uncompressed)\nPixel Data Size: 128 B\nImage Dimensions: 8 x 8\nBits Allocated: 16\nBits Stored: 12\nSamples Per Pixel: 1\nPhotometric Interpretation: MONOCHROME2\n",
+      "stdout" : "File: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nTransfer Syntax: Explicit VR Little Endian\nTransfer Syntax UID: 1.2.840.10008.1.2.1\nCompressed: No\nLossless: Yes\nCodec: None (uncompressed)\nPixel Data Size: 128 B\nImage Dimensions: 8 x 8\nBits Allocated: 16\nBits Stored: 12\nSamples Per Pixel: 1\nPhotometric Interpretation: MONOCHROME2\n",
       "studioParams" : {
         "input" : "FIXTURE",
         "operation" : "info"
@@ -389,7 +389,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "{\n  \"bitsAllocated\" : 16,\n  \"bitsStored\" : 12,\n  \"codec\" : \"None\",\n  \"columns\" : 8,\n  \"compressed\" : false,\n  \"file\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct.dcm\",\n  \"lossless\" : true,\n  \"photometricInterpretation\" : \"MONOCHROME2\",\n  \"pixelDataSize\" : 128,\n  \"rows\" : 8,\n  \"samplesPerPixel\" : 1,\n  \"transferSyntax\" : \"Explicit VR Little Endian\",\n  \"transferSyntaxUID\" : \"1.2.840.10008.1.2.1\"\n}",
+      "stdout" : "{\n  \"bitsAllocated\" : 16,\n  \"bitsStored\" : 12,\n  \"codec\" : \"None\",\n  \"columns\" : 8,\n  \"compressed\" : false,\n  \"file\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit_V2.2.0\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct.dcm\",\n  \"lossless\" : true,\n  \"photometricInterpretation\" : \"MONOCHROME2\",\n  \"pixelDataSize\" : 128,\n  \"rows\" : 8,\n  \"samplesPerPixel\" : 1,\n  \"transferSyntax\" : \"Explicit VR Little Endian\",\n  \"transferSyntaxUID\" : \"1.2.840.10008.1.2.1\"\n}",
       "studioParams" : {
         "input" : "FIXTURE",
         "json" : "true",
@@ -415,7 +415,7 @@
       "label" : "syn-ct.dcm · compress-rle",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 104.3%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 104.3%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "rle",
@@ -443,7 +443,7 @@
       "label" : "syn-ct-rle.dcm · decompress-rle",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nDecompression ratio: 96.5%\nDecompression time:  <dur>\n",
+      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nDecompression ratio: 96.5%\nDecompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "input" : "FIXTURE",
@@ -667,7 +667,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "1.2.840.10008.1.2  Implicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.1  Explicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.1.99  Deflated Explicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.2  Explicit VR Big Endian  (Transfer Syntax)\n1.2.840.10008.1.2.4.100  MPEG2 Main Profile \/ Main Level  (Transfer Syntax)\n1.2.840.10008.1.2.4.101  MPEG2 Main Profile \/ High Level  (Transfer Syntax)\n1.2.840.10008.1.2.4.102  MPEG-4 AVC\/H.264 High Profile \/ Level 4.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.103  MPEG-4 AVC\/H.264 BD-compatible High Profile \/ Level 4.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.107  HEVC\/H.265 Main Profile \/ Level 5.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.108  HEVC\/H.265 Main 10 Profile \/ Level 5.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.50  JPEG Baseline (Process 1)  (Transfer Syntax)\n1.2.840.10008.1.2.4.51  JPEG Extended (Process 2 & 4)  (Transfer Syntax)\n1.2.840.10008.1.2.4.57  JPEG Lossless, Non-Hierarchical (Process 14)  (Transfer Syntax)\n1.2.840.10008.1.2.4.70  JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process 14, Selection Value 1)  (Transfer Syntax)\n1.2.840.10008.1.2.4.90  JPEG 2000 Image Compression (Lossless Only)  (Transfer Syntax)\n1.2.840.10008.1.2.4.91  JPEG 2000 Image Compression  (Transfer Syntax)\n1.2.840.10008.1.2.5  RLE Lossless  (Transfer Syntax)\n1.2.840.10008.5.1.4.1.1.1  Computed Radiography Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.128  Positron Emission Tomography Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.2  CT Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.4  MR Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.6.1  Ultrasound Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.7  Secondary Capture Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.1.1  Video Endoscopic Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.2.1  Video Microscopic Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.4.1  Video Photographic Image Storage  (SOP Class)\n\n26 UIDs found\n",
+      "stdout" : "1.2.840.10008.1.2  Implicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.1  Explicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.1.99  Deflated Explicit VR Little Endian  (Transfer Syntax)\n1.2.840.10008.1.2.2  Explicit VR Big Endian  (Transfer Syntax)\n1.2.840.10008.1.2.4.100  MPEG2 Main Profile \/ Main Level  (Transfer Syntax)\n1.2.840.10008.1.2.4.101  MPEG2 Main Profile \/ High Level  (Transfer Syntax)\n1.2.840.10008.1.2.4.102  MPEG-4 AVC\/H.264 High Profile \/ Level 4.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.103  MPEG-4 AVC\/H.264 BD-compatible High Profile \/ Level 4.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.107  HEVC\/H.265 Main Profile \/ Level 5.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.108  HEVC\/H.265 Main 10 Profile \/ Level 5.1  (Transfer Syntax)\n1.2.840.10008.1.2.4.201  High-Throughput JPEG 2000 Image Compression (Lossless Only)  (Transfer Syntax)\n1.2.840.10008.1.2.4.202  High-Throughput JPEG 2000 with RPCL Options Image Compression (Lossless Only)  (Transfer Syntax)\n1.2.840.10008.1.2.4.203  High-Throughput JPEG 2000 Image Compression  (Transfer Syntax)\n1.2.840.10008.1.2.4.50  JPEG Baseline (Process 1)  (Transfer Syntax)\n1.2.840.10008.1.2.4.51  JPEG Extended (Process 2 & 4)  (Transfer Syntax)\n1.2.840.10008.1.2.4.57  JPEG Lossless, Non-Hierarchical (Process 14)  (Transfer Syntax)\n1.2.840.10008.1.2.4.70  JPEG Lossless, Non-Hierarchical, First-Order Prediction (Process 14, Selection Value 1)  (Transfer Syntax)\n1.2.840.10008.1.2.4.90  JPEG 2000 Image Compression (Lossless Only)  (Transfer Syntax)\n1.2.840.10008.1.2.4.91  JPEG 2000 Image Compression  (Transfer Syntax)\n1.2.840.10008.1.2.4.92  JPEG 2000 Part 2 Multi-component Image Compression (Lossless Only)  (Transfer Syntax)\n1.2.840.10008.1.2.4.93  JPEG 2000 Part 2 Multi-component Image Compression  (Transfer Syntax)\n1.2.840.10008.1.2.5  RLE Lossless  (Transfer Syntax)\n1.2.840.10008.5.1.4.1.1.1  Computed Radiography Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.128  Positron Emission Tomography Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.2  CT Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.4  MR Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.6.1  Ultrasound Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.7  Secondary Capture Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.1.1  Video Endoscopic Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.2.1  Video Microscopic Image Storage  (SOP Class)\n1.2.840.10008.5.1.4.1.1.77.1.4.1  Video Photographic Image Storage  (SOP Class)\n\n31 UIDs found\n",
       "studioParams" : {
         "list-all" : "true",
         "subcommand" : "lookup"
@@ -746,7 +746,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-mf.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-mf.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
       "studioParams" : {
         "inputPath" : "FIXTURE"
       },
@@ -928,7 +928,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "[\n  {\n    \"patientID\" : \"SYN-STD-1\",\n    \"patientName\" : \"PARITY^STUDY1\",\n    \"series\" : [\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1\",\n        \"seriesNumber\" : \"1\"\n      },\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2\",\n        \"seriesNumber\" : \"2\"\n      }\n    ],\n    \"studyDate\" : \"20200101\",\n    \"studyDescription\" : \"PARITY STUDY SET 1\",\n    \"studyInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1\",\n    \"studyTime\" : \"120000\"\n  }\n]",
+      "stdout" : "[\n  {\n    \"patientID\" : \"SYN-STD-1\",\n    \"patientName\" : \"PARITY^STUDY1\",\n    \"series\" : [\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit_V2.2.0\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit_V2.2.0\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s1i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.1\",\n        \"seriesNumber\" : \"1\"\n      },\n      {\n        \"instances\" : [\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit_V2.2.0\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i1.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"1\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.1\"\n          },\n          {\n            \"filePath\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit_V2.2.0\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-studyset\\\/s2i2.dcm\",\n            \"fileSize\" : 896,\n            \"instanceNumber\" : \"2\",\n            \"sopInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2.2\"\n          }\n        ],\n        \"modality\" : \"CT\",\n        \"seriesDescription\" : \"PARITY SERIES\",\n        \"seriesInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1.2\",\n        \"seriesNumber\" : \"2\"\n      }\n    ],\n    \"studyDate\" : \"20200101\",\n    \"studyDescription\" : \"PARITY STUDY SET 1\",\n    \"studyInstanceUID\" : \"1.2.826.0.1.3680043.10.999.41.1\",\n    \"studyTime\" : \"120000\"\n  }\n]",
       "studioParams" : {
         "operation" : "summary",
         "path" : "FIXTURE",
@@ -1133,7 +1133,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
       "studioParams" : {
         "inputPath" : "FIXTURE",
         "iod" : "CTImageStorage"
@@ -1220,7 +1220,7 @@
       "label" : "syn-ct.dcm · edit-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Input: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nOutput: <tmp>\/out.dcm\nOperations: 1\nImage: 8x8, 16-bit, 1 sample(s)\nApplied mask: (0,0) 4x4, fill=0\nWritten: <tmp>\/out.dcm\nDone.\n",
+      "stderr" : "Input: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nOutput: <tmp>\/out.dcm\nOperations: 1\nImage: 8x8, 16-bit, 1 sample(s)\nApplied mask: (0,0) 4x4, fill=0\nWritten: <tmp>\/out.dcm\nDone.\n",
       "stdout" : "=== File Meta Information ===\n(0002,0000) File Meta Information Group Length       VR=UL 160\n(0002,0002) Media Storage SOP Class UID              VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0002,0003) Media Storage SOP Instance UID           VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0002,0010) Transfer Syntax UID                      VR=UI 1.2.840.10008.1.2.1\n(0002,0012) Implementation Class UID                 VR=UI 1.2.276.0.7230010.3.0.3.6.4\n(0002,0013) Implementation Version Name              VR=SH DICOMKITPARITY\n\n=== Main Data Set ===\n(0008,0016) SOP Class UID                            VR=UI 1.2.840.10008.5.1.4.1.1.2\n(0008,0018) SOP Instance UID                         VR=UI 1.2.826.0.1.3680043.10.999.1.1.1\n(0008,0020) Study Date                               VR=DA 20200101\n(0008,0030) Study Time                               VR=TM 120000\n(0008,0060) Modality                                 VR=CS CT\n(0008,0070) Manufacturer                             VR=LO DICOMKit Parity\n(0008,1030) Study Description                        VR=LO PARITY SYNTHETIC CT\n(0008,103E) Series Description                       VR=LO PARITY SERIES\n(0010,0010) Patient's Name                           VR=PN PARITY^SYNTH\n(0010,0020) Patient ID                               VR=LO SYN-0001\n(0010,0030) Patient's Birth Date                     VR=DA 19800101\n(0010,0040) Patient's Sex                            VR=CS O\n(0020,000D) Study Instance UID                       VR=UI 1.2.826.0.1.3680043.10.999.1.1\n(0020,000E) Series Instance UID                      VR=UI 1.2.826.0.1.3680043.10.999.1.2\n(0020,0011) Series Number                            VR=IS 1\n(0020,0013) Instance Number                          VR=IS 1\n(0028,0002) Samples per Pixel                        VR=US 1\n(0028,0004) Photometric Interpretation               VR=CS MONOCHROME2\n(0028,0010) Rows                                     VR=US 8\n(0028,0011) Columns                                  VR=US 8\n(0028,0100) Bits Allocated                           VR=US 16\n(0028,0101) Bits Stored                              VR=US 12\n(0028,0102) High Bit                                 VR=US 11\n(0028,0103) Pixel Representation                     VR=US 0\n(7FE0,0010) Pixel Data                               VR=OW 00 00 00 00 00 00 00 00 04 00 05 00 06 00 07 00 00 00 00 00 00 00 00 00 ... (128 bytes)\n",
       "studioParams" : {
         "fill-value" : "0",
@@ -1923,7 +1923,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-lossless",
@@ -1951,7 +1951,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-lossless-sv1",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-lossless-sv1",
@@ -1979,7 +1979,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-ls-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 96.9%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 96.9%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-ls-lossless",
@@ -2007,7 +2007,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-xl-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 99.1%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 99.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-xl-lossless",
@@ -2035,7 +2035,7 @@
       "label" : "syn-ct.dcm · compress-jpeg2000-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 103.8%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 103.8%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg2000-lossless",
@@ -2063,7 +2063,7 @@
       "label" : "syn-ct.dcm · compress-j2k-part2-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 103.8%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 103.8%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "j2k-part2-lossless",
@@ -2091,7 +2091,7 @@
       "label" : "syn-ct.dcm · compress-htj2k-lossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 110.5%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 110.5%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "htj2k-lossless",
@@ -2119,7 +2119,7 @@
       "label" : "syn-ct.dcm · compress-htj2k-rpcl",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 110.5%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 110.5%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "htj2k-rpcl",
@@ -2147,7 +2147,7 @@
       "label" : "syn-ct.dcm · compress-deflate",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 77.2%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 77.2%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "deflate",
@@ -2175,7 +2175,7 @@
       "label" : "syn-ct.dcm · compress-explicit-le",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.7%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.7%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "explicit-le",
@@ -2203,7 +2203,7 @@
       "label" : "syn-ct.dcm · compress-implicit-le",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.0%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.0%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "implicit-le",
@@ -2231,7 +2231,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 108.5%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 114.2%\nCompression time:  <dur>\n",
       "stdout" : "7a2463e2b460c13c09745e0512ace24565d38d2707474be23334f04190399767",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2259,7 +2259,7 @@
       "label" : "syn-ct8.dcm · compress-jpeg-baseline",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct8.dcm → <tmp>\/out.dcm\nCompression ratio: 116.7%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct8.dcm → <tmp>\/out.dcm\nCompression ratio: 122.7%\nCompression time:  <dur>\n",
       "stdout" : "1ed122a6fe98ab426002fa3c09b79b450a03cf67eec3fc339927fe5921fb4e22",
       "studioParams" : {
         "codec" : "jpeg-baseline",
@@ -2287,7 +2287,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-ls",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 95.1%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 100.8%\nCompression time:  <dur>\n",
       "stdout" : "a2d3ec9c80bf82e795529f56890f56f3cfa43407c8108b77920b3f2332d5e981",
       "studioParams" : {
         "codec" : "jpeg-ls",
@@ -2317,7 +2317,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended-quality-maximum",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 108.5%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 114.2%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2348,7 +2348,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended-quality-low",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 108.1%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 113.8%\nCompression time:  <dur>\n",
       "stdout" : "c10c1de6cffab18943d0707750a09d42f36d085912a92a253baa76b7be656cd9",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2378,7 +2378,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-lossless-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-lossless\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 881 B\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-lossless\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 881 B\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-lossless",
@@ -2409,7 +2409,7 @@
       "label" : "syn-ct.dcm · compress-rle-backend-scalar",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 104.3%\nCompression time:  <dur>\n",
+      "stderr" : "Compressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nCompression ratio: 104.3%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "backend" : "scalar",
@@ -2441,7 +2441,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended-quality-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-extended\nQuality: high\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 955 B\nCompression ratio: 108.5%\nCompression time:  <dur>\n",
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-extended\nQuality: high\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 1005 B\nCompression ratio: 114.2%\nCompression time:  <dur>\n",
       "stdout" : "7a2463e2b460c13c09745e0512ace24565d38d2707474be23334f04190399767",
       "studioParams" : {
         "codec" : "jpeg-extended",
@@ -2471,7 +2471,7 @@
       "label" : "syn-ct-rle.dcm · decompress-rle-implicit",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nDecompression ratio: 95.9%\nDecompression time:  <dur>\n",
+      "stderr" : "Decompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nDecompression ratio: 95.9%\nDecompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "input" : "FIXTURE",
@@ -2498,7 +2498,7 @@
       "label" : "syn-ct-rle.dcm · decompress-rle-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Decompressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTarget syntax: Explicit VR Little Endian\nDecompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nInput size:  918 B\nOutput size: 886 B\nDecompression ratio: 96.5%\nDecompression time:  <dur>\n",
+      "stderr" : "Decompressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTarget syntax: Explicit VR Little Endian\nDecompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm → <tmp>\/out.dcm\nInput size:  918 B\nOutput size: 886 B\nDecompression ratio: 96.5%\nDecompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "input" : "FIXTURE",
@@ -2581,7 +2581,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "File: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTransfer Syntax: RLE Lossless\nTransfer Syntax UID: 1.2.840.10008.1.2.5\nCompressed: Yes\nLossless: Yes\nCodec: RLE\nPixel Data Size: 132 B\nImage Dimensions: 8 x 8\nBits Allocated: 16\nBits Stored: 12\nSamples Per Pixel: 1\nPhotometric Interpretation: MONOCHROME2\n",
+      "stdout" : "File: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct-rle.dcm\nTransfer Syntax: RLE Lossless\nTransfer Syntax UID: 1.2.840.10008.1.2.5\nCompressed: Yes\nLossless: Yes\nCodec: RLE\nPixel Data Size: 132 B\nImage Dimensions: 8 x 8\nBits Allocated: 16\nBits Stored: 12\nSamples Per Pixel: 1\nPhotometric Interpretation: MONOCHROME2\n",
       "studioParams" : {
         "input" : "FIXTURE",
         "operation" : "info"
@@ -2602,7 +2602,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "{\n  \"bitsAllocated\" : 16,\n  \"bitsStored\" : 12,\n  \"codec\" : \"RLE\",\n  \"columns\" : 8,\n  \"compressed\" : true,\n  \"file\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct-rle.dcm\",\n  \"lossless\" : true,\n  \"photometricInterpretation\" : \"MONOCHROME2\",\n  \"pixelDataSize\" : 132,\n  \"rows\" : 8,\n  \"samplesPerPixel\" : 1,\n  \"transferSyntax\" : \"RLE Lossless\",\n  \"transferSyntaxUID\" : \"1.2.840.10008.1.2.5\"\n}",
+      "stdout" : "{\n  \"bitsAllocated\" : 16,\n  \"bitsStored\" : 12,\n  \"codec\" : \"RLE\",\n  \"columns\" : 8,\n  \"compressed\" : true,\n  \"file\" : \"\\\/Users\\\/raster\\\/Documents\\\/GitHub_Workspace\\\/DICOMKit_V2.2.0\\\/DICOMKit\\\/Sources\\\/DICOMStudio\\\/Resources\\\/CLIParity\\\/synthetic\\\/syn-ct-rle.dcm\",\n  \"lossless\" : true,\n  \"photometricInterpretation\" : \"MONOCHROME2\",\n  \"pixelDataSize\" : 132,\n  \"rows\" : 8,\n  \"samplesPerPixel\" : 1,\n  \"transferSyntax\" : \"RLE Lossless\",\n  \"transferSyntaxUID\" : \"1.2.840.10008.1.2.5\"\n}",
       "studioParams" : {
         "input" : "FIXTURE",
         "json" : "true",
@@ -2680,7 +2680,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "b6e7677f08a7eb329780a116d703d2685e50db032f5da0e94580c39978b21e3e",
+      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "inputPath" : "FIXTURE",
         "output" : "OUTPUT",
@@ -2907,14 +2907,14 @@
         "HTJ2KRPCLLossless"
       ],
       "deterministic" : true,
-      "exitCode" : 0,
+      "exitCode" : 64,
       "fixtureFile" : "syn-ct.dcm",
       "id" : "syn-ct__dicom-convert-ts-HTJ2KRPCLLossless",
       "label" : "syn-ct.dcm · ts-HTJ2KRPCLLossless",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "",
-      "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
+      "stderr" : "Error: Unknown transfer syntax: HTJ2KRPCLLossless.\nAvailable transfer syntaxes:\n  Uncompressed: ExplicitVRLittleEndian, ImplicitVRLittleEndian, ExplicitVRBigEndian, DEFLATE\n  JPEG:         JPEGBaseline, JPEGExtended, JPEGLossless, JPEGLosslessSV1\n  JPEG 2000:    JPEG2000Lossy, JPEG2000Lossless, JPEG2000LosslessOnly, JPEG2000Part2Lossy, JPEG2000Part2Lossless, JPEG2000Part2LosslessOnly, HTJ2KLossy, HTJ2KLossless, HTJ2KLosslessOnly, HTJ2KRPCLLosslessOnly\n  JPEG-LS:      JPEGLSLossless, JPEGLSNearLossless\n  JPEG XL:      JPEGXLLossy, JPEGXLLossless, JPEGXLLosslessOnly, JPEGXLRecompression\n  RLE:          RLELossless\nUsage: dicom-convert [<options>] <input-path> --output <output>\n  See 'dicom-convert --help' for more information.\n",
+      "stdout" : "<pixel-decode-failed>",
       "studioParams" : {
         "inputPath" : "FIXTURE",
         "output" : "OUTPUT",
@@ -3406,7 +3406,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
       "studioParams" : {
         "inputPath" : "FIXTURE",
         "recursive" : "true"
@@ -3426,7 +3426,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
+      "stdout" : "DICOM Validation Report\n=======================\n\nFile: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nStatus: ✓ VALID\n\nWarnings (1):\n  • Unexpected VR OW for tag (7FE0,0010) (expected: OB) [(7FE0,0010)]\n\n",
       "studioParams" : {
         "force" : "true",
         "inputPath" : "FIXTURE"
@@ -3469,7 +3469,7 @@
       "phiSafe" : true,
       "portable" : true,
       "stderr" : "",
-      "stdout" : "Checking study completeness: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-studyset\n✓ Study is complete\n",
+      "stdout" : "Checking study completeness: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-studyset\n✓ Study is complete\n",
       "studioParams" : {
         "operation" : "check",
         "path" : "FIXTURE",

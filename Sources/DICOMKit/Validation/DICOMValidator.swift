@@ -439,19 +439,10 @@ public struct DICOMValidator {
     
     // MARK: - JPEG 2000 Codestream Validation (Level 5)
     
-    private static let j2kTransferSyntaxUIDs: Set<String> = [
-        "1.2.840.10008.1.2.4.90",
-        "1.2.840.10008.1.2.4.91",
-        "1.2.840.10008.1.2.4.92",
-        "1.2.840.10008.1.2.4.93",
-        "1.2.840.10008.1.2.4.201",
-        "1.2.840.10008.1.2.4.202",
-        "1.2.840.10008.1.2.4.203",
-        "1.2.840.10008.1.2.4.204"
-    ]
-    
+    /// JPEG 2000 / HTJ2K membership per the shared `TransferSyntax` source of truth
+    /// (covers .90/.91/.92/.93 and HTJ2K .201/.202/.203).
     private func isJ2KTransferSyntax(_ uid: String) -> Bool {
-        DICOMValidator.j2kTransferSyntaxUIDs.contains(uid)
+        TransferSyntax.from(uid: uid)?.isJPEG2000 ?? false
     }
     
     private func validateJ2KCodestream(

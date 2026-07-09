@@ -20,8 +20,21 @@ public struct J2KSupportEntry: Sendable, Identifiable {
     public let id: String
     public let uid: String
     public let shortName: String
+    /// Intent-aware lossless flag from the shared catalog. For `both`-capable UIDs
+    /// (`.91`, `.93`, `.203`) this distinguishes the two rows that share a UID.
+    public let isLossless: Bool
     public let canDecode: Bool
     public let canEncode: Bool
+
+    public init(id: String, uid: String, shortName: String, isLossless: Bool,
+                canDecode: Bool, canEncode: Bool) {
+        self.id = id
+        self.uid = uid
+        self.shortName = shortName
+        self.isLossless = isLossless
+        self.canDecode = canDecode
+        self.canEncode = canEncode
+    }
 }
 
 /// Result of a multi-iteration decode benchmark.
@@ -60,10 +73,20 @@ public struct J2KRoundTripResult: Sendable {
 
 /// Per-codec entry in the round-trip results table.
 public struct J2KRoundTripEntry: Identifiable, Sendable {
-    public var id: String { uid }
+    /// Unique per row — the shared catalog's `SelectableEncoding.id`
+    /// ("<uid>#lossless" / "<uid>#lossy" / "<uid>"), so the two `.91`/`.93`/`.203`
+    /// rows that share a UID stay distinct in results, image maps, and pickers.
+    public let id: String
     public let uid: String
     public let shortName: String
     public var state: J2KRoundTripState
+
+    public init(id: String, uid: String, shortName: String, state: J2KRoundTripState) {
+        self.id = id
+        self.uid = uid
+        self.shortName = shortName
+        self.state = state
+    }
 }
 
 public enum J2KBenchmarkState: Sendable {
@@ -112,8 +135,11 @@ public final class J2KTestingViewModel {
 
     // MARK: - Round-Trip
 
-    /// Transfer syntax UID selected for the single-codec run.
-    public var selectedRoundTripUID: String = "1.2.840.10008.1.2.4.90"
+    /// Selectable-encoding id selected for the single-codec run. Keyed on
+    /// `SelectableEncoding.id` (not the bare UID) so the two `.91` rows
+    /// (Lossless vs Lossy) can be picked and encoded independently. For
+    /// single-capability UIDs (e.g. `.90`) the id equals the UID.
+    public var selectedRoundTripID: String = "1.2.840.10008.1.2.4.90"
 
     /// Results of the most recent round-trip run, one entry per codec tested.
     public private(set) var roundTripResults: [J2KRoundTripEntry] = []
@@ -195,18 +221,20 @@ public final class J2KTestingViewModel {
     /// Runs encode → decode for only the selected transfer syntax.
     public func runSelectedRoundTrip(file: DICOMFile) {
         guard !isRunning else { return }
-        guard let entry = supportMatrix.first(where: { $0.uid == selectedRoundTripUID }) else { return }
+        guard let entry = supportMatrix.first(where: { $0.id == selectedRoundTripID }) else { return }
+        let id = entry.id
         let uid = entry.uid
         let name = entry.shortName
-        roundTripResults = [J2KRoundTripEntry(uid: uid, shortName: name, state: .running)]
+        let isLossless = entry.isLossless
+        roundTripResults = [J2KRoundTripEntry(id: id, uid: uid, shortName: name, state: .running)]
         isRoundTripRunning = true
         Task {
-            let output = await Self.performRoundTrip(file: file, targetUID: uid, targetName: name)
-            roundTripResults = [J2KRoundTripEntry(uid: uid, shortName: name, state: output.state)]
+            let output = await Self.performRoundTrip(file: file, targetUID: uid, targetName: name, isLossless: isLossless)
+            roundTripResults = [J2KRoundTripEntry(id: id, uid: uid, shortName: name, state: output.state)]
             #if canImport(CoreGraphics)
             if rawImage == nil { rawImage = output.rawImage }
-            if let img = output.encodedImage { encodedImages[uid] = img }
-            if let img = output.decodedImage { decodedImages[uid] = img }
+            if let img = output.encodedImage { encodedImages[id] = img }
+            if let img = output.decodedImage { decodedImages[id] = img }
             #endif
             isRoundTripRunning = false
         }
@@ -217,26 +245,28 @@ public final class J2KTestingViewModel {
         guard !isRunning else { return }
         let encodable = supportMatrix.filter(\.canEncode)
         guard !encodable.isEmpty else { return }
-        roundTripResults = encodable.map { J2KRoundTripEntry(uid: $0.uid, shortName: $0.shortName, state: .running) }
+        roundTripResults = encodable.map { J2KRoundTripEntry(id: $0.id, uid: $0.uid, shortName: $0.shortName, state: .running) }
         isRoundTripRunning = true
         Task {
             await withTaskGroup(of: (String, RoundTripOutput).self) { group in
                 for entry in encodable {
+                    let id = entry.id
                     let uid = entry.uid
                     let name = entry.shortName
+                    let isLossless = entry.isLossless
                     group.addTask {
-                        let output = await Self.performRoundTrip(file: file, targetUID: uid, targetName: name)
-                        return (uid, output)
+                        let output = await Self.performRoundTrip(file: file, targetUID: uid, targetName: name, isLossless: isLossless)
+                        return (id, output)
                     }
                 }
-                for await (uid, output) in group {
-                    if let idx = roundTripResults.firstIndex(where: { $0.uid == uid }) {
+                for await (id, output) in group {
+                    if let idx = roundTripResults.firstIndex(where: { $0.id == id }) {
                         roundTripResults[idx].state = output.state
                     }
                     #if canImport(CoreGraphics)
                     if rawImage == nil { rawImage = output.rawImage }
-                    if let img = output.encodedImage { encodedImages[uid] = img }
-                    if let img = output.decodedImage { decodedImages[uid] = img }
+                    if let img = output.encodedImage { encodedImages[id] = img }
+                    if let img = output.decodedImage { decodedImages[id] = img }
                     #endif
                 }
             }
@@ -290,12 +320,14 @@ public final class J2KTestingViewModel {
         }
         #endif
         comparisonResults = entries
-        let uid = selectedRoundTripUID
+        let entry = supportMatrix.first(where: { $0.id == selectedRoundTripID })
+        let uid = entry?.uid ?? selectedRoundTripID
+        let isLossless = entry?.isLossless ?? true
         let warmup = comparisonWarmup
         let decMode = j2kSwiftDecodeMode
         let encMode = j2kSwiftEncodeMode
         Task {
-            let output = await Self.performComparison(file: file, targetUID: uid, warmup: warmup, j2kSwiftDecodeMode: decMode, j2kSwiftEncodeMode: encMode)
+            let output = await Self.performComparison(file: file, targetUID: uid, isLossless: isLossless, warmup: warmup, j2kSwiftDecodeMode: decMode, j2kSwiftEncodeMode: encMode)
             comparisonResults = output.entries
             comparisonCodestreamBytes = output.codestreamBytes
             comparisonRawBytes = output.rawBytes
@@ -350,7 +382,8 @@ public final class J2KTestingViewModel {
     private static func performRoundTrip(
         file: DICOMFile,
         targetUID: String,
-        targetName: String
+        targetName: String,
+        isLossless: Bool
     ) async -> RoundTripOutput {
         await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -365,9 +398,6 @@ public final class J2KTestingViewModel {
 
                 let descriptor = pixData.descriptor
                 let originalBytes = frame0.count
-                let isLossless = !targetUID.hasSuffix(".91")
-                    && !targetUID.hasSuffix(".93")
-                    && !targetUID.hasSuffix(".203")
 
                 // Render original frame for display
                 let rawImage = makePreviewImage(pixels: frame0, descriptor: descriptor)
@@ -514,24 +544,20 @@ public final class J2KTestingViewModel {
     // MARK: - Support Matrix Builder
 
     private static func buildSupportMatrix() -> [J2KSupportEntry] {
-        let candidates: [(uid: String, name: String)] = [
-            ("1.2.840.10008.1.2.4.90",  "J2K Lossless"),
-            ("1.2.840.10008.1.2.4.91",  "J2K Lossy"),
-            ("1.2.840.10008.1.2.4.92",  "J2K Part 2 Lossless"),
-            ("1.2.840.10008.1.2.4.93",  "J2K Part 2 Lossy"),
-            ("1.2.840.10008.1.2.4.201", "HTJ2K Lossless"),
-            ("1.2.840.10008.1.2.4.202", "HTJ2K RPCL Lossless"),
-            ("1.2.840.10008.1.2.4.203", "HTJ2K Lossy"),
-        ]
-        return candidates.map { uid, name in
-            J2KSupportEntry(
-                id: uid,
-                uid: uid,
-                shortName: name,
-                canDecode: CodecRegistry.shared.hasCodec(for: uid),
-                canEncode: CodecRegistry.shared.encoder(for: uid) != nil
-            )
-        }
+        // Driven by the shared transfer-syntax catalog so the list stays canonical.
+        // `both`-capable UIDs (.91/.93/.203) expand into two rows (Lossless + Lossy).
+        return TransferSyntax.selectableEncodings
+            .filter { $0.transferSyntax.isJPEG2000 }
+            .map { enc in
+                J2KSupportEntry(
+                    id: enc.id,
+                    uid: enc.uid,
+                    shortName: enc.displayName,
+                    isLossless: enc.isLossless,
+                    canDecode: CodecRegistry.shared.hasCodec(for: enc.uid),
+                    canEncode: CodecRegistry.shared.encoder(for: enc.uid) != nil
+                )
+            }
     }
 
     // MARK: - Init
@@ -615,6 +641,7 @@ extension J2KTestingViewModel {
     fileprivate static func performComparison(
         file: DICOMFile,
         targetUID: String,
+        isLossless: Bool,
         warmup: Bool,
         j2kSwiftDecodeMode: J2KSwiftDecodeMode,
         j2kSwiftEncodeMode: J2KSwiftEncodeMode
@@ -639,9 +666,8 @@ extension J2KTestingViewModel {
 
                 // 2. Encode with J2KSwift via the user-selected API (`j2kSwiftEncodeMode`)
                 //    and time it with the same warmup methodology as decode.
-                let isLossless = !targetUID.hasSuffix(".91")
-                    && !targetUID.hasSuffix(".93")
-                    && !targetUID.hasSuffix(".203")
+                //    `isLossless` comes from the selected row's catalog intent, so the two
+                //    `.91` rows encode differently even though they share a UID.
                 let encConfig = CompressionConfiguration(
                     quality: isLossless ? .maximum : .medium,
                     speed: .balanced,
