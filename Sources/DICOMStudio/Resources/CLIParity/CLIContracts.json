@@ -14922,7 +14922,7 @@
                 "valueName" : "validate"
               },
               {
-                "abstract" : "Requested transfer syntax for retrieved files (e.g. explicit-vr-le, jpeg-baseline, jpeg2000, rle-lossless, implicit-vr-le)",
+                "abstract" : "Requested transfer syntax for retrieved files — negotiated during association setup. Accepts any name\/UID the shared parser understands; canonical tokens: explicit-vr-le, implicit-vr-le, explicit-vr-be, deflate, jpeg-baseline, jpeg-extended, jpeg-lossless, jpeg-lossless-sv1, jpeg2000-lossless, jpeg2000, jpeg2000-part2-lossless, jpeg2000-part2, htj2k-lossless, htj2k-rpcl, htj2k, jpeg-ls-lossless, jpeg-ls, jpeg-xl-lossless, jpeg-xl, rle-lossless.",
                 "isOptional" : true,
                 "isRepeating" : false,
                 "kind" : "option",
@@ -16303,7 +16303,7 @@
             "valueName" : "parallel"
           },
           {
-            "abstract" : "Requested transfer syntax for retrieved files (for example explicit-vr-le, jpeg2000, htj2k-lossless, htj2k-rpcl, htj2k, rle-lossless). This applies directly to C-GET and is advisory for C-MOVE.",
+            "abstract" : "Requested transfer syntax for retrieved files — applies directly to C-GET and is advisory for C-MOVE. Accepts any name\/UID the shared parser understands; canonical tokens: explicit-vr-le, implicit-vr-le, explicit-vr-be, deflate, jpeg-baseline, jpeg-extended, jpeg-lossless, jpeg-lossless-sv1, jpeg2000-lossless, jpeg2000, jpeg2000-part2-lossless, jpeg2000-part2, htj2k-lossless, htj2k-rpcl, htj2k, jpeg-ls-lossless, jpeg-ls, jpeg-xl-lossless, jpeg-xl, rle-lossless.",
             "isOptional" : true,
             "isRepeating" : false,
             "kind" : "option",

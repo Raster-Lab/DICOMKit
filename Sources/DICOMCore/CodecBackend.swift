@@ -65,6 +65,12 @@ public enum CodecBackend: String, Sendable, CaseIterable, CustomStringConvertibl
             case .sse42:  return "Accelerate (x86 SSE4.2 \(simd.vectorWidth * 32)-bit)"
             case .scalar: return "Accelerate (scalar fallback)"
             }
+            #elseif canImport(Accelerate)
+            // J2KAccelerate (the SIMD-family probe) was removed in J2KSwift v11.0.0,
+            // but the Apple Accelerate framework — which `isAvailable(.accelerate)`
+            // keys off — is still present, so this backend IS available. Report a
+            // plain CPU label rather than the old, now-contradictory "not available".
+            return "Accelerate (CPU)"
             #else
             return "Accelerate (not available)"
             #endif
@@ -155,9 +161,44 @@ public struct CodecBackendPreference: Sendable {
     /// Resolves the effective backend given the available options.
     ///
     /// If `forced` is set but unavailable, returns `bestAvailable`.
+    ///
+    /// - Note: This reports the best *available* hardware, not the backend an
+    ///   encode will actually run on. For that use
+    ///   ``effectiveEncodeBackend(isLossless:isJPEG2000Family:)`` — `auto`
+    ///   resolves here to Metal on Apple Silicon, but the encoder only
+    ///   dispatches to the GPU when Metal is *explicitly* requested.
     public var effective: CodecBackend {
         guard let f = forced else { return CodecBackendProbe.bestAvailable }
         return CodecBackendProbe.isAvailable(f) ? f : CodecBackendProbe.bestAvailable
+    }
+
+    /// The backend the JPEG 2000 / HTJ2K encoder will **actually** dispatch to —
+    /// as opposed to ``effective``, which only reports the best *available*
+    /// hardware.
+    ///
+    /// DICOMKit's encoder (`J2KSwiftCodec.encodeFrame`) uses the Metal GPU **only**
+    /// when Metal is *explicitly* requested (`forced == .metal`) for a *lossy*
+    /// JPEG 2000 / HTJ2K encode. `auto` / `accelerate` / `scalar`, every lossless
+    /// encode, and every non-J2K codec run on the CPU — the reversible/lossless
+    /// GPU path is not bit-exact (it trips `verifyEncodedRoundTrip` on 12/16-bit
+    /// medical data). Centralising the rule here lets the console report the
+    /// backend that was used rather than the one that merely exists, so `auto`
+    /// never advertises "Metal (GPU)" for a CPU encode.
+    ///
+    /// - Parameters:
+    ///   - isLossless: Whether this encode is reversible (lossless).
+    ///   - isJPEG2000Family: Whether the target syntax is JPEG 2000 / HTJ2K (the
+    ///     only family with a GPU encode path).
+    public func effectiveEncodeBackend(isLossless: Bool, isJPEG2000Family: Bool) -> CodecBackend {
+        // The CPU path the encoder actually runs (`encoder.encode`): the best
+        // available non-Metal backend, or an explicit accelerate/scalar choice.
+        let cpuBackend = CodecBackendProbe.availableBackends.first { $0 != .metal } ?? .scalar
+        if forced == .metal {
+            let gpuEligible = isJPEG2000Family && !isLossless && CodecBackendProbe.isAvailable(.metal)
+            return gpuEligible ? .metal : cpuBackend
+        }
+        // auto (nil) / accelerate / scalar never dispatch to the GPU encoder.
+        return forced ?? cpuBackend
     }
 }
 

@@ -104,7 +104,8 @@ public enum CompressionConsole {
     /// as-is); omitted when empty/nil.
     public static func compressPreamble(input: String, codec: String,
                                         quality: String?, backendDisplayName: String,
-                                        sourceTransferSyntaxName: String? = nil) -> String {
+                                        sourceTransferSyntaxName: String? = nil,
+                                        backendNote: String? = nil) -> String {
         var out = "Compressing: \(input)\n"
         if let sourceName = sourceTransferSyntaxName {
             out += "Source codec: \(sourceName) (compressed)\n"
@@ -114,7 +115,44 @@ public enum CompressionConsole {
             out += "Quality: \(q)\n"
         }
         out += "Backend: \(backendDisplayName)\n"
+        if let note = backendNote, !note.isEmpty {
+            out += "\(note)\n"
+        }
         return out
+    }
+
+    /// Resolves the backend the compress engine will **actually** use for `codec`
+    /// under `preference`, plus a note when an explicit `--backend metal` request
+    /// is downgraded to the CPU.
+    ///
+    /// GPU (Metal) encode is bit-exact only for *lossy* JPEG 2000 / HTJ2K; lossless
+    /// encodes and every non-J2K codec run on the CPU, and `auto` never dispatches
+    /// to the GPU — only an explicit `--backend metal` does. This mirrors
+    /// `J2KSwiftCodec.encodeFrame`'s GPU gate (via
+    /// `CodecBackendPreference.effectiveEncodeBackend`) so the reported "Backend:"
+    /// line never disagrees with the path taken. Previously the preamble showed
+    /// `preference.effective.displayName` — the best *available* hardware — so
+    /// `auto` advertised "Metal (GPU)" even though the lossless encode ran on CPU.
+    public static func compressBackend(
+        codec: String, preference: CodecBackendPreference
+    ) -> (displayName: String, note: String?) {
+        let syntax = CompressionManager.transferSyntax(for: codec)
+        let intent = CompressionManager.resolveEncoding(for: codec)?.intent ?? .notApplicable
+        let isLossless: Bool = {
+            guard let syntax else { return false }
+            switch syntax.losslessCapability {
+            case .both:         return intent == .lossless
+            case .losslessOnly: return true
+            case .lossyOnly:    return false
+            }
+        }()
+        let effective = preference.effectiveEncodeBackend(
+            isLossless: isLossless, isJPEG2000Family: syntax?.isJPEG2000 ?? false)
+        let note: String? = (preference.forced == .metal && effective != .metal)
+            ? "Note: GPU (Metal) encode is available for lossy JPEG 2000 / HTJ2K only; "
+              + "using \(effective.displayName) for this \(isLossless ? "lossless " : "")encode."
+            : nil
+        return (effective.displayName, note)
     }
 
     /// Informational line printed (always, not just verbose) when the source file is

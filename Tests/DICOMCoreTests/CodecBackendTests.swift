@@ -157,4 +157,47 @@ struct CodecBackendTests {
         }
     }
     #endif
+
+    // MARK: - effectiveEncodeBackend (the backend actually dispatched to)
+
+    @Test("auto never dispatches to the GPU encoder (runs CPU)")
+    func test_effectiveEncodeBackend_autoNeverMetal() {
+        // `auto` resolves to Metal for `effective` (hardware probe) but the encoder
+        // only uses the GPU when Metal is explicitly forced — so auto is always CPU.
+        let pref = CodecBackendPreference.auto
+        #expect(pref.effectiveEncodeBackend(isLossless: false, isJPEG2000Family: true) != .metal)
+        #expect(pref.effectiveEncodeBackend(isLossless: true, isJPEG2000Family: true) != .metal)
+    }
+
+    @Test("explicit scalar stays scalar")
+    func test_effectiveEncodeBackend_scalarStaysScalar() {
+        #expect(CodecBackendPreference.scalar
+            .effectiveEncodeBackend(isLossless: false, isJPEG2000Family: true) == .scalar)
+    }
+
+    @Test("metal + lossless is downgraded off the GPU")
+    func test_effectiveEncodeBackend_metalLosslessDowngraded() {
+        // GPU lossless encode is not bit-exact, so lossless never uses Metal.
+        #expect(CodecBackendPreference.metal
+            .effectiveEncodeBackend(isLossless: true, isJPEG2000Family: true) != .metal)
+    }
+
+    @Test("metal + non-J2K codec is downgraded off the GPU")
+    func test_effectiveEncodeBackend_metalNonJ2KDowngraded() {
+        // Only JPEG 2000 / HTJ2K have a GPU encode path.
+        #expect(CodecBackendPreference.metal
+            .effectiveEncodeBackend(isLossless: false, isJPEG2000Family: false) != .metal)
+    }
+
+    @Test("metal + lossy J2K uses the GPU when Metal is available")
+    func test_effectiveEncodeBackend_metalLossyJ2K() {
+        let resolved = CodecBackendPreference.metal
+            .effectiveEncodeBackend(isLossless: false, isJPEG2000Family: true)
+        // Metal iff the platform has it; otherwise a CPU fallback (never Metal).
+        if CodecBackendProbe.isAvailable(.metal) {
+            #expect(resolved == .metal)
+        } else {
+            #expect(resolved != .metal)
+        }
+    }
 }

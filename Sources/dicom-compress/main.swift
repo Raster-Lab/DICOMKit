@@ -126,10 +126,15 @@ extension DICOMCompress {
                 // All console text comes from the shared CompressionConsole so the
                 // CLI and the Studio Workshop never drift.
                 if verbose {
+                    // Report the backend the encode will ACTUALLY use, not the best
+                    // available hardware — `auto` runs the CPU encoder for lossless.
+                    let resolvedBackend = CompressionConsole.compressBackend(
+                        codec: codec, preference: backendPref)
                     fprint(CompressionConsole.compressPreamble(
                         input: input, codec: codec, quality: quality,
-                        backendDisplayName: backendPref.effective.displayName,
-                        sourceTransferSyntaxName: sourceCodecName))
+                        backendDisplayName: resolvedBackend.displayName,
+                        sourceTransferSyntaxName: sourceCodecName,
+                        backendNote: resolvedBackend.note))
                 } else if let name = sourceCodecName {
                     fprint(CompressionConsole.recompressNoteLine(sourceName: name))
                 }
