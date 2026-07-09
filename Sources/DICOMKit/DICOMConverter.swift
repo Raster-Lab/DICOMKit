@@ -27,10 +27,22 @@ public enum DICOMConverter {
 
     // MARK: - Target Catalog
 
-    /// One convert target: a DICOMCore transfer syntax plus the tokens that select it.
+    /// One convert target: a DICOMCore transfer syntax **plus its encode intent** and the
+    /// tokens that select it.
+    ///
+    /// Per the DICOM standard the general JPEG 2000 / HTJ2K / JPEG XL UIDs (.91/.93/.203/.112)
+    /// may carry either a reversible or an irreversible codestream (PS3.5 §A.4.4, §A.4.12), so
+    /// each general family has a symmetric `…-lossy` / `…-lossless` pair on the general UID plus a
+    /// `…-lossless-only` entry on the distinct reversible-only UID. The ``intent`` is what lets
+    /// `jpeg2000-lossless` encode reversibly *into* `.91` rather than into `.90` — the same split
+    /// `CompressionManager.codecMap` / `dicom-compress` use, so the two tools now agree.
     public struct Target: Sendable {
         /// The DICOMCore transfer syntax this target encodes to.
         public let syntax: TransferSyntax
+        /// The encode intent (`.lossless`/`.lossy` for `both`-capable UIDs, `.notApplicable`
+        /// for single-capability UIDs). Drives reversible-vs-irreversible encoding and the
+        /// Lossy Image Compression provenance attributes.
+        public let intent: EncodingIntent
         /// CamelCase token used by the CLI `--transfer-syntax` flag and the CLI
         /// Workshop picker (e.g. `ExplicitVRLittleEndian`, `JPEG2000Lossless`).
         public let cliToken: String
@@ -40,11 +52,29 @@ public enum DICOMConverter {
         /// Additional historical aliases accepted on input (already lowercased).
         public let extraAliases: [String]
 
-        /// A short, human-readable name (from ``DICOMCore/TransferSyntax/displayName``).
-        public var displayName: String { syntax.displayName }
+        /// The full encoding (UID + intent) this target selects.
+        public var encoding: SelectableEncoding {
+            SelectableEncoding(transferSyntax: syntax, intent: intent)
+        }
 
-        init(_ syntax: TransferSyntax, cli: String, alias: String, extra: [String] = []) {
+        /// A short, human-readable, intent-aware name — e.g. "JPEG 2000 Lossy",
+        /// "JPEG 2000 Lossless", "JPEG 2000 Lossless Only".
+        public var displayName: String { encoding.displayName }
+
+        /// Whether encoding to this target is reversible: `both`-capable UIDs honour the
+        /// selected intent; single-capability UIDs are fixed by the UID.
+        public var encodesLossless: Bool {
+            switch syntax.losslessCapability {
+            case .both:          return intent == .lossless
+            case .losslessOnly:  return true
+            case .lossyOnly:     return false
+            }
+        }
+
+        init(_ syntax: TransferSyntax, intent: EncodingIntent = .notApplicable,
+             cli: String, alias: String, extra: [String] = []) {
             self.syntax = syntax
+            self.intent = intent
             self.cliToken = cli
             self.aliasToken = alias
             self.extraAliases = extra
@@ -54,15 +84,22 @@ public enum DICOMConverter {
     /// The canonical, UI-ordered list of transfer syntaxes `dicom-convert` can target.
     ///
     /// Ordering mirrors ``DICOMCore/TransferSyntax/allKnown`` (uncompressed, JPEG,
-    /// JPEG 2000 / HTJ2K, JPEG-LS, JPEG XL, RLE). JPEG XL *pixel* encode is lossless-only
-    /// (there is no lossy JXL encoder), so the generic `jpeg-xl`/`jxl` aliases resolve
-    /// to the lossless syntax — matching `CompressionManager`'s codec map.
+    /// JPEG 2000 / HTJ2K, JPEG-LS, JPEG XL, RLE).
+    ///
+    /// Each `both`-capable general family (JPEG 2000 .91, Part 2 .93, HTJ2K .203, JPEG XL .112)
+    /// exposes three intent-tagged targets — `…-lossy` (irreversible into the general UID),
+    /// `…-lossless` (reversible into the *same* general UID), and `…-lossless-only` (the distinct
+    /// reversible-only UID .90/.92/.201/.110). This matches `CompressionManager.codecMap` /
+    /// `dicom-compress` exactly, so the two tools no longer diverge: `jpeg2000-lossless` emits a
+    /// reversible codestream in the general .91 UID in both. The `…-lossy` targets also populate
+    /// the DICOM Lossy Image Compression provenance attributes (0028,2110/2112/2114). A bare
+    /// family alias (`jpeg2000`, `j2k`, `htj2k`, `jxl`) resolves to the **lossy** target, matching
+    /// the "bare = lossy" convention shared with `dicom-compress`.
     ///
     /// `JPEGXLRecompression` (…4.111) is a distinct target that losslessly rewraps an
     /// existing JPEG bitstream rather than encoding pixels; it therefore applies only to
     /// a JPEG Baseline (…4.50) *source* (``DICOMCore/TransferSyntaxConverter`` rejects the
-    /// transcode with a clear error for any other source). It is convert-only — not a
-    /// `CompressionManager`/`dicom-compress` codec, since that path is pixel-based.
+    /// transcode with a clear error for any other source).
     public static let targets: [Target] = [
         // Uncompressed
         Target(.explicitVRLittleEndian,          cli: "ExplicitVRLittleEndian",  alias: "explicit-vr-le", extra: ["explicit", "evle"]),
@@ -74,19 +111,26 @@ public enum DICOMConverter {
         Target(.jpegExtended,                    cli: "JPEGExtended",            alias: "jpeg-extended"),
         Target(.jpegLossless,                    cli: "JPEGLossless",            alias: "jpeg-lossless"),
         Target(.jpegLosslessSV1,                 cli: "JPEGLosslessSV1",         alias: "jpeg-lossless-sv1"),
-        // JPEG 2000 / HTJ2K
-        Target(.jpeg2000Lossless,                cli: "JPEG2000Lossless",        alias: "jpeg2000-lossless",       extra: ["j2k-lossless"]),
-        Target(.jpeg2000,                        cli: "JPEG2000",                alias: "jpeg2000",                extra: ["jpeg2000-lossy", "j2k"]),
-        Target(.jpeg2000Part2Lossless,           cli: "JPEG2000Part2Lossless",   alias: "jpeg2000-part2-lossless", extra: ["j2k-part2-lossless"]),
-        Target(.jpeg2000Part2,                   cli: "JPEG2000Part2",           alias: "jpeg2000-part2",          extra: ["j2k-part2"]),
-        Target(.htj2kLossless,                   cli: "HTJ2KLossless",           alias: "htj2k-lossless"),
-        Target(.htj2kRPCLLossless,               cli: "HTJ2KRPCLLossless",       alias: "htj2k-rpcl",              extra: ["htj2k-lossless-rpcl"]),
-        Target(.htj2kLossy,                      cli: "HTJ2K",                   alias: "htj2k",                   extra: ["htj2k-lossy"]),
+        // JPEG 2000 — general .91 (lossy + lossless) + lossless-only .90.
+        Target(.jpeg2000, intent: .lossy,        cli: "JPEG2000Lossy",           alias: "jpeg2000-lossy",           extra: ["jpeg2000", "j2k", "j2k-lossy"]),
+        Target(.jpeg2000, intent: .lossless,     cli: "JPEG2000Lossless",        alias: "jpeg2000-lossless",        extra: ["j2k-lossless"]),
+        Target(.jpeg2000Lossless,                cli: "JPEG2000LosslessOnly",    alias: "jpeg2000-lossless-only",   extra: ["j2k-lossless-only"]),
+        // JPEG 2000 Part 2 — general .93 (lossy + lossless) + lossless-only .92.
+        Target(.jpeg2000Part2, intent: .lossy,   cli: "JPEG2000Part2Lossy",      alias: "jpeg2000-part2-lossy",     extra: ["jpeg2000-part2", "j2k-part2", "j2k-part2-lossy"]),
+        Target(.jpeg2000Part2, intent: .lossless, cli: "JPEG2000Part2Lossless",  alias: "jpeg2000-part2-lossless",  extra: ["j2k-part2-lossless"]),
+        Target(.jpeg2000Part2Lossless,           cli: "JPEG2000Part2LosslessOnly", alias: "jpeg2000-part2-lossless-only", extra: ["j2k-part2-lossless-only"]),
+        // HTJ2K — general .203 (lossy + lossless) + lossless-only .201 + RPCL lossless-only .202.
+        Target(.htj2kLossy, intent: .lossy,      cli: "HTJ2KLossy",              alias: "htj2k-lossy",              extra: ["htj2k"]),
+        Target(.htj2kLossy, intent: .lossless,   cli: "HTJ2KLossless",           alias: "htj2k-lossless"),
+        Target(.htj2kLossless,                   cli: "HTJ2KLosslessOnly",       alias: "htj2k-lossless-only"),
+        Target(.htj2kRPCLLossless,               cli: "HTJ2KRPCLLosslessOnly",   alias: "htj2k-rpcl-lossless-only", extra: ["htj2k-rpcl", "htj2k-lossless-rpcl"]),
         // JPEG-LS
         Target(.jpegLSLossless,                  cli: "JPEGLSLossless",          alias: "jpeg-ls-lossless",        extra: ["jpegls", "jpegls-lossless", "jls-lossless"]),
         Target(.jpegLSNearLossless,              cli: "JPEGLSNearLossless",      alias: "jpeg-ls-near-lossless",   extra: ["jpegls-near"]),
-        // JPEG XL (pixel encode is lossless-only; Recompression wraps a JPEG bitstream)
-        Target(.jpegXLLossless,                  cli: "JPEGXLLossless",          alias: "jpeg-xl-lossless",        extra: ["jpeg-xl", "jxl", "jxl-lossless", "jpegxl"]),
+        // JPEG XL — general .112 (lossy VarDCT + lossless Modular) + lossless-only .110 + JPEG recompression .111.
+        Target(.jpegXL, intent: .lossy,          cli: "JPEGXLLossy",             alias: "jpeg-xl-lossy",           extra: ["jpeg-xl", "jxl", "jpegxl", "jxl-lossy"]),
+        Target(.jpegXL, intent: .lossless,       cli: "JPEGXLLossless",          alias: "jpeg-xl-lossless",        extra: ["jxl-lossless"]),
+        Target(.jpegXLLossless,                  cli: "JPEGXLLosslessOnly",      alias: "jpeg-xl-lossless-only",   extra: ["jxl-lossless-only"]),
         Target(.jpegXLRecompression,             cli: "JPEGXLRecompression",     alias: "jpeg-xl-recompression",   extra: ["jxl-recompression", "jpegxl-recompression", "jpeg-xl-jpeg-recompression"]),
         // RLE
         Target(.rleLossless,                     cli: "RLELossless",             alias: "rle-lossless",            extra: ["rle"]),
@@ -103,19 +147,24 @@ public enum DICOMConverter {
 
     // MARK: - Parsing
 
-    /// Resolves a user-supplied transfer-syntax token to a convert target.
+    /// Resolves a user-supplied transfer-syntax token to a convert ``Target`` (UID **and**
+    /// encode intent).
     ///
     /// Accepts the canonical UID, the CLI CamelCase name, the kebab alias, and the
     /// historical short aliases (case-insensitive). Returns `nil` when the token is
     /// unrecognised *or* names a transfer syntax that is not a valid convert target
     /// (e.g. a video or JPIP syntax).
-    public static func parseTarget(_ nameOrUID: String) -> TransferSyntax? {
+    ///
+    /// A bare general-family UID (e.g. `1.2.840.10008.1.2.4.91`) is ambiguous between the
+    /// lossy and lossless targets that share it; it resolves to the **lossy** target because
+    /// the `…-lossy` entry is listed first, matching the historical bare-alias behaviour.
+    public static func resolveTarget(_ nameOrUID: String) -> Target? {
         let trimmed = nameOrUID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        // Exact UID — only if it is one of our targets.
+        // Exact UID — only if it is one of our targets (first match = lossy for a shared UID).
         if let t = targets.first(where: { $0.syntax.uid == trimmed }) {
-            return t.syntax
+            return t
         }
 
         let lower = trimmed.lowercased()
@@ -124,10 +173,26 @@ public enum DICOMConverter {
                 || lower == t.aliasToken
                 || lower == t.syntax.uid
                 || t.extraAliases.contains(lower) {
-                return t.syntax
+                return t
             }
         }
         return nil
+    }
+
+    /// Resolves a user-supplied token to a ``SelectableEncoding`` (UID + intent). This is the
+    /// intent-aware entry point the CLI and app use so a `…-lossless` name encodes reversibly
+    /// into the general UID rather than silently emitting lossy pixels.
+    public static func resolveTargetEncoding(_ nameOrUID: String) -> SelectableEncoding? {
+        resolveTarget(nameOrUID)?.encoding
+    }
+
+    /// Resolves a user-supplied token to just its transfer syntax (UID), discarding intent.
+    ///
+    /// Retained for callers that only need the UID; the encode path should prefer
+    /// ``resolveTargetEncoding(_:)`` so the lossy/lossless intent for the general UIDs is
+    /// preserved.
+    public static func parseTarget(_ nameOrUID: String) -> TransferSyntax? {
+        resolveTarget(nameOrUID)?.syntax
     }
 
     // MARK: - Help / Error Text
@@ -184,6 +249,32 @@ public enum DICOMConverter {
     /// Optionally strips private tags from an already-parsed DICOM file, transcodes it
     /// to `target`, and renders a complete Part-10 byte stream.
     ///
+    /// UID-only overload — the encode intent is derived from the target's capability
+    /// (a `both`-capable general UID passed directly defaults to **lossy**, matching the
+    /// historical bare-alias behaviour). Prefer ``convertToDICOM(dicomFile:to:stripPrivate:)-…``
+    /// taking a ``SelectableEncoding`` when the caller knows the lossy/lossless intent (the CLI
+    /// and app resolve it via ``resolveTargetEncoding(_:)``).
+    ///
+    /// - Parameters:
+    ///   - dicomFile: The already-parsed source DICOM file.
+    ///   - target: The transfer syntax to encode to (typically from ``parseTarget(_:)``).
+    ///   - stripPrivate: Remove all private (odd-group) tags before transcoding.
+    public static func convertToDICOM(
+        dicomFile: DICOMFile,
+        to target: TransferSyntax,
+        stripPrivate: Bool
+    ) throws -> Outcome {
+        let intent: EncodingIntent = target.losslessCapability == .both ? .lossy : .notApplicable
+        return try convertToDICOM(
+            dicomFile: dicomFile,
+            to: SelectableEncoding(transferSyntax: target, intent: intent),
+            stripPrivate: stripPrivate
+        )
+    }
+
+    /// Optionally strips private tags from an already-parsed DICOM file, transcodes it to
+    /// `encoding` (UID + intent), and renders a complete Part-10 byte stream.
+    ///
     /// This is the shared process + output pipeline used by both the CLI and the app so
     /// their output is byte-identical. The caller owns the environment-specific work:
     /// reading the input bytes from disk and parsing them with the shared
@@ -191,17 +282,36 @@ public enum DICOMConverter {
     /// security-scoped URL), then writing ``Outcome/data`` back out and formatting
     /// console messages.
     ///
+    /// The intent drives reversible-vs-irreversible encoding for the `both`-capable general
+    /// UIDs (.91/.93/.203/.112): a `.lossless` intent encodes a reversible codestream *into*
+    /// the general UID (identical pixels, general UID emitted), while a `.lossy` intent encodes
+    /// an irreversible codestream **and** records the DICOM Lossy Image Compression provenance
+    /// attributes (0028,2110/2112/2114) plus Image Type → DERIVED, exactly as `dicom-compress`
+    /// does (via the shared ``CompressionManager/applyLossyImageCompressionAttributes(to:targetSyntax:uncompressedByteCount:compressedByteCount:)``).
+    ///
     /// - Parameters:
     ///   - dicomFile: The already-parsed source DICOM file.
-    ///   - target: The transfer syntax to encode to (typically from ``parseTarget(_:)``).
+    ///   - encoding: The target UID + encode intent (typically from ``resolveTargetEncoding(_:)``).
     ///   - stripPrivate: Remove all private (odd-group) tags before transcoding.
     /// - Returns: The serialised output plus conversion metadata.
     /// - Throws: A ``DICOMCore/TranscodingError`` if the transcode is unsupported.
     public static func convertToDICOM(
         dicomFile: DICOMFile,
-        to target: TransferSyntax,
+        to encoding: SelectableEncoding,
         stripPrivate: Bool
     ) throws -> Outcome {
+        let target = encoding.transferSyntax
+
+        // Whether THIS encode is reversible: the general (`both`-capable) UIDs honour the
+        // selected intent; single-capability UIDs are fixed by the UID. Mirrors
+        // `CompressionManager.encodePixelDataInPlace` so convert and compress agree.
+        let encodeLossless: Bool
+        switch target.losslessCapability {
+        case .both:          encodeLossless = (encoding.intent == .lossless)
+        case .losslessOnly:  encodeLossless = true
+        case .lossyOnly:     encodeLossless = false
+        }
+
         var dataSet = dicomFile.dataSet
 
         // Optionally strip private tags.
@@ -217,6 +327,14 @@ public enum DICOMConverter {
             }
             dataSet = filtered
         }
+
+        // The native (uncompressed) pixel byte count for the lossy compression ratio, captured
+        // from the SOURCE before transcoding (it is the numerator "uncompressed size" regardless
+        // of any downstream bit-depth reduction). Falls back to the raw element length.
+        let sourceUncompressedPixelBytes: Int = {
+            if let d = try? CompressionManager.buildPixelDataDescriptor(from: dataSet) { return d.totalBytes }
+            return dataSet[.pixelData]?.valueData.count ?? 0
+        }()
 
         // Determine the source transfer syntax from the file.
         let sourceSyntaxUID = dicomFile.transferSyntaxUID ?? TransferSyntax.explicitVRLittleEndian.uid
@@ -263,16 +381,22 @@ public enum DICOMConverter {
             wasTranscoded = sourceSyntax.uid != target.uid
             isLossless = true
         } else {
-            // Transcode pixel data via the DICOMCore converter. Lossless compression
-            // config for lossless targets, default for lossy.
-            let compressionConfig: DICOMCore.CompressionConfiguration = target.isLossless
+            // Transcode pixel data via the DICOMCore converter. `preferLossless` in the
+            // compression config drives reversible vs irreversible for the `both`-capable UIDs
+            // (the encoder honours it); `.lossless` also carries the strict lossless preset.
+            let compressionConfig: DICOMCore.CompressionConfiguration = encodeLossless
                 ? .lossless
                 : .default
+            // A `both`-capable UID reports `isLossless == false` at the UID level, so the
+            // transcoder's lossy gate would reject a *reversible* encode INTO it (.91/.93/.203/.112
+            // lossless). Permit "lossy" whenever this encode is genuinely lossy OR the target UID
+            // is `both`-capable; the actual fidelity is governed by `compressionConfig.preferLossless`.
+            let allowLossy = !encodeLossless || target.losslessCapability == .both
             let converter = TransferSyntaxConverter(
                 configuration: TranscodingConfiguration(
                     preferredSyntaxes: [target],
-                    allowLossyCompression: !target.isLossless,
-                    preservePixelDataFidelity: target.isLossless
+                    allowLossyCompression: allowLossy,
+                    preservePixelDataFidelity: encodeLossless
                 ),
                 compressionConfiguration: compressionConfig
             )
@@ -291,7 +415,10 @@ public enum DICOMConverter {
             )
             dataSetPayload = result.data
             wasTranscoded = result.wasTranscoded
-            isLossless = result.isLossless
+            // The transcoder reports `isLossless == false` for a reversible encode into a
+            // `both`-capable UID (it keys off the UID's lossy-capable flag), so OR in the
+            // intent-derived truth; recompression/deflate paths correctly set `result.isLossless`.
+            isLossless = encodeLossless || result.isLossless
         }
 
         // --- Output: render the complete Part-10 file ---
@@ -301,6 +428,14 @@ public enum DICOMConverter {
         outputData.append(outputFile.fileMetaInformation.write(using: fmiWriter))
         outputData.append(dataSetPayload)
 
+        // Record DICOM Lossy Image Compression provenance for an irreversible encapsulated
+        // encode (0028,2110/2112/2114 + Image Type → DERIVED), reusing the exact writer
+        // `dicom-compress` uses. No-op for reversible-only targets (method Defined Term is nil).
+        if !encodeLossless, wasTranscoded, target.isEncapsulated, target.lossyImageCompressionMethod != nil {
+            outputData = try applyLossyProvenance(
+                to: outputData, target: target, uncompressedPixelByteCount: sourceUncompressedPixelBytes)
+        }
+
         return Outcome(
             data: outputData,
             sourceSyntax: sourceSyntax,
@@ -309,5 +444,31 @@ public enum DICOMConverter {
             isLossless: isLossless,
             strippedPrivateTagCount: strippedCount
         )
+    }
+
+    /// Re-reads a freshly transcoded encapsulated file, stamps the DICOM Lossy Image Compression
+    /// provenance attributes (0028,2110/2112/2114 + Image Type → DERIVED) via the shared
+    /// ``CompressionManager`` writer, and re-serialises it. The compressed byte count is the sum
+    /// of the encapsulated fragment sizes; the uncompressed byte count is the source's native
+    /// pixel size. This runs a metadata-only parse + re-write (the compressed fragments are copied
+    /// verbatim), so no pixel re-encode occurs.
+    private static func applyLossyProvenance(
+        to fileData: Data,
+        target: TransferSyntax,
+        uncompressedPixelByteCount: Int
+    ) throws -> Data {
+        let file = try DICOMFile.read(from: fileData)
+        var dataSet = file.dataSet
+        let compressedByteCount = dataSet[.pixelData]?.encapsulatedFragments?
+            .reduce(0) { $0 + $1.count } ?? 0
+        // Without both byte counts the ratio is meaningless — leave the file as transcoded.
+        guard compressedByteCount > 0, uncompressedPixelByteCount > 0 else { return fileData }
+        CompressionManager.applyLossyImageCompressionAttributes(
+            to: &dataSet,
+            targetSyntax: target,
+            uncompressedByteCount: uncompressedPixelByteCount,
+            compressedByteCount: compressedByteCount
+        )
+        return try TransferSyntaxHelper().convert(dataSet: dataSet, to: target, preservePixelData: true)
     }
 }

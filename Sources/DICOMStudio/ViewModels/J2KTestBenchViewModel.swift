@@ -201,7 +201,9 @@ public final class J2KTestBenchViewModel {
         var order: [String] = []
         var buckets: [String: [J2KTestCell]] = [:]
         for cell in displayedCells {
-            let key = "\(cell.fixtureName)|\(cell.syntaxUID)"
+            // Include syntaxName so the two rows of a `both`-capable UID
+            // (e.g. `.91` Lossless vs Lossy) form separate result groups.
+            let key = "\(cell.fixtureName)|\(cell.syntaxUID)|\(cell.syntaxName)"
             if buckets[key] == nil { order.append(key) }
             buckets[key, default: []].append(cell)
         }
@@ -370,11 +372,11 @@ public final class J2KTestBenchViewModel {
 
     // MARK: - Plan editing
 
-    public func toggleSyntax(_ uid: String) {
-        if plan.selectedSyntaxUIDs.contains(uid) {
-            plan.selectedSyntaxUIDs.remove(uid)
+    public func toggleSyntax(_ id: String) {
+        if plan.selectedSyntaxIDs.contains(id) {
+            plan.selectedSyntaxIDs.remove(id)
         } else {
-            plan.selectedSyntaxUIDs.insert(uid)
+            plan.selectedSyntaxIDs.insert(id)
         }
     }
 
@@ -518,7 +520,7 @@ public final class J2KTestBenchViewModel {
                         case .success(let product):
                             let ratio = product.codestream.isEmpty ? nil
                                 : Double(frame.descriptor.bytesPerFrame) / Double(product.codestream.count)
-                            self.groupArtifacts["\(fixture.name)|\(syntax.uid)"] = GroupArtifacts(
+                            self.groupArtifacts["\(fixture.name)|\(syntax.uid)|\(syntax.shortName)"] = GroupArtifacts(
                                 codestream: product.codestream,
                                 descriptor: frame.descriptor,
                                 fixturePath: fixture.path)
@@ -733,9 +735,9 @@ public final class J2KTestBenchViewModel {
     /// Decodes a full-resolution lightbox image on demand. `codec == nil`
     /// loads the original frame; otherwise the group's codestream is decoded
     /// with the given codec, plus an amplified difference vs the original.
-    public func detailImages(fixtureName: String, syntaxUID: String,
+    public func detailImages(fixtureName: String, syntaxUID: String, syntaxName: String,
                              codec: J2KBenchCodec?) async -> J2KBenchCellImages {
-        guard let artifacts = groupArtifacts["\(fixtureName)|\(syntaxUID)"] else {
+        guard let artifacts = groupArtifacts["\(fixtureName)|\(syntaxUID)|\(syntaxName)"] else {
             return J2KBenchCellImages(preview: nil, difference: nil)
         }
         let decodeMode = plan.decodeMode

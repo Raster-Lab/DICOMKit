@@ -557,31 +557,39 @@ extension TransferSyntax {
             return .jpegLossless
         case "jpeg-lossless-sv1", "jpeglosslesssv1":
             return .jpegLosslessSV1
-        case "jpeg2000-lossless", "jpeg2000lossless", "j2k-lossless":
-            return .jpeg2000Lossless
-        case "jpeg2000", "jpeg2000-lossy", "j2k":
-            return .jpeg2000
-        case "jpeg2000-part2-lossless", "jpeg2000part2lossless", "j2k-part2-lossless":
-            return .jpeg2000Part2Lossless
-        case "jpeg2000-part2", "jpeg2000part2", "j2k-part2":
-            return .jpeg2000Part2
-        case "htj2k-lossless", "htj2klossless":
-            return .htj2kLossless
-        case "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless":
-            return .htj2kRPCLLossless
+        // `parse` returns the UID only and carries NO encode intent, so it is deliberately
+        // CONSERVATIVE: the bare `…-lossless` names keep their conventional reversible-only
+        // UID (so UID-lookup and association negotiation — dicom-send/retrieve/qr — are
+        // unchanged). The lossy/lossless-INTO-the-general-UID split lives entirely in
+        // `parseEncoding` (and `CompressionManager.codecMap`), which the encode paths use.
+        case "jpeg2000-lossless", "jpeg2000lossless", "j2k-lossless",
+             "jpeg2000-lossless-only", "jpeg2000losslessonly", "j2k-lossless-only":
+            return .jpeg2000Lossless         // .90 reversible-only
+        case "jpeg2000", "jpeg2000-lossy", "j2k", "j2k-lossy":
+            return .jpeg2000                 // .91 general
+        case "jpeg2000-part2-lossless", "jpeg2000part2lossless", "j2k-part2-lossless",
+             "jpeg2000-part2-lossless-only", "j2k-part2-lossless-only":
+            return .jpeg2000Part2Lossless    // .92 reversible-only
+        case "jpeg2000-part2", "jpeg2000part2", "j2k-part2", "j2k-part2-lossy":
+            return .jpeg2000Part2            // .93 general
+        case "htj2k-lossless", "htj2klossless", "htj2k-lossless-only":
+            return .htj2kLossless            // .201 reversible-only
+        case "htj2k-rpcl-lossless-only", "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless":
+            return .htj2kRPCLLossless        // .202 reversible-only (RPCL)
         case "htj2k", "htj2k-lossy", "htj2klossy":
-            return .htj2kLossy
+            return .htj2kLossy               // .203 general
         case "jpeg-ls-lossless", "jpegls-lossless", "jls-lossless":
             return .jpegLSLossless
         case "jpeg-ls", "jpegls", "jls":
             return .jpegLSNearLossless
-        case "jpeg-xl-lossless", "jpegxl-lossless", "jxl-lossless":
-            return .jpegXLLossless
+        case "jpeg-xl-lossless", "jpegxl-lossless", "jxl-lossless",
+             "jpeg-xl-lossless-only", "jpegxl-lossless-only", "jxl-lossless-only":
+            return .jpegXLLossless           // .110 reversible-only
         case "jpeg-xl-recompression", "jpegxl-recompression",
              "jpeg-xl-jpeg-recompression", "jxl-recompression":
             return .jpegXLRecompression
-        case "jpeg-xl", "jpegxl", "jxl":
-            return .jpegXL
+        case "jpeg-xl", "jpegxl", "jxl", "jpeg-xl-lossy", "jxl-lossy":
+            return .jpegXL                   // .112 general
         case "rle", "rle-lossless":
             return .rleLossless
         case "jp3d-lossless", "jp3dlossless":
@@ -829,12 +837,12 @@ extension TransferSyntax {
         case TransferSyntax.jpegExtended.uid:                  return "JPEG Extended (Process 2 & 4)"
         case TransferSyntax.jpegLossless.uid:                  return "JPEG Lossless (Process 14)"
         case TransferSyntax.jpegLosslessSV1.uid:               return "JPEG Lossless SV1 (Process 14)"
-        case TransferSyntax.jpeg2000Lossless.uid:              return "JPEG 2000 Lossless"
+        case TransferSyntax.jpeg2000Lossless.uid:              return "JPEG 2000 Lossless Only"
         case TransferSyntax.jpeg2000.uid:                      return "JPEG 2000"
-        case TransferSyntax.jpeg2000Part2Lossless.uid:         return "JPEG 2000 Part 2 Multi-component Lossless"
+        case TransferSyntax.jpeg2000Part2Lossless.uid:         return "JPEG 2000 Part 2 Multi-component Lossless Only"
         case TransferSyntax.jpeg2000Part2.uid:                 return "JPEG 2000 Part 2 Multi-component"
-        case TransferSyntax.htj2kLossless.uid:                 return "HTJ2K Lossless"
-        case TransferSyntax.htj2kRPCLLossless.uid:             return "HTJ2K Lossless (RPCL)"
+        case TransferSyntax.htj2kLossless.uid:                 return "HTJ2K Lossless Only"
+        case TransferSyntax.htj2kRPCLLossless.uid:             return "HTJ2K Lossless Only (RPCL)"
         case TransferSyntax.htj2kLossy.uid:                    return "HTJ2K"
         case TransferSyntax.jpegLSLossless.uid:                return "JPEG-LS Lossless"
         case TransferSyntax.jpegLSNearLossless.uid:            return "JPEG-LS Near-Lossless"
@@ -853,6 +861,220 @@ extension TransferSyntax {
         case TransferSyntax.jp3dLossless.uid:                  return "JP3D Lossless (experimental)"
         case TransferSyntax.jp3dLossy.uid:                     return "JP3D Lossy (experimental)"
         default:                                               return description
+        }
+    }
+}
+
+// MARK: - Lossless Capability & Selectable Encodings
+
+/// Whether a transfer syntax UID can carry lossless data, lossy data, or either.
+///
+/// Some DICOM JPEG 2000 / HTJ2K UIDs are a *single* UID that per PS3.5 may hold
+/// **either** a lossy or a lossless codestream (e.g. `.91`, `.93`, `.203`), while
+/// others are reversible-only (`.90`, `.92`, `.201`, `.202`).
+public enum LosslessCapability: Sendable, Hashable {
+    /// The UID may only carry reversible (lossless) data.
+    case losslessOnly
+    /// The UID may only carry irreversible (lossy) data.
+    case lossyOnly
+    /// The UID may carry either lossy or lossless data depending on how it was encoded.
+    case both
+}
+
+/// The intended (or actual) encoding mode selected for a transfer syntax whose UID
+/// supports both lossy and lossless. `.notApplicable` is used for single-capability UIDs.
+public enum EncodingIntent: Sendable, Hashable {
+    case lossless
+    case lossy
+    case notApplicable
+}
+
+extension TransferSyntax {
+    /// Whether this UID can carry lossless data, lossy data, or either.
+    ///
+    /// Single source of truth for the lossy/lossless split. `both`-capable UIDs are
+    /// expanded into two rows by ``selectableEncodings``.
+    public var losslessCapability: LosslessCapability {
+        switch uid {
+        // UIDs that per the DICOM standard may carry either a lossy or lossless codestream.
+        // PS3.5 A.4.4 (JPEG 2000 .91 / Part 2 .93 / HTJ2K .203) and A.4.12 (JPEG XL .112).
+        case TransferSyntax.jpeg2000.uid,          // .91
+             TransferSyntax.jpeg2000Part2.uid,     // .93
+             TransferSyntax.htj2kLossy.uid,        // .203
+             TransferSyntax.jpegXL.uid:            // .112
+            return .both
+        default:
+            // Everything else is single-capability; derive from the reversible flag.
+            return isLossless ? .losslessOnly : .lossyOnly
+        }
+    }
+
+    /// The DICOM **Lossy Image Compression Method** (0028,2114) Defined Term for this
+    /// syntax when it carries an *irreversible* (lossy) codestream, or `nil` for
+    /// reversible-only syntaxes (which never populate the lossy-compression attributes).
+    ///
+    /// Single source of truth for (0028,2114). Reference: PS3.5 §A.4.4 (`ISO_15444_1`),
+    /// the HTJ2K/Part-15 variant (`ISO_15444_15`), §A.4.12 (`ISO_18181_1`),
+    /// §A.4.1 (`ISO_10918_1`), and §A.4.5 (`ISO_14495_1`); PS3.3 C.7.6.1.1.5.
+    public var lossyImageCompressionMethod: String? {
+        switch uid {
+        case TransferSyntax.jpegBaseline.uid,      // .50
+             TransferSyntax.jpegExtended.uid:      // .51
+            return "ISO_10918_1"
+        case TransferSyntax.jpegLSNearLossless.uid: // .81 (near-lossless is lossy)
+            return "ISO_14495_1"
+        case TransferSyntax.jpeg2000.uid,          // .91
+             TransferSyntax.jpeg2000Part2.uid:     // .93
+            return "ISO_15444_1"
+        case TransferSyntax.htj2kLossy.uid:        // .203
+            return "ISO_15444_15"
+        case TransferSyntax.jpegXL.uid:            // .112
+            return "ISO_18181_1"
+        default:
+            return nil
+        }
+    }
+}
+
+/// A user-selectable transfer-syntax encoding: a UID paired with the encoding intent.
+///
+/// This is what pickers, CLI targets, and validators should enumerate. For a UID whose
+/// ``TransferSyntax/losslessCapability`` is `.both`, two `SelectableEncoding` values exist
+/// (one `.lossless`, one `.lossy`) that share the same UID; `from(uid:)` remains
+/// deterministic because it maps to the single underlying ``TransferSyntax``.
+public struct SelectableEncoding: Sendable, Hashable, Identifiable {
+    /// The underlying transfer syntax (UID-keyed).
+    public let transferSyntax: TransferSyntax
+    /// The encoding intent; `.notApplicable` for single-capability UIDs.
+    public let intent: EncodingIntent
+
+    public init(transferSyntax: TransferSyntax, intent: EncodingIntent) {
+        self.transferSyntax = transferSyntax
+        self.intent = intent
+    }
+
+    /// The transfer syntax UID (may be shared by a sibling `SelectableEncoding` of the other intent).
+    public var uid: String { transferSyntax.uid }
+
+    /// Stable identity combining UID and intent (distinguishes the two rows of a `both` UID).
+    public var id: String {
+        switch intent {
+        case .lossless:       return "\(uid)#lossless"
+        case .lossy:          return "\(uid)#lossy"
+        case .notApplicable:  return uid
+        }
+    }
+
+    /// Intent-aware lossless flag. For `both` UIDs this reflects the selected intent
+    /// rather than the (UID-level) `TransferSyntax.isLossless`, which always reports lossy.
+    public var isLossless: Bool {
+        switch intent {
+        case .lossless:       return true
+        case .lossy:          return false
+        case .notApplicable:  return transferSyntax.isLossless
+        }
+    }
+
+    /// Human-readable label, e.g. "JPEG 2000 Lossless", "JPEG 2000 Lossy",
+    /// "JPEG 2000 Lossless Only". For `both` UIDs the base name carries no lossy/lossless
+    /// suffix, so we append one; single-capability names already encode it.
+    public var displayName: String {
+        switch intent {
+        case .lossless:       return "\(transferSyntax.displayName) Lossless"
+        case .lossy:          return "\(transferSyntax.displayName) Lossy"
+        case .notApplicable:  return transferSyntax.displayName
+        }
+    }
+}
+
+extension TransferSyntax {
+    /// The user-facing catalog of selectable encodings — the shared source of truth for
+    /// "which transfer syntaxes can I pick". Built by expanding ``allKnown``: each
+    /// `both`-capable UID yields two rows (lossless + lossy); every other UID yields one.
+    ///
+    /// Callers (CLI targets, app pickers, validators, DICOMweb capabilities, tests) should
+    /// enumerate this instead of maintaining their own hardcoded UID lists.
+    public static let selectableEncodings: [SelectableEncoding] = allKnown.flatMap { ts -> [SelectableEncoding] in
+        switch ts.losslessCapability {
+        case .both:
+            return [
+                SelectableEncoding(transferSyntax: ts, intent: .lossless),
+                SelectableEncoding(transferSyntax: ts, intent: .lossy),
+            ]
+        case .losslessOnly, .lossyOnly:
+            return [SelectableEncoding(transferSyntax: ts, intent: .notApplicable)]
+        }
+    }
+
+    /// Parses a user-facing alias/UID into a ``SelectableEncoding``, resolving the lossy vs
+    /// lossless intent for `both`-capable UIDs.
+    ///
+    /// Recognizes everything ``parse(_:)`` does plus the symmetric intent names. Per the
+    /// DICOM standard the general UIDs (.91/.93/.203/.112) may carry either a reversible or
+    /// an irreversible codestream, so the encode path resolves them with an explicit intent:
+    ///
+    ///   - `…-lossy`         → general UID, `.lossy`   (e.g. `jpeg2000-lossy` → .91 irreversible)
+    ///   - `…-lossless`      → general UID, `.lossless` (e.g. `htj2k-lossless` → .203 reversible)
+    ///   - `…-lossless-only` → reversible-only UID      (e.g. `jpeg2000-lossless-only` → .90)
+    ///
+    /// The legacy `…-91-/-93-/-203-` explicit spellings and the deprecated `htj2k-rpcl`
+    /// spelling are accepted as aliases.
+    public static func parseEncoding(_ nameOrUID: String) -> SelectableEncoding? {
+        let trimmed = nameOrUID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let normalized = trimmed
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .replacingOccurrences(of: " ", with: "-")
+
+        // Symmetric intent names. The bare `…-lossless` spellings encode reversibly *into*
+        // the general UID; `…-lossless-only` selects the distinct reversible-only UID.
+        switch normalized {
+        // JPEG 2000 — general .91 / lossless-only .90
+        case "jpeg2000-lossless", "jpeg2000lossless", "j2k-lossless",
+             "jpeg2000-91-lossless", "j2k-91-lossless", "jpeg2000-lossless-91":
+            return SelectableEncoding(transferSyntax: .jpeg2000, intent: .lossless)
+        case "jpeg2000-lossy", "j2k-lossy", "jpeg2000-91-lossy", "j2k-91-lossy":
+            return SelectableEncoding(transferSyntax: .jpeg2000, intent: .lossy)
+        case "jpeg2000-lossless-only", "jpeg2000losslessonly", "j2k-lossless-only":
+            return SelectableEncoding(transferSyntax: .jpeg2000Lossless, intent: .notApplicable)
+        // JPEG 2000 Part 2 — general .93 / lossless-only .92
+        case "jpeg2000-part2-lossless", "jpeg2000part2lossless", "j2k-part2-lossless",
+             "jpeg2000-part2-93-lossless", "j2k-part2-93-lossless":
+            return SelectableEncoding(transferSyntax: .jpeg2000Part2, intent: .lossless)
+        case "jpeg2000-part2-lossy", "j2k-part2-lossy",
+             "jpeg2000-part2-93-lossy", "j2k-part2-93-lossy":
+            return SelectableEncoding(transferSyntax: .jpeg2000Part2, intent: .lossy)
+        case "jpeg2000-part2-lossless-only", "j2k-part2-lossless-only":
+            return SelectableEncoding(transferSyntax: .jpeg2000Part2Lossless, intent: .notApplicable)
+        // HTJ2K — general .203 / lossless-only .201 / RPCL lossless-only .202
+        case "htj2k-lossless", "htj2klossless", "htj2k-203-lossless", "htj2k-lossless-203":
+            return SelectableEncoding(transferSyntax: .htj2kLossy, intent: .lossless)
+        case "htj2k-lossy", "htj2k-203-lossy":
+            return SelectableEncoding(transferSyntax: .htj2kLossy, intent: .lossy)
+        case "htj2k-lossless-only":
+            return SelectableEncoding(transferSyntax: .htj2kLossless, intent: .notApplicable)
+        case "htj2k-rpcl-lossless-only", "htj2k-rpcl", "htj2k-lossless-rpcl", "htj2krpcllossless":
+            return SelectableEncoding(transferSyntax: .htj2kRPCLLossless, intent: .notApplicable)
+        // JPEG XL — general .112 / lossless-only .110
+        case "jpeg-xl-lossless", "jpegxl-lossless", "jxl-lossless",
+             "jpeg-xl-112-lossless", "jxl-112-lossless":
+            return SelectableEncoding(transferSyntax: .jpegXL, intent: .lossless)
+        case "jpeg-xl-lossy", "jxl-lossy", "jpeg-xl-112-lossy", "jxl-112-lossy":
+            return SelectableEncoding(transferSyntax: .jpegXL, intent: .lossy)
+        case "jpeg-xl-lossless-only", "jpegxl-lossless-only", "jxl-lossless-only":
+            return SelectableEncoding(transferSyntax: .jpegXLLossless, intent: .notApplicable)
+        default:
+            break
+        }
+
+        guard let ts = parse(trimmed) else { return nil }
+        switch ts.losslessCapability {
+        case .both:
+            // Bare `both` alias (e.g. "jpeg2000", "htj2k") historically means the lossy mode.
+            return SelectableEncoding(transferSyntax: ts, intent: .lossy)
+        case .losslessOnly, .lossyOnly:
+            return SelectableEncoding(transferSyntax: ts, intent: .notApplicable)
         }
     }
 }

@@ -128,7 +128,7 @@ public enum ImageMetadataHelpers: Sendable {
         case "1.2.840.10008.1.2.4.70":   return "JPEG Lossless SV1"
         case "1.2.840.10008.1.2.4.80":   return "JPEG-LS Lossless"
         case "1.2.840.10008.1.2.4.81":   return "JPEG-LS Near-Lossless"
-        case "1.2.840.10008.1.2.4.90":   return "JPEG 2000 Lossless"
+        case "1.2.840.10008.1.2.4.90":   return "JPEG 2000 Lossless Only"
         case "1.2.840.10008.1.2.4.91":   return "JPEG 2000"
         case "1.2.840.10008.1.2.5":      return "RLE Lossless"
         case "1.2.840.10008.1.2.4.100":  return "MPEG2 Main Profile"

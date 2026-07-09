@@ -305,7 +305,7 @@ public enum UIDLookupHelpers: Sendable {
             UIDEntry(uid: "1.2.840.10008.1.2.2",   name: "Explicit VR Big Endian",      category: .transferSyntax, uidDescription: "Retired in DICOM 2014"),
             UIDEntry(uid: "1.2.840.10008.1.2.4.50",name: "JPEG Baseline (Process 1)",   category: .transferSyntax, uidDescription: "Lossy JPEG compression"),
             UIDEntry(uid: "1.2.840.10008.1.2.4.70",name: "JPEG Lossless",               category: .transferSyntax, uidDescription: "Lossless JPEG compression"),
-            UIDEntry(uid: "1.2.840.10008.1.2.4.90",name: "JPEG 2000 Lossless",         category: .transferSyntax, uidDescription: "JPEG 2000 lossless compression"),
+            UIDEntry(uid: "1.2.840.10008.1.2.4.90",name: "JPEG 2000 Lossless Only",    category: .transferSyntax, uidDescription: "JPEG 2000 lossless compression"),
             UIDEntry(uid: "1.2.840.10008.1.2.4.91",name: "JPEG 2000",                  category: .transferSyntax, uidDescription: "JPEG 2000 with optional lossy compression"),
             UIDEntry(uid: "1.2.840.10008.5.1.4.1.1.2",  name: "CT Image Storage",      category: .sopClass,       uidDescription: "Computed Tomography Image Storage"),
             UIDEntry(uid: "1.2.840.10008.5.1.4.1.1.4",  name: "MR Image Storage",      category: .sopClass,       uidDescription: "Magnetic Resonance Image Storage"),
@@ -390,7 +390,7 @@ public enum TransferSyntaxInfoHelpers: Sendable {
             ),
             TransferSyntaxInfoEntry(
                 uid: "1.2.840.10008.1.2.4.90",
-                name: "JPEG 2000 Lossless",
+                name: "JPEG 2000 Lossless Only",
                 tsDescription: "ISO JPEG 2000 lossless compression.",
                 compressionType: .lossless, byteOrder: .littleEndian, vrEncoding: .explicit, supportStatus: .supported
             ),

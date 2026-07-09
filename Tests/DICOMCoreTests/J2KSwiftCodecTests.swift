@@ -403,8 +403,12 @@ struct J2KSwiftCodecTests {
     @Test("JPEG 2000 Part 2 parse aliases resolve correctly")
     func part2ParseAliases() {
         #expect(TransferSyntax.parse("j2k-part2") == .jpeg2000Part2)
+        // `parse` is conservative: `…-lossless` and `…-lossless-only` both resolve to the
+        // reversible-only .92 UID (the intent-into-.93 split lives in parseEncoding).
         #expect(TransferSyntax.parse("j2k-part2-lossless") == .jpeg2000Part2Lossless)
+        #expect(TransferSyntax.parse("j2k-part2-lossless-only") == .jpeg2000Part2Lossless)
         #expect(TransferSyntax.parse("jpeg2000-part2") == .jpeg2000Part2)
         #expect(TransferSyntax.parse("jpeg2000-part2-lossless") == .jpeg2000Part2Lossless)
+        #expect(TransferSyntax.parse("jpeg2000-part2-lossless-only") == .jpeg2000Part2Lossless)
     }
 }

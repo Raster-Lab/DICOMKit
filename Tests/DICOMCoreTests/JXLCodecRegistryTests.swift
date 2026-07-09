@@ -67,8 +67,9 @@ struct JXLCodecRegistryTests {
         let reg = CodecRegistry.shared
         #expect(reg.hasEncoder(for: lossless))
         #expect(reg.encoder(for: lossless) is JXLCodec)
-        // General JPEG XL (.112) now encodes too — lossy VarDCT (grayscale/oversized
-        // inputs fall back to lossless Modular inside JXLSwift).
+        // General JPEG XL (.112) now encodes too — lossy VarDCT (grayscale and RGB
+        // handled directly by JXLSwift 1.4.0; only oversized inputs fall back to
+        // lossless Modular inside JXLSwift).
         #expect(reg.hasEncoder(for: general))
         #expect(reg.encoder(for: general) is JXLCodec)
     }
@@ -124,22 +125,25 @@ struct JXLCodecRegistryTests {
 
     // MARK: - Lossy encode through the registry (.112)
 
-    @Test("General JPEG XL (.112) grayscale lossy request falls back to lossless (bit-exact)")
-    func lossyGrayscaleFallsBackBitExact() throws {
+    @Test("General JPEG XL (.112) grayscale lossy encode produces a codestream that decodes to the source dimensions")
+    func lossyGrayscaleRoundTripsToCorrectSize() throws {
         let reg = CodecRegistry.shared
         let d = descriptor(40, 32, bitsAllocated: 8, bitsStored: 8, spp: 1)
         let original = frame(40, 32, bitsStored: 8, spp: 1, bytesPerSample: 1)
 
-        // JXLSwift's VarDCT lossy encoder is RGB-only; a grayscale frame transparently
-        // falls back to the lossless Modular path, so even a lossy (.112) request
-        // round-trips bit-exact. This documents (and pins) that fallback behaviour.
+        // As of JXLSwift 1.4.0 the VarDCT lossy encoder handles grayscale directly, so a
+        // grayscale (.112) request is a *genuine* lossy encode (earlier JXLSwift silently
+        // fell back to lossless Modular here). Lossy output is not bit-exact, so assert a
+        // valid, non-empty codestream that decodes back to a frame of the correct size —
+        // the wiring contract. VarDCT fidelity itself is covered by JXLSwift's own tests.
         let encoder = try #require(reg.encoder(for: general))
         let decoder = try #require(reg.codec(for: general))
         let lossyCfg = CompressionConfiguration(quality: .high, speed: .balanced)
         #expect(encoder.canEncode(with: lossyCfg, descriptor: d))
         let encoded = try encoder.encodeFrame(original, descriptor: d, frameIndex: 0, configuration: lossyCfg)
+        #expect(!encoded.isEmpty)
         let decoded = try decoder.decodeFrame(encoded, descriptor: d, frameIndex: 0)
-        #expect(decoded == original)
+        #expect(decoded.count == original.count)
     }
 
     @Test("General JPEG XL (.112) RGB lossy encode produces a codestream that decodes to the source dimensions")
@@ -187,17 +191,57 @@ struct JXLCodecRegistryTests {
 
     // MARK: - canEncode gating
 
-    @Test("canEncode enforces 8/16-bit unsigned grayscale or RGB")
+    @Test("canEncode enforces 8-bit unsigned / 16-bit (signed or unsigned) grayscale or RGB")
     func canEncodeGating() throws {
         let enc = try #require(CodecRegistry.shared.encoder(for: lossless))
 
         #expect(enc.canEncode(with: .lossless, descriptor: descriptor(8, 8, bitsAllocated: 8, bitsStored: 8, spp: 1)))
         #expect(enc.canEncode(with: .lossless, descriptor: descriptor(8, 8, bitsAllocated: 16, bitsStored: 16, spp: 1)))
         #expect(enc.canEncode(with: .lossless, descriptor: descriptor(8, 8, bitsAllocated: 8, bitsStored: 8, spp: 3)))
-        // Signed not supported — JXLSwift handles unsigned samples only.
-        #expect(!enc.canEncode(with: .lossless, descriptor: descriptor(8, 8, bitsAllocated: 16, bitsStored: 16, spp: 1, isSigned: true)))
+        // Signed 16-bit IS supported — mapped to JXLSwift's `int16` (level-shifted to
+        // unsigned offset-binary in the codestream, un-shifted on decode).
+        #expect(enc.canEncode(with: .lossless, descriptor: descriptor(8, 8, bitsAllocated: 16, bitsStored: 16, spp: 1, isSigned: true)))
+        // Signed 8-bit is NOT supported — JPEG XL has no signed 8-bit sample type.
+        #expect(!enc.canEncode(with: .lossless, descriptor: descriptor(8, 8, bitsAllocated: 8, bitsStored: 8, spp: 1, isSigned: true)))
         // 4-channel (e.g. RGBA) not supported.
         #expect(!enc.canEncode(with: .lossless, descriptor: descriptor(8, 8, bitsAllocated: 8, bitsStored: 8, spp: 4)))
+    }
+
+    // MARK: - Signed 16-bit round-trip (JXLSwift 1.4.0 `int16` level shift)
+
+    @Test("Registry lossless round-trip (.110) is bit-exact for signed 16-bit CT",
+          arguments: [
+            (w: 40, h: 32, bs: 16),
+            (w: 40, h: 32, bs: 12),
+          ])
+    func signedLosslessRoundTrip(w: Int, h: Int, bs: Int) throws {
+        let reg = CodecRegistry.shared
+        let d = descriptor(w, h, bitsAllocated: 16, bitsStored: bs, spp: 1, isSigned: true)
+        // Two's-complement little-endian samples spanning the signed range — the DICOM
+        // native layout for Pixel Representation = 1. JXLSwift level-shifts to unsigned
+        // offset-binary for the codestream and un-shifts on decode, so a lossless
+        // round-trip must reproduce the signed bytes bit-for-bit.
+        let maxVal = (1 << bs) - 1
+        var original = Data(count: w * h * 2)
+        original.withUnsafeMutableBytes { raw in
+            let p = raw.bindMemory(to: UInt8.self)
+            var i = 0
+            for y in 0..<h {
+                for x in 0..<w {
+                    let unsigned = ((x * 7 + y * 13) ^ (x &* y)) & maxVal
+                    let signedVal = Int16(truncatingIfNeeded: unsigned - (1 << (bs - 1)))
+                    let bits = UInt16(bitPattern: signedVal)
+                    p[i] = UInt8(bits & 0xFF); p[i + 1] = UInt8((bits >> 8) & 0xFF); i += 2
+                }
+            }
+        }
+
+        let encoder = try #require(reg.encoder(for: lossless))
+        let decoder = try #require(reg.codec(for: lossless))
+        #expect(encoder.canEncode(with: .lossless, descriptor: d))
+        let encoded = try encoder.encodeFrame(original, descriptor: d, frameIndex: 0, configuration: .lossless)
+        let decoded = try decoder.decodeFrame(encoded, descriptor: d, frameIndex: 0)
+        #expect(decoded == original, "signed 16-bit lossless .110 \(w)x\(h) bs=\(bs) not bit-exact")
     }
 
     // MARK: - DICOM even-length pad tolerance (regression for the encapsulated round-trip)

@@ -7,6 +7,7 @@
 // Reference: DICOM PS3.19 Annex A (Native DICOM Model XML)
 
 import Foundation
+import DICOMCore
 
 // MARK: - Navigation Tab
 
@@ -239,6 +240,13 @@ public struct TransferSyntaxConversionJob: Sendable, Identifiable, Equatable {
     public var sourceFilePath: String
     /// Target transfer syntax UID.
     public var targetTransferSyntaxUID: String
+    /// Selected encoding intent for the target.
+    ///
+    /// The `both`-capable general UIDs (`.91`/`.93`/`.203`) carry either a reversible
+    /// or an irreversible codestream, so the UID alone does not determine the encoding.
+    /// This records which the user picked; it is `.notApplicable` for single-capability
+    /// targets (uncompressed, `.90`/`.201`, RLE, …).
+    public var intent: EncodingIntent
     /// Current job status.
     public var status: ConversionJobStatus
     /// Size of the original file in bytes.
@@ -250,15 +258,29 @@ public struct TransferSyntaxConversionJob: Sendable, Identifiable, Equatable {
 
     public init(
         sourceFilePath: String,
-        targetTransferSyntaxUID: String
+        targetTransferSyntaxUID: String,
+        intent: EncodingIntent = .notApplicable
     ) {
         self.id = UUID()
         self.sourceFilePath = sourceFilePath
         self.targetTransferSyntaxUID = targetTransferSyntaxUID
+        self.intent = intent
         self.status = .pending
         self.originalSizeBytes = 0
         self.convertedSizeBytes = 0
         self.errorMessage = nil
+    }
+
+    /// The target as a `SelectableEncoding`, pairing the UID with the chosen intent.
+    public var targetEncoding: SelectableEncoding? {
+        guard let ts = TransferSyntax.from(uid: targetTransferSyntaxUID) else { return nil }
+        return SelectableEncoding(transferSyntax: ts, intent: intent)
+    }
+
+    /// Intent-aware display name for the target, e.g. "JPEG 2000 Part 2 Multi-component Lossy".
+    /// Falls back to the raw UID for unrecognized targets.
+    public var targetDisplayName: String {
+        targetEncoding?.displayName ?? targetTransferSyntaxUID
     }
 }
 

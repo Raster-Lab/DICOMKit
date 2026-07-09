@@ -1,5 +1,5 @@
 {
-  "originHash" : "df99d9f6e608d3a51ca6701d1be388839145a79569febfe3af8f2b3da17b771f",
+  "originHash" : "fa2098aa85ab99245725cce8c592b5cab8a41cd469ab53446a6822157e80f5bf",
   "pins" : [
     {
       "identity" : "compressionfamily",
@@ -42,8 +42,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/JXLSwift.git",
       "state" : {
-        "revision" : "c3862e6884c083ec3da1c7a87f2b358c02b73ce1",
-        "version" : "1.3.0"
+        "revision" : "760697a54dd253da8e8466c3fd09ecf2c2d89aec",
+        "version" : "1.4.0"
       }
     },
     {

@@ -23,13 +23,13 @@ struct DICOMJ2K: ParsableCommand {
             metadata and re-wrap the result in a conformant DICOM file.
 
             Transfer Syntaxes supported:
-              1.2.840.10008.1.2.4.90  JPEG 2000 Lossless
-              1.2.840.10008.1.2.4.91  JPEG 2000 (Lossy)
-              1.2.840.10008.1.2.4.201 JPEG 2000 Part 2 Lossless (MC)
-              1.2.840.10008.1.2.4.202 JPEG 2000 Part 2 (MC, Lossy)
-              1.2.840.10008.1.2.4.202 HTJ2K Lossless
-              1.2.840.10008.1.2.4.203 HTJ2K RPCL Lossless
-              1.2.840.10008.1.2.4.204 HTJ2K (Lossy)
+              1.2.840.10008.1.2.4.90  JPEG 2000 Lossless Only
+              1.2.840.10008.1.2.4.91  JPEG 2000 (Lossless or Lossy)
+              1.2.840.10008.1.2.4.92  JPEG 2000 Part 2 Multi-component Lossless Only
+              1.2.840.10008.1.2.4.93  JPEG 2000 Part 2 Multi-component (Lossless or Lossy)
+              1.2.840.10008.1.2.4.201 HTJ2K Lossless Only
+              1.2.840.10008.1.2.4.202 HTJ2K Lossless Only (RPCL)
+              1.2.840.10008.1.2.4.203 HTJ2K (Lossless or Lossy)
 
             Examples:
               dicom-j2k info scan.dcm
@@ -113,31 +113,30 @@ private func decodeJ2K(_ data: Data) throws -> J2KImage {
     try runAsync { try await J2KDecoder().decode(data) }
 }
 
-/// Human-readable transfer syntax label from UID.
-private func tsLabel(_ uid: String?) -> String {
+/// Human-readable transfer syntax label from UID, sourced from the shared
+/// `TransferSyntax` catalog so labels stay consistent across the whole library.
+///
+/// For the `both`-capable general UIDs (`.91`/`.93`/`.203`) the bare UID cannot tell
+/// the user whether a codestream is reversible. When the caller knows the selected
+/// intent (e.g. a compress target), pass `lossless:` so the label spells it out —
+/// "JPEG 2000 Part 2 Multi-component Lossy (…93)" rather than the ambiguous base name.
+private func tsLabel(_ uid: String?, lossless: Bool? = nil) -> String {
     guard let uid else { return "Unknown" }
-    switch uid {
-    case "1.2.840.10008.1.2.4.90": return "JPEG 2000 Lossless (1.2.840.10008.1.2.4.90)"
-    case "1.2.840.10008.1.2.4.91": return "JPEG 2000 (1.2.840.10008.1.2.4.91)"
-    case "1.2.840.10008.1.2.4.201": return "JPEG 2000 Part 2 Lossless (1.2.840.10008.1.2.4.201)"
-    case "1.2.840.10008.1.2.4.202": return "HTJ2K Lossless (1.2.840.10008.1.2.4.202)"
-    case "1.2.840.10008.1.2.4.203": return "HTJ2K RPCL Lossless (1.2.840.10008.1.2.4.203)"
-    case "1.2.840.10008.1.2.4.204": return "HTJ2K (1.2.840.10008.1.2.4.204)"
-    default: return uid
+    guard let ts = TransferSyntax.from(uid: uid) else { return uid }
+    let name: String
+    if ts.losslessCapability == .both, let lossless {
+        name = SelectableEncoding(transferSyntax: ts, intent: lossless ? .lossless : .lossy).displayName
+    } else {
+        name = ts.displayName
     }
+    return "\(name) (\(uid))"
 }
 
-/// True if the transfer syntax UID indicates JPEG 2000 or HTJ2K compression.
+/// True if the transfer syntax UID indicates JPEG 2000 or HTJ2K compression,
+/// per the shared `TransferSyntax` source of truth.
 private func isJ2KTransferSyntax(_ uid: String?) -> Bool {
     guard let uid else { return false }
-    return [
-        "1.2.840.10008.1.2.4.90",
-        "1.2.840.10008.1.2.4.91",
-        "1.2.840.10008.1.2.4.201",
-        "1.2.840.10008.1.2.4.202",
-        "1.2.840.10008.1.2.4.203",
-        "1.2.840.10008.1.2.4.204"
-    ].contains(uid)
+    return TransferSyntax.from(uid: uid)?.isJPEG2000 ?? false
 }
 
 // MARK: - info
@@ -398,12 +397,19 @@ extension DICOMJ2K {
                 the specified target transfer syntax. The DICOM dataset is preserved
                 bit-for-bit except for the pixel data element and transfer syntax UID.
 
-                Target transfer syntax values:
-                  j2k-lossless       JPEG 2000 Lossless (1.2.840.10008.1.2.4.90)
-                  j2k                JPEG 2000 Lossy (1.2.840.10008.1.2.4.91)
-                  htj2k-lossless     HTJ2K Lossless (1.2.840.10008.1.2.4.202)
-                  htj2k-rpcl         HTJ2K RPCL Lossless (1.2.840.10008.1.2.4.203)
-                  htj2k              HTJ2K Lossy (1.2.840.10008.1.2.4.204)
+                Target transfer syntax values (the general .91/.93/.203 UIDs carry either a
+                lossy or a lossless codestream per PS3.5 A.4.4; "-lossless-only" selects the
+                distinct reversible-only UID):
+                  j2k-lossy                 JPEG 2000, lossy          (1.2.840.10008.1.2.4.91)
+                  j2k-lossless              JPEG 2000, lossless       (1.2.840.10008.1.2.4.91)
+                  j2k-lossless-only         JPEG 2000 Lossless Only   (1.2.840.10008.1.2.4.90)
+                  j2k-part2-lossy           JPEG 2000 Part 2, lossy   (1.2.840.10008.1.2.4.93)
+                  j2k-part2-lossless        JPEG 2000 Part 2, lossless(1.2.840.10008.1.2.4.93)
+                  j2k-part2-lossless-only   JPEG 2000 Part 2 Lossless Only (1.2.840.10008.1.2.4.92)
+                  htj2k-lossy               HTJ2K, lossy              (1.2.840.10008.1.2.4.203)
+                  htj2k-lossless            HTJ2K, lossless           (1.2.840.10008.1.2.4.203)
+                  htj2k-lossless-only       HTJ2K Lossless Only       (1.2.840.10008.1.2.4.201)
+                  htj2k-rpcl-lossless-only  HTJ2K Lossless Only, RPCL (1.2.840.10008.1.2.4.202)
 
                 Examples:
                   dicom-j2k transcode j2k.dcm --output htj2k.dcm --target htj2k-lossless
@@ -418,7 +424,7 @@ extension DICOMJ2K {
         @Option(name: .shortAndLong, help: "Output DICOM file path")
         var output: String
 
-        @Option(name: .shortAndLong, help: "Target transfer syntax (j2k-lossless, j2k, htj2k-lossless, htj2k-rpcl, htj2k)")
+        @Option(name: .shortAndLong, help: "Target transfer syntax (e.g. j2k-lossy, j2k-lossless, j2k-lossless-only, htj2k-lossy, htj2k-lossless, htj2k-lossless-only, htj2k-rpcl-lossless-only)")
         var target: String
 
         @Option(name: .shortAndLong, help: "Encoding quality 0.0–1.0 (ignored for lossless targets)")
@@ -428,9 +434,13 @@ extension DICOMJ2K {
         var verbose: Bool = false
 
         mutating func validate() throws {
-            let valid = ["j2k-lossless", "j2k", "htj2k-lossless", "htj2k-rpcl", "htj2k"]
-            guard valid.contains(target) else {
-                throw ValidationError("Invalid target '\(target)'. Valid values: \(valid.joined(separator: ", "))")
+            // Validate against the shared catalog so the accepted names track the library.
+            // Any JPEG 2000 / HTJ2K target (lossy, lossless, or lossless-only) is allowed.
+            guard let enc = TransferSyntax.parseEncoding(target), enc.transferSyntax.isJPEG2000 else {
+                throw ValidationError(
+                    "Invalid target '\(target)'. Valid values: j2k-lossy, j2k-lossless, "
+                    + "j2k-lossless-only, j2k-part2-lossy, j2k-part2-lossless, j2k-part2-lossless-only, "
+                    + "htj2k-lossy, htj2k-lossless, htj2k-lossless-only, htj2k-rpcl-lossless-only")
             }
             guard (0.0...1.0).contains(quality) else {
                 throw ValidationError("Quality must be between 0.0 and 1.0")
@@ -446,12 +456,18 @@ extension DICOMJ2K {
                 )
             }
 
-            let targetUID = targetTransferSyntaxUID(for: target)
-            let isLossless = target.hasSuffix("lossless") || target == "htj2k-rpcl"
+            // Resolve UID + encode intent from the shared catalog. The general UIDs
+            // (.91/.203) honour the selected lossy/lossless intent (e.g. `htj2k-lossless`
+            // encodes reversibly into .203); the lossless-only UIDs (.90/.201/.202) are
+            // always lossless. `parseEncoding` is validated non-nil in validate().
+            let targetEncoding = TransferSyntax.parseEncoding(target)
+                ?? SelectableEncoding(transferSyntax: .jpeg2000Lossless, intent: .notApplicable)
+            let targetUID = targetEncoding.transferSyntax.uid
+            let isLossless = targetEncoding.isLossless
 
             if verbose {
                 print("Source:  \(tsLabel(srcUID))")
-                print("Target:  \(tsLabel(targetUID))")
+                print("Target:  \(tsLabel(targetUID, lossless: isLossless))")
                 print("Quality: \(isLossless ? "lossless" : String(format: "%.2f", quality))")
             }
 
@@ -515,16 +531,6 @@ extension DICOMJ2K {
             }
         }
 
-        private func targetTransferSyntaxUID(for key: String) -> String {
-            switch key {
-            case "j2k-lossless": return "1.2.840.10008.1.2.4.90"
-            case "j2k":          return "1.2.840.10008.1.2.4.91"
-            case "htj2k-lossless": return "1.2.840.10008.1.2.4.202"
-            case "htj2k-rpcl":   return "1.2.840.10008.1.2.4.203"
-            case "htj2k":        return "1.2.840.10008.1.2.4.204"
-            default:             return "1.2.840.10008.1.2.4.90"
-            }
-        }
     }
 }
 
@@ -1074,7 +1080,7 @@ extension DICOMJ2K {
                 case "${prev}" in
                     info|validate|benchmark|compare) COMPREPLY=($(compgen -f -- "${cur}")); return 0;;
                     transcode|reduce|roi) COMPREPLY=($(compgen -f -- "${cur}")); return 0;;
-                    --target) COMPREPLY=($(compgen -W "j2k-lossless j2k htj2k-lossless htj2k-rpcl htj2k" -- "${cur}")); return 0;;
+                    --target) COMPREPLY=($(compgen -W "j2k-lossy j2k-lossless j2k-lossless-only j2k-part2-lossy j2k-part2-lossless j2k-part2-lossless-only htj2k-lossy htj2k-lossless htj2k-lossless-only htj2k-rpcl-lossless-only" -- "${cur}")); return 0;;
                     completions) COMPREPLY=($(compgen -W "bash zsh fish" -- "${cur}")); return 0;;
                     *) COMPREPLY=($(compgen -W "${cmds} ${opts}" -- "${cur}")); return 0;;
                 esac

@@ -141,6 +141,74 @@ final class J2KRoundTripTests: XCTestCase {
         XCTAssertEqual(mismatches, 0, "lossless 16-bit must preserve every sample value")
     }
 
+    // MARK: - Shared SelectableEncoding intent → encoder behavior
+
+    /// Builds an encoder configuration from a shared-API `SelectableEncoding`, exactly the
+    /// way the app/CLI now derive lossy-vs-lossless mode for a given list row.
+    private func config(for encoding: SelectableEncoding, quality: Double = 0.8) -> J2KEncodingConfiguration {
+        var cfg = J2KEncodingConfiguration()
+        cfg.lossless = encoding.isLossless
+        cfg.useHTJ2K = encoding.transferSyntax.isHTJ2K
+        if encoding.transferSyntax.isHTJ2K { cfg.htj2kBlockFormat = .conformant }
+        if !encoding.isLossless { cfg.quality = quality }
+        return cfg
+    }
+
+    private func selectableEncoding(uid: String, intent: EncodingIntent) throws -> SelectableEncoding {
+        let match = TransferSyntax.selectableEncodings.first { $0.uid == uid && $0.intent == intent }
+        return try XCTUnwrap(match, "shared catalog must expose \(uid) with intent \(intent)")
+    }
+
+    // Oracle: the "JPEG 2000 Lossless (.91)" list row — a lossless intent on the general
+    // .91 UID — drives a bit-exact round-trip, distinct from the "JPEG 2000 Lossy (.91)"
+    // row on the same UID which is genuinely lossy. This is the whole point of splitting
+    // .91 into two list entries: same UID, different encoding behavior.
+    func testNinetyOneLosslessRowIsBitExact() async throws {
+        let w = 40, h = 40
+        let src = ramp8(w * h, stride: 11, mod: 251)
+        let lossless = try selectableEncoding(uid: "1.2.840.10008.1.2.4.91", intent: .lossless)
+        XCTAssertTrue(config(for: lossless).lossless, "the .91 lossless row must configure a lossless encode")
+
+        let codestream = try await encode(makeImage8(width: w, height: h, pixels: src), config(for: lossless))
+        let decoded = try await decode(codestream)
+        XCTAssertEqual(decoded.components[0].data, src, "JPEG 2000 Lossless (.91) must round-trip bit-exact")
+    }
+
+    // Oracle: the "JPEG 2000 Lossy (.91)" row configures a genuinely lossy encode (not
+    // bit-exact) that still stays visually lossless on a smooth image (PSNR ≥ 30 dB).
+    func testNinetyOneLossyRowIsLossyButHighQuality() async throws {
+        let w = 64, h = 64
+        let src = gradient8(w, h)
+        let lossy = try selectableEncoding(uid: "1.2.840.10008.1.2.4.91", intent: .lossy)
+        XCTAssertFalse(config(for: lossy).lossless, "the .91 lossy row must configure a lossy encode")
+
+        let codestream = try await encode(makeImage8(width: w, height: h, pixels: src), config(for: lossy))
+        let decoded = try await decode(codestream)
+        let ref = src.map { Int32($0) }
+        let tst = decoded.components[0].data.map { Int32($0) }
+        let psnr = try XCTUnwrap(J2KErrorMetrics.peakSignalToNoiseRatio(reference: ref, test: tst, bitDepth: 8))
+        XCTAssertGreaterThanOrEqual(psnr, 30.0, "JPEG 2000 Lossy (.91) must stay visually lossless, got \(psnr)")
+    }
+
+    // Oracle: the "HTJ2K Lossless (.203)" row — lossless intent on the general HTJ2K UID —
+    // drives a bit-exact round-trip and produces an HTJ2K-flagged codestream.
+    func testTwoZeroThreeLosslessRowIsBitExactAndHTJ2K() async throws {
+        let w = 64, h = 64
+        let src = ramp8(w * h, stride: 13, mod: 250)
+        let lossless = try selectableEncoding(uid: "1.2.840.10008.1.2.4.203", intent: .lossless)
+        let cfg = config(for: lossless)
+        XCTAssertTrue(cfg.lossless)
+        XCTAssertTrue(cfg.useHTJ2K, "the .203 row must configure an HTJ2K encode")
+
+        let codestream = try await encode(makeImage8(width: w, height: h, pixels: src), cfg)
+        let decoded = try await decode(codestream)
+        XCTAssertEqual(decoded.components[0].data, src, "HTJ2K Lossless (.203) must round-trip bit-exact")
+
+        let interop = J2KHTInteroperabilityValidator()
+        XCTAssertTrue(interop.validateInteroperability(codestream: codestream).isHTJ2K,
+                      "HTJ2K Lossless (.203) codestream must be flagged as HTJ2K")
+    }
+
     // MARK: - transcode (J2K ↔ HTJ2K), pixel identity
 
     // Oracle: J2K-lossless and HTJ2K-lossless both decode to identical pixels,
@@ -455,7 +523,7 @@ final class J2KRoundTripTests: XCTestCase {
                                     "lossy J2K must stay visually lossless (PSNR ≥ 30 dB), got \(psnr)")
     }
 
-    // Oracle: a lossy HTJ2K transcode (--target htj2k, …4.204) preserves geometry,
+    // Oracle: a lossy HTJ2K transcode (--target htj2k, …4.203) preserves geometry,
     // stays visually lossless (PSNR ≥ 30 dB), and the codestream is flagged HTJ2K.
     func testTranscodeLossyHTJ2KIsFlaggedAndPreservesQuality() async throws {
         let w = 64, h = 64

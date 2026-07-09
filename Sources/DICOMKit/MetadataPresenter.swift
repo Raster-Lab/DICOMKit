@@ -336,33 +336,16 @@ public struct MetadataPresenter {
 
     // MARK: - JPEG 2000 Metadata
 
-    private static let j2kTransferSyntaxUIDs: Set<String> = [
-        "1.2.840.10008.1.2.4.90",   // JPEG 2000 Lossless
-        "1.2.840.10008.1.2.4.91",   // JPEG 2000 (Lossy or Lossless)
-        "1.2.840.10008.1.2.4.92",   // JPEG 2000 Part 2 Lossless
-        "1.2.840.10008.1.2.4.93",   // JPEG 2000 Part 2
-        "1.2.840.10008.1.2.4.201",  // HTJ2K Lossless (RPCL)
-        "1.2.840.10008.1.2.4.202",  // HTJ2K Lossless
-        "1.2.840.10008.1.2.4.203",  // HTJ2K RPCL Lossless
-        "1.2.840.10008.1.2.4.204"   // HTJ2K (Lossy)
-    ]
-
+    /// Whether the UID is a JPEG 2000 / HTJ2K transfer syntax, per the shared
+    /// `TransferSyntax` source of truth (covers .90/.91/.92/.93 and HTJ2K .201/.202/.203).
     private func isJ2KTransferSyntax(_ uid: String) -> Bool {
-        MetadataPresenter.j2kTransferSyntaxUIDs.contains(uid)
+        TransferSyntax.from(uid: uid)?.isJPEG2000 ?? false
     }
 
+    /// Canonical display label for a JPEG 2000 / HTJ2K transfer syntax, sourced from the
+    /// shared `TransferSyntax.displayName` so it never drifts from the rest of the library.
     private func j2kTransferSyntaxLabel(_ uid: String) -> String {
-        switch uid {
-        case "1.2.840.10008.1.2.4.90": return "JPEG 2000 Image Compression (Lossless Only)"
-        case "1.2.840.10008.1.2.4.91": return "JPEG 2000 Image Compression"
-        case "1.2.840.10008.1.2.4.92": return "JPEG 2000 Part 2 Lossless"
-        case "1.2.840.10008.1.2.4.93": return "JPEG 2000 Part 2"
-        case "1.2.840.10008.1.2.4.201": return "HTJ2K Lossless (RPCL)"
-        case "1.2.840.10008.1.2.4.202": return "HTJ2K Lossless"
-        case "1.2.840.10008.1.2.4.203": return "HTJ2K RPCL Lossless Only"
-        case "1.2.840.10008.1.2.4.204": return "HTJ2K (Lossy)"
-        default: return "JPEG 2000 (unknown variant)"
-        }
+        TransferSyntax.from(uid: uid)?.displayName ?? "JPEG 2000 (unknown variant)"
     }
 
     private func firstEncapsulatedFragment() -> Data? {

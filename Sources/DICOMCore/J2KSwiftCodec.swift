@@ -342,7 +342,18 @@ private extension J2KSwiftCodec {
         transferSyntaxUID: String?
     ) -> J2KEncodingConfiguration {
         let targetSyntax = transferSyntaxUID.flatMap(TransferSyntax.from(uid:))
-        let isLossless = targetSyntax?.isLossless ?? (configuration.preferLossless || configuration.quality.isLossless)
+        // Reversible vs irreversible. The general (`.both`-capable) UIDs — JPEG 2000 .91,
+        // Part 2 .93, HTJ2K .203 — may carry either, so the caller's intent (preferLossless)
+        // decides; single-capability UIDs are fixed by the UID; an unknown UID falls back to
+        // the config flags. (Previously `targetSyntax.isLossless` hardwired the general UIDs
+        // to lossy and silently ignored the caller's lossless intent.)
+        let isLossless: Bool
+        switch targetSyntax?.losslessCapability {
+        case .some(.both):          isLossless = configuration.preferLossless
+        case .some(.losslessOnly):  isLossless = true
+        case .some(.lossyOnly):     isLossless = false
+        case .none:                 isLossless = configuration.preferLossless || configuration.quality.isLossless
+        }
         let useHTJ2K = targetSyntax?.isHTJ2K ?? false
 
         // DICOM HTJ2K transfer syntaxes (PS3.5 A.4.6) reference ISO/IEC 15444-15;
