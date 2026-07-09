@@ -1006,6 +1006,58 @@ extension TransferSyntax {
         }
     }
 
+    /// The image/storage transfer syntaxes a **UID-only negotiation tool** — `dicom-retrieve`,
+    /// `dicom-qr` — can request during C-GET / C-MOVE association setup, each paired with the
+    /// canonical short token shown in its transfer-syntax picker and `--transfer-syntax` CLI help.
+    ///
+    /// This is the **single source of truth** for retrieval transfer-syntax lists, playing the same
+    /// role for negotiation tools that ``CompressionManager.supportedCodecs()`` (dicom-compress) and
+    /// `DICOMConverter.cliTokens` (dicom-convert) play for the encode tools: the DICOMStudio CLI
+    /// Workshop pickers and the `dicom-retrieve` / `dicom-qr` CLIs all derive their list from it, so
+    /// a codec added here surfaces on every negotiation surface at once — never hand-maintain those
+    /// lists again. Every token round-trips through ``parse(_:)`` (enforced by TransferSyntaxTests).
+    ///
+    /// Unlike the encode catalogs this is a **UID-level** list (no lossy/lossless intent split): an
+    /// association proposes a transfer syntax UID, so the `both`-capable general families contribute
+    /// a single entry each (`jpeg2000` → .91, `htj2k` → .203, `jpeg-xl` → .112). Ordering mirrors
+    /// ``DICOMConverter``'s UI order (uncompressed, JPEG, JPEG 2000 / HTJ2K, JPEG-LS, JPEG XL, RLE).
+    ///
+    /// Video (MPEG/HEVC), JPIP, experimental JP3D, and the JPEG XL JPEG-recompression (…4.111)
+    /// syntaxes are intentionally omitted: the package cannot decode them, so requesting them for a
+    /// file retrieval is not useful.
+    public static let negotiableImageSyntaxTokens: [(syntax: TransferSyntax, token: String)] = [
+        // Uncompressed
+        (.explicitVRLittleEndian,         "explicit-vr-le"),
+        (.implicitVRLittleEndian,         "implicit-vr-le"),
+        (.explicitVRBigEndian,            "explicit-vr-be"),
+        (.deflatedExplicitVRLittleEndian, "deflate"),
+        // JPEG
+        (.jpegBaseline,                   "jpeg-baseline"),
+        (.jpegExtended,                   "jpeg-extended"),
+        (.jpegLossless,                   "jpeg-lossless"),
+        (.jpegLosslessSV1,                "jpeg-lossless-sv1"),
+        // JPEG 2000 / HTJ2K
+        (.jpeg2000Lossless,               "jpeg2000-lossless"),
+        (.jpeg2000,                       "jpeg2000"),
+        (.jpeg2000Part2Lossless,          "jpeg2000-part2-lossless"),
+        (.jpeg2000Part2,                  "jpeg2000-part2"),
+        (.htj2kLossless,                  "htj2k-lossless"),
+        (.htj2kRPCLLossless,              "htj2k-rpcl"),
+        (.htj2kLossy,                     "htj2k"),
+        // JPEG-LS
+        (.jpegLSLossless,                 "jpeg-ls-lossless"),
+        (.jpegLSNearLossless,             "jpeg-ls"),
+        // JPEG XL
+        (.jpegXLLossless,                 "jpeg-xl-lossless"),
+        (.jpegXL,                         "jpeg-xl"),
+        // RLE
+        (.rleLossless,                    "rle-lossless"),
+    ]
+
+    /// The canonical negotiation tokens from ``negotiableImageSyntaxTokens``, in catalog order —
+    /// drives the `dicom-retrieve` / `dicom-qr` transfer-syntax pickers and CLI help.
+    public static var negotiableImageTokens: [String] { negotiableImageSyntaxTokens.map(\.token) }
+
     /// Parses a user-facing alias/UID into a ``SelectableEncoding``, resolving the lossy vs
     /// lossless intent for `both`-capable UIDs.
     ///

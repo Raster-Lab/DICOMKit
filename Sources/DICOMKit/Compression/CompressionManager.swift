@@ -14,6 +14,10 @@ public struct CompressionInfo {
     public let transferSyntaxUID: String
     public let transferSyntaxName: String
     public let isCompressed: Bool
+    /// Whether the pixels are *effectively* lossless. For single-capability UIDs this is
+    /// the UID-level flag; for the `both`-capable general UIDs (.91/.93/.203/.112) it is
+    /// derived from Lossy Image Compression (0028,2110) — so an image reversibly encoded
+    /// into a general UID reports `true`. Reference: PS3.3 C.7.6.1.1.5.
     public let isLossless: Bool
     public let isJPEG: Bool
     public let isJPEG2000: Bool
@@ -144,6 +148,37 @@ public struct CompressionManager {
             .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) ?? "1.2.840.10008.1.2"
         let syntax = TransferSyntax.from(uid: tsUID)
 
+        // Effective lossless state. For the `both`-capable general UIDs
+        // (.91 / .93 / .203 / .112) the UID alone can't say whether the codestream
+        // is reversible: an image reversibly encoded INTO the general UID is
+        // indistinguishable at the UID level from a lossy one. The authoritative
+        // per-file signal is Lossy Image Compression (0028,2110) — "01" means the
+        // pixels were lossy-compressed at some step, "00"/absent means they were
+        // not — so consult it for `both` UIDs. Single-capability syntaxes keep the
+        // UID-level flag, where the UID IS authoritative (.90 always lossless, .50
+        // always lossy). Reference: PS3.3 C.7.6.1.1.5, PS3.5 A.4.4 / A.4.12.
+        let lossyFlag = file.dataSet.string(for: .lossyImageCompression)?
+            .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+        let isLossless: Bool
+        switch syntax?.losslessCapability {
+        case .some(.both):         isLossless = (lossyFlag != "01")
+        case .some(.losslessOnly): isLossless = true
+        case .some(.lossyOnly):    isLossless = false
+        case .none:                isLossless = true   // unknown UID → prior default
+        }
+
+        // Name reflects the ACTUAL encoded intent so it never contradicts the
+        // Lossless line: a reversibly encoded .91 reads "JPEG 2000 Lossless", not
+        // the UID's default "Lossy". Single-capability UIDs use the shared label.
+        let transferSyntaxName: String = {
+            guard let s = syntax else { return tsUID }
+            guard s.losslessCapability == .both else {
+                return CompressionManager.transferSyntaxDisplayName(s)
+            }
+            return SelectableEncoding(
+                transferSyntax: s, intent: isLossless ? .lossless : .lossy).displayName
+        }()
+
         let pixelElement = file.dataSet[.pixelData]
 
         // Pixel Data size: for native (non-encapsulated) data the element length
@@ -166,9 +201,9 @@ public struct CompressionManager {
 
         return CompressionInfo(
             transferSyntaxUID: tsUID,
-            transferSyntaxName: syntax.map { CompressionManager.transferSyntaxDisplayName($0) } ?? tsUID,
+            transferSyntaxName: transferSyntaxName,
             isCompressed: syntax?.isEncapsulated ?? false,
-            isLossless: syntax?.isLossless ?? true,
+            isLossless: isLossless,
             isJPEG: syntax?.isJPEG ?? false,
             isJPEG2000: syntax?.isJPEG2000 ?? false,
             isJPEGLS: syntax?.isJPEGLS ?? false,

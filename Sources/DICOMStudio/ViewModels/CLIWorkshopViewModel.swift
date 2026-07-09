@@ -2976,8 +2976,14 @@ private func executeDicomCompressCompress() async {
     let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
     // Shared backend resolution (same helper the CLI uses) — the preference is
     // both displayed AND forwarded into the engine (J2K/HTJ2K honor metal→GPU).
+    // Report the backend the encode will ACTUALLY use (not the best available
+    // hardware): `auto` runs the CPU encoder for lossless, so it must not claim
+    // "Metal (GPU)". A `--backend metal` lossless request is downgraded to CPU
+    // with an explanatory note.
     let backendPref = CompressionConsole.backendPreference(for: backendRaw)
-    let backendName = backendPref.effective.displayName
+    let resolvedBackend = CompressionConsole.compressBackend(codec: codec, preference: backendPref)
+    let backendName = resolvedBackend.displayName
+    let backendNote = resolvedBackend.note
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
         var log = ""
@@ -2998,7 +3004,7 @@ private func executeDicomCompressCompress() async {
             if verbose {
                 log += CompressionConsole.compressPreamble(
                     input: inputPath, codec: codec, quality: qualityStr, backendDisplayName: backendName,
-                    sourceTransferSyntaxName: sourceCodecName)
+                    sourceTransferSyntaxName: sourceCodecName, backendNote: backendNote)
             } else if let name = sourceCodecName {
                 log += CompressionConsole.recompressNoteLine(sourceName: name)
             }

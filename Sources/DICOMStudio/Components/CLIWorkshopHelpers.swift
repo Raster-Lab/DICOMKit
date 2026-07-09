@@ -657,9 +657,11 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
                     parameterType: .enumPicker, placeholder: "Any (negotiate)",
                     helpText: "Requested transfer syntax for retrieved files — negotiated during association setup (PS3.8 §9.3.2)",
-                    // Every token must parse via the shared TransferSyntax.parse
-                    // (DICOMCore) — the SAME parser the CLI uses.
-                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "htj2k-lossless", "htj2k-rpcl", "htj2k", "rle-lossless"]
+                    // Single source of truth: DICOMCore's TransferSyntax.negotiableImageTokens —
+                    // the same UID-level list the dicom-retrieve/dicom-qr CLIs derive their
+                    // --transfer-syntax help from. Every token parses via TransferSyntax.parse
+                    // (the SAME parser the CLI uses), so the picker never drifts from the CLI.
+                    allowedValues: [""] + TransferSyntax.negotiableImageTokens
                 ),
                 CLIParameterDefinition(
                     id: "verbose", flag: "--verbose", displayName: "Verbose",
@@ -791,9 +793,11 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "transfer-syntax", flag: "--transfer-syntax", displayName: "Transfer Syntax",
                     parameterType: .enumPicker, placeholder: "Any (negotiate)",
                     helpText: "Requested transfer syntax for retrieved files — negotiated during association setup (PS3.8 §9.3.2)",
-                    // Every token must parse via the shared TransferSyntax.parse
-                    // (DICOMCore) — the SAME parser the CLI uses.
-                    allowedValues: ["", "explicit-vr-le", "implicit-vr-le", "jpeg-baseline", "jpeg-lossless", "jpeg2000-lossless", "jpeg2000", "htj2k-lossless", "htj2k-rpcl", "htj2k", "rle-lossless"]
+                    // Single source of truth: DICOMCore's TransferSyntax.negotiableImageTokens —
+                    // the same UID-level list the dicom-retrieve/dicom-qr CLIs derive their
+                    // --transfer-syntax help from. Every token parses via TransferSyntax.parse
+                    // (the SAME parser the CLI uses), so the picker never drifts from the CLI.
+                    allowedValues: [""] + TransferSyntax.negotiableImageTokens
                 ),
                 CLIParameterDefinition(
                     id: "save-state", flag: "--save-state", displayName: "Save State File",
@@ -1839,7 +1843,12 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Target transfer syntax for DICOM-to-DICOM conversion — supports uncompressed and compressed encoding (PS3.5 §10)",
                     // Single source of truth: the shared DICOMConverter target catalog
                     // (DICOMKit), so the picker stays in step with the dicom-convert CLI.
-                    allowedValues: [""] + DICOMConverter.cliTokens,
+                    // Show the short kebab aliases (aliasTokens: "jpeg2000-lossless", "htj2k",
+                    // …) rather than the CamelCase cliTokens, so this dropdown reads the same as
+                    // dicom-compress/dicom-retrieve/dicom-qr. The dicom-convert CLI accepts the
+                    // kebab alias identically (DICOMConverter.resolveTarget), so the generated
+                    // command and in-process execution are unchanged.
+                    allowedValues: [""] + DICOMConverter.aliasTokens,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "format", values: ["dicom"])
                 ),
                 CLIParameterDefinition(

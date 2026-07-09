@@ -43,11 +43,12 @@ public enum DICOMConverter {
         /// for single-capability UIDs). Drives reversible-vs-irreversible encoding and the
         /// Lossy Image Compression provenance attributes.
         public let intent: EncodingIntent
-        /// CamelCase token used by the CLI `--transfer-syntax` flag and the CLI
-        /// Workshop picker (e.g. `ExplicitVRLittleEndian`, `JPEG2000Lossless`).
+        /// CamelCase token emitted in the CLI `--transfer-syntax` help listing
+        /// (e.g. `ExplicitVRLittleEndian`, `JPEG2000Lossless`). Accepted on input.
         public let cliToken: String
-        /// kebab-case alias used by the representative parameter catalog and accepted
-        /// on input (e.g. `explicit-vr-le`, `jpeg2000-lossless`).
+        /// kebab-case alias shown in the app pickers (CLI Workshop + representative parameter
+        /// catalog) so every transfer-syntax dropdown reads the same short style as
+        /// dicom-compress, and accepted on input (e.g. `explicit-vr-le`, `jpeg2000-lossless`).
         public let aliasToken: String
         /// Additional historical aliases accepted on input (already lowercased).
         public let extraAliases: [String]

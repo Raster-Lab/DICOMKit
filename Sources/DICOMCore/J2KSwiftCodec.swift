@@ -294,7 +294,15 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         )
         // --backend metal → the J2KSwift GPU encode path; every other
         // preference (auto/accelerate/scalar) runs the default CPU encoder.
-        let useGPU = configuration.forcedBackend == .metal
+        // GPU (Metal) encode is only bit-exact for irreversible (lossy) coding —
+        // the reversible/lossless GPU path fails `verifyEncodedRoundTrip` on real
+        // medical data (12/16-bit), so a lossless encode always runs on the CPU
+        // even when Metal is explicitly requested. This mirrors
+        // `CodecBackendPreference.effectiveEncodeBackend`, which the console uses
+        // to report the backend actually taken.
+        let requestedGPU = configuration.forcedBackend == .metal
+        let isLossless = configuration.preferLossless || configuration.quality.isLossless
+        let useGPU = requestedGPU && !isLossless
         let encoded = try Self.awaitJ2KResult {
             useGPU ? try await encoder.encodeGPU(image)
                    : try await encoder.encode(image)

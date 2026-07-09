@@ -140,7 +140,7 @@ extension DICOMQR {
         @Flag(name: .long, help: "Validate retrieved files")
         var validate: Bool = false
 
-        @Option(name: .long, help: "Requested transfer syntax for retrieved files (e.g. explicit-vr-le, jpeg-baseline, jpeg2000, rle-lossless, implicit-vr-le)")
+        @Option(name: .long, help: "Requested transfer syntax for retrieved files — negotiated during association setup. Accepts any name/UID the shared parser understands; canonical tokens: \(TransferSyntax.negotiableImageTokens.joined(separator: ", ")).")
         var transferSyntax: String?
 
         @Flag(name: .long, help: "Show verbose output")
