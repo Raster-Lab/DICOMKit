@@ -202,17 +202,21 @@ struct ExtendedTagTests {
     
     @Test("Waveform tags are correct")
     func testWaveformTags() {
+        // Waveform Sequence lives in group 0x5400 (correct per PS3.6).
         #expect(Tag.waveformSequence.group == 0x5400)
         #expect(Tag.waveformSequence.element == 0x0100)
-        
-        #expect(Tag.numberOfWaveformChannels.group == 0x5400)
-        #expect(Tag.numberOfWaveformChannels.element == 0x0105)
-        
-        #expect(Tag.numberOfWaveformSamples.group == 0x5400)
-        #expect(Tag.numberOfWaveformSamples.element == 0x1010)
-        
-        #expect(Tag.samplingFrequency.group == 0x5400)
-        #expect(Tag.samplingFrequency.element == 0x101A)
+
+        // Acquisition + channel-definition attributes live in group 0x003A per
+        // PS3.6 (not 0x5400 — that earlier value was a bug that made
+        // WaveformParser reject standards-compliant waveforms).
+        #expect(Tag.numberOfWaveformChannels.group == 0x003A)
+        #expect(Tag.numberOfWaveformChannels.element == 0x0005)
+
+        #expect(Tag.numberOfWaveformSamples.group == 0x003A)
+        #expect(Tag.numberOfWaveformSamples.element == 0x0010)
+
+        #expect(Tag.samplingFrequency.group == 0x003A)
+        #expect(Tag.samplingFrequency.element == 0x001A)
     }
     
     // MARK: - Tag Uniqueness
