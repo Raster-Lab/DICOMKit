@@ -125,20 +125,26 @@ public struct DICOMDIRReader {
                 currentPatient = record
                 
             case .study:
-                // Save previous study if any
+                // Close the open study (and its open series) into the current patient.
+                // DirectoryRecord is a value type, so the mutated copies MUST be written
+                // back or the accumulated children are lost.
                 if var patient = currentPatient, var study = currentStudy {
                     if let series = currentSeries {
                         study.addChild(series)
                         currentSeries = nil
                     }
                     patient.addChild(study)
+                    currentPatient = patient
                 }
                 currentStudy = record
-                
+
             case .series:
-                // Save previous series if any
+                // Close the open series into the current study — writing the mutated
+                // study back (value type), else earlier series/images are dropped.
                 if var study = currentStudy, let series = currentSeries {
                     study.addChild(series)
+                    currentStudy = study
+                    currentSeries = nil
                 }
                 currentSeries = record
                 

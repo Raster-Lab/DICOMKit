@@ -163,6 +163,37 @@ final class DcmdirRoundTripTests: XCTestCase {
         XCTAssertEqual(o.imageCount, 2)
     }
 
+    // Oracle: a study with MULTIPLE series (and multiple images per series) round-trips
+    // with EVERY image preserved. Regression: the reader's hierarchy reconstruction
+    // mutated value-type copies of the current study/patient without writing them back,
+    // so every series but the last was dropped and only the final image survived.
+    func testWriteReadMultiSeriesRoundTrip() throws {
+        func image(_ n: Int) -> DirectoryRecord {
+            DirectoryRecord.image(
+                referencedFileID: ["DICOM", "IMG\(n)"],
+                sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                sopInstanceUID: rtUID(),
+                transferSyntaxUID: "1.2.840.10008.1.2.1",
+                instanceNumber: "\(n)")
+        }
+        let seriesA = DirectoryRecord.series(
+            seriesInstanceUID: rtUID(), modality: "CT", children: [image(1), image(2)])
+        let seriesB = DirectoryRecord.series(
+            seriesInstanceUID: rtUID(), modality: "CT", children: [image(3)])
+        let study = DirectoryRecord.study(studyInstanceUID: rtUID(), children: [seriesA, seriesB])
+        let patient = DirectoryRecord.patient(
+            patientID: "PID", patientName: "Multi^Series", children: [study])
+        let original = DICOMDirectory(fileSetID: "MULTI", rootRecords: [patient])
+
+        let readBack = try DICOMDIRReader.read(from: try DICOMDIRWriter.write(original))
+        let s = readBack.statistics()
+        XCTAssertEqual(s.patientCount, 1)
+        XCTAssertEqual(s.studyCount, 1)
+        XCTAssertEqual(s.seriesCount, 2, "both series must survive")
+        XCTAssertEqual(s.imageCount, 3, "every image across both series must survive the round-trip")
+        XCTAssertEqual(readBack.allReferencedFiles().count, 3)
+    }
+
     // Oracle: the serialized DICOMDIR is a valid Part 10 file — preamble(128) + "DICM".
     func testSerializedDICOMDIRIsPart10() throws {
         let directory = makeManualDirectory(patients: 1)
