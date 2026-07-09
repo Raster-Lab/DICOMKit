@@ -397,11 +397,11 @@ extension Waveform {
             value: UInt16(group.channels.count)
         ))
 
-        // Number of Waveform Samples
-        elements.append(DataElement.string(
+        // Number of Waveform Samples (003A,0010) — VR UL: a 4-byte binary integer,
+        // not an ASCII decimal string.
+        elements.append(DataElement.uint32(
             tag: .numberOfWaveformSamples,
-            vr: .UL,
-            value: String(group.numberOfSamples)
+            value: UInt32(group.numberOfSamples)
         ))
 
         // Waveform Bits Allocated (5400,1004)

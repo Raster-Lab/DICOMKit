@@ -112,20 +112,18 @@ public struct WaveformParser {
             throw DICOMError.parsingFailed("Missing Number of Waveform Channels")
         }
 
-        // Number of Waveform Samples (required)
-        guard let numberOfSamplesStr = item.elements[.numberOfWaveformSamples]?.stringValue,
-              let numberOfSamples = Int(numberOfSamplesStr.trimmingCharacters(in: .whitespaces)) else {
-            // Try as UInt32
-            if let sampleCount = item.elements[.numberOfWaveformSamples]?.uint16Value {
-                let numberOfSamples = Int(sampleCount)
-                // Continue with the rest of parsing below
-                return try parseMultiplexGroupContinued(
-                    item: item,
-                    samplingFrequency: samplingFrequency,
-                    numberOfChannels: numberOfChannels,
-                    numberOfSamples: numberOfSamples
-                )
-            }
+        // Number of Waveform Samples (003A,0010) — VR UL (32-bit), required. Read it
+        // as UInt32 first (the conformant encoding); fall back to US, then to an IS
+        // string, so lenient/legacy writers still parse.
+        let numberOfSamples: Int
+        if let count = item.elements[.numberOfWaveformSamples]?.uint32Value {
+            numberOfSamples = Int(count)
+        } else if let count = item.elements[.numberOfWaveformSamples]?.uint16Value {
+            numberOfSamples = Int(count)
+        } else if let str = item.elements[.numberOfWaveformSamples]?.stringValue,
+                  let count = Int(str.trimmingCharacters(in: .whitespaces)) {
+            numberOfSamples = count
+        } else {
             throw DICOMError.parsingFailed("Missing Number of Waveform Samples")
         }
 
