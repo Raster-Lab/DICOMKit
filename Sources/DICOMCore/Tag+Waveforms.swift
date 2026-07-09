@@ -41,90 +41,90 @@ extension Tag {
     
     /// Waveform Originality (5400,0110)
     /// VR: CS, VM: 1
-    public static let waveformOriginality = Tag(group: 0x5400, element: 0x0110)
+    public static let waveformOriginality = Tag(group: 0x003A, element: 0x0004)
     
     /// Number of Waveform Channels (5400,0105)
     /// VR: US, VM: 1
-    public static let numberOfWaveformChannels = Tag(group: 0x5400, element: 0x0105)
+    public static let numberOfWaveformChannels = Tag(group: 0x003A, element: 0x0005)
     
     /// Number of Waveform Samples (5400,1010)
     /// VR: UL, VM: 1
-    public static let numberOfWaveformSamples = Tag(group: 0x5400, element: 0x1010)
+    public static let numberOfWaveformSamples = Tag(group: 0x003A, element: 0x0010)
     
     /// Sampling Frequency (5400,101A)
     /// VR: DS, VM: 1
-    public static let samplingFrequency = Tag(group: 0x5400, element: 0x101A)
+    public static let samplingFrequency = Tag(group: 0x003A, element: 0x001A)
     
     /// Multiplex Group Label (5400,0120)
     /// VR: SH, VM: 1
-    public static let multiplexGroupLabel = Tag(group: 0x5400, element: 0x0120)
+    public static let multiplexGroupLabel = Tag(group: 0x003A, element: 0x0020)
     
     /// Channel Definition Sequence (5400,0200)
     /// VR: SQ, VM: 1
-    public static let channelDefinitionSequence = Tag(group: 0x5400, element: 0x0200)
+    public static let channelDefinitionSequence = Tag(group: 0x003A, element: 0x0200)
     
     /// Waveform Channel Number (5400,0110)
     /// VR: IS, VM: 1
     /// NOTE: Conflicts with waveformOriginality - using different element
-    public static let waveformChannelNumber = Tag(group: 0x5400, element: 0x0112)
+    public static let waveformChannelNumber = Tag(group: 0x003A, element: 0x0202)
     
     /// Channel Label (5400,0402)
     /// VR: SH, VM: 1
-    public static let channelLabel = Tag(group: 0x5400, element: 0x0402)
+    public static let channelLabel = Tag(group: 0x003A, element: 0x0203)
     
     /// Channel Status (5400,0404)
     /// VR: CS, VM: 1-n
-    public static let channelStatus = Tag(group: 0x5400, element: 0x0404)
+    public static let channelStatus = Tag(group: 0x003A, element: 0x0205)
     
     /// Channel Source Sequence (5400,0406)
     /// VR: SQ, VM: 1
-    public static let channelSourceSequence = Tag(group: 0x5400, element: 0x0406)
+    public static let channelSourceSequence = Tag(group: 0x003A, element: 0x0208)
     
     /// Channel Source Modifiers Sequence (5400,0407)
     /// VR: SQ, VM: 1
-    public static let channelSourceModifiersSequence = Tag(group: 0x5400, element: 0x0407)
+    public static let channelSourceModifiersSequence = Tag(group: 0x003A, element: 0x0209)
     
     /// Source Waveform Sequence (5400,0408)
     /// VR: SQ, VM: 1
-    public static let sourceWaveformSequence = Tag(group: 0x5400, element: 0x0408)
+    public static let sourceWaveformSequence = Tag(group: 0x003A, element: 0x020A)
     
     /// Channel Derivation Description (5400,0409)
     /// VR: LO, VM: 1
-    public static let channelDerivationDescription = Tag(group: 0x5400, element: 0x0409)
+    public static let channelDerivationDescription = Tag(group: 0x003A, element: 0x020C)
     
     /// Channel Sensitivity (5400,100A)
     /// VR: DS, VM: 1
-    public static let channelSensitivity = Tag(group: 0x5400, element: 0x100A)
+    public static let channelSensitivity = Tag(group: 0x003A, element: 0x0210)
     
     /// Channel Sensitivity Units Sequence (5400,100B)
     /// VR: SQ, VM: 1
-    public static let channelSensitivityUnitsSequence = Tag(group: 0x5400, element: 0x100B)
+    public static let channelSensitivityUnitsSequence = Tag(group: 0x003A, element: 0x0211)
     
     /// Channel Sensitivity Correction Factor (5400,100C)
     /// VR: DS, VM: 1
-    public static let channelSensitivityCorrectionFactor = Tag(group: 0x5400, element: 0x100C)
+    public static let channelSensitivityCorrectionFactor = Tag(group: 0x003A, element: 0x0212)
     
     /// Channel Baseline (5400,100D)
     /// VR: DS, VM: 1
-    public static let channelBaseline = Tag(group: 0x5400, element: 0x100D)
+    public static let channelBaseline = Tag(group: 0x003A, element: 0x0213)
     
     /// Channel Time Skew (5400,100E)
     /// VR: DS, VM: 1
-    public static let channelTimeSkew = Tag(group: 0x5400, element: 0x100E)
+    public static let channelTimeSkew = Tag(group: 0x003A, element: 0x0214)
     
     /// Channel Sample Skew (5400,100F)
     /// VR: DS, VM: 1
-    public static let channelSampleSkew = Tag(group: 0x5400, element: 0x100F)
+    public static let channelSampleSkew = Tag(group: 0x003A, element: 0x0215)
     
     /// Channel Offset (5400,1012)
     /// VR: DS, VM: 1
-    public static let channelOffset = Tag(group: 0x5400, element: 0x1012)
+    public static let channelOffset = Tag(group: 0x003A, element: 0x0218)
     
     /// Waveform Bits Stored (5400,1006)
     /// VR: US, VM: 1
     /// Note: Per DICOM PS3.3, (5400,1006) is actually Waveform Sample Interpretation (VR: CS)
     /// This alias is maintained for backward compatibility
-    public static let waveformBitsStored = Tag(group: 0x5400, element: 0x1006)
+    public static let waveformBitsStored = Tag(group: 0x003A, element: 0x021A)
     
     /// Waveform Sample Interpretation (5400,1006)
     /// VR: CS, VM: 1
@@ -139,19 +139,19 @@ extension Tag {
     
     /// Filter Low Frequency (5400,1018)
     /// VR: DS, VM: 1
-    public static let filterLowFrequency = Tag(group: 0x5400, element: 0x1018)
+    public static let filterLowFrequency = Tag(group: 0x003A, element: 0x0220)
     
     /// Filter High Frequency (5400,101A)
     /// VR: DS, VM: 1
-    public static let filterHighFrequency = Tag(group: 0x5400, element: 0x101A)
+    public static let filterHighFrequency = Tag(group: 0x003A, element: 0x0221)
     
     /// Notch Filter Frequency (5400,101C)
     /// VR: DS, VM: 1
-    public static let notchFilterFrequency = Tag(group: 0x5400, element: 0x101C)
+    public static let notchFilterFrequency = Tag(group: 0x003A, element: 0x0222)
     
     /// Notch Filter Bandwidth (5400,101E)
     /// VR: DS, VM: 1
-    public static let notchFilterBandwidth = Tag(group: 0x5400, element: 0x101E)
+    public static let notchFilterBandwidth = Tag(group: 0x003A, element: 0x0223)
     
     /// Waveform Data Display Scale (5400,1014)
     /// VR: DS, VM: 1
