@@ -155,34 +155,34 @@ struct PixelDataErrorTests {
         #expect(error.transferSyntaxName == "JPEG-LS Near-Lossless")
     }
     
-    @Test("transferSyntaxName returns correct name for JPEG 2000 Part 2 Lossless")
+    @Test("transferSyntaxName returns correct name for JPEG 2000 Part 2 Lossless Only")
     func testTransferSyntaxNameJPEG2000Part2Lossless() {
         let error = PixelDataError.unsupportedTransferSyntax("1.2.840.10008.1.2.4.92")
-        #expect(error.transferSyntaxName == "JPEG 2000 Part 2 Lossless")
+        #expect(error.transferSyntaxName == "JPEG 2000 Part 2 Multi-component Lossless Only")
     }
-    
+
     @Test("transferSyntaxName returns correct name for JPEG 2000 Part 2 Lossy")
     func testTransferSyntaxNameJPEG2000Part2Lossy() {
         let error = PixelDataError.unsupportedTransferSyntax("1.2.840.10008.1.2.4.93")
-        #expect(error.transferSyntaxName == "JPEG 2000 Part 2 Lossy")
+        #expect(error.transferSyntaxName == "JPEG 2000 Part 2 Multi-component Lossy")
     }
-    
-    @Test("transferSyntaxName returns correct name for High-Throughput JPEG 2000 Lossless")
+
+    @Test("transferSyntaxName returns correct name for HTJ2K Lossless Only")
     func testTransferSyntaxNameHTJPEG2000Lossless() {
         let error = PixelDataError.unsupportedTransferSyntax("1.2.840.10008.1.2.4.201")
-        #expect(error.transferSyntaxName == "High-Throughput JPEG 2000 Lossless")
+        #expect(error.transferSyntaxName == "HTJ2K Lossless Only")
     }
-    
-    @Test("transferSyntaxName returns correct name for High-Throughput JPEG 2000 with RPCL")
+
+    @Test("transferSyntaxName returns correct name for HTJ2K Lossless Only (RPCL)")
     func testTransferSyntaxNameHTJPEG2000RPCL() {
         let error = PixelDataError.unsupportedTransferSyntax("1.2.840.10008.1.2.4.202")
-        #expect(error.transferSyntaxName == "High-Throughput JPEG 2000 with RPCL Lossless")
+        #expect(error.transferSyntaxName == "HTJ2K Lossless Only (RPCL)")
     }
-    
-    @Test("transferSyntaxName returns correct name for High-Throughput JPEG 2000 Lossy")
+
+    @Test("transferSyntaxName returns correct name for HTJ2K Lossy")
     func testTransferSyntaxNameHTJPEG2000Lossy() {
         let error = PixelDataError.unsupportedTransferSyntax("1.2.840.10008.1.2.4.203")
-        #expect(error.transferSyntaxName == "High-Throughput JPEG 2000 Lossy")
+        #expect(error.transferSyntaxName == "HTJ2K Lossy")
     }
     
     @Test("transferSyntaxName returns nil for unknown UID")

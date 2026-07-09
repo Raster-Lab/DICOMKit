@@ -145,29 +145,19 @@ extension PixelDataError {
         }
     }
     
-    /// Known transfer syntax name for unsupported formats
+    /// Human-readable name for the unsupported transfer syntax, or nil for an unknown
+    /// UID (or a non-`unsupportedTransferSyntax` error).
+    ///
+    /// Sourced from the single shared catalog (`TransferSyntax.displayName` /
+    /// `SelectableEncoding`) so error text matches labels used everywhere else. The
+    /// `both`-capable general UIDs (`.91`/`.93`/`.203`) are surfaced in their lossy form,
+    /// consistent with the compression layer.
     public var transferSyntaxName: String? {
-        guard case .unsupportedTransferSyntax(let uid) = self else {
+        guard case .unsupportedTransferSyntax(let uid) = self,
+              let syntax = TransferSyntax.from(uid: uid) else {
             return nil
         }
-        
-        switch uid {
-        case "1.2.840.10008.1.2.4.80":
-            return "JPEG-LS Lossless"
-        case "1.2.840.10008.1.2.4.81":
-            return "JPEG-LS Near-Lossless"
-        case "1.2.840.10008.1.2.4.92":
-            return "JPEG 2000 Part 2 Lossless"
-        case "1.2.840.10008.1.2.4.93":
-            return "JPEG 2000 Part 2 Lossy"
-        case "1.2.840.10008.1.2.4.201":
-            return "High-Throughput JPEG 2000 Lossless"
-        case "1.2.840.10008.1.2.4.202":
-            return "High-Throughput JPEG 2000 with RPCL Lossless"
-        case "1.2.840.10008.1.2.4.203":
-            return "High-Throughput JPEG 2000 Lossy"
-        default:
-            return nil
-        }
+        guard syntax.losslessCapability == .both else { return syntax.displayName }
+        return SelectableEncoding(transferSyntax: syntax, intent: .lossy).displayName
     }
 }

@@ -118,9 +118,9 @@ public struct JP3DVolumeComparisonView: View {
 
             Spacer()
 
-            Picker("", selection: $vm.selectedUID) {
-                ForEach(vm.codecOptions, id: \.uid) { opt in
-                    Text(opt.name).tag(opt.uid)
+            Picker("", selection: $vm.selectedID) {
+                ForEach(vm.codecOptions) { opt in
+                    Text(opt.name).tag(opt.id)
                 }
             }
             .labelsHidden()

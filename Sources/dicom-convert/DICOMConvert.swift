@@ -156,12 +156,14 @@ struct DICOMConvert: AsyncParsableCommand {
             throw ValidationError("--transfer-syntax required for DICOM output")
         }
 
-        let targetSyntax = try parseTransferSyntax(transferSyntaxName)
+        let targetEncoding = try parseTransferSyntax(transferSyntaxName)
 
-        // Shared process → output pipeline (identical bytes in CLI and app).
+        // Shared process → output pipeline (identical bytes in CLI and app). The resolved
+        // intent drives reversible-vs-irreversible encoding into the general UIDs and the
+        // Lossy Image Compression provenance attributes.
         let outcome = try DICOMConverter.convertToDICOM(
             dicomFile: dicomFile,
-            to: targetSyntax,
+            to: targetEncoding,
             stripPrivate: stripPrivate
         )
 
@@ -202,12 +204,14 @@ struct DICOMConvert: AsyncParsableCommand {
         #endif
     }
 
-    private func parseTransferSyntax(_ name: String) throws -> TransferSyntax {
+    private func parseTransferSyntax(_ name: String) throws -> SelectableEncoding {
         // Single source of truth: the shared DICOMConverter target catalog (DICOMKit).
-        guard let syntax = DICOMConverter.parseTarget(name) else {
+        // Resolve the full encoding (UID + intent) so `…-lossless` names encode reversibly
+        // into the general UID and `…-lossy` names carry the lossy provenance.
+        guard let encoding = DICOMConverter.resolveTargetEncoding(name) else {
             throw ValidationError(DICOMConverter.unknownTargetMessage(name))
         }
-        return syntax
+        return encoding
     }
 }
 

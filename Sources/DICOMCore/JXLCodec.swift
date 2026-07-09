@@ -12,11 +12,13 @@ import JXLSwift
 /// DICOMStudio codec bench to compare JXLSwift against other JPEG XL
 /// implementations (libjxl `djxl`).
 ///
-/// JXLSwift's lossy VarDCT encoder covers 8- or 16-bit RGB/RGBA within its size
-/// limits; for inputs it can't take (grayscale, oversized) it transparently
-/// falls back to the lossless Modular path, so a lossy (…4.112) encode always
-/// yields a valid JPEG XL codestream — which is conformant, since the general
-/// JPEG XL syntax permits both lossy and lossless bitstreams.
+/// JXLSwift's lossy VarDCT encoder (v1.4.0) covers 8- or 16-bit grayscale,
+/// grayscale+alpha, RGB and RGBA within its size limits; only inputs beyond the
+/// writer's size cap transparently fall back to the lossless Modular path, so a
+/// lossy (…4.112) encode always yields a valid JPEG XL codestream — which is
+/// conformant, since the general JPEG XL syntax permits both lossy and lossless
+/// bitstreams. Note a grayscale …4.112 encode is now a genuine lossy VarDCT encode
+/// (earlier JXLSwift silently emitted lossless Modular for grayscale).
 ///
 /// Transfer syntaxes:
 ///   • 1.2.840.10008.1.2.4.110  JPEG XL Lossless             (encode + decode, pixel)
@@ -36,9 +38,12 @@ import JXLSwift
 /// ``supportedTransferSyntaxes`` but not in ``supportedEncodingTransferSyntaxes``.
 ///
 /// Pixel bridging: JXLSwift's `ImageFrame.data` is channel-interleaved `[UInt8]`,
-/// row-major, 16-bit samples little-endian — matching DICOM little-endian
-/// storage. JXLSwift handles only unsigned samples, so signed frames are
-/// rejected here rather than silently mis-encoded.
+/// row-major, 16-bit samples little-endian — matching DICOM little-endian storage.
+/// Signed 16-bit pixel data (Pixel Representation = 1, e.g. CT) maps to JXLSwift's
+/// `PixelType.int16`, which level-shifts to unsigned offset-binary for the
+/// codestream and un-shifts on decode via `JXLDecoder.decode(_:signedOutput:)`.
+/// JPEG XL has no signed 8-bit sample type, so signed 8-bit is the one pixel
+/// layout rejected here rather than silently mis-encoded.
 public struct JXLCodec: ImageCodec, ImageEncoder, Sendable {
     /// JPEG XL transfer syntaxes this codec can decode to pixels (lossless, JPEG
     /// recompression, and general/lossy). A JPEG-recompressed JXL (…4.111) is a
@@ -84,22 +89,24 @@ public struct JXLCodec: ImageCodec, ImageEncoder, Sendable {
         self.encodingTransferSyntaxUID = encodingTransferSyntaxUID
     }
 
-    /// Whether the target encoding syntax is JPEG XL Lossless (…4.110). When false the
-    /// instance encodes to the general/lossy (…4.112) syntax via VarDCT. Any UID other
-    /// than …4.112 is treated as lossless, so an unexpected value fails safe (bit-exact).
+    /// Whether the target UID *forces* reversible encoding. True for JPEG XL Lossless
+    /// (…4.110) and any unexpected UID (fail-safe bit-exact). For the general …4.112 UID
+    /// this is false, so the caller's intent (`preferLossless`) chooses lossless vs lossy —
+    /// see ``encoderOptions(for:)``.
     private var encodesLossless: Bool {
         encodingTransferSyntaxUID != TransferSyntax.jpegXL.uid
     }
 
     // MARK: - Encoding capability
 
-    /// Whether this encoder can compress the given pixel data: 8- or 16-bit unsigned
-    /// grayscale or RGB, for both the lossless (…4.110) and lossy (…4.112) targets. The
-    /// gate is the same for both modes because JXLSwift's lossy VarDCT encoder falls
-    /// back to the lossless Modular path for inputs it can't take directly (grayscale,
-    /// oversized) — so a lossy encode of any accepted input still yields a valid JPEG XL
-    /// codestream (bit-exact where it fell back). Signed samples are rejected (JXLSwift
-    /// handles unsigned only — apply a rescale offset first).
+    /// Whether this encoder can compress the given pixel data: 8-bit unsigned or
+    /// 16-bit (unsigned, or signed via JXLSwift's `int16` level shift) grayscale or
+    /// RGB, for both the lossless (…4.110) and lossy (…4.112) targets. The gate is the
+    /// same for both modes: JXLSwift's VarDCT encoder (v1.4.0) handles grayscale and
+    /// RGB directly and only falls back to the lossless Modular path for inputs beyond
+    /// its size cap — so a lossy encode of any accepted input still yields a valid JPEG
+    /// XL codestream. Signed 8-bit is rejected because JPEG XL has no signed 8-bit
+    /// sample type; signed 16-bit (e.g. CT, Pixel Representation = 1) is supported.
     public func canEncode(with configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) -> Bool {
         guard descriptor.bitsAllocated == 8 || descriptor.bitsAllocated == 16 else {
             return false
@@ -107,7 +114,9 @@ public struct JXLCodec: ImageCodec, ImageEncoder, Sendable {
         guard descriptor.samplesPerPixel == 1 || descriptor.samplesPerPixel == 3 else {
             return false
         }
-        guard !descriptor.isSigned else {
+        // Signed samples map to JXLSwift's 16-bit `int16` type; there is no signed
+        // 8-bit JPEG XL sample type, so signed 8-bit is rejected.
+        if descriptor.isSigned && descriptor.bitsAllocated != 16 {
             return false
         }
         return true
@@ -121,13 +130,21 @@ public struct JXLCodec: ImageCodec, ImageEncoder, Sendable {
         guard spp == 1 || spp == 3 else {
             throw DICOMError.parsingFailed("JXLSwift: unsupported samplesPerPixel \(spp)")
         }
-        guard !descriptor.isSigned else {
-            throw DICOMError.parsingFailed("JXLSwift: signed pixel data not supported (apply a rescale offset first)")
-        }
         guard descriptor.columns > 0, descriptor.rows > 0 else {
             throw DICOMError.parsingFailed("JXLSwift: invalid frame dimensions")
         }
-        let pixelType: PixelType = descriptor.bitsAllocated <= 8 ? .uint8 : .uint16
+        // 8-bit is always unsigned (JPEG XL has no signed 8-bit sample type); 16-bit
+        // signed maps to `int16`, which JXLSwift level-shifts to unsigned offset-binary
+        // for the codestream (recovered on decode via `decode(_:signedOutput:)`).
+        let pixelType: PixelType
+        if descriptor.bitsAllocated <= 8 {
+            guard !descriptor.isSigned else {
+                throw DICOMError.parsingFailed("JXLSwift: signed 8-bit pixel data not supported (no signed 8-bit JPEG XL sample type)")
+            }
+            pixelType = .uint8
+        } else {
+            pixelType = descriptor.isSigned ? .int16 : .uint16
+        }
         let colorSpace: ColorSpace = spp == 1 ? .grayscale : .sRGB
 
         var frame = ImageFrame(width: descriptor.columns, height: descriptor.rows,
@@ -146,11 +163,19 @@ public struct JXLCodec: ImageCodec, ImageEncoder, Sendable {
 
     /// Builds the JXLSwift ``EncodingOptions`` for this instance's target syntax:
     /// …4.110 → lossless Modular (distance 0); …4.112 → lossy VarDCT at a distance
-    /// derived from `configuration.quality`. VarDCT is grayscale-unsupported today, so
-    /// a grayscale (…4.112) request falls back to lossless Modular inside JXLSwift —
-    /// still a valid, conformant general JPEG XL codestream.
+    /// derived from `configuration.quality`. As of JXLSwift 1.4.0 VarDCT handles
+    /// grayscale as well as RGB, so a grayscale …4.112 request is a genuine lossy
+    /// encode; only frames beyond VarDCT's size cap fall back to lossless Modular
+    /// inside JXLSwift — still a valid, conformant general JPEG XL codestream.
     private func encoderOptions(for configuration: CompressionConfiguration) -> EncodingOptions {
-        if encodesLossless {
+        // …4.110 forces lossless. The general …4.112 UID may carry either, so the caller's
+        // INTENT (preferLossless) decides — mirroring J2KSwiftCodec's `.both` branch. Note we
+        // deliberately do NOT flip to lossless on `quality.isLossless`: a lossy-intent encode
+        // at maximum quality must stay a (near-)lossy codestream so its Lossy Image Compression
+        // provenance attributes are truthful (a `--quality maximum` lossy request otherwise
+        // produced a bit-exact file falsely stamped 0028,2110="01").
+        let lossless = encodesLossless || configuration.preferLossless
+        if lossless {
             return .lossless
         }
         return EncodingOptions(mode: .lossy(quality: Self.jxlQuality(from: configuration.quality)),
@@ -195,7 +220,10 @@ public struct JXLCodec: ImageCodec, ImageEncoder, Sendable {
         }
 
         func decode(_ data: Data) throws -> Data {
-            let frame = try JXLDecoder().decode(data)
+            // `signedOutput` un-shifts a 16-bit decode back to two's-complement when the
+            // DICOM descriptor declares signed samples (Pixel Representation = 1); it only
+            // affects 16-bit results, so unsigned and 8-bit decodes are untouched.
+            let frame = try JXLDecoder().decode(data, signedOutput: descriptor.isSigned)
             return dicomFrameBytes(fromInterleaved: frame.data, descriptor: descriptor)
         }
 

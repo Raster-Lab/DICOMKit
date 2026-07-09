@@ -9,6 +9,7 @@
 // `J2KDecoder.decodeResolution` is not yet available upstream (see J2KSWIFT_BUG_REPORT.md).
 
 import Foundation
+import DICOMCore
 
 // MARK: - ProgressiveDecodeLevel
 
@@ -113,18 +114,16 @@ public enum ProgressiveDecodeHelpers: Sendable {
     /// Returns `true` for JPEG 2000 and HTJ2K transfer syntax UIDs that benefit from
     /// progressive display. Used to decide whether to engage the progressive decode path.
     public static func isJ2KTransferSyntax(_ uid: String) -> Bool {
-        // JPEG 2000 (Part 1)
-        let j2kUIDs: Set<String> = [
-            "1.2.840.10008.1.2.4.90",  // JPEG 2000 Lossless
-            "1.2.840.10008.1.2.4.91",  // JPEG 2000 Lossy
-            // JPEG 2000 Part 2
-            "1.2.840.10008.1.2.4.92",
-            "1.2.840.10008.1.2.4.93",
-            // High-Throughput JPEG 2000
-            "1.2.840.10008.1.2.4.201",
-            "1.2.840.10008.1.2.4.202",
-            "1.2.840.10008.1.2.4.203",
-        ]
-        return j2kUIDs.contains(uid)
+        // Decode-only: enumerate the distinct J2K / HTJ2K UIDs from the shared
+        // catalog (intent is irrelevant here, so dedupe by UID).
+        j2kUIDs.contains(uid)
     }
+
+    /// Distinct JPEG 2000 / HTJ2K transfer-syntax UIDs, sourced from the shared
+    /// catalog so this stays in sync with the canonical list.
+    private static let j2kUIDs: Set<String> = Set(
+        TransferSyntax.selectableEncodings
+            .filter { $0.transferSyntax.isJPEG2000 }
+            .map { $0.uid }
+    )
 }

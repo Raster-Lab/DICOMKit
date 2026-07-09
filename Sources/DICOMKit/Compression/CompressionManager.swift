@@ -40,41 +40,56 @@ public struct CompressionManager {
 
     // MARK: - Codec Name Mapping
 
-    static let codecMap: [(names: [String], syntax: TransferSyntax)] = [
-        (["jpeg", "jpeg-baseline"], .jpegBaseline),
-        (["jpeg-extended"], .jpegExtended),
-        (["jpeg-lossless"], .jpegLossless),
-        (["jpeg-lossless-sv1"], .jpegLosslessSV1),
-        (["jpeg2000", "j2k"], .jpeg2000),
-        (["jpeg2000-lossless", "j2k-lossless"], .jpeg2000Lossless),
-        (["j2k-part2", "jpeg2000-part2"], .jpeg2000Part2),
-        (["j2k-part2-lossless", "jpeg2000-part2-lossless"], .jpeg2000Part2Lossless),
-        (["htj2k", "htj2k-lossy"], .htj2kLossy),
-        (["htj2k-lossless"], .htj2kLossless),
-        (["htj2k-rpcl", "htj2k-lossless-rpcl"], .htj2kRPCLLossless),
-        (["jpeg-ls-lossless", "jpegls-lossless", "jls-lossless"], .jpegLSLossless),
-        (["jpeg-ls", "jpegls", "jls"], .jpegLSNearLossless),
-        // JPEG XL encodes both lossless (…4.110, JXLSwift Modular) and lossy (…4.112,
-        // JXLSwift VarDCT). Following the same convention as jpeg2000/htj2k, the bare
-        // `jpeg-xl`/`jxl` names resolve to the LOSSY syntax; the explicit `-lossless`
-        // spelling selects the lossless one. (JPEG Recompression …4.111 is produced only
-        // by dicom-convert from a JPEG source, never by a --codec name here.)
-        (["jpeg-xl-lossless", "jxl-lossless"], .jpegXLLossless),
-        (["jpeg-xl", "jxl", "jpeg-xl-lossy", "jxl-lossy"], .jpegXL),
-        (["rle"], .rleLossless),
-        (["explicit-le"], .explicitVRLittleEndian),
-        (["implicit-le"], .implicitVRLittleEndian),
-        (["deflate"], .deflatedExplicitVRLittleEndian),
+    /// Codec name → `SelectableEncoding` (UID + encode intent).
+    ///
+    /// Per the DICOM standard the general JPEG 2000 / HTJ2K / JPEG XL UIDs (.91/.93/.203/.112)
+    /// may carry either a reversible or an irreversible codestream, so each general family has
+    /// a symmetric `…-lossy` / `…-lossless` pair on the general UID plus a `…-lossless-only`
+    /// entry on the reversible-only UID (PS3.5 §A.4.4, §A.4.12). The intent is what lets a
+    /// bare `htj2k-lossless` encode reversibly *into* `.203` rather than into `.201`.
+    static let codecMap: [(names: [String], encoding: SelectableEncoding)] = [
+        (["jpeg", "jpeg-baseline"], SelectableEncoding(transferSyntax: .jpegBaseline, intent: .notApplicable)),
+        (["jpeg-extended"], SelectableEncoding(transferSyntax: .jpegExtended, intent: .notApplicable)),
+        (["jpeg-lossless"], SelectableEncoding(transferSyntax: .jpegLossless, intent: .notApplicable)),
+        (["jpeg-lossless-sv1"], SelectableEncoding(transferSyntax: .jpegLosslessSV1, intent: .notApplicable)),
+        // JPEG 2000 — general .91 (lossy/lossless) + lossless-only .90.
+        (["jpeg2000", "j2k", "jpeg2000-lossy", "j2k-lossy"], SelectableEncoding(transferSyntax: .jpeg2000, intent: .lossy)),
+        (["jpeg2000-lossless", "j2k-lossless"], SelectableEncoding(transferSyntax: .jpeg2000, intent: .lossless)),
+        (["jpeg2000-lossless-only", "j2k-lossless-only"], SelectableEncoding(transferSyntax: .jpeg2000Lossless, intent: .notApplicable)),
+        // JPEG 2000 Part 2 — general .93 (lossy/lossless) + lossless-only .92.
+        (["j2k-part2", "jpeg2000-part2", "j2k-part2-lossy", "jpeg2000-part2-lossy"], SelectableEncoding(transferSyntax: .jpeg2000Part2, intent: .lossy)),
+        (["j2k-part2-lossless", "jpeg2000-part2-lossless"], SelectableEncoding(transferSyntax: .jpeg2000Part2, intent: .lossless)),
+        (["j2k-part2-lossless-only", "jpeg2000-part2-lossless-only"], SelectableEncoding(transferSyntax: .jpeg2000Part2Lossless, intent: .notApplicable)),
+        // HTJ2K — general .203 (lossy/lossless) + lossless-only .201 + RPCL lossless-only .202.
+        (["htj2k", "htj2k-lossy"], SelectableEncoding(transferSyntax: .htj2kLossy, intent: .lossy)),
+        (["htj2k-lossless"], SelectableEncoding(transferSyntax: .htj2kLossy, intent: .lossless)),
+        (["htj2k-lossless-only"], SelectableEncoding(transferSyntax: .htj2kLossless, intent: .notApplicable)),
+        (["htj2k-rpcl-lossless-only", "htj2k-rpcl", "htj2k-lossless-rpcl"], SelectableEncoding(transferSyntax: .htj2kRPCLLossless, intent: .notApplicable)),
+        (["jpeg-ls-lossless", "jpegls-lossless", "jls-lossless"], SelectableEncoding(transferSyntax: .jpegLSLossless, intent: .notApplicable)),
+        (["jpeg-ls", "jpegls", "jls"], SelectableEncoding(transferSyntax: .jpegLSNearLossless, intent: .notApplicable)),
+        // JPEG XL — general .112 (lossy VarDCT / lossless Modular) + lossless-only .110.
+        // (JPEG Recompression …4.111 is produced only by dicom-convert, never by a --codec name.)
+        (["jpeg-xl-lossless", "jxl-lossless"], SelectableEncoding(transferSyntax: .jpegXL, intent: .lossless)),
+        (["jpeg-xl", "jxl", "jpeg-xl-lossy", "jxl-lossy"], SelectableEncoding(transferSyntax: .jpegXL, intent: .lossy)),
+        (["jpeg-xl-lossless-only", "jxl-lossless-only"], SelectableEncoding(transferSyntax: .jpegXLLossless, intent: .notApplicable)),
+        (["rle"], SelectableEncoding(transferSyntax: .rleLossless, intent: .notApplicable)),
+        (["explicit-le"], SelectableEncoding(transferSyntax: .explicitVRLittleEndian, intent: .notApplicable)),
+        (["implicit-le"], SelectableEncoding(transferSyntax: .implicitVRLittleEndian, intent: .notApplicable)),
+        (["deflate"], SelectableEncoding(transferSyntax: .deflatedExplicitVRLittleEndian, intent: .notApplicable)),
     ]
 
-    public static func transferSyntax(for codecName: String) -> TransferSyntax? {
+    /// Resolves a codec name to its full `SelectableEncoding` (UID + intent). Use this on
+    /// the compress path so the lossy/lossless intent for the general UIDs is preserved.
+    public static func resolveEncoding(for codecName: String) -> SelectableEncoding? {
         let lower = codecName.lowercased()
-        for entry in codecMap {
-            if entry.names.contains(lower) {
-                return entry.syntax
-            }
+        for entry in codecMap where entry.names.contains(lower) {
+            return entry.encoding
         }
         return nil
+    }
+
+    public static func transferSyntax(for codecName: String) -> TransferSyntax? {
+        resolveEncoding(for: codecName)?.transferSyntax
     }
 
     /// Returns whether compressing a source described by `sourceInfo` to `targetCodec`
@@ -93,60 +108,25 @@ public struct CompressionManager {
 
     static func codecName(for syntax: TransferSyntax) -> String {
         for entry in codecMap {
-            if entry.syntax.uid == syntax.uid {
+            if entry.encoding.transferSyntax.uid == syntax.uid {
                 return entry.names[0]
             }
         }
         return syntax.uid
     }
 
+    /// Human-readable transfer-syntax label, sourced from the single shared catalog
+    /// (`TransferSyntax.displayName` / `SelectableEncoding`) so compression output stays
+    /// in lock-step with the rest of the library instead of maintaining a parallel map.
+    ///
+    /// The `both`-capable general UIDs (`.91`/`.93`/`.203`) are surfaced in their **lossy**
+    /// form: in the compression domain their reversible counterparts are the distinct
+    /// `.90`/`.92`/`.201` UIDs, so a bare `.91`/`.93`/`.203` here is always the irreversible
+    /// encoding — spelling that out ("HTJ2K Lossy", "JPEG 2000 Lossy") tells the user
+    /// exactly which codestream a file/target carries.
     public static func transferSyntaxDisplayName(_ syntax: TransferSyntax) -> String {
-        switch syntax.uid {
-        case TransferSyntax.implicitVRLittleEndian.uid:
-            return "Implicit VR Little Endian"
-        case TransferSyntax.explicitVRLittleEndian.uid:
-            return "Explicit VR Little Endian"
-        case TransferSyntax.deflatedExplicitVRLittleEndian.uid:
-            return "Deflated Explicit VR Little Endian"
-        case TransferSyntax.explicitVRBigEndian.uid:
-            return "Explicit VR Big Endian"
-        case TransferSyntax.jpegBaseline.uid:
-            return "JPEG Baseline (Process 1)"
-        case TransferSyntax.jpegExtended.uid:
-            return "JPEG Extended (Process 2 & 4)"
-        case TransferSyntax.jpegLossless.uid:
-            return "JPEG Lossless (Process 14)"
-        case TransferSyntax.jpegLosslessSV1.uid:
-            return "JPEG Lossless SV1 (Process 14, SV 1)"
-        case TransferSyntax.jpeg2000Lossless.uid:
-            return "JPEG 2000 Lossless"
-        case TransferSyntax.jpeg2000.uid:
-            return "JPEG 2000"
-        case TransferSyntax.jpeg2000Part2Lossless.uid:
-            return "JPEG 2000 Part 2 Lossless"
-        case TransferSyntax.jpeg2000Part2.uid:
-            return "JPEG 2000 Part 2"
-        case TransferSyntax.htj2kLossless.uid:
-            return "HTJ2K Lossless"
-        case TransferSyntax.htj2kRPCLLossless.uid:
-            return "HTJ2K RPCL Lossless"
-        case TransferSyntax.htj2kLossy.uid:
-            return "HTJ2K"
-        case TransferSyntax.jpegLSLossless.uid:
-            return "JPEG-LS Lossless"
-        case TransferSyntax.jpegLSNearLossless.uid:
-            return "JPEG-LS Near-Lossless"
-        case TransferSyntax.jpegXLLossless.uid:
-            return "JPEG XL Lossless"
-        case TransferSyntax.jpegXL.uid:
-            return "JPEG XL"
-        case TransferSyntax.jpegXLRecompression.uid:
-            return "JPEG XL JPEG Recompression"
-        case TransferSyntax.rleLossless.uid:
-            return "RLE Lossless"
-        default:
-            return syntax.description
-        }
+        guard syntax.losslessCapability == .both else { return syntax.displayName }
+        return SelectableEncoding(transferSyntax: syntax, intent: .lossy).displayName
     }
 
     // MARK: - Info
@@ -227,9 +207,11 @@ public struct CompressionManager {
     /// Metal GPU encode); codecs without a matching path run their default.
     public func compressData(_ inputData: Data, codec: String, quality: CompressionQuality?,
                              backend: CodecBackendPreference = .auto) throws -> Data {
-        guard let targetSyntax = CompressionManager.transferSyntax(for: codec) else {
+        guard let targetEncoding = CompressionManager.resolveEncoding(for: codec) else {
             throw CompressionError.unknownCodec(codec)
         }
+        let targetSyntax = targetEncoding.transferSyntax
+        let intent = targetEncoding.intent
 
         let file = try DICOMFile.read(from: inputData)
 
@@ -251,6 +233,7 @@ public struct CompressionManager {
                 dataSet: &workingDataSet,
                 targetSyntax: targetSyntax,
                 quality: quality,
+                intent: intent,
                 backend: backend
             )
         } else if targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated
@@ -261,6 +244,7 @@ public struct CompressionManager {
                 sourceSyntax: sourceSyntax,
                 targetSyntax: targetSyntax,
                 quality: quality,
+                intent: intent,
                 backend: backend
             )
         } else if !targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated {
@@ -401,6 +385,7 @@ public struct CompressionManager {
         dataSet: inout DataSet,
         targetSyntax: TransferSyntax,
         quality: CompressionQuality?,
+        intent: EncodingIntent = .notApplicable,
         backend: CodecBackendPreference = .auto
     ) throws {
         guard let encoder = CodecRegistry.shared.encoder(for: targetSyntax.uid) else {
@@ -416,11 +401,22 @@ public struct CompressionManager {
 
         let descriptor = try buildPixelDataDescriptor(from: dataSet)
 
+        // Reversible vs irreversible for THIS encode. The general (`.both`-capable) UIDs
+        // honour the caller's intent (`.lossless`/`.lossy`); single-capability UIDs are
+        // fixed by the UID. A `both` UID with no explicit intent defaults to lossy, matching
+        // the historical bare-alias behaviour.
+        let encodeLossless: Bool
+        switch targetSyntax.losslessCapability {
+        case .both:          encodeLossless = (intent == .lossless)
+        case .losslessOnly:  encodeLossless = true
+        case .lossyOnly:     encodeLossless = false
+        }
+
         let configuration: CompressionConfiguration = {
             // --backend rides along in the config (nil = auto); only codecs
             // with an alternate execution path (J2K/HTJ2K Metal) act on it.
             let forced = backend.forced
-            if targetSyntax.isLossless {
+            if encodeLossless {
                 return CompressionConfiguration(
                     quality: .maximum, speed: .balanced,
                     preferLossless: true, forcedBackend: forced)
@@ -456,6 +452,66 @@ public struct CompressionManager {
             encapsulatedFragments: compressedFrames,
             encapsulatedOffsetTable: offsetTable
         )
+
+        // Record DICOM lossy-compression provenance when this encode was irreversible.
+        if !encodeLossless {
+            let compressedByteCount = compressedFrames.reduce(0) { $0 + $1.count }
+            applyLossyImageCompressionAttributes(
+                to: &dataSet,
+                targetSyntax: targetSyntax,
+                uncompressedByteCount: uncompressedBytes.count,
+                compressedByteCount: compressedByteCount
+            )
+        }
+    }
+
+    /// Records the DICOM Lossy Image Compression provenance attributes after an irreversible
+    /// encode. Per PS3.3 C.7.6.1.1.5 these accumulate ("once lossy, always lossy"): the flag
+    /// (0028,2110) is set to `"01"` and stays set, and the ratio (0028,2112) / method
+    /// (0028,2114) are **appended** as parallel VM 1-n values — one per lossy step — so a
+    /// recompression preserves the earlier history.
+    ///
+    /// The ratio is the whole-instance uncompressed-to-compressed byte ratio (all frames).
+    /// No-op when the target has no lossy method Defined Term (i.e. it is reversible-only).
+    static func applyLossyImageCompressionAttributes(
+        to dataSet: inout DataSet,
+        targetSyntax: TransferSyntax,
+        uncompressedByteCount: Int,
+        compressedByteCount: Int
+    ) {
+        guard let method = targetSyntax.lossyImageCompressionMethod else { return }
+
+        // (0028,2110) Lossy Image Compression = "01" (idempotent; never reset to "00").
+        dataSet.setString("01", for: .lossyImageCompression, vr: .CS)
+
+        // (0028,2112) Ratio and (0028,2114) Method are parallel VM 1-n arrays: the Nth ratio
+        // corresponds to the Nth method (PS3.3 C.7.6.1.1.5.1). Keep only the paired prefix of
+        // any pre-existing history before appending this step's pair, so the arrays stay
+        // aligned even when a (malformed) source carried a ratio without a method or vice
+        // versa. An orphan tail is uninterpretable (no matching Nth value) and cannot be
+        // represented as an empty component through the backslash-delimited reader, so it is
+        // dropped rather than left silently misaligned; the lossy flag (0028,2110) still
+        // records that the image is irreversibly compressed.
+        let ratio = Double(uncompressedByteCount) / Double(max(1, compressedByteCount))
+        var ratios = dataSet.strings(for: .lossyImageCompressionRatio) ?? []
+        var methods = dataSet.strings(for: .lossyImageCompressionMethod) ?? []
+        let paired = min(ratios.count, methods.count)
+        ratios = Array(ratios.prefix(paired))
+        methods = Array(methods.prefix(paired))
+        ratios.append(DICOMDecimalString(value: ratio).dicomString)
+        methods.append(method)
+        dataSet.setStrings(ratios, for: .lossyImageCompressionRatio, vr: .DS)
+        dataSet.setStrings(methods, for: .lossyImageCompressionMethod, vr: .CS)
+
+        // (0008,0008) Image Type Value 1 → DERIVED once lossy compression has been applied
+        // (PS3.3 C.7.6.1.1.5.1: "shall be set to DERIVED"). Only rewrite when Image Type is
+        // present and still marked ORIGINAL; leave absent Image Type alone (not all IODs
+        // define it) and preserve an already-DERIVED value.
+        var imageType = dataSet.strings(for: .imageType) ?? []
+        if !imageType.isEmpty, imageType[0].uppercased() == "ORIGINAL" {
+            imageType[0] = "DERIVED"
+            dataSet.setStrings(imageType, for: .imageType, vr: .CS)
+        }
     }
 
     /// Decodes encapsulated pixel data back into uncompressed bytes,
@@ -524,6 +580,7 @@ public struct CompressionManager {
         sourceSyntax: TransferSyntax,
         targetSyntax: TransferSyntax,
         quality: CompressionQuality?,
+        intent: EncodingIntent = .notApplicable,
         backend: CodecBackendPreference = .auto
     ) throws {
         // Step 1: decode to uncompressed bytes.
@@ -532,11 +589,13 @@ public struct CompressionManager {
             sourceSyntax: sourceSyntax,
             targetSyntax: TransferSyntax.explicitVRLittleEndian
         )
-        // Step 2: encode to target.
+        // Step 2: encode to target. Any existing lossy-compression history on the source
+        // survives on `dataSet` and is preserved/appended-to by encodePixelDataInPlace.
         try encodePixelDataInPlace(
             dataSet: &dataSet,
             targetSyntax: targetSyntax,
             quality: quality,
+            intent: intent,
             backend: backend
         )
     }
@@ -650,7 +709,7 @@ public struct CompressionManager {
 
     public static func supportedCodecs() -> [(name: String, syntax: TransferSyntax, aliases: [String])] {
         return codecMap.map { entry in
-            (name: entry.names[0], syntax: entry.syntax, aliases: Array(entry.names.dropFirst()))
+            (name: entry.names[0], syntax: entry.encoding.transferSyntax, aliases: Array(entry.names.dropFirst()))
         }
     }
 
@@ -1025,8 +1084,8 @@ extension TransferSyntax {
     /// CompressionManager's codecMap entries so this stays in sync with
     /// supported codecs.
     fileprivate static func fromKnownUID(_ uid: String) -> TransferSyntax? {
-        for entry in CompressionManager.codecMap where entry.syntax.uid == uid {
-            return entry.syntax
+        for entry in CompressionManager.codecMap where entry.encoding.transferSyntax.uid == uid {
+            return entry.encoding.transferSyntax
         }
         return nil
     }

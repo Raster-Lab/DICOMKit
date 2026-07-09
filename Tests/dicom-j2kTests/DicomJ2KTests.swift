@@ -9,14 +9,16 @@ import J2KCore
 
 // MARK: - Transfer Syntax Helpers
 
-/// The J2K and HTJ2K transfer syntax UIDs supported by dicom-j2k.
+/// The J2K and HTJ2K transfer syntax UIDs recognized by dicom-j2k, per the canonical
+/// DICOM standard mapping (shared `TransferSyntax` source of truth).
 private let knownJ2KUIDs: [String] = [
-    "1.2.840.10008.1.2.4.90",   // JPEG 2000 Lossless
-    "1.2.840.10008.1.2.4.91",   // JPEG 2000 (Lossy)
-    "1.2.840.10008.1.2.4.201",  // JPEG 2000 Part 2 Lossless
-    "1.2.840.10008.1.2.4.202",  // HTJ2K Lossless
-    "1.2.840.10008.1.2.4.203",  // HTJ2K RPCL Lossless
-    "1.2.840.10008.1.2.4.204"   // HTJ2K (Lossy)
+    "1.2.840.10008.1.2.4.90",   // JPEG 2000 Lossless Only
+    "1.2.840.10008.1.2.4.91",   // JPEG 2000 (lossless or lossy)
+    "1.2.840.10008.1.2.4.92",   // JPEG 2000 Part 2 Multi-component Lossless Only
+    "1.2.840.10008.1.2.4.93",   // JPEG 2000 Part 2 Multi-component (lossless or lossy)
+    "1.2.840.10008.1.2.4.201",  // HTJ2K Lossless Only
+    "1.2.840.10008.1.2.4.202",  // HTJ2K Lossless Only (RPCL)
+    "1.2.840.10008.1.2.4.203"   // HTJ2K (lossless or lossy)
 ]
 
 private let knownNonJ2KUIDs: [String] = [
@@ -28,24 +30,17 @@ private let knownNonJ2KUIDs: [String] = [
     "1.2.840.10008.1.2.5"       // RLE Lossless
 ]
 
-/// isJ2KTransferSyntax logic extracted for testing (mirrors the private helper in main.swift).
+/// Mirrors the CLI's `isJ2KTransferSyntax`, which now delegates to the shared API.
 private func isJ2KTransferSyntax(_ uid: String?) -> Bool {
     guard let uid else { return false }
-    return knownJ2KUIDs.contains(uid)
+    return TransferSyntax.from(uid: uid)?.isJPEG2000 ?? false
 }
 
-/// tsLabel logic extracted for testing (mirrors the private helper in main.swift).
+/// Mirrors the CLI's `tsLabel`, which now delegates to the shared `TransferSyntax.displayName`.
 private func tsLabel(_ uid: String?) -> String {
     guard let uid else { return "Unknown" }
-    switch uid {
-    case "1.2.840.10008.1.2.4.90":  return "JPEG 2000 Lossless (1.2.840.10008.1.2.4.90)"
-    case "1.2.840.10008.1.2.4.91":  return "JPEG 2000 (1.2.840.10008.1.2.4.91)"
-    case "1.2.840.10008.1.2.4.201": return "JPEG 2000 Part 2 Lossless (1.2.840.10008.1.2.4.201)"
-    case "1.2.840.10008.1.2.4.202": return "HTJ2K Lossless (1.2.840.10008.1.2.4.202)"
-    case "1.2.840.10008.1.2.4.203": return "HTJ2K RPCL Lossless (1.2.840.10008.1.2.4.203)"
-    case "1.2.840.10008.1.2.4.204": return "HTJ2K (1.2.840.10008.1.2.4.204)"
-    default: return uid
-    }
+    guard let ts = TransferSyntax.from(uid: uid) else { return uid }
+    return "\(ts.displayName) (\(uid))"
 }
 
 // MARK: - Test Suite
@@ -108,23 +103,25 @@ struct TransferSyntaxLabelTests {
         #expect(!label.contains("Lossless"))
     }
 
-    @Test("HTJ2K Lossless label is correct")
+    @Test("HTJ2K Lossless Only label is correct")
     func testHTJ2KLosslessLabel() {
+        let label = tsLabel("1.2.840.10008.1.2.4.201")
+        #expect(label.contains("HTJ2K Lossless Only"))
+        #expect(label.contains("1.2.840.10008.1.2.4.201"))
+    }
+
+    @Test("HTJ2K Lossless Only (RPCL) label is correct")
+    func testHTJ2KRPCLLabel() {
         let label = tsLabel("1.2.840.10008.1.2.4.202")
-        #expect(label.contains("HTJ2K Lossless"))
+        #expect(label.contains("HTJ2K Lossless Only (RPCL)"))
         #expect(label.contains("1.2.840.10008.1.2.4.202"))
     }
 
-    @Test("HTJ2K RPCL Lossless label is correct")
-    func testHTJ2KRPCLLabel() {
-        let label = tsLabel("1.2.840.10008.1.2.4.203")
-        #expect(label.contains("HTJ2K RPCL Lossless"))
-    }
-
-    @Test("HTJ2K lossy label is correct")
+    @Test("HTJ2K (general) label is correct")
     func testHTJ2KLossyLabel() {
-        let label = tsLabel("1.2.840.10008.1.2.4.204")
+        let label = tsLabel("1.2.840.10008.1.2.4.203")
         #expect(label.contains("HTJ2K"))
+        #expect(label.contains("1.2.840.10008.1.2.4.203"))
         #expect(!label.contains("Lossless"))
     }
 
@@ -151,21 +148,20 @@ struct TransferSyntaxLabelTests {
 @Suite("dicom-j2k: target UID mapping")
 struct TargetUIDMappingTests {
 
-    // Mirror the targetTransferSyntaxUID helper from main.swift
+    // Mirror the target resolution in main.swift, which now resolves via the shared
+    // intent-aware `TransferSyntax.parseEncoding` (symmetric lossy/lossless naming).
     private func targetUID(for key: String) -> String {
-        switch key {
-        case "j2k-lossless":     return "1.2.840.10008.1.2.4.90"
-        case "j2k":              return "1.2.840.10008.1.2.4.91"
-        case "htj2k-lossless":   return "1.2.840.10008.1.2.4.202"
-        case "htj2k-rpcl":       return "1.2.840.10008.1.2.4.203"
-        case "htj2k":            return "1.2.840.10008.1.2.4.204"
-        default:                 return "1.2.840.10008.1.2.4.90"
-        }
+        TransferSyntax.parseEncoding(key)?.transferSyntax.uid ?? TransferSyntax.jpeg2000Lossless.uid
     }
 
-    @Test("j2k-lossless maps to correct UID")
+    @Test("j2k-lossless maps to the general .91 UID (reversibly encoded)")
     func testJ2KLosslessKey() {
-        #expect(targetUID(for: "j2k-lossless") == "1.2.840.10008.1.2.4.90")
+        #expect(targetUID(for: "j2k-lossless") == "1.2.840.10008.1.2.4.91")
+    }
+
+    @Test("j2k-lossless-only maps to the reversible-only .90 UID")
+    func testJ2KLosslessOnlyKey() {
+        #expect(targetUID(for: "j2k-lossless-only") == "1.2.840.10008.1.2.4.90")
     }
 
     @Test("j2k maps to lossy UID")
@@ -173,24 +169,31 @@ struct TargetUIDMappingTests {
         #expect(targetUID(for: "j2k") == "1.2.840.10008.1.2.4.91")
     }
 
-    @Test("htj2k-lossless maps to correct UID")
+    @Test("htj2k-lossless maps to the general HTJ2K .203 UID (reversibly encoded)")
     func testHTJ2KLosslessKey() {
-        #expect(targetUID(for: "htj2k-lossless") == "1.2.840.10008.1.2.4.202")
+        #expect(targetUID(for: "htj2k-lossless") == "1.2.840.10008.1.2.4.203")
     }
 
-    @Test("htj2k-rpcl maps to correct UID")
+    @Test("htj2k-lossless-only maps to HTJ2K Lossless Only (.201)")
+    func testHTJ2KLosslessOnlyKey() {
+        #expect(targetUID(for: "htj2k-lossless-only") == "1.2.840.10008.1.2.4.201")
+    }
+
+    @Test("htj2k-rpcl-lossless-only maps to HTJ2K Lossless Only RPCL (.202)")
     func testHTJ2KRPCLKey() {
-        #expect(targetUID(for: "htj2k-rpcl") == "1.2.840.10008.1.2.4.203")
+        #expect(targetUID(for: "htj2k-rpcl-lossless-only") == "1.2.840.10008.1.2.4.202")
+        #expect(targetUID(for: "htj2k-rpcl") == "1.2.840.10008.1.2.4.202") // deprecated alias
     }
 
-    @Test("htj2k maps to correct UID")
+    @Test("htj2k maps to HTJ2K general (.203)")
     func testHTJ2KKey() {
-        #expect(targetUID(for: "htj2k") == "1.2.840.10008.1.2.4.204")
+        #expect(targetUID(for: "htj2k") == "1.2.840.10008.1.2.4.203")
     }
 
     @Test("All target UIDs are detected as J2K")
     func testAllTargetsAreJ2K() {
-        let keys = ["j2k-lossless", "j2k", "htj2k-lossless", "htj2k-rpcl", "htj2k"]
+        let keys = ["j2k-lossy", "j2k-lossless", "j2k-lossless-only",
+                    "htj2k-lossy", "htj2k-lossless", "htj2k-lossless-only", "htj2k-rpcl-lossless-only"]
         for key in keys {
             let uid = targetUID(for: key)
             #expect(isJ2KTransferSyntax(uid), "Target '\(key)' mapped to non-J2K UID: \(uid)")
@@ -201,7 +204,7 @@ struct TargetUIDMappingTests {
     func testHTJ2KPrefix() {
         let htj2kUIDs = [
             targetUID(for: "htj2k-lossless"),
-            targetUID(for: "htj2k-rpcl"),
+            targetUID(for: "htj2k-rpcl-lossless-only"),
             targetUID(for: "htj2k")
         ]
         for uid in htj2kUIDs {

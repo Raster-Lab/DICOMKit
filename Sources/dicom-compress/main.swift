@@ -38,28 +38,32 @@ extension DICOMCompress {
             discussion: """
                 Compress uncompressed DICOM images to various codecs.
                 
-                Supported codecs:
-                  jpeg, jpeg-baseline    JPEG Baseline (lossy, 8-bit)
-                  jpeg-extended          JPEG Extended (lossy, 8/12-bit)
-                  jpeg-lossless          JPEG Lossless (Process 14)
-                  jpeg-lossless-sv1      JPEG Lossless SV1 (default lossless JPEG)
-                  jpeg2000, j2k          JPEG 2000 (lossy)
-                  jpeg2000-lossless,     JPEG 2000 Lossless
-                    j2k-lossless
-                  j2k-part2              JPEG 2000 Part 2 (MCT, lossy)
-                  j2k-part2-lossless     JPEG 2000 Part 2 Lossless
-                  htj2k, htj2k-lossy     High-Throughput JPEG 2000 (lossy)
-                  htj2k-lossless         HTJ2K Lossless
-                  htj2k-rpcl,            HTJ2K RPCL Lossless Only
-                    htj2k-lossless-rpcl
-                  jpeg-ls-lossless       JPEG-LS Lossless
-                  jpeg-ls, jls           JPEG-LS Near-Lossless
-                  jpeg-xl, jxl           JPEG XL (lossy, pure-Swift)
-                  jpeg-xl-lossless       JPEG XL Lossless (pure-Swift)
-                  rle                    RLE Lossless
-                  deflate                Deflated Explicit VR Little Endian
-                  explicit-le            Explicit VR Little Endian
-                  implicit-le            Implicit VR Little Endian
+                Supported codecs (per PS3.5 A.4.4/A.4.12 the general JPEG 2000 / HTJ2K / JPEG XL
+                UIDs carry either a lossy or lossless codestream, so each offers a symmetric
+                -lossy/-lossless pair plus a -lossless-only entry for the reversible-only UID):
+                  jpeg, jpeg-baseline       JPEG Baseline (lossy, 8-bit)
+                  jpeg-extended             JPEG Extended (lossy, 8/12-bit)
+                  jpeg-lossless             JPEG Lossless (Process 14)
+                  jpeg-lossless-sv1         JPEG Lossless SV1 (default lossless JPEG)
+                  jpeg2000, jpeg2000-lossy  JPEG 2000, lossy            (.91)
+                  jpeg2000-lossless         JPEG 2000, lossless         (.91)
+                  jpeg2000-lossless-only    JPEG 2000 Lossless Only     (.90)
+                  j2k-part2, …-lossy        JPEG 2000 Part 2, lossy     (.93)
+                  j2k-part2-lossless        JPEG 2000 Part 2, lossless  (.93)
+                  j2k-part2-lossless-only   JPEG 2000 Part 2 Lossless Only (.92)
+                  htj2k, htj2k-lossy        HTJ2K, lossy                (.203)
+                  htj2k-lossless            HTJ2K, lossless             (.203)
+                  htj2k-lossless-only       HTJ2K Lossless Only         (.201)
+                  htj2k-rpcl-lossless-only  HTJ2K RPCL Lossless Only    (.202)
+                  jpeg-ls-lossless          JPEG-LS Lossless
+                  jpeg-ls, jls              JPEG-LS Near-Lossless
+                  jpeg-xl, jpeg-xl-lossy    JPEG XL, lossy              (.112)
+                  jpeg-xl-lossless          JPEG XL, lossless           (.112)
+                  jpeg-xl-lossless-only     JPEG XL Lossless Only       (.110)
+                  rle                       RLE Lossless
+                  deflate                   Deflated Explicit VR Little Endian
+                  explicit-le               Explicit VR Little Endian
+                  implicit-le               Implicit VR Little Endian
                 
                 Examples:
                   dicom-compress compress input.dcm --output output.dcm --codec jpeg-lossless

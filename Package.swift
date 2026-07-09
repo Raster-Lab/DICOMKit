@@ -227,7 +227,9 @@ let package = Package(
         // of v1.0.1: the library target dropped its CompressionFamily dependency
         // (v1.0.0 referenced it via a local path, which SwiftPM rejected for a
         // stable-versioned consumer). Provides the `JXLSwift` product.
-        .package(url: "https://github.com/Raster-Lab/JXLSwift.git", from: "1.3.0")
+        // Floor 1.4.0: JXLCodec relies on the `PixelType.int16` signed-16-bit level
+        // shift and `JXLDecoder.decode(_:signedOutput:)` added in that release.
+        .package(url: "https://github.com/Raster-Lab/JXLSwift.git", from: "1.4.0")
     ],
     targets: [
         // OpenJPEG 2.x system library (https://www.openjpeg.org)
@@ -330,6 +332,7 @@ let package = Package(
                 "PixelEditorTests.swift",
                 "CompressionManagerImplicitVRTests.swift",
                 "CompressionManagerMetricsTests.swift",
+                "LossyImageCompressionAttributesTests.swift",
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
                 "ExportWindowParityTests.swift",

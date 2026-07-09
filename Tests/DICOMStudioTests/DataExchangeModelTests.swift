@@ -3,6 +3,7 @@
 
 import Testing
 @testable import DICOMStudio
+import DICOMCore
 import Foundation
 
 @Suite("Data Exchange Model Tests")
@@ -10,9 +11,9 @@ struct DataExchangeModelTests {
 
     // MARK: - DataExchangeTab
 
-    @Test("DataExchangeTab has 7 cases")
+    @Test("DataExchangeTab has 9 cases")
     func testDataExchangeTabCaseCount() {
-        #expect(DataExchangeTab.allCases.count == 7)
+        #expect(DataExchangeTab.allCases.count == 9)
     }
 
     @Test("DataExchangeTab all cases have non-empty display names")
@@ -241,6 +242,37 @@ struct DataExchangeModelTests {
             targetTransferSyntaxUID: "1.2.840.10008.1.2.1"
         )
         #expect(job.errorMessage == nil)
+    }
+
+    @Test("TransferSyntaxConversionJob defaults intent to notApplicable")
+    func testTransferSyntaxConversionJobDefaultIntent() {
+        let job = TransferSyntaxConversionJob(
+            sourceFilePath: "/tmp/test.dcm",
+            targetTransferSyntaxUID: "1.2.840.10008.1.2.4.90"
+        )
+        #expect(job.intent == .notApplicable)
+        // A lossless-only UID reads with its canonical name, no appended suffix.
+        #expect(job.targetDisplayName == "JPEG 2000 Lossless Only")
+    }
+
+    @Test("TransferSyntaxConversionJob carries lossless/lossy intent for a both-capable UID")
+    func testTransferSyntaxConversionJobIntentDisplayName() {
+        // .93 is a `both`-capable UID: the same UID with a different intent must yield
+        // two distinct, intent-labelled display names so the selection is unambiguous.
+        let lossless = TransferSyntaxConversionJob(
+            sourceFilePath: "/tmp/test.dcm",
+            targetTransferSyntaxUID: "1.2.840.10008.1.2.4.93",
+            intent: .lossless
+        )
+        let lossy = TransferSyntaxConversionJob(
+            sourceFilePath: "/tmp/test.dcm",
+            targetTransferSyntaxUID: "1.2.840.10008.1.2.4.93",
+            intent: .lossy
+        )
+        #expect(lossless.intent == .lossless)
+        #expect(lossless.targetDisplayName == "JPEG 2000 Part 2 Multi-component Lossless")
+        #expect(lossy.targetDisplayName == "JPEG 2000 Part 2 Multi-component Lossy")
+        #expect(lossless.targetTransferSyntaxUID == lossy.targetTransferSyntaxUID)
     }
 
     // MARK: - DICOMDIREntry

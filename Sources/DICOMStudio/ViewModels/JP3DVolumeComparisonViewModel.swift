@@ -60,15 +60,24 @@ public final class JP3DVolumeComparisonViewModel {
 
     // MARK: - Compression Config
 
-    public var selectedUID: String = "1.2.840.10008.1.2.4.90"
+    /// Selectable-encoding id (`SelectableEncoding.id`) chosen for compression.
+    /// Keyed on id rather than the bare UID so the two `.91`/`.203` rows
+    /// (Lossless vs Lossy) select and encode independently.
+    public var selectedID: String = "1.2.840.10008.1.2.4.90"
 
-    public let codecOptions: [(uid: String, name: String)] = [
-        ("1.2.840.10008.1.2.4.90",  "J2K Lossless"),
-        ("1.2.840.10008.1.2.4.91",  "J2K Lossy"),
-        ("1.2.840.10008.1.2.4.201", "HTJ2K Lossless"),
-        ("1.2.840.10008.1.2.4.202", "HTJ2K RPCL Lossless"),
-        ("1.2.840.10008.1.2.4.203", "HTJ2K Lossy"),
-    ]
+    /// One selectable J2K/HTJ2K encoding, carrying the intent-aware lossless flag.
+    public struct VolumeCodecOption: Identifiable, Sendable, Hashable {
+        public let id: String
+        public let uid: String
+        public let name: String
+        public let isLossless: Bool
+    }
+
+    /// Driven by the shared transfer-syntax catalog so the list stays canonical.
+    /// `both`-capable UIDs (.91/.93/.203) appear as two rows (Lossless + Lossy).
+    public let codecOptions: [VolumeCodecOption] = TransferSyntax.selectableEncodings
+        .filter { $0.transferSyntax.isJPEG2000 }
+        .map { VolumeCodecOption(id: $0.id, uid: $0.uid, name: $0.displayName, isLossless: $0.isLossless) }
 
     // MARK: - Compression State
 
@@ -80,7 +89,7 @@ public final class JP3DVolumeComparisonViewModel {
     }
 
     public var compressedCodecName: String {
-        codecOptions.first(where: { $0.uid == selectedUID })?.name ?? selectedUID
+        codecOptions.first(where: { $0.id == selectedID })?.name ?? selectedID
     }
 
     // MARK: - Private
@@ -173,8 +182,11 @@ public final class JP3DVolumeComparisonViewModel {
     public func runCompression() {
         guard let vol = rawVolume, !isCompressing else { return }
         compressionState = .compressing(framesCompleted: 0, totalFrames: vol.depth)
-        let uid = selectedUID
-        let isLossless = Self.isLosslessUID(uid)
+        let option = codecOptions.first(where: { $0.id == selectedID })
+        let uid = option?.uid ?? selectedID
+        // Intent-aware: for the two `.91`/`.203` rows this comes from the selected
+        // catalog row, so Lossless vs Lossy encode differently despite the shared UID.
+        let isLossless = option?.isLossless ?? true
 
         Task {
             let result = await Self.compressVolume(vol, targetUID: uid, isLossless: isLossless) { [weak self] done, total in
@@ -212,10 +224,6 @@ public final class JP3DVolumeComparisonViewModel {
         compressedVM.setSliceIndex(sagittalIndex, for: .sagittal)
         compressedVM.setSliceIndex(coronalIndex, for: .coronal)
         compressedVM.setWindowLevel(center: windowCenter, width: windowWidth)
-    }
-
-    private static func isLosslessUID(_ uid: String) -> Bool {
-        !uid.hasSuffix(".91") && !uid.hasSuffix(".93") && !uid.hasSuffix(".203")
     }
 
     // MARK: - Background Compression Worker

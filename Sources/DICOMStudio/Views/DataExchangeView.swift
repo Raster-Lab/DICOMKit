@@ -5,6 +5,7 @@
 
 #if canImport(SwiftUI)
 import SwiftUI
+import DICOMCore
 
 /// Data exchange view providing JSON/XML conversion, image export,
 /// transfer syntax conversion, DICOMDIR creation, PDF encapsulation,
@@ -375,11 +376,14 @@ public struct DataExchangeView: View {
                             Text(job.sourceFilePath)
                                 .font(.body)
                                 .lineLimit(1)
-                            HStack {
+                            HStack(spacing: 6) {
                                 Text("→")
+                                    .font(.caption)
+                                Text(job.targetDisplayName)
                                     .font(.caption)
                                 Text(job.targetTransferSyntaxUID)
                                     .font(.caption.monospaced())
+                                    .foregroundStyle(.tertiary)
                             }
                             .foregroundStyle(.secondary)
                         }
@@ -822,16 +826,39 @@ struct AddConversionJobSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var sourceFilePath: String = ""
-    @State private var targetSyntaxUID: String = "1.2.840.10008.1.2.1"
+    @State private var targetID: String = "1.2.840.10008.1.2.1"
 
-    private let commonSyntaxes = [
-        ("Explicit VR Little Endian", "1.2.840.10008.1.2.1"),
-        ("Implicit VR Little Endian", "1.2.840.10008.1.2"),
-        ("JPEG Lossless", "1.2.840.10008.1.2.4.70"),
-        ("JPEG 2000 Lossless", "1.2.840.10008.1.2.4.90"),
-        ("JPEG 2000", "1.2.840.10008.1.2.4.91"),
-        ("RLE Lossless", "1.2.840.10008.1.2.5"),
-    ]
+    /// One selectable conversion target: an intent-aware label plus the UID and intent
+    /// the job should carry. Keyed by `SelectableEncoding.id` so the two rows of a
+    /// `both`-capable UID (`.91`/`.93`/`.203`) stay distinct in the picker.
+    private struct Target: Identifiable {
+        let id: String
+        let label: String
+        let uid: String
+        let intent: EncodingIntent
+    }
+
+    // The J2K/HTJ2K targets are driven by the shared transfer-syntax catalog so they
+    // stay canonical. The `both`-capable UIDs (.91/.93/.203) present two rows each —
+    // Lossless and Lossy — so the user picks (and the job records) exactly which
+    // codestream to produce, rather than an ambiguous single row.
+    private let targets: [Target] = {
+        func plain(_ ts: TransferSyntax, _ label: String) -> Target {
+            Target(id: ts.uid, label: label, uid: ts.uid, intent: .notApplicable)
+        }
+        let j2kTargets: [Target] = TransferSyntax.selectableEncodings
+            .filter { $0.transferSyntax.isJPEG2000 }
+            .map { Target(id: $0.id, label: $0.displayName, uid: $0.uid, intent: $0.intent) }
+        return [
+            plain(.explicitVRLittleEndian, "Explicit VR Little Endian"),
+            plain(.implicitVRLittleEndian, "Implicit VR Little Endian"),
+            plain(.jpegLosslessSV1, "JPEG Lossless"),
+        ] + j2kTargets + [
+            plain(.rleLossless, "RLE Lossless"),
+        ]
+    }()
+
+    private var selectedTarget: Target? { targets.first { $0.id == targetID } }
 
     var body: some View {
         NavigationStack {
@@ -842,14 +869,14 @@ struct AddConversionJobSheet: View {
                 }
 
                 Section("Target Transfer Syntax") {
-                    Picker("Transfer Syntax", selection: $targetSyntaxUID) {
-                        ForEach(commonSyntaxes, id: \.1) { name, uid in
-                            Text(name).tag(uid)
+                    Picker("Transfer Syntax", selection: $targetID) {
+                        ForEach(targets) { target in
+                            Text(target.label).tag(target.id)
                         }
                     }
                     .accessibilityLabel("Target transfer syntax")
 
-                    Text(targetSyntaxUID)
+                    Text(selectedTarget?.uid ?? "")
                         .font(.caption.monospaced())
                         .foregroundStyle(.secondary)
                 }
@@ -865,9 +892,11 @@ struct AddConversionJobSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Add") {
+                        let target = selectedTarget
                         let job = TransferSyntaxConversionJob(
                             sourceFilePath: sourceFilePath.trimmingCharacters(in: .whitespaces),
-                            targetTransferSyntaxUID: targetSyntaxUID
+                            targetTransferSyntaxUID: target?.uid ?? targetID,
+                            intent: target?.intent ?? .notApplicable
                         )
                         onSave(job)
                         dismiss()
@@ -1031,18 +1060,32 @@ struct AddBatchJobSheet: View {
 
 /// Platform-independent compression algorithm mapping for DataExchangeView.
 public enum CompressionAlgorithmHelpers: Sendable {
-    public static let algorithms: [(label: String, cli: String)] = [
-        ("RLE Lossless (1.2.840.10008.1.2.5)", "rle"),
-        ("JPEG Baseline (1.2.840.10008.1.2.4.50)", "jpeg-baseline"),
-        ("JPEG Lossless (1.2.840.10008.1.2.4.70)", "jpeg-lossless"),
-        ("JPEG-LS Lossless (1.2.840.10008.1.2.4.80)", "jpeg-ls-lossless"),
-        ("JPEG-LS Near-Lossless (1.2.840.10008.1.2.4.81)", "jpeg-ls"),
-        ("JPEG 2000 Lossless (1.2.840.10008.1.2.4.90)", "j2k-lossless"),
-        ("JPEG 2000 Lossy (1.2.840.10008.1.2.4.91)", "j2k"),
-        ("High-Throughput J2K (1.2.840.10008.1.2.4.202)", "htj2k"),
-        ("JPEG XL Lossless (1.2.840.10008.1.2.4.110)", "jpeg-xl-lossless"),
-        ("JPEG XL Lossy (1.2.840.10008.1.2.4.112)", "jpeg-xl"),
-    ]
+    public static let algorithms: [(label: String, cli: String)] = {
+        // J2K/HTJ2K CLI targets resolve their UID + display name through the shared
+        // catalog so the keys stay mapped to the canonical UIDs. This corrects the
+        // prior mistake where "htj2k" pointed at .202 — it is .203; .202 is "htj2k-rpcl".
+        // `parseEncoding` resolves the lossy/lossless intent so the `both`-capable
+        // general UIDs (.91/.203) read as "JPEG 2000 Lossy" / "HTJ2K Lossy" instead of
+        // the ambiguous bare name — the user sees exactly which encoding is selected.
+        func j2k(_ cli: String) -> (label: String, cli: String) {
+            guard let enc = TransferSyntax.parseEncoding(cli) else { return (cli, cli) }
+            return ("\(enc.displayName) (\(enc.uid))", cli)
+        }
+        return [
+            ("RLE Lossless (1.2.840.10008.1.2.5)", "rle"),
+            ("JPEG Baseline (1.2.840.10008.1.2.4.50)", "jpeg-baseline"),
+            ("JPEG Lossless (1.2.840.10008.1.2.4.70)", "jpeg-lossless"),
+            ("JPEG-LS Lossless (1.2.840.10008.1.2.4.80)", "jpeg-ls-lossless"),
+            ("JPEG-LS Near-Lossless (1.2.840.10008.1.2.4.81)", "jpeg-ls"),
+            j2k("j2k-lossless"),   // .90
+            j2k("j2k"),            // .91
+            j2k("htj2k-lossless"), // .201
+            j2k("htj2k-rpcl"),     // .202
+            j2k("htj2k"),          // .203
+            ("JPEG XL Lossless (1.2.840.10008.1.2.4.110)", "jpeg-xl-lossless"),
+            ("JPEG XL Lossy (1.2.840.10008.1.2.4.112)", "jpeg-xl"),
+        ]
+    }()
 
     public static func isLossy(_ cliToken: String) -> Bool {
         return cliToken == "jpeg-baseline" || cliToken == "jpeg-ls" || cliToken == "j2k"
