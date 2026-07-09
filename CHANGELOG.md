@@ -29,6 +29,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   append/once-lossy-always-lossy semantics.
 - `JXLCodec`: added signed 16-bit support (JXLSwift `int16` level-shift) and genuine lossy
   VarDCT grayscale encoding (JXLSwift 1.4.0) instead of silently falling back to lossless.
+
+## [2.2.6] - 2026-07-09
+
+Patch release: shared transfer-syntax negotiation token list for `dicom-retrieve`/`dicom-qr`,
+plus two reporting-accuracy fixes (`--backend`, `dicom-compress info` lossless state). No
+association-negotiation or encode-behavior changes — this release only corrects what tools
+report and what token lists they offer.
+
+### Added — Shared transfer-syntax negotiation token list
+
 - Added `TransferSyntax.negotiableImageSyntaxTokens` / `negotiableImageTokens` (DICOMCore) as
   the single source of truth for the transfer-syntax lists offered by the UID-only negotiation
   tools (`dicom-retrieve`, `dicom-qr`) — the negotiation analogue of
