@@ -16,46 +16,152 @@ public struct DICOMDIRWriter {
     /// - Returns: Serialized DICOM file data
     /// - Throws: DICOMError if writing fails
     public static func write(_ directory: DICOMDirectory) throws -> Data {
-        // Create main data set with directory information
+        let layout = FlatLayout(rootRecords: directory.rootRecords)
+        // The file meta must be IDENTICAL across both passes — it carries a freshly
+        // generated Media Storage SOP Instance UID whose length can differ run-to-run,
+        // which would shift every item's byte position between the probe and the final
+        // encode and corrupt the measured offsets. Generate it once.
+        let fileMeta = createFileMetaInformation()
+        // Pass 1: encode with zero navigation offsets to measure each record item's byte
+        // position in the serialized file.
+        let probe = try encode(directory, layout: layout, fileMeta: fileMeta, itemByteOffsets: nil)
+        let offsets = try Self.itemByteOffsets(in: probe, expectedCount: layout.records.count)
+        // Pass 2: encode again with the real offsets. Every navigation offset is a fixed
+        // 4-byte UL, so the byte layout is byte-for-byte identical to the probe — the
+        // measured item positions stay valid, giving a DICOMDIR whose offsets an external
+        // offset-following reader (pydicom/dcmtk) can navigate (PS3.10 8.5, PS3.3 F.3).
+        return try encode(directory, layout: layout, fileMeta: fileMeta, itemByteOffsets: offsets)
+    }
+
+    /// Depth-first flattening of the record tree with per-node navigation links. The
+    /// order (record, then its children recursively) MUST match `encode`'s serialization
+    /// order so each record's next-sibling and first-child resolve to the right item.
+    private struct FlatLayout {
+        let records: [DirectoryRecord]
+        let firstChild: [Int?]
+        let nextSibling: [Int?]
+        let rootIndices: [Int]
+
+        init(rootRecords: [DirectoryRecord]) {
+            var records: [DirectoryRecord] = []
+            var firstChild: [Int?] = []
+            var nextSibling: [Int?] = []
+            func addLevel(_ siblings: [DirectoryRecord]) -> [Int] {
+                var indices: [Int] = []
+                for record in siblings {
+                    let index = records.count
+                    records.append(record)
+                    firstChild.append(nil)
+                    nextSibling.append(nil)
+                    indices.append(index)
+                    firstChild[index] = addLevel(record.children).first
+                }
+                for position in 0..<max(0, indices.count - 1) {
+                    nextSibling[indices[position]] = indices[position + 1]
+                }
+                return indices
+            }
+            self.rootIndices = addLevel(rootRecords)
+            self.records = records
+            self.firstChild = firstChild
+            self.nextSibling = nextSibling
+        }
+    }
+
+    /// Serializes the directory. With `itemByteOffsets == nil` every navigation offset is
+    /// written as 0 (the measuring pass); otherwise the real offsets are threaded in.
+    private static func encode(
+        _ directory: DICOMDirectory,
+        layout: FlatLayout,
+        fileMeta: DataSet,
+        itemByteOffsets: [Int]?
+    ) throws -> Data {
         var dataSet = DataSet()
-        
-        // Add file-set identification
+
         if !directory.fileSetID.isEmpty {
             dataSet[.fileSetID] = DataElement.string(tag: .fileSetID, vr: .CS, value: directory.fileSetID)
         }
-        
-        // Add specific character set
         if let charset = directory.specificCharacterSet {
             dataSet[.specificCharacterSet] = DataElement.string(tag: .specificCharacterSet, vr: .CS, value: charset)
         }
-        
-        // Add file-set descriptor information
         if let fileSetDescriptor = directory.fileSetDescriptorFileID {
             dataSet[.fileSetDescriptorFileID] = DataElement.strings(tag: .fileSetDescriptorFileID, vr: .CS, values: fileSetDescriptor)
         }
-        
         if let charset = directory.specificCharacterSetOfFileSetDescriptorFile {
             dataSet[.specificCharacterSetOfFileSetDescriptorFile] = DataElement.string(tag: .specificCharacterSetOfFileSetDescriptorFile, vr: .CS, value: charset)
         }
-        
-        // Add consistency flag
+
+        // Byte offset of the item at `index`, or 0 in the measuring pass / for no link.
+        func offset(_ index: Int?) -> UInt32 {
+            guard let itemByteOffsets, let index else { return 0 }
+            return UInt32(itemByteOffsets[index])
+        }
+
+        // Root-entity navigation offsets (PS3.3 F.3.2.2).
+        dataSet[.offsetOfTheFirstDirectoryRecordOfTheRootDirectoryEntity] =
+            DataElement.uint32(tag: .offsetOfTheFirstDirectoryRecordOfTheRootDirectoryEntity,
+                               value: offset(layout.rootIndices.first))
+        dataSet[.offsetOfTheLastDirectoryRecordOfTheRootDirectoryEntity] =
+            DataElement.uint32(tag: .offsetOfTheLastDirectoryRecordOfTheRootDirectoryEntity,
+                               value: offset(layout.rootIndices.last))
+
         let consistencyFlag: UInt16 = directory.isConsistent ? 0x0000 : 0xFFFF
         dataSet[.fileSetConsistencyFlag] = DataElement.uint16(tag: .fileSetConsistencyFlag, value: consistencyFlag)
-        
-        // Build directory record sequence
-        let directoryRecordSequence = try buildDirectoryRecordSequence(from: directory.rootRecords)
-        
-        // Add directory record sequence to data set using setSequence
-        dataSet.setSequence(directoryRecordSequence, for: .directoryRecordSequence)
-        
-        // Create file meta information
-        let fileMetaInformation = createFileMetaInformation()
-        
-        // Create DICOM file
-        let dicomFile = DICOMFile(fileMetaInformation: fileMetaInformation, dataSet: dataSet)
-        
-        // Write to data
+
+        var items: [SequenceItem] = []
+        for index in layout.records.indices {
+            let recordDataSet = try buildDirectoryRecordDataSet(
+                from: layout.records[index],
+                nextOffset: offset(layout.nextSibling[index]),
+                lowerOffset: offset(layout.firstChild[index]))
+            items.append(SequenceItem(elements: Array(recordDataSet)))
+        }
+        dataSet.setSequence(items, for: .directoryRecordSequence)
+
+        let dicomFile = DICOMFile(fileMetaInformation: fileMeta, dataSet: dataSet)
         return try dicomFile.write()
+    }
+
+    /// Byte offset (from the start of the file) of each top-level Directory Record
+    /// Sequence item — the position of each record's (FFFE,E000) item tag, which is what
+    /// the navigation offsets reference (PS3.3 F.3.2.2). Walks the sequence by its defined
+    /// item lengths, so nested sequences inside a record are skipped whole.
+    private static func itemByteOffsets(in data: Data, expectedCount: Int) throws -> [Int] {
+        let bytes = [UInt8](data)
+        func u32(_ at: Int) -> Int {
+            Int(UInt32(bytes[at]) | (UInt32(bytes[at + 1]) << 8)
+                | (UInt32(bytes[at + 2]) << 16) | (UInt32(bytes[at + 3]) << 24))
+        }
+        // Locate the (0004,1220) Directory Record Sequence, explicit VR 'SQ'.
+        var header = -1
+        var scan = 0
+        while scan + 12 <= bytes.count {
+            if bytes[scan] == 0x04, bytes[scan + 1] == 0x00,
+               bytes[scan + 2] == 0x20, bytes[scan + 3] == 0x12,
+               bytes[scan + 4] == 0x53, bytes[scan + 5] == 0x51 {   // 'S','Q'
+                header = scan
+                break
+            }
+            scan += 1
+        }
+        guard header >= 0 else {
+            throw DICOMError.parsingFailed("Directory Record Sequence not found while computing DICOMDIR offsets")
+        }
+        let valueStart = header + 12                     // explicit-VR SQ: 12-byte header
+        let sequenceEnd = valueStart + u32(header + 8)
+        var offsets: [Int] = []
+        var cursor = valueStart
+        while cursor + 8 <= min(sequenceEnd, bytes.count),
+              bytes[cursor] == 0xFE, bytes[cursor + 1] == 0xFF,
+              bytes[cursor + 2] == 0x00, bytes[cursor + 3] == 0xE0 {
+            offsets.append(cursor)                       // offset = position of the item tag
+            cursor += 8 + u32(cursor + 4)                // defined-length item: skip whole
+        }
+        guard offsets.count == expectedCount else {
+            throw DICOMError.parsingFailed(
+                "DICOMDIR item count mismatch computing offsets (\(offsets.count) vs \(expectedCount))")
+        }
+        return offsets
     }
     
     /// Write a DICOMDIR to a file URL
@@ -101,46 +207,13 @@ public struct DICOMDIRWriter {
         return fmi
     }
     
-    /// Build directory record sequence from root records
-    ///
-    /// - Parameter rootRecords: Root directory records
-    /// - Returns: Array of sequence items
-    /// - Throws: DICOMError if building fails
-    private static func buildDirectoryRecordSequence(from rootRecords: [DirectoryRecord]) throws -> [SequenceItem] {
-        var items: [SequenceItem] = []
-        
-        // Flatten records in depth-first order
-        func flattenRecords(_ records: [DirectoryRecord]) -> [DirectoryRecord] {
-            var flattened: [DirectoryRecord] = []
-            for record in records {
-                flattened.append(record)
-                if !record.children.isEmpty {
-                    flattened.append(contentsOf: flattenRecords(record.children))
-                }
-            }
-            return flattened
-        }
-        
-        let allRecords = flattenRecords(rootRecords)
-        
-        // Build sequence items for each record
-        // Note: Offset calculation would be done during actual serialization
-        // For now, we'll create the structure without offset values
-        for record in allRecords {
-            let recordDataSet = try buildDirectoryRecordDataSet(from: record)
-            let item = SequenceItem(elements: Array(recordDataSet))
-            items.append(item)
-        }
-        
-        return items
-    }
-    
-    /// Build a DataSet for a single directory record
-    ///
-    /// - Parameter record: Directory record to serialize
-    /// - Returns: DataSet representing the record
-    /// - Throws: DICOMError if building fails
-    private static func buildDirectoryRecordDataSet(from record: DirectoryRecord) throws -> DataSet {
+    /// Build a DataSet for a single directory record, with its computed navigation
+    /// offsets (next sibling / first child), each a 4-byte UL (PS3.3 F.3.2.2).
+    private static func buildDirectoryRecordDataSet(
+        from record: DirectoryRecord,
+        nextOffset: UInt32,
+        lowerOffset: UInt32
+    ) throws -> DataSet {
         var dataSet = DataSet()
         
         // Add directory record type
@@ -167,12 +240,10 @@ public struct DICOMDIRWriter {
             dataSet[.referencedTransferSyntaxUIDInFile] = DataElement.string(tag: .referencedTransferSyntaxUIDInFile, vr: .UI, value: transferSyntaxUID)
         }
         
-        // Add offset placeholders (these would be calculated during serialization)
-        // Offset of the Next Directory Record (0 = no next record)
-        dataSet[.offsetOfTheNextDirectoryRecord] = DataElement.uint32(tag: .offsetOfTheNextDirectoryRecord, value: 0)
-        
-        // Offset of Referenced Lower-Level Directory Entity (0 = no children)
-        dataSet[.offsetOfReferencedLowerLevelDirectoryEntity] = DataElement.uint32(tag: .offsetOfReferencedLowerLevelDirectoryEntity, value: 0)
+        // Navigation offsets (0 = no next sibling / no children). Computed by the
+        // two-pass encode; a fixed 4-byte UL so re-encoding does not shift byte layout.
+        dataSet[.offsetOfTheNextDirectoryRecord] = DataElement.uint32(tag: .offsetOfTheNextDirectoryRecord, value: nextOffset)
+        dataSet[.offsetOfReferencedLowerLevelDirectoryEntity] = DataElement.uint32(tag: .offsetOfReferencedLowerLevelDirectoryEntity, value: lowerOffset)
         
         // Add all other attributes
         for (tag, element) in record.attributes {
