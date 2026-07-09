@@ -333,7 +333,8 @@ let package = Package(
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
                 "ExportWindowParityTests.swift",
-                "EncapsulatedPixelDataWriteTests.swift"
+                "EncapsulatedPixelDataWriteTests.swift",
+                "WaveformParseRegressionTests.swift"
             ]
         ),
         // .testTarget(
