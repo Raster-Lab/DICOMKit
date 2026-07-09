@@ -262,9 +262,9 @@ public struct J2KTestingView: View {
 
                 HStack(spacing: 10) {
                     Text("Target:").font(.callout)
-                    Picker("", selection: Bindable(viewModel.j2kTesting).selectedRoundTripUID) {
-                        ForEach(viewModel.j2kTesting.supportMatrix.filter(\.canEncode), id: \.uid) { e in
-                            Text(e.shortName).tag(e.uid)
+                    Picker("", selection: Bindable(viewModel.j2kTesting).selectedRoundTripID) {
+                        ForEach(viewModel.j2kTesting.supportMatrix.filter(\.canEncode), id: \.id) { e in
+                            Text(e.shortName).tag(e.id)
                         }
                     }
                     .labelsHidden()
@@ -387,9 +387,9 @@ public struct J2KTestingView: View {
 
                 HStack(spacing: 10) {
                     Text("Target:").font(.callout)
-                    Picker("", selection: Bindable(viewModel.j2kTesting).selectedRoundTripUID) {
-                        ForEach(viewModel.j2kTesting.supportMatrix.filter(\.canEncode), id: \.uid) { e in
-                            Text(e.shortName).tag(e.uid)
+                    Picker("", selection: Bindable(viewModel.j2kTesting).selectedRoundTripID) {
+                        ForEach(viewModel.j2kTesting.supportMatrix.filter(\.canEncode), id: \.id) { e in
+                            Text(e.shortName).tag(e.id)
                         }
                     }
                     .labelsHidden()

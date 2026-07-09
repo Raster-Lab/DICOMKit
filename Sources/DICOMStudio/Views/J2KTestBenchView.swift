@@ -39,6 +39,8 @@ public struct J2KTestBenchView: View {
         let title: String
         let fixtureName: String
         let syntaxUID: String
+        /// Distinguishes the two rows of a `both`-capable UID (they share `syntaxUID`).
+        let syntaxName: String
         /// `nil` shows the original frame; otherwise the codec's decode.
         let codec: J2KBenchCodec?
     }
@@ -295,9 +297,9 @@ public struct J2KTestBenchView: View {
     }
 
     private func syntaxChip(_ syntax: J2KBenchSyntax) -> some View {
-        let selected = viewModel.plan.selectedSyntaxUIDs.contains(syntax.uid)
+        let selected = viewModel.plan.selectedSyntaxIDs.contains(syntax.id)
         return Button {
-            viewModel.toggleSyntax(syntax.uid)
+            viewModel.toggleSyntax(syntax.id)
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: selected ? "checkmark.square.fill" : "square")
@@ -624,7 +626,8 @@ public struct J2KTestBenchView: View {
                           isWinner: false,
                           target: LightboxItem(title: "\(group.fixtureName) · Original",
                                                fixtureName: group.fixtureName,
-                                               syntaxUID: group.syntaxUID, codec: nil))
+                                               syntaxUID: group.syntaxUID,
+                                               syntaxName: group.syntaxName, codec: nil))
                 ForEach(group.cells) { cell in
                     thumbnail(title: cell.codec.rawValue,
                               subtitle: decodeSubtitle(cell),
@@ -633,7 +636,8 @@ public struct J2KTestBenchView: View {
                               target: LightboxItem(
                                 title: "\(group.fixtureName) · \(group.syntaxName) · \(cell.codec.rawValue)",
                                 fixtureName: group.fixtureName,
-                                syntaxUID: group.syntaxUID, codec: cell.codec))
+                                syntaxUID: group.syntaxUID,
+                                syntaxName: group.syntaxName, codec: cell.codec))
                 }
             }
             .padding(.vertical, 2)
@@ -837,7 +841,8 @@ public struct J2KTestBenchView: View {
             lightboxImages = nil
             lightboxLoading = true
             lightboxImages = await viewModel.detailImages(
-                fixtureName: item.fixtureName, syntaxUID: item.syntaxUID, codec: item.codec)
+                fixtureName: item.fixtureName, syntaxUID: item.syntaxUID,
+                syntaxName: item.syntaxName, codec: item.codec)
             lightboxLoading = false
         }
     }

@@ -146,10 +146,16 @@ struct TransferSyntaxTests {
     func testParseAliases() {
         #expect(TransferSyntax.parse("explicit-vr-le") == .explicitVRLittleEndian)
         #expect(TransferSyntax.parse("implicit-vr-le") == .implicitVRLittleEndian)
-        #expect(TransferSyntax.parse("jpeg2000-lossless") == .jpeg2000Lossless)
-        #expect(TransferSyntax.parse("htj2k-lossless") == .htj2kLossless)
-        #expect(TransferSyntax.parse("htj2k-rpcl") == .htj2kRPCLLossless)
-        #expect(TransferSyntax.parse("htj2k") == .htj2kLossy)
+        // `parse` is CONSERVATIVE (UID-only, no intent): bare `…-lossless` keeps the
+        // reversible-only UID; `…-lossless-only` is an explicit synonym. The lossless-INTO-
+        // general split lives in `parseEncoding` (see testParseEncodingIntentAliases).
+        #expect(TransferSyntax.parse("jpeg2000-lossless") == .jpeg2000Lossless)      // .90
+        #expect(TransferSyntax.parse("jpeg2000-lossless-only") == .jpeg2000Lossless) // .90
+        #expect(TransferSyntax.parse("htj2k-lossless") == .htj2kLossless)           // .201
+        #expect(TransferSyntax.parse("htj2k-lossless-only") == .htj2kLossless)      // .201
+        #expect(TransferSyntax.parse("htj2k-rpcl-lossless-only") == .htj2kRPCLLossless) // .202
+        #expect(TransferSyntax.parse("htj2k-rpcl") == .htj2kRPCLLossless)           // deprecated alias
+        #expect(TransferSyntax.parse("htj2k") == .htj2kLossy)                       // .203 general
         #expect(TransferSyntax.parse("1.2.840.10008.1.2.4.201") == .htj2kLossless)
         #expect(TransferSyntax.parse("not-a-syntax") == nil)
     }
@@ -304,5 +310,127 @@ struct TransferSyntaxTests {
         #expect(customTS.byteOrder == .littleEndian)
         #expect(customTS.isEncapsulated == false)
         #expect(customTS.isDeflated == true)
+    }
+}
+
+// MARK: - Lossless Capability & Selectable Encodings
+
+@Suite("TransferSyntax: J2K/HTJ2K lossless capability & selectable encodings")
+struct TransferSyntaxCapabilityTests {
+
+    @Test("Lossless-only J2K/HTJ2K UIDs report .losslessOnly")
+    func testLosslessOnlyCapability() {
+        #expect(TransferSyntax.jpeg2000Lossless.losslessCapability == .losslessOnly)        // .90
+        #expect(TransferSyntax.jpeg2000Part2Lossless.losslessCapability == .losslessOnly)   // .92
+        #expect(TransferSyntax.htj2kLossless.losslessCapability == .losslessOnly)            // .201
+        #expect(TransferSyntax.htj2kRPCLLossless.losslessCapability == .losslessOnly)        // .202
+    }
+
+    @Test("General J2K/HTJ2K UIDs report .both (lossless or lossy)")
+    func testBothCapability() {
+        #expect(TransferSyntax.jpeg2000.losslessCapability == .both)       // .91
+        #expect(TransferSyntax.jpeg2000Part2.losslessCapability == .both)  // .93
+        #expect(TransferSyntax.htj2kLossy.losslessCapability == .both)     // .203
+    }
+
+    @Test("A purely-lossy JPEG UID reports .lossyOnly")
+    func testLossyOnlyCapability() {
+        #expect(TransferSyntax.jpegBaseline.losslessCapability == .lossyOnly)
+    }
+
+    @Test("selectableEncodings expands .91/.93/.203 into two rows each")
+    func testDualEntriesForBothCapableUIDs() {
+        let j2kEncodings = TransferSyntax.selectableEncodings.filter { $0.transferSyntax.isJPEG2000 }
+
+        // .90/.92/.201/.202 → exactly one row each; .91/.93/.203 → two rows each.
+        func rows(for uid: String) -> [SelectableEncoding] { j2kEncodings.filter { $0.uid == uid } }
+        #expect(rows(for: "1.2.840.10008.1.2.4.90").count == 1)
+        #expect(rows(for: "1.2.840.10008.1.2.4.91").count == 2)
+        #expect(rows(for: "1.2.840.10008.1.2.4.92").count == 1)
+        #expect(rows(for: "1.2.840.10008.1.2.4.93").count == 2)
+        #expect(rows(for: "1.2.840.10008.1.2.4.201").count == 1)
+        #expect(rows(for: "1.2.840.10008.1.2.4.202").count == 1)
+        #expect(rows(for: "1.2.840.10008.1.2.4.203").count == 2)
+
+        // The full J2K/HTJ2K list is 4 single + 3 doubled = 10 rows.
+        #expect(j2kEncodings.count == 10)
+    }
+
+    @Test("The two .91 rows carry distinct intent, id, and displayName")
+    func testNinetyOneLosslessAndLossyRows() {
+        let rows = TransferSyntax.selectableEncodings.filter { $0.uid == "1.2.840.10008.1.2.4.91" }
+        let lossless = rows.first { $0.intent == .lossless }
+        let lossy = rows.first { $0.intent == .lossy }
+
+        #expect(lossless != nil)
+        #expect(lossy != nil)
+        #expect(lossless?.isLossless == true)
+        #expect(lossy?.isLossless == false)
+        #expect(lossless?.displayName == "JPEG 2000 Lossless")
+        #expect(lossy?.displayName == "JPEG 2000 Lossy")
+        // Distinct identity so pickers/result maps can key on them independently.
+        #expect(lossless?.id != lossy?.id)
+        #expect(lossless?.id == "1.2.840.10008.1.2.4.91#lossless")
+    }
+
+    @Test("Lossless-only rows use .notApplicable intent and their canonical name")
+    func testLosslessOnlyRow() {
+        let row = TransferSyntax.selectableEncodings.first { $0.uid == "1.2.840.10008.1.2.4.90" }
+        #expect(row?.intent == .notApplicable)
+        #expect(row?.isLossless == true)
+        #expect(row?.displayName == "JPEG 2000 Lossless Only")
+    }
+
+    @Test("Canonical HTJ2K display names")
+    func testHTJ2KDisplayNames() {
+        #expect(TransferSyntax.htj2kLossless.displayName == "HTJ2K Lossless Only")
+        #expect(TransferSyntax.htj2kRPCLLossless.displayName == "HTJ2K Lossless Only (RPCL)")
+        #expect(TransferSyntax.htj2kLossy.displayName == "HTJ2K")
+    }
+
+    @Test("from(uid:) stays deterministic despite two rows sharing a UID")
+    func testFromUIDDeterministic() {
+        // Both .91 rows share the same underlying TransferSyntax; from(uid:) is single-valued.
+        #expect(TransferSyntax.from(uid: "1.2.840.10008.1.2.4.91") == .jpeg2000)
+        for enc in TransferSyntax.selectableEncodings {
+            #expect(TransferSyntax.from(uid: enc.uid) == enc.transferSyntax)
+        }
+    }
+
+    @Test("parseEncoding resolves intent aliases for the general UIDs")
+    func testParseEncodingIntentAliases() {
+        #expect(TransferSyntax.parseEncoding("j2k-91-lossless")?.uid == "1.2.840.10008.1.2.4.91")
+        #expect(TransferSyntax.parseEncoding("j2k-91-lossless")?.isLossless == true)
+        #expect(TransferSyntax.parseEncoding("j2k-91-lossy")?.isLossless == false)
+        #expect(TransferSyntax.parseEncoding("htj2k-203-lossless")?.uid == "1.2.840.10008.1.2.4.203")
+        #expect(TransferSyntax.parseEncoding("htj2k-203-lossless")?.isLossless == true)
+
+        // Symmetric naming: bare `…-lossless` encodes reversibly INTO the general UID;
+        // `…-lossless-only` selects the distinct reversible-only UID.
+        #expect(TransferSyntax.parseEncoding("j2k-lossless")?.uid == "1.2.840.10008.1.2.4.91")
+        #expect(TransferSyntax.parseEncoding("j2k-lossless")?.isLossless == true)
+        #expect(TransferSyntax.parseEncoding("j2k-lossless-only")?.uid == "1.2.840.10008.1.2.4.90")
+        #expect(TransferSyntax.parseEncoding("j2k-lossless-only")?.isLossless == true)
+        // JPEG XL general .112 is now both-capable: -lossless/-lossy resolve into it.
+        #expect(TransferSyntax.parseEncoding("jpeg-xl-lossless")?.uid == "1.2.840.10008.1.2.4.112")
+        #expect(TransferSyntax.parseEncoding("jpeg-xl-lossless")?.isLossless == true)
+        #expect(TransferSyntax.parseEncoding("jpeg-xl-lossless-only")?.uid == "1.2.840.10008.1.2.4.110")
+        // A bare general alias defaults to the lossy mode.
+        #expect(TransferSyntax.parseEncoding("j2k")?.intent == .lossy)
+        #expect(TransferSyntax.parseEncoding("htj2k")?.intent == .lossy)
+    }
+
+    @Test("CLI HTJ2K target aliases map to the canonical UIDs (parse is conservative)")
+    func testHTJ2KTargetAliases() {
+        // `parse` (UID-only) keeps `htj2k-lossless` on the reversible-only .201; the
+        // encode-intent split (`htj2k-lossless` → .203 reversible) is in `parseEncoding`.
+        #expect(TransferSyntax.parse("htj2k-lossless") == .htj2kLossless)           // .201
+        #expect(TransferSyntax.parse("htj2k-lossless-only") == .htj2kLossless)      // .201
+        #expect(TransferSyntax.parse("htj2k-rpcl-lossless-only") == .htj2kRPCLLossless) // .202
+        #expect(TransferSyntax.parse("htj2k-rpcl") == .htj2kRPCLLossless)           // deprecated alias
+        #expect(TransferSyntax.parse("htj2k") == .htj2kLossy)                       // .203
+        // parseEncoding carries the intent split:
+        #expect(TransferSyntax.parseEncoding("htj2k-lossless")?.uid == "1.2.840.10008.1.2.4.203")
+        #expect(TransferSyntax.parseEncoding("htj2k-lossless")?.isLossless == true)
     }
 }

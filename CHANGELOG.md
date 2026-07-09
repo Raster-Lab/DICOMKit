@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — Transfer-Syntax Lossy/Lossless Split and Encode-Intent Threading
+
+- Introduced `LosslessCapability` (`losslessOnly`/`lossyOnly`/`both`), `EncodingIntent`, and
+  `SelectableEncoding` on `TransferSyntax` to correctly model the JPEG 2000/HTJ2K/JPEG XL
+  "general" UIDs (`.91`/`.93`/`.203`/`.112`), which per PS3.5 may carry either a lossy or
+  lossless codestream. `TransferSyntax.parse()` itself remains conservative (bare
+  `…-lossless` still maps to the old reversible-only UID, to avoid changing association
+  negotiation behavior in dicom-send/retrieve/qr) — the lossy/lossless split is exposed only
+  through the new `parseEncoding()` API.
+  See `J2K_HTJ2K_TRANSFER_SYNTAX_SPLIT_PLAN.md`.
+- Added missing `UIDDictionary` entries and corrected display names for `.92`/`.93`/`.201`/
+  `.202`/`.203` (e.g. "JPEG 2000 Lossless Only", "HTJ2K Lossless Only (RPCL)").
+- Threaded `EncodingIntent` from CLI/app codec-name resolution through to `JXLCodec` and
+  `DICOMConverter`, so `…-lossless` codec names now genuinely encode reversibly into the
+  general UID (previously not possible) and `…-lossy` produces true irreversible compression.
+  See `J2K_HTJ2K_JXL_ENCODE_INTENT_AND_LOSSY_ATTRS_PLAN.md`.
+- Added `CompressionManager.applyLossyImageCompressionAttributes`, shared by `dicom-compress`
+  and `dicom-convert`, which stamps Lossy Image Compression (0028,2110), Method (0028,2114),
+  and Ratio (0028,2112) plus Image Type → DERIVED per PS3.3 C.7.6.1.1.5, with
+  append/once-lossy-always-lossy semantics.
+- `JXLCodec`: added signed 16-bit support (JXLSwift `int16` level-shift) and genuine lossy
+  VarDCT grayscale encoding (JXLSwift 1.4.0) instead of silently falling back to lossless.
+
 ## [2.2.1] - 2026-07-06
 
 Patch release: strict-concurrency bridge fix plus package-wide warning cleanup.

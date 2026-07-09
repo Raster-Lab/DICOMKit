@@ -59,7 +59,9 @@ final class CompressionManagerMetricsTests: XCTestCase {
     func testRecompressionMetricsAndPixelFidelity() throws {
         let (uncompressed, originalPixels) = try makeUncompressedFile()
         let mgr = CompressionManager()
-        let j2k = try mgr.compressData(uncompressed, codec: "jpeg2000-lossless", quality: nil)
+        // Reversible-only .90 source (symmetric naming: `-lossless-only` selects the .90 UID;
+        // bare `jpeg2000-lossless` now encodes reversibly into the general .91).
+        let j2k = try mgr.compressData(uncompressed, codec: "jpeg2000-lossless-only", quality: nil)
 
         let (out, m) = try mgr.compressDataWithMetrics(j2k, codec: "jpeg-ls-lossless", quality: nil)
 
@@ -75,7 +77,7 @@ final class CompressionManagerMetricsTests: XCTestCase {
         let expectedIntermediate = try mgr.decompressData(j2k, syntax: .explicitVRLittleEndian).count
         XCTAssertEqual(m.intermediateSize, expectedIntermediate)
         XCTAssertGreaterThan(m.intermediateSize ?? 0, 0)
-        XCTAssertEqual(m.sourceTransferSyntaxName, "JPEG 2000 Lossless")
+        XCTAssertEqual(m.sourceTransferSyntaxName, "JPEG 2000 Lossless Only")
 
         // Output really is JPEG-LS encapsulated.
         let f = try DICOMFile.read(from: out)

@@ -4469,12 +4469,14 @@ case "dicom-study":
             guard !transferSyntax.isEmpty else {
                 throw ConvertError.missingTransferSyntax
             }
-            let targetSyntax = try parseTransferSyntax(transferSyntax)
+            let targetEncoding = try parseTransferSyntax(transferSyntax)
 
-            // Shared process → output pipeline (identical bytes in CLI and app).
+            // Shared process → output pipeline (identical bytes in CLI and app). The resolved
+            // intent drives reversible-vs-irreversible encoding into the general UIDs and the
+            // Lossy Image Compression provenance attributes.
             let outcome = try DICOMConverter.convertToDICOM(
                 dicomFile: dicomFile,
-                to: targetSyntax,
+                to: targetEncoding,
                 stripPrivate: stripPrivate
             )
             let outputData = outcome.data
@@ -4617,11 +4619,13 @@ case "dicom-study":
     /// Single source of truth: the shared ``DICOMConverter`` target catalog (DICOMKit),
     /// so the CLI Workshop accepts exactly the same tokens (UID / CamelCase / kebab /
     /// short aliases) as the `dicom-convert` CLI.
-    private func parseTransferSyntax(_ name: String) throws -> TransferSyntax {
-        guard let syntax = DICOMConverter.parseTarget(name) else {
+    private func parseTransferSyntax(_ name: String) throws -> SelectableEncoding {
+        // Resolve the full encoding (UID + intent) so the app matches the CLI: `…-lossless`
+        // names encode reversibly into the general UID, `…-lossy` names carry the provenance.
+        guard let encoding = DICOMConverter.resolveTargetEncoding(name) else {
             throw ConvertError.unknownTransferSyntax(name)
         }
-        return syntax
+        return encoding
     }
 
     // MARK: - Local SCP Listener Management

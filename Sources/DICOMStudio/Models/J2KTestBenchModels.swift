@@ -112,6 +112,11 @@ public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable
 /// family. JPEG 2000 has several; the other formats currently expose a single
 /// lossless mode (the bench's axis is bit-exact round-trip + peer decode).
 public struct J2KBenchSyntax: Identifiable, Hashable, Codable, Sendable {
+    /// Unique per row. For JPEG 2000 `both`-capable UIDs (.91/.93/.203) this is the
+    /// shared catalog's `SelectableEncoding.id` ("<uid>#lossless" / "<uid>#lossy"),
+    /// so the two rows that share a UID stay distinct. For single-capability
+    /// syntaxes it equals the UID.
+    public let id: String
     public let uid: String
     public let shortName: String
     /// The codec family this syntax belongs to.
@@ -120,9 +125,7 @@ public struct J2KBenchSyntax: Identifiable, Hashable, Codable, Sendable {
     /// against a PSNR threshold.
     public let isLossless: Bool
 
-    public var id: String { uid }
-
-    public init(uid: String, shortName: String,
+    public init(id: String? = nil, uid: String, shortName: String,
                 format: J2KBenchFormat = .jpeg2000, isLossless: Bool? = nil) {
         self.uid = uid
         self.shortName = shortName
@@ -130,29 +133,33 @@ public struct J2KBenchSyntax: Identifiable, Hashable, Codable, Sendable {
         // JPEG 2000 keeps the original UID-suffix heuristic when not specified.
         self.isLossless = isLossless
             ?? (!uid.hasSuffix(".91") && !uid.hasSuffix(".93") && !uid.hasSuffix(".203"))
+        self.id = id ?? uid
     }
 
-    /// Every syntax across all formats. JPEG XL is bench-only (synthetic id, no
-    /// DICOM transfer syntax); the rest use their real DICOM UIDs.
-    public static let all: [J2KBenchSyntax] = [
-        // JPEG 2000 / HTJ2K
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.90",  shortName: "J2K Lossless"),
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.91",  shortName: "J2K Lossy"),
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.92",  shortName: "J2K Part 2 Lossless"),
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.93",  shortName: "J2K Part 2 Lossy"),
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.201", shortName: "HTJ2K Lossless"),
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.202", shortName: "HTJ2K RPCL Lossless"),
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.203", shortName: "HTJ2K Lossy"),
-        // JPEG (JLISwift) — lossless SOF3 (DICOM JPEG Lossless, First-Order Prediction)
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.70",  shortName: "JPEG Lossless",
-                       format: .jpeg, isLossless: true),
-        // JPEG-LS (JLSwift)
-        J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.80",  shortName: "JPEG-LS Lossless",
-                       format: .jpegLS, isLossless: true),
-        // JPEG XL (JXLSwift) — bench-only; no DICOM transfer syntax assigned
-        J2KBenchSyntax(uid: "bench.jpegxl.lossless",   shortName: "JPEG XL Lossless",
-                       format: .jpegXL, isLossless: true),
-    ]
+    /// Every syntax across all formats. The JPEG 2000 / HTJ2K rows are driven by
+    /// the shared transfer-syntax catalog so the list stays canonical (`both`-capable
+    /// UIDs expand into two rows, Lossless + Lossy). JPEG XL is bench-only (synthetic
+    /// id, no DICOM transfer syntax); the rest use their real DICOM UIDs.
+    public static let all: [J2KBenchSyntax] = {
+        var list: [J2KBenchSyntax] = TransferSyntax.selectableEncodings
+            .filter { $0.transferSyntax.isJPEG2000 }
+            .map { enc in
+                J2KBenchSyntax(id: enc.id, uid: enc.uid, shortName: enc.displayName,
+                               format: .jpeg2000, isLossless: enc.isLossless)
+            }
+        list.append(contentsOf: [
+            // JPEG (JLISwift) — lossless SOF3 (DICOM JPEG Lossless, First-Order Prediction)
+            J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.70",  shortName: "JPEG Lossless",
+                           format: .jpeg, isLossless: true),
+            // JPEG-LS (JLSwift)
+            J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.80",  shortName: "JPEG-LS Lossless",
+                           format: .jpegLS, isLossless: true),
+            // JPEG XL (JXLSwift) — bench-only; no DICOM transfer syntax assigned
+            J2KBenchSyntax(uid: "bench.jpegxl.lossless",   shortName: "JPEG XL Lossless",
+                           format: .jpegXL, isLossless: true),
+        ])
+        return list
+    }()
 
     /// Syntaxes belonging to a given format, in canonical order.
     public static func all(for format: J2KBenchFormat) -> [J2KBenchSyntax] {
@@ -295,8 +302,10 @@ public struct J2KTestCell: Identifiable, Codable, Sendable {
         self.outcome = outcome
     }
 
-    /// Stable identity across runs — used to line up regression deltas.
-    public var matchKey: String { "\(fixtureName)|\(syntaxUID)|\(codec.rawValue)" }
+    /// Stable identity across runs — used to line up regression deltas. Includes
+    /// `syntaxName` so the two rows of a `both`-capable UID (e.g. `.91` Lossless vs
+    /// Lossy) stay distinct even though they share `syntaxUID`.
+    public var matchKey: String { "\(fixtureName)|\(syntaxUID)|\(syntaxName)|\(codec.rawValue)" }
 }
 
 // MARK: - Run
@@ -338,8 +347,9 @@ public struct J2KTestRun: Identifiable, Codable, Sendable {
 public struct J2KTestPlan: Sendable {
     /// The compression family being benchmarked.
     public var format: J2KBenchFormat
-    /// Transfer syntaxes to exercise (by UID).
-    public var selectedSyntaxUIDs: Set<String>
+    /// Transfer syntaxes to exercise, keyed by ``J2KBenchSyntax/id`` (not the bare
+    /// UID) so the two rows of a `both`-capable UID can be selected independently.
+    public var selectedSyntaxIDs: Set<String>
     public var includeOpenJPEG: Bool
     public var includeKakadu: Bool
     public var includeGrok: Bool
@@ -359,11 +369,11 @@ public struct J2KTestPlan: Sendable {
     public var lossyPSNRThresholdDb: Double
 
     public init(format: J2KBenchFormat = .jpeg2000,
-                selectedSyntaxUIDs: Set<String> = ["1.2.840.10008.1.2.4.90",
-                                                   "1.2.840.10008.1.2.4.201",
-                                                   "1.2.840.10008.1.2.4.70",
-                                                   "1.2.840.10008.1.2.4.80",
-                                                   "bench.jpegxl.lossless"],
+                selectedSyntaxIDs: Set<String> = ["1.2.840.10008.1.2.4.90",
+                                                  "1.2.840.10008.1.2.4.201",
+                                                  "1.2.840.10008.1.2.4.70",
+                                                  "1.2.840.10008.1.2.4.80",
+                                                  "bench.jpegxl.lossless"],
                 includeOpenJPEG: Bool = true,
                 includeKakadu: Bool = true,
                 includeGrok: Bool = true,
@@ -375,7 +385,7 @@ public struct J2KTestPlan: Sendable {
                 timedRuns: Int = 7,
                 lossyPSNRThresholdDb: Double = 40.0) {
         self.format = format
-        self.selectedSyntaxUIDs = selectedSyntaxUIDs
+        self.selectedSyntaxIDs = selectedSyntaxIDs
         self.includeOpenJPEG = includeOpenJPEG
         self.includeKakadu = includeKakadu
         self.includeGrok = includeGrok
@@ -390,6 +400,6 @@ public struct J2KTestPlan: Sendable {
 
     /// Selected syntaxes for the active format, in canonical order.
     public var syntaxes: [J2KBenchSyntax] {
-        J2KBenchSyntax.all(for: format).filter { selectedSyntaxUIDs.contains($0.uid) }
+        J2KBenchSyntax.all(for: format).filter { selectedSyntaxIDs.contains($0.id) }
     }
 }

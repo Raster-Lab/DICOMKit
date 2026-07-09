@@ -58,13 +58,16 @@ struct CompressionCodecMapTests {
             ("jpeg-extended", TransferSyntax.jpegExtended.uid),          // JLISwift
             ("jpeg-lossless", TransferSyntax.jpegLossless.uid),          // JLISwift
             ("jpeg-lossless-sv1", TransferSyntax.jpegLosslessSV1.uid),   // JLISwift
-            ("jpeg2000", TransferSyntax.jpeg2000.uid),                   // J2KSwift
-            ("jpeg2000-lossless", TransferSyntax.jpeg2000Lossless.uid),  // J2KSwift
-            ("htj2k-lossless", TransferSyntax.htj2kLossless.uid),        // J2KSwift (HTJ2KCodec)
+            ("jpeg2000", TransferSyntax.jpeg2000.uid),                   // J2KSwift (.91 lossy)
+            ("jpeg2000-lossless", TransferSyntax.jpeg2000.uid),          // J2KSwift (.91 reversible)
+            ("jpeg2000-lossless-only", TransferSyntax.jpeg2000Lossless.uid), // J2KSwift (.90)
+            ("htj2k-lossless", TransferSyntax.htj2kLossy.uid),           // J2KSwift (HTJ2KCodec, .203 reversible)
+            ("htj2k-lossless-only", TransferSyntax.htj2kLossless.uid),   // J2KSwift (HTJ2KCodec, .201)
             ("jpeg-ls-lossless", TransferSyntax.jpegLSLossless.uid),     // JLSwift
             ("jpeg-ls", TransferSyntax.jpegLSNearLossless.uid),          // JLSwift
-            ("jpeg-xl-lossless", TransferSyntax.jpegXLLossless.uid),     // JXLSwift (lossless, Modular)
-            ("jpeg-xl", TransferSyntax.jpegXL.uid),                      // JXLSwift (lossy, VarDCT)
+            ("jpeg-xl-lossless", TransferSyntax.jpegXL.uid),             // JXLSwift (.112 reversible, Modular)
+            ("jpeg-xl-lossless-only", TransferSyntax.jpegXLLossless.uid),// JXLSwift (.110)
+            ("jpeg-xl", TransferSyntax.jpegXL.uid),                      // JXLSwift (.112 lossy, VarDCT)
           ])
     func allFourLibrariesReachable(codec: String, expectedUID: String) {
         #expect(CompressionManager.transferSyntax(for: codec)?.uid == expectedUID,
