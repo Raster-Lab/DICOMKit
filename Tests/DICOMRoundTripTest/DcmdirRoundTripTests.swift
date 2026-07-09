@@ -194,6 +194,87 @@ final class DcmdirRoundTripTests: XCTestCase {
         XCTAssertEqual(readBack.allReferencedFiles().count, 3)
     }
 
+    // Oracle: the writer computes real navigation offsets (PS3.3 F.3.2.2) — root First
+    // points to the first record item, and a multi-series study's sibling/child links
+    // point to the correct item byte positions — so an offset-following reader (dcmtk /
+    // pydicom) can navigate the file-set, not just DICOMKit's own type-order reader.
+    func testWriteComputesNavigationOffsets() throws {
+        func image(_ n: Int) -> DirectoryRecord {
+            DirectoryRecord.image(referencedFileID: ["IMG\(n)"], sopClassUID: "1.2.840.10008.5.1.4.1.1.2",
+                                  sopInstanceUID: rtUID(), transferSyntaxUID: "1.2.840.10008.1.2.1")
+        }
+        let seriesA = DirectoryRecord.series(seriesInstanceUID: rtUID(), modality: "CT", children: [image(1), image(2)])
+        let seriesB = DirectoryRecord.series(seriesInstanceUID: rtUID(), modality: "CT", children: [image(3)])
+        let study = DirectoryRecord.study(studyInstanceUID: rtUID(), children: [seriesA, seriesB])
+        let patient = DirectoryRecord.patient(patientID: "P", patientName: "N", children: [study])
+        let data = try DICOMDIRWriter.write(DICOMDirectory(fileSetID: "OFF", rootRecords: [patient]))
+
+        let bytes = [UInt8](data)
+        func u32(_ at: Int) -> Int {
+            Int(UInt32(bytes[at]) | (UInt32(bytes[at + 1]) << 8) | (UInt32(bytes[at + 2]) << 16) | (UInt32(bytes[at + 3]) << 24))
+        }
+        // Locate the (0004,1220) Directory Record Sequence and walk its items.
+        var header = -1
+        var i = 0
+        while i + 6 <= bytes.count {
+            if bytes[i] == 0x04, bytes[i + 1] == 0x00, bytes[i + 2] == 0x20, bytes[i + 3] == 0x12,
+               bytes[i + 4] == 0x53, bytes[i + 5] == 0x51 { header = i; break }
+            i += 1
+        }
+        XCTAssertGreaterThanOrEqual(header, 0, "Directory Record Sequence must be present")
+        let valueStart = header + 12
+        let seqEnd = valueStart + u32(header + 8)
+        var itemOffsets: [Int] = []
+        var itemBodies: [(start: Int, length: Int)] = []
+        var cursor = valueStart
+        while cursor + 8 <= seqEnd, bytes[cursor] == 0xFE, bytes[cursor + 1] == 0xFF, bytes[cursor + 2] == 0x00, bytes[cursor + 3] == 0xE0 {
+            let length = u32(cursor + 4)
+            itemOffsets.append(cursor)
+            itemBodies.append((cursor + 8, length))
+            cursor += 8 + length
+        }
+        XCTAssertEqual(itemOffsets.count, 7, "patient+study+2 series+3 images = 7 records")
+
+        // Read a UL element value within an item body, or nil.
+        func ul(_ item: Int, tag: [UInt8]) -> Int? {
+            let (start, length) = itemBodies[item]
+            var p = start
+            let end = start + length
+            while p + 4 <= end {
+                if bytes[p] == tag[0], bytes[p + 1] == tag[1], bytes[p + 2] == tag[2], bytes[p + 3] == tag[3] {
+                    return u32(p + 8)   // explicit-VR UL: tag(4)+VR(2)+len(2)+value(4)
+                }
+                p += 1
+            }
+            return nil
+        }
+        let nextTag: [UInt8] = [0x04, 0x00, 0x00, 0x14]   // (0004,1400)
+        let lowerTag: [UInt8] = [0x04, 0x00, 0x20, 0x14]  // (0004,1420)
+
+        // Root first/last (0004,1200)/(0004,1202) live in the main data set, before the sequence.
+        func rootUL(_ tag: [UInt8]) -> Int? {
+            var p = 0
+            while p + 4 <= header {
+                if bytes[p] == tag[0], bytes[p + 1] == tag[1], bytes[p + 2] == tag[2], bytes[p + 3] == tag[3] {
+                    return u32(p + 8)
+                }
+                p += 1
+            }
+            return nil
+        }
+        XCTAssertEqual(rootUL([0x04, 0x00, 0x00, 0x12]), itemOffsets[0], "root First → first record item")
+        XCTAssertEqual(rootUL([0x04, 0x00, 0x02, 0x12]), itemOffsets[0], "root Last → last root record (single patient)")
+
+        // Flattened order: patient(0) study(1) seriesA(2) img1(3) img2(4) seriesB(5) img3(6).
+        XCTAssertEqual(ul(0, tag: lowerTag), itemOffsets[1], "patient.lower → study")
+        XCTAssertEqual(ul(1, tag: lowerTag), itemOffsets[2], "study.lower → seriesA")
+        XCTAssertEqual(ul(2, tag: lowerTag), itemOffsets[3], "seriesA.lower → img1")
+        XCTAssertEqual(ul(2, tag: nextTag), itemOffsets[5], "seriesA.next → seriesB")
+        XCTAssertEqual(ul(3, tag: nextTag), itemOffsets[4], "img1.next → img2")
+        XCTAssertEqual(ul(4, tag: nextTag), 0, "img2 is last image → next 0")
+        XCTAssertEqual(ul(5, tag: lowerTag), itemOffsets[6], "seriesB.lower → img3")
+    }
+
     // Oracle: the serialized DICOMDIR is a valid Part 10 file — preamble(128) + "DICM".
     func testSerializedDICOMDIRIsPart10() throws {
         let directory = makeManualDirectory(patients: 1)
