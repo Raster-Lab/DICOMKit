@@ -356,6 +356,46 @@ struct TransferSyntaxCapabilityTests {
         #expect(j2kEncodings.count == 10)
     }
 
+    @Test("Every negotiableImageSyntaxTokens token parses back to its paired syntax")
+    func testNegotiableImageTokensRoundTrip() {
+        // This is the source-of-truth contract the dicom-retrieve / dicom-qr pickers and CLI
+        // help depend on: each canonical token must resolve, via the SAME parser the CLIs use,
+        // to exactly the transfer syntax it is paired with. If this fails, a negotiation surface
+        // is offering a token the CLI would reject with "Unknown transfer syntax".
+        for entry in TransferSyntax.negotiableImageSyntaxTokens {
+            #expect(TransferSyntax.parse(entry.token) == entry.syntax,
+                    "token '\(entry.token)' must parse to \(entry.syntax.displayName)")
+        }
+        // Derived list stays in lockstep with the pairs.
+        #expect(TransferSyntax.negotiableImageTokens == TransferSyntax.negotiableImageSyntaxTokens.map(\.token))
+    }
+
+    @Test("negotiableImageSyntaxTokens has no duplicate tokens or UIDs")
+    func testNegotiableImageTokensAreUnique() {
+        let tokens = TransferSyntax.negotiableImageTokens
+        #expect(Set(tokens).count == tokens.count)
+        let uids = TransferSyntax.negotiableImageSyntaxTokens.map { $0.syntax.uid }
+        #expect(Set(uids).count == uids.count)
+    }
+
+    @Test("negotiableImageSyntaxTokens covers current codecs and omits non-retrievable ones")
+    func testNegotiableImageTokensCoverage() {
+        let tokens = Set(TransferSyntax.negotiableImageTokens)
+        // The codecs added in the JPEG 2000 Part 2 / JPEG-LS / JPEG XL work must all appear —
+        // this is the regression guard against the old hand-maintained list that stopped at RLE.
+        for token in ["jpeg-ls-lossless", "jpeg-ls", "jpeg-xl-lossless", "jpeg-xl",
+                      "jpeg2000-part2-lossless", "jpeg2000-part2", "jpeg-extended",
+                      "explicit-vr-be", "deflate"] {
+            #expect(tokens.contains(token), "negotiation list should offer '\(token)'")
+        }
+        // Non-decodable / non-retrievable syntaxes are intentionally excluded.
+        let uids = Set(TransferSyntax.negotiableImageSyntaxTokens.map { $0.syntax.uid })
+        for excluded in [TransferSyntax.mpeg2MainProfile, .hevcH265MainProfile,
+                         .jpipReferenced, .jp3dLossless, .jpegXLRecompression] {
+            #expect(!uids.contains(excluded.uid), "\(excluded.displayName) should not be negotiable")
+        }
+    }
+
     @Test("The two .91 rows carry distinct intent, id, and displayName")
     func testNinetyOneLosslessAndLossyRows() {
         let rows = TransferSyntax.selectableEncodings.filter { $0.uid == "1.2.840.10008.1.2.4.91" }

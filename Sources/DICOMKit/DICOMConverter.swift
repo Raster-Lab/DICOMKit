@@ -43,11 +43,12 @@ public enum DICOMConverter {
         /// for single-capability UIDs). Drives reversible-vs-irreversible encoding and the
         /// Lossy Image Compression provenance attributes.
         public let intent: EncodingIntent
-        /// CamelCase token used by the CLI `--transfer-syntax` flag and the CLI
-        /// Workshop picker (e.g. `ExplicitVRLittleEndian`, `JPEG2000Lossless`).
+        /// CamelCase token emitted in the CLI `--transfer-syntax` help listing
+        /// (e.g. `ExplicitVRLittleEndian`, `JPEG2000Lossless`). Accepted on input.
         public let cliToken: String
-        /// kebab-case alias used by the representative parameter catalog and accepted
-        /// on input (e.g. `explicit-vr-le`, `jpeg2000-lossless`).
+        /// kebab-case alias shown in the app pickers (CLI Workshop + representative parameter
+        /// catalog) so every transfer-syntax dropdown reads the same short style as
+        /// dicom-compress, and accepted on input (e.g. `explicit-vr-le`, `jpeg2000-lossless`).
         public let aliasToken: String
         /// Additional historical aliases accepted on input (already lowercased).
         public let extraAliases: [String]
@@ -369,8 +370,37 @@ public enum DICOMConverter {
             // The DICOMCore ``TransferSyntaxConverter`` only handles uncompressed and
             // encapsulated/pixel-level codecs — not data-set-level deflate — so this
             // is handled here rather than delegated to ``transcode``.
-            let evleWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
-            let plain = dataSet.write(using: evleWriter)
+            //
+            // An ENCAPSULATED source must have its pixel data decoded to native first.
+            // Deflate is a data-set-level codec over a *native* Explicit VR LE stream;
+            // it has no encapsulated form. Serializing the encapsulated element straight
+            // into the deflate stream produced a file labelled …1.2.1.99 that still held
+            // an undefined-length (7FE0,0010) with Item-tagged fragments — the codestream
+            // survived, but no conformant reader (DICOMKit's own included) could decode
+            // pixel data from it, and the tool reported success.
+            let plain: Data
+            if serializationSyntax.isEncapsulated {
+                let decoder = TransferSyntaxConverter(
+                    configuration: TranscodingConfiguration(
+                        preferredSyntaxes: [.explicitVRLittleEndian],
+                        allowLossyCompression: false,
+                        preservePixelDataFidelity: true
+                    ),
+                    compressionConfiguration: .lossless
+                )
+                let sourceWriter = DICOMWriter(
+                    byteOrder: serializationSyntax.byteOrder,
+                    explicitVR: serializationSyntax.isExplicitVR
+                )
+                plain = try decoder.transcode(
+                    dataSetData: dataSet.write(using: sourceWriter),
+                    from: serializationSyntax,
+                    to: .explicitVRLittleEndian
+                ).data
+            } else {
+                let evleWriter = DICOMWriter(byteOrder: .littleEndian, explicitVR: true)
+                plain = dataSet.write(using: evleWriter)
+            }
             guard let deflated = plain.deflateCompressed() else {
                 throw TranscodingError.encodingFailed(
                     "Failed to deflate the Data Set for \(target.uid). "

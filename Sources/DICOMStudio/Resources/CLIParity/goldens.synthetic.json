@@ -2378,7 +2378,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-lossless-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-lossless\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 881 B\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-lossless\nBackend: Accelerate (CPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 881 B\nCompression ratio: 100.1%\nCompression time:  <dur>\n",
       "stdout" : "d9f3c8064105485f0821fb42ba0846faef768a4d1987c65cdb7dfdba1e4a5656",
       "studioParams" : {
         "codec" : "jpeg-lossless",
@@ -2441,7 +2441,7 @@
       "label" : "syn-ct.dcm · compress-jpeg-extended-quality-verbose",
       "phiSafe" : true,
       "portable" : true,
-      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-extended\nQuality: high\nBackend: Metal (GPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 1005 B\nCompression ratio: 114.2%\nCompression time:  <dur>\n",
+      "stderr" : "Compressing: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm\nCodec: jpeg-extended\nQuality: high\nBackend: Accelerate (CPU)\nCompressed: \/Users\/raster\/Documents\/GitHub_Workspace\/DICOMKit_V2.2.0\/DICOMKit\/Sources\/DICOMStudio\/Resources\/CLIParity\/synthetic\/syn-ct.dcm → <tmp>\/out.dcm\nInput size:  880 B\nOutput size: 1005 B\nCompression ratio: 114.2%\nCompression time:  <dur>\n",
       "stdout" : "7a2463e2b460c13c09745e0512ace24565d38d2707474be23334f04190399767",
       "studioParams" : {
         "codec" : "jpeg-extended",

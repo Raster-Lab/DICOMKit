@@ -14,6 +14,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   zero-pass fast path into DICOM pixel decoding without changing the DICOMKit
   public API or decoded pixel values.
 
+### Added — JPEG Baseline Encoder Choice (DICOMStudio-only)
+
+- Added `JPEGCodecEngine` (DICOMCore: `.jli` / `.native`) and
+  `CodecRegistry.encoder(for:engine:)`, which honours the engine selection **only** for
+  JPEG Baseline (1.2.840.10008.1.2.4.50) — the one transfer syntax this library can encode
+  two ways: the pure-Swift `JLICodec` (the registry default for all four JPEG syntaxes) or
+  Apple's `NativeJPEGCodec` (ImageIO). JPEG Extended/Lossless/Lossless SV1 have no second
+  encoder, so `engine` is a no-op for them.
+- Threaded `jpegEngine` through `CompressionManager.compressData` /
+  `compressDataWithMetrics`, defaulting to `.jli` so `dicom-compress` output is unchanged.
+- Added an internal "JPEG Engine" picker to the DICOMStudio CLI Workshop's `dicom-compress`
+  form, visible only for `operation == compress && codec == jpeg` — a benchmarking aid with
+  no `dicom-compress` CLI counterpart, so it never appears in the copy-pasteable command
+  preview. Required a new `CLIParameterDefinition.visibleWhenAll` ([`[CLIParameterVisibilityCondition]`],
+  ANDed with the existing single-condition `visibleWhen`) since `codec` persists across
+  operations and a single condition couldn't pin the picker to compress-only.
+  `CommandBuilderHelpers.isVisible(...)` is now the one predicate shared by command-preview
+  generation, required-field validation, and the ViewModel's form rendering.
+
+### Fixed — `dicom-convert` to DEFLATE dropped pixel data from encapsulated sources
+
+- An encapsulated source (JPEG/JPEG 2000/RLE/…) converted to Deflated Explicit VR Little
+  Endian is now decoded to native pixels first. DEFLATE (PS3.5 A.5) is a data-set-level
+  codec over a *native* stream — it has no encapsulated form — but `DICOMConverter` used to
+  serialize the encapsulated (7FE0,0010) straight into the deflate stream: the codestream
+  survived, but the output was labelled 1.2.840.10008.1.2.1.99 while still carrying an
+  undefined-length, Item-fragmented pixel element, so no conformant reader (including
+  DICOMKit's own) could decode pixel data from it — and the tool reported success.
+
+### Fixed — `dicom-compress`/`dicom-convert` `--output` naming a directory failed with "Is a directory"
+
+- Both CLIs now resolve `--output` through the existing `OutputPathResolver` (already used
+  elsewhere) before writing, so passing a directory (e.g. `~/Desktop/DICOM_Output/`, or
+  whatever the DICOMStudio Workshop's Browse button hands back) writes the input's filename
+  into that directory instead of failing. An explicit file path is still used verbatim.
+
+### Fixed — DICOMStudio CLI Workshop could build/compare against a different checkout's DICOMKit
+
+- `CLIToolBuilder.repoRoot()` and `CLIToolTerminalCompare.locateBinary()` no longer fall back
+  to a hard-coded absolute path or the process's working directory (which is `/` for a GUI
+  app). They now resolve the SwiftPM package root by walking up from `#filePath` — the
+  checkout the running app was actually compiled from — so `swift build`/binary lookup can
+  no longer silently target a sibling repo whose DICOMKit accepts different tokens, which
+  previously made "Compare CLI" report diffs that didn't exist in the current repo.
+
 ### Added — Transfer-Syntax Lossy/Lossless Split and Encode-Intent Threading
 
 - Introduced `LosslessCapability` (`losslessOnly`/`lossyOnly`/`both`), `EncodingIntent`, and
@@ -36,6 +81,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   append/once-lossy-always-lossy semantics.
 - `JXLCodec`: added signed 16-bit support (JXLSwift `int16` level-shift) and genuine lossy
   VarDCT grayscale encoding (JXLSwift 1.4.0) instead of silently falling back to lossless.
+
+## [2.2.6] - 2026-07-09
+
+Patch release: shared transfer-syntax negotiation token list for `dicom-retrieve`/`dicom-qr`,
+plus two reporting-accuracy fixes (`--backend`, `dicom-compress info` lossless state). No
+association-negotiation or encode-behavior changes — this release only corrects what tools
+report and what token lists they offer.
+
+### Added — Shared transfer-syntax negotiation token list
+
+- Added `TransferSyntax.negotiableImageSyntaxTokens` / `negotiableImageTokens` (DICOMCore) as
+  the single source of truth for the transfer-syntax lists offered by the UID-only negotiation
+  tools (`dicom-retrieve`, `dicom-qr`) — the negotiation analogue of
+  `CompressionManager.supportedCodecs()` (dicom-compress) and `DICOMConverter.cliTokens`
+  (dicom-convert). Every token round-trips through `TransferSyntax.parse()` (enforced by tests).
+- Wired the DICOMStudio CLI Workshop `dicom-retrieve` / `dicom-qr` transfer-syntax pickers and
+  the `dicom-retrieve` / `dicom-qr` CLI `--transfer-syntax` help onto that shared list, so both
+  surfaces stay in lockstep. This adds the previously-missing JPEG-LS, JPEG XL, and JPEG 2000
+  Part 2 (plus `explicit-vr-be`, `deflate`, `jpeg-extended`, `jpeg-lossless-sv1`) syntaxes that
+  the old hand-maintained lists stopped short of; regenerated the `CLIContracts.json` parity
+  golden to match.
+- CLI Workshop: the `dicom-convert` transfer-syntax dropdown now shows the short kebab aliases
+  (`DICOMConverter.aliasTokens`, e.g. `jpeg2000-lossless`, `htj2k-lossy`) instead of the CamelCase
+  `cliTokens`, so it reads the same as the `dicom-compress` / `dicom-retrieve` / `dicom-qr`
+  dropdowns. The `dicom-convert` CLI resolves the kebab alias identically, so the generated
+  command and in-process execution are unchanged.
+
+### Fixed — `dicom-compress info` reports the true lossless state for general J2K/HTJ2K/JXL UIDs
+
+- `CompressionManager.getCompressionInfo` now derives `isLossless` (and the transfer-syntax
+  display name) from Lossy Image Compression (0028,2110) for the `both`-capable general UIDs
+  (`.91`/`.93`/`.203`/`.112`), instead of the UID-level flag which always reported "Lossy".
+  A file reversibly encoded into a general UID (e.g. `--codec jpeg2000-lossless` → `.91`) now
+  reports `Transfer Syntax: JPEG 2000 Lossless` / `Lossless: Yes` on both `dicom-compress info`
+  surfaces (text + `--json`) and in the CLI Workshop, so the name and the Lossless line no
+  longer contradict each other. Single-capability UIDs (e.g. `.90`, `.50`) are unchanged —
+  their UID is authoritative. Reference: PS3.3 C.7.6.1.1.5.
+
+### Fixed — `--backend` reporting reflected the hardware probe, not the actual encode path
+
+- Added `CodecBackendPreference.effectiveEncodeBackend(isLossless:isJPEG2000Family:)` (DICOMCore)
+  and `CompressionConsole.compressBackend(codec:preference:)` (DICOMKit), which report the backend
+  the encoder will **actually** dispatch to rather than the best available hardware.
+  `J2KSwiftCodec` only takes the Metal GPU path for a genuinely lossy JPEG 2000/HTJ2K encode — the
+  lossless GPU path isn't bit-exact on 12/16-bit medical data — so `auto`/`--backend metal` on a
+  lossless or non-J2K encode previously reported "Metal (GPU)" in `dicom-compress`/CLI Workshop
+  verbose output even though the encode ran on the CPU. An explicit `--backend metal` request that
+  can't use the GPU is now downgraded to the CPU backend with an explanatory note instead of
+  silently misreporting.
+- `CodecBackend.accelerate.displayName` now reports "Accelerate (CPU)" instead of the stale
+  "Accelerate (not available)" on platforms where Apple's `Accelerate` framework is present but the
+  old J2KAccelerate SIMD-family probe (removed in J2KSwift v11.0.0) no longer exists.
 
 ## [2.2.1] - 2026-07-06
 

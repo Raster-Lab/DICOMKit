@@ -1013,14 +1013,12 @@ public final class CLIWorkshopViewModel {
         return parameterDefinitions.filter { $0.isAdvanced && satisfiesVisibility($0) }
     }
 
-    /// Evaluates a parameter's `visibleWhen` condition against the current values.
+    /// Evaluates a parameter's `visibleWhen` + `visibleWhenAll` conditions against the
+    /// current values. Shares the predicate with `buildCommand()` / `validateRequired()`
+    /// so the rendered form, the command preview, and the Run button never disagree.
     private func satisfiesVisibility(_ param: CLIParameterDefinition) -> Bool {
-        guard let condition = param.visibleWhen else { return true }
-        let currentValue = paramValue(condition.parameterId)
-        let effectiveValue = currentValue.isEmpty
-            ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
-            : currentValue
-        return condition.values.contains(effectiveValue)
+        CommandBuilderHelpers.isVisible(
+            param, parameterValues: parameterValues, parameterDefinitions: parameterDefinitions)
     }
 
     // MARK: - 16.4 File Drop Zone
@@ -2944,6 +2942,10 @@ private func executeDicomCompressCompress() async {
     let qualityStr = paramValue("quality")
     let verbose = paramValue("verbose") == "true"
     let backendRaw = paramValue("backend").isEmpty ? "auto" : paramValue("backend")
+    // JPEG Baseline encoder choice (JLICodec vs Apple ImageIO). App-only — the CLI has
+    // no equivalent flag and always runs the `.jli` default. Unknown/absent → `.jli`,
+    // and the engine itself ignores it for every syntax other than JPEG Baseline.
+    let jpegEngine = JPEGCodecEngine(rawValue: paramValue("jpegCodec")) ?? .jli
 
     guard !inputPath.isEmpty else {
         appendConsoleOutput("Error: Input file path is required.\n")
@@ -2976,8 +2978,18 @@ private func executeDicomCompressCompress() async {
     let inputURL = inputScopedURL ?? URL(fileURLWithPath: inputPath)
     // Shared backend resolution (same helper the CLI uses) — the preference is
     // both displayed AND forwarded into the engine (J2K/HTJ2K honor metal→GPU).
+    // Report the backend the encode will ACTUALLY use (not the best available
+    // hardware): `auto` runs the CPU encoder for lossless, so it must not claim
+    // "Metal (GPU)". A `--backend metal` lossless request is downgraded to CPU
+    // with an explanatory note.
     let backendPref = CompressionConsole.backendPreference(for: backendRaw)
-    let backendName = backendPref.effective.displayName
+    let resolvedBackend = CompressionConsole.compressBackend(codec: codec, preference: backendPref)
+    let backendName = resolvedBackend.displayName
+    let backendNote = resolvedBackend.note
+    // The JPEG engine choice only changes the encoder for JPEG Baseline; for every other
+    // target the registry ignores it, so don't claim it applied.
+    let appliesJPEGEngine =
+        CompressionManager.transferSyntax(for: codec)?.uid == CodecRegistry.jpegEngineSelectableUID
 
     let (output, exitCode) = await Task.detached(priority: .userInitiated) { () -> (String, Int) in
         var log = ""
@@ -2998,9 +3010,17 @@ private func executeDicomCompressCompress() async {
             if verbose {
                 log += CompressionConsole.compressPreamble(
                     input: inputPath, codec: codec, quality: qualityStr, backendDisplayName: backendName,
-                    sourceTransferSyntaxName: sourceCodecName)
+                    sourceTransferSyntaxName: sourceCodecName, backendNote: backendNote)
             } else if let name = sourceCodecName {
                 log += CompressionConsole.recompressNoteLine(sourceName: name)
+            }
+
+            // The JPEG engine is a Workshop-only encoder choice with no CLI counterpart,
+            // so its note is emitted HERE rather than in the shared CompressionConsole —
+            // and only for the non-default `.native` engine, which keeps every default
+            // run byte-for-byte identical to `dicom-compress` output.
+            if jpegEngine != .jli, appliesJPEGEngine {
+                log += "JPEG engine: \(jpegEngine.displayName)\n"
             }
 
             // Compress via the shared DICOMKit engine (same code the CLI runs). The
@@ -3009,7 +3029,7 @@ private func executeDicomCompressCompress() async {
             // them in DICOMKit core so the Workshop and CLI stay byte-for-byte identical.
             let (outputData, metrics) = try CompressionManager().compressDataWithMetrics(
                 inputData, codec: codec, quality: quality, sourceInfo: sourceInfo,
-                backend: backendPref)
+                backend: backendPref, jpegEngine: jpegEngine)
 
             // Sandbox/TCC-resilient write (prefer scoped URL; else fall back to ~/Downloads).
             let writeRes = try OutputAccess.write(outputData, toPath: outputPath, scopedURL: outputScopedURL, subfolder: "Compressed")

@@ -92,7 +92,7 @@ struct DICOMRetrieve: AsyncParsableCommand {
     @Option(name: .long, help: "Number of parallel retrieval operations (default: 1)")
     var parallel: Int = 1
 
-    @Option(name: .long, help: "Requested transfer syntax for retrieved files (for example explicit-vr-le, jpeg2000, htj2k-lossless, htj2k-rpcl, htj2k, rle-lossless). This applies directly to C-GET and is advisory for C-MOVE.")
+    @Option(name: .long, help: "Requested transfer syntax for retrieved files — applies directly to C-GET and is advisory for C-MOVE. Accepts any name/UID the shared parser understands; canonical tokens: \(TransferSyntax.negotiableImageTokens.joined(separator: ", ")).")
     var transferSyntax: String?
 
     @Flag(name: .shortAndLong, help: "Show verbose output including progress")

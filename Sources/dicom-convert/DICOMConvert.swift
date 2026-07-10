@@ -82,7 +82,15 @@ struct DICOMConvert: AsyncParsableCommand {
         if isDirectory.boolValue {
             try convertDirectory(input: inputURL, output: outputURL)
         } else {
-            try convertFile(input: inputURL, output: outputURL)
+            // `--output` may name a directory (the Workshop's Browse button hands one back,
+            // and `~/Desktop/DICOM_Output/` is the natural thing to type). Resolve it to a
+            // concrete file through the SAME helper the app and the other CLIs use, or the
+            // write below fails with "Is a directory".
+            let destination = URL(fileURLWithPath: OutputPathResolver.resolveFileOutput(
+                output: output, input: inputPath, fileExtension: format.fileExtension))
+            try FileManager.default.createDirectory(
+                at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try convertFile(input: inputURL, output: destination)
         }
     }
     
@@ -229,6 +237,16 @@ enum ExportFormat: String, ExpressibleByArgument {
         case .png:   return .png
         case .jpeg:  return .jpeg
         case .tiff:  return .tiff
+        }
+    }
+
+    /// Extension given to the produced file when `--output` names a directory.
+    var fileExtension: String {
+        switch self {
+        case .dicom: return "dcm"
+        case .png:   return "png"
+        case .jpeg:  return "jpg"
+        case .tiff:  return "tiff"
         }
     }
 }
