@@ -208,6 +208,91 @@ struct DICOMConverterTests {
             .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
     }
 
+    /// The native pixel bytes `makePixelSource()` encodes, for fidelity comparisons.
+    private var expectedPixels: Data {
+        var pixels = Data()
+        for i in 0..<64 {
+            let v = UInt16((i * 60) % 4096)
+            pixels.append(UInt8(v & 0xFF)); pixels.append(UInt8((v >> 8) & 0xFF))
+        }
+        return pixels
+    }
+
+    /// DEFLATE (PS3.5 A.5) is a data-set-level codec over a *native* Explicit VR LE stream —
+    /// it has no encapsulated form. An encapsulated source therefore has to be decoded to
+    /// native pixels before the data set is deflated.
+    ///
+    /// Regression: the deflate branch used to serialize the encapsulated (7FE0,0010) straight
+    /// into the deflate stream. The codestream survived, but the file was labelled
+    /// 1.2.840.10008.1.2.1.99 while still carrying an undefined-length, Item-tagged element, so
+    /// no conformant reader could decode pixels from it — and `dicom-convert` exited 0 saying
+    /// "(lossless)". The pre-existing deflate test missed it because its source had no pixel data.
+    @Test("encapsulated source → DEFLATE decodes pixels to native (RLE)")
+    func rleToDeflateCarriesNativePixels() throws {
+        let rleEnc = try #require(DICOMConverter.resolveTargetEncoding("rle-lossless"))
+        let rle = try DICOMFile.read(from: DICOMConverter.convertToDICOM(
+            dicomFile: try makePixelSource(), to: rleEnc, stripPrivate: false).data)
+        #expect(tsUID(rle) == TransferSyntax.rleLossless.uid)
+        #expect(rle.dataSet[.pixelData]?.encapsulatedFragments != nil)  // source really is encapsulated
+
+        let outcome = try DICOMConverter.convertToDICOM(
+            dicomFile: rle, to: .deflatedExplicitVRLittleEndian, stripPrivate: false)
+        #expect(outcome.isLossless)
+
+        let out = try DICOMFile.read(from: outcome.data)
+        #expect(tsUID(out) == TransferSyntax.deflatedExplicitVRLittleEndian.uid)
+
+        let pixelElement = try #require(out.dataSet[.pixelData])
+        // Native, not encapsulated: defined length, no fragments.
+        #expect(pixelElement.encapsulatedFragments == nil)
+        #expect(pixelElement.length != 0xFFFF_FFFF)
+        // RLE is reversible, so the pixels must survive bit-for-bit.
+        #expect(pixelElement.valueData == expectedPixels)
+    }
+
+    @Test("encapsulated source → DEFLATE decodes pixels to native (JPEG 2000 lossless-only)")
+    func j2kLosslessToDeflateCarriesNativePixels() throws {
+        let j2kEnc = try #require(DICOMConverter.resolveTargetEncoding("jpeg2000-lossless-only"))
+        let j2k = try DICOMFile.read(from: DICOMConverter.convertToDICOM(
+            dicomFile: try makePixelSource(), to: j2kEnc, stripPrivate: false).data)
+        #expect(j2k.dataSet[.pixelData]?.encapsulatedFragments != nil)
+
+        let outcome = try DICOMConverter.convertToDICOM(
+            dicomFile: j2k, to: .deflatedExplicitVRLittleEndian, stripPrivate: false)
+
+        let out = try DICOMFile.read(from: outcome.data)
+        #expect(tsUID(out) == TransferSyntax.deflatedExplicitVRLittleEndian.uid)
+        let pixelElement = try #require(out.dataSet[.pixelData])
+        #expect(pixelElement.encapsulatedFragments == nil)
+        #expect(pixelElement.valueData == expectedPixels)
+    }
+
+    @Test("uncompressed source → DEFLATE still carries its pixels unchanged")
+    func nativeToDeflateCarriesNativePixels() throws {
+        let outcome = try DICOMConverter.convertToDICOM(
+            dicomFile: try makePixelSource(), to: .deflatedExplicitVRLittleEndian, stripPrivate: false)
+
+        let out = try DICOMFile.read(from: outcome.data)
+        #expect(tsUID(out) == TransferSyntax.deflatedExplicitVRLittleEndian.uid)
+        let pixelElement = try #require(out.dataSet[.pixelData])
+        #expect(pixelElement.encapsulatedFragments == nil)
+        #expect(pixelElement.valueData == expectedPixels)
+    }
+
+    @Test("deflated encapsulated output round-trips back to native pixels")
+    func deflateRoundTripsBackToNative() throws {
+        let rleEnc = try #require(DICOMConverter.resolveTargetEncoding("rle-lossless"))
+        let rle = try DICOMFile.read(from: DICOMConverter.convertToDICOM(
+            dicomFile: try makePixelSource(), to: rleEnc, stripPrivate: false).data)
+        let deflated = try DICOMFile.read(from: DICOMConverter.convertToDICOM(
+            dicomFile: rle, to: .deflatedExplicitVRLittleEndian, stripPrivate: false).data)
+
+        let back = try DICOMFile.read(from: DICOMConverter.convertToDICOM(
+            dicomFile: deflated, to: .explicitVRLittleEndian, stripPrivate: false).data)
+        #expect(tsUID(back) == TransferSyntax.explicitVRLittleEndian.uid)
+        #expect(back.dataSet[.pixelData]?.valueData == expectedPixels)
+    }
+
     @Test("jpeg2000-lossy → .91 sets Lossy Image Compression provenance + Image Type DERIVED")
     func lossyJ2KWritesProvenance() throws {
         let src = try makePixelSource()
