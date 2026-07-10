@@ -40,7 +40,7 @@ error() {
 section "Checking Swift Version"
 swift --version
 SWIFT_VERSION=$(swift --version | head -n 1)
-if [[ $SWIFT_VERSION == *"Swift version 6.2"* ]] || [[ $SWIFT_VERSION == *"Swift version 6.0"* ]]; then
+if [[ $SWIFT_VERSION =~ Swift\ version\ 6\.[2-9] ]]; then
     success "Swift 6+ detected"
 else
     warning "Expected Swift 6.2, but found: $SWIFT_VERSION"

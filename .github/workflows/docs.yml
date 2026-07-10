@@ -21,14 +21,14 @@ concurrency:
 jobs:
   build-docs:
     name: Build Documentation
-    runs-on: macos-15
+    runs-on: macos-26
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
       
     - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+      run: bash .github/scripts/select-swift-toolchain.sh
       
     - name: Cache Swift Package Manager
       uses: actions/cache@v4
