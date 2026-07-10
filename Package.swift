@@ -212,9 +212,9 @@ let package = Package(
         // J2KSwift — pure-Swift JPEG 2000 / HTJ2K / JP3D / JPIP codec.
         // URL-consumable as of v10.9.3 (Raster-Lab/J2KSwift#438): its manifest
         // always resolves CompressionFamily from its public Git URL.
-        // v11.0.0 is a dead-code-removal major (identical codec behavior to
-        // v10.25.0); it dropped the J2KAccelerate / J2KVulkan / J2KXS products.
-        .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "11.0.0"),
+        // v11.0.1 is a decoder-only patch: EBCOT no longer carries duplicate
+        // sign scratch state and zero-pass blocks take a safe fast path.
+        .package(url: "https://github.com/Raster-Lab/J2KSwift.git", from: "11.0.1"),
         // JLSwift — pure-Swift JPEG-LS (ITU-T T.87 / ISO-IEC 14495-1) codec.
         // Provides the `JPEGLS` product, which backs DICOMCore.JPEGLSCodec.
         .package(url: "https://github.com/Raster-Lab/JLSwift.git", from: "0.9.0"),
