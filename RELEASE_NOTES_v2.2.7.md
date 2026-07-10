@@ -1,4 +1,4 @@
-# DICOMKit v2.2.6
+# DICOMKit v2.2.7
 
 Patch release updating the JPEG 2000 dependency used by DICOM pixel decoding.
 
