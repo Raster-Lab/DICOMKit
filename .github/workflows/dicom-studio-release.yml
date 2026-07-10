@@ -22,7 +22,7 @@ env:
 jobs:
   validate:
     name: Validate Release
-    runs-on: macos-15
+    runs-on: macos-26
     permissions:
       contents: read
 
@@ -33,7 +33,7 @@ jobs:
         fetch-depth: 0
 
     - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+      run: bash .github/scripts/select-swift-toolchain.sh
 
     - name: Get tag name
       id: get_tag
@@ -60,7 +60,7 @@ jobs:
 
   build-dmg:
     name: Build DMG Installer
-    runs-on: macos-15
+    runs-on: macos-26
     needs: validate
     permissions:
       contents: read
@@ -70,7 +70,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+      run: bash .github/scripts/select-swift-toolchain.sh
 
     - name: Get version
       id: get_version
@@ -99,7 +99,7 @@ jobs:
 
   build-pkg:
     name: Build PKG Installer
-    runs-on: macos-15
+    runs-on: macos-26
     needs: validate
     permissions:
       contents: read
@@ -109,7 +109,7 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_16.0.app/Contents/Developer
+      run: bash .github/scripts/select-swift-toolchain.sh
 
     - name: Get version
       id: get_version

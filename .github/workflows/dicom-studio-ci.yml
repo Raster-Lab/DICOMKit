@@ -37,8 +37,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-15
-            xcode: '16.2'
+          - os: macos-26
+            xcode: '26.3'
           - os: ubuntu-22.04
             xcode: ''
     
@@ -48,7 +48,7 @@ jobs:
 
     - name: Select Xcode (macOS)
       if: runner.os == 'macOS'
-      run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app/Contents/Developer
+      run: bash .github/scripts/select-swift-toolchain.sh "${{ matrix.xcode }}"
 
     - name: Install Swift (Linux)
       if: runner.os == 'Linux'
@@ -92,14 +92,14 @@ jobs:
 
   test-coverage:
     name: Test Coverage Report
-    runs-on: macos-15
+    runs-on: macos-26
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+      run: bash .github/scripts/select-swift-toolchain.sh
 
     - name: Cache Swift Package Manager
       uses: actions/cache@v4
@@ -152,13 +152,13 @@ jobs:
 
   parity-gate:
     name: Tier-2 Output Parity Gate
-    runs-on: macos-15   # drives the Studio reimplementations in-process (CoreGraphics)
+    runs-on: macos-26   # drives the Studio reimplementations in-process (CoreGraphics)
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
 
     - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+      run: bash .github/scripts/select-swift-toolchain.sh
 
     - name: Cache Swift Package Manager
       uses: actions/cache@v4
