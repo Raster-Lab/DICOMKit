@@ -292,6 +292,13 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
     /// When set, this parameter is only visible if the referenced parameter
     /// currently has one of the specified values.
     public var visibleWhen: CLIParameterVisibilityCondition?
+    /// Additional conditions that must **all** hold (together with
+    /// ``visibleWhen``) for this parameter to be visible. Use when one
+    /// condition is not enough to pin the parameter down — e.g. dicom-compress'
+    /// JPEG Engine picker needs `operation == compress` AND `codec == jpeg`,
+    /// because the `codec` value persists across operations and would otherwise
+    /// leak the picker into the decompress/batch/info forms.
+    public var visibleWhenAll: [CLIParameterVisibilityCondition]
     /// Maps internal enum values to CLI argument strings for the command
     /// preview.  Used when ``isInternal`` is `true`, and also consulted by
     /// ``CLIParameterType/flagPicker`` parameters to override the literal
@@ -321,6 +328,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         minValue: Int? = nil,
         maxValue: Int? = nil,
         visibleWhen: CLIParameterVisibilityCondition? = nil,
+        visibleWhenAll: [CLIParameterVisibilityCondition] = [],
         cliMapping: [String: String] = [:]
     ) {
         self.id = id
@@ -339,6 +347,7 @@ public struct CLIParameterDefinition: Sendable, Identifiable, Hashable {
         self.minValue = minValue
         self.maxValue = maxValue
         self.visibleWhen = visibleWhen
+        self.visibleWhenAll = visibleWhenAll
         self.cliMapping = cliMapping
     }
 }

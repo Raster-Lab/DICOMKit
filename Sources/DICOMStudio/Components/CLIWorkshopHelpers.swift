@@ -4,6 +4,7 @@
 // DICOM Studio — Platform-independent helpers for CLI Tools Workshop (Milestone 16)
 
 import Foundation
+import DICOMCore
 import DICOMKit
 
 // MARK: - 16.1 Network Configuration Helpers
@@ -3460,6 +3461,35 @@ case "dicom-compress":
             visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["batch"])
         ),
 
+        // ----- JPEG engine (compress → jpeg baseline only; app-only, no CLI flag) -----
+        //
+        // JPEG Baseline is the ONE transfer syntax this library can encode two ways:
+        // the pure-Swift JLICodec (the registry default for all four JPEG syntaxes) or
+        // Apple's ImageIO NativeJPEGCodec. ImageIO ships no SOF1/SOF3 encoder, so JPEG
+        // Extended / Lossless / Lossless SV1 have no second engine and never show this
+        // picker — they keep encoding through JLICodec exactly as before.
+        //
+        // `isInternal` because this exists purely to benchmark the two Baseline encoders
+        // inside DICOMStudio: the `dicom-compress` CLI has no matching flag, so the
+        // picker must stay out of the copy-pasteable command preview.
+        CLIParameterDefinition(
+            id: "jpegCodec", flag: "", displayName: "JPEG Engine",
+            parameterType: .enumPicker, placeholder: JPEGCodecEngine.jli.rawValue,
+            helpText: "Encoder for JPEG Baseline: jli (pure-Swift JLICodec) or native (Apple ImageIO). "
+                + "In-app performance comparison only — not a dicom-compress CLI option.",
+            isInternal: true,
+            defaultValue: JPEGCodecEngine.jli.rawValue,
+            allowedValues: JPEGCodecEngine.allCases.map { $0.rawValue },
+            visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["compress"]),
+            visibleWhenAll: [
+                CLIParameterVisibilityCondition(
+                    parameterId: "codec",
+                    values: CompressionManager.supportedCodecs()
+                        .filter { $0.syntax.uid == CodecRegistry.jpegEngineSelectableUID }
+                        .map { $0.name })
+            ]
+        ),
+
         // ----- quality (compress / batch lossy) -----
         CLIParameterDefinition(
             id: "quality", flag: "--quality", displayName: "Quality",
@@ -3835,16 +3865,9 @@ public enum CommandBuilderHelpers: Sendable {
                 }
                 continue
             }
-            // Skip parameters whose visibility condition is not met
-            if let condition = def.visibleWhen {
-                let currentValue = parameterValues.first(where: { $0.parameterID == condition.parameterId })?.stringValue ?? ""
-                let effectiveValue = currentValue.isEmpty
-                    ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
-                    : currentValue
-                if !condition.values.contains(effectiveValue) {
-                    continue
-                }
-            }
+            // Skip parameters whose visibility conditions are not met
+            guard isVisible(def, parameterValues: parameterValues,
+                            parameterDefinitions: parameterDefinitions) else { continue }
             guard let value = parameterValues.first(where: { $0.parameterID == def.id }) else { continue }
             guard !value.stringValue.isEmpty else { continue }
             switch def.parameterType {
@@ -3965,6 +3988,40 @@ public enum CommandBuilderHelpers: Sendable {
         return path
     }
 
+    /// Evaluates one visibility condition against the current values, falling back to
+    /// the referenced parameter's default when the user has not set it yet.
+    public static func satisfies(
+        _ condition: CLIParameterVisibilityCondition,
+        parameterValues: [CLIParameterValue],
+        parameterDefinitions: [CLIParameterDefinition]
+    ) -> Bool {
+        let currentValue = parameterValues.first(where: { $0.parameterID == condition.parameterId })?.stringValue ?? ""
+        let effectiveValue = currentValue.isEmpty
+            ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
+            : currentValue
+        return condition.values.contains(effectiveValue)
+    }
+
+    /// Whether `def` is currently visible: its ``CLIParameterDefinition/visibleWhen`` and
+    /// every ``CLIParameterDefinition/visibleWhenAll`` condition must hold.
+    ///
+    /// Command-preview, required-field validation, and the ViewModel's form rendering all
+    /// route through this one predicate — a hidden parameter must never emit a CLI flag
+    /// nor block the Run button, and three hand-rolled copies of the rule would drift.
+    public static func isVisible(
+        _ def: CLIParameterDefinition,
+        parameterValues: [CLIParameterValue],
+        parameterDefinitions: [CLIParameterDefinition]
+    ) -> Bool {
+        if let condition = def.visibleWhen,
+           !satisfies(condition, parameterValues: parameterValues, parameterDefinitions: parameterDefinitions) {
+            return false
+        }
+        return def.visibleWhenAll.allSatisfy {
+            satisfies($0, parameterValues: parameterValues, parameterDefinitions: parameterDefinitions)
+        }
+    }
+
     /// Validates that all required parameters have values.
     public static func validateRequired(
         parameterValues: [CLIParameterValue],
@@ -3973,15 +4030,8 @@ public enum CommandBuilderHelpers: Sendable {
         let requiredDefs = parameterDefinitions.filter { $0.isRequired }
         for def in requiredDefs {
             // Skip required parameters that are conditionally hidden
-            if let condition = def.visibleWhen {
-                let currentValue = parameterValues.first(where: { $0.parameterID == condition.parameterId })?.stringValue ?? ""
-                let effectiveValue = currentValue.isEmpty
-                    ? parameterDefinitions.first(where: { $0.id == condition.parameterId })?.defaultValue ?? ""
-                    : currentValue
-                if !condition.values.contains(effectiveValue) {
-                    continue
-                }
-            }
+            guard isVisible(def, parameterValues: parameterValues,
+                            parameterDefinitions: parameterDefinitions) else { continue }
             guard let val = parameterValues.first(where: { $0.parameterID == def.id }) else { return false }
             if val.stringValue.trimmingCharacters(in: .whitespaces).isEmpty { return false }
         }
