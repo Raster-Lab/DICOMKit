@@ -145,9 +145,18 @@ extension DICOMCompress {
                 let (outputData, metrics) = try manager.compressDataWithMetrics(
                     inputData, codec: codec, quality: qualityPreset, sourceInfo: sourceInfo,
                     backend: backendPref)
-                try outputData.write(to: URL(fileURLWithPath: output))
+                // `--output` may name a directory (the Workshop hands one back, and
+                // `~/Desktop/DICOM_Output/` is the natural thing to type). The shared
+                // resolver turns it into a file so the write cannot fail with
+                // "Is a directory", and reports the path actually written.
+                let destination = OutputPathResolver.resolveFileOutput(
+                    output: output, input: input, fileExtension: "dcm")
+                try FileManager.default.createDirectory(
+                    at: URL(fileURLWithPath: destination).deletingLastPathComponent(),
+                    withIntermediateDirectories: true)
+                try outputData.write(to: URL(fileURLWithPath: destination))
 
-                fprint(CompressionConsole.compressResultLine(input: input, output: output))
+                fprint(CompressionConsole.compressResultLine(input: input, output: destination))
                 if verbose {
                     fprint(CompressionConsole.compressStats(
                         inputSize: metrics.inputSize, intermediateSize: metrics.intermediateSize,
@@ -224,9 +233,15 @@ extension DICOMCompress {
                 let start = Date()
                 let outputData = try manager.decompressData(inputData, syntax: targetSyntax)
                 let elapsed = Date().timeIntervalSince(start)
-                try outputData.write(to: URL(fileURLWithPath: output))
+                // Same directory-aware resolution as `compress` — see the note there.
+                let destination = OutputPathResolver.resolveFileOutput(
+                    output: output, input: input, fileExtension: "dcm")
+                try FileManager.default.createDirectory(
+                    at: URL(fileURLWithPath: destination).deletingLastPathComponent(),
+                    withIntermediateDirectories: true)
+                try outputData.write(to: URL(fileURLWithPath: destination))
 
-                fprint(CompressionConsole.decompressResultLine(input: input, output: output))
+                fprint(CompressionConsole.decompressResultLine(input: input, output: destination))
                 if verbose {
                     fprint(CompressionConsole.decompressStats(
                         inputSize: inputData.count, outputSize: outputData.count, elapsed: elapsed))
