@@ -110,8 +110,9 @@ enum CLIToolTerminalCompare {
     ///   0. `preferredDir` (e.g. a freshly-built bin dir) — wins so a stale binary
     ///      elsewhere on disk can never shadow it
     ///   1. `DICOM_CLI_BIN_DIR` env var (directory holding the binaries)
-    ///   2. SwiftPM build products under the repo — the **most-recently-built** of
-    ///      `.build/release|debug/<tool>` (so a stale config can't shadow a fresh one)
+    ///   2. SwiftPM build products under **this** checkout (`CLIToolBuilder.repoRoot()`) —
+    ///      the **most-recently-built** of `.build/release|debug/<tool>` (so a stale config
+    ///      can't shadow a fresh one)
     ///   3. `$PATH` and common install locations
     static func locateBinary(tool: String, preferredDir: String? = nil) -> String? {
         let fm = FileManager.default
@@ -131,10 +132,9 @@ enum CLIToolTerminalCompare {
         }
 
         var candidates: [String] = []
-        let repoRoots = [
-            fm.currentDirectoryPath,
-            "/Users/raster/Documents/GitHub_Workspace/DICOMKit"
-        ]
+        // One source of truth for the checkout — resolving it here independently is how a
+        // sibling repo's stale binaries ended up shadowing this one's.
+        let repoRoots = [CLIToolBuilder.repoRoot()].compactMap { $0 }
         for root in repoRoots {
             // Prefer whichever of release/debug was built most recently. Otherwise a
             // stale `.build/release` (not rebuilt after a source change, while

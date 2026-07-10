@@ -130,6 +130,33 @@ final class CompressionConsoleTests: XCTestCase {
             "Input size:  170.3 KB\nOutput size: 516.5 KB\nDecompression ratio: 303.3%\nDecompression time:  0.042s\n")
     }
 
+    func testCompressBackendReporting() {
+        // `auto` must NOT claim Metal for a lossless J2K encode — it runs on CPU.
+        let autoLossless = CompressionConsole.compressBackend(codec: "jpeg2000-lossless", preference: .auto)
+        XCTAssertNotEqual(autoLossless.displayName, "Metal (GPU)")
+        XCTAssertNil(autoLossless.note)   // no downgrade note unless metal was explicitly requested
+
+        // Same for HTJ2K lossless-only under auto.
+        XCTAssertNotEqual(
+            CompressionConsole.compressBackend(codec: "htj2k-lossless-only", preference: .auto).displayName,
+            "Metal (GPU)")
+
+        // Explicit `--backend metal` on a LOSSLESS encode is downgraded to CPU with a note.
+        let metalLossless = CompressionConsole.compressBackend(codec: "jpeg2000-lossless", preference: .metal)
+        XCTAssertNotEqual(metalLossless.displayName, "Metal (GPU)")
+        XCTAssertNotNil(metalLossless.note)
+
+        // A non-J2K codec never dispatches to the GPU regardless of backend.
+        XCTAssertNotEqual(
+            CompressionConsole.compressBackend(codec: "rle", preference: .metal).displayName,
+            "Metal (GPU)")
+
+        // Explicit scalar is honoured and carries no downgrade note.
+        let scalar = CompressionConsole.compressBackend(codec: "jpeg2000-lossless", preference: .scalar)
+        XCTAssertEqual(scalar.displayName, "Scalar (pure Swift)")
+        XCTAssertNil(scalar.note)
+    }
+
     func testBatchLines() {
         XCTAssertEqual(CompressionConsole.batchFoundLine(count: 3), "Found 3 DICOM file(s)\n")
         XCTAssertEqual(CompressionConsole.batchProgressLine(success: true, relativePath: "a/b.dcm", error: nil),

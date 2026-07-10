@@ -27,16 +27,34 @@ enum CLIToolBuilder {
         var log: String
     }
 
+    /// Walks up from `path` to the nearest ancestor holding a `Package.swift`.
+    private static func packageRoot(startingAt path: String) -> String? {
+        let fm = FileManager.default
+        var dir = URL(fileURLWithPath: path).standardizedFileURL
+        while dir.path != "/" {
+            if fm.fileExists(atPath: dir.appendingPathComponent("Package.swift").path) { return dir.path }
+            dir = dir.deletingLastPathComponent()
+        }
+        return nil
+    }
+
     /// Resolves the DICOMKit SwiftPM package root (the dir holding Package.swift).
+    ///
+    /// Order: `DICOM_REPO_DIR`, then the checkout this file was *compiled from*, then the
+    /// process working directory. Never fall back to an absolute guess: a GUI app's cwd is
+    /// `/`, so a hard-coded sibling path becomes the only match and the app silently builds
+    /// and runs a *different* checkout's sources — the CLI then rejects tokens the linked-in
+    /// DICOMKit accepts, and Compare CLI reports a diff that does not exist in this repo.
     static func repoRoot() -> String? {
         let fm = FileManager.default
         if let dir = ProcessInfo.processInfo.environment["DICOM_REPO_DIR"],
            fm.fileExists(atPath: "\(dir)/Package.swift") { return dir }
-        let cwd = fm.currentDirectoryPath
-        if fm.fileExists(atPath: "\(cwd)/Package.swift") { return cwd }
-        let hard = "/Users/raster/Documents/GitHub_Workspace/DICOMKit"
-        if fm.fileExists(atPath: "\(hard)/Package.swift") { return hard }
-        return nil
+        // `#filePath` sits inside the checkout that produced the running app — the only root
+        // guaranteed to match the DICOMKit the app itself links against.
+        if let root = packageRoot(startingAt: (#filePath as NSString).deletingLastPathComponent) {
+            return root
+        }
+        return packageRoot(startingAt: fm.currentDirectoryPath)
     }
 
     /// Locates the `swift` toolchain driver.

@@ -128,6 +128,42 @@ final class LossyImageCompressionAttributesTests: XCTestCase {
         XCTAssertNil(f.dataSet.strings(for: .lossyImageCompressionMethod))
     }
 
+    // MARK: - getCompressionInfo reporting (0028,2110-aware for `both` UIDs)
+
+    /// A reversibly encoded general (.91) file carries no lossy provenance, so
+    /// `getCompressionInfo` must report it as lossless — and name it "Lossless" —
+    /// even though the UID (.91) is "Lossy" at the UID level.
+    func testInfoReportsReversibleGeneralUIDAsLossless() throws {
+        let uncompressed = try makeUncompressed()
+        let mgr = CompressionManager()
+        let out = try mgr.compressData(uncompressed, codec: "jpeg2000-lossless", quality: nil)
+        let info = try mgr.getCompressionInfo(data: out)
+        XCTAssertEqual(info.transferSyntaxUID, "1.2.840.10008.1.2.4.91")
+        XCTAssertTrue(info.isLossless, "reversible .91 must report lossless")
+        XCTAssertEqual(info.transferSyntaxName, "JPEG 2000 Lossless")
+    }
+
+    /// A lossy general (.91) file sets (0028,2110)="01", so it must report lossy.
+    func testInfoReportsLossyGeneralUIDAsLossy() throws {
+        let uncompressed = try makeUncompressed()
+        let mgr = CompressionManager()
+        let out = try mgr.compressData(uncompressed, codec: "jpeg2000-lossy", quality: .medium)
+        let info = try mgr.getCompressionInfo(data: out)
+        XCTAssertEqual(info.transferSyntaxUID, "1.2.840.10008.1.2.4.91")
+        XCTAssertFalse(info.isLossless, "lossy .91 must report lossy")
+        XCTAssertEqual(info.transferSyntaxName, "JPEG 2000 Lossy")
+    }
+
+    /// The reversible-only UID (.90) is authoritative on its own — no 0028,2110 needed.
+    func testInfoReportsLosslessOnlyUIDAsLossless() throws {
+        let uncompressed = try makeUncompressed()
+        let mgr = CompressionManager()
+        let out = try mgr.compressData(uncompressed, codec: "jpeg2000-lossless-only", quality: nil)
+        let info = try mgr.getCompressionInfo(data: out)
+        XCTAssertEqual(info.transferSyntaxUID, "1.2.840.10008.1.2.4.90")
+        XCTAssertTrue(info.isLossless)
+    }
+
     // MARK: - Helpers
 
     private func transferSyntaxUID(of file: DICOMFile) -> String? {
