@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — JPEG Baseline Encoder Choice (DICOMStudio-only)
+
+- Added `JPEGCodecEngine` (DICOMCore: `.jli` / `.native`) and
+  `CodecRegistry.encoder(for:engine:)`, which honours the engine selection **only** for
+  JPEG Baseline (1.2.840.10008.1.2.4.50) — the one transfer syntax this library can encode
+  two ways: the pure-Swift `JLICodec` (the registry default for all four JPEG syntaxes) or
+  Apple's `NativeJPEGCodec` (ImageIO). JPEG Extended/Lossless/Lossless SV1 have no second
+  encoder, so `engine` is a no-op for them.
+- Threaded `jpegEngine` through `CompressionManager.compressData` /
+  `compressDataWithMetrics`, defaulting to `.jli` so `dicom-compress` output is unchanged.
+- Added an internal "JPEG Engine" picker to the DICOMStudio CLI Workshop's `dicom-compress`
+  form, visible only for `operation == compress && codec == jpeg` — a benchmarking aid with
+  no `dicom-compress` CLI counterpart, so it never appears in the copy-pasteable command
+  preview. Required a new `CLIParameterDefinition.visibleWhenAll` ([`[CLIParameterVisibilityCondition]`],
+  ANDed with the existing single-condition `visibleWhen`) since `codec` persists across
+  operations and a single condition couldn't pin the picker to compress-only.
+  `CommandBuilderHelpers.isVisible(...)` is now the one predicate shared by command-preview
+  generation, required-field validation, and the ViewModel's form rendering.
+
+### Fixed — `dicom-convert` to DEFLATE dropped pixel data from encapsulated sources
+
+- An encapsulated source (JPEG/JPEG 2000/RLE/…) converted to Deflated Explicit VR Little
+  Endian is now decoded to native pixels first. DEFLATE (PS3.5 A.5) is a data-set-level
+  codec over a *native* stream — it has no encapsulated form — but `DICOMConverter` used to
+  serialize the encapsulated (7FE0,0010) straight into the deflate stream: the codestream
+  survived, but the output was labelled 1.2.840.10008.1.2.1.99 while still carrying an
+  undefined-length, Item-fragmented pixel element, so no conformant reader (including
+  DICOMKit's own) could decode pixel data from it — and the tool reported success.
+
+### Fixed — `dicom-compress`/`dicom-convert` `--output` naming a directory failed with "Is a directory"
+
+- Both CLIs now resolve `--output` through the existing `OutputPathResolver` (already used
+  elsewhere) before writing, so passing a directory (e.g. `~/Desktop/DICOM_Output/`, or
+  whatever the DICOMStudio Workshop's Browse button hands back) writes the input's filename
+  into that directory instead of failing. An explicit file path is still used verbatim.
+
+### Fixed — DICOMStudio CLI Workshop could build/compare against a different checkout's DICOMKit
+
+- `CLIToolBuilder.repoRoot()` and `CLIToolTerminalCompare.locateBinary()` no longer fall back
+  to a hard-coded absolute path or the process's working directory (which is `/` for a GUI
+  app). They now resolve the SwiftPM package root by walking up from `#filePath` — the
+  checkout the running app was actually compiled from — so `swift build`/binary lookup can
+  no longer silently target a sibling repo whose DICOMKit accepts different tokens, which
+  previously made "Compare CLI" report diffs that didn't exist in the current repo.
+
 ### Added — Transfer-Syntax Lossy/Lossless Split and Encode-Intent Threading
 
 - Introduced `LosslessCapability` (`losslessOnly`/`lossyOnly`/`both`), `EncodingIntent`, and

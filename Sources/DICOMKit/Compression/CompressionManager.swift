@@ -240,8 +240,12 @@ public struct CompressionManager {
     /// result through its sandbox-aware OutputAccess path.
     /// `backend` forces a codec execution path where one exists (J2K/HTJ2K
     /// Metal GPU encode); codecs without a matching path run their default.
+    /// `jpegEngine` picks the JPEG **Baseline** encoder (JLICodec or Apple
+    /// ImageIO); every other codec ignores it. It exists for DICOMStudio's
+    /// encoder benchmarking — the `dicom-compress` CLI leaves it at `.jli`.
     public func compressData(_ inputData: Data, codec: String, quality: CompressionQuality?,
-                             backend: CodecBackendPreference = .auto) throws -> Data {
+                             backend: CodecBackendPreference = .auto,
+                             jpegEngine: JPEGCodecEngine = .jli) throws -> Data {
         guard let targetEncoding = CompressionManager.resolveEncoding(for: codec) else {
             throw CompressionError.unknownCodec(codec)
         }
@@ -269,7 +273,8 @@ public struct CompressionManager {
                 targetSyntax: targetSyntax,
                 quality: quality,
                 intent: intent,
-                backend: backend
+                backend: backend,
+                jpegEngine: jpegEngine
             )
         } else if targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated
                   && targetSyntax.uid != sourceSyntax.uid {
@@ -280,7 +285,8 @@ public struct CompressionManager {
                 targetSyntax: targetSyntax,
                 quality: quality,
                 intent: intent,
-                backend: backend
+                backend: backend,
+                jpegEngine: jpegEngine
             )
         } else if !targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated {
             // Decompress: decode pixel data into uncompressed bytes.
@@ -351,7 +357,8 @@ public struct CompressionManager {
         codec: String,
         quality: CompressionQuality?,
         sourceInfo: CompressionInfo? = nil,
-        backend: CodecBackendPreference = .auto
+        backend: CodecBackendPreference = .auto,
+        jpegEngine: JPEGCodecEngine = .jli
     ) throws -> (data: Data, metrics: CompressMetrics) {
         guard CompressionManager.transferSyntax(for: codec) != nil else {
             throw CompressionError.unknownCodec(codec)
@@ -365,7 +372,8 @@ public struct CompressionManager {
             let decompressElapsed = Date().timeIntervalSince(d0)
             // Phase 2 — compress the native pixels to the target codec.
             let c0 = Date()
-            let output = try compressData(intermediate, codec: codec, quality: quality, backend: backend)
+            let output = try compressData(intermediate, codec: codec, quality: quality,
+                                          backend: backend, jpegEngine: jpegEngine)
             let compressElapsed = Date().timeIntervalSince(c0)
             return (output, CompressMetrics(
                 inputSize: inputData.count, outputSize: output.count, isRecompression: true,
@@ -375,7 +383,8 @@ public struct CompressionManager {
 
         // Plain compress (uncompressed source, or a same-syntax passthrough).
         let c0 = Date()
-        let output = try compressData(inputData, codec: codec, quality: quality, backend: backend)
+        let output = try compressData(inputData, codec: codec, quality: quality,
+                                      backend: backend, jpegEngine: jpegEngine)
         let compressElapsed = Date().timeIntervalSince(c0)
         return (output, CompressMetrics(
             inputSize: inputData.count, outputSize: output.count, isRecompression: false,
@@ -421,9 +430,12 @@ public struct CompressionManager {
         targetSyntax: TransferSyntax,
         quality: CompressionQuality?,
         intent: EncodingIntent = .notApplicable,
-        backend: CodecBackendPreference = .auto
+        backend: CodecBackendPreference = .auto,
+        jpegEngine: JPEGCodecEngine = .jli
     ) throws {
-        guard let encoder = CodecRegistry.shared.encoder(for: targetSyntax.uid) else {
+        // `jpegEngine` only diverts JPEG Baseline to the native (ImageIO) encoder;
+        // for every other transfer syntax this resolves to the registered encoder.
+        guard let encoder = CodecRegistry.shared.encoder(for: targetSyntax.uid, engine: jpegEngine) else {
             throw CompressionError.encoderNotAvailable(targetSyntax.uid)
         }
         guard let pixelDataElement = dataSet[.pixelData] else {
@@ -616,7 +628,8 @@ public struct CompressionManager {
         targetSyntax: TransferSyntax,
         quality: CompressionQuality?,
         intent: EncodingIntent = .notApplicable,
-        backend: CodecBackendPreference = .auto
+        backend: CodecBackendPreference = .auto,
+        jpegEngine: JPEGCodecEngine = .jli
     ) throws {
         // Step 1: decode to uncompressed bytes.
         try decodePixelDataInPlace(
@@ -631,7 +644,8 @@ public struct CompressionManager {
             targetSyntax: targetSyntax,
             quality: quality,
             intent: intent,
-            backend: backend
+            backend: backend,
+            jpegEngine: jpegEngine
         )
     }
 
@@ -1098,6 +1112,16 @@ public enum CompressionError: Error, CustomStringConvertible {
                 + "Use maximum / high / medium / low, or a number in 0.0...1.0."
         }
     }
+}
+
+/// Without this, `error.localizedDescription` — which DICOMStudio's console prints —
+/// falls back to Foundation's opaque bridge string ("The operation couldn't be
+/// completed. (DICOMKit.CompressionError error 6.)"), hiding the actual reason the
+/// encode failed. The `dicom-compress` CLI never hit this because it interpolates the
+/// error directly (`"\(error)"`), reaching `CustomStringConvertible` above. Mirrors
+/// `DICOMError`'s conformance so both surfaces report the same sentence.
+extension CompressionError: LocalizedError {
+    public var errorDescription: String? { description }
 }
 
 // MARK: - TransferSyntax convenience for source-UID resolution

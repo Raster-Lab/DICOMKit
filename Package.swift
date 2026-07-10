@@ -332,12 +332,14 @@ let package = Package(
                 "PixelEditorTests.swift",
                 "CompressionManagerImplicitVRTests.swift",
                 "CompressionManagerMetricsTests.swift",
+                "CompressionManagerJPEGEngineTests.swift",
                 "LossyImageCompressionAttributesTests.swift",
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
                 "ExportWindowParityTests.swift",
                 "EncapsulatedPixelDataWriteTests.swift",
-                "WaveformParseRegressionTests.swift"
+                "WaveformParseRegressionTests.swift",
+                "OutputPathResolverTests.swift"
             ]
         ),
         // .testTarget(
