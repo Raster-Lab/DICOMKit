@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/Raster-Lab/J2KSwift.git",
       "state" : {
-        "revision" : "aa06ae80e80d812f81c7df3d8ddc4e08bb95ba4b",
-        "version" : "11.0.0"
+        "revision" : "b1949084eeedaafb40bff8f1745bbab19e4bc36d",
+        "version" : "11.0.2"
       }
     },
     {
