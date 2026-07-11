@@ -47,7 +47,10 @@ struct HTJ2KTests {
         }
     }
 
-    @Test("HTJ2K lossless and RPCL syntaxes round-trip a real DICOM payload")
+    @Test(
+        "HTJ2K lossless and RPCL syntaxes round-trip a real DICOM payload",
+        .enabled(if: LocalCodecFixtureAvailability.hasMRorPX, "Requires optional LocalDatasets codec fixtures")
+    )
     func verifiedHTJ2KSyntaxesRoundTripRealPayload() throws {
         let sample = try realSample()
         let descriptor = sample.pixelData.descriptor
@@ -68,7 +71,10 @@ struct HTJ2KTests {
         }
     }
 
-    @Test("HTJ2K lossy 16-bit real payload round-trips without error")
+    @Test(
+        "HTJ2K lossy 16-bit real payload round-trips without error",
+        .enabled(if: LocalCodecFixtureAvailability.hasMRorPX, "Requires optional LocalDatasets codec fixtures")
+    )
     func htj2kLossyRealPayloadRoundTrips() throws {
         // Historical note: this previously asserted `#expect(throws:)` to
         // document an upstream J2KSwift defect that crashed/threw on HTJ2K

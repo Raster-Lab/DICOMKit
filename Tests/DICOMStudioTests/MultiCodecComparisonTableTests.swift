@@ -29,7 +29,10 @@ struct MultiCodecComparisonTableTests {
         return right ? pad + s : s + pad
     }
 
-    @Test("Per-format codec comparison on SampleStudies")
+    @Test(
+        "Per-format codec comparison on SampleStudies",
+        .enabled(if: LocalCodecFixtureAvailability.hasSampleStudies, "Requires optional SampleStudies codec fixtures")
+    )
     func comparisonTable() throws {
         let root = FileManager.default.currentDirectoryPath + "/SampleStudies"
         // Search a handful of modality folders for suitable frames.

@@ -316,7 +316,10 @@ struct J2KSwiftCodecTests {
         }
     }
 
-    @Test("Real LocalDatasets DICOM files parse and expose pixel data")
+    @Test(
+        "Real LocalDatasets DICOM files parse and expose pixel data",
+        .enabled(if: LocalCodecFixtureAvailability.hasMRAndPX, "Requires optional MR and PX LocalDatasets fixtures")
+    )
     func realDatasetFilesParseAndExposePixelData() throws {
         for relativeDirectory in ["mr", "px"] {
             let sample = try loadRealPixelSample(from: relativeDirectory)
@@ -329,7 +332,10 @@ struct J2KSwiftCodecTests {
         }
     }
 
-    @Test("Real LocalDatasets DICOM pixel data round-trips through J2KSwift")
+    @Test(
+        "Real LocalDatasets DICOM pixel data round-trips through J2KSwift",
+        .enabled(if: LocalCodecFixtureAvailability.hasMR, "Requires optional MR LocalDatasets fixtures")
+    )
     func realDatasetRoundTripThroughJ2KSwift() throws {
         let codec = J2KSwiftCodec()
         let sample = try loadRealPixelSample(from: "mr")
@@ -344,7 +350,10 @@ struct J2KSwiftCodecTests {
         #expect(decoded.count == sample.pixelData.data.count)
     }
 
-    @Test("HTJ2K lossless and RPCL round-trip preserve payload size")
+    @Test(
+        "HTJ2K lossless and RPCL round-trip preserve payload size",
+        .enabled(if: LocalCodecFixtureAvailability.hasMR, "Requires optional MR LocalDatasets fixtures")
+    )
     func htj2kRoundTripPreservesPayloadSize() throws {
         let sample = try loadRealPixelSample(from: "mr")
         let descriptor = sample.pixelData.descriptor
