@@ -57,7 +57,10 @@ struct J2KvsHTJ2KCompressionReportTests {
         return s + String(repeating: " ", count: width - s.count)
     }
 
-    @Test("Report J2K vs HTJ2K Lossless sizes on the 10 reference DICOM files")
+    @Test(
+        "Report J2K vs HTJ2K Lossless sizes on the 10 reference DICOM files",
+        .enabled(if: LocalCodecFixtureAvailability.hasCompressionReportCorpus, "Requires optional LocalDatasets report corpus")
+    )
     func reportJ2KvsHTJ2KOnReferenceSet() throws {
         let j2kCodec   = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.jpeg2000Lossless.uid)
         let htj2kCodec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.htj2kLossless.uid)

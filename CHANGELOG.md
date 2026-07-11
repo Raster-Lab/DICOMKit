@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Homebrew installation or the absolute `/opt/homebrew/lib/libopenjp2.a` path.
 - Removed the corresponding DICOMStudio static-link and arm64-only Xcode settings;
   production JPEG 2000 support continues to use J2KSwift.
+- Optional real-image codec and benchmark tests now report as skipped when the
+  gitignored `LocalDatasets` or `SampleStudies` corpora are unavailable in CI.
 
 ### Changed — J2KSwift v11.0.2
 

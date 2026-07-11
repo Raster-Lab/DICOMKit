@@ -93,7 +93,10 @@ struct J2KSwiftCodecBenchmarkTests {
         #endif
     }
 
-    @Test("Benchmark J2KSwift decode against NativeJPEG2000Codec")
+    @Test(
+        "Benchmark J2KSwift decode against NativeJPEG2000Codec",
+        .enabled(if: LocalCodecFixtureAvailability.hasMRorPX, "Requires optional LocalDatasets codec fixtures")
+    )
     func benchmarkDecodeComparison() throws {
         #if canImport(ImageIO)
         let sample = try realSampleForBenchmark()
@@ -128,7 +131,10 @@ struct J2KSwiftCodecBenchmarkTests {
         #endif
     }
 
-    @Test("Benchmark HTJ2K against legacy J2K on a real DICOM sample")
+    @Test(
+        "Benchmark HTJ2K against legacy J2K on a real DICOM sample",
+        .enabled(if: LocalCodecFixtureAvailability.hasMRorPX, "Requires optional LocalDatasets codec fixtures")
+    )
     func benchmarkHTJ2KVersusLegacyJ2K() throws {
         let sample = try realSampleForBenchmark()
         let descriptor = sample.pixelData.descriptor
@@ -156,7 +162,10 @@ struct J2KSwiftCodecBenchmarkTests {
         #expect(htDecodeMs > 0)
     }
 
-    @Test("Benchmark J2KSwift large-frame memory usage")
+    @Test(
+        "Benchmark J2KSwift large-frame memory usage",
+        .enabled(if: LocalCodecFixtureAvailability.hasMRorPX, "Requires optional LocalDatasets codec fixtures")
+    )
     func benchmarkMemoryUsage() throws {
         let sample = try realSampleForBenchmark()
         let descriptor = sample.pixelData.descriptor

@@ -340,7 +340,10 @@ struct JP3DCodecTests {
         return (volumeDescriptor, combined, urls.count)
     }
 
-    @Test("JP3DCodec lossless round-trip on real CT volume from LocalDatasets")
+    @Test(
+        "JP3DCodec lossless round-trip on real CT volume from LocalDatasets",
+        .enabled(if: LocalCodecFixtureAvailability.hasCTVolume, "Requires optional 16-slice LocalDatasets CT fixture")
+    )
     func test_realCTVolume_losslessRoundTrip() async throws {
         let sample = try loadCTVolumeSlices(relativeStudy: "ct/study_002", count: 16)
         let codec = JP3DCodec(compressionMode: .lossless)

@@ -32,6 +32,8 @@ codec dependency.
   `DICOMCore`'s default dependency graph. Standalone macOS consumers no longer
   require Homebrew, an absolute `libopenjp2.a` path, or an arm64-only build.
 - Production JPEG 2000 support remains provided by J2KSwift.
+- Optional real-image codec tests now report as skipped when their gitignored
+  `LocalDatasets` or `SampleStudies` corpora are not installed in CI.
 
 ## Validation
 
