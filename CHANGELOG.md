@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Standalone macOS packaging
+
+- Removed the DICOMStudio-only OpenJPEG comparison wrapper from `DICOMCore`'s
+  default dependency graph. Standalone macOS consumers no longer require a
+  Homebrew installation or the absolute `/opt/homebrew/lib/libopenjp2.a` path.
+- Removed the corresponding DICOMStudio static-link and arm64-only Xcode settings;
+  production JPEG 2000 support continues to use J2KSwift.
+
 ### Changed — J2KSwift v11.0.2
 
 - Updated the JPEG 2000 / HTJ2K / JP3D dependency floor to J2KSwift v11.0.2.

@@ -163,7 +163,7 @@ public final class J2KTestingViewModel {
     public private(set) var decodedImages: [String: CGImage] = [:]
     #endif
 
-    // MARK: - Codec Comparison (J2KSwift vs OpenJPEG)
+    // MARK: - Codec Comparison
 
     /// Results of the most recent codec comparison run.
     public private(set) var comparisonResults: [CodecComparisonEntry] = []
@@ -300,7 +300,7 @@ public final class J2KTestingViewModel {
     // MARK: - Codec Comparison
 
     /// Encodes frame 0 with J2KSwift using the selected transfer syntax, then decodes
-    /// the resulting bitstream with both J2KSwift and OpenJPEG (if available).
+    /// the resulting bitstream with J2KSwift and installed external CLI peers.
     /// Results are written to ``comparisonResults`` and ``comparisonImages``.
     public func runCodecComparison(file: DICOMFile) {
         guard !isRunning else { return }
@@ -308,9 +308,6 @@ public final class J2KTestingViewModel {
         var entries: [CodecComparisonEntry] = [
             CodecComparisonEntry(codecName: Self.j2kSwiftCodecName, state: .running)
         ]
-        #if canImport(COpenJPEG) && os(macOS)
-        entries.append(CodecComparisonEntry(codecName: "OpenJPEG \(OpenJPEGCodec.version)", state: .running))
-        #endif
         #if os(macOS)
         if KakaduCLICodec.binaryPath != nil {
             entries.append(CodecComparisonEntry(codecName: "Kakadu (CLI)", state: .running))
@@ -593,7 +590,7 @@ public struct CodecComparisonResult: Sendable {
     /// `"decodeWithGPUHT"`). Populated only for the J2KSwift row; nil for others.
     public let route: String?
     /// Encode time in ms. Populated only for the J2KSwift row (it's the only
-    /// codec asked to encode); nil for OpenJPEG / Kakadu / Grok decode-only rows.
+    /// codec asked to encode); nil for Kakadu / Grok decode-only rows.
     public let encodeMs: Double?
 
     public init(decodeMs: Double, outputBytes: Int, matchesReference: Bool, psnrDb: Double?, route: String? = nil, encodeMs: Double? = nil) {
@@ -747,22 +744,7 @@ extension J2KTestingViewModel {
                     entries.append(CodecComparisonEntry(codecName: j2kSwiftCodecName, state: .failed(j2k.error ?? "Decode failed")))
                 }
 
-                // 4. Decode with OpenJPEG (macOS only)
-                #if canImport(COpenJPEG) && os(macOS)
-                let opjName = "OpenJPEG \(OpenJPEGCodec.version)"
-                let opjDecoder = OpenJPEGCodec()
-                let opj = timedDecode(warmup: warmup) {
-                    try opjDecoder.decodeFrame(encoded, descriptor: descriptor)
-                }
-                entries.append(makeEntry(name: opjName, result: opj, reference: referenceOutput, descriptor: descriptor))
-                #if canImport(CoreGraphics)
-                if let out = opj.data, let img = makePreviewImage(pixels: out, descriptor: descriptor) {
-                    images[opjName] = img
-                }
-                #endif
-                #endif
-
-                // 5. Decode with Kakadu CLI (macOS only, when installed)
+                // 4. Decode with Kakadu CLI (macOS only, when installed)
                 #if os(macOS)
                 if KakaduCLICodec.binaryPath != nil {
                     let name = "Kakadu (CLI)"
@@ -875,9 +857,6 @@ extension J2KTestingViewModel {
 
     private nonisolated static func failedEntries(_ msg: String) -> [CodecComparisonEntry] {
         var entries = [CodecComparisonEntry(codecName: j2kSwiftCodecName, state: .failed(msg))]
-        #if canImport(COpenJPEG) && os(macOS)
-        entries.append(CodecComparisonEntry(codecName: "OpenJPEG", state: .failed(msg)))
-        #endif
         #if os(macOS)
         if KakaduCLICodec.binaryPath != nil {
             entries.append(CodecComparisonEntry(codecName: "Kakadu (CLI)", state: .failed(msg)))

@@ -28,6 +28,10 @@ codec dependency.
 
 - CI and release workflows now select an installed Swift 6.2 toolchain instead
   of assuming a single Xcode installation name.
+- Removed the optional DICOMStudio OpenJPEG comparison wrapper from
+  `DICOMCore`'s default dependency graph. Standalone macOS consumers no longer
+  require Homebrew, an absolute `libopenjp2.a` path, or an arm64-only build.
+- Production JPEG 2000 support remains provided by J2KSwift.
 
 ## Validation
 

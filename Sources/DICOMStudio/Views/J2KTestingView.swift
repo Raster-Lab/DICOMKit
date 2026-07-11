@@ -15,7 +15,7 @@ import DICOMCore
 /// 1. **Platform** — backends, transfer syntax support matrix, codec inspector.
 /// 2. **Benchmark** — multi-iteration decode timing.
 /// 3. **Round-Trip** — encode → decode correctness tests with image previews.
-/// 4. **Compare** — J2KSwift vs OpenJPEG side-by-side.
+/// 4. **Compare** — J2KSwift vs installed external CLI peers.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 public struct J2KTestingView: View {
 
@@ -382,7 +382,7 @@ public struct J2KTestingView: View {
     private var compareTab: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
-                Text("Encodes frame 0 with J2KSwift using the target codec, then decodes with both J2KSwift and OpenJPEG side by side.")
+                Text("Encodes frame 0 with J2KSwift, then compares its decode with installed external CLI peers.")
                     .font(.caption).foregroundStyle(.secondary)
 
                 HStack(spacing: 10) {

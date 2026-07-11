@@ -3,7 +3,7 @@
 //
 // DICOM Studio — J2K Test Bench codec runner.
 //
-// Stateless: exercises J2KSwift / OpenJPEG / Kakadu / Grok on raw frame data
+// Stateless: exercises J2KSwift / Kakadu / Grok on raw frame data
 // and scores each reconstruction against the original with a real pass/fail
 // criterion — bit-exact for lossless syntaxes, PSNR ≥ threshold for lossy.
 // Every entry point is synchronous and blocking; callers run them off the
@@ -100,18 +100,6 @@ public enum J2KTestBenchService {
             }
             decoded = data
             decodeMs = median(result.samples)
-
-        case .openJPEG:
-            #if canImport(COpenJPEG) && os(macOS)
-            switch timedDecode(warmups: warmups, runs: runs, {
-                try OpenJPEGCodec().decodeFrame(codestream, descriptor: descriptor)
-            }) {
-            case .failure(let message): return (nil, nil, .error(message.message), nil)
-            case .success(let timed): decoded = timed.data; decodeMs = timed.ms
-            }
-            #else
-            return (nil, nil, .skipped("OpenJPEG not built into this app"), nil)
-            #endif
 
         case .kakadu:
             #if os(macOS)
@@ -361,12 +349,6 @@ public enum J2KTestBenchService {
         case .j2kSwift:
             return J2KSwiftCodec.benchDecode(codestream, descriptor: descriptor,
                                              mode: decodeMode, warmups: 0, runs: 1).data
-        case .openJPEG:
-            #if canImport(COpenJPEG) && os(macOS)
-            return try? OpenJPEGCodec().decodeFrame(codestream, descriptor: descriptor)
-            #else
-            return nil
-            #endif
         case .kakadu:
             #if os(macOS)
             return try? KakaduCLICodec().decodeFrame(codestream, descriptor: descriptor)

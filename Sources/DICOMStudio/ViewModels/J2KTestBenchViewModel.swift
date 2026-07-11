@@ -135,12 +135,9 @@ public final class J2KTestBenchViewModel {
 
     /// Codecs available on this machine. The pure-Swift reference codecs
     /// (J2KSwift, JLISwift, JLSwift, JXLSwift) are always available; the
-    /// comparison peers depend on a bundled library or an installed CLI binary.
+    /// comparison peers depend on an installed CLI binary.
     public var installedCodecs: [J2KBenchCodec] {
         var codecs: [J2KBenchCodec] = [.j2kSwift]
-        #if canImport(COpenJPEG) && os(macOS)
-        codecs.append(.openJPEG)
-        #endif
         #if os(macOS)
         if KakaduCLICodec.binaryPath != nil { codecs.append(.kakadu) }
         if GrokCLICodec.binaryPath != nil { codecs.append(.grok) }
@@ -161,7 +158,6 @@ public final class J2KTestBenchViewModel {
             guard installedCodecs.contains(codec) else { return false }
             switch codec {
             case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: return true   // reference
-            case .openJPEG: return plan.includeOpenJPEG
             case .kakadu:   return plan.includeKakadu
             case .grok:     return plan.includeGrok
             case .djpeg:    return plan.includeDjpeg
