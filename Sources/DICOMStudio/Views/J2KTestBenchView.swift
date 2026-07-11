@@ -1020,7 +1020,6 @@ public struct J2KTestBenchView: View {
     private func isCodecEnabled(_ codec: J2KBenchCodec) -> Bool {
         switch codec {
         case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: return true   // reference codecs
-        case .openJPEG: return viewModel.plan.includeOpenJPEG
         case .kakadu:   return viewModel.plan.includeKakadu
         case .grok:     return viewModel.plan.includeGrok
         case .djpeg:    return viewModel.plan.includeDjpeg
@@ -1031,7 +1030,6 @@ public struct J2KTestBenchView: View {
     private func toggleCodec(_ codec: J2KBenchCodec) {
         switch codec {
         case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: break   // reference codecs are always on
-        case .openJPEG: viewModel.plan.includeOpenJPEG.toggle()
         case .kakadu:   viewModel.plan.includeKakadu.toggle()
         case .grok:     viewModel.plan.includeGrok.toggle()
         case .djpeg:    viewModel.plan.includeDjpeg.toggle()

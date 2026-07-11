@@ -25,7 +25,7 @@ public struct J2KBenchError: Error, Sendable {
 /// A compression family the bench can exercise. Each format names one
 /// reference Swift codec (which produces the codestream) plus the same-family
 /// peer codecs that decode it — mirroring how J2KSwift is compared against
-/// Kakadu/Grok/OpenJPEG, replicated per format.
+/// Kakadu/Grok, replicated per format.
 public enum J2KBenchFormat: String, CaseIterable, Identifiable, Codable, Sendable {
     case jpeg2000 = "JPEG 2000"
     case jpeg     = "JPEG"
@@ -56,7 +56,7 @@ public enum J2KBenchFormat: String, CaseIterable, Identifiable, Codable, Sendabl
     /// All codecs in this format's bench, reference first then same-family peers.
     public var codecs: [J2KBenchCodec] {
         switch self {
-        case .jpeg2000: return [.j2kSwift, .openJPEG, .kakadu, .grok]
+        case .jpeg2000: return [.j2kSwift, .kakadu, .grok]
         case .jpeg:     return [.jliSwift, .djpeg]
         case .jpegLS:   return [.jlSwift]
         case .jpegXL:   return [.jxlSwift, .djxl]
@@ -68,7 +68,6 @@ public enum J2KBenchFormat: String, CaseIterable, Identifiable, Codable, Sendabl
 public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable {
     // JPEG 2000 family
     case j2kSwift = "J2KSwift"
-    case openJPEG = "OpenJPEG"
     case kakadu   = "Kakadu"
     case grok     = "Grok"
     // JPEG family
@@ -85,7 +84,7 @@ public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable
     /// The compression family this codec belongs to.
     public var format: J2KBenchFormat {
         switch self {
-        case .j2kSwift, .openJPEG, .kakadu, .grok: return .jpeg2000
+        case .j2kSwift, .kakadu, .grok: return .jpeg2000
         case .jliSwift, .djpeg:                    return .jpeg
         case .jlSwift:                             return .jpegLS
         case .jxlSwift, .djxl:                     return .jpegXL
@@ -100,7 +99,6 @@ public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable
     public var systemImage: String {
         switch self {
         case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: return "swift"
-        case .openJPEG:                                 return "shippingbox"
         case .kakadu, .grok, .djpeg, .djxl:             return "terminal"
         }
     }
@@ -350,7 +348,6 @@ public struct J2KTestPlan: Sendable {
     /// Transfer syntaxes to exercise, keyed by ``J2KBenchSyntax/id`` (not the bare
     /// UID) so the two rows of a `both`-capable UID can be selected independently.
     public var selectedSyntaxIDs: Set<String>
-    public var includeOpenJPEG: Bool
     public var includeKakadu: Bool
     public var includeGrok: Bool
     /// JPEG peer (libjpeg-turbo djpeg) — decodes the JLISwift codestream.
@@ -374,7 +371,6 @@ public struct J2KTestPlan: Sendable {
                                                   "1.2.840.10008.1.2.4.70",
                                                   "1.2.840.10008.1.2.4.80",
                                                   "bench.jpegxl.lossless"],
-                includeOpenJPEG: Bool = true,
                 includeKakadu: Bool = true,
                 includeGrok: Bool = true,
                 includeDjpeg: Bool = true,
@@ -386,7 +382,6 @@ public struct J2KTestPlan: Sendable {
                 lossyPSNRThresholdDb: Double = 40.0) {
         self.format = format
         self.selectedSyntaxIDs = selectedSyntaxIDs
-        self.includeOpenJPEG = includeOpenJPEG
         self.includeKakadu = includeKakadu
         self.includeGrok = includeGrok
         self.includeDjpeg = includeDjpeg
