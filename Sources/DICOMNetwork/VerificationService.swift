@@ -58,6 +58,60 @@ extension VerificationResult: CustomStringConvertible {
     }
 }
 
+// MARK: - Association Diagnostic Result
+
+/// Result of an association-only diagnostic.
+///
+/// A successful value proves that the transport, TLS handshake (when configured),
+/// A-ASSOCIATE negotiation, AE titles, presentation context, and optional user
+/// identity negotiation succeeded. It does **not** claim that C-ECHO or any other
+/// DIMSE operation succeeded.
+public struct AssociationDiagnosticResult: Sendable, Hashable {
+    /// Time from starting the operation until A-ASSOCIATE-AC was received
+    public let associationRoundTripTime: TimeInterval
+
+    /// The configured remote Application Entity title
+    public let remoteAETitle: String
+
+    /// Presentation contexts returned by the remote AE
+    public let acceptedPresentationContexts: [AcceptedPresentationContext]
+
+    /// Negotiated maximum PDU size
+    public let maxPDUSize: UInt32
+
+    /// Remote implementation Class UID
+    public let remoteImplementationClassUID: String
+
+    /// Remote implementation version name, when provided
+    public let remoteImplementationVersionName: String?
+
+    /// Optional response to User Identity Negotiation
+    public let userIdentityServerResponse: UserIdentityServerResponse?
+
+    /// Whether the association transport used TLS
+    public let usedTLS: Bool
+
+    public init(
+        associationRoundTripTime: TimeInterval,
+        remoteAETitle: String,
+        acceptedPresentationContexts: [AcceptedPresentationContext],
+        maxPDUSize: UInt32,
+        remoteImplementationClassUID: String,
+        remoteImplementationVersionName: String?,
+        userIdentityServerResponse: UserIdentityServerResponse?,
+        usedTLS: Bool
+    ) {
+        self.associationRoundTripTime = associationRoundTripTime
+        self.remoteAETitle = remoteAETitle
+        self.acceptedPresentationContexts = acceptedPresentationContexts
+        self.maxPDUSize = maxPDUSize
+        self.remoteImplementationClassUID = remoteImplementationClassUID
+        self.remoteImplementationVersionName = remoteImplementationVersionName
+        self.userIdentityServerResponse = userIdentityServerResponse
+        self.usedTLS = usedTLS
+    }
+}
+
 // MARK: - Verification Configuration
 
 /// Configuration for the DICOM Verification Service
@@ -79,6 +133,11 @@ public struct VerificationConfiguration: Sendable, Hashable {
     
     /// Implementation Version Name (optional)
     public let implementationVersionName: String?
+
+#if canImport(Network)
+    /// Complete TLS transport policy, or `nil` for plain TCP
+    public let tlsConfiguration: TLSConfiguration?
+#endif
     
     /// User identity for authentication (optional)
     ///
@@ -116,8 +175,50 @@ public struct VerificationConfiguration: Sendable, Hashable {
         self.maxPDUSize = maxPDUSize
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
+#if canImport(Network)
+        self.tlsConfiguration = nil
+#endif
         self.userIdentity = userIdentity
     }
+
+#if canImport(Network)
+    /// Creates a verification configuration with an exact TLS transport policy.
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 30,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        tlsConfiguration: TLSConfiguration?,
+        userIdentity: UserIdentity? = nil
+    ) {
+        self.callingAETitle = callingAETitle
+        self.calledAETitle = calledAETitle
+        self.timeout = timeout
+        self.maxPDUSize = maxPDUSize
+        self.implementationClassUID = implementationClassUID
+        self.implementationVersionName = implementationVersionName
+        self.tlsConfiguration = tlsConfiguration
+        self.userIdentity = userIdentity
+    }
+
+    /// Builds the exact association configuration used by verification operations.
+    func associationConfiguration(host: String, port: UInt16) -> AssociationConfiguration {
+        AssociationConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            timeout: timeout,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+#endif
 }
 
 #if canImport(Network)
@@ -155,6 +256,76 @@ public struct VerificationConfiguration: Sendable, Hashable {
 /// print("Round-trip time: \(result.roundTripTime)s")
 /// ```
 public enum DICOMVerificationService {
+
+    /// Performs transport and A-ASSOCIATE negotiation without sending C-ECHO.
+    ///
+    /// DICOM association negotiation requires at least one presentation context,
+    /// so this diagnostic proposes the Verification SOP Class. Once the association
+    /// is accepted it is immediately released; no DIMSE command is transmitted.
+    public static func diagnoseAssociation(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        callingAE: String,
+        calledAE: String,
+        timeout: TimeInterval = 30,
+        tlsConfiguration: TLSConfiguration? = nil,
+        userIdentity: UserIdentity? = nil
+    ) async throws -> AssociationDiagnosticResult {
+        try await diagnoseAssociation(
+            host: host,
+            port: port,
+            configuration: VerificationConfiguration(
+                callingAETitle: try AETitle(callingAE),
+                calledAETitle: try AETitle(calledAE),
+                timeout: timeout,
+                tlsConfiguration: tlsConfiguration,
+                userIdentity: userIdentity
+            )
+        )
+    }
+
+    /// Performs association-only negotiation with full configuration control.
+    ///
+    /// This method never sends a C-ECHO request. A thrown error represents a
+    /// transport, TLS, association, identity, or presentation-context failure.
+    public static func diagnoseAssociation(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        configuration: VerificationConfiguration
+    ) async throws -> AssociationDiagnosticResult {
+        let startTime = Date()
+        let association = Association(
+            configuration: configuration.associationConfiguration(host: host, port: port)
+        )
+        let presentationContext = try PresentationContext(
+            id: 1,
+            abstractSyntax: verificationSOPClassUID,
+            transferSyntaxes: [
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
+            ]
+        )
+
+        do {
+            let negotiated = try await association.request(presentationContexts: [presentationContext])
+            let roundTripTime = Date().timeIntervalSince(startTime)
+            try await association.release()
+
+            return AssociationDiagnosticResult(
+                associationRoundTripTime: roundTripTime,
+                remoteAETitle: configuration.calledAETitle.value,
+                acceptedPresentationContexts: negotiated.acceptedPresentationContexts,
+                maxPDUSize: negotiated.maxPDUSize,
+                remoteImplementationClassUID: negotiated.remoteImplementationClassUID,
+                remoteImplementationVersionName: negotiated.remoteImplementationVersionName,
+                userIdentityServerResponse: negotiated.userIdentityServerResponse,
+                usedTLS: configuration.tlsConfiguration != nil
+            )
+        } catch {
+            try? await association.abort()
+            throw error
+        }
+    }
     
     /// Verifies connectivity with a remote DICOM SCP using C-ECHO
     ///
@@ -238,17 +409,7 @@ public enum DICOMVerificationService {
         let startTime = Date()
         
         // Create association configuration
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: configuration.callingAETitle,
-            calledAETitle: configuration.calledAETitle,
-            host: host,
-            port: port,
-            maxPDUSize: configuration.maxPDUSize,
-            implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout,
-            userIdentity: configuration.userIdentity
-        )
+        let associationConfig = configuration.associationConfiguration(host: host, port: port)
         
         // Create association
         let association = Association(configuration: associationConfig)

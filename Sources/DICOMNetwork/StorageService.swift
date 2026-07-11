@@ -113,6 +113,11 @@ public struct StorageConfiguration: Sendable, Hashable {
     
     /// Priority for the store operation
     public let priority: DIMSEPriority
+
+#if canImport(Network)
+    /// Complete TLS transport policy, or `nil` for plain TCP
+    public let tlsConfiguration: TLSConfiguration?
+#endif
     
     /// User identity for authentication (optional)
     public let userIdentity: UserIdentity?
@@ -159,9 +164,55 @@ public struct StorageConfiguration: Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.priority = priority
+#if canImport(Network)
+        self.tlsConfiguration = nil
+#endif
         self.userIdentity = userIdentity
         self.transcodingConfiguration = transcodingConfiguration
     }
+
+#if canImport(Network)
+    /// Creates a storage configuration with an exact TLS transport policy.
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 60,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        priority: DIMSEPriority = .medium,
+        tlsConfiguration: TLSConfiguration?,
+        userIdentity: UserIdentity? = nil,
+        transcodingConfiguration: TranscodingConfiguration? = nil
+    ) {
+        self.callingAETitle = callingAETitle
+        self.calledAETitle = calledAETitle
+        self.timeout = timeout
+        self.maxPDUSize = maxPDUSize
+        self.implementationClassUID = implementationClassUID
+        self.implementationVersionName = implementationVersionName
+        self.priority = priority
+        self.tlsConfiguration = tlsConfiguration
+        self.userIdentity = userIdentity
+        self.transcodingConfiguration = transcodingConfiguration
+    }
+
+    /// Builds the exact association configuration used by storage operations.
+    func associationConfiguration(host: String, port: UInt16) -> AssociationConfiguration {
+        AssociationConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            timeout: timeout,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+#endif
 }
 
 // MARK: - Batch Store Progress
@@ -534,6 +585,25 @@ public enum DICOMStorageService {
         )
     }
 
+    /// Stores a DICOM file with full transport, identity, and association configuration.
+    public static func store(
+        fileData data: Data,
+        to host: String,
+        port: UInt16 = dicomDefaultPort,
+        configuration: StorageConfiguration
+    ) async throws -> StoreResult {
+        let fileInfo = try DICOMFileParser(data: data).parseForStorage()
+        return try await performStore(
+            host: host,
+            port: port,
+            configuration: configuration,
+            sopClassUID: fileInfo.sopClassUID,
+            sopInstanceUID: fileInfo.sopInstanceUID,
+            transferSyntaxUID: fileInfo.transferSyntaxUID,
+            dataSetData: fileInfo.dataSetData
+        )
+    }
+
     /// Stores a DICOM file to a remote SCP, proposing a specific transfer syntax as the preferred
     /// transfer syntax in the presentation context negotiation. The file's own transfer syntax and
     /// Explicit/Implicit VR Little Endian are also proposed as fallbacks.
@@ -702,17 +772,7 @@ public enum DICOMStorageService {
     ) async throws -> StoreResult {
         let startTime = Date()
 
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: configuration.callingAETitle,
-            calledAETitle: configuration.calledAETitle,
-            host: host,
-            port: port,
-            maxPDUSize: configuration.maxPDUSize,
-            implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout,
-            userIdentity: configuration.userIdentity
-        )
+        let associationConfig = configuration.associationConfiguration(host: host, port: port)
 
         let association = Association(configuration: associationConfig)
 
@@ -935,22 +995,63 @@ public enum DICOMStorageService {
             priority: priority
         )
         
-        return AsyncThrowingStream { continuation in
-            Task {
+        return makeBatchStoreStream(
+            files: files,
+            host: host,
+            port: port,
+            configuration: storageConfig,
+            batchConfiguration: configuration
+        )
+    }
+
+    /// Stores multiple DICOM files with full transport, identity, and association configuration.
+    public static func storeBatch(
+        files: [Data],
+        to host: String,
+        port: UInt16 = dicomDefaultPort,
+        storageConfiguration: StorageConfiguration,
+        configuration batchConfiguration: BatchStorageConfiguration = .default
+    ) -> AsyncThrowingStream<StorageProgressEvent, Error> {
+        makeBatchStoreStream(
+            files: files,
+            host: host,
+            port: port,
+            configuration: storageConfiguration,
+            batchConfiguration: batchConfiguration
+        )
+    }
+
+    /// Creates a cancellation-aware batch producer.
+    ///
+    /// Cancelling or abandoning the returned stream must stop the producer: otherwise
+    /// C-STORE operations (and their credential-bearing configuration) can outlive the
+    /// caller that initiated them.
+    private static func makeBatchStoreStream(
+        files: [Data],
+        host: String,
+        port: UInt16,
+        configuration: StorageConfiguration,
+        batchConfiguration: BatchStorageConfiguration
+    ) -> AsyncThrowingStream<StorageProgressEvent, Error> {
+        AsyncThrowingStream { continuation in
+            let producer = Task {
                 do {
                     try await performBatchStore(
                         files: files,
                         host: host,
                         port: port,
-                        configuration: storageConfig,
-                        batchConfiguration: configuration,
+                        configuration: configuration,
+                        batchConfiguration: batchConfiguration,
                         continuation: continuation
                     )
+                } catch is CancellationError {
+                    continuation.finish()
                 } catch {
                     continuation.yield(.error(error))
                     continuation.finish(throwing: error)
                 }
             }
+            continuation.onTermination = { @Sendable _ in producer.cancel() }
         }
     }
     
@@ -963,6 +1064,8 @@ public enum DICOMStorageService {
         batchConfiguration: BatchStorageConfiguration,
         continuation: AsyncThrowingStream<StorageProgressEvent, Error>.Continuation
     ) async throws {
+        try Task.checkCancellation()
+
         let startTime = Date()
         var fileResults: [FileStoreResult] = []
         var succeeded = 0
@@ -988,6 +1091,8 @@ public enum DICOMStorageService {
         var sopClassUIDs = Set<String>()
         
         for (index, fileData) in files.enumerated() {
+            try Task.checkCancellation()
+
             do {
                 let parser = DICOMFileParser(data: fileData)
                 let info = try parser.parseForStorage()
@@ -1043,17 +1148,7 @@ public enum DICOMStorageService {
         }
         
         // Create association configuration
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: configuration.callingAETitle,
-            calledAETitle: configuration.calledAETitle,
-            host: host,
-            port: port,
-            maxPDUSize: configuration.maxPDUSize,
-            implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout,
-            userIdentity: configuration.userIdentity
-        )
+        let associationConfig = configuration.associationConfiguration(host: host, port: port)
         
         // Create presentation contexts for all SOP Classes
         var presentationContexts: [PresentationContext] = []
@@ -1092,6 +1187,8 @@ public enum DICOMStorageService {
             
             // Store each file
             for (index, fileData, fileInfo) in fileInfos {
+                try Task.checkCancellation()
+
                 let fileStartTime = Date()
                 
                 // Check if we need to start a new association

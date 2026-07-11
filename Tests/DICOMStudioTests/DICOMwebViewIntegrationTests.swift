@@ -77,16 +77,12 @@ struct DICOMwebMainViewModelIntegrationTests {
 @Suite("DICOMweb Tab Tests")
 struct DICOMwebTabTests {
 
-    @Test("all six DICOMweb tabs exist")
-    func testAllSixTabsExist() {
-        let tabs = DICOMwebTab.allCases
-        #expect(tabs.count == 6)
-        #expect(tabs.contains(.serverConfig))
-        #expect(tabs.contains(.qidoRS))
-        #expect(tabs.contains(.wadoRS))
-        #expect(tabs.contains(.stowRS))
-        #expect(tabs.contains(.upsRS))
-        #expect(tabs.contains(.performanceDashboard))
+    @Test("the complete DICOMweb tab catalog exists")
+    func testAllTabsExist() {
+        #expect(Set(DICOMwebTab.allCases) == [
+            .serverConfig, .qidoRS, .wadoRS, .stowRS, .upsRS,
+            .jpipStreaming, .performanceDashboard,
+        ])
     }
 
     @Test("all tabs have non-empty displayName")

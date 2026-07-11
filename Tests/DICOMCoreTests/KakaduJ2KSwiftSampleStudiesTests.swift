@@ -131,6 +131,14 @@ struct KakaduJ2KSwiftSampleStudiesTests {
         return (value, (CFAbsoluteTimeGetCurrent() - start) * 1000.0)
     }
 
+    /// Emits uncaptured stage progress so a large real-image gate always
+    /// identifies its active fixture and operation, even if the test process
+    /// is sampled or terminated before Swift Testing flushes normal output.
+    private func emitProgress(_ message: String) {
+        guard let data = "J2K_SAMPLE_PROGRESS \(message)\n".data(using: .utf8) else { return }
+        FileHandle.standardError.write(data)
+    }
+
     @Test("Kakadu decodes J2KSwift lossless codestreams from SampleStudies exactly")
     func kakaduMatchesJ2KSwiftOnRealSampleStudiesFrames() throws {
         guard KakaduCLICodec.binaryPath != nil else {
@@ -164,7 +172,18 @@ struct KakaduJ2KSwiftSampleStudiesTests {
         var totalJ2KSwiftDecodeMS = 0.0
         var totalKakaduDecodeMS = 0.0
 
-        for sample in samples {
+        for (sampleIndex, sample) in samples.enumerated() {
+            let routeLabel: String = {
+                switch sample.decodeMode {
+                case .cpu:              return "CPU"
+                case .decodeGPU:        return "decodeGPU"
+                case .decodeWithGPUHT:  return "decodeWithGPUHT"
+                }
+            }()
+            emitProgress(
+                "stage=start sample=\(sampleIndex + 1)/\(samples.count) "
+                    + "label=\(sample.label) route=\(routeLabel)"
+            )
             let loaded = try loadSample(sample)
             let descriptor = loaded.pixelData.descriptor
             let original = loaded.frame
@@ -184,10 +203,15 @@ struct KakaduJ2KSwiftSampleStudiesTests {
                 warmups: 2, runs: 7
             )
             guard let codestream = encodeResult.data, !encodeResult.samples.isEmpty else {
+                emitProgress("stage=encode-failed label=\(sample.label)")
                 Issue.record("\(sample.label) encode failed: \(encodeResult.error ?? "no samples")")
                 continue
             }
             let encodeMS = median(encodeResult.samples)
+            emitProgress(
+                "stage=encoded label=\(sample.label) median_ms=\(formatMS(encodeMS)) "
+                    + "bytes=\(codestream.count)"
+            )
 
             // J2KSwift decode: same methodology, mode pinned per fixture
             // (CPU for small images; decodeGPU / decodeWithGPUHT for mid/large).
@@ -198,15 +222,23 @@ struct KakaduJ2KSwiftSampleStudiesTests {
                 warmups: 2, runs: 7
             )
             guard let j2kSwiftDecoded = j2kDecodeResult.data, !j2kDecodeResult.samples.isEmpty else {
+                emitProgress("stage=decode-failed label=\(sample.label) route=\(routeLabel)")
                 Issue.record("\(sample.label) J2KSwift decode failed: \(j2kDecodeResult.error ?? "no samples")")
                 continue
             }
             let j2kSwiftDecodeMS = median(j2kDecodeResult.samples)
+            emitProgress(
+                "stage=decoded label=\(sample.label) route=\(routeLabel) "
+                    + "median_ms=\(formatMS(j2kSwiftDecodeMS))"
+            )
 
             // Kakadu decode: same methodology. Each call spawns a process so
             // "warmup" amortises page-cache + dyld loader, but not much else.
             let kakaduDecodeMS = try benchKakadu(codestream, descriptor: descriptor, decoder: kakaduDecoder)
             let kakaduDecoded = try kakaduDecoder.decodeFrame(codestream, descriptor: descriptor)
+            emitProgress(
+                "stage=kakadu-decoded label=\(sample.label) median_ms=\(formatMS(kakaduDecodeMS))"
+            )
 
             let j2kMismatch = firstMismatchOffset(j2kSwiftDecoded, original)
             let kakaduMismatch = firstMismatchOffset(kakaduDecoded, original)
@@ -220,14 +252,6 @@ struct KakaduJ2KSwiftSampleStudiesTests {
             #expect(kakaduDecoded == j2kSwiftDecoded,
                     "Kakadu and J2KSwift decoded bytes differ at offset \(crossMismatch.map(String.init) ?? "none")")
 
-            // Route label: short string showing the API the J2KSwift row used.
-            let routeLabel: String = {
-                switch sample.decodeMode {
-                case .cpu:              return "CPU"
-                case .decodeGPU:        return "decodeGPU"
-                case .decodeWithGPUHT:  return "decodeWithGPUHT"
-                }
-            }()
             rows.append(ResultRow(
                 label: sample.label,
                 file: loaded.url.lastPathComponent,
@@ -245,6 +269,7 @@ struct KakaduJ2KSwiftSampleStudiesTests {
             totalEncodeMS += encodeMS
             totalJ2KSwiftDecodeMS += j2kSwiftDecodeMS
             totalKakaduDecodeMS += kakaduDecodeMS
+            emitProgress("stage=passed label=\(sample.label)")
         }
 
         let ratio = Double(totalRawBytes) / Double(max(totalCodestreamBytes, 1))

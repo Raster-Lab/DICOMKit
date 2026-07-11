@@ -419,6 +419,84 @@ public struct DICOMClientConfiguration: Sendable, Hashable {
     }
 }
 
+// MARK: - Operation Configuration Projection
+
+extension DICOMClientConfiguration {
+    /// Full configuration consumed by connection pools.
+    func pooledAssociationConfiguration(artimTimeout: TimeInterval? = 30) -> AssociationConfiguration {
+        AssociationConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            timeout: timeout,
+            artimTimeout: artimTimeout,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+
+    /// Full configuration consumed by association-only and C-ECHO operations.
+    var verificationServiceConfiguration: VerificationConfiguration {
+        VerificationConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+
+    /// Full configuration consumed by C-FIND operations.
+    var queryServiceConfiguration: QueryConfiguration {
+        QueryConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+
+    /// Full configuration consumed by C-GET and C-MOVE operations.
+    var retrieveServiceConfiguration: RetrieveConfiguration {
+        RetrieveConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+
+    /// Full configuration consumed by C-STORE operations.
+    func storageServiceConfiguration(priority: DIMSEPriority) -> StorageConfiguration {
+        StorageConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            timeout: timeout,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            priority: priority,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+}
+
 // MARK: - DICOMClient
 
 /// Unified high-level DICOM client for network operations
@@ -524,6 +602,20 @@ public final class DICOMClient: Sendable {
     }
     
     // MARK: - Verification (C-ECHO)
+
+    /// Diagnoses transport and association negotiation without sending C-ECHO.
+    ///
+    /// A successful result is intentionally limited to TCP/TLS and A-ASSOCIATE
+    /// negotiation. Use `echo()` when DIMSE verification is also required.
+    public func diagnoseAssociation() async throws -> AssociationDiagnosticResult {
+        try await withRetry {
+            try await DICOMVerificationService.diagnoseAssociation(
+                host: self.configuration.host,
+                port: self.configuration.port,
+                configuration: self.configuration.verificationServiceConfiguration
+            )
+        }
+    }
     
     /// Tests connectivity with the remote DICOM service using C-ECHO
     ///
@@ -531,13 +623,11 @@ public final class DICOMClient: Sendable {
     /// - Throws: `DICOMNetworkError` for connection or protocol errors
     public func verify() async throws -> Bool {
         try await withRetry {
-            try await DICOMVerificationService.verify(
+            try await DICOMVerificationService.echo(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                timeout: self.configuration.timeout
-            )
+                configuration: self.configuration.verificationServiceConfiguration
+            ).success
         }
     }
     
@@ -550,9 +640,7 @@ public final class DICOMClient: Sendable {
             try await DICOMVerificationService.echo(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                timeout: self.configuration.timeout
+                configuration: self.configuration.verificationServiceConfiguration
             )
         }
     }
@@ -569,10 +657,8 @@ public final class DICOMClient: Sendable {
             try await DICOMQueryService.findStudies(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                matching: matching,
-                timeout: self.configuration.timeout
+                configuration: self.configuration.queryServiceConfiguration,
+                matching: matching
             )
         }
     }
@@ -592,11 +678,9 @@ public final class DICOMClient: Sendable {
             try await DICOMQueryService.findSeries(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
+                configuration: self.configuration.queryServiceConfiguration,
                 forStudy: studyInstanceUID,
-                matching: matching,
-                timeout: self.configuration.timeout
+                matching: matching
             )
         }
     }
@@ -618,12 +702,10 @@ public final class DICOMClient: Sendable {
             try await DICOMQueryService.findInstances(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
+                configuration: self.configuration.queryServiceConfiguration,
                 forStudy: studyInstanceUID,
                 forSeries: seriesInstanceUID,
-                matching: matching,
-                timeout: self.configuration.timeout
+                matching: matching
             )
         }
     }
@@ -644,15 +726,13 @@ public final class DICOMClient: Sendable {
         onProgress: (@Sendable (RetrieveProgress) -> Void)? = nil
     ) async throws -> RetrieveResult {
         try await withRetry {
-            try await DICOMRetrieveService.moveStudy(
+            try await DICOMRetrieveService.move(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                studyInstanceUID: studyInstanceUID,
+                configuration: self.configuration.retrieveServiceConfiguration,
+                keys: .forStudy(studyInstanceUID),
                 moveDestination: moveDestination,
-                onProgress: onProgress,
-                timeout: self.configuration.timeout
+                onProgress: onProgress
             )
         }
     }
@@ -673,16 +753,13 @@ public final class DICOMClient: Sendable {
         onProgress: (@Sendable (RetrieveProgress) -> Void)? = nil
     ) async throws -> RetrieveResult {
         try await withRetry {
-            try await DICOMRetrieveService.moveSeries(
+            try await DICOMRetrieveService.move(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                studyInstanceUID: studyInstanceUID,
-                seriesInstanceUID: seriesInstanceUID,
+                configuration: self.configuration.retrieveServiceConfiguration,
+                keys: .forSeries(studyUID: studyInstanceUID, seriesUID: seriesInstanceUID),
                 moveDestination: moveDestination,
-                onProgress: onProgress,
-                timeout: self.configuration.timeout
+                onProgress: onProgress
             )
         }
     }
@@ -705,17 +782,17 @@ public final class DICOMClient: Sendable {
         onProgress: (@Sendable (RetrieveProgress) -> Void)? = nil
     ) async throws -> RetrieveResult {
         try await withRetry {
-            try await DICOMRetrieveService.moveInstance(
+            try await DICOMRetrieveService.move(
                 host: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                studyInstanceUID: studyInstanceUID,
-                seriesInstanceUID: seriesInstanceUID,
-                sopInstanceUID: sopInstanceUID,
+                configuration: self.configuration.retrieveServiceConfiguration,
+                keys: .forInstance(
+                    studyUID: studyInstanceUID,
+                    seriesUID: seriesInstanceUID,
+                    instanceUID: sopInstanceUID
+                ),
                 moveDestination: moveDestination,
-                onProgress: onProgress,
-                timeout: self.configuration.timeout
+                onProgress: onProgress
             )
         }
     }
@@ -735,13 +812,11 @@ public final class DICOMClient: Sendable {
     ) async throws -> AsyncStream<DICOMRetrieveService.GetEvent> {
         // Note: C-GET operations are not retried since they return a stream
         // Individual failures are reported through the stream
-        try await DICOMRetrieveService.getStudy(
+        DICOMRetrieveService.get(
             host: configuration.host,
             port: configuration.port,
-            callingAE: configuration.callingAETitle.value,
-            calledAE: configuration.calledAETitle.value,
-            studyInstanceUID: studyInstanceUID,
-            timeout: configuration.timeout
+            configuration: configuration.retrieveServiceConfiguration,
+            keys: .forStudy(studyInstanceUID)
         )
     }
     
@@ -756,14 +831,11 @@ public final class DICOMClient: Sendable {
         studyInstanceUID: String,
         seriesInstanceUID: String
     ) async throws -> AsyncStream<DICOMRetrieveService.GetEvent> {
-        try await DICOMRetrieveService.getSeries(
+        DICOMRetrieveService.get(
             host: configuration.host,
             port: configuration.port,
-            callingAE: configuration.callingAETitle.value,
-            calledAE: configuration.calledAETitle.value,
-            studyInstanceUID: studyInstanceUID,
-            seriesInstanceUID: seriesInstanceUID,
-            timeout: configuration.timeout
+            configuration: configuration.retrieveServiceConfiguration,
+            keys: .forSeries(studyUID: studyInstanceUID, seriesUID: seriesInstanceUID)
         )
     }
     
@@ -780,15 +852,15 @@ public final class DICOMClient: Sendable {
         seriesInstanceUID: String,
         sopInstanceUID: String
     ) async throws -> AsyncStream<DICOMRetrieveService.GetEvent> {
-        try await DICOMRetrieveService.getInstance(
+        DICOMRetrieveService.get(
             host: configuration.host,
             port: configuration.port,
-            callingAE: configuration.callingAETitle.value,
-            calledAE: configuration.calledAETitle.value,
-            studyInstanceUID: studyInstanceUID,
-            seriesInstanceUID: seriesInstanceUID,
-            sopInstanceUID: sopInstanceUID,
-            timeout: configuration.timeout
+            configuration: configuration.retrieveServiceConfiguration,
+            keys: .forInstance(
+                studyUID: studyInstanceUID,
+                seriesUID: seriesInstanceUID,
+                instanceUID: sopInstanceUID
+            )
         )
     }
     
@@ -814,10 +886,7 @@ public final class DICOMClient: Sendable {
                 fileData: fileData,
                 to: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                priority: priority,
-                timeout: self.configuration.timeout
+                configuration: self.configuration.storageServiceConfiguration(priority: priority)
             )
         }
     }
@@ -847,10 +916,7 @@ public final class DICOMClient: Sendable {
                 transferSyntaxUID: transferSyntaxUID,
                 to: self.configuration.host,
                 port: self.configuration.port,
-                callingAE: self.configuration.callingAETitle.value,
-                calledAE: self.configuration.calledAETitle.value,
-                priority: priority,
-                timeout: self.configuration.timeout
+                configuration: self.configuration.storageServiceConfiguration(priority: priority)
             )
         }
     }
@@ -893,14 +959,11 @@ public final class DICOMClient: Sendable {
     ) async throws -> AsyncThrowingStream<StorageProgressEvent, Error> {
         // Note: Batch operations are not retried since they return a stream
         // Individual file failures are reported through the stream
-        try await DICOMStorageService.storeBatch(
+        DICOMStorageService.storeBatch(
             files: files,
             to: self.configuration.host,
             port: self.configuration.port,
-            callingAE: self.configuration.callingAETitle.value,
-            calledAE: self.configuration.calledAETitle.value,
-            priority: priority,
-            timeout: self.configuration.timeout,
+            storageConfiguration: self.configuration.storageServiceConfiguration(priority: priority),
             configuration: batchConfig
         )
     }

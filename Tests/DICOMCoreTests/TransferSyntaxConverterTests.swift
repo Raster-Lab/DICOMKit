@@ -655,12 +655,12 @@ struct CodecRegistryEncoderTests {
         #expect(jp2Encoder != nil)
     }
     
-    @Test("Registry does not have encoder for RLE")
-    func testNoRLEEncoder() {
+    @Test("Registry has the native lossless RLE encoder")
+    func testRLEEncoderAvailable() {
         let registry = CodecRegistry.shared
         
-        // RLE is decode-only
-        #expect(registry.hasEncoder(for: TransferSyntax.rleLossless.uid) == false)
+        #expect(registry.hasEncoder(for: TransferSyntax.rleLossless.uid))
+        #expect(registry.encoder(for: TransferSyntax.rleLossless.uid) != nil)
     }
     
     @Test("Supported encoding transfer syntaxes list is populated")

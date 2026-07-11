@@ -134,16 +134,21 @@ final class CLIParityQRParityTests: XCTestCase {
 
     // MARK: scenario matrix
 
-    /// With no filters, the matrix is the review-all sweep plus the two interactive
-    /// (select-all) retrieve rows — the interactive rows are always generated (the
-    /// runner skips them when no query key bounds the match set).
+    /// With no filters, every always-visible review/retrieve mode remains in the
+    /// matrix. The runner, rather than generation, applies the safety gates that
+    /// prevent an unbounded retrieval.
     func testBaseScenariosAlwaysGenerated() {
         let scs = CLIParityNetworkScenarios.qrScenarios(filters: QueryFilters())
-        let ids = scs.map { $0.scenarioId }
-        XCTAssertTrue(ids.contains("dicom-qr_net_review-all"))
-        XCTAssertTrue(ids.contains("dicom-qr_net_interactive-cget"))
-        XCTAssertTrue(ids.contains("dicom-qr_net_interactive-cmove"))
-        XCTAssertEqual(ids.count, 3)   // no per-filter rows without filter values
+        let ids = Set(scs.map { $0.scenarioId })
+        XCTAssertEqual(ids, [
+            "dicom-qr_net_review-all",
+            "dicom-qr_net_review-all-verbose",
+            "dicom-qr_net_interactive-cget",
+            "dicom-qr_net_interactive-cmove",
+            "dicom-qr_net_interactive-cget-hierarchical",
+            "dicom-qr_net_auto-cget",
+            "dicom-qr_net_auto-cmove",
+        ])
     }
 
     func testPerFilterAndCombinedScenarios() {

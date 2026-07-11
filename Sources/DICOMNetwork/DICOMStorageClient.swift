@@ -614,6 +614,27 @@ public struct DICOMStorageClientConfiguration: Sendable {
     }
 }
 
+extension DICOMStorageClientConfiguration {
+    /// Builds the exact per-server configuration consumed by storage operations.
+    func storageConfiguration(
+        for server: ServerEntry,
+        priority: DIMSEPriority
+    ) -> StorageConfiguration {
+        StorageConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: server.aeTitle,
+            timeout: server.timeout,
+            maxPDUSize: server.maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            priority: priority,
+            tlsConfiguration: server.tlsConfiguration,
+            userIdentity: server.userIdentity,
+            transcodingConfiguration: transcodingConfiguration
+        )
+    }
+}
+
 extension DICOMStorageClientConfiguration: CustomStringConvertible {
     public var description: String {
         var components = ["DICOMStorageClientConfiguration("]
@@ -930,16 +951,9 @@ public actor DICOMStorageClient {
             }
             
             // Create storage configuration for this server
-            let storageConfig = StorageConfiguration(
-                callingAETitle: configuration.callingAETitle,
-                calledAETitle: server.aeTitle,
-                timeout: server.timeout,
-                maxPDUSize: server.maxPDUSize,
-                implementationClassUID: configuration.implementationClassUID,
-                implementationVersionName: configuration.implementationVersionName,
-                priority: opPriority,
-                userIdentity: server.userIdentity,
-                transcodingConfiguration: configuration.transcodingConfiguration
+            let storageConfig = configuration.storageConfiguration(
+                for: server,
+                priority: opPriority
             )
             
             // Attempt store with retries
