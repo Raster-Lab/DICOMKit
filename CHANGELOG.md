@@ -7,12 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed — J2KSwift v11.0.1
+### Changed — J2KSwift v11.0.2
 
-- Updated the JPEG 2000 / HTJ2K / JP3D dependency floor to J2KSwift v11.0.1.
-- The dependency update brings the EBCOT decoder scratch-state optimization and
-  zero-pass fast path into DICOM pixel decoding without changing the DICOMKit
-  public API or decoded pixel values.
+- Updated the JPEG 2000 / HTJ2K / JP3D dependency floor to J2KSwift v11.0.2.
+- The decoder-only update stops truncated quality-layer decoding at the exact
+  coding-pass boundary and bounds scratch clearing to the active code-block region,
+  without changing the DICOMKit public API or codestream format.
 
 ### Added — JPEG Baseline Encoder Choice (DICOMStudio-only)
 
