@@ -8,6 +8,13 @@ import Foundation
 import Observation
 import DICOMWeb
 
+/// Injectable connectivity boundary for the server-profile probe. Production
+/// performs a minimal QIDO-RS request; tests can return a deterministic result
+/// without opening a network connection.
+public typealias DICOMwebConnectionProbe = @Sendable (
+    _ profile: DICOMwebServerProfile
+) async throws -> Void
+
 /// ViewModel for the DICOMweb Integration Hub, managing state for all six sections:
 /// server configuration, QIDO-RS queries, WADO-RS retrieval, STOW-RS uploads,
 /// UPS-RS workitem management, and performance monitoring.
@@ -22,6 +29,7 @@ public final class DICOMwebViewModel {
 
     private let service: DICOMwebService
     private let profileStorage: DICOMwebServerProfileStorageService
+    private let connectionProbe: DICOMwebConnectionProbe
 
     // MARK: - Navigation
 
@@ -138,16 +146,27 @@ public final class DICOMwebViewModel {
 
     // MARK: - Init
 
-    public init(service: DICOMwebService = DICOMwebService(),
-                profileStorage: DICOMwebServerProfileStorageService = DICOMwebServerProfileStorageService()) {
+    public init(
+        service: DICOMwebService = DICOMwebService(),
+        profileStorage: DICOMwebServerProfileStorageService = DICOMwebServerProfileStorageService(),
+        connectionProbe: DICOMwebConnectionProbe? = nil
+    ) {
         self.service = service
         self.profileStorage = profileStorage
+        self.connectionProbe = connectionProbe ?? Self.performConnectionProbe
         // Load persisted profiles into the service before loading state
         let persisted = profileStorage.load()
         for profile in persisted {
             service.addServerProfile(profile)
         }
         loadFromService()
+    }
+
+    private static func performConnectionProbe(
+        _ profile: DICOMwebServerProfile
+    ) async throws {
+        let client = try DICOMwebClientFactory.makeClient(from: profile)
+        _ = try await client.searchStudies(query: QIDOQuery().limit(1))
     }
 
     // MARK: - Load All State
@@ -231,9 +250,7 @@ public final class DICOMwebViewModel {
         }
 
         do {
-            let client = try DICOMwebClientFactory.makeClient(from: profile)
-            // Issue a minimal QIDO-RS search to verify connectivity
-            _ = try await client.searchStudies(query: QIDOQuery().limit(1))
+            try await connectionProbe(profile)
             service.updateConnectionStatus(.online, error: nil, for: profileID)
         } catch {
             service.updateConnectionStatus(

@@ -46,9 +46,21 @@ public struct AssociationConfiguration: Sendable, Hashable {
     /// Default is 30 seconds.
     public let artimTimeout: TimeInterval?
     
-    /// Whether to use TLS encryption
+    /// Whether TLS is enabled.
+    ///
+    /// This stored compatibility value remains available on platforms where
+    /// Network.framework (and therefore `TLSConfiguration`) is unavailable.
     public let tlsEnabled: Bool
     
+    #if canImport(Network)
+    /// The complete TLS policy for the transport, or `nil` for plain TCP.
+    ///
+    /// Keeping the policy here is security-critical: reducing it to a Boolean would
+    /// discard certificate pinning, private trust roots, protocol-version limits,
+    /// and client identity settings before the connection is created.
+    public let tlsConfiguration: TLSConfiguration?
+    #endif
+
     /// User identity for authentication (optional)
     ///
     /// When set, user identity information will be included in the A-ASSOCIATE-RQ PDU
@@ -94,8 +106,54 @@ public struct AssociationConfiguration: Sendable, Hashable {
         self.timeout = timeout
         self.artimTimeout = artimTimeout
         self.tlsEnabled = tlsEnabled
+        #if canImport(Network)
+        self.tlsConfiguration = tlsEnabled ? .default : nil
+        #endif
         self.userIdentity = userIdentity
     }
+
+    #if canImport(Network)
+    /// Creates association configuration with an exact TLS policy.
+    ///
+    /// - Parameters:
+    ///   - callingAETitle: Local AE title
+    ///   - calledAETitle: Remote AE title
+    ///   - host: Remote host address
+    ///   - port: Remote port (default: 104)
+    ///   - maxPDUSize: Maximum PDU size (default: 16KB)
+    ///   - implementationClassUID: Implementation Class UID
+    ///   - implementationVersionName: Implementation Version Name
+    ///   - timeout: Connection timeout (default: 30 seconds)
+    ///   - artimTimeout: ARTIM timer timeout in seconds (default: 30 seconds, nil to disable)
+    ///   - tlsConfiguration: Complete TLS policy, or `nil` for plain TCP
+    ///   - userIdentity: User identity for association negotiation (optional)
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String,
+        implementationVersionName: String? = nil,
+        timeout: TimeInterval = 30,
+        artimTimeout: TimeInterval? = 30,
+        tlsConfiguration: TLSConfiguration?,
+        userIdentity: UserIdentity? = nil
+    ) {
+        self.callingAETitle = callingAETitle
+        self.calledAETitle = calledAETitle
+        self.host = host
+        self.port = port
+        self.maxPDUSize = maxPDUSize
+        self.implementationClassUID = implementationClassUID
+        self.implementationVersionName = implementationVersionName
+        self.timeout = timeout
+        self.artimTimeout = artimTimeout
+        self.tlsConfiguration = tlsConfiguration
+        self.tlsEnabled = tlsConfiguration != nil
+        self.userIdentity = userIdentity
+    }
+    #endif
 }
 
 /// Negotiated association parameters after successful association establishment
@@ -216,6 +274,10 @@ public final class Association: @unchecked Sendable {
     /// The association state machine
     private let stateMachine = AssociationStateMachine()
     
+    /// Transport construction seam. Public callers always receive the production
+    /// Network.framework transport; tests can inject a controllable connection.
+    private let connectionFactory: @Sendable (AssociationConfiguration) throws -> DICOMConnection
+
     /// Lock for thread-safe operations
     private let lock = NSLock()
     
@@ -224,6 +286,32 @@ public final class Association: @unchecked Sendable {
     /// - Parameter configuration: The association configuration
     public init(configuration: AssociationConfiguration) {
         self.configuration = configuration
+        self.connectionFactory = { configuration in
+            try DICOMConnection(
+                host: configuration.host,
+                port: configuration.port,
+                maxPDUSize: configuration.maxPDUSize,
+                timeout: configuration.timeout,
+                tlsConfiguration: configuration.tlsConfiguration
+            )
+        }
+    }
+
+    /// Internal test seam for deterministic connection lifecycle tests.
+    init(
+        configuration: AssociationConfiguration,
+        connectionFactory: @escaping @Sendable (AssociationConfiguration) throws -> DICOMConnection
+    ) {
+        self.configuration = configuration
+        self.connectionFactory = connectionFactory
+    }
+
+    /// Creates the transport used by `request(presentationContexts:)`.
+    ///
+    /// Kept internal so regression tests can inspect the exact transport policy
+    /// without opening a socket.
+    func makeConnection() throws -> DICOMConnection {
+        try connectionFactory(configuration)
     }
     
     /// Requests an association with the remote peer
@@ -233,23 +321,28 @@ public final class Association: @unchecked Sendable {
     /// - Throws: `DICOMNetworkError.connectionFailed` if connection fails
     /// - Throws: `DICOMNetworkError.associationRejected` if association is rejected
     /// - Throws: `DICOMNetworkError.artimTimerExpired` if ARTIM timer expires
-    public func request(presentationContexts: [PresentationContext]) async throws -> NegotiatedAssociation {
+    public func request(presentationContexts: [PresentationContext]) async throws
+        -> NegotiatedAssociation
+    {
         // Ensure we're in idle state
         guard state == .idle else {
-            throw DICOMNetworkError.invalidState("Cannot request association: current state is \(state)")
+            throw DICOMNetworkError.invalidState(
+                "Cannot request association: current state is \(state)")
         }
         
         // Create and establish TCP connection
-        let conn = try DICOMConnection(
-            host: configuration.host,
-            port: configuration.port,
-            maxPDUSize: configuration.maxPDUSize,
-            timeout: configuration.timeout,
-            tlsConfiguration: configuration.tlsEnabled ? .default : nil
-        )
+        let conn = try makeConnection()
         connection = conn
-        
+
         try await conn.connect()
+
+        // A-ASSOCIATE-RQ can contain a username, passcode, JWT, SAML assertion,
+        // or Kerberos ticket. Never construct or submit it after cancellation.
+        if Task.isCancelled {
+            conn.abort()
+            _ = stateMachine.handleEvent(.transportConnectionClosed)
+            throw CancellationError()
+        }
         _ = stateMachine.handleEvent(.transportConnected)
         
         // Build and send A-ASSOCIATE-RQ
@@ -263,7 +356,19 @@ public final class Association: @unchecked Sendable {
             userIdentity: configuration.userIdentity
         )
         
-        try await conn.send(pdu: associateRequest)
+        if Task.isCancelled {
+            conn.abort()
+            _ = stateMachine.handleEvent(.transportConnectionClosed)
+            throw CancellationError()
+        }
+
+        do {
+            try await conn.send(pdu: associateRequest)
+        } catch is CancellationError {
+            conn.abort()
+            _ = stateMachine.handleEvent(.transportConnectionClosed)
+            throw CancellationError()
+        }
         _ = stateMachine.handleEvent(.associateRequestSent)
         
         // Wait for response with ARTIM timer
@@ -296,7 +401,7 @@ public final class Association: @unchecked Sendable {
             )
             self.negotiated = negotiatedAssoc
             return negotiatedAssoc
-            
+
         case let rejectPDU as AssociateRejectPDU:
             _ = stateMachine.handleEvent(.associateRejectReceived(rejectPDU))
             await conn.disconnect()
@@ -305,7 +410,7 @@ public final class Association: @unchecked Sendable {
                 source: rejectPDU.source,
                 reason: rejectPDU.reason
             )
-            
+
         case let abortPDU as AbortPDU:
             _ = stateMachine.handleEvent(.abortReceived(abortPDU))
             await conn.disconnect()
@@ -313,7 +418,7 @@ public final class Association: @unchecked Sendable {
                 source: abortPDU.source,
                 reason: abortPDU.reason
             )
-            
+
         default:
             try await performAbort(reason: .unexpectedPDU)
             throw DICOMNetworkError.unexpectedPDUType(
@@ -385,11 +490,11 @@ public final class Association: @unchecked Sendable {
         case let dataPDU as DataTransferPDU:
             _ = stateMachine.handleEvent(.dataTransferReceived(dataPDU))
             return dataPDU
-            
+
         case _ as ReleaseRequestPDU:
             _ = stateMachine.handleEvent(.releaseRequestReceived)
             throw DICOMNetworkError.connectionClosed
-            
+
         case let abortPDU as AbortPDU:
             _ = stateMachine.handleEvent(.abortReceived(abortPDU))
             await conn.disconnect()
@@ -397,7 +502,7 @@ public final class Association: @unchecked Sendable {
                 source: abortPDU.source,
                 reason: abortPDU.reason
             )
-            
+
         default:
             try await performAbort(reason: .unexpectedPDU)
             throw DICOMNetworkError.unexpectedPDUType(
@@ -445,7 +550,7 @@ public final class Association: @unchecked Sendable {
         case _ as ReleaseResponsePDU:
             _ = stateMachine.handleEvent(.releaseResponseReceived)
             await conn.disconnect()
-            
+
         case let abortPDU as AbortPDU:
             _ = stateMachine.handleEvent(.abortReceived(abortPDU))
             await conn.disconnect()
@@ -453,7 +558,7 @@ public final class Association: @unchecked Sendable {
                 source: abortPDU.source,
                 reason: abortPDU.reason
             )
-            
+
         case _ as ReleaseRequestPDU:
             // Release collision - both sides requested release simultaneously
             _ = stateMachine.handleEvent(.releaseRequestReceived)
@@ -461,7 +566,7 @@ public final class Association: @unchecked Sendable {
             let releaseResponse = ReleaseResponsePDU()
             try? await conn.send(pdu: releaseResponse)
             await conn.disconnect()
-            
+
         default:
             try await performAbort(reason: .unexpectedPDU)
             throw DICOMNetworkError.unexpectedPDUType(

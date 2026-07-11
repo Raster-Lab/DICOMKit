@@ -353,8 +353,8 @@ struct PolishReleaseViewModelTests {
         #expect(!NavigationDestination.polishRelease.accessibilityLabel.isEmpty)
     }
 
-    @Test("NavigationDestination now has 16 cases")
+    @Test("NavigationDestination includes the current 23-case catalog")
     func testNavigationDestinationCaseCount() {
-        #expect(NavigationDestination.allCases.count == 16)
+        #expect(NavigationDestination.allCases.count == 23)
     }
 }

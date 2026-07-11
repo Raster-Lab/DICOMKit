@@ -9,6 +9,16 @@ import Observation
 import DICOMKit
 import DICOMNetwork
 
+/// Injectable C-ECHO boundary. Production uses DICOMNetwork; deterministic
+/// tests can supply a closed local result without opening a socket.
+public typealias NetworkingEchoOperation = @Sendable (
+    _ host: String,
+    _ port: UInt16,
+    _ callingAE: String,
+    _ calledAE: String,
+    _ timeout: TimeInterval
+) async throws -> VerificationResult
+
 /// ViewModel for the DICOM Networking Hub, managing state for all nine networking
 /// sections: server configuration, C-ECHO, C-FIND, C-MOVE/GET, C-STORE, MWL,
 /// MPPS, Print Management, and Network Monitoring.
@@ -22,6 +32,7 @@ public final class NetworkingViewModel {
     // MARK: - Dependencies
 
     private let service: NetworkingService
+    private let echoOperation: NetworkingEchoOperation
 
     // MARK: - Navigation
 
@@ -133,9 +144,32 @@ public final class NetworkingViewModel {
 
     // MARK: - Init
 
-    public init(service: NetworkingService = NetworkingService()) {
+    public init(
+        service: NetworkingService = NetworkingService(),
+        echoOperation: NetworkingEchoOperation? = nil
+    ) {
         self.service = service
+        // Do not use an escaping async closure as a default argument here. Swift
+        // may allocate default-argument closures in the creating task's local
+        // allocator, then trap if the stored closure is released by another task.
+        self.echoOperation = echoOperation ?? Self.performNetworkEcho
         loadAllState()
+    }
+
+    private static func performNetworkEcho(
+        host: String,
+        port: UInt16,
+        callingAE: String,
+        calledAE: String,
+        timeout: TimeInterval
+    ) async throws -> VerificationResult {
+        try await DICOMVerificationService.echo(
+            host: host,
+            port: port,
+            callingAE: callingAE,
+            calledAE: calledAE,
+            timeout: timeout
+        )
     }
 
     // MARK: - Load All State
@@ -203,12 +237,12 @@ public final class NetworkingViewModel {
 
         let result: EchoResult
         do {
-            let verificationResult = try await DICOMVerificationService.echo(
-                host: profile.host,
-                port: profile.port,
-                callingAE: profile.localAETitle,
-                calledAE: profile.remoteAETitle,
-                timeout: profile.timeoutSeconds
+            let verificationResult = try await echoOperation(
+                profile.host,
+                profile.port,
+                profile.localAETitle,
+                profile.remoteAETitle,
+                profile.timeoutSeconds
             )
             result = EchoResult(
                 serverProfileID: profileID,

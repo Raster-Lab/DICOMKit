@@ -289,25 +289,24 @@ struct DicomJsonCommandTests {
     }
 }
 
-// MARK: - dicom-json Format Tests
+// MARK: - dicom-json Output Model Tests
 
-@Suite("DicomJson Format Tests")
+@Suite("DicomJson Output Model Tests")
 struct DicomJsonFormatTests {
-    @Test("dicom-json has 2 format options")
-    func testFormatCount() {
+    @Test("dicom-json does not expose the removed no-op format option")
+    func testRemovedFormatIsAbsent() {
         let tool = ToolRegistry.dicomJson
-        let formatParam = tool.parameters.first { $0.id == "format" }
-        #expect(formatParam != nil)
-        #expect(formatParam?.enumValues?.count == 2)
+        #expect(tool.parameters.allSatisfy { $0.id != "format" })
     }
 
-    @Test("dicom-json format includes standard and dicomweb")
-    func testFormatValues() {
-        let tool = ToolRegistry.dicomJson
-        let formatParam = tool.parameters.first { $0.id == "format" }
-        let values = formatParam?.enumValues?.map(\.value) ?? []
-        #expect(values.contains("standard"))
-        #expect(values.contains("dicomweb"))
+    @Test("legacy format input cannot reintroduce an unsupported CLI flag")
+    func testLegacyFormatValueIsIgnored() {
+        let command = CommandBuilder(tool: ToolRegistry.dicomJson).buildCommand(values: [
+            "input": "scan.dcm",
+            "format": "standard",
+        ])
+        #expect(command.contains("scan.dcm"))
+        #expect(!command.contains("--format"))
     }
 
     @Test("dicom-json with pretty print and metadata-only")

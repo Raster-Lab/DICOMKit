@@ -24,9 +24,9 @@ struct DICOMwebModelTests {
         }
     }
 
-    @Test("DICOMwebTab has 6 cases")
+    @Test("DICOMwebTab has 7 cases")
     func testDICOMwebTabCaseCount() {
-        #expect(DICOMwebTab.allCases.count == 6)
+        #expect(DICOMwebTab.allCases.count == 7)
     }
 
     // MARK: - DICOMwebAuthMethod

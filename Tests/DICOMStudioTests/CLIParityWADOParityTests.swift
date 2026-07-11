@@ -175,8 +175,12 @@ final class CLIParityWADOParityTests: XCTestCase {
         for s in CLIParityNetworkScenarios.wadoScenarios(scope: scope) {
             XCTAssertEqual(s.toolId, "dicom-wado")
             XCTAssertTrue(subs.contains(s.cliArgs.first ?? ""), "\(s.scenarioId) must begin with a dicom-wado subcommand")
-            XCTAssertTrue(s.cliArgs.contains(CLIParityNetworkScenarios.webURLToken),
-                          "\(s.scenarioId) must carry the WEBURL token")
+            let endpointToken = s.studioParams["wado-mode"] == "retrieve-uri"
+                ? CLIParityNetworkScenarios.webWADOURIURLToken
+                : CLIParityNetworkScenarios.webURLToken
+            XCTAssertTrue(
+                s.cliArgs.contains(endpointToken),
+                "\(s.scenarioId) must carry its protocol-specific endpoint token")
         }
     }
 

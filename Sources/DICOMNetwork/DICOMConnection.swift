@@ -1,4 +1,5 @@
 import Foundation
+
 #if canImport(Network)
 import Network
 
@@ -32,6 +33,166 @@ private final class ContinuationResumeOnce<T: Sendable, E: Error>: @unchecked Se
         self.continuation = nil
         lock.unlock()
         continuation.resume(with: result)
+    }
+}
+
+/// A throwing continuation gate that is safe when cancellation wins before the
+/// continuation has been installed. Late transport callbacks are ignored, so a
+/// cancel/result race can never resume the continuation twice.
+private final class DeferredThrowingContinuationResumeOnce<T: Sendable>: @unchecked Sendable {
+    private let lock = NSRecursiveLock()
+    private var continuation: CheckedContinuation<T, any Error>?
+    private var pendingResult: Result<T, any Error>?
+    private var completed = false
+
+    /// Installs the continuation. Returns `false` when cancellation or another
+    /// result already won the race and the continuation was resumed immediately.
+    @discardableResult
+    func install(_ continuation: CheckedContinuation<T, any Error>) -> Bool {
+        lock.lock()
+        if let pendingResult {
+            self.pendingResult = nil
+            lock.unlock()
+            continuation.resume(with: pendingResult)
+            return false
+        }
+        guard !completed else {
+            lock.unlock()
+            return false
+        }
+        self.continuation = continuation
+        lock.unlock()
+        return true
+    }
+
+    /// Attempts to complete the operation. Returns `true` only for the winning
+    /// result; all later callbacks are deliberately ignored.
+    @discardableResult
+    func resume(
+        with result: Result<T, any Error>,
+        beforeResuming: () -> Void = {}
+    ) -> Bool {
+        lock.lock()
+        guard !completed else {
+            lock.unlock()
+            return false
+        }
+        completed = true
+        beforeResuming()
+        guard let continuation else {
+            pendingResult = result
+            lock.unlock()
+            return true
+        }
+        self.continuation = nil
+        lock.unlock()
+        continuation.resume(with: result)
+        return true
+    }
+
+    /// Serializes transport submission with cancellation. If cancellation won
+    /// first, `operation` is not invoked. If submission won, cancellation waits
+    /// until the transport has accepted the operation and then aborts it.
+    @discardableResult
+    func performIfIncomplete(_ operation: () -> Void) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !completed else { return false }
+        operation()
+        return true
+    }
+
+    var hasCompleted: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return completed
+    }
+}
+
+/// Small internal transport boundary used to make cancellation deterministic and
+/// to test connection races without opening a socket. It is not public API.
+enum DICOMConnectionTransportState: Sendable {
+    case ready
+    case failed(String)
+    case cancelled
+    case waiting
+    case other
+}
+
+protocol DICOMConnectionTransport: AnyObject, Sendable {
+    func setStateUpdateHandler(_ handler: (@Sendable (DICOMConnectionTransportState) -> Void)?)
+    func start()
+    func send(content: Data, completion: @escaping @Sendable (String?) -> Void)
+    func receive(
+        minimumIncompleteLength: Int,
+        maximumLength: Int,
+        completion: @escaping @Sendable (Data?, Bool, String?) -> Void
+    )
+    func cancel()
+    func forceCancel()
+}
+
+private final class NetworkFrameworkDICOMConnectionTransport: DICOMConnectionTransport,
+    @unchecked Sendable
+{
+    private let connection: NWConnection
+
+    init(connection: NWConnection) {
+        self.connection = connection
+    }
+
+    func setStateUpdateHandler(_ handler: (@Sendable (DICOMConnectionTransportState) -> Void)?) {
+        guard let handler else {
+            connection.stateUpdateHandler = nil
+            return
+        }
+        connection.stateUpdateHandler = { state in
+            switch state {
+            case .ready:
+                handler(.ready)
+            case .failed(let error):
+                handler(.failed(error.localizedDescription))
+            case .cancelled:
+                handler(.cancelled)
+            case .waiting:
+                handler(.waiting)
+            default:
+                handler(.other)
+            }
+        }
+    }
+
+    func start() {
+        connection.start(queue: .global(qos: .userInitiated))
+    }
+
+    func send(content: Data, completion: @escaping @Sendable (String?) -> Void) {
+        connection.send(
+            content: content,
+            completion: .contentProcessed { error in
+                completion(error?.localizedDescription)
+            })
+    }
+
+    func receive(
+        minimumIncompleteLength: Int,
+        maximumLength: Int,
+        completion: @escaping @Sendable (Data?, Bool, String?) -> Void
+    ) {
+        connection.receive(
+            minimumIncompleteLength: minimumIncompleteLength,
+            maximumLength: maximumLength
+        ) { data, _, isComplete, error in
+            completion(data, isComplete, error?.localizedDescription)
+        }
+    }
+
+    func cancel() {
+        connection.cancel()
+    }
+
+    func forceCancel() {
+        connection.forceCancel()
     }
 }
 
@@ -84,8 +245,9 @@ public final class DICOMConnection: @unchecked Sendable {
     /// The TLS configuration (nil if TLS is not enabled)
     public let tlsConfiguration: TLSConfiguration?
     
-    /// The underlying network connection
-    private let connection: NWConnection
+    /// The underlying transport. Production uses Network.framework; tests can
+    /// inject a deterministic transport through the internal initializer.
+    private let transport: any DICOMConnectionTransport
     
     /// Current state of the connection
     public private(set) var state: State = .idle
@@ -101,7 +263,9 @@ public final class DICOMConnection: @unchecked Sendable {
     ///   - maxPDUSize: Maximum PDU size for receiving (default: 16KB)
     ///   - timeout: Connection timeout in seconds (default: 30)
     ///   - tlsEnabled: Whether to use TLS encryption (default: false)
-    @available(*, deprecated, message: "Use init(host:port:maxPDUSize:timeout:tlsConfiguration:) instead")
+    @available(
+        *, deprecated, message: "Use init(host:port:maxPDUSize:timeout:tlsConfiguration:) instead"
+    )
     public init(
         host: String,
         port: UInt16 = dicomDefaultPort,
@@ -125,7 +289,9 @@ public final class DICOMConnection: @unchecked Sendable {
             parameters = NWParameters.tcp
         }
         
-        self.connection = NWConnection(host: nwHost, port: nwPort, using: parameters)
+        self.transport = NetworkFrameworkDICOMConnectionTransport(
+            connection: NWConnection(host: nwHost, port: nwPort, using: parameters)
+        )
     }
     
     /// Creates a new DICOM connection with TLS configuration
@@ -161,9 +327,28 @@ public final class DICOMConnection: @unchecked Sendable {
             parameters = NWParameters.tcp
         }
         
-        self.connection = NWConnection(host: nwHost, port: nwPort, using: parameters)
+        self.transport = NetworkFrameworkDICOMConnectionTransport(
+            connection: NWConnection(host: nwHost, port: nwPort, using: parameters)
+        )
     }
     
+    /// Internal test seam for deterministic transport cancellation tests.
+    init(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        timeout: TimeInterval = 30,
+        tlsConfiguration: TLSConfiguration? = nil,
+        transport: any DICOMConnectionTransport
+    ) {
+        self.host = host
+        self.port = port
+        self.maxPDUSize = maxPDUSize
+        self.timeout = timeout
+        self.tlsConfiguration = tlsConfiguration
+        self.transport = transport
+    }
+
     /// Establishes the TCP connection
     ///
     /// - Throws: `DICOMNetworkError.connectionFailed` if connection cannot be established
@@ -174,55 +359,136 @@ public final class DICOMConnection: @unchecked Sendable {
         }
         
         state = .connecting
-        
-        return try await withCheckedThrowingContinuation { continuation in
-            let resumeOnce = ContinuationResumeOnce(continuation)
-            
-            // Set up state handler
-            connection.stateUpdateHandler = { [weak self] newState in
-                guard let self = self else { return }
-                
-                switch newState {
-                case .ready:
-                    self.state = .connected
-                    resumeOnce.resume(with: .success(()))
-                    
-                case .failed(let error):
-                    self.state = .failed(error.localizedDescription)
-                    resumeOnce.resume(with: .failure(DICOMNetworkError.connectionFailed(error.localizedDescription)))
-                    
-                case .cancelled:
-                    self.state = .disconnected
-                    resumeOnce.resume(with: .failure(DICOMNetworkError.connectionClosed))
-                    
-                case .waiting:
-                    // `.waiting` is TRANSIENT in Network.framework — NOT a terminal
-                    // failure. The connection can't be established *yet*: on first run
-                    // this is the macOS Local Network permission prompt (or interface/
-                    // route warm-up, or a momentarily-unreachable host). NWConnection
-                    // keeps retrying and transitions to `.ready` once conditions are met.
-                    // Resuming with a failure here is exactly what made the FIRST
-                    // dicom-echo fail while the retry succeeded — so stay in `.connecting`
-                    // and let the timeout below bound a host that never becomes ready.
-                    self.state = .connecting
 
-                default:
-                    break
+        // A zero, negative, infinite, or NaN deadline has already elapsed. Do
+        // not race transport startup against an immediately-expiring sleeper:
+        // task scheduling could otherwise let a credential-bearing association
+        // request escape before the timeout child is selected.
+        guard timeout.isFinite, timeout > 0 else {
+            transport.setStateUpdateHandler(nil)
+            transport.forceCancel()
+            state = .failed("Connection timed out")
+            throw DICOMNetworkError.timeout
+        }
+        
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await self.waitForTransportReady()
+                }
+                group.addTask { [timeout] in
+                    try await Task.sleep(for: .seconds(timeout))
+                    throw DICOMNetworkError.timeout
+                }
+                
+                defer { group.cancelAll() }
+                guard try await group.next() != nil else {
+                    throw DICOMNetworkError.connectionFailed("Connection operation ended unexpectedly")
                 }
             }
-            
-            // Start the connection
-            connection.start(queue: .global(qos: .userInitiated))
-            
-            // Set up timeout
-            Task {
-                try? await Task.sleep(for: .seconds(timeout))
-                if !resumeOnce.hasResumed {
-                    self.connection.cancel()
-                    self.state = .failed("Connection timed out")
-                    resumeOnce.resume(with: .failure(DICOMNetworkError.timeout))
+        } catch DICOMNetworkError.timeout {
+            // The ready and timeout children may finish together. Even if the
+            // ready continuation already won internally, a timeout selected by
+            // the task group must tear down that transport before returning.
+            transport.setStateUpdateHandler(nil)
+            transport.forceCancel()
+            state = .failed("Connection timed out")
+            throw DICOMNetworkError.timeout
+        } catch is CancellationError {
+            if state != .disconnected {
+                transport.setStateUpdateHandler(nil)
+                transport.forceCancel()
+            }
+            state = .disconnected
+            throw CancellationError()
+        } catch {
+            throw error
+        }
+    }
+
+    /// Waits for the transport to become ready and cooperatively tears it down
+    /// when the caller or timeout race cancels this task.
+    private func waitForTransportReady() async throws {
+        let resumeOnce = DeferredThrowingContinuationResumeOnce<Void>()
+
+        try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard resumeOnce.install(continuation) else { return }
+
+                if Task.isCancelled {
+                    resumeOnce.resume(
+                        with: .failure(CancellationError()),
+                        beforeResuming: {
+                            self.state = .disconnected
+                            self.transport.setStateUpdateHandler(nil)
+                            self.transport.cancel()
+                        }
+                    )
+                    return
+                }
+
+                resumeOnce.performIfIncomplete {
+                    self.transport.setStateUpdateHandler { [weak self] newState in
+                        guard let self else { return }
+
+                        switch newState {
+                        case .ready:
+                            resumeOnce.resume(
+                                with: .success(()),
+                                beforeResuming: {
+                                    self.state = .connected
+                                }
+                            )
+
+                        case .failed(let message):
+                            let completedConnect = resumeOnce.resume(
+                                with: .failure(DICOMNetworkError.connectionFailed(message)),
+                                beforeResuming: {
+                                    self.state = .failed(message)
+                                    self.transport.setStateUpdateHandler(nil)
+                                }
+                            )
+                            if !completedConnect, self.state == .connected {
+                                self.state = .failed(message)
+                                self.transport.setStateUpdateHandler(nil)
+                            }
+
+                        case .cancelled:
+                            let completedConnect = resumeOnce.resume(
+                                with: .failure(DICOMNetworkError.connectionClosed),
+                                beforeResuming: {
+                                    self.state = .disconnected
+                                    self.transport.setStateUpdateHandler(nil)
+                                }
+                            )
+                            if !completedConnect, self.state == .connected {
+                                self.state = .disconnected
+                                self.transport.setStateUpdateHandler(nil)
+                            }
+
+                        case .waiting:
+                            // Waiting is transient (for example, the Local Network
+                            // permission prompt). The timeout task remains authoritative.
+                            if !resumeOnce.hasCompleted {
+                                self.state = .connecting
+                            }
+
+                        case .other:
+                            break
+                        }
+                    }
+                    self.transport.start()
                 }
             }
+        } onCancel: {
+            resumeOnce.resume(
+                with: .failure(CancellationError()),
+                beforeResuming: {
+                    self.state = .disconnected
+                    self.transport.setStateUpdateHandler(nil)
+                    self.transport.cancel()
+                }
+            )
         }
     }
     
@@ -249,14 +515,46 @@ public final class DICOMConnection: @unchecked Sendable {
             throw DICOMNetworkError.invalidState("Cannot send: connection not established")
         }
         
-        return try await withCheckedThrowingContinuation { continuation in
-            connection.send(content: data, completion: .contentProcessed { error in
-                if let error = error {
-                    continuation.resume(throwing: DICOMNetworkError.connectionFailed("Send failed: \(error.localizedDescription)"))
-                } else {
-                    continuation.resume(returning: ())
+        let resumeOnce = DeferredThrowingContinuationResumeOnce<Void>()
+
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard resumeOnce.install(continuation) else { return }
+
+                if Task.isCancelled {
+                    resumeOnce.resume(
+                        with: .failure(CancellationError()),
+                        beforeResuming: {
+                            self.state = .disconnected
+                            self.transport.setStateUpdateHandler(nil)
+                            self.transport.forceCancel()
+                        }
+                    )
+                    return
                 }
-            })
+
+                resumeOnce.performIfIncomplete {
+                    self.transport.send(content: data) { errorMessage in
+                        if let errorMessage {
+                            resumeOnce.resume(
+                                with: .failure(
+                                    DICOMNetworkError.connectionFailed("Send failed: \(errorMessage)")
+                                ))
+                        } else {
+                            resumeOnce.resume(with: .success(()))
+                        }
+                    }
+                }
+            }
+        } onCancel: {
+            resumeOnce.resume(
+                with: .failure(CancellationError()),
+                beforeResuming: {
+                    self.state = .disconnected
+                    self.transport.setStateUpdateHandler(nil)
+                    self.transport.forceCancel()
+                }
+            )
         }
     }
     
@@ -306,31 +604,57 @@ public final class DICOMConnection: @unchecked Sendable {
         // bound it cooperatively instead: honor task cancellation by tearing the socket
         // down. Cancelling the NWConnection makes Network.framework deliver a terminal
         // state to the completion handler, which resumes the continuation.
+        let resumeOnce = DeferredThrowingContinuationResumeOnce<Data>()
+
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let resumeOnce = ContinuationResumeOnce(continuation)
+                guard resumeOnce.install(continuation) else { return }
+
                 // Already cancelled before the receive was even posted — bail immediately.
                 if Task.isCancelled {
-                    connection.cancel()
-                    resumeOnce.resume(with: .failure(CancellationError()))
+                    resumeOnce.resume(
+                        with: .failure(CancellationError()),
+                        beforeResuming: {
+                            self.state = .disconnected
+                            self.transport.setStateUpdateHandler(nil)
+                            self.transport.cancel()
+                        }
+                    )
                     return
                 }
-                connection.receive(minimumIncompleteLength: length, maximumLength: length) { data, _, isComplete, error in
-                    if let error = error {
-                        resumeOnce.resume(with: .failure(DICOMNetworkError.connectionFailed("Receive failed: \(error.localizedDescription)")))
-                    } else if let data = data, data.count >= length {
-                        resumeOnce.resume(with: .success(data))
-                    } else if isComplete {
-                        resumeOnce.resume(with: .failure(DICOMNetworkError.connectionClosed))
-                    } else {
-                        resumeOnce.resume(with: .failure(DICOMNetworkError.decodingFailed("Incomplete data received")))
+
+                resumeOnce.performIfIncomplete {
+                    self.transport.receive(
+                        minimumIncompleteLength: length,
+                        maximumLength: length
+                    ) { data, isComplete, errorMessage in
+                        if let errorMessage {
+                            resumeOnce.resume(
+                                with: .failure(
+                                    DICOMNetworkError.connectionFailed("Receive failed: \(errorMessage)")
+                                ))
+                        } else if let data, data.count >= length {
+                            resumeOnce.resume(with: .success(data))
+                        } else if isComplete {
+                            resumeOnce.resume(with: .failure(DICOMNetworkError.connectionClosed))
+                        } else {
+                            resumeOnce.resume(
+                                with: .failure(
+                                    DICOMNetworkError.decodingFailed("Incomplete data received")
+                                ))
+                        }
                     }
                 }
             }
-        } onCancel: { [connection] in
-            // Unblocks the pending receive above: the cancellation surfaces through the
-            // completion handler as an error/closed state, resuming the continuation.
-            connection.cancel()
+        } onCancel: {
+            resumeOnce.resume(
+                with: .failure(CancellationError()),
+                beforeResuming: {
+                    self.state = .disconnected
+                    self.transport.setStateUpdateHandler(nil)
+                    self.transport.cancel()
+                }
+            )
         }
     }
     
@@ -345,13 +669,15 @@ public final class DICOMConnection: @unchecked Sendable {
         state = .disconnecting
         
         return await withCheckedContinuation { continuation in
-            connection.stateUpdateHandler = { [weak self] newState in
+            let resumeOnce = ContinuationResumeOnce(continuation)
+            transport.setStateUpdateHandler { [weak self] newState in
                 if case .cancelled = newState {
                     self?.state = .disconnected
-                    continuation.resume()
+                    self?.transport.setStateUpdateHandler(nil)
+                    resumeOnce.resume(with: .success(()))
                 }
             }
-            connection.cancel()
+            transport.cancel()
         }
     }
     
@@ -359,7 +685,8 @@ public final class DICOMConnection: @unchecked Sendable {
     ///
     /// Immediately closes the connection without waiting for pending data.
     public func abort() {
-        connection.forceCancel()
+        transport.setStateUpdateHandler(nil)
+        transport.forceCancel()
         state = .disconnected
     }
 }

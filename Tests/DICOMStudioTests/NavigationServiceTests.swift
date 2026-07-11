@@ -42,31 +42,23 @@ struct NavigationServiceTests {
         #expect(!primary.contains(.settings))
     }
 
-    @Test("Primary destinations include all non-settings items")
+    @Test("Primary destinations include every grouped sidebar item")
     func testPrimaryDestinationsCount() {
-        let primary = NavigationService.primaryDestinations
-        #expect(primary.count == NavigationDestination.allCases.count - 1)
+        let expected = NavigationDestination.allCases.filter {
+            $0 != .settings && $0 != .networkUtility
+        }
+        #expect(NavigationService.primaryDestinations == expected)
     }
 
-    @Test("All sixteen destinations exist")
+    @Test("The complete navigation destination catalog exists")
     func testAllDestinationsExist() {
-        let allCases = NavigationDestination.allCases
-        #expect(allCases.count == 16)
-        #expect(allCases.contains(.library))
-        #expect(allCases.contains(.viewer))
-        #expect(allCases.contains(.volumeViewer))
-        #expect(allCases.contains(.jp3dComparison))
-        #expect(allCases.contains(.networking))
-        #expect(allCases.contains(.dicomWeb))
-        #expect(allCases.contains(.reporting))
-        #expect(allCases.contains(.tools))
-        #expect(allCases.contains(.security))
-        #expect(allCases.contains(.cliWorkshop))
-        #expect(allCases.contains(.performanceTools))
-        #expect(allCases.contains(.macOSEnhancements))
-        #expect(allCases.contains(.polishRelease))
-        #expect(allCases.contains(.integrationTesting))
-        #expect(allCases.contains(.settings))
+        #expect(Set(NavigationDestination.allCases) == [
+            .library, .viewer, .volumeViewer, .jp3dComparison, .aiAnalysis,
+            .networking, .dicomWeb, .cloudIntegration, .gateway, .reporting,
+            .tools, .validation, .archiveManagement, .security, .cliWorkshop,
+            .cliParity, .networkUtility, .performanceTools, .macOSEnhancements,
+            .polishRelease, .integrationTesting, .j2kTestBench, .settings,
+        ])
     }
 
     @Test("NavigationService can be created")

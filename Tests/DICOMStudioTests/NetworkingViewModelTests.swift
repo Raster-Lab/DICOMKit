@@ -9,6 +9,12 @@ import Foundation
 @MainActor
 struct NetworkingViewModelTests {
 
+    private func makeOfflineViewModel() -> NetworkingViewModel {
+        NetworkingViewModel { _, _, _, _, _ in
+            throw URLError(.cannotConnectToHost)
+        }
+    }
+
     // MARK: - Navigation
 
     @Test("default activeTab is serverConfig")
@@ -88,7 +94,7 @@ struct NetworkingViewModelTests {
     @Test("performEcho records result for unreachable server")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testPerformEcho() async {
-        let vm = NetworkingViewModel()
+        let vm = makeOfflineViewModel()
         let profile = PACSServerProfile(name: "PACS", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
@@ -101,7 +107,7 @@ struct NetworkingViewModelTests {
     @Test("performEcho failure updates server status to error")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testPerformEchoFailure() async {
-        let vm = NetworkingViewModel()
+        let vm = makeOfflineViewModel()
         let profile = PACSServerProfile(name: "PACS", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
@@ -112,7 +118,7 @@ struct NetworkingViewModelTests {
     @Test("clearEchoHistory empties echoHistory")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testClearEchoHistory() async {
-        let vm = NetworkingViewModel()
+        let vm = makeOfflineViewModel()
         let profile = PACSServerProfile(name: "P", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
@@ -124,7 +130,7 @@ struct NetworkingViewModelTests {
     @Test("performBatchEcho runs echo for each server")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testPerformBatchEcho() async {
-        let vm = NetworkingViewModel()
+        let vm = makeOfflineViewModel()
         let p1 = PACSServerProfile(name: "P1", host: "192.0.2.1", remoteAETitle: "A1", localAETitle: "DS")
         let p2 = PACSServerProfile(name: "P2", host: "192.0.2.2", remoteAETitle: "A2", localAETitle: "DS")
         vm.addServerProfile(p1)
@@ -427,7 +433,7 @@ struct NetworkingViewModelTests {
     @Test("filteredAuditLog returns all when searchQuery is empty")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testFilteredAuditLogEmpty() async {
-        let vm = NetworkingViewModel()
+        let vm = makeOfflineViewModel()
         let profile = PACSServerProfile(name: "P", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
@@ -439,7 +445,7 @@ struct NetworkingViewModelTests {
     @Test("filteredAuditLog filters by search query")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testFilteredAuditLogSearch() async {
-        let vm = NetworkingViewModel()
+        let vm = makeOfflineViewModel()
         let profile = PACSServerProfile(name: "MY_PACS", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)
@@ -459,7 +465,7 @@ struct NetworkingViewModelTests {
     @Test("clearAuditLog empties auditLog")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testClearAuditLog() async {
-        let vm = NetworkingViewModel()
+        let vm = makeOfflineViewModel()
         let profile = PACSServerProfile(name: "P", host: "192.0.2.1",
                                         remoteAETitle: "AE", localAETitle: "DS")
         vm.addServerProfile(profile)

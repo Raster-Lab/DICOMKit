@@ -6,6 +6,16 @@
 import Testing
 @testable import DICOMStudio
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#endif
+
+private func makeFileOperationsTemporaryDirectory() throws -> URL {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("DICOMKit-FileOperations-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+    return url
+}
 
 // MARK: - Model Tests
 
@@ -784,6 +794,29 @@ struct FileOperationsHelpersTests {
         #expect(DirectoryInputHelpers.dicomExtensions.contains("dcm"))
         #expect(DirectoryInputHelpers.dicomExtensions.contains("dicom"))
     }
+
+    #if canImport(Darwin)
+    @Test("Directory scanning never opens or counts named pipes")
+    func test_directoryInputHelpers_namedPipesAreNotFiles() throws {
+        let directory = try makeFileOperationsTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let extensionlessPipe = directory.appendingPathComponent("extensionless-pipe")
+        let dicomNamedPipe = directory.appendingPathComponent("misleading.dcm")
+        #expect(mkfifo(extensionlessPipe.path, 0o600) == 0)
+        #expect(mkfifo(dicomNamedPipe.path, 0o600) == 0)
+
+        let validation = FileValidationHelpers.quickValidate(url: extensionlessPipe)
+        guard case .unreadable = validation else {
+            Issue.record("A named pipe must be rejected before it is opened")
+            return
+        }
+        #expect(
+            DirectoryInputHelpers.countDICOMFiles(
+                in: directory,
+                scanMode: .recursive
+            ) == 0)
+    }
+    #endif
 }
 
 // MARK: - Service Tests
@@ -931,10 +964,12 @@ struct FileOperationsServiceTests {
     }
 
     @Test("setDirectory accepts a real directory and sets URL")
-    func test_service_setDirectory_acceptsDirectory() {
+    func test_service_setDirectory_acceptsDirectory() throws {
+        let directory = try makeFileOperationsTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
         let service = FileOperationsService()
-        service.setDirectory(URL(fileURLWithPath: "/tmp"))
-        #expect(service.getDirectoryDrop().directoryURL?.path == "/tmp")
+        service.setDirectory(directory)
+        #expect(service.getDirectoryDrop().directoryURL == directory)
     }
 
     @Test("setScanMode changes the scan mode")
@@ -945,9 +980,11 @@ struct FileOperationsServiceTests {
     }
 
     @Test("clearDirectory resets directory drop state")
-    func test_service_clearDirectory_resetsState() {
+    func test_service_clearDirectory_resetsState() throws {
+        let directory = try makeFileOperationsTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
         let service = FileOperationsService()
-        service.setDirectory(URL(fileURLWithPath: "/tmp"))
+        service.setDirectory(directory)
         service.clearDirectory()
         #expect(service.getDirectoryDrop().directoryURL == nil)
         #expect(service.getDirectoryDrop().dicomFileCount == 0)
@@ -1126,9 +1163,11 @@ struct FileOperationsViewModelTests {
 
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     @Test("clearDirectory resets directoryDrop")
-    func test_viewModel_clearDirectory_resetsDirectoryDrop() {
+    func test_viewModel_clearDirectory_resetsDirectoryDrop() throws {
+        let directory = try makeFileOperationsTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
         let vm = FileOperationsViewModel()
-        vm.dropDirectory(url: URL(fileURLWithPath: "/tmp"))
+        vm.dropDirectory(url: directory)
         vm.clearDirectory()
         #expect(vm.directoryDrop.directoryURL == nil)
     }

@@ -489,19 +489,7 @@ public actor ConnectionPool {
     private func createConnection(
         presentationContexts: [PresentationContext]
     ) async throws -> PooledConnection {
-        let config = AssociationConfiguration(
-            callingAETitle: clientConfiguration.callingAETitle,
-            calledAETitle: clientConfiguration.calledAETitle,
-            host: clientConfiguration.host,
-            port: clientConfiguration.port,
-            maxPDUSize: clientConfiguration.maxPDUSize,
-            implementationClassUID: clientConfiguration.implementationClassUID,
-            implementationVersionName: clientConfiguration.implementationVersionName,
-            timeout: clientConfiguration.timeout,
-            artimTimeout: 30,
-            tlsEnabled: clientConfiguration.tlsEnabled,
-            userIdentity: clientConfiguration.userIdentity
-        )
+        let config = clientConfiguration.pooledAssociationConfiguration()
         
         let association = Association(configuration: config)
         

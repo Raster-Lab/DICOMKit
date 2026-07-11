@@ -164,6 +164,11 @@ public struct RetrieveConfiguration: Sendable, Hashable {
     
     /// The Query/Retrieve Information Model to use
     public let informationModel: QueryRetrieveInformationModel
+
+#if canImport(Network)
+    /// Complete TLS transport policy, or `nil` for plain TCP
+    public let tlsConfiguration: TLSConfiguration?
+#endif
     
     /// User identity for authentication (optional)
     public let userIdentity: UserIdentity?
@@ -202,8 +207,52 @@ public struct RetrieveConfiguration: Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.informationModel = informationModel
+#if canImport(Network)
+        self.tlsConfiguration = nil
+#endif
         self.userIdentity = userIdentity
     }
+
+#if canImport(Network)
+    /// Creates a retrieve configuration with an exact TLS transport policy.
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 60,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        informationModel: QueryRetrieveInformationModel = .studyRoot,
+        tlsConfiguration: TLSConfiguration?,
+        userIdentity: UserIdentity? = nil
+    ) {
+        self.callingAETitle = callingAETitle
+        self.calledAETitle = calledAETitle
+        self.timeout = timeout
+        self.maxPDUSize = maxPDUSize
+        self.implementationClassUID = implementationClassUID
+        self.implementationVersionName = implementationVersionName
+        self.informationModel = informationModel
+        self.tlsConfiguration = tlsConfiguration
+        self.userIdentity = userIdentity
+    }
+
+    /// Builds the exact association configuration used by retrieve operations.
+    func associationConfiguration(host: String, port: UInt16) -> AssociationConfiguration {
+        AssociationConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            timeout: timeout,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+#endif
 }
 
 // MARK: - Retrieve Keys
@@ -669,6 +718,46 @@ public enum DICOMRetrieveService {
         )
     }
     
+    // MARK: - Full-Configuration Operations
+
+    /// Performs C-MOVE with an explicit retrieve configuration.
+    public static func move(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        configuration: RetrieveConfiguration,
+        keys: RetrieveKeys,
+        moveDestination: String,
+        onProgress: (@Sendable (RetrieveProgress) -> Void)? = nil
+    ) async throws -> RetrieveResult {
+        try await performMove(
+            host: host,
+            port: port,
+            configuration: configuration,
+            keys: keys,
+            moveDestination: moveDestination,
+            onProgress: onProgress
+        )
+    }
+
+    /// Performs C-GET with an explicit retrieve configuration.
+    public static func get(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        configuration: RetrieveConfiguration,
+        keys: RetrieveKeys,
+        storageSopClasses: [String]? = nil,
+        preferredTransferSyntaxUID: String? = nil
+    ) -> AsyncStream<GetEvent> {
+        performGet(
+            host: host,
+            port: port,
+            configuration: configuration,
+            keys: keys,
+            storageSopClasses: storageSopClasses ?? commonStorageSOPClassUIDs,
+            preferredTransferSyntaxUID: preferredTransferSyntaxUID
+        )
+    }
+
     // MARK: - Private Implementation - C-MOVE
     
     /// Performs the C-MOVE operation
@@ -689,17 +778,7 @@ public enum DICOMRetrieveService {
         }
         
         // Create association configuration
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: configuration.callingAETitle,
-            calledAETitle: configuration.calledAETitle,
-            host: host,
-            port: port,
-            maxPDUSize: configuration.maxPDUSize,
-            implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout,
-            userIdentity: configuration.userIdentity
-        )
+        let associationConfig = configuration.associationConfiguration(host: host, port: port)
         
         // Create association
         let association = Association(configuration: associationConfig)
@@ -854,17 +933,7 @@ public enum DICOMRetrieveService {
                     }
                     
                     // Create association configuration
-                    let associationConfig = AssociationConfiguration(
-                        callingAETitle: configuration.callingAETitle,
-                        calledAETitle: configuration.calledAETitle,
-                        host: host,
-                        port: port,
-                        maxPDUSize: configuration.maxPDUSize,
-                        implementationClassUID: configuration.implementationClassUID,
-                        implementationVersionName: configuration.implementationVersionName,
-                        timeout: configuration.timeout,
-                        userIdentity: configuration.userIdentity
-                    )
+                    let associationConfig = configuration.associationConfiguration(host: host, port: port)
                     
                     // Create association
                     let association = Association(configuration: associationConfig)

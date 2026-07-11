@@ -194,6 +194,12 @@ public enum FileValidationHelpers {
     ///
     /// - Returns: A `FileValidationResult` describing the outcome.
     public static func quickValidate(url: URL) -> FileValidationResult {
+        guard
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey]),
+            values.isRegularFile == true
+        else {
+            return .unreadable(reason: "Not a regular file")
+        }
         guard let handle = try? FileHandle(forReadingFrom: url) else {
             return .unreadable(reason: "Cannot open file")
         }
@@ -330,6 +336,10 @@ public enum DirectoryInputHelpers {
 
         var count = 0
         for case let url as URL in enumerator {
+            guard
+                let values = try? url.resourceValues(forKeys: [.isRegularFileKey]),
+                values.isRegularFile == true
+            else { continue }
             let ext = url.pathExtension.lowercased()
             if dicomExtensions.contains(ext) {
                 count += 1

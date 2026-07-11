@@ -23,6 +23,11 @@ public struct QueryConfiguration: Sendable, Hashable {
     
     /// The Query/Retrieve Information Model to use
     public let informationModel: QueryRetrieveInformationModel
+
+#if canImport(Network)
+    /// Complete TLS transport policy, or `nil` for plain TCP
+    public let tlsConfiguration: TLSConfiguration?
+#endif
     
     /// User identity for authentication (optional)
     ///
@@ -63,8 +68,52 @@ public struct QueryConfiguration: Sendable, Hashable {
         self.implementationClassUID = implementationClassUID
         self.implementationVersionName = implementationVersionName
         self.informationModel = informationModel
+#if canImport(Network)
+        self.tlsConfiguration = nil
+#endif
         self.userIdentity = userIdentity
     }
+
+#if canImport(Network)
+    /// Creates a query configuration with an exact TLS transport policy.
+    public init(
+        callingAETitle: AETitle,
+        calledAETitle: AETitle,
+        timeout: TimeInterval = 60,
+        maxPDUSize: UInt32 = defaultMaxPDUSize,
+        implementationClassUID: String = defaultImplementationClassUID,
+        implementationVersionName: String? = defaultImplementationVersionName,
+        informationModel: QueryRetrieveInformationModel = .studyRoot,
+        tlsConfiguration: TLSConfiguration?,
+        userIdentity: UserIdentity? = nil
+    ) {
+        self.callingAETitle = callingAETitle
+        self.calledAETitle = calledAETitle
+        self.timeout = timeout
+        self.maxPDUSize = maxPDUSize
+        self.implementationClassUID = implementationClassUID
+        self.implementationVersionName = implementationVersionName
+        self.informationModel = informationModel
+        self.tlsConfiguration = tlsConfiguration
+        self.userIdentity = userIdentity
+    }
+
+    /// Builds the exact association configuration used by query operations.
+    func associationConfiguration(host: String, port: UInt16) -> AssociationConfiguration {
+        AssociationConfiguration(
+            callingAETitle: callingAETitle,
+            calledAETitle: calledAETitle,
+            host: host,
+            port: port,
+            maxPDUSize: maxPDUSize,
+            implementationClassUID: implementationClassUID,
+            implementationVersionName: implementationVersionName,
+            timeout: timeout,
+            tlsConfiguration: tlsConfiguration,
+            userIdentity: userIdentity
+        )
+    }
+#endif
 }
 
 #if canImport(Network)
@@ -246,6 +295,68 @@ public enum DICOMQueryService {
         return results.map { $0.toInstanceResult() }
     }
     
+    // MARK: - Full-Configuration Queries
+
+    /// Finds studies using an explicit query configuration.
+    public static func findStudies(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        configuration: QueryConfiguration,
+        matching: QueryKeys? = nil
+    ) async throws -> [StudyResult] {
+        let results = try await performFind(
+            host: host,
+            port: port,
+            configuration: configuration,
+            level: .study,
+            queryKeys: matching ?? QueryKeys.defaultStudyKeys()
+        )
+        return results.map { $0.toStudyResult() }
+    }
+
+    /// Finds series using an explicit query configuration.
+    public static func findSeries(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        configuration: QueryConfiguration,
+        forStudy studyInstanceUID: String,
+        matching: QueryKeys? = nil
+    ) async throws -> [SeriesResult] {
+        var queryKeys = matching ?? QueryKeys.defaultSeriesKeys()
+        queryKeys = queryKeys.studyInstanceUID(studyInstanceUID)
+        let results = try await performFind(
+            host: host,
+            port: port,
+            configuration: configuration,
+            level: .series,
+            queryKeys: queryKeys
+        )
+        return results.map { $0.toSeriesResult() }
+    }
+
+    /// Finds instances using an explicit query configuration.
+    public static func findInstances(
+        host: String,
+        port: UInt16 = dicomDefaultPort,
+        configuration: QueryConfiguration,
+        forStudy studyInstanceUID: String,
+        forSeries seriesInstanceUID: String,
+        matching: QueryKeys? = nil
+    ) async throws -> [InstanceResult] {
+        var queryKeys = matching ?? QueryKeys.defaultInstanceKeys()
+        queryKeys = queryKeys
+            .studyInstanceUID(studyInstanceUID)
+            .seriesInstanceUID(seriesInstanceUID)
+        let results = try await performFind(
+            host: host,
+            port: port,
+            configuration: configuration,
+            level: .image,
+            queryKeys: queryKeys
+        )
+        return results.map { $0.toInstanceResult() }
+    }
+
     // MARK: - Generic Query
     
     /// Performs a generic C-FIND query
@@ -374,17 +485,7 @@ public enum DICOMQueryService {
         }
         
         // Create association configuration
-        let associationConfig = AssociationConfiguration(
-            callingAETitle: configuration.callingAETitle,
-            calledAETitle: configuration.calledAETitle,
-            host: host,
-            port: port,
-            maxPDUSize: configuration.maxPDUSize,
-            implementationClassUID: configuration.implementationClassUID,
-            implementationVersionName: configuration.implementationVersionName,
-            timeout: configuration.timeout,
-            userIdentity: configuration.userIdentity
-        )
+        let associationConfig = configuration.associationConfiguration(host: host, port: port)
         
         // Create association
         let association = Association(configuration: associationConfig)

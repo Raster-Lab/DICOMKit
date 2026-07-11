@@ -288,17 +288,28 @@ extension UserIdentityServerResponse {
 
 // MARK: - CustomStringConvertible
 
-extension UserIdentity: CustomStringConvertible {
+extension UserIdentity: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public var description: String {
         var desc = "UserIdentity(type: \(identityType)"
-        if let username = username {
-            desc += ", username: \(username)"
-        }
         if positiveResponseRequested {
             desc += ", positiveResponseRequested"
         }
         desc += ")"
         return desc
+    }
+
+    public var debugDescription: String { description }
+
+    /// A deliberately redacted mirror so `dump` and nested configuration reflection
+    /// cannot expose usernames, passcodes, JWTs, assertions, or service tickets.
+    public var customMirror: Mirror {
+        let children: KeyValuePairs<String, Any> = [
+            "identityType": identityType,
+            "positiveResponseRequested": positiveResponseRequested,
+            "primaryFieldByteCount": primaryField.count,
+            "hasSecondaryField": secondaryField != nil,
+        ]
+        return Mirror(self, children: children, displayStyle: .struct)
     }
 }
 

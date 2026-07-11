@@ -111,7 +111,7 @@ struct UserIdentityTests {
         let description = identity.description
         
         #expect(description.contains("username"))
-        #expect(description.contains("testuser"))
+        #expect(!description.contains("testuser"))
         #expect(description.contains("positiveResponseRequested"))
     }
     

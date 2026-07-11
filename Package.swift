@@ -346,6 +346,12 @@ let package = Package(
         //     name: "DICOMNetworkTests",
         //     dependencies: ["DICOMNetwork"]
         // ),
+        // Security-critical, no-network regression coverage stays enabled even
+        // while the broader legacy DICOMNetworkTests target remains out of scope.
+        .testTarget(
+            name: "DICOMNetworkSecurityTests",
+            dependencies: ["DICOMNetwork"]
+        ),
         .testTarget(
             name: "DICOMWebTests",
             dependencies: ["DICOMWeb", "DICOMKit"]

@@ -14,12 +14,19 @@ struct DICOMwebViewModelTests {
     /// Builds a DICOMwebViewModel backed by a fresh tmp directory so each test
     /// starts with an empty profile store and never reads the user's real
     /// `~/Library/Application Support/DICOMStudio/dicomweb-server-profiles.json`.
-    private func makeIsolatedViewModel(service: DICOMwebService = DICOMwebService()) -> DICOMwebViewModel {
+    private func makeIsolatedViewModel(
+        service: DICOMwebService = DICOMwebService(),
+        connectionProbe: DICOMwebConnectionProbe? = nil
+    ) -> DICOMwebViewModel {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("DICOMwebVMTest-\(UUID().uuidString)", isDirectory: true)
         let storage = StorageService(baseDirectory: tempDir)
         let profileStorage = DICOMwebServerProfileStorageService(storageService: storage)
-        return DICOMwebViewModel(service: service, profileStorage: profileStorage)
+        return DICOMwebViewModel(
+            service: service,
+            profileStorage: profileStorage,
+            connectionProbe: connectionProbe
+        )
     }
 
     // MARK: - Navigation
@@ -125,13 +132,9 @@ struct DICOMwebViewModelTests {
     @Test("testConnection for unreachable profile sets error")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testConnectionUnreachableSetsError() async {
-        let vm = makeIsolatedViewModel()
-        // Use the RFC 2606 .invalid TLD — guaranteed to NXDOMAIN, no risk of
-        // accidentally hitting whatever pacs.example.com may resolve to in the
-        // future. NOTE: this test is still slow (~1208 s) because URLSession
-        // burns the full resourceTimeout × HTTPClient retry count even on
-        // NXDOMAIN; a real fix needs a DICOMwebService mock or a tunable
-        // timeouts parameter on DICOMwebClientFactory. See commit message.
+        let vm = makeIsolatedViewModel { _ in
+            throw URLError(.cannotConnectToHost)
+        }
         let profile = DICOMwebServerProfile(name: "WithURL", baseURL: "https://pacs.invalid")
         vm.addServerProfile(profile)
         await vm.testConnection(profileID: profile.id)

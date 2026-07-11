@@ -587,6 +587,35 @@ public struct ClientIdentity: @unchecked Sendable, Hashable {
     }
 }
 
+extension ClientIdentity.Source: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public var description: String {
+        switch self {
+        case .pkcs12:
+            return "pkcs12(redacted)"
+        case .keychain:
+            return "keychain(redacted)"
+        case .secIdentity:
+            return "SecIdentity(redacted)"
+        }
+    }
+
+    public var debugDescription: String { description }
+
+    public var customMirror: Mirror {
+        Mirror(self, children: ["source": description], displayStyle: .enum)
+    }
+}
+
+extension ClientIdentity: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
+    public var description: String { "ClientIdentity(\(source))" }
+
+    public var debugDescription: String { description }
+
+    public var customMirror: Mirror {
+        Mirror(self, children: ["source": source.description], displayStyle: .struct)
+    }
+}
+
 // MARK: - TLS Configuration Errors
 
 /// Errors that can occur when configuring TLS
@@ -714,7 +743,7 @@ extension TLSConfiguration {
 
 // MARK: - CustomStringConvertible
 
-extension TLSConfiguration: CustomStringConvertible {
+extension TLSConfiguration: CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
     public var description: String {
         var parts: [String] = []
         parts.append("TLS \(minimumVersion.rawValue)")
@@ -740,6 +769,33 @@ extension TLSConfiguration: CustomStringConvertible {
         }
         
         return parts.joined(separator: " ")
+    }
+
+    public var debugDescription: String { description }
+
+    /// A redacted mirror that retains operational TLS policy while replacing the
+    /// credential-bearing client identity with a presence flag.
+    public var customMirror: Mirror {
+        let validation: String
+        switch certificateValidation {
+        case .system:
+            validation = "system"
+        case .disabled:
+            validation = "disabled"
+        case .pinned(let certificates):
+            validation = "pinned(\(certificates.count))"
+        case .custom(let roots):
+            validation = "custom(\(roots.count))"
+        }
+
+        let children: KeyValuePairs<String, Any> = [
+            "minimumVersion": minimumVersion.rawValue,
+            "maximumVersion": maximumVersion?.rawValue as Any,
+            "certificateValidation": validation,
+            "applicationProtocols": applicationProtocols,
+            "hasClientIdentity": clientIdentity != nil,
+        ]
+        return Mirror(self, children: children, displayStyle: .struct)
     }
 }
 
