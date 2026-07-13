@@ -65,12 +65,24 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         TransferSyntax.htj2kLossy.uid
     ]
 
-    public static let supportedEncodingTransferSyntaxes: [String] = supportedTransferSyntaxes
+    /// Encoding targets DICOMKit can actually produce. Part-2 (`.92`/`.93`) is
+    /// **excluded** while the library cannot decode it (see
+    /// `J2KRoutePlanner.unsupportedEncodeReason`); decoding of Part-2 remains in
+    /// `supportedTransferSyntaxes` so previously-written files can still be read.
+    public static let supportedEncodingTransferSyntaxes: [String] = supportedTransferSyntaxes.filter {
+        J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: $0) == nil
+    }
 
     private let encodingTransferSyntaxUID: String?
 
-    public init(encodingTransferSyntaxUID: String? = nil) {
+    /// Backend preference applied on **decode** (Phase 4). `nil` → auto (the size
+    /// router picks GPU inverse-DWT on Metal hardware for mid-size frames, else CPU);
+    /// `.metal` → GPU decode; `.accelerate` / `.scalar` → CPU.
+    private let decodeBackend: CodecBackend?
+
+    public init(encodingTransferSyntaxUID: String? = nil, decodeBackend: CodecBackend? = nil) {
         self.encodingTransferSyntaxUID = encodingTransferSyntaxUID
+        self.decodeBackend = decodeBackend
     }
 
     /// Explicit J2KSwift decode entry point selectable by mode. Bypasses the
@@ -253,13 +265,20 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         }
 
         #if canImport(J2KCore) && canImport(J2KCodec)
-        return try Self.decodeWithJ2KSwift(frameData, descriptor: descriptor)
+        return try Self.decodeWithJ2KSwift(frameData, descriptor: descriptor, backend: decodeBackend)
         #else
         throw DICOMError.unsupportedTransferSyntax("JPEG 2000 requires J2KSwift support in this build")
         #endif
     }
 
     public func canEncode(with configuration: CompressionConfiguration, descriptor: PixelDataDescriptor) -> Bool {
+        // Honestly report Part-2 as un-encodable while the library cannot decode it
+        // (see `J2KRoutePlanner.unsupportedEncodeReason`) so capability probes and
+        // negotiation don't advertise a target that would produce unreadable images.
+        guard J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: encodingTransferSyntaxUID) == nil else {
+            return false
+        }
+
         guard descriptor.bitsAllocated == 8 || descriptor.bitsAllocated == 16 else {
             return false
         }
@@ -272,6 +291,11 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
     }
 
     public func encodeFrame(_ frameData: Data, descriptor: PixelDataDescriptor, frameIndex: Int, configuration: CompressionConfiguration) throws -> Data {
+        // Reject unsupported target syntaxes (currently Part-2) with a clear,
+        // specific message before the generic layout check.
+        if let reason = J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: encodingTransferSyntaxUID) {
+            throw DICOMError.unsupportedTransferSyntax(reason)
+        }
         guard canEncode(with: configuration, descriptor: descriptor) else {
             throw DICOMError.parsingFailed(
                 "Unsupported JPEG 2000 encoding layout: bitsAllocated=\(descriptor.bitsAllocated), samplesPerPixel=\(descriptor.samplesPerPixel)"
@@ -286,26 +310,29 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
 
         #if canImport(J2KCore) && canImport(J2KCodec)
         let image = try Self.makeJ2KImage(from: frameData, descriptor: descriptor)
+        // `J2KRoutePlanner` resolves type + intent + backend once; `encodeFrame`
+        // and `makeEncodingConfiguration` share the same plan so the config and
+        // the encode API can never disagree (see J2K_ROUTING_ARCHITECTURE.md).
+        //
+        // --backend metal → the J2KSwift GPU encode path; every other preference
+        // (auto/accelerate/scalar) runs the default CPU encoder. The planner's
+        // GPU policy (`gpuEncodeEligible`) now permits lossy AND lossless — the
+        // reversible GPU path is bit-exact since J2KSwift v11.0.1 (verified by the
+        // library's own lossless byte-identity tests). The `verifyEncodedRoundTrip`
+        // guard below stays as an unconditional backstop for every lossless encode.
+        let plan = J2KRoutePlanner.planEncode(
+            transferSyntaxUID: encodingTransferSyntaxUID,
+            configuration: configuration
+        )
         let encoder = J2KEncoder(
             encodingConfiguration: Self.makeEncodingConfiguration(
                 from: configuration,
                 transferSyntaxUID: encodingTransferSyntaxUID
             )
         )
-        // --backend metal → the J2KSwift GPU encode path; every other
-        // preference (auto/accelerate/scalar) runs the default CPU encoder.
-        // GPU (Metal) encode is only bit-exact for irreversible (lossy) coding —
-        // the reversible/lossless GPU path fails `verifyEncodedRoundTrip` on real
-        // medical data (12/16-bit), so a lossless encode always runs on the CPU
-        // even when Metal is explicitly requested. This mirrors
-        // `CodecBackendPreference.effectiveEncodeBackend`, which the console uses
-        // to report the backend actually taken.
-        let requestedGPU = configuration.forcedBackend == .metal
-        let isLossless = configuration.preferLossless || configuration.quality.isLossless
-        let useGPU = requestedGPU && !isLossless
         let encoded = try Self.awaitJ2KResult {
-            useGPU ? try await encoder.encodeGPU(image)
-                   : try await encoder.encode(image)
+            plan.useGPU ? try await encoder.encodeGPU(image)
+                        : try await encoder.encode(image)
         }
         try Self.verifyEncodedRoundTrip(encoded, original: frameData, descriptor: descriptor, configuration: configuration)
         return encoded
@@ -349,26 +376,10 @@ private extension J2KSwiftCodec {
         from configuration: CompressionConfiguration,
         transferSyntaxUID: String?
     ) -> J2KEncodingConfiguration {
-        let targetSyntax = transferSyntaxUID.flatMap(TransferSyntax.from(uid:))
-        // Reversible vs irreversible. The general (`.both`-capable) UIDs — JPEG 2000 .91,
-        // Part 2 .93, HTJ2K .203 — may carry either, so the caller's intent (preferLossless)
-        // decides; single-capability UIDs are fixed by the UID; an unknown UID falls back to
-        // the config flags. (Previously `targetSyntax.isLossless` hardwired the general UIDs
-        // to lossy and silently ignored the caller's lossless intent.)
-        let isLossless: Bool
-        switch targetSyntax?.losslessCapability {
-        case .some(.both):          isLossless = configuration.preferLossless
-        case .some(.losslessOnly):  isLossless = true
-        case .some(.lossyOnly):     isLossless = false
-        case .none:                 isLossless = configuration.preferLossless || configuration.quality.isLossless
-        }
-        let useHTJ2K = targetSyntax?.isHTJ2K ?? false
-
-        // DICOM HTJ2K transfer syntaxes (PS3.5 A.4.6) reference ISO/IEC 15444-15;
-        // emit the Part-15 conformant block layout so codestreams interoperate with
-        // OpenJPH and other Part-15 PACS decoders.
-        let htj2kBlockFormat: HTBlockFormat = useHTJ2K ? .conformant : .custom
-
+        // All (type, intent, backend) routing lives in `J2KRoutePlanner` — the
+        // single source of truth (see J2K_ROUTING_ARCHITECTURE.md). This method
+        // only translates the resolved plan into a `J2KEncodingConfiguration`.
+        //
         // Match J2KSwift library / CLI lossless defaults: 5 decomposition levels,
         // 5 quality layers, RPCL progression. The previous (0, 1, .lrcp) tuple
         // crippled compression — single-resolution wavelet means no multi-band
@@ -376,14 +387,34 @@ private extension J2KSwiftCodec {
         // 16-bit MG mammograms vs ~6× from the same library via its CLI. RPCL
         // is required for `htj2kRPCLLossless` (PS3.5 §A.4.6) and is what
         // J2KSwift's CLI uses everywhere else.
-        return J2KEncodingConfiguration(
-            quality: isLossless ? 1.0 : configuration.quality.value,
-            lossless: isLossless,
-            progressionOrder: .rpcl,
-            useHTJ2K: useHTJ2K,
-            useReversibleFilter: isLossless,
-            htj2kBlockFormat: htj2kBlockFormat
+        let plan = J2KRoutePlanner.planEncode(
+            transferSyntaxUID: transferSyntaxUID,
+            configuration: configuration
         )
+        return J2KEncodingConfiguration(
+            quality: plan.quality,
+            lossless: plan.lossless,
+            progressionOrder: progressionOrder(for: plan.progression),
+            useHTJ2K: plan.useHTJ2K,
+            useReversibleFilter: plan.useReversibleFilter,
+            htj2kBlockFormat: blockFormat(for: plan.blockFormat)
+        )
+    }
+
+    /// Translates a planner progression choice into the J2KCodec enum.
+    static func progressionOrder(for plan: J2KRoutePlanner.ProgressionPlan) -> J2KProgressionOrder {
+        switch plan {
+        case .rpcl: return .rpcl
+        case .lrcp: return .lrcp
+        }
+    }
+
+    /// Translates a planner block-format choice into the J2KCodec enum.
+    static func blockFormat(for plan: J2KRoutePlanner.BlockFormatPlan) -> HTBlockFormat {
+        switch plan {
+        case .conformant: return .conformant
+        case .custom:     return .custom
+        }
     }
 
     static func verifyEncodedRoundTrip(
@@ -406,14 +437,28 @@ private extension J2KSwiftCodec {
         }
     }
 
-    static func decodeWithJ2KSwift(_ frameData: Data, descriptor: PixelDataDescriptor) throws -> Data {
-        // Viewer path: CPU `J2KDecoder.decode(...)`. The J2K Compare panel
-        // overrides per-call via `J2KSwiftCodec.decode(...,mode:)` to pin the
-        // GPU paths for benchmarking.
+    static func decodeWithJ2KSwift(
+        _ frameData: Data,
+        descriptor: PixelDataDescriptor,
+        backend: CodecBackend? = nil
+    ) throws -> Data {
+        // Phase 4: the decode API follows the backend preference + frame size via
+        // `J2KRoutePlanner.planDecode`. `auto`/CPU on small or very large frames uses
+        // the CPU `decode`; a Metal request (or auto on a mid-size frame with Metal)
+        // uses `decodeGPU` (GPU inverse DWT). All paths auto-detect the codestream
+        // family (Part-1 / Part-2 / HTJ2K), so no codec-type branching is needed.
+        // The J2K Compare panel still pins a specific API via `decode(...,mode:)`.
+        let pixelCount = descriptor.rows * descriptor.columns
+        let api = J2KRoutePlanner.planDecode(backend: backend, pixelCount: pixelCount)
         let image: J2KImage
         do {
             image = try Self.awaitJ2KResult {
-                try await J2KDecoder().decode(frameData)
+                let decoder = J2KDecoder()
+                switch api {
+                case .cpu:   return try await decoder.decode(frameData)
+                case .gpu:   return try await decoder.decodeGPU(frameData)
+                case .gpuHT: return try await decoder.decodeWithGPUHT(frameData)
+                }
             }
         } catch {
             throw DICOMError.parsingFailed("J2KSwift decode failed: \(error)")

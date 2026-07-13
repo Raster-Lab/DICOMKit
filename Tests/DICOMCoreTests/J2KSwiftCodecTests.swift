@@ -150,13 +150,15 @@ struct J2KSwiftCodecTests {
         #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000.uid))
     }
 
-    @Test("CodecRegistry exposes JPEG 2000 Part 2 codec and encoder")
+    @Test("CodecRegistry exposes Part 2 decoder but not an encoder (encode rejected)")
     func registryResolvesPart2Codec() {
         let registry = CodecRegistry.shared
+        // Decoding of Part-2 stays available (read previously-written files)…
         #expect(registry.hasCodec(for: TransferSyntax.jpeg2000Part2Lossless.uid))
         #expect(registry.hasCodec(for: TransferSyntax.jpeg2000Part2.uid))
-        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000Part2Lossless.uid))
-        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000Part2.uid))
+        // …but Part-2 is no longer an encode target while the library cannot decode it.
+        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000Part2Lossless.uid) == false)
+        #expect(registry.hasEncoder(for: TransferSyntax.jpeg2000Part2.uid) == false)
     }
 
     @Test("TransferSyntax helpers recognize Part 2 and HTJ2K families")
@@ -381,32 +383,27 @@ struct J2KSwiftCodecTests {
         }
     }
 
-    @Test("JPEG 2000 Part 2 lossless round-trip preserves payload")
-    func part2LosslessRoundTrip() throws {
+    @Test("JPEG 2000 Part 2 lossless encode is rejected (library cannot decode Part-2)")
+    func part2LosslessEncodeRejected() {
         let codec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.jpeg2000Part2Lossless.uid)
         let descriptor = grayscale8Descriptor()
         let original = Data((0..<(descriptor.rows * descriptor.columns)).map { UInt8($0 % 251) })
-
-        let encoded = try codec.encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: .lossless)
-        let decoded = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
-
-        #expect(encoded.isEmpty == false)
-        #expect(decoded.count == original.count)
-        #expect(decoded == original)
+        #expect(codec.canEncode(with: .lossless, descriptor: descriptor) == false)
+        #expect(throws: (any Error).self) {
+            _ = try codec.encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: .lossless)
+        }
     }
 
-    @Test("JPEG 2000 Part 2 lossy round-trip preserves dimensions")
-    func part2LossyRoundTrip() throws {
+    @Test("JPEG 2000 Part 2 lossy encode is rejected (library cannot decode Part-2)")
+    func part2LossyEncodeRejected() {
         let codec = J2KSwiftCodec(encodingTransferSyntaxUID: TransferSyntax.jpeg2000Part2.uid)
         let descriptor = grayscale8Descriptor()
         let original = Data((0..<(descriptor.rows * descriptor.columns)).map { UInt8(($0 * 9) % 251) })
-
         let config = CompressionConfiguration(quality: .medium, speed: .balanced, progressive: false, preferLossless: false)
-        let encoded = try codec.encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: config)
-        let decoded = try codec.decodeFrame(encoded, descriptor: descriptor, frameIndex: 0)
-
-        #expect(encoded.isEmpty == false)
-        #expect(decoded.count == original.count)
+        #expect(codec.canEncode(with: config, descriptor: descriptor) == false)
+        #expect(throws: (any Error).self) {
+            _ = try codec.encodeFrame(original, descriptor: descriptor, frameIndex: 0, configuration: config)
+        }
     }
 
     @Test("JPEG 2000 Part 2 parse aliases resolve correctly")

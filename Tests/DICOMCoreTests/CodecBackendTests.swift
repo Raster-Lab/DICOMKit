@@ -160,13 +160,17 @@ struct CodecBackendTests {
 
     // MARK: - effectiveEncodeBackend (the backend actually dispatched to)
 
-    @Test("auto never dispatches to the GPU encoder (runs CPU)")
-    func test_effectiveEncodeBackend_autoNeverMetal() {
-        // `auto` resolves to Metal for `effective` (hardware probe) but the encoder
-        // only uses the GPU when Metal is explicitly forced — so auto is always CPU.
+    @Test("auto dispatches to the GPU on Metal hardware (Phase 5)")
+    func test_effectiveEncodeBackend_autoUsesMetalWhenAvailable() {
+        // Phase 5: `auto` now selects the GPU for J2K encodes (any intent) when Metal
+        // is available, and CPU otherwise.
         let pref = CodecBackendPreference.auto
-        #expect(pref.effectiveEncodeBackend(isLossless: false, isJPEG2000Family: true) != .metal)
-        #expect(pref.effectiveEncodeBackend(isLossless: true, isJPEG2000Family: true) != .metal)
+        let expected: CodecBackend = CodecBackendProbe.isAvailable(.metal) ? .metal
+            : (CodecBackendProbe.availableBackends.first { $0 != .metal } ?? .scalar)
+        #expect(pref.effectiveEncodeBackend(isLossless: false, isJPEG2000Family: true) == expected)
+        #expect(pref.effectiveEncodeBackend(isLossless: true, isJPEG2000Family: true) == expected)
+        // Non-J2K stays CPU even under auto.
+        #expect(pref.effectiveEncodeBackend(isLossless: false, isJPEG2000Family: false) != .metal)
     }
 
     @Test("explicit scalar stays scalar")
@@ -175,11 +179,17 @@ struct CodecBackendTests {
             .effectiveEncodeBackend(isLossless: false, isJPEG2000Family: true) == .scalar)
     }
 
-    @Test("metal + lossless is downgraded off the GPU")
-    func test_effectiveEncodeBackend_metalLosslessDowngraded() {
-        // GPU lossless encode is not bit-exact, so lossless never uses Metal.
-        #expect(CodecBackendPreference.metal
-            .effectiveEncodeBackend(isLossless: true, isJPEG2000Family: true) != .metal)
+    @Test("metal + lossless J2K uses the GPU when Metal is available")
+    func test_effectiveEncodeBackend_metalLosslessJ2K() {
+        // Phase 2: the reversible GPU encode path is bit-exact (J2KSwift ≥ v11.0.1),
+        // so a forced-Metal lossless J2K encode dispatches to the GPU just like lossy.
+        let resolved = CodecBackendPreference.metal
+            .effectiveEncodeBackend(isLossless: true, isJPEG2000Family: true)
+        if CodecBackendProbe.isAvailable(.metal) {
+            #expect(resolved == .metal)
+        } else {
+            #expect(resolved != .metal)
+        }
     }
 
     @Test("metal + non-J2K codec is downgraded off the GPU")

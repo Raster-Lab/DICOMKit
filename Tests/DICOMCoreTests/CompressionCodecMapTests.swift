@@ -40,10 +40,17 @@ struct CompressionCodecMapTests {
     /// encoder — otherwise the picker/CLI would offer a target the engine can't produce
     /// (the exact gap JPEG-LS had). Uncompressed targets (explicit/implicit/deflate) are
     /// handled by the serializer directly and intentionally have no encoder.
-    @Test("Every encapsulated codec in the map has a registered encoder")
+    @Test("Every encodable encapsulated codec in the map has a registered encoder")
     func everyCompressedCodecHasAnEncoder() {
         let registry = CodecRegistry.shared
         for codec in CompressionManager.supportedCodecs() where codec.syntax.isEncapsulated {
+            // JPEG 2000 Part-2 is deliberately decode-only (its MCT cannot be inverted
+            // by the pinned library), so it is advertised for a clear rejection message
+            // but has no registered encoder. Every other advertised codec must encode.
+            if J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: codec.syntax.uid) != nil {
+                #expect(registry.hasEncoder(for: codec.syntax.uid) == false)
+                continue
+            }
             #expect(registry.hasEncoder(for: codec.syntax.uid),
                     "codec '\(codec.name)' (\(codec.syntax.uid)) is advertised but has no registered encoder")
         }

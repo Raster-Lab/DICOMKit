@@ -475,6 +475,12 @@ public struct CompressionManager {
             return CompressionConfiguration(forcedBackend: forced)
         }()
 
+        // Reject unsupported target syntaxes (currently JPEG 2000 Part-2) with a
+        // clear, specific reason before the generic layout check below.
+        if let reason = J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: targetSyntax.uid) {
+            throw CompressionError.unsupportedPixelDataConfiguration(reason)
+        }
+
         guard encoder.canEncode(with: configuration, descriptor: descriptor) else {
             throw CompressionError.unsupportedPixelDataConfiguration(
                 "Encoder for \(targetSyntax.uid) cannot handle "
@@ -567,9 +573,19 @@ public struct CompressionManager {
     static func decodePixelDataInPlace(
         dataSet: inout DataSet,
         sourceSyntax: TransferSyntax,
-        targetSyntax: TransferSyntax
+        targetSyntax: TransferSyntax,
+        backend: CodecBackendPreference = .auto
     ) throws {
-        guard let codec = CodecRegistry.shared.codec(for: sourceSyntax.uid) else {
+        // Phase 4: honour the backend preference on decode for JPEG 2000 / HTJ2K
+        // sources by using a decode-backend-aware `J2KSwiftCodec` (which auto-detects
+        // Part-1 / Part-2 / HTJ2K). Every other codec resolves from the registry as
+        // before (their decode has no GPU path / backend axis).
+        let codec: ImageCodec
+        if sourceSyntax.isJPEG2000 {
+            codec = J2KSwiftCodec(decodeBackend: backend.forced)
+        } else if let registryCodec = CodecRegistry.shared.codec(for: sourceSyntax.uid) {
+            codec = registryCodec
+        } else {
             throw CompressionError.decoderNotAvailable(sourceSyntax.uid)
         }
         guard let pixelDataElement = dataSet[.pixelData] else {
@@ -631,11 +647,12 @@ public struct CompressionManager {
         backend: CodecBackendPreference = .auto,
         jpegEngine: JPEGCodecEngine = .jli
     ) throws {
-        // Step 1: decode to uncompressed bytes.
+        // Step 1: decode to uncompressed bytes (honouring the decode backend).
         try decodePixelDataInPlace(
             dataSet: &dataSet,
             sourceSyntax: sourceSyntax,
-            targetSyntax: TransferSyntax.explicitVRLittleEndian
+            targetSyntax: TransferSyntax.explicitVRLittleEndian,
+            backend: backend
         )
         // Step 2: encode to target. Any existing lossy-compression history on the source
         // survives on `dataSet` and is preserved/appended-to by encodePixelDataInPlace.
