@@ -96,8 +96,10 @@ final class CompressedPreviewRenderParityTests: XCTestCase {
     #endif
 
     // Every codec the in-process registry can both encode and decode.
+    // (JPEG 2000 Part-2 is intentionally excluded — it is decode-only: the library
+    // cannot invert its multi-component transform, so encoding is rejected.)
     private let losslessCodecs = [
-        "jpeg2000-lossless", "j2k-part2-lossless", "htj2k-lossless", "htj2k-rpcl",
+        "jpeg2000-lossless", "htj2k-lossless", "htj2k-rpcl",
         "jpeg-lossless", "jpeg-ls-lossless", "rle",
     ]
 

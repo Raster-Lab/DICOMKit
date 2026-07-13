@@ -146,12 +146,19 @@ public enum CompressionConsole {
             case .lossyOnly:    return false
             }
         }()
+        let isJPEG2000Family = syntax?.isJPEG2000 ?? false
         let effective = preference.effectiveEncodeBackend(
-            isLossless: isLossless, isJPEG2000Family: syntax?.isJPEG2000 ?? false)
-        let note: String? = (preference.forced == .metal && effective != .metal)
-            ? "Note: GPU (Metal) encode is available for lossy JPEG 2000 / HTJ2K only; "
-              + "using \(effective.displayName) for this \(isLossless ? "lossless " : "")encode."
-            : nil
+            isLossless: isLossless, isJPEG2000Family: isJPEG2000Family)
+        // Since Phase 2, GPU (Metal) encode covers lossy AND lossless JPEG 2000 /
+        // HTJ2K. A forced-Metal request is therefore only downgraded when the codec
+        // is not JPEG 2000 / HTJ2K, or Metal is unavailable on this platform.
+        let note: String? = {
+            guard preference.forced == .metal, effective != .metal else { return nil }
+            let reason = !isJPEG2000Family
+                ? "GPU (Metal) encode is only available for JPEG 2000 / HTJ2K codecs"
+                : "Metal is unavailable on this platform"
+            return "Note: \(reason); using \(effective.displayName) for this encode."
+        }()
         return (effective.displayName, note)
     }
 

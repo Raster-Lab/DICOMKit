@@ -176,14 +176,14 @@ public struct CodecBackendPreference: Sendable {
     /// as opposed to ``effective``, which only reports the best *available*
     /// hardware.
     ///
-    /// DICOMKit's encoder (`J2KSwiftCodec.encodeFrame`) uses the Metal GPU **only**
-    /// when Metal is *explicitly* requested (`forced == .metal`) for a *lossy*
-    /// JPEG 2000 / HTJ2K encode. `auto` / `accelerate` / `scalar`, every lossless
-    /// encode, and every non-J2K codec run on the CPU — the reversible/lossless
-    /// GPU path is not bit-exact (it trips `verifyEncodedRoundTrip` on 12/16-bit
-    /// medical data). Centralising the rule here lets the console report the
-    /// backend that was used rather than the one that merely exists, so `auto`
-    /// never advertises "Metal (GPU)" for a CPU encode.
+    /// DICOMKit's encoder (`J2KSwiftCodec.encodeFrame`) dispatches to the Metal GPU
+    /// for a JPEG 2000 / HTJ2K encode of **any** intent (lossy or lossless — the
+    /// reversible GPU path is bit-exact since J2KSwift v11.0.1) when Metal is
+    /// available AND the backend is either forced `.metal` **or** `auto` (Phase 5:
+    /// `auto` now picks the GPU on Apple Silicon). `accelerate` / `scalar`, and every
+    /// non-J2K codec, run on the CPU. The GPU dispatch policy is owned by
+    /// `J2KRoutePlanner.shouldUseGPUEncode`, so the console-reported backend can
+    /// never diverge from the encoder's actual choice.
     ///
     /// - Parameters:
     ///   - isLossless: Whether this encode is reversible (lossless).
@@ -193,12 +193,19 @@ public struct CodecBackendPreference: Sendable {
         // The CPU path the encoder actually runs (`encoder.encode`): the best
         // available non-Metal backend, or an explicit accelerate/scalar choice.
         let cpuBackend = CodecBackendProbe.availableBackends.first { $0 != .metal } ?? .scalar
-        if forced == .metal {
-            let gpuEligible = isJPEG2000Family && !isLossless && CodecBackendProbe.isAvailable(.metal)
-            return gpuEligible ? .metal : cpuBackend
+        let intent: J2KRoutePlanner.ResolvedIntent = isLossless ? .lossless : .lossy
+        if isJPEG2000Family && J2KRoutePlanner.shouldUseGPUEncode(forced: forced, intent: intent) {
+            // `shouldUseGPUEncode` honours a forced `.metal` request without checking
+            // availability (the encoder falls back internally); the console must report
+            // the *actual* backend, so downgrade to CPU when Metal is truly absent.
+            return CodecBackendProbe.isAvailable(.metal) ? .metal : cpuBackend
         }
-        // auto (nil) / accelerate / scalar never dispatch to the GPU encoder.
-        return forced ?? cpuBackend
+        // CPU path: an explicit accelerate/scalar keeps its identity; auto and a
+        // Metal-absent forced-metal both resolve to the best available CPU backend.
+        switch forced {
+        case .accelerate, .scalar: return forced ?? cpuBackend
+        default:                   return cpuBackend
+        }
     }
 }
 
