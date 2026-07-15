@@ -101,6 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Declared the intentionally inactive complements of the explicitly sourced
   `DICOMKitTests` and `DICOMViewerTests` targets as excluded inputs, removing two
   package-planning warnings covering 102 test files without changing test membership.
+- Applied the existing optional-fixture contract to two HTJ2K benchmark tests so
+  clean CI checkouts skip them when the gitignored MR corpus is unavailable.
 - Hardened release validation to reject production compiler warnings and test
   package-planning warnings, synchronized the release artifact matrix with all
   36 enabled CLI products, pinned manual release jobs to the requested tag, and
