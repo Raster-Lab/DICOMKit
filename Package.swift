@@ -304,6 +304,27 @@ let package = Package(
         .testTarget(
             name: "DICOMKitTests",
             dependencies: ["DICOMKit", "DICOMCore"],
+            exclude: [
+                "AI",
+                "EncapsulatedDocument",
+                "HangingProtocol",
+                "ParametricMap",
+                "PerformanceTests",
+                "PresentationStateTests",
+                "RadiationTherapy",
+                "RealWorldValue",
+                "SecondaryCapture",
+                "Segmentation",
+                "StructuredReporting",
+                "TestHelpers",
+                "Video",
+                "Waveform",
+                "DICOMFileTests.swift",
+                "DICOMWritingTests.swift",
+                "DataSetTests.swift",
+                "ImagePreparationTests.swift",
+                "SequenceParsingTests.swift"
+            ],
             sources: [
                 "JP3DVolumeDocumentTests.swift",
                 "JPIPTests.swift",
@@ -348,6 +369,40 @@ let package = Package(
             name: "DICOMViewerTests",
             dependencies: ["DICOMKit", "DICOMCore"],
             path: "Tests/DICOMToolsTests",
+            exclude: [
+                "DICOMAITests.swift",
+                "DICOMAnonTests.swift",
+                "DICOMArchiveTests.swift",
+                "DICOMCloudTests.swift",
+                "DICOMCompressTests.swift",
+                "DICOMConvertTests.swift",
+                "DICOMDcmdirTests.swift",
+                "DICOMDiffTests.swift",
+                "DICOMDumpTests.swift",
+                "DICOMEchoTests.swift",
+                "DICOMExportTests.swift",
+                "DICOMGatewayTests.swift",
+                "DICOMImageTests.swift",
+                "DICOMInfoTests.swift",
+                "DICOMJsonTests.swift",
+                "DICOMMeasureTests.swift",
+                "DICOMMergeTests.swift",
+                "DICOMPdfTests.swift",
+                "DICOMPixeditTests.swift",
+                "DICOMQRTests.swift",
+                "DICOMQueryTests.swift",
+                "DICOMReportTests.swift",
+                "DICOMRetrieveTests.swift",
+                "DICOMScriptTests.swift",
+                "DICOMSendTests.swift",
+                "DICOMServerTests.swift",
+                "DICOMSplitTests.swift",
+                "DICOMStudyTests.swift",
+                "DICOMTagsTests.swift",
+                "DICOMUIDTests.swift",
+                "DICOMValidateTests.swift",
+                "DICOMXmlTests.swift"
+            ],
             sources: ["DICOMViewerTests.swift"]
         ),
         .executableTarget(
@@ -729,7 +784,8 @@ let package = Package(
                 "DICOMDictionary",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
-            path: "Sources/dicom-3d"
+            path: "Sources/dicom-3d",
+            exclude: ["README.md"]
         ),
         .executableTarget(
             name: "dicom-jpip",
@@ -753,7 +809,8 @@ let package = Package(
                 .product(name: "J2KFileFormat", package: "J2KSwift"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
-            path: "Sources/dicom-j2k"
+            path: "Sources/dicom-j2k",
+            exclude: ["README.md"]
         ),
         // Phase 1 scope: exclude dicom-ai because it is outside JPEG 2000 validation.
         // .executableTarget(
