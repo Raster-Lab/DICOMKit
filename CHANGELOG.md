@@ -92,6 +92,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `JXLCodec`: added signed 16-bit support (JXLSwift `int16` level-shift) and genuine lossy
   VarDCT grayscale encoding (JXLSwift 1.4.0) instead of silently falling back to lossless.
 
+## [2.2.9] - 2026-07-15
+
+### Fixed — SwiftPM consumer build hygiene
+
+- Declared the `dicom-3d` and `dicom-j2k` target README files as excluded package
+  inputs, removing the two unhandled-file warnings emitted during consumer builds.
+- Declared the intentionally inactive complements of the explicitly sourced
+  `DICOMKitTests` and `DICOMViewerTests` targets as excluded inputs, removing two
+  package-planning warnings covering 102 test files without changing test membership.
+- Hardened release validation to reject production compiler warnings and test
+  package-planning warnings, synchronized the release artifact matrix with all
+  36 enabled CLI products, pinned manual release jobs to the requested tag, and
+  staged release creation as a draft before publication for immutable releases.
+- No decoder, runtime, product API, ABI, or command behavior changed.
+
 ## [2.2.6] - 2026-07-09
 
 Patch release: shared transfer-syntax negotiation token list for `dicom-retrieve`/`dicom-qr`,
