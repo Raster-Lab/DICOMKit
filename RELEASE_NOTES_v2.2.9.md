@@ -11,6 +11,8 @@ immutable release publication.
 - Excluded the intentionally inactive complements of the explicitly sourced
   `DICOMKitTests` and `DICOMViewerTests` targets. This removes two additional
   planning warnings covering 102 test files without changing which tests compile.
+- Applied the existing optional-fixture contract to two HTJ2K benchmark tests;
+  clean checkouts now skip them when the gitignored MR corpus is unavailable.
 - No decoder, runtime, product API, ABI, resource, or command behavior changed.
 
 ## Release infrastructure
