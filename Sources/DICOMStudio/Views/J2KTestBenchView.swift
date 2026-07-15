@@ -1024,6 +1024,7 @@ public struct J2KTestBenchView: View {
         case .grok:     return viewModel.plan.includeGrok
         case .djpeg:    return viewModel.plan.includeDjpeg
         case .djxl:     return viewModel.plan.includeDjxl
+        case .charls:   return viewModel.plan.includeCharLS
         }
     }
 
@@ -1034,6 +1035,7 @@ public struct J2KTestBenchView: View {
         case .grok:     viewModel.plan.includeGrok.toggle()
         case .djpeg:    viewModel.plan.includeDjpeg.toggle()
         case .djxl:     viewModel.plan.includeDjxl.toggle()
+        case .charls:   viewModel.plan.includeCharLS.toggle()
         }
     }
 

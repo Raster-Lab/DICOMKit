@@ -3002,7 +3002,8 @@ private func executeDicomCompressCompress() async {
             // re-encodes). Detection lives once in CompressionManager so the
             // Workshop and the CLI agree without re-deriving it.
             let sourceInfo = try? CompressionManager().getCompressionInfo(data: inputData)
-            let isRecompression = CompressionManager.isRecompression(sourceInfo: sourceInfo, targetCodec: codec)
+            let isRecompression = CompressionManager.isRecompression(
+                sourceInfo: sourceInfo, targetCodec: codec, quality: quality)
             let sourceCodecName = isRecompression ? sourceInfo?.transferSyntaxName : nil
 
             // All console text comes from the shared DICOMKit CompressionConsole so

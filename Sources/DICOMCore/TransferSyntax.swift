@@ -846,7 +846,7 @@ extension TransferSyntax {
         case TransferSyntax.htj2kLossy.uid:                    return "HTJ2K"
         case TransferSyntax.jpegLSLossless.uid:                return "JPEG-LS Lossless"
         case TransferSyntax.jpegLSNearLossless.uid:            return "JPEG-LS Near-Lossless"
-        case TransferSyntax.jpegXLLossless.uid:                return "JPEG XL Lossless"
+        case TransferSyntax.jpegXLLossless.uid:                return "JPEG XL Lossless Only"
         case TransferSyntax.jpegXLRecompression.uid:           return "JPEG XL JPEG Recompression"
         case TransferSyntax.jpegXL.uid:                        return "JPEG XL"
         case TransferSyntax.rleLossless.uid:                   return "RLE Lossless"

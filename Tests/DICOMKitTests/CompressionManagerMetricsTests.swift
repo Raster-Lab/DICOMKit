@@ -105,4 +105,39 @@ final class CompressionManagerMetricsTests: XCTestCase {
         XCTAssertNil(m.intermediateSize)
         XCTAssertNil(m.decompressElapsed)
     }
+
+    /// Re-compressing an already-JPEG 2000 file with the SAME lossy syntax but an
+    /// explicit `--quality` must actually decode + re-encode (honoring the quality),
+    /// not pass the existing codestream through verbatim. Regression guard for the
+    /// bug where `--quality` was silently dropped on a same-syntax lossy target
+    /// (input size == output size, ~0 ms, unchanged bytes).
+    func testSameSyntaxLossyReencodeHonorsQuality() throws {
+        let (uncompressed, _) = try makeUncompressedFile()
+        let mgr = CompressionManager()
+
+        // A lossy JPEG 2000 (.91) source.
+        let lossy = try mgr.compressData(uncompressed, codec: "jpeg2000", quality: .medium)
+        let sourcePixels = try DICOMFile.read(from: lossy)
+            .dataSet[.pixelData]?.encapsulatedFragments?.reduce(Data()) { $0 + $1 }
+        XCTAssertNotNil(sourcePixels)
+
+        // Re-encode into the same .91 UID at a DIFFERENT (lower) quality.
+        let reencoded = try mgr.compressData(lossy, codec: "jpeg2000", quality: .low)
+        let outPixels = try DICOMFile.read(from: reencoded)
+            .dataSet[.pixelData]?.encapsulatedFragments?.reduce(Data()) { $0 + $1 }
+        XCTAssertNotNil(outPixels)
+
+        // A real re-encode produces a different codestream than the source; a
+        // silent passthrough would return the identical bytes.
+        XCTAssertNotEqual(outPixels, sourcePixels,
+                          "same-syntax lossy re-encode must not pass the source codestream through unchanged")
+
+        // Via the metrics entry point it is reported as a two-phase recompression
+        // (decompress → re-encode), so the console shows the two-phase note.
+        let (_, m) = try mgr.compressDataWithMetrics(lossy, codec: "jpeg2000", quality: .low)
+        XCTAssertTrue(m.isRecompression)
+        XCTAssertNotNil(m.intermediateSize)
+        XCTAssertNotNil(m.decompressElapsed)
+        XCTAssertNotNil(m.sourceTransferSyntaxName)
+    }
 }

@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — CharLS (dcmdjpls) JPEG-LS Bench Peer, `repro12bit` Repro Tool
+
+- Added `CharLSCLICodec` (macOS-only), a decode-only DICOMStudio bench peer that wraps DCMTK's
+  `dcmdjpls` to cross-validate JLSwift-produced JPEG-LS codestreams against a CharLS-backed
+  reference decoder, matching the existing `binaryPath`/`version`/`decodeFrame` surface used by
+  the other CLI peers (djpeg/djxl/Kakadu/Grok).
+- `J2KTestBenchModels`/`J2KTestBenchService`/`J2KTestBenchViewModel`/`J2KTestBenchView`: wired
+  `.charls` through the JPEG-LS bench family (`includeCharLS`), and `J2KBenchSyntax.all` is now
+  derived entirely from `TransferSyntax.selectableEncodings` for every format (previously only
+  JPEG 2000/HTJ2K rows were catalog-driven), excluding JPEG XL JPEG Recompression (`.111`) since
+  the bench encodes raw frames rather than repacking an existing JPEG.
+- Added `repro12bit`, a standalone executable target for reproducing/isolating 12-bit codec
+  issues against J2KSwift, alongside `JLISWIFT_GAP_ANALYSIS.md` documenting a verified bit-depth,
+  color/sampling, and gap audit of the JLISwift dependency (no critical/high findings).
+- `CompressionQuality.expectedMinPSNRDb` gives each encode preset (`.low`/`.medium`/`.high`/
+  `.maximum`, and `.custom` via interpolation) a conservative minimum-PSNR pass bar for lossy
+  round-trip tests, so the bench's `lossyPSNRThresholdDb` default now tracks
+  `J2KTestBenchService.lossyEncodeQuality` instead of a fixed 40 dB value a lower-quality preset
+  could never clear.
+- `ModalityMapping.StandardModality`/`allCodes` centralizes the canonical DICOM modality list;
+  the CLI Workshop's modality pickers (C-FIND/C-MOVE/MWL/etc.) now draw their `allowedValues`
+  from it instead of hand-maintained arrays, so new modalities need updating in one place.
+
+### Fixed — Same-syntax lossy recompression silently dropped `--quality`
+
+- `CompressionManager.isRecompression`/`compressData`/`compressDataWithMetrics` now treat a
+  same-UID lossy target with an explicit `quality` as a genuine recompression (decode-to-native
+  + re-encode) rather than a byte passthrough. Previously, re-compressing an already-JPEG-2000
+  (or other lossy-encapsulated) file into the *same* transfer syntax UID with a new `--quality`
+  silently copied the existing codestream through unchanged (input size == output size, ~0 ms),
+  discarding the requested quality. Lossless / no-quality same-syntax targets keep the
+  passthrough. `dicom-compress` and the DICOMStudio Workshop both pass `quality` through to
+  `isRecompression` so their two-phase-recompression UI note stays accurate.
+
 ### Fixed — Standalone macOS packaging
 
 - Removed the DICOMStudio-only OpenJPEG comparison wrapper from `DICOMCore`'s
