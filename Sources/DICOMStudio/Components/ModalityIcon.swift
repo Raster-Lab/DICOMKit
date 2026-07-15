@@ -8,39 +8,124 @@ import Foundation
 /// Platform-independent DICOM modality mapping utilities.
 ///
 /// Provides SF Symbol names and full modality names for DICOM modality codes
-/// without requiring SwiftUI.
+/// without requiring SwiftUI, and the canonical enumerable list of modalities
+/// DICOM Studio recognizes (see ``allCodes``).
 public enum ModalityMapping: Sendable {
+
+    /// Canonical DICOM modality codes recognized by DICOM Studio, in display order.
+    ///
+    /// Each case is a primary DICOM modality code with a dedicated icon and
+    /// human-readable name. Alias codes (e.g. "MRI", "PET", "RTPLAN", "PDF")
+    /// normalize onto these primaries via ``ModalityMapping/normalize(_:)``.
+    /// The set mirrors the DICOM object types DICOMKit models with dedicated
+    /// tag modules (CT/MR/US/NM/PT, RT, SEG, PR, SR, waveform, video, document, …).
+    public enum StandardModality: String, CaseIterable, Sendable {
+        case ct = "CT"
+        case mr = "MR"
+        case us = "US"
+        case cr = "CR"
+        case dx = "DX"
+        case nm = "NM"
+        case pt = "PT"
+        case mg = "MG"
+        case rf = "RF"
+        case xa = "XA"
+        case sc = "SC"
+        case ot = "OT"
+        case sr = "SR"
+        case pr = "PR"
+        case ko = "KO"
+        case seg = "SEG"
+        case rt = "RT"
+        case ecg = "ECG"
+        case hd = "HD"
+        case io = "IO"
+        case op = "OP"
+        case doc = "DOC"
+        case vl = "VL"
+
+        /// SF Symbol name for this modality.
+        var systemImage: String {
+            switch self {
+            case .ct: return "cylinder.split.1x2"
+            case .mr: return "brain.head.profile"
+            case .us: return "waveform.path.ecg"
+            case .cr, .dx: return "xray"
+            case .nm: return "atom"
+            case .pt: return "sparkles"
+            case .mg: return "rectangle.compress.vertical"
+            case .rf: return "film"
+            case .xa: return "heart"
+            case .sc: return "camera"
+            case .ot: return "questionmark.square"
+            case .sr: return "doc.text"
+            case .pr: return "paintbrush"
+            case .ko: return "key"
+            case .seg: return "square.on.square.dashed"
+            case .rt: return "target"
+            case .ecg: return "waveform.path.ecg.rectangle"
+            case .hd: return "waveform"
+            case .io: return "mouth"
+            case .op: return "eye"
+            case .doc: return "doc.richtext"
+            case .vl: return "video"
+            }
+        }
+
+        /// Human-readable name for this modality.
+        var fullName: String {
+            switch self {
+            case .ct: return "Computed Tomography"
+            case .mr: return "Magnetic Resonance"
+            case .us: return "Ultrasound"
+            case .cr: return "Computed Radiography"
+            case .dx: return "Digital Radiography"
+            case .nm: return "Nuclear Medicine"
+            case .pt: return "Positron Emission Tomography"
+            case .mg: return "Mammography"
+            case .rf: return "Radiofluoroscopy"
+            case .xa: return "X-Ray Angiography"
+            case .sc: return "Secondary Capture"
+            case .ot: return "Other"
+            case .sr: return "Structured Report"
+            case .pr: return "Presentation State"
+            case .ko: return "Key Object"
+            case .seg: return "Segmentation"
+            case .rt: return "Radiation Therapy"
+            case .ecg: return "Electrocardiography"
+            case .hd: return "Hemodynamic Waveform"
+            case .io: return "Intra-Oral Radiography"
+            case .op: return "Ophthalmic Photography"
+            case .doc: return "Document"
+            case .vl: return "Visible Light"
+            }
+        }
+    }
+
+    /// All canonical modality codes recognized by DICOM Studio, in display order.
+    ///
+    /// Use this as the single source of truth wherever the app offers a fixed
+    /// choice of modalities (e.g. CLI Workshop dropdowns).
+    public static var allCodes: [String] { StandardModality.allCases.map(\.rawValue) }
+
+    /// Normalizes a raw DICOM modality code — including common aliases — to a
+    /// canonical ``StandardModality``, or `nil` if unrecognized.
+    static func normalize(_ modality: String) -> StandardModality? {
+        switch modality.uppercased() {
+        case "MRI": return .mr
+        case "PET": return .pt
+        case "RTPLAN", "RTDOSE", "RTSTRUCT": return .rt
+        case "PDF": return .doc
+        default: return StandardModality(rawValue: modality.uppercased())
+        }
+    }
 
     /// Maps DICOM modality codes to appropriate SF Symbol names.
     ///
     /// - Parameter modality: DICOM modality code (e.g. "CT", "MR").
     /// - Returns: SF Symbol name for the modality.
     public static func systemImage(for modality: String) -> String {
-        switch modality.uppercased() {
-        case "CT": return "cylinder.split.1x2"
-        case "MR", "MRI": return "brain.head.profile"
-        case "US": return "waveform.path.ecg"
-        case "CR", "DX": return "xray"
-        case "NM": return "atom"
-        case "PT", "PET": return "sparkles"
-        case "MG": return "rectangle.compress.vertical"
-        case "RF": return "film"
-        case "XA": return "heart"
-        case "SC": return "camera"
-        case "OT": return "questionmark.square"
-        case "SR": return "doc.text"
-        case "PR": return "paintbrush"
-        case "KO": return "key"
-        case "SEG": return "square.on.square.dashed"
-        case "RT", "RTPLAN", "RTDOSE", "RTSTRUCT": return "target"
-        case "ECG": return "waveform.path.ecg.rectangle"
-        case "HD": return "waveform"
-        case "IO": return "mouth"
-        case "OP": return "eye"
-        case "DOC", "PDF": return "doc.richtext"
-        case "VL": return "video"
-        default: return "square.grid.2x2"
-        }
+        normalize(modality)?.systemImage ?? "square.grid.2x2"
     }
 
     /// Returns the full human-readable name for a DICOM modality code.
@@ -48,32 +133,7 @@ public enum ModalityMapping: Sendable {
     /// - Parameter modality: DICOM modality code (e.g. "CT", "MR").
     /// - Returns: Human-readable modality name.
     public static func fullName(for modality: String) -> String {
-        switch modality.uppercased() {
-        case "CT": return "Computed Tomography"
-        case "MR", "MRI": return "Magnetic Resonance"
-        case "US": return "Ultrasound"
-        case "CR": return "Computed Radiography"
-        case "DX": return "Digital Radiography"
-        case "NM": return "Nuclear Medicine"
-        case "PT", "PET": return "Positron Emission Tomography"
-        case "MG": return "Mammography"
-        case "RF": return "Radiofluoroscopy"
-        case "XA": return "X-Ray Angiography"
-        case "SC": return "Secondary Capture"
-        case "OT": return "Other"
-        case "SR": return "Structured Report"
-        case "PR": return "Presentation State"
-        case "KO": return "Key Object"
-        case "SEG": return "Segmentation"
-        case "RT", "RTPLAN", "RTDOSE", "RTSTRUCT": return "Radiation Therapy"
-        case "ECG": return "Electrocardiography"
-        case "HD": return "Hemodynamic Waveform"
-        case "IO": return "Intra-Oral Radiography"
-        case "OP": return "Ophthalmic Photography"
-        case "DOC", "PDF": return "Document"
-        case "VL": return "Visible Light"
-        default: return modality.uppercased()
-        }
+        normalize(modality)?.fullName ?? modality.uppercased()
     }
 }
 

@@ -66,6 +66,16 @@ public enum NetworkConfigHelpers: Sendable {
 /// Helpers for building the catalog of all 29 CLI tools.
 public enum ToolCatalogHelpers: Sendable {
 
+    /// Canonical modality codes for CLI Workshop modality pickers, drawn from
+    /// ``ModalityMapping/allCodes`` so the app offers every modality DICOMKit
+    /// recognizes rather than a hand-maintained subset. These affect only the
+    /// app's picker UI; the CLI tools themselves accept `--modality` as free text.
+    private static let modalityAllowedValues: [String] = ModalityMapping.allCodes.sorted()
+
+    /// Modality picker values including a leading empty "any modality" option,
+    /// for optional filter fields (e.g. C-FIND / query modality filters).
+    private static let optionalModalityAllowedValues: [String] = [""] + modalityAllowedValues
+
     /// Returns all 29 CLI tool definitions organized by tab.
     public static func allTools() -> [CLIToolDefinition] {
         var tools: [CLIToolDefinition] = []
@@ -437,7 +447,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Imaging modality filter (0008,0060)",
-                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                    allowedValues: optionalModalityAllowedValues
                 ),
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
@@ -745,7 +755,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Imaging modality filter (0008,0060)",
-                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                    allowedValues: optionalModalityAllowedValues
                 ),
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study-uid", displayName: "Study Instance UID",
@@ -871,7 +881,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Filter by scheduled imaging modality (0040,0001)",
-                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
+                    allowedValues: optionalModalityAllowedValues,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["query"])
                 ),
                 CLIParameterDefinition(
@@ -974,7 +984,7 @@ public enum ToolCatalogHelpers: Sendable {
                     helpText: "Scheduled modality for the procedure step (0008,0060)",
                     isInternal: true,
                     defaultValue: "CT",
-                    allowedValues: ["CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"],
+                    allowedValues: modalityAllowedValues,
                     visibleWhen: CLIParameterVisibilityCondition(parameterId: "operation", values: ["create"])
                 ),
                 CLIParameterDefinition(
@@ -1242,7 +1252,7 @@ public enum ToolCatalogHelpers: Sendable {
                     id: "modality", flag: "--modality", displayName: "Modality",
                     parameterType: .enumPicker, placeholder: "Any",
                     helpText: "Modalities in Study filter (0008,0061)",
-                    allowedValues: ["", "CT", "MR", "US", "XA", "CR", "DX", "MG", "NM", "PT", "RF", "SC", "OT"]
+                    allowedValues: optionalModalityAllowedValues
                 ),
                 CLIParameterDefinition(
                     id: "study-uid", flag: "--study", displayName: "Study Instance UID",

@@ -97,17 +97,28 @@ public struct CompressionManager {
     }
 
     /// Returns whether compressing a source described by `sourceInfo` to `targetCodec`
-    /// will *recompress* — i.e. the source is already compressed AND the target codec
-    /// is a DIFFERENT encapsulated (compressed) syntax, so the engine must decode to
-    /// native pixels and then re-encode. Both the CLI and the Studio Workshop call
-    /// this so the recompression detection lives in one place (never re-derived at the
-    /// call site). Returns `false` for a nil `sourceInfo` (unreadable source) and for
-    /// a same-syntax target (compressData passes those bytes through unchanged — no
-    /// decode/re-encode — so it is not a recompression).
-    public static func isRecompression(sourceInfo: CompressionInfo?, targetCodec: String) -> Bool {
+    /// will *recompress* — i.e. the source is already compressed AND the engine must
+    /// decode it to native pixels and then re-encode. Both the CLI and the Studio
+    /// Workshop call this so the recompression detection lives in one place (never
+    /// re-derived at the call site). Returns `false` for a nil `sourceInfo`
+    /// (unreadable source).
+    ///
+    /// A DIFFERENT encapsulated target UID is always a recompression. A SAME-UID
+    /// target is normally a byte passthrough (no decode/re-encode) — EXCEPT when the
+    /// caller supplies an explicit `quality` for a *lossy* target: that is a genuine
+    /// re-encode at a new quality (e.g. a JPEG 2000 .91 file re-compressed with
+    /// `--quality`), performed as decode-to-native + re-encode, so it counts as a
+    /// recompression and gets the two-phase treatment. Pass the same `quality` here
+    /// that will be passed to `compressData`/`compressDataWithMetrics` so this stays
+    /// in lock-step with the actual code path.
+    public static func isRecompression(sourceInfo: CompressionInfo?, targetCodec: String,
+                                       quality: CompressionQuality? = nil) -> Bool {
         guard let info = sourceInfo, info.isCompressed else { return false }
         guard let target = transferSyntax(for: targetCodec), target.isEncapsulated else { return false }
-        return target.uid != info.transferSyntaxUID
+        if target.uid != info.transferSyntaxUID { return true }
+        // Same UID: a two-phase re-encode only when an explicit quality targets a
+        // lossy codestream (mirrors compressData's same-syntax lossy re-encode branch).
+        return resolveEncoding(for: targetCodec)?.intent == .lossy && quality != nil
     }
 
     static func codecName(for syntax: TransferSyntax) -> String {
@@ -277,8 +288,19 @@ public struct CompressionManager {
                 jpegEngine: jpegEngine
             )
         } else if targetSyntax.isEncapsulated && sourceSyntax.isEncapsulated
-                  && targetSyntax.uid != sourceSyntax.uid {
-            // Recompression: decompress source then encode to target.
+                  && (targetSyntax.uid != sourceSyntax.uid
+                      || (intent == .lossy && quality != nil)) {
+            // Recompression: decompress source then encode to target. This also
+            // covers a SAME-syntax lossy re-encode: a source already in the
+            // target's UID (e.g. a JPEG 2000 .91 file re-compressed with
+            // `--codec jpeg2000 --quality …`) used to fall through to the
+            // passthrough below, which copied the existing codestream verbatim
+            // and silently discarded `--quality` — input size == output size,
+            // ~0 ms, no actual encode. When an explicit quality is supplied for
+            // a lossy target we honor it: decode the source to native pixels and
+            // re-encode at the requested quality. Lossless / no-quality
+            // same-syntax targets keep the passthrough — re-encoding a
+            // reversible codestream into itself is wasted work.
             try CompressionManager.transcodeEncapsulatedInPlace(
                 dataSet: &workingDataSet,
                 sourceSyntax: sourceSyntax,
@@ -365,7 +387,7 @@ public struct CompressionManager {
         }
         let info = sourceInfo ?? (try? getCompressionInfo(data: inputData))
 
-        if CompressionManager.isRecompression(sourceInfo: info, targetCodec: codec) {
+        if CompressionManager.isRecompression(sourceInfo: info, targetCodec: codec, quality: quality) {
             // Phase 1 — decompress the source to native pixels (Explicit VR LE).
             let d0 = Date()
             let intermediate = try decompressData(inputData, syntax: .explicitVRLittleEndian)

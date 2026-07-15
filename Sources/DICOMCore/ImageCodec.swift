@@ -49,6 +49,40 @@ public enum CompressionQuality: Sendable, Hashable, Codable {
             return false
         }
     }
+
+    /// A conservative minimum PSNR (dB) that a lossy reconstruction produced at
+    /// this quality preset is expected to comfortably clear on typical 16-bit
+    /// medical images.
+    ///
+    /// A pass/fail bar for lossy compression must be derived from the encode
+    /// preset that produced the codestream, not pinned to a single fixed value:
+    /// a preset tuned for high compression (`.medium`) simply cannot reach the
+    /// PSNR of a near-lossless one (`.maximum`/`.high`), so a flat threshold
+    /// fails perfectly good output. Each value carries roughly a 5 dB margin
+    /// below the PSNR its preset achieves in practice (e.g. `.medium` reaches
+    /// ~40 dB, so its bar is 35 dB). `.custom` interpolates across the same
+    /// control points.
+    public var expectedMinPSNRDb: Double {
+        switch self {
+        case .maximum: return 48.0
+        case .high:    return 42.0
+        case .medium:  return 35.0
+        case .low:     return 28.0
+        case .custom(let value):
+            let points: [(q: Double, psnr: Double)] = [
+                (0.60, 28.0), (0.75, 35.0), (0.90, 42.0), (0.98, 48.0)
+            ]
+            let q = max(0.0, min(1.0, value))
+            if q <= points.first!.q { return points.first!.psnr }
+            if q >= points.last!.q { return points.last!.psnr }
+            for i in 1..<points.count where q <= points[i].q {
+                let lo = points[i - 1], hi = points[i]
+                let t = (q - lo.q) / (hi.q - lo.q)
+                return lo.psnr + t * (hi.psnr - lo.psnr)
+            }
+            return points.last!.psnr
+        }
+    }
 }
 
 extension CompressionQuality: CustomStringConvertible {

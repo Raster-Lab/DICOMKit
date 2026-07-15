@@ -58,7 +58,7 @@ public enum J2KBenchFormat: String, CaseIterable, Identifiable, Codable, Sendabl
         switch self {
         case .jpeg2000: return [.j2kSwift, .kakadu, .grok]
         case .jpeg:     return [.jliSwift, .djpeg]
-        case .jpegLS:   return [.jlSwift]
+        case .jpegLS:   return [.jlSwift, .charls]
         case .jpegXL:   return [.jxlSwift, .djxl]
         }
     }
@@ -75,6 +75,7 @@ public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable
     case djpeg    = "djpeg"
     // JPEG-LS family
     case jlSwift  = "JLSwift"
+    case charls   = "CharLS (dcmdjpls)"
     // JPEG XL family
     case jxlSwift = "JXLSwift"
     case djxl     = "djxl"
@@ -86,7 +87,7 @@ public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable
         switch self {
         case .j2kSwift, .kakadu, .grok: return .jpeg2000
         case .jliSwift, .djpeg:                    return .jpeg
-        case .jlSwift:                             return .jpegLS
+        case .jlSwift, .charls:                    return .jpegLS
         case .jxlSwift, .djxl:                     return .jpegXL
         }
     }
@@ -99,7 +100,7 @@ public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable
     public var systemImage: String {
         switch self {
         case .j2kSwift, .jliSwift, .jlSwift, .jxlSwift: return "swift"
-        case .kakadu, .grok, .djpeg, .djxl:             return "terminal"
+        case .kakadu, .grok, .djpeg, .djxl, .charls:    return "terminal"
         }
     }
 }
@@ -107,8 +108,10 @@ public enum J2KBenchCodec: String, CaseIterable, Identifiable, Codable, Sendable
 // MARK: - Transfer syntax
 
 /// A transfer syntax / mode the bench can exercise, tagged with its codec
-/// family. JPEG 2000 has several; the other formats currently expose a single
-/// lossless mode (the bench's axis is bit-exact round-trip + peer decode).
+/// family. Every family's modes come from the shared core catalog (see
+/// ``all``): JPEG exposes Baseline/Extended/Lossless variants, JPEG-LS its
+/// Lossless + Near-Lossless pair, JPEG XL Lossless Only + the general (lossless/lossy)
+/// syntax — the bench's axis is bit-exact round-trip (lossless) or PSNR (lossy).
 public struct J2KBenchSyntax: Identifiable, Hashable, Codable, Sendable {
     /// Unique per row. For JPEG 2000 `both`-capable UIDs (.91/.93/.203) this is the
     /// shared catalog's `SelectableEncoding.id` ("<uid>#lossless" / "<uid>#lossy"),
@@ -134,30 +137,32 @@ public struct J2KBenchSyntax: Identifiable, Hashable, Codable, Sendable {
         self.id = id ?? uid
     }
 
-    /// Every syntax across all formats. The JPEG 2000 / HTJ2K rows are driven by
-    /// the shared transfer-syntax catalog so the list stays canonical (`both`-capable
-    /// UIDs expand into two rows, Lossless + Lossy). JPEG XL is bench-only (synthetic
-    /// id, no DICOM transfer syntax); the rest use their real DICOM UIDs.
+    /// Every syntax across all formats, driven entirely by the shared
+    /// transfer-syntax catalog so each codec family's mode list stays canonical
+    /// with DICOMKit core. Each `both`-capable UID (JPEG 2000 `.91`/`.93`, HTJ2K
+    /// `.203`, JPEG XL `.112`) expands into two rows (Lossless + Lossy); every
+    /// other UID contributes one. The bench encodes raw frames, so JPEG XL's JPEG
+    /// Recompression syntax (`.111`) — which losslessly repacks an *existing* JPEG
+    /// rather than a raw frame — is excluded, matching the omission in
+    /// ``TransferSyntax/negotiableImageSyntaxTokens``.
     public static let all: [J2KBenchSyntax] = {
-        var list: [J2KBenchSyntax] = TransferSyntax.selectableEncodings
-            .filter { $0.transferSyntax.isJPEG2000 }
-            .map { enc in
-                J2KBenchSyntax(id: enc.id, uid: enc.uid, shortName: enc.displayName,
-                               format: .jpeg2000, isLossless: enc.isLossless)
-            }
-        list.append(contentsOf: [
-            // JPEG (JLISwift) — lossless SOF3 (DICOM JPEG Lossless, First-Order Prediction)
-            J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.70",  shortName: "JPEG Lossless",
-                           format: .jpeg, isLossless: true),
-            // JPEG-LS (JLSwift)
-            J2KBenchSyntax(uid: "1.2.840.10008.1.2.4.80",  shortName: "JPEG-LS Lossless",
-                           format: .jpegLS, isLossless: true),
-            // JPEG XL (JXLSwift) — bench-only; no DICOM transfer syntax assigned
-            J2KBenchSyntax(uid: "bench.jpegxl.lossless",   shortName: "JPEG XL Lossless",
-                           format: .jpegXL, isLossless: true),
-        ])
-        return list
+        TransferSyntax.selectableEncodings.compactMap { enc -> J2KBenchSyntax? in
+            guard enc.uid != TransferSyntax.jpegXLRecompression.uid else { return nil }
+            guard let format = benchFormat(for: enc.transferSyntax) else { return nil }
+            return J2KBenchSyntax(id: enc.id, uid: enc.uid, shortName: enc.displayName,
+                                  format: format, isLossless: enc.isLossless)
+        }
     }()
+
+    /// Maps a core transfer syntax to the bench codec family that exercises it,
+    /// or `nil` for syntaxes no bench family covers (uncompressed, RLE, video, JPIP).
+    private static func benchFormat(for ts: TransferSyntax) -> J2KBenchFormat? {
+        if ts.isJPEG2000 { return .jpeg2000 }
+        if ts.isJPEG     { return .jpeg }
+        if ts.isJPEGLS   { return .jpegLS }
+        if ts.isJPEGXL   { return .jpegXL }
+        return nil
+    }
 
     /// Syntaxes belonging to a given format, in canonical order.
     public static func all(for format: J2KBenchFormat) -> [J2KBenchSyntax] {
@@ -354,6 +359,8 @@ public struct J2KTestPlan: Sendable {
     public var includeDjpeg: Bool
     /// JPEG XL peer (libjxl djxl) — decodes the JXLSwift codestream.
     public var includeDjxl: Bool
+    /// JPEG-LS peer (DCMTK dcmdjpls, CharLS-backed) — decodes the JLSwift codestream.
+    public var includeCharLS: Bool
     /// Which J2KSwift encode API produces the reference codestream (JPEG 2000 only).
     public var encodeMode: J2KSwiftEncodeMode
     /// Which J2KSwift decode API the J2KSwift row exercises (JPEG 2000 only).
@@ -362,30 +369,34 @@ public struct J2KTestPlan: Sendable {
     public var warmups: Int
     /// Timed runs; the median is reported (cross-host bench default: 7).
     public var timedRuns: Int
-    /// Minimum PSNR (dB) for a lossy cell to pass.
+    /// Minimum PSNR (dB) for a lossy cell to pass. Defaults to the bar implied by
+    /// the bench's lossy encode preset (`J2KTestBenchService.lossyEncodeQuality`)
+    /// so it tracks that preset instead of a fixed value the preset can't clear.
     public var lossyPSNRThresholdDb: Double
 
     public init(format: J2KBenchFormat = .jpeg2000,
-                selectedSyntaxIDs: Set<String> = ["1.2.840.10008.1.2.4.90",
-                                                  "1.2.840.10008.1.2.4.201",
-                                                  "1.2.840.10008.1.2.4.70",
-                                                  "1.2.840.10008.1.2.4.80",
-                                                  "bench.jpegxl.lossless"],
+                selectedSyntaxIDs: Set<String> = ["1.2.840.10008.1.2.4.90",   // JPEG 2000 Lossless Only
+                                                  "1.2.840.10008.1.2.4.201",  // HTJ2K Lossless Only
+                                                  "1.2.840.10008.1.2.4.70",   // JPEG Lossless SV1
+                                                  "1.2.840.10008.1.2.4.80",   // JPEG-LS Lossless
+                                                  "1.2.840.10008.1.2.4.110"], // JPEG XL Lossless Only
                 includeKakadu: Bool = true,
                 includeGrok: Bool = true,
                 includeDjpeg: Bool = true,
                 includeDjxl: Bool = true,
+                includeCharLS: Bool = true,
                 encodeMode: J2KSwiftEncodeMode = .cpu,
                 decodeMode: J2KSwiftDecodeMode = .cpu,
                 warmups: Int = 2,
                 timedRuns: Int = 7,
-                lossyPSNRThresholdDb: Double = 40.0) {
+                lossyPSNRThresholdDb: Double = J2KTestBenchService.lossyEncodeQuality.expectedMinPSNRDb) {
         self.format = format
         self.selectedSyntaxIDs = selectedSyntaxIDs
         self.includeKakadu = includeKakadu
         self.includeGrok = includeGrok
         self.includeDjpeg = includeDjpeg
         self.includeDjxl = includeDjxl
+        self.includeCharLS = includeCharLS
         self.encodeMode = encodeMode
         self.decodeMode = decodeMode
         self.warmups = warmups

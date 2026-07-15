@@ -15,6 +15,13 @@ import DICOMCore
 
 public enum J2KTestBenchService {
 
+    /// The J2KSwift encode-quality preset used to produce every *lossy* reference
+    /// codestream in the bench matrix. The lossy pass/fail PSNR bar is derived
+    /// from this same preset (`CompressionQuality.expectedMinPSNRDb`), so the two
+    /// stay co-calibrated: change the preset here and the default threshold moves
+    /// with it instead of leaving a fixed bar the preset can't clear.
+    public static let lossyEncodeQuality: CompressionQuality = .medium
+
     // MARK: - Encode
 
     /// Encodes a frame with the syntax's reference codec to produce the
@@ -30,7 +37,7 @@ public enum J2KTestBenchService {
         runs: Int
     ) -> Result<(codestream: Data, encodeMs: Double), J2KBenchError> {
         let configuration = CompressionConfiguration(
-            quality: syntax.isLossless ? .maximum : .medium,
+            quality: syntax.isLossless ? .maximum : J2KTestBenchService.lossyEncodeQuality,
             speed: .balanced,
             progressive: false,
             preferLossless: syntax.isLossless
@@ -161,6 +168,21 @@ public enum J2KTestBenchService {
             case .failure(let message): return (nil, nil, .error(message.message), nil)
             case .success(let timed): decoded = timed.data; decodeMs = timed.ms
             }
+
+        case .charls:
+            #if os(macOS)
+            guard CharLSCLICodec.binaryPath != nil else {
+                return (nil, nil, .skipped("dcmdjpls (DCMTK/CharLS) not installed"), nil)
+            }
+            switch timedDecode(warmups: warmups, runs: runs, {
+                try CharLSCLICodec().decodeFrame(codestream, descriptor: descriptor)
+            }) {
+            case .failure(let message): return (nil, nil, .error(message.message), nil)
+            case .success(let timed): decoded = timed.data; decodeMs = timed.ms
+            }
+            #else
+            return (nil, nil, .skipped("CharLS unavailable on this platform"), nil)
+            #endif
 
         case .jxlSwift:
             switch timedDecode(warmups: warmups, runs: runs, {
@@ -365,6 +387,12 @@ public enum J2KTestBenchService {
             return try? JLICodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
         case .jlSwift:
             return try? JPEGLSCodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
+        case .charls:
+            #if os(macOS)
+            return try? CharLSCLICodec().decodeFrame(codestream, descriptor: descriptor)
+            #else
+            return nil
+            #endif
         case .jxlSwift:
             return try? JXLCodec().decodeFrame(codestream, descriptor: descriptor, frameIndex: 0)
         case .djpeg:

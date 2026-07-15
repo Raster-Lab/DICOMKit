@@ -1082,8 +1082,8 @@ public enum CompressionAlgorithmHelpers: Sendable {
             j2k("htj2k-lossless"), // .201
             j2k("htj2k-rpcl"),     // .202
             j2k("htj2k"),          // .203
-            ("JPEG XL Lossless (1.2.840.10008.1.2.4.110)", "jpeg-xl-lossless"),
-            ("JPEG XL Lossy (1.2.840.10008.1.2.4.112)", "jpeg-xl"),
+            j2k("jpeg-xl-lossless-only"), // .110
+            j2k("jpeg-xl"),               // .112
         ]
     }()
 

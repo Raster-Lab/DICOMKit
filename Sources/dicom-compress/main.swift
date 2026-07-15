@@ -120,7 +120,8 @@ extension DICOMCompress {
                 // re-encodes). Detection lives once in CompressionManager so the CLI
                 // and the Studio Workshop agree without re-deriving it.
                 let sourceInfo = try? manager.getCompressionInfo(data: inputData)
-                let isRecompression = CompressionManager.isRecompression(sourceInfo: sourceInfo, targetCodec: codec)
+                let isRecompression = CompressionManager.isRecompression(
+                    sourceInfo: sourceInfo, targetCodec: codec, quality: qualityPreset)
                 let sourceCodecName = isRecompression ? sourceInfo?.transferSyntaxName : nil
 
                 // All console text comes from the shared CompressionConsole so the

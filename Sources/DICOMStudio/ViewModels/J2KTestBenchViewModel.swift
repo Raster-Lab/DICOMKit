@@ -147,6 +147,7 @@ public final class J2KTestBenchViewModel {
         #if os(macOS)
         if DjpegCLICodec.binaryPath != nil { codecs.append(.djpeg) }
         if DjxlCLICodec.binaryPath != nil { codecs.append(.djxl) }
+        if CharLSCLICodec.binaryPath != nil { codecs.append(.charls) }
         #endif
         return codecs
     }
@@ -162,6 +163,7 @@ public final class J2KTestBenchViewModel {
             case .grok:     return plan.includeGrok
             case .djpeg:    return plan.includeDjpeg
             case .djxl:     return plan.includeDjxl
+            case .charls:   return plan.includeCharLS
             }
         }
     }
