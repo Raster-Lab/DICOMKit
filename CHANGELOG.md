@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.10] - 2026-07-15
+
+### Added — J2K GPU/CPU Encode Route Planner
+
+- Introduced `J2KRoutePlanner`, which resolves the three previously conflated encode
+  choices — backend (`CPU`/`GPU`/`auto`), intent (`lossy`/`lossless`/`lossless-only`),
+  and compression type (JPEG 2000 Part-1/Part-2/HTJ2K) — into a single deterministic
+  J2KSwift API call instead of reverse-engineering them from the transfer-syntax UID.
+  `auto` now genuinely selects the Metal GPU backend for lossy JPEG 2000/HTJ2K encodes
+  where previously it never did. See `J2K_ROUTING_ARCHITECTURE.md`.
+- JPEG 2000 Part-2 (`.92`/`.93`) *encoding* is explicitly rejected with a clear error —
+  the pinned J2KSwift v11.0.2 cannot decode the Part-2 codestreams it encodes — while
+  *decoding* existing Part-2 files remains fully supported; the real-Part-2 encode path
+  is gated behind a flag for when the library gains decode support.
+- Updated `CodecBackend`/`CompressionManager`/`CompressionConsole` wiring and added
+  `J2KRoutePlannerTests` and `J2KGPUEncodeRoundTripTests` covering the new routing
+  decisions and GPU round-trip correctness.
+
 ### Added — CharLS (dcmdjpls) JPEG-LS Bench Peer, `repro12bit` Repro Tool
 
 - Added `CharLSCLICodec` (macOS-only), a decode-only DICOMStudio bench peer that wraps DCMTK's
