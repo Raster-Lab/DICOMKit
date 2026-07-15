@@ -55,8 +55,12 @@ public struct EncapsulatedPixelData: Sendable, Equatable {
             return nil
         }
         
-        // Case 1: Using offset table
-        if !offsetTable.isEmpty && offsetTable.count >= descriptor.numberOfFrames {
+        // Case 1: Using a complete Basic Offset Table. A non-empty but
+        // incomplete table is invalid and must not fall through to guessing.
+        if !offsetTable.isEmpty {
+            guard offsetTable.count == descriptor.numberOfFrames else {
+                return nil
+            }
             return extractFrameUsingOffsetTable(at: frameIndex)
         }
         
@@ -74,11 +78,8 @@ public struct EncapsulatedPixelData: Sendable, Equatable {
             return combined
         }
         
-        // Case 4: Multi-frame without offset table - attempt fragment-per-frame
-        if frameIndex < fragments.count {
-            return fragments[frameIndex]
-        }
-        
+        // Multi-frame data with neither a usable offset table nor exactly one
+        // fragment per frame is ambiguous. Fail closed instead of guessing.
         return nil
     }
     
@@ -107,55 +108,45 @@ public struct EncapsulatedPixelData: Sendable, Equatable {
     
     /// Extracts frame data using the offset table
     private func extractFrameUsingOffsetTable(at frameIndex: Int) -> Data? {
-        guard frameIndex < offsetTable.count else {
+        guard frameIndex < offsetTable.count, offsetTable.first == 0 else {
             return nil
         }
-        
-        // Calculate the start offset for this frame
-        let startOffset = Int(offsetTable[frameIndex])
-        
-        // Calculate the end offset (either next frame's offset or end of data)
-        let endOffset: Int
-        if frameIndex + 1 < offsetTable.count {
-            endOffset = Int(offsetTable[frameIndex + 1])
-        } else {
-            // Last frame - need to calculate total size
-            var totalSize = 0
-            for fragment in fragments {
-                totalSize += fragment.count + 8 // Fragment data + 8 bytes for Item tag and length
-            }
-            endOffset = totalSize
+
+        // BOT offsets point to Item tags, so every frame must begin exactly at
+        // a fragment boundary. Build that boundary map with UInt64 arithmetic
+        // to avoid overflow while validating UInt32 BOT entries.
+        var fragmentIndexByOffset: [UInt64: Int] = [:]
+        var currentOffset: UInt64 = 0
+        for (index, fragment) in fragments.enumerated() {
+            fragmentIndexByOffset[currentOffset] = index
+            let paddedLength = fragment.count + (fragment.count.isMultiple(of: 2) ? 0 : 1)
+            currentOffset += 8 + UInt64(paddedLength)
         }
-        
-        // Find which fragments contain this frame's data
-        var currentOffset = 0
+
+        var frameStartIndices: [Int] = []
+        frameStartIndices.reserveCapacity(offsetTable.count)
+        var previousIndex = -1
+        for offset in offsetTable {
+            guard let fragmentIndex = fragmentIndexByOffset[UInt64(offset)],
+                  fragmentIndex > previousIndex else {
+                return nil
+            }
+            frameStartIndices.append(fragmentIndex)
+            previousIndex = fragmentIndex
+        }
+
+        let startIndex = frameStartIndices[frameIndex]
+        let endIndex = frameIndex + 1 < frameStartIndices.count
+            ? frameStartIndices[frameIndex + 1]
+            : fragments.count
+        guard startIndex < endIndex else {
+            return nil
+        }
+
         var frameData = Data()
-        
-        for fragment in fragments {
-            let fragmentStart = currentOffset
-            let fragmentEnd = currentOffset + fragment.count
-            
-            // Check if this fragment overlaps with the frame's range
-            if fragmentEnd > startOffset && fragmentStart < endOffset {
-                let copyStart = max(0, startOffset - fragmentStart)
-                let copyEnd = min(fragment.count, endOffset - fragmentStart)
-                
-                if copyStart < copyEnd {
-                    let startIndex = fragment.startIndex + copyStart
-                    let endIndex = fragment.startIndex + copyEnd
-                    frameData.append(fragment[startIndex..<endIndex])
-                }
-            }
-            
-            // Move past this fragment (accounting for Item delimiter overhead)
-            currentOffset = fragmentEnd + 8
-            
-            // Stop if we've passed the end of this frame
-            if currentOffset >= endOffset {
-                break
-            }
+        for fragment in fragments[startIndex..<endIndex] {
+            frameData.append(fragment)
         }
-        
         return frameData.isEmpty ? nil : frameData
     }
 }

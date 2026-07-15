@@ -60,39 +60,36 @@ public struct HTJ2KCodec: ImageCodec, ImageEncoder, Sendable {
         try backing.encodeFrame(frameData, descriptor: descriptor, frameIndex: frameIndex, configuration: configuration)
     }
 
-    // MARK: - Fast-Path Transcoding
+    // MARK: - Direct Codestream Transcoding
 
-    /// Transcodes a J2K codestream to HTJ2K without full pixel decode/re-encode.
+    /// Direct J2K-to-HTJ2K coefficient transcoding is temporarily unavailable.
     ///
-    /// Uses J2KTranscoder's coefficient-level re-encoding for bit-exact results
-    /// and significantly faster throughput compared to decode+encode.
+    /// J2KSwift 11.0.2 does not preserve decoded pixels through its coefficient
+    /// transcoder. Use ``TransferSyntaxConverter`` so DICOMKit can safely decode
+    /// complete frames and re-encode them with the target transfer syntax.
     ///
     /// - Parameter codestreamData: A standard JPEG 2000 (Part 1) codestream.
     /// - Returns: The HTJ2K codestream.
     /// - Throws: `DICOMError` if the input is not valid J2K or transcoding fails.
     public static func transcodeToHTJ2K(_ codestreamData: Data) throws -> Data {
-        #if canImport(J2KCore) && canImport(J2KCodec)
-        let transcoder = J2KTranscoder()
-        let result = try transcoder.transcode(codestreamData, direction: .legacyToHT)
-        return result.data
-        #else
-        throw DICOMError.unsupportedTransferSyntax("HTJ2K transcoding requires J2KSwift")
-        #endif
+        throw DICOMError.unsupportedTransferSyntax(
+            "Direct J2K to HTJ2K transcoding is disabled because it does not preserve pixels; "
+                + "use TransferSyntaxConverter for safe decode and re-encode"
+        )
     }
 
-    /// Transcodes an HTJ2K codestream back to standard JPEG 2000.
+    /// Direct HTJ2K-to-J2K coefficient transcoding is temporarily unavailable.
+    ///
+    /// Use ``TransferSyntaxConverter`` for the safe decoded-pixel path.
     ///
     /// - Parameter codestreamData: An HTJ2K codestream.
     /// - Returns: The standard JPEG 2000 codestream.
     /// - Throws: `DICOMError` if the input is not valid HTJ2K or transcoding fails.
     public static func transcodeFromHTJ2K(_ codestreamData: Data) throws -> Data {
-        #if canImport(J2KCore) && canImport(J2KCodec)
-        let transcoder = J2KTranscoder()
-        let result = try transcoder.transcode(codestreamData, direction: .htToLegacy)
-        return result.data
-        #else
-        throw DICOMError.unsupportedTransferSyntax("HTJ2K transcoding requires J2KSwift")
-        #endif
+        throw DICOMError.unsupportedTransferSyntax(
+            "Direct HTJ2K to J2K transcoding is disabled because it does not preserve pixels; "
+                + "use TransferSyntaxConverter for safe decode and re-encode"
+        )
     }
 
     /// Detects whether a codestream uses HTJ2K encoding.
@@ -107,9 +104,4 @@ public struct HTJ2KCodec: ImageCodec, ImageEncoder, Sendable {
         #endif
     }
 
-    /// Direction for fast-path codestream transcoding.
-    enum TranscodeDirection {
-        case j2kToHTJ2K
-        case htj2kToJ2K
-    }
 }

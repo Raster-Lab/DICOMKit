@@ -87,17 +87,18 @@ let config = CompressionConfiguration(
 let compressed = try dicomFile.compress(configuration: config)
 ```
 
-### Transcode J2K → HTJ2K (fast path, no pixel decode)
+### Safely transcode J2K → HTJ2K
 
 ```swift
 let transcoder = TransferSyntaxConverter()
-let htj2k = try await transcoder.transcodeFastPath(
-    file,
+let htj2k = try transcoder.transcode(
+    dataSetData: dataSetBytes,
+    from: .jpeg2000Lossless,
     to: .htj2kLossless
 )
 ```
 
-The fast path uses `J2KTranscoder` coefficient re-encoding — pixel data is never decoded to RAM, giving 5–10× throughput over full decode + re-encode.
+This conversion assembles each complete DICOM frame, decodes it losslessly, and re-encodes it as HTJ2K. Direct coefficient transcoding is temporarily disabled because J2KSwift 11.0.2 does not preserve decoded pixels through that path. See the [J2KSwift bug report](../J2KSWIFT_BUG_REPORT.md).
 
 ---
 
@@ -275,7 +276,7 @@ Purpose-built for JPEG 2000 codestream operations on DICOM files.
 |------------|-------------|
 | `info <file>` | Show J2K/HTJ2K codestream metadata |
 | `validate <file>` | ISO/IEC 15444-4 conformance check |
-| `transcode <in> <out>` | J2K ↔ HTJ2K bit-exact transcode |
+| `transcode <in> <out>` | J2K ↔ HTJ2K safe lossless decode/re-encode |
 | `reduce <in> <out>` | Re-encode at lower resolution/quality |
 | `roi <in> <out>` | Extract an ROI frame |
 | `benchmark <file>` | Decode speed across all backends |
@@ -289,7 +290,7 @@ dicom-j2k info ct.dcm
 # Validate HTJ2K conformance
 dicom-j2k validate scan.htj2k.dcm
 
-# Transcode J2K → HTJ2K (fast path)
+# Safely transcode J2K → HTJ2K
 dicom-j2k transcode j2k.dcm htj2k.dcm --target htj2k-lossless
 
 # Benchmark all backends
@@ -305,7 +306,7 @@ dicom-compress compress ct.dcm -o ct.j2k.dcm --codec j2k-lossless
 # Compress with HTJ2K Lossless
 dicom-compress compress ct.dcm -o ct.htj2k.dcm --codec htj2k-lossless
 
-# Transcode to HTJ2K using fast path
+# Safely transcode to HTJ2K
 dicom-compress transcode ct.j2k.dcm --to htj2k -o ct.htj2k.dcm
 
 # JP3D volumetric encode
@@ -337,12 +338,9 @@ dicom-3d encode-volume ./series/ -o volume.jp3d.dcm
 | HTJ2K | yes | ~950 ms (scalar) |
 | HTJ2K | no (PSNR 60 dB) | ~400 ms (scalar) |
 
-### Fast-path transcoding (no pixel decode)
+### J2K ↔ HTJ2K transcoding
 
-| Operation | Time (128-slice CT) |
-|-----------|---------------------|
-| J2K → HTJ2K coefficient transcode | < 8 s |
-| HTJ2K → J2K coefficient transcode | < 10 s |
+DICOMKit currently uses lossless full-frame decode/re-encode. The old coefficient-path timings are not published because that path failed pixel-identity checks. Measure the safe path on representative data before making throughput claims.
 
 ---
 

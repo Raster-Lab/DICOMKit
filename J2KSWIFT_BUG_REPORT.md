@@ -1,8 +1,57 @@
-# J2KSwift Bug Report (Historical + Accepted Phase 2 Note)
+# J2KSwift Bug Report (Active Transcoder Blocker + Historical Notes)
 
-> Status update: the Phase 1 issues documented below were reproduced against J2KSwift 2.4.0 during early integration work and have since been fixed upstream in J2KSwift v3.2.0. A Phase 2 HTJ2K lossy issue observed on v3.2.0 is retained below as a documented, non-blocking note for now.
+> Status update (2026-07-15): J2KSwift 11.0.2 coefficient transcoding does not preserve decoded pixels. DICOMKit temporarily quarantines that path and uses full-frame decode/re-encode for J2K ↔ HTJ2K conversion. Older integration findings remain below for history.
 
-## Active Phase 2 Issue — HTJ2K Lossy 16-bit Real Sample Decodes Too Short
+## Active Blocker — J2K ↔ HTJ2K Coefficient Transcoding Corrupts Pixels
+
+**Status**: Blocking upstream defect; temporary DICOMKit safety mitigation explicitly approved by the repository owner
+
+**J2KSwift version**: 11.0.2, revision `b1949084eeedaafb40bff8f1745bbab19e4bc36d`
+
+**Date verified**: 2026-07-15
+
+**Area**: `J2KTranscoder`, legacy J2K ↔ HTJ2K in both directions
+
+### Reproduction evidence
+
+The standalone J2KSwift comparison harness measured severe pixel changes after a nominally lossless coefficient transcode:
+
+| Direction | Bit exact | PSNR | Mean absolute error | Maximum error |
+|-----------|-----------|------|---------------------|---------------|
+| Legacy J2K → HTJ2K | No | 8.14595 dB | 25,615.84 | 32,768 |
+| HTJ2K → legacy J2K | No | 7.81341 dB | 26,484.97 | 33,122 |
+
+A true DICOMKit compressed-to-compressed test also reproduced both failures on the active consumer path before mitigation:
+
+- J2K → HTJ2K changed the full 64 × 64 gradient to a constant value of 128.
+- HTJ2K → J2K produced an invalid codestream that failed with `Unexpected end of data at position 32`.
+
+### Causal finding
+
+`J2KTranscoder` passes a whole tile payload to each synthetic code-block rather than reconstructing canonical code-block descriptors and payload boundaries. Decode failures are caught and replaced with zero coefficients. The caller can therefore receive a syntactically returned result even though image content was lost.
+
+### Consumer impact and temporary mitigation
+
+- `HTJ2KCodec.transcodeToHTJ2K` and `transcodeFromHTJ2K` fail closed instead of returning corrupted data.
+- `TransferSyntaxConverter` decodes each complete encapsulated frame to pixels and re-encodes it with the target codec under the caller's compression configuration.
+- Complete frames are assembled from the Basic Offset Table when present. Ambiguous multi-frame data without usable boundaries is rejected rather than guessed.
+- End-to-end tests compare decoded pixel bytes in both directions.
+
+Extended Offset Table-only multi-frame input with more than one fragment per frame is not yet assembled by this fallback. It fails closed when the Basic Offset Table and fragment count do not provide unambiguous boundaries.
+
+This mitigation is intentionally temporary. It uses the same codec pixel representation, but it is slower and intentionally changes the two public direct-transcode methods to throw a clear error instead of returning corrupted data. Remove the quarantine only after the upstream coefficient path meets the exit criteria below.
+
+### Upstream exit criteria
+
+- Reconstruct and validate real tile/component/resolution/subband/code-block descriptors.
+- Never replace a decode error with zero coefficients; return a descriptive failure.
+- Preserve decoded pixels exactly in both directions across 8-bit, 12/16-bit signed and unsigned, RGB, multi-tile, multi-component, multi-frame, and progression-order cases.
+- Validate generated codestreams with independent decoders such as OpenJPEG or Grok.
+- Re-enable DICOMKit direct APIs and the fragment-level fast path only after the upstream fix is released and consumer tests pass.
+
+---
+
+## Historical Phase 2 Note — HTJ2K Lossy 16-bit Real Sample Decodes Too Short
 
 **Status**: Known upstream issue on J2KSwift v3.2.0, accepted as non-blocking for the current DICOMKit milestone
 **Area**: HTJ2K lossy encode/decode

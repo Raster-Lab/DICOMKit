@@ -364,15 +364,7 @@ public struct TransferSyntaxConverter: Sendable {
             )
         } else if sourceSyntax.isEncapsulated && targetSyntax.isEncapsulated {
             // Compressed to compressed
-            if Self.canUseFastPathTranscode(from: sourceSyntax, to: targetSyntax) {
-                // Fast-path: J2K ↔ HTJ2K via J2KTranscoder (coefficient re-encoding,
-                // no full pixel decode/re-encode). Significantly faster.
-                transcodedData = try transcodeFastPath(
-                    dataSetData: dataSetData,
-                    from: sourceSyntax,
-                    to: targetSyntax
-                )
-            } else if isRecompression {
+            if isRecompression {
                 // JPEG XL JPEG Recompression: wrap/unwrap the JPEG bitstream directly at
                 // the encapsulated-fragment level (no pixel decode/re-encode). Forward =
                 // JPEG Baseline → …4.111; reverse = …4.111 → JPEG Baseline (byte-exact).
@@ -383,7 +375,9 @@ public struct TransferSyntaxConverter: Sendable {
                     forward: Self.isJXLRecompressionForward(from: sourceSyntax, to: targetSyntax)
                 )
             } else {
-                // Slow path: full decode to uncompressed then re-encode
+                // Safety path: full decode to uncompressed pixels, then re-encode.
+                // J2KSwift 11.0.2's coefficient transcoder does not preserve decoded
+                // pixels for J2K ↔ HTJ2K, so it must not be used here.
                 let uncompressedSyntax = TransferSyntax.explicitVRLittleEndian
                 let uncompressedData = try transcodeFromEncapsulated(
                     dataSetData: dataSetData,
@@ -427,98 +421,6 @@ public struct TransferSyntaxConverter: Sendable {
         return .htj2kLossless
     }
 
-    // MARK: - Fast-Path J2K ↔ HTJ2K Transcoding
-
-    /// Whether the source and target form a J2K ↔ HTJ2K pair eligible for
-    /// coefficient-level transcoding (no pixel decode/re-encode needed).
-    static func canUseFastPathTranscode(from source: TransferSyntax, to target: TransferSyntax) -> Bool {
-        let j2kPart1UIDs: Set<String> = [
-            TransferSyntax.jpeg2000Lossless.uid,
-            TransferSyntax.jpeg2000.uid
-        ]
-        let htj2kUIDs: Set<String> = [
-            TransferSyntax.htj2kLossless.uid,
-            TransferSyntax.htj2kRPCLLossless.uid,
-            TransferSyntax.htj2kLossy.uid
-        ]
-
-        // J2K Part 1 → HTJ2K
-        if j2kPart1UIDs.contains(source.uid) && htj2kUIDs.contains(target.uid) {
-            return true
-        }
-        // HTJ2K → J2K Part 1
-        if htj2kUIDs.contains(source.uid) && j2kPart1UIDs.contains(target.uid) {
-            return true
-        }
-        return false
-    }
-
-    /// Transcodes between J2K Part 1 and HTJ2K using J2KTranscoder's fast coefficient path.
-    ///
-    /// Operates on encapsulated pixel data fragments directly — each codestream
-    /// fragment is transcoded individually without decoding to pixels.
-    private func transcodeFastPath(
-        dataSetData: Data,
-        from source: TransferSyntax,
-        to target: TransferSyntax
-    ) throws -> Data {
-        let direction: HTJ2KCodec.TranscodeDirection = source.isHTJ2K ? .htj2kToJ2K : .j2kToHTJ2K
-
-        // Parse elements including the encapsulated pixel data
-        let elements = try parseDataElements(from: dataSetData, transferSyntax: source)
-
-        var outputElements: [DataElement] = []
-
-        for element in elements {
-            if element.tag == .pixelData && element.isEncapsulated,
-               let fragments = element.encapsulatedFragments {
-                // Transcode each codestream fragment using J2KTranscoder
-                var transcodedFragments: [Data] = []
-                for fragment in fragments {
-                    let transcoded: Data
-                    switch direction {
-                    case .j2kToHTJ2K:
-                        transcoded = try HTJ2KCodec.transcodeToHTJ2K(fragment)
-                    case .htj2kToJ2K:
-                        transcoded = try HTJ2KCodec.transcodeFromHTJ2K(fragment)
-                    }
-                    transcodedFragments.append(transcoded)
-                }
-
-                // Build new encapsulated pixel data element
-                let newElement = DataElement(
-                    tag: element.tag,
-                    vr: element.vr,
-                    length: 0xFFFFFFFF,
-                    valueData: Data(),
-                    encapsulatedFragments: transcodedFragments,
-                    encapsulatedOffsetTable: element.encapsulatedOffsetTable ?? []
-                )
-                outputElements.append(newElement)
-            } else if element.tag == Tag.transferSyntaxUID {
-                // Update Transfer Syntax UID in File Meta
-                let uidData = Data(target.uid.utf8)
-                let newElement = DataElement(
-                    tag: element.tag,
-                    vr: .UI,
-                    length: UInt32(uidData.count),
-                    valueData: uidData
-                )
-                outputElements.append(newElement)
-            } else {
-                outputElements.append(element)
-            }
-        }
-
-        // Write elements in target transfer syntax (all HTJ2K/J2K use Explicit VR LE)
-        let writer = DICOMWriter(byteOrder: target.byteOrder, explicitVR: target.isExplicitVR)
-        var outputData = Data()
-        for element in outputElements {
-            outputData.append(writer.serializeElement(element))
-        }
-        return outputData
-    }
-
     // MARK: - JPEG XL JPEG Recompression (…4.111)
 
     /// Whether this is a forward JPEG → JPEG XL JPEG Recompression (…4.111) transcode.
@@ -544,7 +446,7 @@ public struct TransferSyntaxConverter: Sendable {
     /// Transcodes between JPEG Baseline and JPEG XL JPEG Recompression (…4.111) at the
     /// encapsulated-fragment level — each JPEG frame is wrapped (`forward`) or the
     /// original JPEG frame is reconstructed byte-for-byte (`!forward`) without any pixel
-    /// decode/re-encode. Structurally mirrors ``transcodeFastPath(dataSetData:from:to:)``.
+    /// decode/re-encode and operates directly on complete encapsulated frame fragments.
     private func transcodeJXLRecompression(
         dataSetData: Data,
         from source: TransferSyntax,
@@ -639,6 +541,59 @@ public struct TransferSyntaxConverter: Sendable {
         return outputData
     }
     
+    /// Returns complete compressed frames without guessing ambiguous fragment boundaries.
+    func completeEncapsulatedFrames(
+        from element: DataElement,
+        descriptor: PixelDataDescriptor
+    ) throws -> [Data] {
+        guard let fragments = element.encapsulatedFragments, !fragments.isEmpty else {
+            throw TranscodingError.pixelDataExtractionFailed("Encapsulated Pixel Data has no fragments")
+        }
+
+        if descriptor.numberOfFrames == 1 {
+            var frame = Data()
+            for fragment in fragments {
+                frame.append(fragment)
+            }
+            return [frame]
+        }
+
+        let offsetTable = element.encapsulatedOffsetTable ?? []
+        if offsetTable.isEmpty {
+            guard fragments.count == descriptor.numberOfFrames else {
+                throw TranscodingError.pixelDataExtractionFailed(
+                    "Cannot determine \(descriptor.numberOfFrames) frame boundaries from "
+                        + "\(fragments.count) fragments without a Basic Offset Table"
+                )
+            }
+            return fragments
+        }
+
+        guard offsetTable.count == descriptor.numberOfFrames else {
+            throw TranscodingError.pixelDataExtractionFailed(
+                "Basic Offset Table has \(offsetTable.count) offsets for "
+                    + "\(descriptor.numberOfFrames) frames"
+            )
+        }
+
+        let encapsulated = EncapsulatedPixelData(
+            offsetTable: offsetTable,
+            fragments: fragments,
+            descriptor: descriptor
+        )
+        var frames: [Data] = []
+        frames.reserveCapacity(descriptor.numberOfFrames)
+        for frameIndex in 0..<descriptor.numberOfFrames {
+            guard let frame = encapsulated.frameData(at: frameIndex) else {
+                throw TranscodingError.pixelDataExtractionFailed(
+                    "Unable to assemble encapsulated frame \(frameIndex)"
+                )
+            }
+            frames.append(frame)
+        }
+        return frames
+    }
+
     /// Transcodes from encapsulated (compressed) to uncompressed
     private func transcodeFromEncapsulated(
         dataSetData: Data,
@@ -657,26 +612,41 @@ public struct TransferSyntaxConverter: Sendable {
         var outputElements: [DataElement] = []
         
         for element in elements {
-            if element.tag == .pixelData && element.isEncapsulated,
-               let fragments = element.encapsulatedFragments {
+            if element.tag == .pixelData && element.isEncapsulated {
                 // Get pixel data descriptor from surrounding elements
                 let descriptor = try extractPixelDataDescriptor(from: elements)
-                
-                // Decompress each frame
-                var decompressedData = Data()
-                for (index, fragment) in fragments.enumerated() {
-                    let frameData = try codec.decodeFrame(fragment, descriptor: descriptor, frameIndex: index)
-                    decompressedData.append(frameData)
+                let frames = try completeEncapsulatedFrames(from: element, descriptor: descriptor)
+
+                // Assemble and decompress complete frames. A frame may span more
+                // than one fragment; fragment-by-fragment decoding is invalid.
+                var decompressedData = Data(capacity: descriptor.bytesPerFrame * descriptor.numberOfFrames)
+                for (frameIndex, frameData) in frames.enumerated() {
+                    let decoded = try codec.decodeFrame(
+                        frameData,
+                        descriptor: descriptor,
+                        frameIndex: frameIndex
+                    )
+                    guard decoded.count == descriptor.bytesPerFrame else {
+                        throw TranscodingError.pixelDataExtractionFailed(
+                            "Decoded frame \(frameIndex) has \(decoded.count) bytes; "
+                                + "expected \(descriptor.bytesPerFrame)"
+                        )
+                    }
+                    decompressedData.append(decoded)
                 }
-                
+
                 // Create new uncompressed pixel data element
                 let newElement = DataElement(
                     tag: element.tag,
-                    vr: element.vr,
+                    vr: descriptor.bitsAllocated > 8 ? .OW : .OB,
                     length: UInt32(decompressedData.count),
                     valueData: decompressedData
                 )
                 outputElements.append(newElement)
+            } else if element.tag == .extendedOffsetTable || element.tag == .extendedOffsetTableLengths {
+                // These offsets describe the source encapsulation and are invalid
+                // after decompression. A later encoder builds a fresh Basic Offset Table.
+                continue
             } else {
                 outputElements.append(element)
             }

@@ -209,11 +209,11 @@ final class J2KRoundTripTests: XCTestCase {
                       "HTJ2K Lossless (.203) codestream must be flagged as HTJ2K")
     }
 
-    // MARK: - transcode (J2K ↔ HTJ2K), pixel identity
+    // MARK: - Independent J2K and HTJ2K encode pixel identity
 
-    // Oracle: J2K-lossless and HTJ2K-lossless both decode to identical pixels,
-    // proving the transcode hop is lossless throughout.
-    func testTranscodeJ2KtoHTJ2KPixelIdentity() async throws {
+    // Oracle: independently encoded J2K-lossless and HTJ2K-lossless streams both
+    // decode to identical pixels. This does not exercise coefficient transcoding.
+    func testIndependentLosslessJ2KAndHTJ2KEncodesPreservePixels() async throws {
         let w = 64, h = 64
         let src = ramp8(w * h, stride: 13, mod: 250)
         let image = makeImage8(width: w, height: h, pixels: src)
@@ -571,4 +571,3 @@ final class J2KRoundTripTests: XCTestCase {
         XCTAssertEqual(decoded.components[0].data, src, "layered lossless must stay bit-exact")
     }
 }
-

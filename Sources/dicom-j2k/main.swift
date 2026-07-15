@@ -79,14 +79,7 @@ private func loadDICOM(at path: String) throws -> DICOMFile {
 /// Returns nil if the pixel data is not encapsulated (e.g., uncompressed).
 @available(macOS 10.15, *)
 private func j2kCodestream(from dicom: DICOMFile, frameIndex: Int = 0) -> Data? {
-    guard let element = dicom.dataSet[.pixelData],
-          let fragments = element.encapsulatedFragments else {
-        return nil
-    }
-    guard frameIndex < fragments.count else {
-        return nil
-    }
-    return fragments[frameIndex]
+    dicom.dataSet.encapsulatedPixelData()?.frameData(at: frameIndex)
 }
 
 /// Synchronously runs an async throwing closure and returns its result.

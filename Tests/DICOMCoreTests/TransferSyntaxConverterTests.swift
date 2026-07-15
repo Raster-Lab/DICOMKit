@@ -929,6 +929,113 @@ struct TransferSyntaxConverterCompressionTests {
     }
 }
 
+@Suite("Encapsulated Frame Assembly Safety Tests")
+struct EncapsulatedFrameAssemblySafetyTests {
+    private func descriptor(numberOfFrames: Int) -> PixelDataDescriptor {
+        PixelDataDescriptor(
+            rows: 2,
+            columns: 2,
+            numberOfFrames: numberOfFrames,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+    }
+
+    private func pixelData(fragments: [Data], offsets: [UInt32]) -> DataElement {
+        DataElement(
+            tag: .pixelData,
+            vr: .OB,
+            length: 0xFFFFFFFF,
+            valueData: Data(),
+            encapsulatedFragments: fragments,
+            encapsulatedOffsetTable: offsets
+        )
+    }
+
+    @Test("Single-frame fragments are joined before codec decode")
+    func testSingleFrameFragmentsAreJoined() throws {
+        let converter = TransferSyntaxConverter()
+        let frames = try converter.completeEncapsulatedFrames(
+            from: pixelData(
+                fragments: [Data([0x01, 0x02]), Data([0x03, 0x04])],
+                offsets: []
+            ),
+            descriptor: descriptor(numberOfFrames: 1)
+        )
+
+        #expect(frames == [Data([0x01, 0x02, 0x03, 0x04])])
+    }
+
+    @Test("Basic Offset Table joins multiple fragments for each frame")
+    func testBasicOffsetTableFrameAssembly() throws {
+        let converter = TransferSyntaxConverter()
+        let frames = try converter.completeEncapsulatedFrames(
+            from: pixelData(
+                fragments: [Data([0x01, 0x02]), Data([0x03, 0x04]), Data([0x05, 0x06])],
+                offsets: [0, 20]
+            ),
+            descriptor: descriptor(numberOfFrames: 2)
+        )
+
+        #expect(frames == [Data([0x01, 0x02, 0x03, 0x04]), Data([0x05, 0x06])])
+    }
+
+    @Test("One fragment per frame works without a Basic Offset Table")
+    func testOneFragmentPerFrameWithoutOffsetTable() throws {
+        let converter = TransferSyntaxConverter()
+        let frames = try converter.completeEncapsulatedFrames(
+            from: pixelData(
+                fragments: [Data([0x01, 0x02]), Data([0x03, 0x04])],
+                offsets: []
+            ),
+            descriptor: descriptor(numberOfFrames: 2)
+        )
+
+        #expect(frames == [Data([0x01, 0x02]), Data([0x03, 0x04])])
+    }
+
+    @Test("Basic Offset Table entries must point to fragment boundaries")
+    func testMalformedBasicOffsetTableFailsClosed() throws {
+        let converter = TransferSyntaxConverter()
+        let element = pixelData(
+            fragments: [Data([0x01, 0x02]), Data([0x03, 0x04]), Data([0x05, 0x06])],
+            offsets: [0, 11]
+        )
+
+        #expect(throws: TranscodingError.self) {
+            _ = try converter.completeEncapsulatedFrames(
+                from: element,
+                descriptor: descriptor(numberOfFrames: 2)
+            )
+        }
+    }
+
+    @Test("Ambiguous multi-frame fragments without offsets fail closed")
+    func testAmbiguousMultiFrameFragmentsFailClosed() throws {
+        let converter = TransferSyntaxConverter()
+        let element = pixelData(
+            fragments: [Data([0x01]), Data([0x02]), Data([0x03])],
+            offsets: []
+        )
+
+        do {
+            _ = try converter.completeEncapsulatedFrames(
+                from: element,
+                descriptor: descriptor(numberOfFrames: 2)
+            )
+            Issue.record("Expected ambiguous frame boundaries to be rejected")
+        } catch TranscodingError.pixelDataExtractionFailed(let reason) {
+            #expect(reason.contains("without a Basic Offset Table"))
+        } catch {
+            Issue.record("Unexpected frame assembly error: \(error)")
+        }
+    }
+}
+
 #if canImport(ImageIO)
 @Suite("End-to-End Compression Transcoding Tests")
 struct EndToEndCompressionTests {

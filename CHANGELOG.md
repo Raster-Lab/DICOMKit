@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — J2K ↔ HTJ2K transcode pixel corruption
+
+- Removed automatic use of J2KSwift 11.0.2's coefficient transcoder after true
+  end-to-end checks showed severe pixel corruption in both directions.
+- `TransferSyntaxConverter` now assembles complete encapsulated frames, decodes
+  to pixels, and re-encodes with the target J2K/HTJ2K codec. Ambiguous frame
+  boundaries fail closed instead of being guessed.
+- The two direct `HTJ2KCodec` coefficient-transcode entry points temporarily fail
+  with a descriptive error until the upstream path is proven pixel-preserving.
+- Added exact decoded-pixel contracts for J2K ↔ HTJ2K Lossless and RPCL Lossless,
+  plus Basic Offset Table and ambiguous-fragment safety tests.
+
 ### Fixed — Standalone macOS packaging
 
 - Removed the DICOMStudio-only OpenJPEG comparison wrapper from `DICOMCore`'s
@@ -403,7 +415,7 @@ DICOMStudio: J2K Test Bench, responsive layout, and imaging-first navigation.
 
 - **J2KSwift v3.2.0 codec stack** (`Sources/DICOMCore/J2KSwiftCodec.swift`, `HTJ2KCodec.swift`, `JP3DCodec.swift`): Replaces Apple ImageIO as the primary JPEG 2000 path on all platforms, enabling full Linux support via a pure-Swift scalar backend.
   - `J2KSwiftCodec`: Handles JPEG 2000 Lossless (`.90`), JPEG 2000 Lossy (`.91`), Part 2 Lossless (`.92`), Part 2 Lossy (`.93`) with 8/12/16-bit grayscale and RGB support.
-  - `HTJ2KCodec`: Full HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`). Fast-path transcoder via `J2KTranscoder` (no pixel decode); 5.4× decode speedup over J2K on macOS arm64.
+  - `HTJ2KCodec`: Full HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`). HTJ2K decoding measured 5.4× faster than J2K on macOS arm64; the later safety correction above quarantines direct coefficient transcoding.
   - `JP3DCodec`: ISO/IEC 15444-10 volumetric encoding/decoding for multi-frame CT/MR/PET series with lossless, lossless-HTJ2K, and lossy modes.
 - **JPIP streaming** (`Sources/DICOMKit/DICOMJPIPClient.swift`): Progressive 2D and 3D tile streaming for large remote studies; transfer syntaxes JPIP Referenced (`.94`) and JPIP Referenced Deflate (`.95`) registered.
   - `dicom-jpip` CLI tool with `fetch`, `uri`, `serve`, and `info` subcommands.

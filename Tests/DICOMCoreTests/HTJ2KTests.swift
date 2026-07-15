@@ -5,6 +5,30 @@ import Testing
 
 @Suite("HTJ2K Tests")
 struct HTJ2KTests {
+    private func makeLosslessCodestream(for syntax: TransferSyntax) throws -> Data {
+        let descriptor = PixelDataDescriptor(
+            rows: 16,
+            columns: 16,
+            numberOfFrames: 1,
+            bitsAllocated: 8,
+            bitsStored: 8,
+            highBit: 7,
+            isSigned: false,
+            samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2
+        )
+        var pixels = Data(capacity: descriptor.bytesPerFrame)
+        for value in 0..<descriptor.bytesPerFrame {
+            pixels.append(UInt8(value & 0xFF))
+        }
+        return try J2KSwiftCodec(encodingTransferSyntaxUID: syntax.uid).encodeFrame(
+            pixels,
+            descriptor: descriptor,
+            frameIndex: 0,
+            configuration: .lossless
+        )
+    }
+
     private func localDatasetsRoot() -> URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -44,6 +68,30 @@ struct HTJ2KTests {
             #expect(syntax.isHTJ2K)
             #expect(registry.hasCodec(for: syntax.uid))
             #expect(registry.hasEncoder(for: syntax.uid))
+        }
+    }
+
+    @Test("Unsafe direct coefficient transcoding fails without returning corrupted pixels")
+    func directCoefficientTranscodingIsQuarantined() throws {
+        let j2k = try makeLosslessCodestream(for: .jpeg2000Lossless)
+        let htj2k = try makeLosslessCodestream(for: .htj2kLossless)
+
+        do {
+            _ = try HTJ2KCodec.transcodeToHTJ2K(j2k)
+            Issue.record("Expected direct J2K to HTJ2K transcoding to fail closed")
+        } catch DICOMError.unsupportedTransferSyntax(let reason) {
+            #expect(reason.contains("does not preserve pixels"))
+        } catch {
+            Issue.record("Unexpected J2K to HTJ2K error: \(error)")
+        }
+
+        do {
+            _ = try HTJ2KCodec.transcodeFromHTJ2K(htj2k)
+            Issue.record("Expected direct HTJ2K to J2K transcoding to fail closed")
+        } catch DICOMError.unsupportedTransferSyntax(let reason) {
+            #expect(reason.contains("does not preserve pixels"))
+        } catch {
+            Issue.record("Unexpected HTJ2K to J2K error: \(error)")
         }
     }
 

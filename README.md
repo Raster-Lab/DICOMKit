@@ -93,7 +93,7 @@ DICOMKit is a modern, Swift-native library for reading, writing, and parsing DIC
 DICOMKit integrated **J2KSwift** as its primary JPEG 2000 codec stack in April 2026, replacing Apple ImageIO on all platforms, and currently tracks **J2KSwift v11.0.2**.
 
 - ✅ **J2KSwiftCodec** — Pure-Swift JPEG 2000 (`.90`/`.91`), Part 2 (`.92`/`.93`) encoding and decoding; cross-platform including Linux.
-- ✅ **HTJ2KCodec** — HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`); fast-path transcoder achieves **5.4× decode speedup** over J2K on macOS arm64.
+- ✅ **HTJ2KCodec** — HTJ2K Lossless (`.201`), HTJ2K RPCL Lossless (`.202`), HTJ2K Lossy (`.203`); measured HTJ2K decoding was **5.4× faster** than J2K on macOS arm64. J2K ↔ HTJ2K conversion currently uses safe lossless decode/re-encode while the upstream coefficient path is quarantined.
 - ✅ **JP3DCodec** — ISO/IEC 15444-10 volumetric encoding for multi-frame CT/MR/PET series.
 - ✅ **JPIP streaming** — Progressive 2D and 3D tile streaming (`.94`/`.95`) via `DICOMJPIPClient`.
 - ✅ **Hardware acceleration** — `CodecBackend` enum selects Metal (Apple GPU), Accelerate (SIMD), or scalar automatically.

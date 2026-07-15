@@ -6,6 +6,8 @@
 > **Supersedes:** [J2KSWIFT_INTEGRATION_PLAN.md](J2KSWIFT_INTEGRATION_PLAN.md) (earlier baseline plan)
 > **Date:** 2026‑04‑20
 
+> **Safety correction (2026-07-15):** J2KSwift 11.0.2's direct J2K ↔ HTJ2K coefficient transcoder is not pixel-preserving. DICOMKit has temporarily quarantined the direct APIs and uses full-frame lossless decode/re-encode. See [J2KSWIFT_BUG_REPORT.md](J2KSWIFT_BUG_REPORT.md).
+
 > ⚠️ **Breaking platform bump required.** J2KSwift v3.2.0 requires `swift-tools-version: 6.2` and
 > minimum platforms `macOS 15 / iOS 17 / tvOS 17 / watchOS 10 / visionOS 1`. DICOMKit currently
 > targets `swift-tools-version: 6.0` with `macOS 14 / iOS 17 / visionOS 1`. Adopting J2KSwift
@@ -249,11 +251,12 @@ dicom-diff fixtures/ct.dcm /tmp/ct.j2k.dcm
 - [x] Register in `CodecRegistry` for all three UIDs (overrides generic J2KSwiftCodec entries)
 - [x] Expose helper: `TransferSyntaxConverter.recommendHTJ2K(for: PixelDataDescriptor) -> TransferSyntax`
 
-#### Milestone 2.3 — Transcoding
+#### Milestone 2.3 — Safe Transcoding (Direct Path Blocked Upstream)
 
-- [x] `HTJ2KCodec.transcodeToHTJ2K/transcodeFromHTJ2K` wrapping `J2KTranscoder` for bit‑exact J2K ↔ HTJ2K
-- [x] `TransferSyntaxConverter` fast‑path transcoding via `canUseFastPathTranscode` + `transcodeFastPath` (no pixel decode)
-- [x] Benchmark: 5.434× decode speed‑up for HTJ2K vs. J2K on CT volumes (exceeds 5× target)
+- [ ] Direct coefficient J2K ↔ HTJ2K transcoding — blocked by the J2KSwift 11.0.2 pixel-corruption defect
+- [x] Safe `TransferSyntaxConverter` fallback: assemble complete frames, decode losslessly, then re-encode
+- [x] Direct `HTJ2KCodec` transcoding entry points fail closed while the upstream path is quarantined
+- [x] Benchmark: HTJ2K decoding was 5.434× faster than J2K decoding on CT volumes. This is a decoder benchmark, not evidence that coefficient transcoding is correct.
 
 #### Milestone 2.4 — Network & Web
 
@@ -272,10 +275,10 @@ dicom-send ct.htj2k.dcm --host pacs.local --port 11112 --aet TEST \
   --transfer-syntax htj2k-lossless
 ```
 
-**Phase 2 completion update (2026-04-21):** All four Phase 2 milestones are now complete:
+**Phase 2 completion update (2026-04-21, corrected 2026-07-15):** Transfer syntax, codec, network, and web support remain complete. The direct coefficient subtask in 2.3 is reopened and blocked upstream:
 - **2.1** Transfer syntax model: HTJ2K UIDs, `isHTJ2K` property, parse aliases
 - **2.2** `HTJ2KCodec.swift`: dedicated adapter wrapping `J2KSwiftCodec` with HTJ2K encoding config, registered in `CodecRegistry` for all three UIDs, `recommendHTJ2K(for:)` helper added to `TransferSyntaxConverter`
-- **2.3** Fast-path transcoding: `HTJ2KCodec.transcodeToHTJ2K/transcodeFromHTJ2K` using `J2KTranscoder` coefficient re-encoding, wired into `TransferSyntaxConverter.transcodeFastPath` (bypasses pixel decode/re-encode). Benchmark: 5.434× HTJ2K speedup.
+- **2.3** Safe transcoding: DICOMKit now uses full-frame lossless decode/re-encode and verifies decoded pixel identity. Direct coefficient transcoding fails closed until J2KSwift fixes the upstream defect. The 5.434× result applies only to HTJ2K decoder speed.
 - **2.4** Network & Web: DICOMweb HTJ2K media types, CLI send/retrieve HTJ2K support
 - 92/93 tests pass; the single failure is a pre-existing `NativeJPEG2000Codec` 12-bit Apple ImageIO limitation (not Phase 2 related)
 
@@ -432,7 +435,7 @@ Modelled on J2KSwift’s `j2k` CLI but operating on DICOM files.
 |-------------|---------|
 | `dicom-j2k info <file>`           | Show J2K/HTJ2K codestream metadata embedded in a DICOM file |
 | `dicom-j2k validate <file>`       | ISO/IEC 15444‑4 conformance of the embedded codestream |
-| `dicom-j2k transcode <in> <out>`  | J2K ↔ HTJ2K (bit‑exact); preserves DICOM metadata |
+| `dicom-j2k transcode <in> <out>`  | J2K ↔ HTJ2K via safe lossless decode/re-encode; preserves DICOM metadata |
 | `dicom-j2k reduce <in> <out>`     | Re‑encode at lower resolution/quality layers |
 | `dicom-j2k roi <in> <out>`        | Extract an ROI frame into a new DICOM |
 | `dicom-j2k benchmark <file>`      | Decode‑speed benchmark across codec backends |
@@ -478,7 +481,7 @@ Modelled on J2KSwift’s `j2k` CLI but operating on DICOM files.
 |-----------|-----------|------:|----------------|
 | `J2KSwiftCodecTests.swift` | XCTest | 20 | J2KSwiftCodec: decode/encode 8/12/16-bit, RGB, multiframe, round-trips, error cases |
 | `J2KSwiftCodecBenchmarkTests.swift` | XCTest | 3 | Real-file decode benchmarks; macOS arm64 timings recorded |
-| `HTJ2KTests.swift` | XCTest | 3 | HTJ2KCodec + TransferSyntaxConverter (lossless, RPCL, fast-path transcode) |
+| `J2KTranscodingSafetyTests.swift` + `HTJ2KTests.swift` + `TransferSyntaxConverterTests.swift` | Swift Testing | Focused safety contracts | HTJ2KCodec, safe lossless recompression in both directions, strict frame assembly, and direct-path quarantine |
 | `JP3DCodecTests.swift` | XCTest | 34 | JP3DCodec: transfer syntax, encode/decode, canEncode, registry, round-trip, sync bridge, frame extraction |
 | `CodecBackendTests.swift` | XCTest | 40 | CodecBackend enum, probe, preference, registry extensions, `--backend` CLI flag |
 | `JPIPTests.swift` | XCTest | 39 | DICOMJPIPClient, JPIP transfer syntaxes, progressive volume API |
@@ -498,7 +501,7 @@ Modelled on J2KSwift’s `j2k` CLI but operating on DICOM files.
 
 | Layer | Target | Actual status |
 |-------|--------|---------------|
-| `J2KSwiftCodec` / `HTJ2KCodec` / `JP3DCodec` | 100 % public API | ✅ All public entry points covered |
+| `J2KSwiftCodec` / `HTJ2KCodec` / `JP3DCodec` | 100 % public API | ⚠️ Direct HTJ2K coefficient-transcode entry points are covered by fail-closed contracts pending an upstream fix |
 | `CodecRegistry` priority + fallback | branch coverage | ✅ 40 tests covering all priority paths |
 | DICOM fixtures decode | 50+ sample files per modality | ⚠️ Fixtures exercised via real LocalDatasets inputs in benchmarks; synthetic fixtures used in unit tests |
 | DICOMStudio ViewModels | ≥ 95 % | ✅ 76 progressive + 96 MPR + 60 helpers + 54 inspector = 286 ViewModel tests |

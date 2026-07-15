@@ -1,7 +1,7 @@
 # dicom-j2k
 
 Purpose-built CLI for JPEG 2000 / HTJ2K codestream operations on DICOM files.
-Part of DICOMKit, powered by J2KSwift v3.2.0.
+Part of DICOMKit, powered by J2KSwift v11.0.2.
 
 ## Subcommands
 
@@ -9,7 +9,7 @@ Part of DICOMKit, powered by J2KSwift v3.2.0.
 |------------|-------------|
 | `info <file>` | Show J2K/HTJ2K codestream metadata (tile grid, components, progression order, layers) |
 | `validate <file>` | ISO/IEC 15444-4 conformance check |
-| `transcode <in>` | J2K ↔ HTJ2K fast-path transcode (no pixel decode — coefficient re-encoding) |
+| `transcode <in>` | J2K ↔ HTJ2K safe lossless decode/re-encode |
 | `reduce <in>` | Re-encode at lower resolution or quality layer count |
 | `roi <in>` | Extract an ROI frame from a specific tile/region |
 | `benchmark <file>` | Decode speed across all registered backends |
@@ -40,7 +40,7 @@ dicom-j2k info ct.dcm --json
 # Validate HTJ2K conformance
 dicom-j2k validate scan.htj2k.dcm
 
-# Transcode J2K → HTJ2K (fast path, no pixel decode)
+# Safely transcode J2K → HTJ2K
 dicom-j2k transcode j2k.dcm --output htj2k.dcm --target htj2k-lossless
 
 # Transcode HTJ2K → J2K
@@ -65,11 +65,12 @@ dicom-j2k compare ref.dcm test.dcm
 dicom-j2k completions zsh > ~/.zsh/completions/_dicom-j2k
 ```
 
-## Fast-Path Transcoding
+## Safe Transcoding
 
-The `transcode` subcommand uses `J2KTranscoder` for coefficient re-encoding — pixel data
-is never decoded to RAM. This gives 5–10× higher throughput than full decode + re-encode,
-at the cost of not applying any pixel-level transforms during transcoding.
+The `transcode` subcommand assembles complete DICOM frames, decodes them losslessly, and
+re-encodes them in the target syntax. Direct `J2KTranscoder` coefficient conversion is
+temporarily quarantined because J2KSwift 11.0.2 does not preserve decoded pixels through
+that path. See the [J2KSwift bug report](../../J2KSWIFT_BUG_REPORT.md).
 
 ## Notes
 
