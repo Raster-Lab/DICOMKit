@@ -28,6 +28,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       
     - name: Select Xcode
       run: bash .github/scripts/select-swift-toolchain.sh
@@ -52,8 +53,17 @@ jobs:
         
     - name: Build and test
       run: |
-        swift build -c release
-        swift test
+        set -o pipefail
+        swift build -c release -Xswiftc -warnings-as-errors 2>&1 | tee release-build.log
+        if grep -i "warning:" release-build.log; then
+          echo "::error::Release build emitted warnings"
+          exit 1
+        fi
+        swift test 2>&1 | tee release-test.log
+        if grep -F "which are unhandled; explicitly declare" release-test.log; then
+          echo "::error::Release tests emitted SwiftPM unhandled-file warnings"
+          exit 1
+        fi
         
   build-cli-tools:
     name: Build CLI Tools (Batch ${{ matrix.batch }})
@@ -70,13 +80,15 @@ jobs:
           - batch: "2"
             tools: "dicom-merge dicom-json dicom-xml dicom-pdf dicom-image dicom-dcmdir dicom-archive dicom-export dicom-qr dicom-wado"
           - batch: "3"
-            tools: "dicom-echo dicom-print dicom-mwl dicom-mpps dicom-pixedit dicom-tags dicom-uid dicom-compress dicom-study dicom-script"
+            tools: "dicom-echo dicom-mwl dicom-mpps dicom-pixedit dicom-tags dicom-uid dicom-compress dicom-study dicom-script"
           - batch: "4"
-            tools: "dicom-report dicom-measure dicom-viewer dicom-cloud dicom-3d dicom-ai dicom-gateway dicom-server"
+            tools: "dicom-report dicom-measure dicom-viewer dicom-3d dicom-jpip dicom-j2k dicom-gateway"
     
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       
     - name: Select Xcode
       run: bash .github/scripts/select-swift-toolchain.sh
@@ -120,6 +132,8 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
       
     - name: Select Xcode
       run: bash .github/scripts/select-swift-toolchain.sh
@@ -157,6 +171,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         fetch-depth: 0
+        ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
         
     - name: Get tag name
       id: get_tag
@@ -206,19 +221,24 @@ jobs:
       env:
         TAG: ${{ steps.get_tag.outputs.tag }}
         
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+    - name: Create draft GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ steps.get_tag.outputs.tag }}
         name: DICOMKit ${{ steps.get_tag.outputs.tag }}
         body_path: release_notes.md
-        draft: false
+        draft: true
         prerelease: ${{ contains(steps.get_tag.outputs.tag, '-') }}
         files: |
           dicomkit-cli-tools-*.tar.gz
           artifacts/documentation/*.tar.gz
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Publish immutable GitHub Release
+      run: gh release edit "${{ steps.get_tag.outputs.tag }}" --draft=false --latest
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         
   notify-success:
     name: Notify Release Success

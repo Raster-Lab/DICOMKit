@@ -5356,6 +5356,7 @@ This library implements the DICOM standard as published by the National Electric
 
 | Version | Release | Key Features |
 |---------|---------|--------------|
+| **v2.2.9** | Jul 2026 | Warning-clean SwiftPM package planning and immutable release hygiene |
 | **v1.8.0** | Feb 2026 | UPS Task Handling Enhancements, WorkitemBuilder |
 | **v1.7.0** | Feb 2026 | Secondary Capture Image IOD support |
 | **v1.6.0** | Jan 2026 | DICOM Video Support (all video SOP classes) |
