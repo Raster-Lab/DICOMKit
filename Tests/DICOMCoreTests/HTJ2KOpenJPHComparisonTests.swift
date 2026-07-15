@@ -137,7 +137,10 @@ struct HTJ2KOpenJPHComparisonTests {
 
     // MARK: - Benchmark
 
-    @Test("HTJ2K vs OpenJPH — decode speed and bit-exact comparison on real DICOM")
+    @Test(
+        "HTJ2K vs OpenJPH — decode speed and bit-exact comparison on real DICOM",
+        .enabled(if: LocalCodecFixtureAvailability.hasMR, "Requires optional MR LocalDatasets fixture")
+    )
     func compareHTJ2KDecodeAgainstOpenJPH() throws {
         guard let ojph = openjphExpandPath() else {
             print("SKIP: ojph_expand not found — install via `brew install openjph`")
@@ -215,7 +218,10 @@ struct HTJ2KOpenJPHComparisonTests {
                 "J2KSwift/OpenJPH decoded pixel mismatch — \(mismatches)/\(minLen) bytes differ, first at offset \(firstMismatchOffset)")
     }
 
-    @Test("HTJ2K decode time breakdown: wrapper vs J2KSwift core")
+    @Test(
+        "HTJ2K decode time breakdown: wrapper vs J2KSwift core",
+        .enabled(if: LocalCodecFixtureAvailability.hasMR, "Requires optional MR LocalDatasets fixture")
+    )
     func decodeTimeBreakdown() throws {
         #if canImport(J2KCodec)
         let sample = try realSample(modality: "mr")
