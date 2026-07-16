@@ -348,6 +348,17 @@ private extension J2KSwiftCodec {
     }
 
     #if canImport(J2KCore) && canImport(J2KCodec)
+    // KNOWN ISSUE — no timeout: every J2K encode/decode call (CPU or GPU) bridges
+    // through this synchronous DispatchSemaphore.wait(), which blocks forever if
+    // `operation()` never completes. Confirmed on CI: the GPU forward 5/3 DWT
+    // path (`encodeGPU`) never returns on a virtualized macOS runner without a
+    // functional GPU, hanging the whole process (see
+    // J2KGPUEncodeRoundTripTests.part1_lossless_gray16_large, gated off CI for
+    // now). The same risk exists on any real machine where Metal/the GPU driver
+    // stalls mid-operation — this bridge has no way to recover, only hang.
+    // TODO: bound this wait with a timeout and a defined fallback/error path
+    // (e.g. cancel the task and either retry on CPU or surface a clear timeout
+    // error) instead of blocking indefinitely.
     static func awaitJ2KResult<T: Sendable>(
         _ operation: @escaping @Sendable () async throws -> T
     ) throws -> T {

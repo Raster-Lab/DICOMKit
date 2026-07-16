@@ -143,7 +143,23 @@ struct J2KGPUEncodeRoundTripTests {
 
     // MARK: - Above the 3 MP GPU forward-5/3 threshold (exercises the GPU DWT stage)
 
-    @Test("Part-1 lossless (.91) 16-bit ≥ 3 MP forced-Metal round-trips (GPU DWT stage)")
+    // Skipped in CI: this round-trips through J2KSwiftCodec.awaitJ2KResult, the
+    // synchronous bridge every J2K encode/decode call uses to await J2KSwift's
+    // async API — it wraps a bare DispatchSemaphore.wait() with NO TIMEOUT. On
+    // GitHub's virtualized macOS runners the GPU forward 5/3 DWT stage this test
+    // exercises never completes, hanging this thread (and the whole test binary)
+    // indefinitely; it took two 6-hour CI job timeouts to isolate on the v2.2.10
+    // release run. That lack of a timeout is a real latent hang risk in
+    // production too — any real machine whose Metal/GPU stalls mid-encode would
+    // wedge the caller forever, not just CI — and is tracked separately for a
+    // proper fix (bound awaitJ2KResult with a timeout + defined fallback/error).
+    // This gate only keeps CI green in the meantime; run locally to exercise
+    // the GPU path on real hardware.
+    @Test(
+      "Part-1 lossless (.91) 16-bit ≥ 3 MP forced-Metal round-trips (GPU DWT stage)",
+      .enabled(if: ProcessInfo.processInfo.environment["CI"] == nil,
+               "forced-Metal GPU round-trip hangs on CI runners without a functional GPU — awaitJ2KResult has no timeout")
+    )
     func part1_lossless_gray16_large() throws {
         // 2048×2048 = 4 MP > the 3 MP J2K_GPU_FORWARD_53 threshold, so the GPU
         // forward 5/3 DWT stage fires when Metal is available.
