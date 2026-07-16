@@ -22,7 +22,8 @@ jobs:
   validate-release:
     name: Validate Release
     runs-on: macos-26
-    
+    timeout-minutes: 45
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -52,6 +53,9 @@ jobs:
         echo "✅ Valid version tag: $TAG"
         
     - name: Build and test
+      timeout-minutes: 30
+      env:
+        CI: 'true'
       run: |
         set -o pipefail
         swift build -c release -Xswiftc -warnings-as-errors 2>&1 | tee release-build.log
