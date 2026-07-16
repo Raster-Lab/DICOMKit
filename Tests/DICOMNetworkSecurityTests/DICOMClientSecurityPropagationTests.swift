@@ -607,14 +607,26 @@ import Testing
       #expect(transport.sentData.isEmpty)
     }
 
-    // Parks a cooperative-pool thread in `startRelease.wait()` (see
-    // `ControlledDICOMConnectionTransport.start()`) to force a deterministic race
-    // window; under `swift test --parallel` that can starve the pool so
-    // `releaseStart()` never gets scheduled. Bound the damage to a fast, clear
-    // failure instead of a multi-hour CI hang if that ever happens.
+    // DISABLED: this test's own synchronization is unsound. It parks a Swift-
+    // concurrency cooperative-pool thread in `startRelease.wait()` (see
+    // `ControlledDICOMConnectionTransport.start()`) *on purpose*, to manufacture
+    // scheduling scarcity that lets `request.cancel()` win a race against the
+    // resumed continuation. That's not incidental — making `start()` non-blocking
+    // was tried and breaks the test outright, proving the pass/fail result
+    // depends on starving the pool, not just on the production code being correct.
+    // On low-core CI runners that starvation doesn't resolve: a `.timeLimit`
+    // trait cancels the *test*, but Task cancellation is cooperative and can't
+    // unblock a thread already parked in `DispatchSemaphore.wait()`, so the
+    // thread leaks permanently from Swift's small, fixed-size cooperative pool.
+    // That single leaked thread was enough to stall the rest of the ~6700-test
+    // suite on the v2.2.10 release run (macOS runner, twice, ~6h each).
+    // Re-enable once this is rewritten to use an explicit checkpoint/signal in
+    // the connect flow instead of thread-pool scarcity as a timing primitive.
+    // The adjacent test `cancelledConnectCannotLaterSendUserIdentity` above
+    // already covers cancellation-before-ready plus stale-late-ready rejection.
     @Test(
       "Cancellation after transport readiness is rechecked before A-ASSOCIATE-RQ",
-      .timeLimit(.minutes(1))
+      .disabled("unsound synchronization risks deadlocking the whole test run — see comment")
     )
     func cancellationAfterReadyStillPreventsUserIdentitySend() async throws {
       let transport = ControlledDICOMConnectionTransport(
