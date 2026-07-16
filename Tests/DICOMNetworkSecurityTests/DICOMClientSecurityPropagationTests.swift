@@ -607,7 +607,15 @@ import Testing
       #expect(transport.sentData.isEmpty)
     }
 
-    @Test("Cancellation after transport readiness is rechecked before A-ASSOCIATE-RQ")
+    // Parks a cooperative-pool thread in `startRelease.wait()` (see
+    // `ControlledDICOMConnectionTransport.start()`) to force a deterministic race
+    // window; under `swift test --parallel` that can starve the pool so
+    // `releaseStart()` never gets scheduled. Bound the damage to a fast, clear
+    // failure instead of a multi-hour CI hang if that ever happens.
+    @Test(
+      "Cancellation after transport readiness is rechecked before A-ASSOCIATE-RQ",
+      .timeLimit(.minutes(1))
+    )
     func cancellationAfterReadyStillPreventsUserIdentitySend() async throws {
       let transport = ControlledDICOMConnectionTransport(
         readyOnStart: true,
