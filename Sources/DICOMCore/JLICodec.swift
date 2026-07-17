@@ -109,6 +109,12 @@ public struct JLICodec: ImageCodec, ImageEncoder, Sendable {
         if descriptor.isSigned {
             return false
         }
+        // Pre-converted YCbCr (YBR_FULL_422/YBR_FULL) input only has an 8-bit path
+        // through JLIEncoder — see the `.yCbCr` colorModel branch in `encodeFrame`.
+        if descriptor.samplesPerPixel == 3 && descriptor.photometricInterpretation.isYBR
+            && descriptor.bitsAllocated > 8 {
+            return false
+        }
         if encodesBaseline {
             // Process 1 — 8-bit baseline sequential.
             return descriptor.bitsAllocated == 8 && descriptor.bitsStored <= 8
@@ -136,7 +142,29 @@ public struct JLICodec: ImageCodec, ImageEncoder, Sendable {
             throw DICOMError.parsingFailed("JLISwift: unsupported samplesPerPixel \(spp)")
         }
         let pixelFormat: JLIPixelFormat = descriptor.bitsAllocated <= 8 ? .uint8 : .uint16
-        let colorModel: JLIColorModel = spp == 1 ? .grayscale : .rgb
+        let colorModel: JLIColorModel
+        if spp == 1 {
+            colorModel = .grayscale
+        } else if !encodesLossless && descriptor.photometricInterpretation.isYBR {
+            // Samples are already YCbCr (e.g. YBR_FULL_422) — tell JLIEncoder not to
+            // re-transform them on the lossy DCT path. Only valid for 8-bit input
+            // (JLIEncoder's pre-converted YCbCr path is 8-bit only), which matches
+            // Table 8.2.1-1: the DICOM JPEG processes only permit YBR_FULL_422/RGB
+            // color on 8-bit Baseline, never on 12-bit Extended.
+            //
+            // The lossless (SOF3) path never transforms color regardless of this
+            // label — JLIEncoder requires it to literally be `.rgb`/`.rgba` there
+            // (a component-count marker, not a color-space claim), so YBR-tagged
+            // lossless input keeps `.rgb` below and round-trips byte-exact either way.
+            guard pixelFormat == .uint8 else {
+                throw DICOMError.parsingFailed(
+                    "JLISwift: \(descriptor.photometricInterpretation.rawValue) input requires "
+                    + "8-bit samples (bitsAllocated=\(descriptor.bitsAllocated))")
+            }
+            colorModel = .yCbCr
+        } else {
+            colorModel = .rgb
+        }
         let interleaved = interleavedFrameBytes(from: frameData, descriptor: descriptor)
 
         do {

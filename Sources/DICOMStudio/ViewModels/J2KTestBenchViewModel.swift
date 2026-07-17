@@ -508,9 +508,12 @@ public final class J2KTestBenchViewModel {
                         switch encoded {
                         case .failure(let message):
                             for codec in codecs {
-                                cells.append(Self.errorCell(fixture: fixture, syntax: syntax,
-                                                            codec: codec,
-                                                            message: "encode failed — \(message.message)"))
+                                cells.append(message.isUnsupported
+                                    ? Self.skippedCell(fixture: fixture, syntax: syntax,
+                                                       codec: codec, reason: message.message)
+                                    : Self.errorCell(fixture: fixture, syntax: syntax,
+                                                     codec: codec,
+                                                     message: "encode failed — \(message.message)"))
                                 self.currentCells = cells
                                 self.progressDone += 1
                             }
@@ -672,6 +675,15 @@ public final class J2KTestBenchViewModel {
                     fixturePixelCount: fixture.pixelCount,
                     syntaxUID: syntax.uid, syntaxName: syntax.shortName,
                     codec: codec, outcome: .error(message))
+    }
+
+    /// A row the bench declined to run because the target is blocked, not broken.
+    private static func skippedCell(fixture: J2KTestFixture, syntax: J2KBenchSyntax,
+                                    codec: J2KBenchCodec, reason: String) -> J2KTestCell {
+        J2KTestCell(fixtureName: fixture.name, fixtureModality: fixture.modality,
+                    fixturePixelCount: fixture.pixelCount,
+                    syntaxUID: syntax.uid, syntaxName: syntax.shortName,
+                    codec: codec, outcome: .skipped(reason))
     }
 
     /// A corpus-unique display name. Fixture names key the result groups and
