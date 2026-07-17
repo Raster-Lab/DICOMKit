@@ -241,13 +241,10 @@ enum ExportFormat: String, ExpressibleByArgument {
     }
 
     /// Extension given to the produced file when `--output` names a directory.
+    /// Delegates to the shared `ConvertConsole` map so the CLI and the app's
+    /// Workshop executor cannot drift apart on output extensions.
     var fileExtension: String {
-        switch self {
-        case .dicom: return "dcm"
-        case .png:   return "png"
-        case .jpeg:  return "jpg"
-        case .tiff:  return "tiff"
-        }
+        ConvertConsole.fileExtension(forFormat: rawValue)
     }
 }
 

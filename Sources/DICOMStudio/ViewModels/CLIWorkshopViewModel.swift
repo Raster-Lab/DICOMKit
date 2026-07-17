@@ -4399,29 +4399,19 @@ case "dicom-study":
 
         // When converting a single file and the output path is (or was chosen as) a
         // directory, write the result *inside* that directory using the input filename.
+        // Resolved through the SAME shared `OutputPathResolver` + `ConvertConsole`
+        // extension map the CLI uses (dicom-convert's `convert()`), so the two surfaces
+        // cannot disagree on the destination. This previously duplicated both the
+        // directory test and the format→extension switch here.
         if !isDirectory.boolValue {
-            var outIsDir: ObjCBool = false
-            let outExists = FileManager.default.fileExists(atPath: outputURL.path, isDirectory: &outIsDir)
-            let treatAsDir = (outExists && outIsDir.boolValue)
-                || (!outExists && outputURL.pathExtension.isEmpty)
-            if treatAsDir {
-                // Ensure the directory exists
-                try? FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
-                // Build output filename: input stem + appropriate extension
-                let stem = inputURL.deletingPathExtension().lastPathComponent
-                let ext: String
-                switch format {
-                case "png":  ext = "png"
-                case "jpeg": ext = "jpg"
-                case "tiff": ext = "tiff"
-                default:     ext = "dcm"
-                }
-                outputURL = outputURL.appendingPathComponent("\(stem).\(ext)")
-            } else if !outExists {
-                // Output path has an extension (e.g. output.dcm) — ensure parent dir exists
-                let parentDir = outputURL.deletingLastPathComponent()
-                try? FileManager.default.createDirectory(at: parentDir, withIntermediateDirectories: true)
-            }
+            outputURL = URL(fileURLWithPath: OutputPathResolver.resolveFileOutput(
+                output: outputURL.path,
+                input: inputURL.path,
+                fileExtension: ConvertConsole.fileExtension(forFormat: format)))
+            // The GUI can hand us a destination whose parent doesn't exist yet; create it
+            // so the write below doesn't fail (the CLI does the same after resolving).
+            try? FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         } else {
             // Directory-to-directory: make sure output dir exists
             try? FileManager.default.createDirectory(at: outputURL, withIntermediateDirectories: true)
