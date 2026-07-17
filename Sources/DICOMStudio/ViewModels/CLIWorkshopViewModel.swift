@@ -8560,7 +8560,7 @@ case "dicom-study":
                         callingAE: callingAET, calledAE: calledAET,
                         moveDestination: moveDest.isEmpty ? nil : moveDest,
                         method: isCMove ? .cMove : .cGet,
-                        outputPath: paramValue("output").isEmpty ? "./retrieved" : paramValue("output"),
+                        outputPath: rawOutputQR,
                         hierarchical: hierarchical)
                     let data = try QRSessionState.encode(state)
                     let res = try OutputAccess.write(data, toPath: saveStatePath,

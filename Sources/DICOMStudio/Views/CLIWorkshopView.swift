@@ -818,6 +818,18 @@ public struct CLIWorkshopView: View {
                 if let url = urls.first {
                     // Store the security-scoped URL for later file access
                     viewModel.setSecurityScopedURL(url, forParameterID: param.id)
+                    // Save State File is a single JSON file, but the Browse dialog for
+                    // .outputPath fields can only grant a folder (see fileImporterIsDirectory
+                    // below) — without this, the field would display the bare folder path
+                    // and --save-state would be handed a directory instead of a file to write.
+                    // Append the placeholder filename so the field shows a complete path.
+                    if param.id == "save-state" {
+                        var isDir: ObjCBool = false
+                        if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                            let filePath = url.appendingPathComponent(param.placeholder).path
+                            viewModel.updateParameterValue(parameterID: param.id, value: filePath)
+                        }
+                    }
                 }
             case .failure:
                 break
