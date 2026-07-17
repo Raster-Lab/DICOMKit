@@ -1,8 +1,9 @@
 // RoundTripFixture.swift
 // Shared helpers for the oracle-based round-trip test suite.
 //
-// See ROUND_TRIP_TESTS_PLAN.md (design/oracles) and ROUND_TRIP_TEST_DATA.md
-// (per-tool test-case + pass/fail tracker).
+// See ROUND_TRIP_TESTS_PLAN.md (design/oracles). The former ROUND_TRIP_TEST_DATA.md
+// tracker was removed 2026-07-17: it pasted dump excerpts and hashed PatientIDs from
+// the real Tier 2 corpus. Run the suite for live status; keep corpus output out of docs.
 //
 // Two fixture tiers:
 //   Tier 1 — synthetic builders below (self-contained, pixel-exact oracles, CI-safe)

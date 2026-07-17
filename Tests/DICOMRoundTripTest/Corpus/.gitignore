@@ -1,0 +1,5 @@
+# User-supplied Tier 2 corpus: never commit DICOM data here.
+# Real patient data must not enter this repository — see README.md.
+*
+!.gitignore
+!README.md

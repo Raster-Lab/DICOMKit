@@ -3782,7 +3782,7 @@ case "dicom-script":
             if def.parameterType == .filePath, inputFileParameterIDs.contains(def.id),
                !isFileListParameter(toolID: toolID, paramID: def.id) {
                 d.defaultValue = defaultInputFilePath
-            } else if def.parameterType == .outputPath {
+            } else if def.parameterType == .outputPath, def.id != "save-state" {
                 d.defaultValue = defaultOutputDirectory
             }
             return d

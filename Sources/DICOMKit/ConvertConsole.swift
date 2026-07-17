@@ -30,4 +30,19 @@ public enum ConvertConsole {
     public static func batchSummary(succeeded: Int, total: Int, failed: Int) -> String {
         "\nConversion complete: \(succeeded)/\(total) succeeded, \(failed) failed\n"
     }
+
+    /// File extension for a `--format` token — the single source of truth for BOTH
+    /// the CLI's `OutputFormat.fileExtension` and the app's Workshop executor, which
+    /// each previously carried their own copy of this switch. Keeping one map here is
+    /// what stops a change like `jpeg → "jpg"` from landing on one surface only.
+    ///
+    /// Unknown/absent tokens resolve to `dcm`, matching `--format`'s `dicom` default.
+    public static func fileExtension(forFormat format: String?) -> String {
+        switch format?.lowercased() {
+        case "png":  return "png"
+        case "jpeg": return "jpg"
+        case "tiff": return "tiff"
+        default:     return "dcm"
+        }
+    }
 }

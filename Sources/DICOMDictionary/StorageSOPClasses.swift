@@ -122,7 +122,19 @@ public enum StorageSOPClass {
         "1.2.840.10008.5.1.4.1.1.66.2",     // Spatial Fiducials Storage
         "1.2.840.10008.5.1.4.1.1.66.3",     // Deformable Spatial Registration Storage
         "1.2.840.10008.5.1.4.1.1.66.4",     // Segmentation Storage
-        "1.2.840.10008.5.1.4.1.1.66.5"      // Surface Segmentation Storage
+        "1.2.840.10008.5.1.4.1.1.66.5",     // Surface Segmentation Storage
+
+        // MARK: Waveform (ECG / Hemodynamic / Audio / Pulse / Respiratory)
+        "1.2.840.10008.5.1.4.1.1.9.1.1",    // 12-lead ECG Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.1.2",    // General ECG Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.1.3",    // Ambulatory ECG Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.2.1",    // Hemodynamic Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.3.1",    // Cardiac Electrophysiology Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.4.1",    // Basic Voice Audio Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.4.2",    // General Audio Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.5.1",    // Arterial Pulse Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.6.1",    // Respiratory Waveform Storage
+        "1.2.840.10008.5.1.4.1.1.9.6.2"     // Multichannel Respiratory Waveform Storage
     ]
 
     /// All Storage SOP Class UIDs as a set, for fast membership checks.

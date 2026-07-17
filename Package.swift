@@ -925,7 +925,7 @@ let package = Package(
         ),
         // Oracle-based round-trip tests for the local (non-network) dicom-* tools.
         // Calls the DICOMKit library directly (not the CLI binaries). See
-        // ROUND_TRIP_TESTS_PLAN.md and ROUND_TRIP_TEST_DATA.md.
+        // ROUND_TRIP_TESTS_PLAN.md.
         // Path is singular "DICOMRoundTripTest" (where the anonymized corpus lives);
         // the corpus is resolved at runtime via #filePath (skip-if-absent), so it is
         // excluded from compiled sources rather than bundled.

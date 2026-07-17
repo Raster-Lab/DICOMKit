@@ -37,6 +37,15 @@ public final class ImageViewerViewModel {
     /// SOP Instance UID of the loaded file.
     public var sopInstanceUID: String?
 
+    /// Parsed waveform when the loaded file is a Waveform IOD (ECG, hemodynamic,
+    /// etc.) rather than an image. Non-nil disables the pixel-rendering path and
+    /// drives the waveform display instead.
+    public var waveform: Waveform?
+
+    /// Whether the currently loaded file is a waveform (ECG/hemodynamic/…) object
+    /// with no displayable pixel data.
+    public var isWaveform: Bool { waveform != nil }
+
     /// Whether an image is currently loading.
     public var isLoading: Bool = false
 
@@ -363,8 +372,25 @@ public final class ImageViewerViewModel {
         }
     }
 
+    /// Returns whether the data set represents a Waveform IOD.
+    ///
+    /// Detects by SOP Class UID (the `1.2.840.10008.5.1.4.1.1.9.*` family) or by the
+    /// presence of a Waveform Sequence, so legacy files with a missing/other SOP
+    /// Class UID but valid waveform data are still recognized.
+    private static func isWaveformFile(_ ds: DataSet) -> Bool {
+        if let sopClass = ds.string(for: .sopClassUID)?.trimmingCharacters(in: .whitespaces),
+           sopClass.hasPrefix("1.2.840.10008.5.1.4.1.1.9") {
+            return true
+        }
+        return ds.sequence(for: .waveformSequence)?.isEmpty == false
+    }
+
     /// Shared implementation for loading parsed DICOM data.
     private func loadDICOMData(_ data: Data, path: String) throws {
+        // Clear any prior waveform so a failed/non-waveform load can't leave a stale
+        // tracing on screen.
+        self.waveform = nil
+
         let file: DICOMFile
         do {
             file = try DICOMFile.read(from: data)
@@ -387,6 +413,22 @@ public final class ImageViewerViewModel {
             ?? ""
         self.transferSyntaxUID = tsUID
         self.transferSyntaxName = ImageMetadataHelpers.transferSyntaxLabel(for: tsUID)
+
+        // Waveform IODs (ECG, hemodynamic, EP, audio, …) carry a Waveform Sequence
+        // instead of Pixel Data. Detect and parse them here so the viewer can render
+        // a waveform tracing rather than failing the pixel-rendering path with an
+        // "unable to render pixel data" error.
+        if Self.isWaveformFile(ds),
+           let parsed = try? WaveformParser.parse(from: ds),
+           !parsed.multiplexGroups.isEmpty {
+            self.waveform = parsed
+            self.currentImage = nil
+            self.numberOfFrames = 1
+            self.currentFrameIndex = 0
+            self.errorMessage = nil
+            self.isLoading = false
+            return
+        }
 
         // Read metadata directly from current file tags first.
         // This ensures overlay values match what is actually stored in the
