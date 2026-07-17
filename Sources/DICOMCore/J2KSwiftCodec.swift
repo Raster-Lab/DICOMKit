@@ -348,24 +348,23 @@ private extension J2KSwiftCodec {
     }
 
     #if canImport(J2KCore) && canImport(J2KCodec)
-    // KNOWN ISSUE — no timeout: every J2K encode/decode call (CPU or GPU) bridges
-    // through this synchronous DispatchSemaphore.wait(), which blocks forever if
+    // Every J2K encode/decode call (CPU or GPU) bridges through this synchronous
+    // DispatchSemaphore.wait(), which would otherwise block forever if
     // `operation()` never completes. Confirmed on CI: the GPU forward 5/3 DWT
     // path (`encodeGPU`) never returns on a virtualized macOS runner without a
     // functional GPU, hanging the whole process (see
-    // J2KGPUEncodeRoundTripTests.part1_lossless_gray16_large, gated off CI for
-    // now). The same risk exists on any real machine where Metal/the GPU driver
-    // stalls mid-operation — this bridge has no way to recover, only hang.
-    // TODO: bound this wait with a timeout and a defined fallback/error path
-    // (e.g. cancel the task and either retry on CPU or surface a clear timeout
-    // error) instead of blocking indefinitely.
+    // J2KGPUEncodeRoundTripTests.part1_lossless_gray16_large, gated off CI). The
+    // same risk exists on any real machine where Metal/the GPU driver stalls
+    // mid-operation, so this bounds the wait and cancels the underlying task on
+    // expiry rather than blocking indefinitely with no way to recover.
     static func awaitJ2KResult<T: Sendable>(
+        timeout: TimeInterval = 60,
         _ operation: @escaping @Sendable () async throws -> T
     ) throws -> T {
         let semaphore = DispatchSemaphore(value: 0)
         let box = AsyncResultBox<T>()
 
-        Task.detached(priority: .userInitiated) {
+        let task = Task.detached(priority: .userInitiated) {
             do {
                 box.result = .success(try await operation())
             } catch {
@@ -374,7 +373,11 @@ private extension J2KSwiftCodec {
             semaphore.signal()
         }
 
-        semaphore.wait()
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            task.cancel()
+            throw DICOMError.parsingFailed(
+                "J2KSwift async bridge timed out after \(timeout)s — the GPU or codec backend may be unresponsive")
+        }
 
         guard let result = box.result else {
             throw DICOMError.parsingFailed("J2KSwift async bridge returned no result")

@@ -137,10 +137,13 @@ public final class JP3DCodec: ImageCodec, ImageEncoder, @unchecked Sendable {
         let codec = self
 
         // Use an unsafe continuation to bridge async → sync safely under strict concurrency.
+        // Bounded like J2KSwiftCodec.awaitJ2KResult: an unbounded semaphore.wait()
+        // here would hang the caller forever if decodeVolume's underlying codec
+        // work (potentially GPU-backed) never completes.
         let box = UnsafeSendableBox<Result<Data, Error>>()
         let semaphore = DispatchSemaphore(value: 0)
 
-        Task {
+        let task = Task {
             do {
                 let decoded = try await codec.decodeVolume(capturedData, descriptor: capturedDescriptor)
                 box.value = .success(decoded)
@@ -150,7 +153,12 @@ public final class JP3DCodec: ImageCodec, ImageEncoder, @unchecked Sendable {
             semaphore.signal()
         }
 
-        semaphore.wait()
+        let timeout: TimeInterval = 60
+        if semaphore.wait(timeout: .now() + timeout) == .timedOut {
+            task.cancel()
+            throw DICOMError.parsingFailed(
+                "JP3D async bridge timed out after \(timeout)s — the codec backend may be unresponsive")
+        }
         guard let result = box.value else {
             throw DICOMError.parsingFailed("JP3D decode did not produce a result")
         }
