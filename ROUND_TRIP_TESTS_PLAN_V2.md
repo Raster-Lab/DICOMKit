@@ -14,8 +14,10 @@
 > forward and DONE — `DataExchangeWorkflow` now owns the pipeline on both surfaces (workflow-level
 > oracles remain a follow-up). Tier 1.3 remains with the user's convert/compress branch.
 
-**Baseline:** 387 passing oracle tests across 23 suites (`Tests/DICOMRoundTripTest/`, see
-`ROUND_TRIP_TEST_CASES.md`), incl. the 40-test coverage pass. This plan covers what the
+**Baseline:** 387 passing oracle tests across 23 suites (`Tests/DICOMRoundTripTest/` — the
+suites themselves are the catalogue; the `ROUND_TRIP_TEST_CASES.md` doc was removed
+2026‑07‑17 for embedding real-corpus PHI-derived excerpts), incl. the 40-test coverage
+pass. This plan covers what the
 three-axis verification newly exposed: shared APIs that exist but have no round-trip suite,
 suites that test a **re-implementation instead of the shipping engine**, and engines that must
 move into a shared target before a real round-trip test is even possible.
@@ -199,6 +201,8 @@ this plan.)
 5. Tier 3 items ride along with their code fixes (same-change rule: fix + oracle together).
 
 After each batch: run `swift test --filter DICOMRoundTripTests` (expect current 387 + new, 0
-skips), append the new cases to `ROUND_TRIP_TEST_CASES.md`, and update the status column in
-`ROUND_TRIP_COVERAGE_GAPS.md`. Per the wire-parity rule, any CLI-visible change (Tier 3 fixes)
+skips), and update the status column in `ROUND_TRIP_COVERAGE_GAPS.md`. Do **not** re-create a
+prose case catalogue that pastes corpus output — that is why `ROUND_TRIP_TEST_CASES.md` was
+removed; document new cases in the test files themselves.
+Per the wire-parity rule, any CLI-visible change (Tier 3 fixes)
 also regenerates `CLIContracts.json`/goldens and rebuilds both binaries.

@@ -36,8 +36,10 @@ to another code surface.**
 active development (codec + transfer-syntax work), so their DICOMKit API surface
 is still changing; pinning tests to it now would churn. All other tools are
 implemented first against their stable API, then compress/convert are added once
-their API settles. Live pass/fail status per tool is tracked in
-[`ROUND_TRIP_TEST_DATA.md`](ROUND_TRIP_TEST_DATA.md).
+their API settles. Live pass/fail status per tool is obtained by running the suite
+(`swift test --filter DICOMRoundTripTests`); the former `ROUND_TRIP_TEST_DATA.md`
+tracker was **removed 2026‑07‑17** because it embedded dump excerpts and hashed
+`PatientID`s taken from the real Tier‑2 corpus (see `Corpus/README.md`).
 
 ---
 
@@ -1091,8 +1093,10 @@ SPM targets to be resolved.
 
 **Status:** all 23 tools implemented and green (**340 tool cases + 3 smoke = 343
 executed, 0 failures**), including `dicom-compress` and `dicom-convert` (done last).
-Live per-tool status, case counts, and the 2 real bugs found live in
-[`ROUND_TRIP_TEST_DATA.md`](ROUND_TRIP_TEST_DATA.md). `dicom-info` and `dicom-dump`
+Per-tool status and case counts now come from running the suite itself
+(`swift test --filter DICOMRoundTripTests`) — the `ROUND_TRIP_TEST_DATA.md` tracker
+that used to hold them was **removed 2026‑07‑17** (it embedded real-corpus dump
+excerpts and hashed `PatientID`s). `dicom-info` and `dicom-dump`
 are split into separate files (`InfoRoundTripTests` / `DumpRoundTripTests`).
 
 ### Setup
@@ -1101,8 +1105,8 @@ are split into separate files (`InfoRoundTripTests` / `DumpRoundTripTests`).
 
 ### Pixel / Image operations
 - [ ] `PixelEditRoundTripTests.swift` — 9 test cases including invert+VOI
-- [ ] `CompressRoundTripTests.swift` — 5 test cases
-- [ ] `ConvertRoundTripTests.swift` — 5 test cases
+- [x] `CompressRoundTripTests.swift` — **12** test cases (est. 5) — verified green 2026‑07‑17
+- [x] `ConvertRoundTripTests.swift` — **14** test cases (est. 5; grew with JPEG XL Recompression) — verified green 2026‑07‑17
 - [ ] `ExportRoundTripTests.swift` — 8 test cases
 - [ ] `ImageRoundTripTests.swift` — 6 test cases
 - [ ] `J2KRoundTripTests.swift` — 10 test cases

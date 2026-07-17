@@ -145,6 +145,56 @@ final class ConvertRoundTripTests: XCTestCase {
         }
     }
 
+    /// Same round trip as above, but for a 3-component (RGB) JPEG Baseline source —
+    /// JXLSwift's recompression path explicitly allows 1- or 3-component frames
+    /// (`nComponents == 1 || nComponents == 3`); this proves the 3-component branch
+    /// end-to-end rather than by absence of a restriction:
+    ///   RGB8 → JPEG Baseline (…4.50) → JPEG XL Recompression (…4.111) → JPEG Baseline.
+    func testJXLRecompression_roundTrip_jpegFragmentByteIdentical_RGB() throws {
+        let original = makeRGB8(rows: 32, cols: 32)
+
+        // Uncompressed RGB → JPEG Baseline (lossy DCT — the recompression *source*).
+        let baseline = try convert(original, to: .jpegBaseline)
+        XCTAssertEqual(baseline.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.50")
+        let baselineFragments = fragments(baseline.reread)
+        XCTAssertFalse(baselineFragments.isEmpty, "Baseline source must have encapsulated JPEG fragments")
+
+        // JPEG Baseline → JPEG XL Recompression (…4.111). No added loss.
+        let recomp = try convert(baseline.reread, to: .jpegXLRecompression)
+        XCTAssertEqual(recomp.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.111")
+        XCTAssertTrue(recomp.outcome.isLossless, "wrapping a JPEG in JXL is lossless")
+        XCTAssertTrue(recomp.outcome.wasTranscoded)
+        XCTAssertFalse(fragments(recomp.reread).isEmpty, "…4.111 output must be encapsulated")
+
+        // …4.111 → JPEG Baseline (reverse). Byte-identical reconstruction.
+        let back = try convert(recomp.reread, to: .jpegBaseline)
+        XCTAssertEqual(back.reread.transferSyntaxUID, "1.2.840.10008.1.2.4.50")
+        XCTAssertTrue(back.outcome.isLossless, "reconstructing the original JPEG is lossless")
+        let reconstructed = fragments(back.reread)
+        XCTAssertEqual(reconstructed.count, baselineFragments.count, "frame count preserved")
+        for (i, (a, b)) in zip(reconstructed, baselineFragments).enumerated() {
+            XCTAssertEqual(Array(a), Array(b), "reconstructed JPEG fragment \(i) must be byte-identical")
+        }
+    }
+
+    /// RGB counterpart of `testJXLRecompression_decodeToPixels_matchesBaseline`: decoding
+    /// a …4.111 file built from a 3-component JPEG must yield exactly the wrapped JPEG's
+    /// decoded pixels.
+    func testJXLRecompression_decodeToPixels_matchesBaseline_RGB() throws {
+        let original = makeRGB8(rows: 24, cols: 24)
+
+        let baseline = try convert(original, to: .jpegBaseline)
+        let recomp = try convert(baseline.reread, to: .jpegXLRecompression)
+
+        let baselinePixels = try baseline.reread.tryPixelData().data
+        let recompPixels = try recomp.reread.tryPixelData().data
+
+        XCTAssertFalse(recompPixels.isEmpty)
+        XCTAssertEqual(recompPixels.count, 24 * 24 * 3, "8-bit 24×24 RGB => 1728 pixel octets")
+        XCTAssertEqual(Array(recompPixels), Array(baselinePixels),
+                       "…4.111 pixel decode must equal the wrapped JPEG's pixels")
+    }
+
     /// Decoding a …4.111 file *to pixels* yields exactly the pixels of the wrapped JPEG.
     /// Oracle: the decoded pixels of the …4.111 file equal the decoded pixels of the
     /// Baseline source it was made from (both decode the same JPEG bitstream). The

@@ -1,7 +1,10 @@
 # Round-Trip Coverage Gaps — CLI Flag/Subcommand Audit
 
 Cross-reference of every `dicom-*` CLI's **full flag/subcommand surface** against the
-round-trip test coverage catalogued in [`ROUND_TRIP_TEST_CASES.md`](ROUND_TRIP_TEST_CASES.md).
+round-trip test coverage in `Tests/DICOMRoundTripTest/`. The former
+`ROUND_TRIP_TEST_CASES.md` catalogue was **removed 2026‑07‑17** because it embedded
+dump excerpts and hashed `PatientID`s from the real Tier‑2 corpus; the test files
+themselves are now the catalogue.
 Companion to [`ROUND_TRIP_TESTS_PLAN.md`](ROUND_TRIP_TESTS_PLAN.md).
 
 ## Method & what "covered" means

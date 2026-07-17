@@ -33,6 +33,8 @@ public struct ImageViewerView: View {
             if viewModel.isLoading {
                 ProgressView("Loading…")
                     .foregroundStyle(.white)
+            } else if let waveform = viewModel.waveform {
+                WaveformChartView(waveform: waveform)
             } else if let errorMessage = viewModel.errorMessage {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
@@ -102,19 +104,19 @@ public struct ImageViewerView: View {
         )
         .focusedValue(\.imageViewerViewModel, viewModel)
         .overlay(alignment: .bottomLeading) {
-            if viewModel.showMetadataOverlay && viewModel.hasImage {
+            if viewModel.showMetadataOverlay && viewModel.hasImage && !viewModel.isWaveform {
                 ImageMetadataOverlayView(viewModel: viewModel)
                     .padding(8)
             }
         }
         .overlay(alignment: .bottomTrailing) {
-            if viewModel.showPerformanceOverlay && viewModel.hasImage {
+            if viewModel.showPerformanceOverlay && viewModel.hasImage && !viewModel.isWaveform {
                 performanceOverlay
                     .padding(8)
             }
         }
         .overlay(alignment: .bottom) {
-            if viewModel.isMultiFrame && viewModel.hasImage {
+            if viewModel.isMultiFrame && viewModel.hasImage && !viewModel.isWaveform {
                 CineControlsView(viewModel: viewModel)
                     .padding(.bottom, 40)
             }

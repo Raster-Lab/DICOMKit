@@ -5,10 +5,19 @@ produces **bit/text‑exact** the same output as the `dicom-*` CLI for the same 
 
 Derived from a code‑level audit of all 29 CLI‑Workshop tools (engine call sites,
 golden coverage, and concrete output diffs) plus the Tier‑2 parity harness
-(`MATCH=266, DIFFERS=0`). Companion to
+(committed CI gate: `MATCH=160, DIFFERS=0`). Companion to
 [`APP_CLI_SHARED_API.md`](APP_CLI_SHARED_API.md).
 
-> Generated 2026‑06‑09 from the App‑vs‑CLI parity audit.
+> Generated 2026‑06‑09; golden counts, the `dicom-convert` engine rating, and the
+> JPEG 2000 Part 2 rows re‑verified 2026‑07‑17 against `goldens.synthetic.json`
+> and a live `PARITY_STRICT=1` run.
+
+**Golden counts below are per‑tool scenario counts in the committed, CI‑authoritative
+`goldens.synthetic.json` (160 scenarios total).** A dev machine that also has the
+git‑ignored `goldens.json` superset (real fixtures) runs a larger set — 423 scenarios,
+`MATCH=422, DIFFERS=1`, the one DIFFERS being `dicom-dcmdir-create`, which is excluded
+from the committed gate as non‑deterministic. Host‑dependent scenarios (e.g.
+`dicom-compress backends`) live only in that local superset, never in the CI gate.
 
 ---
 
@@ -47,10 +56,10 @@ logic; **partial** = core shared, some orchestration local.
 | `dicom-anon` | full | 🟰 SAME artifact / +note | 9 | verbose per‑file line format differs; sandbox redirect note |
 | `dicom-json` | full | ✅ SAME | 11 | sandbox redirect note only on TCC denial |
 | `dicom-xml` | full | ✅ SAME | 8 | sandbox redirect note only on TCC denial |
-| `dicom-convert` | partial | 🟰 SAME artifact / +note | 1 | DICOM→DICOM artifact identical; app adds progress lines + sandbox note |
+| `dicom-convert` | full | 🟰 SAME artifact / +note | 22 | DICOM→DICOM artifact identical; app adds progress lines + sandbox note |
 | `dicom-pixedit` | full | 🟰 SAME artifact / +note | 3 | edited DICOM identical; app adds a 2‑line summary |
 | `dicom-study` | full | ✅ SAME | 12 | all subcommands shared; organize now uses the shared `StudyOrganizer` (text-exact, incl. the copy "already exists" error) |
-| `dicom-compress` | full | 🟰 SAME artifact / +note | 4 | info SAME; compress/decompress artifact identical, app adds sandbox note |
+| `dicom-compress` | full | 🟰 SAME artifact / +note | 29 | info SAME; compress/decompress/batch artifacts identical, app adds sandbox note |
 | `dicom-uid` | full | ✅/🎲 split | 6 | validate/lookup SAME; generate/regenerate non‑deterministic |
 | `dicom-split` | full | ⚠️ DIFFER | 0 | same FrameSplitter; app lists extracted paths + summary |
 | `dicom-merge` | full | 🎲 NON‑DET | 0 | same FrameMerger; fresh SOP UID each run |
@@ -127,10 +136,16 @@ logic; **partial** = core shared, some orchestration local.
 |---|---|---|
 | (default), `--pretty`, `--include-empty`, `--inline-binary`, … | ✅ SAME (8) | Shared encoder/decoder. Sandbox redirect note only on TCC denial. |
 
-#### `dicom-convert` — `TransferSyntaxConverter` + `DICOMFile` — 🟰 SAME artifact / +note (1 golden)
+#### `dicom-convert` — `DICOMConverter` + `DICOMImageExporter` + `DICOMFile` — 🟰 SAME artifact / +note (22 goldens)
 | Subcommand / flag | Verdict | Notes |
 |---|---|---|
-| DICOM→DICOM (`--format dicom`/default) | 🟰 SAME artifact (1) | Identical `TransferSyntaxConverter`; converted DICOM byte‑identical. |
+| DICOM→DICOM (`--format dicom`/default) | 🟰 SAME artifact | Identical `DICOMConverter.convertToDICOM` / `resolveTargetEncoding`; converted DICOM byte‑identical. Goldens sweep a 19‑transfer‑syntax matrix (`--transfer-syntax`), incl. JPEG XL. |
+| `--format png` / `jpeg` / `tiff` | 🟰 SAME artifact | Shared `DICOMImageExporter.renderFrameForExport` + `exportCGImage`. |
+| `--quality`, `--frame`, `--apply-window`, `--window-center`, `--window-width` | ✅ SAME | All resolve through the same shared exporter call. |
+| `--strip-private`, `--validate`, `--force` | ✅ SAME | Handled inside the shared `convertToDICOM`. |
+| `--recursive` | ✅ SAME | Shared `FileGatherer.regularFiles` walk; shared `ConvertConsole` batch lines. |
+| output path resolution | ✅ SAME | Both resolve a directory `--output` through the shared `OutputPathResolver.resolveFileOutput` + `ConvertConsole.fileExtension(forFormat:)`. *(Fixed 2026‑07‑17 — the app previously inlined its own directory test and format→extension switch, so a typed non‑existent extension‑less `--output` became a directory in the app but a file in the CLI.)* |
+| `--transfer-syntax JPEG2000Part2*` (`.92`/`.93`) | ✅ SAME (both error) | **Part 2 encoding is deliberately unsupported** — see the JPEG 2000 Part 2 note below. Both surfaces refuse; goldens pin the refusal. |
 | image render / progress | ⚠️ DIFFER (console) | App prints extra progress (file size, frame export, output path) + sandbox redirect note. |
 
 #### `dicom-pixedit` — `PixelEditor` — 🟰 SAME artifact / +note (3 goldens)
@@ -147,14 +162,34 @@ logic; **partial** = core shared, some orchestration local.
 | `compare` | ✅ SAME (2) | Shared `compareStudies`. |
 | `organize` | ✅ SAME | Now shared via `StudyOrganizer` (DICOMKit/Study). Identical descriptive/uid folder naming, deterministic file ordering, the `→` (U+2192) verbose arrow, and the same `copyItem`/`moveItem` **"already exists"** error on a re-run (the app no longer pre-removes the destination). Only the summary line's output *path* differs when the app's sandbox redirects the write (an adapter concern, not the renderer). |
 
-#### `dicom-compress` — `CompressionManager` — split (4 goldens)
+#### `dicom-compress` — `CompressionManager` + `CompressionConsole` — split (29 goldens)
 | Subcommand / flag | Verdict | Notes |
 |---|---|---|
-| `info` (+`--json`) | ✅ SAME (2) | Shared `getCompressionInfo`; text + JSON byte‑identical. |
-| `compress` (`--codec`,`--quality`,`--backend`) | 🟰 SAME artifact (1) | Shared `compressData`; produced DICOM verified by golden (RLE). Console adds sandbox redirect note under TCC. |
-| `decompress` (`--syntax`) | 🟰 SAME artifact (1) | Shared `decompressData`; artifact verified. Console sandbox note. |
-| `batch` | 🟰 SAME artifact | Per‑file shared `compressData`/`decompressData`. Not golden‑covered (multi‑file, filesystem‑dependent). |
-| `backends` | ✅ SAME | Shared `CodecBackendProbe`/`CodecBackend`; identical text/JSON. (Backend list is host‑dependent, identical on a given host.) |
+| `info` (+`--json`) | ✅ SAME | Shared `getCompressionInfo` + `CompressionConsole.infoText/infoJSON`; text + JSON byte‑identical. |
+| `compress` (`--codec`,`--quality`,`--backend`,`--verbose`) | 🟰 SAME artifact | Shared `compressDataWithMetrics`; goldens cover per‑codec (RLE, JPEG‑LS, JPEG lossless/extended, J2K, JPEG XL), quality, and backend selection. Console adds sandbox redirect note under TCC. |
+| `decompress` (`--syntax`) | 🟰 SAME artifact | Shared `decompressData`; artifact verified. Console sandbox note. |
+| `batch` (`--decompress`,`--recursive`,`--quality`,`--syntax`,`--verbose`) | 🟰 SAME artifact | Per‑file shared `compressData`/`decompressData`. **Now golden‑covered** (`batch-compress-*` / `batch-decompress-*` scenarios). |
+| `backends` (+`--json`) | ✅ SAME | Shared `CodecBackendProbe`/`CodecBackend`; identical text/JSON. Host‑dependent, so it lives in the local `goldens.json` superset only — **never** the committed CI gate. |
+| `compress --codec j2k-part2*` (`.92`/`.93`) | ✅ SAME (both error) | **Part 2 encoding is deliberately unsupported** — see below. Both surfaces refuse identically. |
+
+##### JPEG 2000 Part 2 (`.92` / `.93`) is decode‑only — by design
+
+`J2KSwiftCodec.supportedEncodingTransferSyntaxes` filters Part 2 **out** of the
+encoder registry (`J2KRoutePlanner.unsupportedEncodeReason`): the Part‑2
+multi‑component transform cannot be inverted by the current decoder, so an encode
+would emit a codestream that will not read back. Decoding stays registered so
+previously‑written Part‑2 files remain readable.
+
+Both surfaces therefore fail closed, and the goldens pin that:
+
+- `dicom-compress compress -c j2k-part2[-lossless]` → `Error: No encoder registered for transfer syntax 1.2.840.10008.1.2.4.93. …`
+- `dicom-convert --transfer-syntax JPEG2000Part2Lossless` → `Error: Unsupported target transfer syntax: 1.2.840.10008.1.2.4.93`
+
+Both exit `1` and produce no artifact. Goldens for these three scenarios were
+**stale until 2026‑07‑17** — they still held pixel hashes captured before Part‑2
+encoding was withdrawn, so the gate reported a false DIFFERS against an app that was
+behaving correctly. Regenerated; use Part 1 (`.90`/`.91`) or HTJ2K (`.201`–`.203`) to
+actually encode.
 
 #### `dicom-uid` — `UIDManager` — split (6 goldens)
 | Subcommand / flag | Verdict | Notes |
@@ -281,10 +316,15 @@ logic; **partial** = core shared, some orchestration local.
 |---|---|---|
 | `dicom-archive` | App's `--skip-duplicates` import toggle was ignored (hardcoded `skipDuplicates: false`), so it always errored on duplicate SOP Instance UIDs where the CLI could skip them. | **Fixed** — `b418bfc` reads `paramValue("skip-duplicates")` and passes it through. |
 | `dicom-qr` | CLI uppercases the patient‑name C‑FIND key; the app sends it as‑typed, so identical user input produces different query keys. | **Open** — documented here; low‑risk to align the app, but it's network behavior with no parity net, so deferred for explicit review. |
+| `dicom-convert` | App inlined its own `--output` directory test **and** its own format→extension switch instead of the shared `OutputPathResolver`. A typed, non‑existent, extension‑less `--output` (e.g. `--output ~/out`) became a **directory** in the app but a **file** in the CLI; the duplicated extension map was also free to drift (`jpeg → jpg`). Invisible to the gate — every golden passes a concrete output path. | **Fixed 2026‑07‑17** — extension map moved to shared `ConvertConsole.fileExtension(forFormat:)` (CLI's `ExportFormat.fileExtension` now delegates to it); app calls the shared `OutputPathResolver.resolveFileOutput`. The GUI Browse flow is unaffected (a picked folder exists, so both treat it as a directory). |
 
 ---
 
 ## How to re‑verify
 
-- **Machine‑verified (deterministic) tools:** `PARITY_STRICT=1 swift test --filter StudioParityTests` → expect `MATCH=266, DIFFERS=0`. Regenerate with `swift run cli-parity-gen`.
+- **Machine‑verified (deterministic) tools:** `PARITY_STRICT=1 swift test --filter StudioParityTests`.
+  - On a **clean checkout / CI** (committed `goldens.synthetic.json` only) → expect `MATCH=160, DIFFERS=0`.
+  - On a **dev machine that also has the git‑ignored `goldens.json`** (real‑fixture superset, built from `$DICOM_INPUT_DIR`) → expect `MATCH=422, DIFFERS=1`; the DIFFERS is `dicom-dcmdir-create` (app prints 2 extra lines), which is excluded from the committed gate as non‑deterministic.
+  - Regenerate with `swift build && swift run cli-parity-gen` (the generator shells out to the built `dicom-*` binaries, so build first). It rewrites **both** golden files in one pass: everything → `goldens.json`, and the `phiSafe && deterministic && portable` subset → the committed `goldens.synthetic.json`.
+  - Regeneration only refreshes the **CLI** reference; it cannot mask an app‑vs‑CLI divergence (a real one still DIFFERS). If a golden changes unexpectedly, that is CLI behaviour drift worth reading, not churn to wave through.
 - **Non‑deterministic / network tools:** verify by **shared‑engine construction** (both adapters call the same engine — see the call sites cited in [`APP_CLI_SHARED_API.md`](APP_CLI_SHARED_API.md) §3) plus smoke tests, since stable goldens are impossible.
