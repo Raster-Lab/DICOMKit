@@ -44,6 +44,13 @@ public enum J2KTestBenchService {
         )
         switch syntax.format {
         case .jpeg2000:
+            // A blocked target (currently JPEG 2000 Part 2 `.92`/`.93`) is reported as
+            // skipped rather than run. Without this the row would benchmark whatever
+            // substitute the planner falls back to and present it as a Part-2 pass.
+            if let reason = J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: syntax.uid) {
+                return .failure(J2KBenchError(reason, isUnsupported: true))
+            }
+
             let result = J2KSwiftCodec.benchEncode(
                 frame,
                 descriptor: descriptor,

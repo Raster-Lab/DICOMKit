@@ -17,7 +17,17 @@ import DICOMCore
 /// human-readable reason through `Result`.
 public struct J2KBenchError: Error, Sendable {
     public let message: String
-    public init(_ message: String) { self.message = message }
+    /// `true` when the target is deliberately blocked rather than broken — the
+    /// codec declines to produce this syntax at all (see
+    /// `J2KRoutePlanner.unsupportedEncodeReason`). Such a row is reported as
+    /// ``J2KTestOutcome/skipped(_:)``, not as an error: nothing failed, there was
+    /// simply nothing to measure.
+    public let isUnsupported: Bool
+
+    public init(_ message: String, isUnsupported: Bool = false) {
+        self.message = message
+        self.isUnsupported = isUnsupported
+    }
 }
 
 // MARK: - Codec

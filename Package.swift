@@ -337,6 +337,7 @@ let package = Package(
                 "CompressionManagerImplicitVRTests.swift",
                 "CompressionManagerMetricsTests.swift",
                 "CompressionManagerJPEGEngineTests.swift",
+                "CompressionManagerPhotometricInterpretationTests.swift",
                 "LossyImageCompressionAttributesTests.swift",
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
