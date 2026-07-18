@@ -110,16 +110,24 @@ struct DICOMSplit: AsyncParsableCommand {
 
         // Process files
         var isDirectory: ObjCBool = false
+        let result: SplitResult
         if FileManager.default.fileExists(atPath: input, isDirectory: &isDirectory), isDirectory.boolValue {
             // Directory processing
-            _ = try await splitter.processDirectory(input, recursive: recursive, frameIndices: frameIndices)
+            result = try await splitter.processDirectory(input, recursive: recursive, frameIndices: frameIndices)
         } else {
             // Single file processing
-            var result = SplitResult()
-            await splitter.processFile(input, frameIndices: frameIndices, into: &result)
+            var single = SplitResult()
+            await splitter.processFile(input, frameIndices: frameIndices, into: &single)
+            result = single
         }
 
-        fprintln("\nSplit complete!")
+        fprintln("\nSplit complete! Processed: \(result.processedFiles), extracted: \(result.extracted), skipped: \(result.skippedFiles), failed: \(result.failed)")
+
+        // Surface real extraction failures through the exit code so scripts can detect
+        // them. Skips (non-DICOM or single-frame files) are not failures and keep exit 0.
+        if result.failed > 0 {
+            throw ExitCode.failure
+        }
     }
     
     func createOutputDirectory(_ path: String) throws {

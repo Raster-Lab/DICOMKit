@@ -105,6 +105,12 @@ struct DICOMAnon: ParsableCommand {
                 anonymizer: anonymizer
             )
         } else {
+            // Writing back over the input is never implied. Without --output there is
+            // nowhere to write, so anonymizing would silently discard its result and
+            // still report success — require --output unless this is a --dry-run preview.
+            guard dryRun || output != nil else {
+                throw ValidationError("Anonymization requires --output (or use --dry-run to preview without writing)")
+            }
             let result = try anonymizeFile(
                 inputURL: inputURL,
                 outputURL: output.map { URL(fileURLWithPath: $0) },

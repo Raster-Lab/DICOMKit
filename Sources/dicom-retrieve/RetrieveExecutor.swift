@@ -261,8 +261,14 @@ struct RetrieveExecutor {
     ) throws {
         let filename = "\(sopInstanceUID).dcm"
         let filepath: String
-        
-        if hierarchical, let series = seriesUID {
+
+        // For a study-level C-GET the caller has no series UID, so recover it from the
+        // received dataset itself; otherwise --hierarchical would collapse to a flat dump.
+        // If it can't be recovered we fall back to flat layout (the prior behavior).
+        let effectiveSeriesUID = seriesUID
+            ?? Self.extractSeriesUID(fromDataSet: data, transferSyntaxUID: transferSyntaxUID)
+
+        if hierarchical, let series = effectiveSeriesUID {
             // Organize as study/series/instance
             let studyDir = (outputPath as NSString).appendingPathComponent(studyUID)
             let seriesDir = (studyDir as NSString).appendingPathComponent(series)
@@ -286,6 +292,66 @@ struct RetrieveExecutor {
         try part10.write(to: URL(fileURLWithPath: filepath))
     }
     
+    // MARK: - Series UID recovery
+
+    /// Best-effort scan of a raw C-GET dataset for SeriesInstanceUID (0020,000E).
+    ///
+    /// Handles Explicit and Implicit VR Little Endian (which covers every transfer
+    /// syntax a C-GET yields — encapsulated pixel data still uses Explicit VR LE for
+    /// the surrounding data set). Returns `nil` on anything it can't confidently parse
+    /// (undefined-length sequences, big endian, truncation) so callers fall back to a
+    /// flat layout rather than misfiling. Never traps: every read is bounds-checked.
+    static func extractSeriesUID(fromDataSet data: Data, transferSyntaxUID: String) -> String? {
+        // Re-base to guarantee 0-based indexing (the dataset may arrive as a slice).
+        let bytes = Data(data)
+        let implicitVR = (transferSyntaxUID == "1.2.840.10008.1.2")
+        // VRs that carry a 2-byte reserved field + 4-byte length in Explicit VR.
+        let longFormVRs: Set<String> = ["OB", "OW", "OF", "OD", "OL", "SQ", "UT", "UN", "UC", "UR"]
+
+        var offset = 0
+        while offset + 8 <= bytes.count {
+            guard let group = bytes.readUInt16LE(at: offset),
+                  let element = bytes.readUInt16LE(at: offset + 2) else { return nil }
+
+            // Elements are ordered by (group, element); once we pass 0020,000E it's absent.
+            if group > 0x0020 || (group == 0x0020 && element > 0x000E) { return nil }
+
+            let valueLength: Int
+            let valueOffset: Int
+            if implicitVR {
+                guard let len = bytes.readUInt32LE(at: offset + 4) else { return nil }
+                valueLength = Int(len)
+                valueOffset = offset + 8
+            } else {
+                let vr = String(decoding: bytes[offset + 4 ..< offset + 6], as: UTF8.self)
+                if longFormVRs.contains(vr) {
+                    guard offset + 12 <= bytes.count,
+                          let len = bytes.readUInt32LE(at: offset + 8) else { return nil }
+                    valueLength = Int(len)
+                    valueOffset = offset + 12
+                } else {
+                    guard let len = bytes.readUInt16LE(at: offset + 6) else { return nil }
+                    valueLength = Int(len)
+                    valueOffset = offset + 8
+                }
+            }
+
+            // Undefined length (sequences/encapsulated) — can't skip reliably here.
+            if valueLength == 0xFFFF_FFFF { return nil }
+            guard valueOffset + valueLength <= bytes.count else { return nil }
+
+            if group == 0x0020 && element == 0x000E {
+                let raw = bytes[valueOffset ..< valueOffset + valueLength]
+                let uid = String(decoding: raw, as: UTF8.self)
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+                return uid.isEmpty ? nil : uid
+            }
+
+            offset = valueOffset + valueLength
+        }
+        return nil
+    }
+
     // MARK: - Part 10 file wrapper
 
     /// Wraps raw C-GET/C-STORE dataset bytes in a DICOM Part 10 container.

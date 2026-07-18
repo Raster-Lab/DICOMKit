@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Bug review pass (library crashes/correctness + CLI hardening)
+
+- **STOW-RS server (critical):** the multipart parser decoded the entire body as UTF-8
+  before splitting, so binary `application/dicom` uploads (almost never valid UTF-8)
+  parsed to zero parts and were silently dropped while the server still reported
+  success; rare bodies that did decode were corrupted by whitespace-trimming raw bytes.
+  Now uses the same byte-scanning `MultipartMIME` parser as the client. See `BUG_REVIEW.md` (C1).
+- **SIMD window/level:** `applyWindowLevel` passed a positive offset instead of
+  `-minValue` into the vDSP scalar-add, blowing out every image rendered through the
+  fast path. `PerformanceTests/SIMDImageProcessorTests.swift` had also silently dropped
+  out of the build (excluded in `Package.swift`), so the regression test for this never
+  ran; both are now fixed and back in the build. See `BUG_REVIEW.md` (H1).
+- **Crash hardening:** bounds-check encapsulated pixel-data fragment lengths before
+  slicing (`TransferSyntaxConverter`), handle empty/dot-only `TM` values (`DICOMTime`),
+  tolerate duplicate tags inside a sequence item (`SequenceItem`), and guard a
+  double-`resume()` race in the Storage SCP association handshake (`StorageSCP`). See
+  `BUG_REVIEW.md` (H2, H3, M3, H4).
+- **Correctness:** `allowMissingVR` in the DICOM JSON decoder had its condition
+  inverted and never inferred a VR from the dictionary; `AT`-valued elements were
+  byte-swapped as a single 32-bit word instead of two ordered 16-bit words on
+  cross-endian transcode (also added missing `OD`/`OL`/`SV`/`UV` to the numeric-VR
+  swap set); the data element dictionary loader dropped rows with an empty `Name`
+  field (`(0018,0061)`, `(0400,0315)`, `(300A,0782)`). See `BUG_REVIEW.md` (M1, M2, M4).
+- **Hardening:** segmentation palette index underflow on `segmentNumber == 0`,
+  slice-unsafe absolute-index reads in `ByteOrder`/`PaletteColorLUT` (now relative to
+  `startIndex`), non-ASCII digits accepted in UID validation, and a 3-byte G1 escape
+  sequence unrecognized at end-of-buffer. See `BUG_REVIEW.md` (L1-L4, M5).
+- **CLI / DICOMStudio Workshop parity:** rejected negative `--frame`/`--retry`/
+  `--parallel`/`--batch` values that previously reached a trapping range or stride
+  instead of erroring cleanly; `dicom-anon` and its app equivalent now require
+  `--output` (or `--dry-run`) instead of silently doing nothing; directory converts in
+  `dicom-convert` now retag non-DICOM output files with the correct extension per file
+  (previously only the single-file path did); reversed `--select` ranges in `dicom-qr`
+  no longer trap; study-level C-GET with `--hierarchical` now recovers the series UID
+  from the received dataset instead of collapsing to a flat layout; `dicom-split` now
+  reports real per-file failure counts and exits non-zero when any file failed. See
+  `BUG_REVIEW.md` ("CLI / DICOMStudio Workshop hardening").
+
 ## [2.2.10] - 2026-07-15
 
 ### Added — J2K GPU/CPU Encode Route Planner

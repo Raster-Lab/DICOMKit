@@ -1,5 +1,6 @@
 import Foundation
 import DICOMCore
+import DICOMDictionary
 
 /// Decoder for converting JSON data to DICOM DataElements
 ///
@@ -111,16 +112,18 @@ public struct DICOMJSONDecoder: Sendable {
         // Parse tag
         let tag = try parseTag(tagKey)
         
-        // Get VR
-        guard let vrString = elementDict["vr"] as? String else {
-            if configuration.allowMissingVR {
-                throw DICOMwebError.invalidJSON(reason: "Missing VR for tag \(tagKey)")
+        // Get VR. When absent and allowMissingVR is set, infer it from the
+        // data dictionary (PS3.18 permits omitting VR when it is well-known).
+        let vr: VR
+        if let vrString = elementDict["vr"] as? String {
+            guard let parsed = VR(rawValue: vrString) else {
+                throw DICOMwebError.invalidVREncoding(vr: vrString, reason: "Unknown VR")
             }
+            vr = parsed
+        } else if configuration.allowMissingVR, let inferred = DataElementDictionary.lookup(tag: tag)?.vr.first {
+            vr = inferred
+        } else {
             throw DICOMwebError.missingRequiredField(field: "vr")
-        }
-        
-        guard let vr = VR(rawValue: vrString) else {
-            throw DICOMwebError.invalidVREncoding(vr: vrString, reason: "Unknown VR")
         }
         
         // Get value

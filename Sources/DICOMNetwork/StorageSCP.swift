@@ -427,6 +427,23 @@ import Network
 /// // Stop server
 /// await server.stop()
 /// ```
+/// A thread-safe one-shot guard used to ensure a continuation backed by an
+/// `NWListener` state-update handler is resumed exactly once, even though
+/// the handler may be invoked from Network framework's queue multiple times.
+private final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isSet = false
+
+    /// Returns `true` the first time it's called, `false` on every call after.
+    func trySet() -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if isSet { return false }
+        isSet = true
+        return true
+    }
+}
+
 public actor DICOMStorageServer {
     
     /// Server configuration
@@ -487,20 +504,42 @@ public actor DICOMStorageServer {
         
         let listener = try NWListener(using: parameters, on: port)
         self.listener = listener
-        
-        listener.stateUpdateHandler = { [weak self] state in
-            guard let self else { return }
-            Task { await self.handleListenerState(state) }
-        }
-        
+
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else { return }
             Task { await self.handleNewConnection(connection) }
         }
-        
-        listener.start(queue: .global(qos: .userInitiated))
+
+        // NWListener.start() is asynchronous: binding to the port (and thus
+        // failures like EADDRINUSE) only surface later via the state-update
+        // handler, not by throwing here. Wait for `.ready`/`.failed` before
+        // reporting success, so callers never see a "started" event for a
+        // listener that never actually bound the port.
+        let resumed = LockedFlag()
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            listener.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    guard resumed.trySet() else { return }
+                    continuation.resume()
+                case .failed(let error):
+                    guard resumed.trySet() else { return }
+                    listener.cancel()
+                    continuation.resume(throwing: DICOMNetworkError.connectionFailed(error.localizedDescription))
+                default:
+                    break
+                }
+            }
+            listener.start(queue: .global(qos: .userInitiated))
+        }
+
+        listener.stateUpdateHandler = { [weak self] state in
+            guard let self else { return }
+            Task { await self.handleListenerState(state) }
+        }
+
         isRunning = true
-        
+
         eventContinuation?.yield(.started(port: configuration.port))
     }
     
@@ -656,15 +695,18 @@ actor SCPAssociation {
     func start() async {
         connection.start(queue: .global(qos: .userInitiated))
         
-        // Wait for connection to be ready
+        // Wait for connection to be ready. Guard the resume so a terminal
+        // transition (e.g. peer RST right after .ready) can't resume the
+        // continuation a second time and trap before the handler is cleared.
+        let resumed = LockedFlag()
         await withCheckedContinuation { continuation in
             connection.stateUpdateHandler = { state in
-                if case .ready = state {
+                switch state {
+                case .ready, .failed, .cancelled:
+                    guard resumed.trySet() else { return }
                     continuation.resume()
-                } else if case .failed = state {
-                    continuation.resume()
-                } else if case .cancelled = state {
-                    continuation.resume()
+                default:
+                    break
                 }
             }
         }

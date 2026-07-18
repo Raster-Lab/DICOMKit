@@ -67,6 +67,11 @@ struct DICOMSend: AsyncParsableCommand {
 
     mutating func run() async throws {
         #if canImport(Network)
+        // --retry drives `0...retryAttempts`; a negative value would trap that range.
+        guard retry >= 0 else {
+            throw ValidationError("--retry must be zero or greater")
+        }
+
         let serverInfo = resolveHostPort()
 
         let preferredTransferSyntaxUID: String?

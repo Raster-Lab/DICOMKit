@@ -465,8 +465,15 @@ public actor DICOMwebServer {
                 return .badRequest(message: "Missing multipart boundary")
             }
             
-            let parts = MultipartMIMEParser.parse(data: body, boundary: boundary)
-            dicomParts = parts.map { $0.body }
+            // Use the byte-scanning MultipartMIME parser. The prior UTF-8
+            // string-based parser dropped/corrupted binary Part-10 bodies
+            // (which are not valid UTF-8), silently storing nothing.
+            do {
+                let multipart = try MultipartMIME.parse(data: body, boundary: boundary)
+                dicomParts = multipart.parts.map { $0.body }
+            } catch {
+                return .badRequest(message: "Invalid multipart body: \(error)")
+            }
         } else if contentType.type == "application" && contentType.subtype == "dicom" {
             // Single DICOM instance
             dicomParts = [body]
@@ -1850,55 +1857,3 @@ extension STOWDelegate {
     public func server(_ server: DICOMwebServer, shouldAcceptInstance sopInstanceUID: String, sopClassUID: String, studyUID: String) async -> Bool { true }
 }
 
-// MARK: - Multipart Parser
-
-/// Simple multipart MIME parser for STOW-RS
-struct MultipartMIMEParser {
-    struct Part {
-        let headers: [String: String]
-        let body: Data
-    }
-    
-    static func parse(data: Data, boundary: String) -> [Part] {
-        var parts: [Part] = []
-        
-        guard let content = String(data: data, encoding: .utf8) else {
-            return parts
-        }
-        
-        let delimiter = "--\(boundary)"
-        _ = "--\(boundary)--"  // endDelimiter - currently unused but kept for reference
-        
-        let sections = content.components(separatedBy: delimiter)
-        
-        for section in sections {
-            // Skip empty sections and end boundary
-            let trimmed = section.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty || trimmed == "--" || trimmed.hasPrefix("--") {
-                continue
-            }
-            
-            // Split headers from body
-            if let headerEnd = section.range(of: "\r\n\r\n") ?? section.range(of: "\n\n") {
-                let headerPart = String(section[section.startIndex..<headerEnd.lowerBound])
-                let bodyPart = String(section[headerEnd.upperBound...])
-                
-                var headers: [String: String] = [:]
-                for line in headerPart.split(separator: "\n") {
-                    let headerLine = String(line).trimmingCharacters(in: .whitespacesAndNewlines)
-                    if let colonIndex = headerLine.firstIndex(of: ":") {
-                        let name = String(headerLine[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-                        let value = String(headerLine[headerLine.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
-                        headers[name] = value
-                    }
-                }
-                
-                if let bodyData = bodyPart.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8) {
-                    parts.append(Part(headers: headers, body: bodyData))
-                }
-            }
-        }
-        
-        return parts
-    }
-}
