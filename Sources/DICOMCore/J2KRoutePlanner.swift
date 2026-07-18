@@ -188,6 +188,32 @@ public enum J2KRoutePlanner {
             + "(lossless .90 / general .91) or HTJ2K (.201 / .202 / .203) instead."
     }
 
+    /// A user-facing reason why `frameData` cannot be **decoded**, or `nil` when it
+    /// can. Currently the only rejection is a codestream carrying a genuine Part-2
+    /// multi-component transform while `part2MCTDecodeSupported` is `false`.
+    ///
+    /// This is the read-side counterpart to `unsupportedEncodeReason`. DICOMKit never
+    /// *writes* such a codestream, but a third-party encoder (Kakadu, OpenJPEG, …)
+    /// can, and the pinned decoder skips MCT/MCC/MCO markers outright rather than
+    /// failing — it would hand back forward-transformed samples that were never
+    /// inverted. For medical pixel data, a loud error is the only safe outcome:
+    /// silently-wrong pixels are worse than no pixels.
+    ///
+    /// Part-2 codestreams *without* multi-component markers (including the
+    /// Part-1-compatible ones DICOMKit itself writes under a `.92`/`.93` UID) decode
+    /// correctly and are deliberately still accepted, so existing files keep opening.
+    public static func unsupportedDecodeReason(frameData: Data) -> String? {
+        guard !part2MCTDecodeSupported else { return nil }
+        let markers = J2KCodestreamInspector.part2MultiComponentMarkers(in: frameData)
+        guard !markers.isEmpty else { return nil }
+        let names = markers.map(\.name).joined(separator: ", ")
+        return "This JPEG 2000 codestream uses a Part-2 multi-component transform "
+            + "(\(names) marker\(markers.count == 1 ? "" : "s") present), which the current decoder "
+            + "cannot invert. Decoding would silently produce incorrect pixel values, so it has "
+            + "been refused. Re-encode the source as JPEG 2000 Part 1 (lossless .90 / general .91) "
+            + "or HTJ2K (.201 / .202 / .203)."
+    }
+
     // MARK: - Backend policy
 
     /// Which intents are eligible for the J2KSwift **GPU encode** path.

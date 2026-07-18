@@ -204,6 +204,60 @@ struct JLICodecRegistryTests {
         #expect(losslessEnc.canEncode(with: .lossless, descriptor: signed16))
     }
 
+    // MARK: - Photometric Interpretation drives the JLIEncoder color model
+
+    /// A YBR_FULL_422-tagged descriptor. Component values are meaningless as
+    /// literal Y/Cb/Cr numbers for this test — the point is only to prove the
+    /// codec no longer treats them as RGB and re-transforms them.
+    private func colorDescriptor(_ w: Int, _ h: Int, photometric: PhotometricInterpretation) -> PixelDataDescriptor {
+        PixelDataDescriptor(
+            rows: h, columns: w,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: photometric,
+            planarConfiguration: 0)
+    }
+
+    @Test("Baseline encode routes YBR_FULL_422 input through the YCbCr passthrough, not the RGB transform")
+    func baselineEncodeHonoursYBRPhotometricInterpretation() throws {
+        let reg = CodecRegistry.shared
+        let encoder = try #require(reg.encoder(for: baseline))
+        let decoder = try #require(reg.codec(for: baseline))
+
+        let rgbDescriptor = colorDescriptor(16, 16, photometric: .rgb)
+        let ybrDescriptor = colorDescriptor(16, 16, photometric: .ybrFull422)
+        let original = smoothFrame(16, 16, bitsStored: 8, spp: 3, bytesPerSample: 1)
+        let config = CompressionConfiguration(quality: .maximum, speed: .balanced)
+
+        let encodedAsRGB = try encoder.encodeFrame(original, descriptor: rgbDescriptor, frameIndex: 0, configuration: config)
+        let encodedAsYBR = try encoder.encodeFrame(original, descriptor: ybrDescriptor, frameIndex: 0, configuration: config)
+
+        // Before the fix, both descriptors produced identical output — the codec
+        // never looked at photometricInterpretation and always assumed RGB, so
+        // YBR_FULL_422 input was silently (and wrongly) re-transformed as if it
+        // were RGB. They must now diverge: one path transforms, the other doesn't.
+        #expect(encodedAsRGB != encodedAsYBR,
+                "YBR_FULL_422 encode produced byte-identical output to RGB encode — photometricInterpretation is being ignored again")
+
+        // The YCbCr-passthrough path must still decode to a full-size, valid frame.
+        let decoded = try decoder.decodeFrame(encodedAsYBR, descriptor: ybrDescriptor, frameIndex: 0)
+        #expect(decoded.count == original.count)
+    }
+
+    @Test("canEncode rejects 12-bit YBR_FULL_422 (JLIEncoder's YCbCr passthrough is 8-bit only)")
+    func canEncodeRejects12BitYBR() {
+        let reg = CodecRegistry.shared
+        let extendedEnc = reg.encoder(for: extended)!
+
+        let ybr16 = PixelDataDescriptor(
+            rows: 8, columns: 8,
+            bitsAllocated: 16, bitsStored: 12, highBit: 11,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: .ybrFull422,
+            planarConfiguration: 0)
+        #expect(!extendedEnc.canEncode(with: .default, descriptor: ybr16))
+    }
+
     // MARK: - Default instance stays lossless (bench / adapter contract)
 
     @Test("Bare JLICodec() encodes lossless regardless of a lossy configuration")
