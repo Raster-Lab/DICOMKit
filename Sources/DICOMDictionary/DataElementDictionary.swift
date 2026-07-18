@@ -19,7 +19,9 @@ public struct DataElementDictionary: Sendable {
         }
         var dict = [Tag: DataElementEntry](minimumCapacity: 5036)
         for line in content.split(separator: "\n") {
-            let fields = line.split(separator: "|", maxSplits: 5)
+            // Keep empty subsequences so a blank field (e.g. an empty Name)
+            // doesn't collapse the column count and drop/misalign the row.
+            let fields = line.split(separator: "|", maxSplits: 5, omittingEmptySubsequences: false)
             guard fields.count == 6,
                   let group = UInt16(fields[0], radix: 16),
                   let element = UInt16(fields[1], radix: 16) else { continue }
