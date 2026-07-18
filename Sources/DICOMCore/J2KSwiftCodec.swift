@@ -69,6 +69,11 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
     /// **excluded** while the library cannot decode it (see
     /// `J2KRoutePlanner.unsupportedEncodeReason`); decoding of Part-2 remains in
     /// `supportedTransferSyntaxes` so previously-written files can still be read.
+    ///
+    /// That read path is UID-level only. A `.92`/`.93` frame whose codestream carries
+    /// a real multi-component transform is rejected at decode time by
+    /// `J2KRoutePlanner.unsupportedDecodeReason`, since the pinned decoder ignores
+    /// MCT/MCC/MCO rather than inverting them.
     public static let supportedEncodingTransferSyntaxes: [String] = supportedTransferSyntaxes.filter {
         J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: $0) == nil
     }
@@ -96,6 +101,12 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         mode: J2KSwiftDecodeMode
     ) throws -> Data {
         #if canImport(J2KCore) && canImport(J2KCodec)
+        // Mirrors the guard in `decodeWithJ2KSwift`: no J2KSwift decode API inverts a
+        // Part-2 multi-component transform, so pinning one here doesn't make it safe.
+        if let reason = J2KRoutePlanner.unsupportedDecodeReason(frameData: frameData) {
+            throw DICOMError.unsupportedTransferSyntax(reason)
+        }
+
         let decoder = J2KDecoder()
         let image: J2KImage
         do {
@@ -168,6 +179,15 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         runs: Int
     ) -> (data: Data?, samples: [Double], error: String?) {
         #if canImport(J2KCore) && canImport(J2KCodec)
+        // Honour the same block `encodeFrame` enforces. Benchmarking a target the
+        // library cannot produce would otherwise silently measure a *substitute*
+        // codestream: `planEncode` downgrades a Part-2 UID to a Part-1-compatible
+        // stream, which round-trips bit-exactly and reads as a pass for a feature
+        // that is in fact switched off.
+        if let reason = J2KRoutePlanner.unsupportedEncodeReason(transferSyntaxUID: transferSyntaxUID) {
+            return (nil, [], reason)
+        }
+
         let image: J2KImage
         do {
             image = try Self.makeJ2KImage(from: frameData, descriptor: descriptor)
@@ -220,6 +240,13 @@ public struct J2KSwiftCodec: ImageCodec, ImageEncoder, Sendable {
         runs: Int
     ) -> (data: Data?, samples: [Double], error: String?) {
         #if canImport(J2KCore) && canImport(J2KCodec)
+        // Same guard as the production decode paths: a Part-2 multi-component
+        // transform is skipped rather than inverted, so timing it would report a
+        // throughput number for pixels that are silently wrong.
+        if let reason = J2KRoutePlanner.unsupportedDecodeReason(frameData: frameData) {
+            return (nil, [], reason)
+        }
+
         let decoder = J2KDecoder()
         let output: (J2KImage?, [Double])
         do {
@@ -456,11 +483,18 @@ private extension J2KSwiftCodec {
         descriptor: PixelDataDescriptor,
         backend: CodecBackend? = nil
     ) throws -> Data {
+        // A Part-2 multi-component transform is skipped, not inverted, by every
+        // J2KSwift decode API — refuse rather than return corrupt pixels.
+        if let reason = J2KRoutePlanner.unsupportedDecodeReason(frameData: frameData) {
+            throw DICOMError.unsupportedTransferSyntax(reason)
+        }
+
         // Phase 4: the decode API follows the backend preference + frame size via
         // `J2KRoutePlanner.planDecode`. `auto`/CPU on small or very large frames uses
         // the CPU `decode`; a Metal request (or auto on a mid-size frame with Metal)
-        // uses `decodeGPU` (GPU inverse DWT). All paths auto-detect the codestream
-        // family (Part-1 / Part-2 / HTJ2K), so no codec-type branching is needed.
+        // uses `decodeGPU` (GPU inverse DWT). All paths auto-detect the Part-1 vs
+        // HTJ2K codestream family, so no codec-type branching is needed — but note
+        // they do *not* self-configure from Part-2 markers, hence the guard above.
         // The J2K Compare panel still pins a specific API via `decode(...,mode:)`.
         let pixelCount = descriptor.rows * descriptor.columns
         let api = J2KRoutePlanner.planDecode(backend: backend, pixelCount: pixelCount)

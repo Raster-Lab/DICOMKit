@@ -656,6 +656,19 @@ public struct CompressionManager {
             length: UInt32(combined.count),
             valueData: combined
         )
+
+        // JPEG Baseline/Extended (SOF0/SOF1) decode always yields RGB samples —
+        // JLIDecoder converts YCbCr → RGB internally regardless of the source's
+        // declared Photometric Interpretation (PS3.5 Table 8.2.1-1 permits either
+        // YBR_FULL_422 or RGB going in). Correct the tag so it matches the bytes
+        // actually decoded; SOF3 lossless (.57/.70) is untouched here since it
+        // never applies a color transform and the original tag already matches.
+        if (sourceSyntax.uid == TransferSyntax.jpegBaseline.uid
+            || sourceSyntax.uid == TransferSyntax.jpegExtended.uid),
+           descriptor.samplesPerPixel == 3,
+           descriptor.photometricInterpretation.isYBR {
+            dataSet.setString("RGB", for: .photometricInterpretation, vr: .CS)
+        }
     }
 
     /// Recompression path — decode then re-encode. Operates only on
