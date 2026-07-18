@@ -463,7 +463,11 @@ public actor DICOMStorageServer {
     
     /// Whether the server is running
     public private(set) var isRunning: Bool = false
-    
+
+    /// How long `start()` waits for the listener to reach `.ready`/`.failed`
+    /// before giving up on a listener stuck in `.waiting`.
+    private static let listenerStartTimeout: TimeInterval = 10
+
     /// Creates a Storage SCP server
     ///
     /// - Parameters:
@@ -515,22 +519,48 @@ public actor DICOMStorageServer {
         // handler, not by throwing here. Wait for `.ready`/`.failed` before
         // reporting success, so callers never see a "started" event for a
         // listener that never actually bound the port.
+        //
+        // `.waiting` is deliberately NOT treated as terminal: Network.framework
+        // uses it for transient conditions (e.g. the port not yet released from
+        // a just-stopped listener) and will keep retrying on its own without
+        // ever reaching `.ready` or `.failed`. Race the wait against a fixed
+        // timeout so a listener stuck in `.waiting` fails the call instead of
+        // hanging it forever.
         let resumed = LockedFlag()
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            listener.stateUpdateHandler = { state in
-                switch state {
-                case .ready:
-                    guard resumed.trySet() else { return }
-                    continuation.resume()
-                case .failed(let error):
-                    guard resumed.trySet() else { return }
-                    listener.cancel()
-                    continuation.resume(throwing: DICOMNetworkError.connectionFailed(error.localizedDescription))
-                default:
-                    break
+        do {
+            try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                        listener.stateUpdateHandler = { state in
+                            switch state {
+                            case .ready:
+                                guard resumed.trySet() else { return }
+                                continuation.resume()
+                            case .failed(let error):
+                                guard resumed.trySet() else { return }
+                                listener.cancel()
+                                continuation.resume(throwing: DICOMNetworkError.connectionFailed(error.localizedDescription))
+                            default:
+                                break
+                            }
+                        }
+                        listener.start(queue: .global(qos: .userInitiated))
+                    }
                 }
+                group.addTask {
+                    try await Task.sleep(for: .seconds(Self.listenerStartTimeout))
+                    throw DICOMNetworkError.timeout
+                }
+                try await group.next()
+                group.cancelAll()
             }
-            listener.start(queue: .global(qos: .userInitiated))
+        } catch {
+            // Either branch could have won the race; make sure the listener
+            // never lingers half-started (e.g. still `.waiting`) after start() throws.
+            if resumed.trySet() {
+                listener.cancel()
+            }
+            throw error
         }
 
         listener.stateUpdateHandler = { [weak self] state in

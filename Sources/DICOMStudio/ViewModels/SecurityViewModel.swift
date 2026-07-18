@@ -480,6 +480,15 @@ public final class SecurityViewModel {
             return ("Error: Input path not found: \(inputPath)\n", 1)
         }
 
+        // CLI parity: dicom-anon requires --output for a single-file run unless
+        // --dry-run is set (see main.swift) — without it there is nowhere to write,
+        // so anonymizing would silently discard its result while still reporting
+        // success. Mirror that guard here instead of falling through to the write
+        // step below, which no-ops on an empty output path for a single file.
+        if !dryRun && effectiveOutputPath.isEmpty && !isDir.boolValue {
+            return (output + "Error: Anonymization requires an output path (or enable Dry Run to preview without writing).\n", 1)
+        }
+
         // Validate every --remove/--replace/--keep spec up front, mirroring the CLI's
         // parseCustomActions/parsePreserveTags: unparseable input must ERROR (the CLI
         // throws ValidationError), never be silently compactMap-dropped while the run
@@ -554,10 +563,10 @@ public final class SecurityViewModel {
                 modifiedTagNames.append(contentsOf: changed)
 
                 if !dryRun {
-                    // Mirror the CLI's `if !dryRun, let outputURL = outputURL` write guard
-                    // (dicom-anon main.swift): a single file with no --output is analyzed
-                    // and summarized but never written — do NOT fall back to overwriting
-                    // the input file in place.
+                    // The single-file/no-output/non-dry-run case is rejected up front
+                    // (see the guard above) — effectiveOutputPath is only empty here for
+                    // a directory run, and destURL never falls back to overwriting the
+                    // input file in place.
                     let destURL: URL?
                     if isDir.boolValue {
                         let dirDest = URL(fileURLWithPath: effectiveOutputPath).appendingPathComponent(relativePath)
