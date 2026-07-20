@@ -49,8 +49,8 @@ public struct SIMDImageProcessor {
         // Convert UInt16 to Float
         vDSP_vfltu16(pixelData, 1, &floatPixels, 1, vDSP_Length(count))
         
-        // Subtract minValue
-        var minValueFloat = Float(minValue)
+        // Subtract minValue (vDSP_vsadd adds the scalar, so negate it)
+        var minValueFloat = Float(-minValue)
         vDSP_vsadd(floatPixels, 1, &minValueFloat, &floatPixels, 1, vDSP_Length(count))
         
         // Multiply by scale

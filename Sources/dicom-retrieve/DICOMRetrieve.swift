@@ -116,6 +116,12 @@ struct DICOMRetrieve: AsyncParsableCommand {
         if method == .cMove && moveDest == nil {
             throw ValidationError("C-MOVE requires --move-dest parameter")
         }
+
+        // --parallel drives `chunked(into:)` / `stride(by:)`, which traps on a
+        // non-positive stride. Reject it up front with a clear message.
+        guard parallel >= 1 else {
+            throw ValidationError("--parallel must be at least 1")
+        }
         
         // Validate UID parameters
         guard studyUid != nil || uidList != nil else {

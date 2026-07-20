@@ -1250,7 +1250,13 @@ public struct TransferSyntaxConverter: Sendable {
                 ? (data.readUInt32LE(at: currentOffset + 4) ?? 0)
                 : (data.readUInt32BE(at: currentOffset + 4) ?? 0)
             currentOffset += 8
-            
+
+            // Guard against a corrupt/truncated fragment length that exceeds the
+            // bytes remaining (e.g. a stray 0xFFFFFFFF). subdata(in:) traps on an
+            // out-of-range upper bound, so stop best-effort parsing here instead.
+            guard currentOffset + Int(itemLength) <= data.count else {
+                break
+            }
             let fragmentData = data.subdata(in: currentOffset..<currentOffset+Int(itemLength))
             
             if isFirstItem {
@@ -1286,18 +1292,20 @@ public struct TransferSyntaxConverter: Sendable {
         }
         
         // Only transcode numeric VRs
-        let numericVRs: [VR] = [.US, .SS, .UL, .SL, .FL, .FD, .AT, .OW, .OF]
-        
+        let numericVRs: [VR] = [.US, .SS, .UL, .SL, .FL, .FD, .AT, .OW, .OF, .OL, .OD]
+
         guard numericVRs.contains(element.vr) else {
             return element
         }
-        
+
         var newData = Data()
         let valueData = element.valueData
-        
+
         switch element.vr {
-        case .US, .SS, .OW:
-            // 16-bit values
+        case .US, .SS, .OW, .AT:
+            // 16-bit values. AT is an ordered pair of two independent UInt16
+            // (group, then element), so each 16-bit unit is byte-swapped in
+            // place while their order is preserved — exactly the 16-bit path.
             for i in stride(from: 0, to: valueData.count, by: 2) {
                 if i + 2 <= valueData.count {
                     let value = source == .littleEndian
@@ -1313,7 +1321,7 @@ public struct TransferSyntaxConverter: Sendable {
                 }
             }
             
-        case .UL, .SL, .FL, .AT, .OF:
+        case .UL, .SL, .FL, .OF, .OL:
             // 32-bit values
             for i in stride(from: 0, to: valueData.count, by: 4) {
                 if i + 4 <= valueData.count {
@@ -1334,7 +1342,7 @@ public struct TransferSyntaxConverter: Sendable {
                 }
             }
             
-        case .FD:
+        case .FD, .OD:
             // 64-bit values
             for i in stride(from: 0, to: valueData.count, by: 8) {
                 if i + 8 <= valueData.count {

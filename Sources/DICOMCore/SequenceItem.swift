@@ -25,7 +25,9 @@ public struct SequenceItem: Sendable {
     /// Creates a sequence item from an array of data elements
     /// - Parameter elements: Array of data elements
     public init(elements: [DataElement]) {
-        self.elements = Dictionary(uniqueKeysWithValues: elements.map { ($0.tag, $0) })
+        // Tolerate malformed data with a duplicate tag inside one item:
+        // uniquingKeysWith keeps the last occurrence instead of trapping.
+        self.elements = Dictionary(elements.map { ($0.tag, $0) }, uniquingKeysWith: { _, last in last })
     }
     
     /// Accesses a data element by tag

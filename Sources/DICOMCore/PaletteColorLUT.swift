@@ -169,9 +169,10 @@ public struct PaletteColorLUT: Sendable, Equatable {
             // Per DICOM, 8-bit LUT values are packed into 16-bit words
             // or may be stored as individual bytes
             if data.count >= descriptor.numberOfEntries {
-                // Individual byte storage
+                // Individual byte storage. Index from startIndex so a sliced
+                // Data (non-zero startIndex) is read correctly rather than trapping.
                 for i in 0..<descriptor.numberOfEntries {
-                    let value = UInt16(data[i]) << 8
+                    let value = UInt16(data[data.startIndex + i]) << 8
                     result.append(value)
                 }
             } else if data.count >= descriptor.numberOfEntries * 2 {

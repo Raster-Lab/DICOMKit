@@ -119,7 +119,14 @@ struct DICOMConvert: AsyncParsableCommand {
             let relativePath = fileURL.path.replacingOccurrences(of: input.path, with: "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             
-            let outputFileURL = output.appendingPathComponent(relativePath)
+            var outputFileURL = output.appendingPathComponent(relativePath)
+            // Image formats must not keep the source `.dcm` extension: the bytes are
+            // PNG/JPEG/TIFF, so retag the file to match its contents (the single-file
+            // path already does this via OutputPathResolver). `.dicom` keeps its name.
+            if format != .dicom {
+                outputFileURL.deletePathExtension()
+                outputFileURL.appendPathExtension(format.fileExtension)
+            }
             
             // Create intermediate directories
             let outputDir = outputFileURL.deletingLastPathComponent()
@@ -191,7 +198,7 @@ struct DICOMConvert: AsyncParsableCommand {
         let pixelData = try dicomFile.tryPixelData()
 
         let frameIndex = frame ?? 0
-        guard frameIndex < pixelData.descriptor.numberOfFrames else {
+        guard frameIndex >= 0 && frameIndex < pixelData.descriptor.numberOfFrames else {
             throw ConversionError.invalidFrame(frameIndex, pixelData.descriptor.numberOfFrames)
         }
 

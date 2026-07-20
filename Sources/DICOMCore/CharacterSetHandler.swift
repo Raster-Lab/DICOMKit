@@ -211,52 +211,41 @@ public struct CharacterSetHandler: Sendable {
             break
         }
         
-        // Three-byte escape sequences
+        // Three-byte G1 escape sequences (ESC - X). These depend only on byte1
+        // and byte2, so they must not require a 4th byte to be present —
+        // otherwise a valid escape at the very end of the buffer is missed.
+        if byte1 == 0x2D {
+            switch byte2 {
+            case 0x41: g1 = .isoIR100; return (g1, 3) // ESC - A - Latin-1
+            case 0x42: g1 = .isoIR101; return (g1, 3) // ESC - B - Latin-2
+            case 0x43: g1 = .isoIR109; return (g1, 3) // ESC - C - Latin-3
+            case 0x44: g1 = .isoIR110; return (g1, 3) // ESC - D - Latin-4
+            case 0x46: g1 = .isoIR126; return (g1, 3) // ESC - F - Greek
+            case 0x47: g1 = .isoIR127; return (g1, 3) // ESC - G - Arabic
+            case 0x48: g1 = .isoIR138; return (g1, 3) // ESC - H - Hebrew
+            case 0x4C: g1 = .isoIR144; return (g1, 3) // ESC - L - Cyrillic
+            case 0x4D: g1 = .isoIR148; return (g1, 3) // ESC - M - Latin-5 (Turkish)
+            case 0x54: g1 = .isoIR166; return (g1, 3) // ESC - T - Thai
+            default: break
+            }
+        }
+
+        // Four-byte escape sequences
         if startIndex + 3 < bytes.count {
             let byte3 = bytes[startIndex + 3]
-            
+
             switch (byte1, byte2, byte3) {
             case (0x24, 0x28, 0x44): // ESC $ ( D - JIS X 0212 to G0
                 g0 = .isoIR159
                 return (g0, 4)
-            case (0x2D, 0x41, _): // ESC - A - Latin-1 to G1
-                g1 = .isoIR100
-                return (g1, 3)
-            case (0x2D, 0x42, _): // ESC - B - Latin-2 to G1
-                g1 = .isoIR101
-                return (g1, 3)
-            case (0x2D, 0x43, _): // ESC - C - Latin-3 to G1
-                g1 = .isoIR109
-                return (g1, 3)
-            case (0x2D, 0x44, _): // ESC - D - Latin-4 to G1
-                g1 = .isoIR110
-                return (g1, 3)
-            case (0x2D, 0x46, _): // ESC - F - Greek to G1
-                g1 = .isoIR126
-                return (g1, 3)
-            case (0x2D, 0x47, _): // ESC - G - Arabic to G1
-                g1 = .isoIR127
-                return (g1, 3)
-            case (0x2D, 0x48, _): // ESC - H - Hebrew to G1
-                g1 = .isoIR138
-                return (g1, 3)
-            case (0x2D, 0x4C, _): // ESC - L - Cyrillic to G1
-                g1 = .isoIR144
-                return (g1, 3)
-            case (0x2D, 0x4D, _): // ESC - M - Latin-5 (Turkish) to G1
-                g1 = .isoIR148
-                return (g1, 3)
             case (0x24, 0x29, 0x43): // ESC $ ) C - Korean to G1
                 g1 = .isoIR149
                 return (g1, 4)
-            case (0x2D, 0x54, _): // ESC - T - Thai to G1
-                g1 = .isoIR166
-                return (g1, 3)
             default:
                 break
             }
         }
-        
+
         // Unknown escape sequence - skip it
         return nil
     }

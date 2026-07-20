@@ -40,9 +40,15 @@ public struct SiemensCSAHeaderParser: Sendable {
     /// Parse CSA header from binary data
     /// - Parameter data: CSA header binary data
     /// - Returns: Parsed CSA header, or nil if parsing fails
-    public static func parse(_ data: Data) -> SiemensCSAHeader? {
-        guard data.count >= 4 else { return nil }
-        
+    public static func parse(_ input: Data) -> SiemensCSAHeader? {
+        guard input.count >= 4 else { return nil }
+
+        // Normalize to 0-based storage. This parser mixes subdata(in:) (which
+        // uses Data's own index space) with withUnsafeBytes/loadUnaligned
+        // (0-based); on a sliced Data with a non-zero startIndex the two
+        // disagree, causing wrong reads or a trap. Rebasing makes them consistent.
+        let data = input.withUnsafeBytes { Data($0) }
+
         var offset = 0
         
         // Read version string (4 bytes for "SV10" or earlier)

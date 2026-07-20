@@ -89,6 +89,57 @@ func part10Wrap(dataset: Data, sopClassUID: String,
     return file
 }
 
+/// Best-effort scan of a raw C-GET dataset for SeriesInstanceUID (0020,000E).
+///
+/// Mirrors the `dicom-retrieve` CLI helper (Sources/dicom-retrieve/RetrieveExecutor.swift)
+/// so the app and CLI file study-level C-GET results into the same `studyUID/seriesUID/`
+/// tree. Handles Explicit and Implicit VR Little Endian (every transfer syntax a C-GET
+/// yields; encapsulated pixel data still uses Explicit VR LE for the surrounding data
+/// set). Returns `nil` on anything it can't confidently parse (undefined-length
+/// sequences, big endian, truncation) so callers fall back to a flat layout rather than
+/// misfiling. Never traps: every read is bounds-checked.
+func extractSeriesUID(fromDataSet data: Data, transferSyntaxUID: String) -> String? {
+    let bytes = Data(data)   // re-base to guarantee 0-based indexing
+    let implicitVR = (transferSyntaxUID == "1.2.840.10008.1.2")
+    let longFormVRs: Set<String> = ["OB", "OW", "OF", "OD", "OL", "SQ", "UT", "UN", "UC", "UR"]
+
+    var offset = 0
+    while offset + 8 <= bytes.count {
+        guard let group = bytes.readUInt16LE(at: offset),
+              let element = bytes.readUInt16LE(at: offset + 2) else { return nil }
+        // Elements are ordered by (group, element); once we pass 0020,000E it's absent.
+        if group > 0x0020 || (group == 0x0020 && element > 0x000E) { return nil }
+
+        let valueLength: Int
+        let valueOffset: Int
+        if implicitVR {
+            guard let len = bytes.readUInt32LE(at: offset + 4) else { return nil }
+            valueLength = Int(len); valueOffset = offset + 8
+        } else {
+            let vr = String(decoding: bytes[offset + 4 ..< offset + 6], as: UTF8.self)
+            if longFormVRs.contains(vr) {
+                guard offset + 12 <= bytes.count, let len = bytes.readUInt32LE(at: offset + 8) else { return nil }
+                valueLength = Int(len); valueOffset = offset + 12
+            } else {
+                guard let len = bytes.readUInt16LE(at: offset + 6) else { return nil }
+                valueLength = Int(len); valueOffset = offset + 8
+            }
+        }
+
+        if valueLength == 0xFFFF_FFFF { return nil }   // undefined length — can't skip reliably
+        guard valueOffset + valueLength <= bytes.count else { return nil }
+
+        if group == 0x0020 && element == 0x000E {
+            let raw = bytes[valueOffset ..< valueOffset + valueLength]
+            let uid = String(decoding: raw, as: UTF8.self)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+            return uid.isEmpty ? nil : uid
+        }
+        offset = valueOffset + valueLength
+    }
+    return nil
+}
+
 // MARK: - SCP Storage Delegate
 
 /// StorageDelegate that saves received C-STORE instances as proper Part 10
@@ -921,7 +972,16 @@ public final class CLIWorkshopViewModel {
 
         if hierarchical {
             dirURL = dirURL.appendingPathComponent(studyUID)
-            if let series = seriesUID, !series.isEmpty {
+            // For a study-level C-GET the caller has no series UID; recover it from the
+            // received dataset so --hierarchical doesn't collapse to studyUID/ only.
+            // Only raw C-GET datasets are scanned — a Part 10 blob (WADO-RS, DICM prefix)
+            // is left to the flat/study layout. Falls back to no series subdir on failure.
+            var effectiveSeriesUID = seriesUID
+            if (effectiveSeriesUID == nil || effectiveSeriesUID?.isEmpty == true),
+               !(data.count >= 132 && data[128] == 0x44 && data[129] == 0x49 && data[130] == 0x43 && data[131] == 0x4D) {
+                effectiveSeriesUID = extractSeriesUID(fromDataSet: data, transferSyntaxUID: transferSyntaxUID)
+            }
+            if let series = effectiveSeriesUID, !series.isEmpty {
                 dirURL = dirURL.appendingPathComponent(series)
             }
         }
@@ -4524,7 +4584,7 @@ case "dicom-study":
         #if canImport(CoreGraphics)
         let pixelData = try dicomFile.tryPixelData()
         let frameIndex = frame ?? 0
-        guard frameIndex < pixelData.descriptor.numberOfFrames else {
+        guard frameIndex >= 0 && frameIndex < pixelData.descriptor.numberOfFrames else {
             throw ConvertError.invalidFrame(frameIndex, pixelData.descriptor.numberOfFrames)
         }
 
@@ -4589,7 +4649,14 @@ case "dicom-study":
             fileCount += 1
             let relativePath = fileURL.path.replacingOccurrences(of: inputURL.path, with: "")
                 .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            let outFileURL = outputURL.appendingPathComponent(relativePath)
+            var outFileURL = outputURL.appendingPathComponent(relativePath)
+            // Image formats must not keep the source `.dcm` extension: the bytes are
+            // PNG/JPEG/TIFF, so retag to match contents (the single-file path already
+            // does this via OutputPathResolver). `dicom` keeps its original name.
+            if format != "dicom" {
+                outFileURL.deletePathExtension()
+                outFileURL.appendPathExtension(ConvertConsole.fileExtension(forFormat: format))
+            }
             let outDir = outFileURL.deletingLastPathComponent()
             try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
 
@@ -4922,6 +4989,21 @@ case "dicom-study":
         )
         if let note = outputRedirectNote { appendConsoleOutput(note) }
 
+        // Parity with the dicom-anon CLI: a single-file run with no output path (and not
+        // a dry run) has nowhere to write, so error instead of running and reporting
+        // success on a file that was never anonymized. Directory runs resolve an output
+        // dir separately and are unaffected.
+        var anonInputIsDir: ObjCBool = false
+        let anonInputPathResolved = (inputScopedURL ?? URL(fileURLWithPath: inputPath)).path
+        let anonInputExists = FileManager.default.fileExists(atPath: anonInputPathResolved, isDirectory: &anonInputIsDir)
+        if !dryRun && resolvedOutputPath.isEmpty && anonInputExists && !anonInputIsDir.boolValue {
+            appendConsoleOutput("Error: Anonymization requires an output path (or enable Dry Run to preview without writing).\n")
+            addToHistory(toolName: "dicom-anon", command: commandPreview, exitCode: 1, output: "Output required")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            return
+        }
+
         let secVM = SecurityViewModel()
         secVM.anonInputPath       = (inputScopedURL ?? URL(fileURLWithPath: inputPath)).path
         secVM.anonOutputPath      = resolvedOutputPath
@@ -4952,15 +5034,8 @@ case "dicom-study":
         let output = secVM.anonOutput
         appendConsoleOutput(output)
 
-        // With no --output, the CLI analyzes a single file but writes nothing
-        // (`if !dryRun, let outputURL` guard in dicom-anon main.swift) — the app
-        // mirrors that guard, so tell the user explicitly instead of leaving the
-        // impression a file was produced.
-        var inputIsDir: ObjCBool = false
-        let inputExists = FileManager.default.fileExists(atPath: secVM.anonInputPath, isDirectory: &inputIsDir)
-        if !dryRun && resolvedOutputPath.isEmpty && inputExists && !inputIsDir.boolValue {
-            appendConsoleOutput("No --output given; nothing written.\n")
-        }
+        // (The single-file "no output path" case is rejected up front now, matching the
+        // dicom-anon CLI — see the guard above.)
 
         // Structured exit code from the run itself (CLI rule: any failed file → 1) —
         // never derived by sniffing the output text.
@@ -6268,6 +6343,14 @@ case "dicom-study":
         let filesPath = paramValue("files")
         let studyUID = paramValue("study-uid").isEmpty ? nil : paramValue("study-uid")
         let batchSize = Int(paramValue("batch")) ?? 10
+        // Batch size feeds `stride(by:)`, which traps on a non-positive stride.
+        guard batchSize >= 1 else {
+            appendConsoleOutput("Error: Batch size must be at least 1.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-stow", command: commandPreview, exitCode: 1, output: "Invalid batch size")
+            return
+        }
         let continueOnError = paramValue("continue-on-error") == "true"
         let verbose = paramValue("verbose") == "true"
         let recursive = true  // Always scan directories recursively
@@ -7576,6 +7659,15 @@ case "dicom-study":
         let dryRun = paramValue("dry-run") == "true"
         let retryCount = Int(paramValue("retry")) ?? 0
         let verbose = paramValue("verbose") == "true"
+
+        // Retry drives `0...retryCount`; a negative value would trap that range.
+        guard retryCount >= 0 else {
+            appendConsoleOutput("Error: Retry count must be zero or greater.\n")
+            consoleStatus = .error
+            service.setConsoleStatus(.error)
+            addToHistory(toolName: "dicom-send", command: commandPreview, exitCode: 1, output: "Invalid retry count")
+            return
+        }
 
         let priority: DIMSEPriority
         switch priorityStr {
