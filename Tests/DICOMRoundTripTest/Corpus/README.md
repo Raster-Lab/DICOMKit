@@ -49,3 +49,12 @@ matter of blanking `PatientName`:
 
 See PS3.15 Annex E (Basic Application Level Confidentiality Profile) for the full
 tag list.
+
+## CI enforcement
+
+The **PHI Guard** workflow (`.github/workflows/phi-guard.yml`) runs
+`Scripts/check_burned_in_phi.py` on every push and pull request. It scans every
+committed DICOM file in the repository and **fails the build** if any has
+`BurnedInAnnotation` (0028,0301) = `YES`. This is a backstop only — it catches the
+burned-in case; it cannot detect PHI in pixels of a file whose tag is missing or
+lies, so the manual verification above still applies.
