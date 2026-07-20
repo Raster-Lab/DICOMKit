@@ -418,7 +418,9 @@ extension DICOMQR {
                     if rangeParts.count == 2,
                        let start = Int(rangeParts[0].trimmingCharacters(in: .whitespaces)),
                        let end = Int(rangeParts[1].trimmingCharacters(in: .whitespaces)) {
-                        for i in start...end {
+                        // Accept ranges in either order (e.g. "5-1" == "1-5") so a reversed
+                        // range never traps `start...end`.
+                        for i in Swift.min(start, end)...Swift.max(start, end) {
                             if i >= 1 && i <= results.count {
                                 selectedIndices.insert(i - 1)
                             }

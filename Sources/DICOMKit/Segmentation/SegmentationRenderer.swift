@@ -321,7 +321,9 @@ public struct SegmentationRenderer: Sendable {
             (255, 255, 128),  // Light Yellow
         ]
         
-        let index = (segmentNumber - 1) % palette.count
+        // Segment numbers are 1-based per DICOM, but guard against a malformed
+        // value of 0 (or negative) so we don't index the palette with -1.
+        let index = ((segmentNumber - 1) % palette.count + palette.count) % palette.count
         return palette[index]
     }
     

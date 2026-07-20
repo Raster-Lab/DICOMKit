@@ -75,8 +75,9 @@ public struct DICOMUniqueIdentifier: Sendable, Hashable {
             return nil
         }
         
-        // Must contain only digits and periods
-        let validCharacters = CharacterSet.decimalDigits.union(CharacterSet(charactersIn: "."))
+        // Must contain only ASCII digits and periods (DICOM UIDs are ASCII 0-9;
+        // CharacterSet.decimalDigits would also admit non-ASCII Unicode digits).
+        let validCharacters = CharacterSet(charactersIn: "0123456789.")
         guard trimmed.unicodeScalars.allSatisfy({ validCharacters.contains($0) }) else {
             return nil
         }
@@ -113,9 +114,9 @@ public struct DICOMUniqueIdentifier: Sendable, Hashable {
                 return nil
             }
             
-            // Must be a valid unsigned integer (parseable)
+            // Must be a valid unsigned integer (parseable), ASCII digits only.
             // Note: We allow very large numbers as they're just stored as strings
-            guard component.allSatisfy({ $0.isNumber }) else {
+            guard component.allSatisfy({ ("0"..."9").contains($0) }) else {
                 return nil
             }
         }

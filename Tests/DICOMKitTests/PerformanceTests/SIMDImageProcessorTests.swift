@@ -228,17 +228,18 @@ final class SIMDImageProcessorTests: XCTestCase {
         XCTAssertEqual(result.count, ctData.count)
         
         // Air should be black (below window)
-        XCTAssertLess(result[0], 10)
+        XCTAssertLessThan(result[0], 10)
         
         // Water should be in mid-range
         XCTAssertGreaterThan(result[1], 100)
         XCTAssertLessThan(result[1], 155)
         
-        // Soft tissue should be bright (above center)
-        XCTAssertGreaterThan(result[2], 155)
+        // Soft tissue (50 HU) is only 10 units above the 1064 center within a
+        // 400-wide window, so it maps just above mid-gray: (1074-864)*255/400 ≈ 134.
+        XCTAssertGreaterThan(result[2], 127)
         
         // Bone should be white (above window)
-        XCTAssertGreater(result[3], 245)
+        XCTAssertGreaterThan(result[3], 245)
     }
 }
 #endif

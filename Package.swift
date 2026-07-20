@@ -150,10 +150,6 @@ let package = Package(
             targets: ["dicom-compress"]
         ),
         .executable(
-            name: "repro12bit",
-            targets: ["repro12bit"]
-        ),
-        .executable(
             name: "dicom-study",
             targets: ["dicom-study"]
         ),
@@ -313,7 +309,6 @@ let package = Package(
                 "EncapsulatedDocument",
                 "HangingProtocol",
                 "ParametricMap",
-                "PerformanceTests",
                 "PresentationStateTests",
                 "RadiationTherapy",
                 "RealWorldValue",
@@ -344,7 +339,8 @@ let package = Package(
                 "ExportWindowParityTests.swift",
                 "EncapsulatedPixelDataWriteTests.swift",
                 "WaveformParseRegressionTests.swift",
-                "OutputPathResolverTests.swift"
+                "OutputPathResolverTests.swift",
+                "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),
         // .testTarget(
@@ -422,16 +418,6 @@ let package = Package(
             ],
             path: "Sources/dicom-info",
             exclude: ["README.md"]
-        ),
-        .executableTarget(
-            name: "repro12bit",
-            dependencies: [
-                "DICOMCore",
-                "DICOMKit",
-                .product(name: "J2KCore", package: "J2KSwift"),
-                .product(name: "J2KCodec", package: "J2KSwift"),
-            ],
-            path: "Sources/repro12bit"
         ),
         .executableTarget(
             name: "dicom-convert",

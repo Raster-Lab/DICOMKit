@@ -64,11 +64,13 @@ public struct DICOMTime: Sendable, Hashable {
         // Handle legacy format with colons
         let normalized = trimmed.replacingOccurrences(of: ":", with: "")
         
-        // Separate the main part from fractional seconds
-        let parts = normalized.split(separator: ".", maxSplits: 1)
-        let mainPart = String(parts[0])
+        // Separate the main part from fractional seconds.
+        // Keep empty subsequences so an empty/dot-only value yields an empty
+        // main part (handled by the length guard below) instead of trapping.
+        let parts = normalized.split(separator: ".", maxSplits: 1, omittingEmptySubsequences: false)
+        let mainPart = parts.isEmpty ? "" : String(parts[0])
         let fractionalPart = parts.count > 1 ? String(parts[1]) : nil
-        
+
         guard mainPart.count >= 2 else {
             return nil
         }

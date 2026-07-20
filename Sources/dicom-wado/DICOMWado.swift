@@ -657,9 +657,15 @@ struct StoreCommand: AsyncParsableCommand {
     var verbose: Bool = false
     
     func run() async throws {
+        // --batch feeds `chunked(into:)` / `stride(by:)`, which traps on a non-positive
+        // stride. Reject it up front with a clear message.
+        guard batch >= 1 else {
+            throw ValidationError("--batch must be at least 1")
+        }
+
         // Collect files to upload
         var filesToUpload = files
-        
+
         if let inputFile = input {
             let inputURL = URL(fileURLWithPath: inputFile)
             let contents = try String(contentsOf: inputURL, encoding: .utf8)
