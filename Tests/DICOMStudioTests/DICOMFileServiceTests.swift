@@ -12,8 +12,8 @@ struct DICOMFileServiceTests {
 
     @Test("Service initializes successfully")
     func testInitialization() {
-        let service = DICOMFileService()
-        #expect(service != nil)
+        // Non-failable initializer: successful construction is the assertion.
+        _ = DICOMFileService()
     }
 
     @Test("Parse file throws for nonexistent path")
