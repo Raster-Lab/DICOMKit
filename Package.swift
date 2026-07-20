@@ -322,7 +322,14 @@ let package = Package(
                 "DICOMWritingTests.swift",
                 "DataSetTests.swift",
                 "ImagePreparationTests.swift",
-                "SequenceParsingTests.swift"
+                "SequenceParsingTests.swift",
+                // Not compiled into the test run (explicit sources: allowlist below);
+                // declared here to resolve SwiftPM "unhandled file" warnings. These
+                // perf tests carry pre-existing concurrency errors — see note above.
+                "PerformanceTests/OptimizedParsingTests.swift",
+                "PerformanceTests/DICOMBenchmarkTests.swift",
+                "PerformanceTests/ParsingOptionsTests.swift",
+                "PerformanceTests/ImageCacheTests.swift"
             ],
             sources: [
                 "JP3DVolumeDocumentTests.swift",
