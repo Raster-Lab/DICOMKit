@@ -1,0 +1,36 @@
+name: PHI Guard
+
+# Rejects any committed DICOM file whose pixels carry burned-in PHI
+# (BurnedInAnnotation = YES). A de-identified header is not enough — ultrasound
+# and secondary-capture images routinely burn patient name/DOB/institution into
+# the image banner. See Tests/DICOMRoundTripTest/Corpus/README.md.
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    name: Scan for burned-in PHI
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Scan committed DICOM files
+        run: python3 Scripts/check_burned_in_phi.py .
