@@ -351,10 +351,14 @@ let package = Package(
                 "PerformanceTests/SIMDImageProcessorTests.swift"
             ]
         ),
-        // .testTarget(
-        //     name: "DICOMNetworkTests",
-        //     dependencies: ["DICOMNetwork"]
-        // ),
+        .testTarget(
+            name: "DICOMNetworkTests",
+            dependencies: ["DICOMNetwork", "DICOMCore", "DICOMKit"],
+            // PACSIntegrationTests requires a live PACS and has drifted from the
+            // current DICOMCore API (Tag(group:element:) labels, DataSet, audit
+            // logger types). Quarantined from the unit-test target until ported.
+            exclude: ["PACSIntegrationTests.swift"]
+        ),
         // Security-critical, no-network regression coverage stays enabled even
         // while the broader legacy DICOMNetworkTests target remains out of scope.
         .testTarget(

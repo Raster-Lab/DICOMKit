@@ -107,10 +107,67 @@ dicom-print remove-printer --name radiology-printer
 | `--film-size` | Film size: 8x10, 10x12, 10x14, 11x14, 11x17, 14x14, 14x17, a4, a3 |
 | `--orientation` | Film orientation: portrait, landscape |
 | `--priority` | Print priority: low, medium, high |
-| `--layout` | Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 |
+| `--layout` | Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 (auto if omitted) |
+| `--template` | Layout preset: single, comparison, grid, multi-phase (sets layout + film size + orientation; conflicts with `--layout`) |
 | `--medium` | Medium type: paper, clear-film, blue-film |
+| `--color` | Color mode: grayscale, color (default: grayscale) |
+| `--presentation-lut` | Presentation LUT shape: identity, inverse, lin-od (default: none) |
+| `--annotate` | Annotation text on the film (repeatable; requires `--annotation-format`) |
+| `--annotation-format` | Printer-configured Annotation Display Format ID |
+| `--retries` | Retry on connection/setup failure, up to N times with backoff (default: 0) |
 | `--recursive` / `-r` | Recursively scan directories |
 | `--dry-run` | Show what would be printed without printing |
+
+### Presentation LUT
+
+`--presentation-lut` creates a Presentation LUT SOP Instance and references it
+from each film box, controlling how stored pixel values map to display values:
+
+```bash
+# Print with an identity presentation LUT (no transformation)
+dicom-print send pacs://server:11112 scan.dcm --aet APP --presentation-lut identity
+```
+
+### Film Annotations
+
+`--annotate` places text on the film using Basic Annotation Boxes. Because
+annotation box positions are defined by a printer-specific Annotation Display
+Format, you must supply the format ID configured on your printer:
+
+```bash
+dicom-print send pacs://server:11112 scan.dcm --aet APP \
+    --annotation-format STANDARD \
+    --annotate "PATIENT: DOE^JOHN" \
+    --annotate "STUDY: CHEST CT"
+```
+
+Annotations are placed in the order given (first `--annotate` → position 1, etc.).
+
+### Retry on Failure
+
+`--retries N` retries the print on connection/setup failures with exponential
+backoff. A job that has been submitted to the printer is never retried, so this
+cannot cause duplicate prints:
+
+```bash
+dicom-print send pacs://server:11112 scan.dcm --aet APP --retries 3
+```
+
+> **Note:** `--layout` selects the film's image display format (rows × columns).
+> When omitted, an optimal layout is chosen automatically from the number of
+> images. `--color color` negotiates the Basic Color Print Management Meta SOP
+> Class and sends color image boxes; the default is grayscale.
+
+### Printer Notifications (N-EVENT-REPORT)
+
+While a print job runs, the printer (SCP) may push asynchronous status
+notifications over the association — printer faults (out of film, jam) and
+print-job progress (pending → printing → done/failure). `dicom-print send`
+receives and acknowledges these automatically:
+
+- **Faults** (printer warning/failure, print-job failure) are always printed,
+  e.g. `⚠ Printer Failure: OUT OF SUPPLY`.
+- **Routine progress** events are shown with `--verbose`, e.g. `• Print Job Printing`.
 
 ## Configuration File
 

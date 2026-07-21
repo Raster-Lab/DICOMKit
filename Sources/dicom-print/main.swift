@@ -1,6 +1,7 @@
 import Foundation
 import ArgumentParser
 import DICOMCore
+import DICOMKit
 import DICOMNetwork
 
 // MARK: - Constants
@@ -260,10 +261,25 @@ struct SendCommand: ParsableCommand {
     
     @Option(name: .long, help: "Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 (auto if not specified)")
     var layout: LayoutOption?
-    
+
+    @Option(name: .long, help: "Layout preset: single, comparison, grid, multi-phase (sets layout + film size + orientation; conflicts with --layout)")
+    var template: TemplateOption?
+
     @Option(name: .long, help: "Medium type: paper, clear-film, blue-film (default: paper)")
     var medium: MediumOption = .paper
-    
+
+    @Option(name: .long, help: "Color mode: grayscale, color (default: grayscale)")
+    var color: ColorModeOption = .grayscale
+
+    @Option(name: .long, help: "Presentation LUT shape: identity, inverse, lin-od (default: none)")
+    var presentationLut: PresentationLUTOption?
+
+    @Option(name: .long, help: "Annotation text to place on the film (repeatable; position is order given). Requires --annotation-format.")
+    var annotate: [String] = []
+
+    @Option(name: .long, help: "Printer-configured Annotation Display Format ID (required with --annotate)")
+    var annotationFormat: String?
+
     @Flag(name: .shortAndLong, help: "Recursively scan directories for DICOM files")
     var recursive: Bool = false
     
@@ -275,19 +291,43 @@ struct SendCommand: ParsableCommand {
     
     @Option(name: .long, help: "Connection timeout in seconds (default: 60)")
     var timeout: Int = 60
-    
+
+    @Option(name: .long, help: "Retry the print on connection/setup failure, up to N times with exponential backoff (default: 0)")
+    var retries: Int = 0
+
     mutating func run() throws {
         #if canImport(Network)
         let serverInfo = try parseServerURL(url)
-        
+
+        if template != nil && layout != nil {
+            throw ValidationError("--template and --layout are mutually exclusive; --template sets the layout")
+        }
+        if retries < 0 {
+            throw ValidationError("--retries must be zero or greater")
+        }
+        if !annotate.isEmpty && annotationFormat == nil {
+            throw ValidationError("--annotate requires --annotation-format (the printer-configured Annotation Display Format ID)")
+        }
+
+        // A --template preset supplies layout, film size, and orientation.
+        let selectedTemplate = template?.template
+        let effectiveFilmSize = selectedTemplate?.filmSize ?? filmSize.filmSize
+        let effectiveOrientation = selectedTemplate?.filmOrientation ?? orientation.orientation
+
+        // Build annotations (position follows the order given on the command line).
+        let printAnnotations = annotate.enumerated().map { index, text in
+            PrintAnnotation(position: UInt16(index + 1), text: text)
+        }
+
         let config = PrintConfiguration(
             host: serverInfo.host,
             port: serverInfo.port,
             callingAETitle: aet,
             calledAETitle: calledAet,
-            timeout: TimeInterval(timeout)
+            timeout: TimeInterval(timeout),
+            colorMode: color.printColorMode
         )
-        
+
         if verbose {
             fprintln("DICOM Print Tool v\(toolVersion)")
             fprintln("=======================")
@@ -295,12 +335,25 @@ struct SendCommand: ParsableCommand {
             fprintln("Calling AE: \(aet)")
             fprintln("Called AE: \(calledAet)")
             fprintln("Copies: \(copies)")
-            fprintln("Film Size: \(filmSize.filmSize.rawValue)")
-            fprintln("Orientation: \(orientation.orientation.rawValue)")
+            fprintln("Film Size: \(effectiveFilmSize.rawValue)")
+            fprintln("Orientation: \(effectiveOrientation.rawValue)")
             fprintln("Priority: \(priority.printPriority.rawValue)")
             fprintln("Medium: \(medium.mediumType.rawValue)")
+            fprintln("Color Mode: \(color.printColorMode.rawValue)")
+            if let presentationLut = presentationLut {
+                fprintln("Presentation LUT: \(presentationLut.shape.rawValue)")
+            }
+            if !printAnnotations.isEmpty, let fmt = annotationFormat {
+                fprintln("Annotations: \(printAnnotations.count) (format \(fmt))")
+            }
+            if let template = template {
+                fprintln("Template: \(template.rawValue)")
+            }
             if let layout = layout {
                 fprintln("Layout: \(layout.rawValue)")
+            }
+            if retries > 0 {
+                fprintln("Retries: \(retries)")
             }
             if dryRun {
                 fprintln("Mode: DRY RUN (no files will be printed)")
@@ -330,67 +383,123 @@ struct SendCommand: ParsableCommand {
             return
         }
         
-        // Create print options
+        // Create print options (film size/orientation come from the template
+        // preset when --template is used, otherwise from the individual flags).
         let options = PrintOptions(
             numberOfCopies: copies,
             priority: priority.printPriority,
-            filmSize: filmSize.filmSize,
-            filmOrientation: orientation.orientation,
-            mediumType: medium.mediumType
+            filmSize: effectiveFilmSize,
+            filmOrientation: effectiveOrientation,
+            mediumType: medium.mediumType,
+            presentationLUTShape: presentationLut?.shape,
+            annotations: printAnnotations,
+            annotationDisplayFormatID: annotationFormat
         )
         
-        // Read and print files
-        let parser = DICOMParser()
+        // Read and print files. For each image we also carry a descriptor
+        // (rows, columns, bit depth, photometric interpretation) so the N-SET
+        // Preformatted Image Sequence is DICOM-conformant (PS3.3 C.13.5.1).
         var imageDataList: [Data] = []
+        var descriptorList: [PrintImageData] = []
         for path in filesToPrint {
             guard let data = FileManager.default.contents(atPath: path) else {
                 throw ValidationError("Cannot read file: \(path)")
             }
-            
+
             // Parse DICOM and extract pixel data
-            let dataSet = try parser.parse(data: data)
-            
+            let dataSet = try DICOMFile.read(from: data, force: true).dataSet
+
             // Get pixel data from the dataset
-            guard let pixelData = dataSet.data(for: .pixelData) else {
+            guard let pixelData = dataSet[.pixelData]?.valueData else {
                 throw ValidationError("No pixel data found in: \(path)")
             }
-            
+
+            // Rows and Columns are required to describe a printable image.
+            guard let rows = dataSet.uint16(for: .rows),
+                  let columns = dataSet.uint16(for: .columns) else {
+                throw ValidationError("Missing Rows/Columns (image dimensions) in: \(path)")
+            }
+
+            // Derive remaining pixel attributes with DICOM-sensible defaults.
+            let samplesPerPixel = dataSet.uint16(for: .samplesPerPixel) ?? 1
+            let bitsAllocated = dataSet.uint16(for: .bitsAllocated) ?? 8
+            let bitsStored = dataSet.uint16(for: .bitsStored) ?? bitsAllocated
+            let highBit = dataSet.uint16(for: .highBit) ?? (bitsStored > 0 ? bitsStored - 1 : 0)
+            let pixelRepresentation = dataSet.uint16(for: .pixelRepresentation) ?? 0
+            let photometric = dataSet.string(for: .photometricInterpretation)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                ?? (samplesPerPixel >= 3 ? "RGB" : "MONOCHROME2")
+
+            let descriptor = PrintImageData(
+                pixelData: pixelData,
+                rows: rows,
+                columns: columns,
+                bitsAllocated: bitsAllocated,
+                bitsStored: bitsStored,
+                highBit: highBit,
+                samplesPerPixel: samplesPerPixel,
+                pixelRepresentation: pixelRepresentation,
+                photometricInterpretation: photometric
+            )
+
             imageDataList.append(pixelData)
+            descriptorList.append(descriptor)
         }
+        // Snapshot as immutable values so they can cross into the async closure.
+        let images = imageDataList
+        let descriptors = descriptorList
         
-        // Print based on number of images
-        if imageDataList.count == 1 {
-            // Single image print
-            if verbose {
-                fprintln("Printing single image...")
+        // Resolve the layout: an explicit --template preset or --layout wins,
+        // otherwise printImages picks an optimal layout for the image count.
+        let resolvedLayout = template?.printLayout ?? layout?.printLayout
+
+        // Surface printer / print-job notifications (N-EVENT-REPORT) pushed by
+        // the SCP during the association. Faults are always reported; routine
+        // progress events are shown in verbose mode.
+        let showAllEvents = verbose
+        let onEvent: PrintEventHandler = { event in
+            if event.isFault {
+                fprintln("⚠ \(event.summary)")
+            } else if showAllEvents {
+                fprintln("• \(event.summary)")
             }
-            
-            let result = try runAsync {
-                try await DICOMPrintService.printImage(
-                    configuration: config,
-                    imageData: imageDataList[0],
-                    options: options
-                )
-            }
-            
-            printResult(result, verbose: verbose)
-        } else {
-            // Multi-image print
-            if verbose {
-                fprintln("Printing \(imageDataList.count) images...")
-            }
-            
-            let result = try runAsync {
-                try await DICOMPrintService.printImages(
-                    configuration: config,
-                    images: imageDataList,
-                    options: options
-                )
-            }
-            
-            printResult(result, verbose: verbose)
         }
-        
+
+        if verbose {
+            fprintln("Printing \(images.count) image(s)...")
+        }
+
+        // Retry only on thrown connection/setup failures (before the print job
+        // is submitted). A returned PrintResult — success or failure — is never
+        // retried, so a submitted job is never duplicated.
+        let maxAttempts = retries + 1
+        let retryPolicy = PrintRetryPolicy(maxAttempts: retries)
+        let result = try runAsync {
+            var lastError: Error?
+            for attempt in 0..<maxAttempts {
+                do {
+                    return try await DICOMPrintService.printImages(
+                        configuration: config,
+                        images: images,
+                        options: options,
+                        imageDescriptors: descriptors,
+                        layout: resolvedLayout,
+                        eventHandler: onEvent
+                    )
+                } catch {
+                    lastError = error
+                    if attempt < maxAttempts - 1 {
+                        let delay = retryPolicy.delay(for: attempt)
+                        fprintln("Attempt \(attempt + 1)/\(maxAttempts) failed: \(error). Retrying in \(String(format: "%.1f", delay))s...")
+                        try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                    }
+                }
+            }
+            throw lastError ?? ValidationError("Print failed")
+        }
+
+        printResult(result, verbose: verbose)
+
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
@@ -597,10 +706,11 @@ struct JobCommand: ParsableCommand {
             fprintln("")
         }
         
+        let printJobUID = jobId
         let status = try runAsync {
             try await DICOMPrintService.getPrintJobStatus(
                 configuration: config,
-                printJobUID: jobId
+                printJobUID: printJobUID
             )
         }
         
@@ -910,6 +1020,62 @@ enum LayoutOption: String, ExpressibleByArgument {
         case .layout4x5: return "STANDARD\\4,5"
         }
     }
+
+    /// Rows and columns for this layout (RxC).
+    var printLayout: PrintLayout {
+        switch self {
+        case .layout1x1: return PrintLayout(rows: 1, columns: 1)
+        case .layout1x2: return PrintLayout(rows: 1, columns: 2)
+        case .layout2x1: return PrintLayout(rows: 2, columns: 1)
+        case .layout2x2: return PrintLayout(rows: 2, columns: 2)
+        case .layout2x3: return PrintLayout(rows: 2, columns: 3)
+        case .layout3x3: return PrintLayout(rows: 3, columns: 3)
+        case .layout3x4: return PrintLayout(rows: 3, columns: 4)
+        case .layout4x4: return PrintLayout(rows: 4, columns: 4)
+        case .layout4x5: return PrintLayout(rows: 4, columns: 5)
+        }
+    }
+}
+
+enum PresentationLUTOption: String, ExpressibleByArgument {
+    case identity
+    case inverse
+    case linOD = "lin-od"
+
+    var shape: PresentationLUTShape {
+        switch self {
+        case .identity: return .identity
+        case .inverse: return .inverse
+        case .linOD: return .linearOpticalDensity
+        }
+    }
+}
+
+enum TemplateOption: String, ExpressibleByArgument {
+    case single
+    case comparison
+    case grid
+    case multiPhase = "multi-phase"
+
+    /// The built-in `PrintTemplate` this option maps to.
+    var template: PrintTemplate {
+        switch self {
+        case .single: return SingleImageTemplate()
+        case .comparison: return ComparisonTemplate()
+        case .grid: return GridTemplate(rows: 2, columns: 2)
+        case .multiPhase: return MultiPhaseTemplate(rows: 2, columns: 3)
+        }
+    }
+
+    /// The image layout (rows × columns) for this template.
+    var printLayout: PrintLayout {
+        switch self {
+        case .single: return PrintLayout(rows: 1, columns: 1)
+        case .comparison: return PrintLayout(rows: 1, columns: 2)
+        case .grid: return PrintLayout(rows: 2, columns: 2)
+        case .multiPhase: return PrintLayout(rows: 2, columns: 3)
+        }
+    }
 }
 
 enum MediumOption: String, ExpressibleByArgument {
@@ -929,6 +1095,13 @@ enum MediumOption: String, ExpressibleByArgument {
 enum ColorModeOption: String, ExpressibleByArgument {
     case grayscale
     case color
+
+    var printColorMode: DICOMNetwork.PrintColorMode {
+        switch self {
+        case .grayscale: return .grayscale
+        case .color: return .color
+        }
+    }
 }
 
 // MARK: - Printer Configuration Manager

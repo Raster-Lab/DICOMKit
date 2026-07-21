@@ -43,6 +43,13 @@ public let printerSOPClassUID = "1.2.840.10008.5.1.1.16"
 public let printerSOPInstanceUID = "1.2.840.10008.5.1.1.17"
 /// Print Job SOP Class UID (PS3.4 H.4.8)
 public let printJobSOPClassUID = "1.2.840.10008.5.1.1.14"
+/// Presentation LUT SOP Class UID (PS3.4 H.4.10). Part of the Grayscale/Color
+/// Print Management Meta SOP Classes, so it needs no separate presentation context.
+public let presentationLUTSOPClassUID = "1.2.840.10008.5.1.1.23"
+/// Basic Annotation Box SOP Class UID (PS3.4 H.4.6)
+public let basicAnnotationBoxSOPClassUID = "1.2.840.10008.5.1.1.15"
+/// Basic Print Image Overlay Box SOP Class UID (PS3.4 H.4.11, retired)
+public let basicPrintImageOverlayBoxSOPClassUID = "1.2.840.10008.5.1.1.24.1"
 
 // MARK: - Print-specific DICOM Tags
 
@@ -92,7 +99,21 @@ extension Tag {
     public static let referencedFilmSessionSequence = Tag(group: 0x2010, element: 0x0500)
     /// Referenced Image Box Sequence (2010,0510)
     public static let referencedImageBoxSequence = Tag(group: 0x2010, element: 0x0510)
-    
+    /// Referenced Basic Annotation Box Sequence (2010,0520)
+    public static let referencedBasicAnnotationBoxSequence = Tag(group: 0x2010, element: 0x0520)
+
+    // Annotation Box tags (PS3.3 C.13.6)
+    /// Annotation Position (2030,0010)
+    public static let annotationPosition = Tag(group: 0x2030, element: 0x0010)
+    /// Text String (2030,0020)
+    public static let textString = Tag(group: 0x2030, element: 0x0020)
+
+    // Presentation LUT tags (PS3.3 C.11.6)
+    /// Presentation LUT Shape (2050,0020)
+    public static let presentationLUTShape = Tag(group: 0x2050, element: 0x0020)
+    /// Referenced Presentation LUT Sequence (2050,0500)
+    public static let referencedPresentationLUTSequence = Tag(group: 0x2050, element: 0x0500)
+
     // Image Box tags (PS3.3 C.13.5)
     /// Image Box Position (2020,0010)
     public static let imageBoxPosition = Tag(group: 0x2020, element: 0x0010)
@@ -427,6 +448,123 @@ public struct PrintJobStatus: Sendable {
     }
 }
 
+// MARK: - Print Events (N-EVENT-REPORT)
+
+/// Printer status event type reported by the Printer SOP Class.
+///
+/// Reference: PS3.4 H.4.5 (Printer SOP Class N-EVENT-REPORT, Event Type IDs).
+public enum PrinterEventType: UInt16, Sendable, Equatable {
+    /// Printer returned to a normal operating state (Event Type ID 1).
+    case normal = 1
+    /// Printer raised a warning condition, e.g. low film (Event Type ID 2).
+    case warning = 2
+    /// Printer raised a failure condition, e.g. out of film / jam (Event Type ID 3).
+    case failure = 3
+}
+
+/// Print job execution event type reported by the Print Job SOP Class.
+///
+/// Reference: PS3.4 H.4.9.2 (Print Job SOP Class N-EVENT-REPORT, Event Type IDs).
+public enum PrintJobEventType: UInt16, Sendable, Equatable {
+    /// The print job is queued and pending (Event Type ID 1).
+    case pending = 1
+    /// The print job is currently printing (Event Type ID 2).
+    case printing = 2
+    /// The print job completed successfully (Event Type ID 3).
+    case done = 3
+    /// The print job failed (Event Type ID 4).
+    case failure = 4
+}
+
+/// An asynchronous notification received from a Print SCP via N-EVENT-REPORT.
+///
+/// A printer may push status changes (Printer SOP Class) or print-job progress
+/// (Print Job SOP Class) to the SCU over an open association. These arrive
+/// interleaved with the SCU's own request/response traffic and are surfaced to
+/// callers through a ``PrintEventHandler``.
+public struct PrintEvent: Sendable, Equatable {
+    /// The SOP Class UID of the source object (Printer or Print Job).
+    public let sopClassUID: String
+
+    /// The SOP Instance UID of the source object.
+    public let sopInstanceUID: String
+
+    /// The raw Event Type ID from the N-EVENT-REPORT command.
+    public let eventTypeID: UInt16
+
+    /// Printer Status Info (2110,0020) when present in the event data set.
+    public let printerStatusInfo: String?
+
+    /// Execution Status Info (2100,0030) when present in the event data set.
+    public let executionStatusInfo: String?
+
+    public init(
+        sopClassUID: String,
+        sopInstanceUID: String,
+        eventTypeID: UInt16,
+        printerStatusInfo: String? = nil,
+        executionStatusInfo: String? = nil
+    ) {
+        self.sopClassUID = sopClassUID
+        self.sopInstanceUID = sopInstanceUID
+        self.eventTypeID = eventTypeID
+        self.printerStatusInfo = printerStatusInfo
+        self.executionStatusInfo = executionStatusInfo
+    }
+
+    /// Interpreted printer event, if this came from the Printer SOP Class.
+    public var printerEvent: PrinterEventType? {
+        sopClassUID == printerSOPClassUID ? PrinterEventType(rawValue: eventTypeID) : nil
+    }
+
+    /// Interpreted print job event, if this came from the Print Job SOP Class.
+    public var printJobEvent: PrintJobEventType? {
+        sopClassUID == printJobSOPClassUID ? PrintJobEventType(rawValue: eventTypeID) : nil
+    }
+
+    /// Whether this event indicates a condition the caller should surface
+    /// (printer warning/failure, or print-job failure).
+    public var isFault: Bool {
+        printerEvent == .warning || printerEvent == .failure || printJobEvent == .failure
+    }
+
+    /// A concise, human-readable description of the event.
+    public var summary: String {
+        let source: String
+        let state: String
+        if let pe = printerEvent {
+            source = "Printer"
+            switch pe {
+            case .normal: state = "Normal"
+            case .warning: state = "Warning"
+            case .failure: state = "Failure"
+            }
+        } else if let je = printJobEvent {
+            source = "Print Job"
+            switch je {
+            case .pending: state = "Pending"
+            case .printing: state = "Printing"
+            case .done: state = "Done"
+            case .failure: state = "Failure"
+            }
+        } else {
+            source = "Print"
+            state = "Event \(eventTypeID)"
+        }
+        let info = printerStatusInfo ?? executionStatusInfo
+        if let info = info, !info.isEmpty {
+            return "\(source) \(state): \(info)"
+        }
+        return "\(source) \(state)"
+    }
+}
+
+/// A handler invoked for each ``PrintEvent`` received from a Print SCP.
+///
+/// The handler is called synchronously on the networking task as events arrive;
+/// keep it lightweight (e.g. append to an actor-isolated buffer or log).
+public typealias PrintEventHandler = @Sendable (PrintEvent) -> Void
+
 // MARK: - Print Image Data
 
 /// Bundles pixel data with its image descriptor for printing
@@ -486,6 +624,42 @@ public struct PrintImageData: Sendable {
     }
 }
 
+// MARK: - Presentation LUT
+
+/// Presentation LUT Shape (2050,0020) — the transformation applied to stored
+/// pixel values before printing.
+///
+/// Reference: PS3.3 C.11.6.1. Only the well-defined shapes are modelled; a full
+/// LUT-data variant can be added later if a printer requires it.
+public enum PresentationLUTShape: String, Sendable, Equatable, CaseIterable {
+    /// No transformation — stored values map directly to P-Values (IDENTITY).
+    case identity = "IDENTITY"
+    /// Inverse of IDENTITY (INVERSE).
+    case inverse = "INVERSE"
+    /// Linear optical density (LIN OD).
+    case linearOpticalDensity = "LIN OD"
+}
+
+// MARK: - Print Annotation
+
+/// A text annotation to place on the film via the Basic Annotation Box SOP Class.
+///
+/// Reference: PS3.3 C.13.6. The printer must be configured with an Annotation
+/// Display Format that provides annotation box positions; ``position`` selects
+/// which configured box receives ``text``.
+public struct PrintAnnotation: Sendable, Equatable {
+    /// The 1-based annotation box position on the film (Annotation Position, 2030,0010).
+    public let position: UInt16
+
+    /// The annotation text (Text String, 2030,0020).
+    public let text: String
+
+    public init(position: UInt16, text: String) {
+        self.position = max(1, position)
+        self.text = text
+    }
+}
+
 // MARK: - Print Options
 
 /// Options for print operations
@@ -528,7 +702,19 @@ public struct PrintOptions: Sendable {
     
     /// Optional session label
     public let sessionLabel: String?
-    
+
+    /// Optional Presentation LUT Shape to create and reference from the film box.
+    /// When `nil`, no Presentation LUT is created (printer default applies).
+    public let presentationLUTShape: PresentationLUTShape?
+
+    /// Text annotations to place on the film via Basic Annotation Boxes. Applied
+    /// only when ``annotationDisplayFormatID`` is also set (it is printer-specific).
+    public let annotations: [PrintAnnotation]
+
+    /// Annotation Display Format ID (2010,0030) identifying the printer-configured
+    /// annotation layout. Required for ``annotations`` to be sent.
+    public let annotationDisplayFormatID: String?
+
     /// Creates print options with specified parameters
     public init(
         numberOfCopies: Int = 1,
@@ -542,7 +728,10 @@ public struct PrintOptions: Sendable {
         magnificationType: MagnificationType = .replicate,
         polarity: ImagePolarity = .normal,
         trimOption: TrimOption = .no,
-        sessionLabel: String? = nil
+        sessionLabel: String? = nil,
+        presentationLUTShape: PresentationLUTShape? = nil,
+        annotations: [PrintAnnotation] = [],
+        annotationDisplayFormatID: String? = nil
     ) {
         self.numberOfCopies = numberOfCopies
         self.priority = priority
@@ -556,6 +745,9 @@ public struct PrintOptions: Sendable {
         self.polarity = polarity
         self.trimOption = trimOption
         self.sessionLabel = sessionLabel
+        self.presentationLUTShape = presentationLUTShape
+        self.annotations = annotations
+        self.annotationDisplayFormatID = annotationDisplayFormatID
     }
     
     /// Default print options for general use
@@ -2389,10 +2581,115 @@ public enum DICOMPrintService {
                 }
             }
         }
-        
+
         return imageBoxUIDs
     }
-    
+
+    /// Extracts Referenced SOP Instance UIDs (0008,1155) that live *inside* a
+    /// specific sequence, scanning Explicit VR Little Endian bytes.
+    ///
+    /// Unlike ``parseImageBoxUIDs`` (which scans the whole data set), this bounds
+    /// the search to a single sequence so, for example, annotation-box UIDs are
+    /// not confused with image-box UIDs when both sequences are present.
+    static func parseReferencedSOPInstanceUIDs(from data: Data, withinSequence sequenceTag: Tag) -> [String] {
+        guard data.count >= 8 else { return [] }
+
+        return data.withUnsafeBytes { buffer -> [String] in
+            let count = buffer.count
+
+            // Locate the sequence tag and compute the byte window it covers.
+            func loadU16(_ off: Int) -> UInt16 { buffer.loadUnaligned(fromByteOffset: off, as: UInt16.self).littleEndian }
+            func loadU32(_ off: Int) -> UInt32 { buffer.loadUnaligned(fromByteOffset: off, as: UInt32.self).littleEndian }
+
+            var windowStart = -1
+            var windowEnd = count
+            var off = 0
+            while off + 8 <= count {
+                let group = loadU16(off)
+                let element = loadU16(off + 2)
+                if group == sequenceTag.group && element == sequenceTag.element {
+                    // Explicit VR: SQ uses [tag(4)][VR(2)][reserved(2)][len(4)].
+                    let length = loadU32(off + 8)
+                    let valueStart = off + 12
+                    if length == 0xFFFF_FFFF {
+                        windowStart = valueStart
+                        windowEnd = count // undefined length → scan to delimiter/end below
+                    } else {
+                        windowStart = valueStart
+                        windowEnd = min(count, valueStart + Int(length))
+                    }
+                    break
+                }
+                off += 1
+            }
+            guard windowStart >= 0 else { return [] }
+
+            var uids: [String] = []
+            var scan = windowStart
+            while scan + 8 <= windowEnd {
+                let group = loadU16(scan)
+                let element = loadU16(scan + 2)
+                // Stop at a Sequence Delimitation Item when length was undefined.
+                if group == 0xFFFE && element == 0xE00D { break }
+                if group == 0x0008 && element == 0x1155 {
+                    let length = Int(loadU16(scan + 6))
+                    guard length > 0, length < 256, scan + 8 + length <= windowEnd else { break }
+                    let valueData = Data(bytes: buffer.baseAddress!.advanced(by: scan + 8), count: length)
+                    if let uid = String(data: valueData, encoding: .ascii)?
+                        .trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")), !uid.isEmpty {
+                        uids.append(uid)
+                    }
+                    scan += 8 + length
+                } else {
+                    scan += 1
+                }
+            }
+            return uids
+        }
+    }
+
+    /// Creates a Presentation LUT SOP Instance (N-CREATE) carrying a Presentation
+    /// LUT Shape, returning its SOP Instance UID for the film box to reference.
+    private static func createPresentationLUTInstance(
+        association: Association,
+        negotiated: NegotiatedAssociation,
+        shape: PresentationLUTShape,
+        messageID: inout UInt16,
+        eventHandler: PrintEventHandler?
+    ) async throws -> String {
+        let elements = [
+            DataElement.string(tag: .presentationLUTShape, vr: .CS, value: shape.rawValue)
+        ]
+        let request = NCreateRequest(
+            messageID: messageID,
+            affectedSOPClassUID: presentationLUTSOPClassUID,
+            affectedSOPInstanceUID: nil,
+            hasDataSet: true,
+            presentationContextID: 1
+        )
+        messageID += 1
+
+        let response = try await sendAndReceive(
+            association: association,
+            negotiated: negotiated,
+            commandSet: request.commandSet,
+            dataSet: serializeElements(elements),
+            presentationContextID: 1,
+            eventHandler: eventHandler
+        )
+        let rsp = NCreateResponse(commandSet: response.commandSet, presentationContextID: 1)
+        guard rsp.status.isSuccessOrWarning else {
+            try await association.abort()
+            throw DICOMNetworkError.printOperationFailed(rsp.status)
+        }
+        let uid = rsp.affectedSOPInstanceUID
+        guard !uid.isEmpty else {
+            try await association.abort()
+            throw DICOMNetworkError.unexpectedResponse
+        }
+        return uid
+    }
+
     /// Sets the content of an image box using N-SET
     ///
     /// Sends N-SET to the Print SCP to set the pixel data and attributes of an Image Box
@@ -3012,7 +3309,8 @@ public enum DICOMPrintService {
         negotiated: NegotiatedAssociation,
         commandSet: CommandSet,
         dataSet: Data?,
-        presentationContextID: UInt8
+        presentationContextID: UInt8,
+        eventHandler: PrintEventHandler? = nil
     ) async throws -> AssembledMessage {
         let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
         let pdus = fragmenter.fragmentMessage(
@@ -3025,13 +3323,84 @@ public enum DICOMPrintService {
                 try await association.send(pdv: pdv)
             }
         }
-        let assembler = MessageAssembler()
+        var assembler = MessageAssembler()
         while true {
             let responsePDU = try await association.receive()
             if let message = try assembler.addPDVs(from: responsePDU) {
+                // The Print SCP may push an N-EVENT-REPORT-RQ (printer status or
+                // print-job progress) interleaved with our own responses. Handle
+                // it, acknowledge it, and keep waiting for the response we sent
+                // this request for. (PS3.7 10.1; PS3.4 H.4.)
+                if message.commandSet.command == .nEventReportRequest {
+                    try await handleIncomingEvent(
+                        association: association,
+                        negotiated: negotiated,
+                        message: message,
+                        eventHandler: eventHandler
+                    )
+                    assembler = MessageAssembler()
+                    continue
+                }
                 return message
             }
         }
+    }
+
+    /// Decodes an incoming N-EVENT-REPORT-RQ, notifies the handler, and sends the
+    /// mandatory N-EVENT-REPORT-RSP acknowledgement back to the Print SCP.
+    private static func handleIncomingEvent(
+        association: Association,
+        negotiated: NegotiatedAssociation,
+        message: AssembledMessage,
+        eventHandler: PrintEventHandler?
+    ) async throws {
+        let request = NEventReportRequest(
+            commandSet: message.commandSet,
+            presentationContextID: message.presentationContextID
+        )
+
+        // Surface the decoded event to the caller.
+        eventHandler?(decodePrintEvent(from: message))
+
+        // A successful acknowledgement is required so the SCP can continue.
+        let response = NEventReportResponse(
+            messageIDBeingRespondedTo: request.messageID,
+            affectedSOPClassUID: request.affectedSOPClassUID,
+            affectedSOPInstanceUID: request.affectedSOPInstanceUID,
+            eventTypeID: request.eventTypeID,
+            status: .success,
+            hasDataSet: false,
+            presentationContextID: message.presentationContextID
+        )
+        let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
+        let pdus = fragmenter.fragmentMessage(
+            commandSet: response.commandSet,
+            dataSet: nil,
+            presentationContextID: response.presentationContextID
+        )
+        for pdu in pdus {
+            for pdv in pdu.presentationDataValues {
+                try await association.send(pdv: pdv)
+            }
+        }
+    }
+
+    /// Builds a ``PrintEvent`` from an assembled N-EVENT-REPORT-RQ message.
+    private static func decodePrintEvent(from message: AssembledMessage) -> PrintEvent {
+        let cmd = message.commandSet
+        var printerStatusInfo: String?
+        var executionStatusInfo: String?
+        if let ds = message.dataSet {
+            printerStatusInfo = extractStringValue(from: ds, group: 0x2110, element: 0x0020)
+            executionStatusInfo = extractStringValue(from: ds, group: 0x2100, element: 0x0030)
+        }
+        return PrintEvent(
+            sopClassUID: cmd.affectedSOPClassUID ?? "",
+            sopInstanceUID: cmd.affectedSOPInstanceUID ?? "",
+            eventTypeID: cmd.eventTypeID ?? 0,
+            printerStatusInfo: printerStatusInfo,
+            executionStatusInfo: executionStatusInfo
+        )
     }
     
     /// Performs the complete print workflow within a single DICOM association.
@@ -3053,7 +3422,8 @@ public enum DICOMPrintService {
         images: [Data],
         imageDescriptors: [PrintImageData],
         options: PrintOptions,
-        layout: PrintLayout
+        layout: PrintLayout,
+        eventHandler: PrintEventHandler? = nil
     ) async throws -> PrintResult {
         let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
         let imageBoxSOPClassUID = configuration.colorMode == .color
@@ -3106,7 +3476,8 @@ public enum DICOMPrintService {
                 negotiated: negotiated,
                 commandSet: sessionRequest.commandSet,
                 dataSet: serializeElements(sessionElements),
-                presentationContextID: 1
+                presentationContextID: 1,
+                eventHandler: eventHandler
             )
             
             let sessionRsp = NCreateResponse(commandSet: sessionResponse.commandSet, presentationContextID: 1)
@@ -3115,18 +3486,32 @@ public enum DICOMPrintService {
                 throw DICOMNetworkError.printOperationFailed(sessionRsp.status)
             }
             let filmSessionUID = sessionRsp.affectedSOPInstanceUID
-            
+
+            // ── Step 1b: N-CREATE Presentation LUT (optional) ─────────────
+            // Created once per association and referenced from each film box.
+            var presentationLUTUID: String?
+            if let lutShape = options.presentationLUTShape {
+                var lutMessageID: UInt16 = 1000
+                presentationLUTUID = try await createPresentationLUTInstance(
+                    association: association,
+                    negotiated: negotiated,
+                    shape: lutShape,
+                    messageID: &lutMessageID,
+                    eventHandler: eventHandler
+                )
+            }
+
             // ── Step 2: Process film boxes ────────────────────────────────
             var allPrintJobUIDs: [String] = []
             var lastFilmBoxUID: String?
-            
+
             let imagesPerFilm = layout.rows * layout.columns
             let filmBoxCount = max(1, (images.count + imagesPerFilm - 1) / imagesPerFilm)
-            
+
             for filmIndex in 0..<filmBoxCount {
                 // ── Step 2a: N-CREATE Film Box ────────────────────────────
                 let imageDisplayFormat = "STANDARD\\\(layout.rows),\(layout.columns)"
-                
+
                 var filmBoxElements: [DataElement] = []
                 filmBoxElements.append(DataElement.string(tag: .imageDisplayFormat, vr: .ST, value: imageDisplayFormat))
                 filmBoxElements.append(DataElement.string(tag: .filmOrientation, vr: .CS, value: options.filmOrientation.rawValue))
@@ -3150,7 +3535,32 @@ public enum DICOMPrintService {
                     valueData: seqItemsData,
                     sequenceItems: [sessionSeqItem]
                 ))
-                
+
+                // Referenced Presentation LUT Sequence (2050,0500) — links the
+                // film box to the Presentation LUT created above.
+                if let lutUID = presentationLUTUID {
+                    let lutSeqItem = SequenceItem(elements: [
+                        DataElement.string(tag: .referencedSOPClassUID, vr: .UI, value: presentationLUTSOPClassUID),
+                        DataElement.string(tag: .referencedSOPInstanceUID, vr: .UI, value: lutUID)
+                    ])
+                    let lutSeqData = writer.serializeSequenceItem(lutSeqItem)
+                    filmBoxElements.append(DataElement(
+                        tag: .referencedPresentationLUTSequence,
+                        vr: .SQ,
+                        length: UInt32(lutSeqData.count),
+                        valueData: lutSeqData,
+                        sequenceItems: [lutSeqItem]
+                    ))
+                }
+
+                // Annotation Display Format ID (2010,0030) — enables annotation
+                // boxes on the film. Printer-specific; only sent when the caller
+                // supplied both a format ID and annotations.
+                let annotationsEnabled = !options.annotations.isEmpty && options.annotationDisplayFormatID != nil
+                if annotationsEnabled, let formatID = options.annotationDisplayFormatID {
+                    filmBoxElements.append(DataElement.string(tag: .annotationDisplayFormatID, vr: .CS, value: formatID))
+                }
+
                 let filmBoxRequest = NCreateRequest(
                     messageID: messageID,
                     affectedSOPClassUID: basicFilmBoxSOPClassUID,
@@ -3165,7 +3575,8 @@ public enum DICOMPrintService {
                     negotiated: negotiated,
                     commandSet: filmBoxRequest.commandSet,
                     dataSet: serializeElements(filmBoxElements),
-                    presentationContextID: 1
+                    presentationContextID: 1,
+                    eventHandler: eventHandler
                 )
                 
                 let filmBoxRsp = NCreateResponse(commandSet: filmBoxResponse.commandSet, presentationContextID: 1)
@@ -3245,7 +3656,8 @@ public enum DICOMPrintService {
                         negotiated: negotiated,
                         commandSet: setRequest.commandSet,
                         dataSet: serializeElements(imgElements),
-                        presentationContextID: 1
+                        presentationContextID: 1,
+                        eventHandler: eventHandler
                     )
                     
                     let setRsp = NSetResponse(commandSet: setResponse.commandSet, presentationContextID: 1)
@@ -3254,7 +3666,47 @@ public enum DICOMPrintService {
                         throw DICOMNetworkError.printOperationFailed(setRsp.status)
                     }
                 }
-                
+
+                // ── Step 2b′: N-SET Annotation Boxes (optional) ───────────
+                if annotationsEnabled, let dataSetData = filmBoxResponse.dataSet {
+                    let annotationBoxUIDs = parseReferencedSOPInstanceUIDs(
+                        from: dataSetData,
+                        withinSequence: .referencedBasicAnnotationBoxSequence
+                    )
+                    for annotation in options.annotations {
+                        let idx = Int(annotation.position) - 1
+                        guard idx >= 0, idx < annotationBoxUIDs.count else { continue }
+                        let annotationBoxUID = annotationBoxUIDs[idx]
+
+                        let annElements: [DataElement] = [
+                            DataElement.uint16(tag: .annotationPosition, value: annotation.position),
+                            DataElement.string(tag: .textString, vr: .LO, value: annotation.text)
+                        ]
+                        let annRequest = NSetRequest(
+                            messageID: messageID,
+                            requestedSOPClassUID: basicAnnotationBoxSOPClassUID,
+                            requestedSOPInstanceUID: annotationBoxUID,
+                            hasDataSet: true,
+                            presentationContextID: 1
+                        )
+                        messageID += 1
+
+                        let annResponse = try await sendAndReceive(
+                            association: association,
+                            negotiated: negotiated,
+                            commandSet: annRequest.commandSet,
+                            dataSet: serializeElements(annElements),
+                            presentationContextID: 1,
+                            eventHandler: eventHandler
+                        )
+                        let annRsp = NSetResponse(commandSet: annResponse.commandSet, presentationContextID: 1)
+                        guard annRsp.status.isSuccessOrWarning else {
+                            try await association.abort()
+                            throw DICOMNetworkError.printOperationFailed(annRsp.status)
+                        }
+                    }
+                }
+
                 // ── Step 2c: N-ACTION Print Film Box ──────────────────────
                 let actionRequest = NActionRequest(
                     messageID: messageID,
@@ -3271,7 +3723,8 @@ public enum DICOMPrintService {
                     negotiated: negotiated,
                     commandSet: actionRequest.commandSet,
                     dataSet: nil,
-                    presentationContextID: 1
+                    presentationContextID: 1,
+                    eventHandler: eventHandler
                 )
                 
                 let actionRsp = NActionResponse(commandSet: actionResponse.commandSet, presentationContextID: 1)
@@ -3306,7 +3759,8 @@ public enum DICOMPrintService {
                 negotiated: negotiated,
                 commandSet: deleteRequest.commandSet,
                 dataSet: nil,
-                presentationContextID: 1
+                presentationContextID: 1,
+                eventHandler: eventHandler
             )
             // Ignore N-DELETE status — cleanup is best-effort
             _ = NDeleteResponse(commandSet: deleteResponse.commandSet, presentationContextID: 1)
@@ -3337,20 +3791,24 @@ public enum DICOMPrintService {
     ///   - imageData: The pixel data to print
     ///   - options: Print options (defaults to `.default`)
     ///   - imageDescriptor: Optional image descriptor with dimensions and bit depth
+    ///   - eventHandler: Optional handler invoked for each N-EVENT-REPORT (printer
+    ///     status or print-job progress) the SCP pushes during the association.
     /// - Returns: The print result
     /// - Throws: `DICOMNetworkError` if any step of the workflow fails
     public static func printImage(
         configuration: PrintConfiguration,
         imageData: Data,
         options: PrintOptions = .default,
-        imageDescriptor: PrintImageData? = nil
+        imageDescriptor: PrintImageData? = nil,
+        eventHandler: PrintEventHandler? = nil
     ) async throws -> PrintResult {
         return try await executePrintWorkflow(
             configuration: configuration,
             images: [imageData],
             imageDescriptors: imageDescriptor.map { [$0] } ?? [],
             options: options,
-            layout: PrintLayout(rows: 1, columns: 1)
+            layout: PrintLayout(rows: 1, columns: 1),
+            eventHandler: eventHandler
         )
     }
     
@@ -3364,13 +3822,19 @@ public enum DICOMPrintService {
     ///   - images: Array of pixel data to print
     ///   - options: Print options (defaults to `.default`)
     ///   - imageDescriptors: Optional per-image descriptors with dimensions and bit depth
+    ///   - layout: Optional explicit layout. When `nil`, an optimal layout is chosen
+    ///     automatically for the number of images.
+    ///   - eventHandler: Optional handler invoked for each N-EVENT-REPORT (printer
+    ///     status or print-job progress) the SCP pushes during the association.
     /// - Returns: The print result
     /// - Throws: `DICOMNetworkError` if any step of the workflow fails
     public static func printImages(
         configuration: PrintConfiguration,
         images: [Data],
         options: PrintOptions = .default,
-        imageDescriptors: [PrintImageData] = []
+        imageDescriptors: [PrintImageData] = [],
+        layout: PrintLayout? = nil,
+        eventHandler: PrintEventHandler? = nil
     ) async throws -> PrintResult {
         guard !images.isEmpty else {
             return PrintResult(
@@ -3379,20 +3843,23 @@ public enum DICOMPrintService {
                 errorMessage: "No images provided"
             )
         }
-        
-        let layout: PrintLayout
-        if images.count == 1 {
-            layout = PrintLayout(rows: 1, columns: 1)
+
+        let resolvedLayout: PrintLayout
+        if let layout = layout {
+            resolvedLayout = layout
+        } else if images.count == 1 {
+            resolvedLayout = PrintLayout(rows: 1, columns: 1)
         } else {
-            layout = PrintLayout.optimalLayout(for: images.count)
+            resolvedLayout = PrintLayout.optimalLayout(for: images.count)
         }
-        
+
         return try await executePrintWorkflow(
             configuration: configuration,
             images: images,
             imageDescriptors: imageDescriptors,
             options: options,
-            layout: layout
+            layout: resolvedLayout,
+            eventHandler: eventHandler
         )
     }
     
