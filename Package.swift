@@ -340,6 +340,7 @@ let package = Package(
                 "CompressionManagerMetricsTests.swift",
                 "CompressionManagerJPEGEngineTests.swift",
                 "CompressionManagerPhotometricInterpretationTests.swift",
+                "DICOMFilePixelDataYBRDecodeTests.swift",
                 "LossyImageCompressionAttributesTests.swift",
                 "CompressedPreviewRenderParityTests.swift",
                 "CompressionConsoleTests.swift",
