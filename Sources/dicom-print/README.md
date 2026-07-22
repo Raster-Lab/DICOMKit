@@ -111,12 +111,29 @@ dicom-print remove-printer --name radiology-printer
 | `--template` | Layout preset: single, comparison, grid, multi-phase (sets layout + film size + orientation; conflicts with `--layout`) |
 | `--medium` | Medium type: paper, clear-film, blue-film |
 | `--color` | Color mode: grayscale, color (default: grayscale) |
+| `--frame` | 1-based frame to print from multi-frame files (default: 1) |
+| `--all-frames` | Print every frame of multi-frame files (one image box per frame) |
+| `--raw` | Send stored pixel values without preprocessing (compressed sources are still decoded) |
 | `--presentation-lut` | Presentation LUT shape: identity, inverse, lin-od (default: none) |
 | `--annotate` | Annotation text on the film (repeatable; requires `--annotation-format`) |
 | `--annotation-format` | Printer-configured Annotation Display Format ID |
 | `--retries` | Retry on connection/setup failure, up to N times with backoff (default: 0) |
 | `--recursive` / `-r` | Recursively scan directories |
 | `--dry-run` | Show what would be printed without printing |
+
+### Pixel preprocessing
+
+By default `send` prepares each frame for film output: encapsulated transfer
+syntaxes (JPEG, JPEG 2000, JPEG-LS, RLE) are decoded to native pixels, then the
+frame is passed through the print pipeline — Rescale Slope/Intercept, VOI
+window (from the data set, or auto-calculated), MONOCHROME1 inversion — and
+emitted as 8-bit MONOCHROME2 (grayscale mode) or 8-bit RGB (color mode). This
+matches what a viewer shows clinically. Use `--raw` to bypass the pipeline and
+send stored values unchanged (compressed sources are still decoded first, since
+Basic Image Boxes require uncompressed pixel data).
+
+A failed print exits with a non-zero status code, so scripts can detect
+failures reliably.
 
 ### Presentation LUT
 

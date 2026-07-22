@@ -349,6 +349,13 @@ dicom-print send *.dcm --layout 2x3 --film-size 11x17 --orientation landscape
 # Print with template
 dicom-print send series/*.dcm --template multi-phase --annotate
 
+# Print a specific frame of a multi-frame file (cine US), or all frames
+dicom-print send cine.dcm --frame 12
+dicom-print send cine.dcm --all-frames --layout 4x4
+
+# Bypass print preprocessing (send stored pixel values)
+dicom-print send image.dcm --raw
+
 # Monitor print job
 dicom-print status --job-id 1.2.840.113619.2.55.3.2024...
 

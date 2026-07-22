@@ -105,17 +105,51 @@ public actor ImagePreprocessor {
         windowSettings: WindowSettings? = nil
     ) async throws -> PreparedImage {
         // Extract pixel data descriptor
-        guard let descriptor = dataSet.pixelDataDescriptor() else {
+        guard dataSet.pixelDataDescriptor() != nil else {
             throw ImagePreprocessingError.missingPixelData
         }
-        
+
         // Extract raw pixel data
         guard let pixelData = dataSet.pixelData() else {
             throw ImagePreprocessingError.invalidPixelData
         }
-        
+
+        return try await prepareForPrint(
+            pixelData: pixelData,
+            dataSet: dataSet,
+            frameIndex: 0,
+            colorMode: colorMode,
+            windowSettings: windowSettings
+        )
+    }
+
+    /// Prepares one frame of already-extracted (decoded) pixel data for printing.
+    ///
+    /// Use this variant when the pixel data came from `DICOMFile.tryPixelData()`
+    /// (which decodes encapsulated transfer syntaxes to native frames) or when a
+    /// frame other than the first is wanted. The `dataSet` supplies the rescale
+    /// and window attributes; the pixel bytes and descriptor come from
+    /// `pixelData` so a decoded/corrected descriptor is honored.
+    ///
+    /// - Parameters:
+    ///   - pixelData: Decoded native pixel data with its descriptor
+    ///   - dataSet: The source data set (rescale slope/intercept, window)
+    ///   - frameIndex: Zero-based frame to prepare
+    ///   - colorMode: Target color mode for printing
+    ///   - windowSettings: Optional window settings (if nil, auto-calculated)
+    public func prepareForPrint(
+        pixelData: PixelData,
+        dataSet: DataSet,
+        frameIndex: Int = 0,
+        colorMode: PrintColorMode,
+        windowSettings: WindowSettings? = nil
+    ) async throws -> PreparedImage {
+        let descriptor = pixelData.descriptor
+        guard frameIndex >= 0, frameIndex < descriptor.numberOfFrames else {
+            throw ImagePreprocessingError.invalidFrameData
+        }
         let photometric = descriptor.photometricInterpretation
-        
+
         // Handle different photometric interpretations
         if photometric.isMonochrome {
             return try await preprocessMonochromeImage(
@@ -123,13 +157,8 @@ public actor ImagePreprocessor {
                 descriptor: descriptor,
                 dataSet: dataSet,
                 colorMode: colorMode,
-                windowSettings: windowSettings
-            )
-        } else if photometric.isColor {
-            return try await preprocessColorImage(
-                pixelData: pixelData,
-                descriptor: descriptor,
-                colorMode: colorMode
+                windowSettings: windowSettings,
+                frameIndex: frameIndex
             )
         } else if photometric.isPaletteColor {
             return try await preprocessPaletteColorImage(
@@ -137,6 +166,13 @@ public actor ImagePreprocessor {
                 descriptor: descriptor,
                 dataSet: dataSet,
                 colorMode: colorMode
+            )
+        } else if photometric.isColor {
+            return try await preprocessColorImage(
+                pixelData: pixelData,
+                descriptor: descriptor,
+                colorMode: colorMode,
+                frameIndex: frameIndex
             )
         } else {
             throw ImagePreprocessingError.unsupportedPhotometricInterpretation(photometric.rawValue)
@@ -150,14 +186,14 @@ public actor ImagePreprocessor {
         descriptor: PixelDataDescriptor,
         dataSet: DataSet,
         colorMode: PrintColorMode,
-        windowSettings: WindowSettings?
+        windowSettings: WindowSettings?,
+        frameIndex: Int = 0
     ) async throws -> PreparedImage {
         let width = descriptor.columns
         let height = descriptor.rows
         let totalPixels = width * height
-        
-        // Get frame data (frame 0 for single frame images)
-        guard let frameData = pixelData.frameData(at: 0) else {
+
+        guard let frameData = pixelData.frameData(at: frameIndex) else {
             throw ImagePreprocessingError.invalidFrameData
         }
         
@@ -214,15 +250,32 @@ public actor ImagePreprocessor {
     private func preprocessColorImage(
         pixelData: PixelData,
         descriptor: PixelDataDescriptor,
-        colorMode: PrintColorMode
+        colorMode: PrintColorMode,
+        frameIndex: Int = 0
     ) async throws -> PreparedImage {
         let width = descriptor.columns
         let height = descriptor.rows
-        
-        guard let frameData = pixelData.frameData(at: 0) else {
+
+        guard var frameData = pixelData.frameData(at: frameIndex) else {
             throw ImagePreprocessingError.invalidFrameData
         }
-        
+
+        // Uncompressed YBR sources must be converted to RGB before printing —
+        // Basic Color Image Boxes carry RGB (PS3.3 C.13.5). Only full-resolution
+        // interleaved YBR_FULL is supported here: the subsampled variants
+        // (YBR_FULL_422 etc.) have a packed layout that frame slicing upstream
+        // does not yet model, so they are rejected with a clear error rather
+        // than mis-converted. (Compressed YBR sources arrive here already
+        // decoded to RGB by the codec layer.)
+        let sourcePI = descriptor.photometricInterpretation
+        if sourcePI.isYBR {
+            guard sourcePI == .ybrFull, descriptor.bitsAllocated == 8,
+                  descriptor.samplesPerPixel == 3 else {
+                throw ImagePreprocessingError.unsupportedPhotometricInterpretation(sourcePI.rawValue)
+            }
+            frameData = Self.convertYBRFullToRGB(frameData)
+        }
+
         // For color images, we may need to convert based on printer capabilities
         if colorMode == .grayscale {
             // Convert RGB to grayscale
@@ -372,6 +425,34 @@ public actor ImagePreprocessor {
         return Data(grayscaleBytes)
     }
     
+    /// Converts interleaved 8-bit YBR_FULL samples to RGB in a new buffer.
+    ///
+    /// Reference: DICOM PS3.3 C.7.6.3.1.2 (full-range YCbCr → RGB):
+    /// R = Y + 1.402(Cr−128), G = Y − 0.344136(Cb−128) − 0.714136(Cr−128),
+    /// B = Y + 1.772(Cb−128).
+    static func convertYBRFullToRGB(_ data: Data) -> Data {
+        var output = [UInt8](repeating: 0, count: data.count)
+        let pixelCount = data.count / 3
+        data.withUnsafeBytes { buffer in
+            let bytes = buffer.bindMemory(to: UInt8.self)
+            for i in 0..<pixelCount {
+                let offset = i * 3
+                let y = Double(bytes[offset])
+                let cb = Double(bytes[offset + 1])
+                let cr = Double(bytes[offset + 2])
+
+                let r = y + 1.402 * (cr - 128.0)
+                let g = y - 0.344136 * (cb - 128.0) - 0.714136 * (cr - 128.0)
+                let b = y + 1.772 * (cb - 128.0)
+
+                output[offset] = UInt8(max(0.0, min(255.0, r.rounded())))
+                output[offset + 1] = UInt8(max(0.0, min(255.0, g.rounded())))
+                output[offset + 2] = UInt8(max(0.0, min(255.0, b.rounded())))
+            }
+        }
+        return Data(output)
+    }
+
     private func normalizeColorData(
         frameData: Data,
         descriptor: PixelDataDescriptor

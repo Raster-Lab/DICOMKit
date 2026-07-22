@@ -95,8 +95,27 @@ The library's `printWithTemplate` opens a separate association for each of creat
 - ✅ ~~Re-enable `DICOMNetworkTests`~~ — **done**
 - ✅ ~~Presentation LUT + Annotation Box~~ — **done**
 
-**Remaining:**
-1. **Rework `printWithTemplate`** onto the single-association path (PS3.4 H.4).
+**Done 2026-07-21 (Milestone A of the enhancement plan):**
+- ✅ `parsePrinterStatus` implemented (was a stub always returning NORMAL) — decodes
+  Printer Status/Status Info/Printer Name + Manufacturer/Model; `status` CLI shows them.
+- ✅ `dicom-print send` exits non-zero on print failure.
+- ✅ DIMSE Error Comment (0000,0902) / Error ID (0000,0903) / Offending Element
+  (0000,0901) decoded via new `CommandSet` accessors and carried in
+  `DICOMNetworkError.printOperationFailed(_, detail:)` on all print failure paths.
+
+**Done 2026-07-21/22 (Milestone B — image fidelity):**
+- ✅ Preprocessing pipeline wired into `send` (rescale → window → MONOCHROME1
+  inversion → 8-bit MONOCHROME2/RGB), with `--raw` bypass; quarantined MONOCHROME1
+  tests re-enabled against the decided behavior.
+- ✅ Encapsulated sources decoded before N-SET via `DICOMFile.tryPixelData()`.
+- ✅ Multi-frame: `--frame N` / `--all-frames` with bounds validation.
+- ✅ Uncompressed YBR_FULL→RGB conversion; subsampled YBR rejected with a clear
+  error (needs DICOMCore 4:2:2 layout support).
+- ✅ Signed sources emitted as unsigned 8-bit P-Values via the pipeline.
+
+**Remaining (see DICOM_PRINT_ENHANCEMENT_PLAN.md for the full backlog):**
+1. **Milestone C (interop):** unconditional image-box attributes, single-association
+   `printWithTemplate` rework (PS3.4 H.4), negotiated transfer syntax, DIMSE timeout.
 2. **VOI LUT box + full Overlay Box** (overlay-plane extraction).
 3. **Print SCP** (provider role) if server-side is needed.
 4. Optionally surface `PrintQueue` / `PrinterRegistry` via CLI commands.

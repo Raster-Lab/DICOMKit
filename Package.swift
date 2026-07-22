@@ -649,6 +649,7 @@ let package = Package(
             exclude: ["README.md"]
         ),
         // Phase 1 scope: exclude dicom-print because it is outside JPEG 2000 validation.
+        // (Source verified to compile 2026-07-21 with the Milestone A/B changes.)
         // .executableTarget(
         //     name: "dicom-print",
         //     dependencies: [

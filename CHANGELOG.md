@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### DICOM Print — Milestone B (image fidelity) from the enhancement plan
+
+- **Preprocessing pipeline wired into printing (P0-1, bug fix):** `dicom-print send`
+  now runs every frame through `ImagePreprocessor` by default — Rescale
+  Slope/Intercept → VOI window (from the data set or auto-calculated) →
+  MONOCHROME1 inversion → 8-bit MONOCHROME2 output (8-bit RGB for color mode).
+  Previously raw *stored* pixel values were sent, so windowed CT/MR and
+  MONOCHROME1 images printed with clinically incorrect grayscale/polarity.
+  A `--raw` flag bypasses the pipeline. The two `XCTSkip`-quarantined MONOCHROME1
+  preprocessor tests were rewritten to the decided behavior and re-enabled.
+- **Encapsulated pixel data decoded before N-SET (P0-2, bug fix):** compressed
+  sources (JPEG, JPEG 2000, JPEG-LS, RLE) were shipped as raw encapsulated
+  fragments — malformed image boxes. `send` now decodes to native frames via
+  `DICOMFile.tryPixelData()`, which also applies the JPEG-Baseline YBR→RGB
+  descriptor correction.
+- **Multi-frame handling (P0-6, bug fix):** previously the entire multi-frame
+  Pixel Data value was sent as one image. New `--frame N` (1-based, default 1)
+  and `--all-frames` (one image box per frame) options with bounds validation.
+- **YBR color conversion (P1-5):** uncompressed YBR_FULL sources are converted
+  to RGB for color printing (PS3.3 C.7.6.3.1.2); RGB→grayscale conversion is
+  applied for grayscale mode. Uncompressed *subsampled* YBR (YBR_FULL_422 etc.)
+  is explicitly rejected with a clear error rather than mis-converted (packed
+  4:2:2 layouts need `bytesPerFrame` modeling in DICOMCore first).
+- **Signed pixel safety (P2-6):** with preprocessing on by default, Pixel
+  Representation = 1 sources are sign-extended and emitted as unsigned 8-bit
+  P-Values — signed values are no longer sent to unsigned Image Boxes.
+- New `ImagePreprocessor.prepareForPrint(pixelData:dataSet:frameIndex:colorMode:)`
+  API prepares a single frame of already-decoded pixel data (the existing
+  data-set variant now delegates to it).
+
+### DICOM Print — Milestone A (safety) from the enhancement plan
+
+- **Real printer-status parsing (P0-3, bug fix):** `parsePrinterStatus` was a stub
+  that always returned NORMAL regardless of the N-GET response, so
+  `PrinterStatus.isNormal` was always true. It now decodes Printer Status
+  (2110,0010), Printer Status Info (2110,0020), Printer Name (2110,0030), and —
+  when returned — Manufacturer (0008,0070) / Manufacturer Model Name (0008,1090).
+  A response without a status attribute now reports "UNKNOWN" instead of a false
+  NORMAL. `dicom-print status` surfaces the new fields in text and JSON output.
+- **Non-zero exit code on print failure (P0-4, bug fix):** `dicom-print send` now
+  exits with a failure code when the print result is unsuccessful; previously it
+  printed "✗ Print failed" but exited 0, so automation could not detect failures.
+- **DIMSE error detail surfaced (P0-5):** `CommandSet` gained `errorComment`
+  (0000,0902), `errorID` (0000,0903), and `offendingElements` (0000,0901)
+  accessors. `DICOMNetworkError.printOperationFailed` now carries an optional
+  `detail` string populated from the SCP's Error Comment / Error ID on every
+  print failure path, so users see e.g. "OUT OF FILM" instead of only a numeric
+  status. A one-argument `printOperationFailed(_:)` factory preserves source
+  compatibility.
+
 ### DICOM Print tool (`dicom-print`) — features + fixes
 
 - **`--layout` now honored (bug fix):** the flag was parsed and echoed but never

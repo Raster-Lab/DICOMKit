@@ -191,9 +191,15 @@ struct StatusCommand: ParsableCommand {
         if let info = status.statusInfo {
             fprintln("Status Info: \(info)")
         }
+        if let manufacturer = status.manufacturer {
+            fprintln("Manufacturer: \(manufacturer)")
+        }
+        if let model = status.manufacturerModelName {
+            fprintln("Model: \(model)")
+        }
         fprintln("Is Normal: \(status.isNormal ? "Yes" : "No")")
     }
-    
+
     func printStatusJSON(_ status: PrinterStatus) {
         var dict: [String: Any] = [
             "status": status.status,
@@ -201,6 +207,8 @@ struct StatusCommand: ParsableCommand {
         ]
         if let name = status.printerName { dict["name"] = name }
         if let info = status.statusInfo { dict["statusInfo"] = info }
+        if let manufacturer = status.manufacturer { dict["manufacturer"] = manufacturer }
+        if let model = status.manufacturerModelName { dict["model"] = model }
         
         if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
            let json = String(data: data, encoding: .utf8) {
@@ -271,6 +279,15 @@ struct SendCommand: ParsableCommand {
     @Option(name: .long, help: "Color mode: grayscale, color (default: grayscale)")
     var color: ColorModeOption = .grayscale
 
+    @Option(name: .long, help: "1-based frame to print from multi-frame files (default: 1)")
+    var frame: Int = 1
+
+    @Flag(name: .long, help: "Print every frame of multi-frame files (one image box per frame)")
+    var allFrames: Bool = false
+
+    @Flag(name: .long, help: "Send stored pixel values without preprocessing (no rescale/window/inversion). Compressed sources are still decoded.")
+    var raw: Bool = false
+
     @Option(name: .long, help: "Presentation LUT shape: identity, inverse, lin-od (default: none)")
     var presentationLut: PresentationLUTOption?
 
@@ -304,6 +321,12 @@ struct SendCommand: ParsableCommand {
         }
         if retries < 0 {
             throw ValidationError("--retries must be zero or greater")
+        }
+        if frame < 1 {
+            throw ValidationError("--frame is 1-based and must be 1 or greater")
+        }
+        if allFrames && frame != 1 {
+            throw ValidationError("--frame and --all-frames are mutually exclusive")
         }
         if !annotate.isEmpty && annotationFormat == nil {
             throw ValidationError("--annotate requires --annotation-format (the printer-configured Annotation Display Format ID)")
@@ -396,58 +419,111 @@ struct SendCommand: ParsableCommand {
             annotationDisplayFormatID: annotationFormat
         )
         
-        // Read and print files. For each image we also carry a descriptor
-        // (rows, columns, bit depth, photometric interpretation) so the N-SET
-        // Preformatted Image Sequence is DICOM-conformant (PS3.3 C.13.5.1).
-        var imageDataList: [Data] = []
-        var descriptorList: [PrintImageData] = []
-        for path in filesToPrint {
-            guard let data = FileManager.default.contents(atPath: path) else {
-                throw ValidationError("Cannot read file: \(path)")
+        // Read, decode, and prepare files for printing.
+        //
+        // - Encapsulated sources (JPEG/J2K/JPEG-LS/RLE) are decoded to native
+        //   frames via DICOMFile.tryPixelData() — Basic Grayscale/Color Image
+        //   Boxes require uncompressed pixel data (PS3.3 C.13.5).
+        // - --frame / --all-frames select frames from multi-frame files; each
+        //   selected frame becomes one image box.
+        // - Unless --raw, each frame runs through ImagePreprocessor (rescale →
+        //   VOI window → MONOCHROME1 inversion → 8-bit MONOCHROME2, or 8-bit
+        //   RGB/grayscale for color sources) so the print matches clinical
+        //   presentation instead of raw stored values.
+        // Snapshot options as immutable values so they can cross into the
+        // @Sendable async closure.
+        let inputFiles = filesToPrint
+        let selectedFrame = frame
+        let printAllFrames = allFrames
+        let sendRaw = raw
+        let preprocessColorMode = color.preprocessColorMode
+        let beVerbose = verbose
+        let (images, descriptors): ([Data], [PrintImageData]) = try runAsync {
+            var imageDataList: [Data] = []
+            var descriptorList: [PrintImageData] = []
+            let preprocessor = ImagePreprocessor()
+
+            for path in inputFiles {
+                guard let data = FileManager.default.contents(atPath: path) else {
+                    throw ValidationError("Cannot read file: \(path)")
+                }
+
+                let file = try DICOMFile.read(from: data, force: true)
+                let pixelData: PixelData
+                do {
+                    pixelData = try file.tryPixelData()
+                } catch {
+                    throw ValidationError("Cannot extract printable pixel data from \(path): \(error)")
+                }
+                let sourceDescriptor = pixelData.descriptor
+
+                let frameIndices: [Int]
+                if printAllFrames {
+                    frameIndices = Array(0..<sourceDescriptor.numberOfFrames)
+                } else {
+                    guard selectedFrame <= sourceDescriptor.numberOfFrames else {
+                        throw ValidationError(
+                            "--frame \(selectedFrame) is out of range (file has \(sourceDescriptor.numberOfFrames) frame(s)): \(path)")
+                    }
+                    frameIndices = [selectedFrame - 1]
+                }
+
+                for frameIndex in frameIndices {
+                    let printImage: PrintImageData
+                    if sendRaw {
+                        guard let frameBytes = pixelData.frameData(at: frameIndex) else {
+                            throw ValidationError("Frame \(frameIndex + 1) of \(path) is truncated or missing")
+                        }
+                        guard sourceDescriptor.rows <= Int(UInt16.max),
+                              sourceDescriptor.columns <= Int(UInt16.max) else {
+                            throw ValidationError("Image dimensions out of range in: \(path)")
+                        }
+                        printImage = PrintImageData(
+                            pixelData: frameBytes,
+                            rows: UInt16(sourceDescriptor.rows),
+                            columns: UInt16(sourceDescriptor.columns),
+                            bitsAllocated: UInt16(sourceDescriptor.bitsAllocated),
+                            bitsStored: UInt16(sourceDescriptor.bitsStored),
+                            highBit: UInt16(sourceDescriptor.highBit),
+                            samplesPerPixel: UInt16(sourceDescriptor.samplesPerPixel),
+                            pixelRepresentation: sourceDescriptor.isSigned ? 1 : 0,
+                            photometricInterpretation: sourceDescriptor.photometricInterpretation.rawValue
+                        )
+                    } else {
+                        let prepared = try await preprocessor.prepareForPrint(
+                            pixelData: pixelData,
+                            dataSet: file.dataSet,
+                            frameIndex: frameIndex,
+                            colorMode: preprocessColorMode
+                        )
+                        guard prepared.width <= Int(UInt16.max),
+                              prepared.height <= Int(UInt16.max) else {
+                            throw ValidationError("Image dimensions out of range in: \(path)")
+                        }
+                        let bits = UInt16(prepared.bitsAllocated)
+                        printImage = PrintImageData(
+                            pixelData: prepared.pixelData,
+                            rows: UInt16(prepared.height),
+                            columns: UInt16(prepared.width),
+                            bitsAllocated: bits,
+                            bitsStored: bits,
+                            highBit: bits > 0 ? bits - 1 : 0,
+                            samplesPerPixel: UInt16(prepared.samplesPerPixel),
+                            pixelRepresentation: 0,
+                            photometricInterpretation: prepared.photometricInterpretation
+                        )
+                        if beVerbose {
+                            fprintln("Prepared \(path) frame \(frameIndex + 1): "
+                                + "\(prepared.width)x\(prepared.height) "
+                                + "\(prepared.photometricInterpretation) \(prepared.bitsAllocated)-bit")
+                        }
+                    }
+                    imageDataList.append(printImage.pixelData)
+                    descriptorList.append(printImage)
+                }
             }
-
-            // Parse DICOM and extract pixel data
-            let dataSet = try DICOMFile.read(from: data, force: true).dataSet
-
-            // Get pixel data from the dataset
-            guard let pixelData = dataSet[.pixelData]?.valueData else {
-                throw ValidationError("No pixel data found in: \(path)")
-            }
-
-            // Rows and Columns are required to describe a printable image.
-            guard let rows = dataSet.uint16(for: .rows),
-                  let columns = dataSet.uint16(for: .columns) else {
-                throw ValidationError("Missing Rows/Columns (image dimensions) in: \(path)")
-            }
-
-            // Derive remaining pixel attributes with DICOM-sensible defaults.
-            let samplesPerPixel = dataSet.uint16(for: .samplesPerPixel) ?? 1
-            let bitsAllocated = dataSet.uint16(for: .bitsAllocated) ?? 8
-            let bitsStored = dataSet.uint16(for: .bitsStored) ?? bitsAllocated
-            let highBit = dataSet.uint16(for: .highBit) ?? (bitsStored > 0 ? bitsStored - 1 : 0)
-            let pixelRepresentation = dataSet.uint16(for: .pixelRepresentation) ?? 0
-            let photometric = dataSet.string(for: .photometricInterpretation)?
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                ?? (samplesPerPixel >= 3 ? "RGB" : "MONOCHROME2")
-
-            let descriptor = PrintImageData(
-                pixelData: pixelData,
-                rows: rows,
-                columns: columns,
-                bitsAllocated: bitsAllocated,
-                bitsStored: bitsStored,
-                highBit: highBit,
-                samplesPerPixel: samplesPerPixel,
-                pixelRepresentation: pixelRepresentation,
-                photometricInterpretation: photometric
-            )
-
-            imageDataList.append(pixelData)
-            descriptorList.append(descriptor)
+            return (imageDataList, descriptorList)
         }
-        // Snapshot as immutable values so they can cross into the async closure.
-        let images = imageDataList
-        let descriptors = descriptorList
         
         // Resolve the layout: an explicit --template preset or --layout wins,
         // otherwise printImages picks an optimal layout for the image count.
@@ -500,11 +576,17 @@ struct SendCommand: ParsableCommand {
 
         printResult(result, verbose: verbose)
 
+        // Automation contract: a failed print must exit non-zero. The human-readable
+        // message was already emitted by printResult, so exit silently with failure.
+        if !result.success {
+            throw ExitCode.failure
+        }
+
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
     }
-    
+
     func printResult(_ result: PrintResult, verbose: Bool) {
         if result.success {
             fprintln("✓ Print job submitted successfully")
@@ -1097,6 +1179,15 @@ enum ColorModeOption: String, ExpressibleByArgument {
     case color
 
     var printColorMode: DICOMNetwork.PrintColorMode {
+        switch self {
+        case .grayscale: return .grayscale
+        case .color: return .color
+        }
+    }
+
+    /// The DICOMKit-side color mode used by ImagePreprocessor (a distinct type
+    /// from DICOMNetwork.PrintColorMode, resolved here to avoid ambiguity).
+    var preprocessColorMode: DICOMKit.PrintColorMode {
         switch self {
         case .grayscale: return .grayscale
         case .color: return .color

@@ -37,7 +37,11 @@ completeness is ~55%; completing P0–P1 brings it to production-grade for commo
 
 ## P0 — Correctness & Safety
 
-### P0-1. Wire the pixel-rendering pipeline into the print path
+### ✅ P0-1. Wire the pixel-rendering pipeline into the print path — **done 2026-07-21**
+*(Implemented in the CLI layer per the layering constraint: `send` runs every frame through
+`ImagePreprocessor.prepareForPrint(pixelData:dataSet:frameIndex:colorMode:)` by default, with a
+`--raw` escape hatch. The two quarantined MONOCHROME1 tests were rewritten to the decided
+behavior — windowed 8-bit MONOCHROME2, inverted exactly once — and re-enabled.)*
 **Problem:** The print path forwards raw *stored* pixel values. `ImagePreprocessor`
 (rescale, VOI/window, MONOCHROME1 inversion, 8-bit conversion, RGB→gray) exists but is
 **never called** — it is dead code w.r.t. printing. Windowed CT/MR and MONOCHROME1 images
@@ -56,7 +60,9 @@ constraint above; `DICOMNetwork` cannot import `ImagePreprocessor`, so the wirin
 **Acceptance:** A CT with Window Center/Width prints the windowed 8-bit image; a MONOCHROME1 image is inverted exactly once; output PI is MONOCHROME2; the quarantined MONOCHROME1 tests are re-enabled and pass.
 **Tests:** windowed CT golden-image, MONOCHROME1 inversion, 16-bit→8-bit, rescale slope/intercept, signed pixel normalization.
 
-### P0-2. Decompress encapsulated pixel data before N-SET
+### ✅ P0-2. Decompress encapsulated pixel data before N-SET — **done 2026-07-21**
+*(`send` now decodes via `DICOMFile.tryPixelData()`, which also applies the JPEG-Baseline
+YBR→RGB descriptor correction.)*
 **Problem:** `dataSet[.pixelData]?.valueData` returns raw encapsulated fragments for
 compressed transfer syntaxes (JPEG/JPEG2000/JPEG-LS/RLE). These are shipped verbatim →
 malformed image box.
@@ -71,7 +77,7 @@ so compressed-YBR color sources come out correctly labeled RGB for free — see 
 **Acceptance:** JPEG Baseline, J2K, and RLE inputs print correctly.
 **Tests:** compressed-input round-trip per codec asserting decoded byte length = rows×cols×samples×(bits/8).
 
-### P0-3. Implement `parsePrinterStatus` (remove the stub)
+### ✅ P0-3. Implement `parsePrinterStatus` (remove the stub) — **done 2026-07-21**
 **Problem:** `parsePrinterStatus` (PrintService.swift ~L2165) is a stub that **always returns
 `NORMAL`**, ignoring the N-GET response. `isNormal` is therefore always true.
 **Files:** `Sources/DICOMNetwork/PrintService.swift`.
@@ -82,7 +88,7 @@ request an Attribute Identifier List in the N-GET.
 **Acceptance:** `dicom-print status` reports the printer's real NORMAL/WARNING/FAILURE + info text.
 **Tests:** feed a synthetic N-GET response data set (NORMAL, WARNING+info, FAILURE) and assert parsed fields.
 
-### P0-4. Non-zero exit code on print failure
+### ✅ P0-4. Non-zero exit code on print failure — **done 2026-07-21**
 **Problem:** A returned failed `PrintResult` (`success == false`) prints `✗ Print failed` but
 `run()` returns normally → process **exits 0**. Automation cannot detect failure.
 **Files:** `Sources/dicom-print/main.swift` (SendCommand.run / printResult).
@@ -91,7 +97,7 @@ so ArgumentParser sets a non-zero exit. Keep the human-readable message.
 **Acceptance:** failed print → exit code ≠ 0; success → 0; validation error → non-zero.
 **Tests:** CLI exit-code tests (once the target is built in CI, see P3-4).
 
-### P0-5. Surface DIMSE Error Comment / Error ID
+### ✅ P0-5. Surface DIMSE Error Comment / Error ID — **done 2026-07-21**
 **Problem:** Error Comment (0000,0902), Error ID (0000,0903), Offending Element (0000,0901)
 are defined in `CommandTag.swift` but never decoded. `printOperationFailed(DIMSEStatus)`
 carries only the numeric code → users see generic messages, no printer diagnostic text.
@@ -105,7 +111,9 @@ Keep the scope minimal — accessors + error-enum threading is enough; exposing 
 **Acceptance:** an SCP failure carrying "OUT OF FILM" shows that text to the user.
 **Tests:** synthetic failure command set with Error Comment → assert text propagates to the thrown error.
 
-### P0-6. Multi-frame pixel data handling
+### ✅ P0-6. Multi-frame pixel data handling — **done 2026-07-21**
+*(`--frame N` (1-based, default 1) and `--all-frames` added; per-frame bytes and descriptors
+are sent, with a clear out-of-range validation error.)*
 **Problem:** The CLI sends the **entire** Pixel Data value as one image
 (`dataSet[.pixelData]?.valueData`). For a multi-frame file (cine US, NM), that ships
 rows×cols×frames bytes into an image box whose descriptor declares a single frame's
@@ -171,7 +179,12 @@ racing receive against a `Task.sleep`; on expiry, abort + throw a timeout error.
 **Acceptance:** an SCP that accepts then stalls → tool errors within the timeout, no hang.
 **Tests:** mock SCP that never answers N-CREATE → assert timeout error.
 
-### P1-5. Color-space conversion + color/mode validation *(rescoped 2026-07-21)*
+### ✅ P1-5. Color-space conversion + color/mode validation — **done 2026-07-21** *(with one carve-out)*
+*(YBR_FULL→RGB conversion implemented in `ImagePreprocessor`; RGB→grayscale for grayscale mode
+already existed and is now wired via the default preprocessing path. Carve-out: uncompressed
+**subsampled** YBR (YBR_FULL_422 etc.) is explicitly rejected with a clear error rather than
+mis-converted, because `PixelDataDescriptor.bytesPerFrame` does not yet model packed 4:2:2
+layouts — fixing that is a DICOMCore change, tracked as remaining work below.)*
 **Problem:** YBR_FULL/YBR_FULL_422 sources are sent with stored PI (no YBR→RGB); an RGB image
 with `--color grayscale` is silently sent mismatched.
 **Scope update:** the compressed-YBR half is **overtaken by P0-2** — `DICOMFile.pixelData()` now
@@ -211,9 +224,10 @@ correctly rejects it. Make the workflow consistent (warn or error).
 ### P2-5. Port bounds guard
 `UInt16(urlPort)` in `parseServerURL` traps on port > 65535. Validate and throw a `ValidationError`.
 
-### P2-6. Signed pixel data handling
-Handle Pixel Representation = 1 (apply Modality LUT/offset to unsigned P-Values) as part of P0-1;
-never send signed values to an unsigned Image Box.
+### ✅ P2-6. Signed pixel data handling — **done 2026-07-21** (via P0-1)
+`ImagePreprocessor.extractPixelValues` sign-extends Pixel Representation = 1 sources and the
+pipeline outputs unsigned 8-bit P-Values, so signed values are never sent to an Image Box
+(except with the explicit `--raw` bypass).
 
 ### P2-7. Late N-EVENT-REPORT during association release
 The SCU now handles N-EVENT-REPORT-RQs interleaved *before* its own awaited response, but an
@@ -273,10 +287,10 @@ before printing, for connectivity diagnosis. `VerificationService` already exist
 
 ## Suggested Sequencing
 
-0. **Milestone 0 (housekeeping):** commit/split the uncommitted print work currently sitting on
-   `fix/bug-review-crash-and-hardening-2026-07-18` (see process note above).
-1. **Milestone A (safety):** P0-3 (status parse), P0-4 (exit code), P0-5 (error detail, minimal scope) — small, high-value, low-risk.
-2. **Milestone B (image fidelity):** P0-1 (preprocess) + P0-2 (decompress) + P0-6 (multi-frame) + P1-5 (color) + P2-6 (signed) — all in the CLI layer per the layering constraint.
+0. ✅ **Milestone 0 (housekeeping)** — done 2026-07-21: the pending print work was committed in
+   two logical commits (YBR descriptor fix; print enhancements + docs).
+1. ✅ **Milestone A (safety)** — done 2026-07-21: P0-3 (status parse), P0-4 (exit code), P0-5 (error detail, minimal scope).
+2. ✅ **Milestone B (image fidelity)** — done 2026-07-21: P0-1 (preprocess) + P0-2 (decompress) + P0-6 (multi-frame) + P1-5 (color, subsampled-YBR carve-out) + P2-6 (signed) — implemented in the CLI layer per the layering constraint. Remaining from B: uncompressed subsampled-YBR support needs `bytesPerFrame` 4:2:2 modeling in DICOMCore.
 3. **Milestone C (interop):** P1-1 (unconditional attrs), P1-2 (single association), P1-3 (transfer syntax, both directions — or the documented Explicit-VR-only decision), P1-4 (timeout).
 4. **Milestone D (coverage):** P3-4 (mock SCP + CLI target in CI) then backfill the full integration test matrix.
 5. **Milestone E (polish):** P2-* hardening (incl. P2-7), P3-1/2/3 CLI ergonomics.
@@ -286,6 +300,12 @@ before printing, for connectivity diagnosis. `VerificationService` already exist
 ## Out of Scope (tracked separately)
 
 - Print SCP (provider) role.
+- Uncompressed subsampled YBR (YBR_FULL_422/PARTIAL) print support — needs packed-4:2:2
+  `bytesPerFrame` modeling in `DICOMCore.PixelDataDescriptor` first (currently rejected
+  with a clear error in the print path).
+- Known CI hazard (found 2026-07-21): a `StorageCommitmentServiceTests` case hangs
+  indefinitely when run in this environment — full `DICOMNetworkTests` runs stall after
+  ~880 green tests. Investigate/quarantine before wiring the suite into a CI gate (P3-4).
 - VOI LUT *Box* and full Overlay Box (overlay-plane extraction from 60xx groups).
 - Presentation LUT *Data* variant (only LUT Shape is implemented).
 - `PrintQueue` / `PrinterRegistry` CLI surface.
