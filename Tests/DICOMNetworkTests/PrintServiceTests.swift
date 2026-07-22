@@ -2683,6 +2683,73 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertLessThanOrEqual(prepared.pixelData[2], 2)      // blue channel
     }
 
+    // MARK: - Milestone C (interop)
+
+    func testLayoutFromImageDisplayFormat() {
+        let l1 = DICOMPrintService.layout(fromImageDisplayFormat: "STANDARD\\2,3")
+        XCTAssertEqual(l1.rows, 2)
+        XCTAssertEqual(l1.columns, 3)
+
+        let l2 = DICOMPrintService.layout(fromImageDisplayFormat: "STANDARD\\1,1")
+        XCTAssertEqual(l2.rows, 1)
+        XCTAssertEqual(l2.columns, 1)
+
+        // Malformed strings fall back to 1x1 rather than crashing.
+        for bad in ["", "STANDARD", "CUSTOM\\2,3", "STANDARD\\0,3", "STANDARD\\a,b"] {
+            let l = DICOMPrintService.layout(fromImageDisplayFormat: bad)
+            XCTAssertEqual(l.rows, 1, "fallback for \(bad)")
+            XCTAssertEqual(l.columns, 1, "fallback for \(bad)")
+        }
+    }
+
+    func testPrintImagesRequiresDescriptors() async {
+        // P1-1: the workflow must refuse to build image boxes without the
+        // mandatory pixel-module attributes — and it must fail before any
+        // network activity (the config below points nowhere).
+        let config = PrintConfiguration(
+            host: "127.0.0.1", port: 1,
+            callingAETitle: "TEST", calledAETitle: "TEST"
+        )
+        do {
+            _ = try await DICOMPrintService.printImages(
+                configuration: config,
+                images: [Data([0x00])],
+                imageDescriptors: []
+            )
+            XCTFail("Expected encodingFailed for missing descriptors")
+        } catch let error as DICOMNetworkError {
+            guard case .encodingFailed(let message) = error else {
+                return XCTFail("Expected encodingFailed, got \(error)")
+            }
+            XCTAssertTrue(message.contains("descriptor"))
+        } catch {
+            XCTFail("Expected DICOMNetworkError, got \(error)")
+        }
+    }
+
+    func testSetImageBoxRequiresDescriptor() async {
+        let config = PrintConfiguration(
+            host: "127.0.0.1", port: 1,
+            callingAETitle: "TEST", calledAETitle: "TEST"
+        )
+        let imageBox = ImageBoxContent(sopInstanceUID: "1.2.3", imagePosition: 1)
+        do {
+            try await DICOMPrintService.setImageBox(
+                configuration: config,
+                imageBoxUID: "1.2.3",
+                imageBox: imageBox,
+                pixelData: Data([0x00])
+            )
+            XCTFail("Expected encodingFailed for missing descriptor")
+        } catch let error as DICOMNetworkError {
+            guard case .encodingFailed = error else {
+                return XCTFail("Expected encodingFailed, got \(error)")
+            }
+        } catch {
+            XCTFail("Expected DICOMNetworkError, got \(error)")
+        }
+    }
+
     func testPrepareForPrintRejectsSubsampledYBR() async throws {
         // Uncompressed YBR_FULL_422 has a packed layout the frame slicer does not
         // model — it must be rejected, not mis-converted.

@@ -2090,9 +2090,14 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
+            // Explicit VR LE only, by design: the print service serializes and
+            // parses Explicit VR LE exclusively (all response parsers are
+            // Explicit VR byte-scanners). Proposing Implicit VR here would let
+            // an implicit-only SCP accept a syntax we then mis-encode — better
+            // to fail negotiation cleanly. Documented conformance limitation
+            // (enhancement plan P1-3).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2144,7 +2149,9 @@ public enum DICOMPrintService {
             // Receive N-GET response
             let assembler = MessageAssembler()
             while true {
-                let responsePDU = try await association.receive()
+                let responsePDU = try await receiveWithTimeout(
+                    association: association, timeout: configuration.timeout,
+                    operation: "DIMSE response")
                 
                 if let message = try assembler.addPDVs(from: responsePDU) {
                     let responseCommandSet = message.commandSet
@@ -2272,9 +2279,14 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
+            // Explicit VR LE only, by design: the print service serializes and
+            // parses Explicit VR LE exclusively (all response parsers are
+            // Explicit VR byte-scanners). Proposing Implicit VR here would let
+            // an implicit-only SCP accept a syntax we then mis-encode — better
+            // to fail negotiation cleanly. Documented conformance limitation
+            // (enhancement plan P1-3).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2362,7 +2374,9 @@ public enum DICOMPrintService {
             // Receive N-CREATE response
             let assembler = MessageAssembler()
             while true {
-                let responsePDU = try await association.receive()
+                let responsePDU = try await receiveWithTimeout(
+                    association: association, timeout: configuration.timeout,
+                    operation: "DIMSE response")
                 
                 if let message = try assembler.addPDVs(from: responsePDU) {
                     let responseCommandSet = message.commandSet
@@ -2410,9 +2424,14 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
+            // Explicit VR LE only, by design: the print service serializes and
+            // parses Explicit VR LE exclusively (all response parsers are
+            // Explicit VR byte-scanners). Proposing Implicit VR here would let
+            // an implicit-only SCP accept a syntax we then mis-encode — better
+            // to fail negotiation cleanly. Documented conformance limitation
+            // (enhancement plan P1-3).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2538,7 +2557,9 @@ public enum DICOMPrintService {
             // Receive N-CREATE response
             let assembler = MessageAssembler()
             while true {
-                let responsePDU = try await association.receive()
+                let responsePDU = try await receiveWithTimeout(
+                    association: association, timeout: configuration.timeout,
+                    operation: "DIMSE response")
                 
                 if let message = try assembler.addPDVs(from: responsePDU) {
                     let responseCommandSet = message.commandSet
@@ -2688,6 +2709,7 @@ public enum DICOMPrintService {
         negotiated: NegotiatedAssociation,
         shape: PresentationLUTShape,
         messageID: inout UInt16,
+        timeout: TimeInterval = 30,
         eventHandler: PrintEventHandler?
     ) async throws -> String {
         let elements = [
@@ -2708,6 +2730,7 @@ public enum DICOMPrintService {
             commandSet: request.commandSet,
             dataSet: serializeElements(elements),
             presentationContextID: 1,
+            timeout: timeout,
             eventHandler: eventHandler
         )
         let rsp = NCreateResponse(commandSet: response.commandSet, presentationContextID: 1)
@@ -2743,23 +2766,32 @@ public enum DICOMPrintService {
         pixelData: Data,
         imageDescriptor: PrintImageData? = nil
     ) async throws {
+        // PS3.3 C.13.5.1: the Preformatted Image Sequence item must carry the
+        // pixel-module attributes — an image box without them is rejected by
+        // strict SCPs, so the descriptor is required (kept optional in the
+        // signature only for source compatibility).
+        guard let descriptor = imageDescriptor else {
+            throw DICOMNetworkError.encodingFailed(
+                "setImageBox requires a PrintImageData descriptor "
+                + "(Rows/Columns/BitsAllocated/PhotometricInterpretation are mandatory)")
+        }
+
         let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
         let imageBoxSOPClassUID = configuration.colorMode == .color
             ? basicColorImageBoxSOPClassUID
             : basicGrayscaleImageBoxSOPClassUID
-        
+
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
-        
+
         // Create association configuration
         let associationConfig = try createPrintAssociationConfiguration(configuration)
-        
+
         // Create association
         let association = Association(configuration: associationConfig)
         
@@ -2811,24 +2843,15 @@ public enum DICOMPrintService {
                 // PS3.3 C.13.5.1 requires image attributes within the sequence item
                 var seqElements: [DataElement] = []
 
-                if let desc = imageDescriptor {
-                    // Samples Per Pixel (0028,0002) - US
-                    seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
-                    // Photometric Interpretation (0028,0004) - CS
-                    seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
-                    // Rows (0028,0010) - US
-                    seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
-                    // Columns (0028,0011) - US
-                    seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
-                    // Bits Allocated (0028,0100) - US
-                    seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
-                    // Bits Stored (0028,0101) - US
-                    seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
-                    // High Bit (0028,0102) - US
-                    seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
-                    // Pixel Representation (0028,0103) - US
-                    seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
-                }
+                // Pixel-module attributes — always sent (descriptor guarded above).
+                seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: descriptor.samplesPerPixel))
+                seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: descriptor.photometricInterpretation))
+                seqElements.append(DataElement.uint16(tag: .rows, value: descriptor.rows))
+                seqElements.append(DataElement.uint16(tag: .columns, value: descriptor.columns))
+                seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: descriptor.bitsAllocated))
+                seqElements.append(DataElement.uint16(tag: .bitsStored, value: descriptor.bitsStored))
+                seqElements.append(DataElement.uint16(tag: .highBit, value: descriptor.highBit))
+                seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: descriptor.pixelRepresentation))
 
                 // Pixel Data (7FE0,0010) - OW
                 seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
@@ -2847,16 +2870,15 @@ public enum DICOMPrintService {
                 // Preformatted Color Image Sequence (2020,0111) - SQ
                 var seqElements: [DataElement] = []
 
-                if let desc = imageDescriptor {
-                    seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
-                    seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
-                    seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
-                    seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
-                    seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
-                    seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
-                    seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
-                    seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
-                }
+                // Pixel-module attributes — always sent (descriptor guarded above).
+                seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: descriptor.samplesPerPixel))
+                seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: descriptor.photometricInterpretation))
+                seqElements.append(DataElement.uint16(tag: .rows, value: descriptor.rows))
+                seqElements.append(DataElement.uint16(tag: .columns, value: descriptor.columns))
+                seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: descriptor.bitsAllocated))
+                seqElements.append(DataElement.uint16(tag: .bitsStored, value: descriptor.bitsStored))
+                seqElements.append(DataElement.uint16(tag: .highBit, value: descriptor.highBit))
+                seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: descriptor.pixelRepresentation))
 
                 seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
 
@@ -2900,7 +2922,9 @@ public enum DICOMPrintService {
             // Receive N-SET response
             let assembler = MessageAssembler()
             while true {
-                let responsePDU = try await association.receive()
+                let responsePDU = try await receiveWithTimeout(
+                    association: association, timeout: configuration.timeout,
+                    operation: "DIMSE response")
                 
                 if let message = try assembler.addPDVs(from: responsePDU) {
                     let responseCommandSet = message.commandSet
@@ -2942,9 +2966,14 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
+            // Explicit VR LE only, by design: the print service serializes and
+            // parses Explicit VR LE exclusively (all response parsers are
+            // Explicit VR byte-scanners). Proposing Implicit VR here would let
+            // an implicit-only SCP accept a syntax we then mis-encode — better
+            // to fail negotiation cleanly. Documented conformance limitation
+            // (enhancement plan P1-3).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2991,7 +3020,9 @@ public enum DICOMPrintService {
             // Receive N-ACTION response
             let assembler = MessageAssembler()
             while true {
-                let responsePDU = try await association.receive()
+                let responsePDU = try await receiveWithTimeout(
+                    association: association, timeout: configuration.timeout,
+                    operation: "DIMSE response")
                 
                 if let message = try assembler.addPDVs(from: responsePDU) {
                     let responseCommandSet = message.commandSet
@@ -3041,9 +3072,14 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
+            // Explicit VR LE only, by design: the print service serializes and
+            // parses Explicit VR LE exclusively (all response parsers are
+            // Explicit VR byte-scanners). Proposing Implicit VR here would let
+            // an implicit-only SCP accept a syntax we then mis-encode — better
+            // to fail negotiation cleanly. Documented conformance limitation
+            // (enhancement plan P1-3).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -3087,7 +3123,9 @@ public enum DICOMPrintService {
             // Receive N-DELETE response
             let assembler = MessageAssembler()
             while true {
-                let responsePDU = try await association.receive()
+                let responsePDU = try await receiveWithTimeout(
+                    association: association, timeout: configuration.timeout,
+                    operation: "DIMSE response")
                 
                 if let message = try assembler.addPDVs(from: responsePDU) {
                     let responseCommandSet = message.commandSet
@@ -3129,9 +3167,14 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
+            // Explicit VR LE only, by design: the print service serializes and
+            // parses Explicit VR LE exclusively (all response parsers are
+            // Explicit VR byte-scanners). Proposing Implicit VR here would let
+            // an implicit-only SCP accept a syntax we then mis-encode — better
+            // to fail negotiation cleanly. Documented conformance limitation
+            // (enhancement plan P1-3).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -3175,7 +3218,9 @@ public enum DICOMPrintService {
             // Receive N-GET response
             let assembler = MessageAssembler()
             while true {
-                let responsePDU = try await association.receive()
+                let responsePDU = try await receiveWithTimeout(
+                    association: association, timeout: configuration.timeout,
+                    operation: "DIMSE response")
                 
                 if let message = try assembler.addPDVs(from: responsePDU) {
                     let responseCommandSet = message.commandSet
@@ -3335,6 +3380,58 @@ public enum DICOMPrintService {
     
     // MARK: Single-Association Print Workflow
     
+    /// Receives one PDU with a DIMSE-response timeout (enhancement plan P1-4).
+    ///
+    /// `Association.receive()` has no timer of its own, so an SCP that accepts
+    /// the association and then goes silent would hang the caller forever. This
+    /// races the receive against a deadline. The underlying network read is not
+    /// cancellation-aware, so on expiry the association is aborted to unblock
+    /// the pending read, then an `operationTimeout` error is thrown.
+    static func receiveWithTimeout(
+        association: Association,
+        timeout: TimeInterval,
+        operation: String
+    ) async throws -> DataTransferPDU {
+        let deadline = max(1, timeout)
+        return try await withThrowingTaskGroup(of: DataTransferPDU?.self) { group in
+            group.addTask {
+                try await association.receive()
+            }
+            group.addTask {
+                do {
+                    try await Task.sleep(nanoseconds: UInt64(deadline * 1_000_000_000))
+                } catch {
+                    return nil // cancelled: the response arrived first
+                }
+                guard !Task.isCancelled else { return nil }
+                // Tear down the association so the blocked receive() unwinds.
+                try? await association.abort()
+                return nil
+            }
+            defer { group.cancelAll() }
+            let start = Date()
+            do {
+                guard let first = try await group.next(), let pdu = first else {
+                    // The timer fired first: the association was aborted above.
+                    _ = try? await group.next() // drain the unblocked receive task
+                    throw DICOMNetworkError.operationTimeout(
+                        type: .operation, duration: deadline, operation: operation)
+                }
+                return pdu
+            } catch let error as DICOMNetworkError {
+                if case .operationTimeout = error { throw error }
+                // A failure surfacing at/after the deadline was caused by the
+                // timer aborting the association — report it as the timeout it
+                // is, not as the secondary abort/close error.
+                if Date().timeIntervalSince(start) >= deadline - 0.05 {
+                    throw DICOMNetworkError.operationTimeout(
+                        type: .operation, duration: deadline, operation: operation)
+                }
+                throw error
+            }
+        }
+    }
+
     /// Internal helper: sends a DIMSE message and receives the response on an existing association.
     /// Returns the assembled response message.
     private static func sendAndReceive(
@@ -3343,6 +3440,7 @@ public enum DICOMPrintService {
         commandSet: CommandSet,
         dataSet: Data?,
         presentationContextID: UInt8,
+        timeout: TimeInterval = 30,
         eventHandler: PrintEventHandler? = nil
     ) async throws -> AssembledMessage {
         let fragmenter = MessageFragmenter(maxPDUSize: negotiated.maxPDUSize)
@@ -3358,7 +3456,9 @@ public enum DICOMPrintService {
         }
         var assembler = MessageAssembler()
         while true {
-            let responsePDU = try await association.receive()
+            let responsePDU = try await receiveWithTimeout(
+                association: association, timeout: timeout,
+                operation: "DIMSE response (\(commandSet.command.map(String.init(describing:)) ?? "unknown"))")
             if let message = try assembler.addPDVs(from: responsePDU) {
                 // The Print SCP may push an N-EVENT-REPORT-RQ (printer status or
                 // print-job progress) interleaved with our own responses. Handle
@@ -3456,25 +3556,44 @@ public enum DICOMPrintService {
         imageDescriptors: [PrintImageData],
         options: PrintOptions,
         layout: PrintLayout,
-        eventHandler: PrintEventHandler? = nil
+        eventHandler: PrintEventHandler? = nil,
+        progressHandler: (@Sendable (PrintProgress) -> Void)? = nil
     ) async throws -> PrintResult {
+        // PS3.3 C.13.5.1: a Preformatted Image Sequence item without
+        // Rows/Columns/BitsAllocated/PhotometricInterpretation is non-conformant
+        // and rejected by strict SCPs — require one descriptor per image up front.
+        guard imageDescriptors.count >= images.count else {
+            throw DICOMNetworkError.encodingFailed(
+                "printing requires a PrintImageData descriptor per image "
+                + "(got \(imageDescriptors.count) descriptor(s) for \(images.count) image(s)); "
+                + "image-box attributes (Rows/Columns/BitsAllocated/PhotometricInterpretation) are mandatory")
+        }
+
         let sopClassUID = selectPrintSOPClassUID(for: configuration.colorMode)
         let imageBoxSOPClassUID = configuration.colorMode == .color
             ? basicColorImageBoxSOPClassUID
             : basicGrayscaleImageBoxSOPClassUID
-        
+
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
+            // Explicit VR LE only, by design: the print service serializes and
+            // parses Explicit VR LE exclusively (all response parsers are
+            // Explicit VR byte-scanners). Proposing Implicit VR here would let
+            // an implicit-only SCP accept a syntax we then mis-encode — better
+            // to fail negotiation cleanly. Documented conformance limitation
+            // (enhancement plan P1-3).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID,
-                implicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
         let associationConfig = try createPrintAssociationConfiguration(configuration)
         let association = Association(configuration: associationConfig)
         
+        progressHandler?(PrintProgress(
+            phase: .connecting, progress: 0.0, message: "Connecting to print server..."))
+
         do {
             let negotiated = try await association.request(presentationContexts: [presentationContext])
             
@@ -3485,6 +3604,8 @@ public enum DICOMPrintService {
             
             var messageID: UInt16 = 1
             
+            progressHandler?(PrintProgress(
+                phase: .creatingSession, progress: 0.1, message: "Creating print session..."))
             // ── Step 1: N-CREATE Film Session ─────────────────────────────
             var sessionElements: [DataElement] = []
             sessionElements.append(DataElement.string(tag: .numberOfCopies, vr: .IS, value: String(options.numberOfCopies)))
@@ -3510,6 +3631,7 @@ public enum DICOMPrintService {
                 commandSet: sessionRequest.commandSet,
                 dataSet: serializeElements(sessionElements),
                 presentationContextID: 1,
+                timeout: configuration.timeout,
                 eventHandler: eventHandler
             )
             
@@ -3530,6 +3652,7 @@ public enum DICOMPrintService {
                     negotiated: negotiated,
                     shape: lutShape,
                     messageID: &lutMessageID,
+                    timeout: configuration.timeout,
                     eventHandler: eventHandler
                 )
             }
@@ -3609,6 +3732,7 @@ public enum DICOMPrintService {
                     commandSet: filmBoxRequest.commandSet,
                     dataSet: serializeElements(filmBoxElements),
                     presentationContextID: 1,
+                    timeout: configuration.timeout,
                     eventHandler: eventHandler
                 )
                 
@@ -3633,7 +3757,12 @@ public enum DICOMPrintService {
                 
                 for (imageIndex, globalIndex) in (startIndex..<endIndex).enumerated() {
                     guard imageIndex < imageBoxUIDs.count else { continue }
-                    
+
+                    progressHandler?(PrintProgress(
+                        phase: .uploadingImages(current: globalIndex + 1, total: images.count),
+                        progress: 0.2 + 0.65 * (Double(globalIndex + 1) / Double(images.count)),
+                        message: "Uploading image \(globalIndex + 1) of \(images.count)..."))
+
                     let imageBoxUID = imageBoxUIDs[imageIndex]
                     let position = UInt16(imageIndex + 1)
                     
@@ -3645,19 +3774,19 @@ public enum DICOMPrintService {
                     // Decimate/Crop (2020,0040)
                     imgElements.append(DataElement.string(tag: .requestedDecimateCropBehavior, vr: .CS, value: "DECIMATE"))
                     
-                    // Build Preformatted Image Sequence with image attributes
+                    // Build Preformatted Image Sequence with image attributes.
+                    // The descriptor is guaranteed present by the guard at the top
+                    // of the workflow — the pixel-module attributes are always sent.
                     var seqElements: [DataElement] = []
-                    let desc = globalIndex < imageDescriptors.count ? imageDescriptors[globalIndex] : nil
-                    if let desc = desc {
-                        seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
-                        seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
-                        seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
-                        seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
-                        seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
-                        seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
-                        seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
-                        seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
-                    }
+                    let desc = imageDescriptors[globalIndex]
+                    seqElements.append(DataElement.uint16(tag: .samplesPerPixel, value: desc.samplesPerPixel))
+                    seqElements.append(DataElement.string(tag: .photometricInterpretation, vr: .CS, value: desc.photometricInterpretation))
+                    seqElements.append(DataElement.uint16(tag: .rows, value: desc.rows))
+                    seqElements.append(DataElement.uint16(tag: .columns, value: desc.columns))
+                    seqElements.append(DataElement.uint16(tag: .bitsAllocated, value: desc.bitsAllocated))
+                    seqElements.append(DataElement.uint16(tag: .bitsStored, value: desc.bitsStored))
+                    seqElements.append(DataElement.uint16(tag: .highBit, value: desc.highBit))
+                    seqElements.append(DataElement.uint16(tag: .pixelRepresentation, value: desc.pixelRepresentation))
                     seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: images[globalIndex]))
                     
                     let imgSeqItem = SequenceItem(elements: seqElements)
@@ -3690,6 +3819,7 @@ public enum DICOMPrintService {
                         commandSet: setRequest.commandSet,
                         dataSet: serializeElements(imgElements),
                         presentationContextID: 1,
+                        timeout: configuration.timeout,
                         eventHandler: eventHandler
                     )
                     
@@ -3730,6 +3860,7 @@ public enum DICOMPrintService {
                             commandSet: annRequest.commandSet,
                             dataSet: serializeElements(annElements),
                             presentationContextID: 1,
+                            timeout: configuration.timeout,
                             eventHandler: eventHandler
                         )
                         let annRsp = NSetResponse(commandSet: annResponse.commandSet, presentationContextID: 1)
@@ -3740,6 +3871,8 @@ public enum DICOMPrintService {
                     }
                 }
 
+                progressHandler?(PrintProgress(
+                    phase: .printing, progress: 0.9, message: "Sending print command..."))
                 // ── Step 2c: N-ACTION Print Film Box ──────────────────────
                 let actionRequest = NActionRequest(
                     messageID: messageID,
@@ -3757,6 +3890,7 @@ public enum DICOMPrintService {
                     commandSet: actionRequest.commandSet,
                     dataSet: nil,
                     presentationContextID: 1,
+                    timeout: configuration.timeout,
                     eventHandler: eventHandler
                 )
                 
@@ -3779,6 +3913,8 @@ public enum DICOMPrintService {
                 allPrintJobUIDs.append(printJobUID)
             }
             
+            progressHandler?(PrintProgress(
+                phase: .cleanup, progress: 0.95, message: "Cleaning up session..."))
             // ── Step 3: N-DELETE Film Session ──────────────────────────────
             let deleteRequest = NDeleteRequest(
                 messageID: messageID,
@@ -3793,6 +3929,7 @@ public enum DICOMPrintService {
                 commandSet: deleteRequest.commandSet,
                 dataSet: nil,
                 presentationContextID: 1,
+                timeout: configuration.timeout,
                 eventHandler: eventHandler
             )
             // Ignore N-DELETE status — cleanup is best-effort
@@ -3918,7 +4055,9 @@ public enum DICOMPrintService {
         configuration: PrintConfiguration,
         images: [Data],
         template: PrintTemplate,
-        options: PrintOptions = .default
+        options: PrintOptions = .default,
+        imageDescriptors: [PrintImageData] = [],
+        eventHandler: PrintEventHandler? = nil
     ) async throws -> PrintResult {
         guard !images.isEmpty else {
             return PrintResult(
@@ -3927,286 +4066,114 @@ public enum DICOMPrintService {
                 errorMessage: "No images provided"
             )
         }
-        
-        // Create film session
-        let filmSession = FilmSession(
+
+        // The template supplies the layout, film size, and orientation; all other
+        // options pass through unchanged.
+        let templateOptions = PrintOptions(
             numberOfCopies: options.numberOfCopies,
-            printPriority: options.priority,
+            priority: options.priority,
+            filmSize: template.filmSize,
+            filmOrientation: template.filmOrientation,
             mediumType: options.mediumType,
             filmDestination: options.filmDestination,
-            filmSessionLabel: options.sessionLabel
+            borderDensity: options.borderDensity,
+            emptyImageDensity: options.emptyImageDensity,
+            magnificationType: options.magnificationType,
+            polarity: options.polarity,
+            trimOption: options.trimOption,
+            sessionLabel: options.sessionLabel,
+            presentationLUTShape: options.presentationLUTShape,
+            annotations: options.annotations,
+            annotationDisplayFormatID: options.annotationDisplayFormatID
         )
-        
-        let filmSessionUID = try await createFilmSession(configuration: configuration, session: filmSession)
-        
-        do {
-            var allPrintJobUIDs: [String] = []
-            var lastFilmBoxUID: String?
-            
-            // Calculate how many film boxes we need
-            let imagesPerFilm = template.imageCount
-            let filmBoxCount = (images.count + imagesPerFilm - 1) / imagesPerFilm
-            
-            for filmIndex in 0..<filmBoxCount {
-                // Create film box from template
-                var filmBox = template.createFilmBox()
-                
-                // Apply options' film orientation if it differs from template's default
-                if options.filmOrientation != template.filmOrientation {
-                    filmBox = FilmBox(
-                        sopInstanceUID: filmBox.sopInstanceUID,
-                        imageDisplayFormat: filmBox.imageDisplayFormat,
-                        filmOrientation: options.filmOrientation,
-                        filmSizeID: filmBox.filmSizeID,
-                        magnificationType: filmBox.magnificationType,
-                        borderDensity: filmBox.borderDensity,
-                        emptyImageDensity: filmBox.emptyImageDensity,
-                        trimOption: filmBox.trimOption,
-                        configurationInformation: filmBox.configurationInformation,
-                        imageBoxSOPInstanceUIDs: filmBox.imageBoxSOPInstanceUIDs
-                    )
-                }
-                
-                let filmBoxResult = try await createFilmBox(
-                    configuration: configuration,
-                    filmSessionUID: filmSessionUID,
-                    filmBox: filmBox
-                )
-                lastFilmBoxUID = filmBoxResult.filmBoxUID
-                
-                // Set image box contents for this film box
-                let startIndex = filmIndex * imagesPerFilm
-                let endIndex = min(startIndex + imagesPerFilm, images.count)
-                
-                for (imageIndex, globalIndex) in (startIndex..<endIndex).enumerated() {
-                    let position = UInt16(imageIndex + 1)
-                    
-                    guard imageIndex < filmBoxResult.imageBoxUIDs.count else {
-                        continue
-                    }
-                    
-                    let imageBox = ImageBoxContent(
-                        sopInstanceUID: filmBoxResult.imageBoxUIDs[imageIndex],
-                        imagePosition: position,
-                        polarity: options.polarity
-                    )
-                    
-                    try await setImageBox(
-                        configuration: configuration,
-                        imageBoxUID: filmBoxResult.imageBoxUIDs[imageIndex],
-                        imageBox: imageBox,
-                        pixelData: images[globalIndex]
-                    )
-                }
-                
-                // Print the film box
-                let printJobUID = try await printFilmBox(
-                    configuration: configuration,
-                    filmBoxUID: filmBoxResult.filmBoxUID
-                )
-                allPrintJobUIDs.append(printJobUID)
-            }
-            
-            // Cleanup: delete film session
-            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
-            
-            return PrintResult(
-                success: true,
-                status: .success,
-                filmSessionUID: filmSessionUID,
-                filmBoxUID: lastFilmBoxUID,
-                printJobUID: allPrintJobUIDs.last
-            )
-        } catch {
-            // Cleanup on error
-            try? await deleteFilmSession(configuration: configuration, filmSessionUID: filmSessionUID)
-            throw error
+
+        // Reimplemented on the single-association workflow (PS3.4 H.4): the
+        // previous implementation called the discrete createFilmSession /
+        // createFilmBox / setImageBox / printFilmBox functions, each of which
+        // opens its own association — the Film Session UID from one association
+        // is not valid in the next, so strict SCPs rejected the sequence.
+        return try await executePrintWorkflow(
+            configuration: configuration,
+            images: images,
+            imageDescriptors: imageDescriptors,
+            options: templateOptions,
+            layout: layout(fromImageDisplayFormat: template.imageDisplayFormat),
+            eventHandler: eventHandler
+        )
+    }
+
+    /// Parses "STANDARD\r,c" (PS3.3 C.13.3) into a `PrintLayout`; defaults to 1×1.
+    static func layout(fromImageDisplayFormat format: String) -> PrintLayout {
+        let parts = format.split(separator: "\\")
+        guard parts.count == 2, parts[0] == "STANDARD" else { return PrintLayout(rows: 1, columns: 1) }
+        let dims = parts[1].split(separator: ",")
+        guard dims.count == 2,
+              let rows = Int(dims[0].trimmingCharacters(in: .whitespaces)),
+              let columns = Int(dims[1].trimmingCharacters(in: .whitespaces)),
+              rows >= 1, columns >= 1 else {
+            return PrintLayout(rows: 1, columns: 1)
         }
+        return PrintLayout(rows: rows, columns: columns)
     }
     
     /// Prints images with progress reporting via AsyncThrowingStream
     ///
-    /// Provides progress updates during the print workflow, allowing UI updates
-    /// and cancellation support.
+    /// Provides progress updates during the print workflow. The entire workflow
+    /// runs on a **single association** as required by PS3.4 H.4 (the previous
+    /// implementation opened one association per DIMSE step, which strict SCPs
+    /// reject because the Film Session UID does not survive across associations).
     ///
     /// - Parameters:
     ///   - configuration: Print connection configuration
     ///   - images: Array of pixel data to print
     ///   - options: Print options (defaults to `.default`)
+    ///   - imageDescriptors: Per-image descriptors (required — see P1-1: image-box
+    ///     pixel-module attributes are mandatory)
+    ///   - layout: Optional explicit layout; auto-chosen when nil
+    ///   - eventHandler: Optional handler for N-EVENT-REPORT notifications
     /// - Returns: An AsyncThrowingStream that yields PrintProgress updates
-    ///
-    /// Example:
-    /// ```swift
-    /// for try await progress in DICOMPrintService.printImagesWithProgress(
-    ///     configuration: printConfig,
-    ///     images: images
-    /// ) {
-    ///     print("Progress: \(progress.phase) - \(Int(progress.progress * 100))%")
-    /// }
-    /// ```
     public static func printImagesWithProgress(
         configuration: PrintConfiguration,
         images: [Data],
-        options: PrintOptions = .default
+        options: PrintOptions = .default,
+        imageDescriptors: [PrintImageData] = [],
+        layout: PrintLayout? = nil,
+        eventHandler: PrintEventHandler? = nil
     ) -> AsyncThrowingStream<PrintProgress, Error> {
         AsyncThrowingStream { continuation in
             Task {
                 do {
                     guard !images.isEmpty else {
-                        continuation.finish(throwing: DICOMNetworkError.unexpectedResponse)
+                        continuation.finish(
+                            throwing: DICOMNetworkError.encodingFailed("No images provided"))
                         return
                     }
-                    
-                    // Report: connecting
-                    continuation.yield(PrintProgress(
-                        phase: .connecting,
-                        progress: 0.0,
-                        message: "Connecting to print server..."
-                    ))
-                    
-                    // Report: querying printer
-                    continuation.yield(PrintProgress(
-                        phase: .queryingPrinter,
-                        progress: 0.05,
-                        message: "Querying printer status..."
-                    ))
-                    
-                    _ = try await getPrinterStatus(configuration: configuration)
-                    
-                    // Report: creating session
-                    continuation.yield(PrintProgress(
-                        phase: .creatingSession,
-                        progress: 0.1,
-                        message: "Creating print session..."
-                    ))
-                    
-                    let filmSession = FilmSession(
-                        numberOfCopies: options.numberOfCopies,
-                        printPriority: options.priority,
-                        mediumType: options.mediumType,
-                        filmDestination: options.filmDestination,
-                        filmSessionLabel: options.sessionLabel
-                    )
-                    
-                    let filmSessionUID = try await createFilmSession(
-                        configuration: configuration,
-                        session: filmSession
-                    )
-                    
-                    do {
-                        // Report: preparing images
-                        continuation.yield(PrintProgress(
-                            phase: .preparingImages,
-                            progress: 0.15,
-                            message: "Preparing images for printing..."
-                        ))
-                        
-                        let layout = images.count == 1
-                            ? PrintLayout(rows: 1, columns: 1)
-                            : PrintLayout.optimalLayout(for: images.count)
-                        
-                        let imagesPerFilm = layout.rows * layout.columns
-                        let filmBoxCount = (images.count + imagesPerFilm - 1) / imagesPerFilm
-                        
-                        let uploadStartProgress: Double = 0.2
-                        let uploadEndProgress: Double = 0.85
-                        let uploadProgressRange = uploadEndProgress - uploadStartProgress
-                        
-                        var totalImagesUploaded = 0
-                        
-                        for filmIndex in 0..<filmBoxCount {
-                            let filmBox = FilmBox(
-                                imageDisplayFormat: "STANDARD\\\(layout.rows),\(layout.columns)",
-                                filmOrientation: options.filmOrientation,
-                                filmSizeID: options.filmSize,
-                                magnificationType: options.magnificationType,
-                                borderDensity: options.borderDensity,
-                                emptyImageDensity: options.emptyImageDensity,
-                                trimOption: options.trimOption
-                            )
-                            
-                            let filmBoxResult = try await createFilmBox(
-                                configuration: configuration,
-                                filmSessionUID: filmSessionUID,
-                                filmBox: filmBox
-                            )
-                            
-                            let startIndex = filmIndex * imagesPerFilm
-                            let endIndex = min(startIndex + imagesPerFilm, images.count)
-                            
-                            for (imageIndex, globalIndex) in (startIndex..<endIndex).enumerated() {
-                                // Report: uploading image
-                                totalImagesUploaded += 1
-                                let imageProgress = Double(totalImagesUploaded) / Double(images.count)
-                                let overallProgress = uploadStartProgress + (uploadProgressRange * imageProgress)
-                                
-                                continuation.yield(PrintProgress(
-                                    phase: .uploadingImages(current: totalImagesUploaded, total: images.count),
-                                    progress: overallProgress,
-                                    message: "Uploading image \(totalImagesUploaded) of \(images.count)..."
-                                ))
-                                
-                                let position = UInt16(imageIndex + 1)
-                                
-                                guard imageIndex < filmBoxResult.imageBoxUIDs.count else {
-                                    continue
-                                }
-                                
-                                let imageBox = ImageBoxContent(
-                                    sopInstanceUID: filmBoxResult.imageBoxUIDs[imageIndex],
-                                    imagePosition: position,
-                                    polarity: options.polarity
-                                )
-                                
-                                try await setImageBox(
-                                    configuration: configuration,
-                                    imageBoxUID: filmBoxResult.imageBoxUIDs[imageIndex],
-                                    imageBox: imageBox,
-                                    pixelData: images[globalIndex]
-                                )
-                            }
-                            
-                            // Report: printing
-                            continuation.yield(PrintProgress(
-                                phase: .printing,
-                                progress: 0.9,
-                                message: "Sending print command..."
-                            ))
-                            
-                            _ = try await printFilmBox(
-                                configuration: configuration,
-                                filmBoxUID: filmBoxResult.filmBoxUID
-                            )
-                        }
-                        
-                        // Report: cleanup
-                        continuation.yield(PrintProgress(
-                            phase: .cleanup,
-                            progress: 0.95,
-                            message: "Cleaning up session..."
-                        ))
-                        
-                        try? await deleteFilmSession(
-                            configuration: configuration,
-                            filmSessionUID: filmSessionUID
-                        )
-                        
-                        // Report: complete
-                        continuation.yield(PrintProgress(
-                            phase: .completed,
-                            progress: 1.0,
-                            message: "Print job completed successfully"
-                        ))
-                        
-                        continuation.finish()
-                    } catch {
-                        // Cleanup on error
-                        try? await deleteFilmSession(
-                            configuration: configuration,
-                            filmSessionUID: filmSessionUID
-                        )
-                        continuation.finish(throwing: error)
+
+                    let resolvedLayout: PrintLayout
+                    if let layout = layout {
+                        resolvedLayout = layout
+                    } else if images.count == 1 {
+                        resolvedLayout = PrintLayout(rows: 1, columns: 1)
+                    } else {
+                        resolvedLayout = PrintLayout.optimalLayout(for: images.count)
                     }
+
+                    _ = try await executePrintWorkflow(
+                        configuration: configuration,
+                        images: images,
+                        imageDescriptors: imageDescriptors,
+                        options: options,
+                        layout: resolvedLayout,
+                        eventHandler: eventHandler,
+                        progressHandler: { continuation.yield($0) }
+                    )
+
+                    continuation.yield(PrintProgress(
+                        phase: .completed,
+                        progress: 1.0,
+                        message: "Print job completed successfully"
+                    ))
+                    continuation.finish()
                 } catch {
                     continuation.finish(throwing: error)
                 }

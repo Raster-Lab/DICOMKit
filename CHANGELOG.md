@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### DICOM Print — Milestone C (interoperability) from the enhancement plan
+
+- **Image-box pixel attributes always sent (P1-1, bug fix):** the N-SET
+  Preformatted Image Sequence previously omitted Rows/Columns/BitsAllocated/
+  PhotometricInterpretation when no descriptor was supplied — rejected by strict
+  SCPs. The print workflow now requires one `PrintImageData` per image (validated
+  up front, before any network activity) and emits the attributes unconditionally;
+  the discrete `setImageBox` throws a clear error without a descriptor.
+- **`printWithTemplate` / `printImagesWithProgress` on a single association
+  (P1-2, conformance fix):** both previously opened a separate association per
+  DIMSE step (PS3.4 H.4 violation — the Film Session UID does not survive across
+  associations). Both are reimplemented on the single-association workflow; the
+  progress stream keeps its phase/percent updates via a new internal progress
+  hook, and both gained `imageDescriptors:`/`eventHandler:` parameters.
+- **Transfer syntax (P1-3, documented decision):** print presentation contexts
+  now propose **Explicit VR LE only**. Previously Implicit VR LE was also
+  proposed but data was always serialized Explicit — an implicit-only SCP would
+  accept a syntax we then mis-encoded. Now such an SCP cleanly rejects
+  negotiation; full Implicit-VR support remains future work if a real printer
+  needs it.
+- **DIMSE-response timeout (P1-4, bug fix):** an SCP that accepted the
+  association and then went silent hung the tool forever. All print DIMSE
+  response reads now race against `PrintConfiguration.timeout`; on expiry the
+  association is aborted and `operationTimeout` is thrown.
+
 ### DICOM Print — Milestone B (image fidelity) from the enhancement plan
 
 - **Preprocessing pipeline wired into printing (P0-1, bug fix):** `dicom-print send`

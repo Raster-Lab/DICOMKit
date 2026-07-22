@@ -130,7 +130,11 @@ the decode path provides per-frame access for free.
 
 ## P1 — Interoperability
 
-### P1-1. Always send image-box pixel attributes (unconditional descriptor)
+### ✅ P1-1. Always send image-box pixel attributes (unconditional descriptor) — **done 2026-07-22**
+*(Implemented as "descriptor required": `executePrintWorkflow` validates one `PrintImageData`
+per image up front and the Preformatted Image Sequence attributes are emitted unconditionally;
+the discrete `setImageBox` throws a clear `encodingFailed` when called without a descriptor.
+Signatures stay source-compatible; missing descriptors fail fast before any network activity.)*
 **Problem:** Rows/Columns/Bits/PI etc. are emitted only `if let desc = imageDescriptor`.
 `printImage` and `printWithTemplate` call `setImageBox` **without** a descriptor → image box
 with pixel data but no dimensions → rejected by strict SCPs. (CLI `send` is OK — it builds descriptors.)
@@ -141,7 +145,14 @@ a Preformatted Image Sequence item without Rows/Columns/BitsAllocated/Photometri
 **Acceptance:** every image box N-SET includes the pixel-module attributes.
 **Tests:** assert serialized N-SET always contains (0028,0010)/(0028,0011)/(0028,0100)/(0028,0004).
 
-### P1-2. Rework `printWithTemplate` onto a single association
+### ✅ P1-2. Rework `printWithTemplate` onto a single association — **done 2026-07-22**
+*(Both `printWithTemplate` and `printImagesWithProgress` now run on `executePrintWorkflow`
+(one association, PS3.4 H.4). The workflow gained an optional `progressHandler` so the
+progress stream keeps its phase/percent updates; the template's layout is derived from its
+Image Display Format via the new `layout(fromImageDisplayFormat:)`. Both methods gained
+`imageDescriptors:`/`eventHandler:` parameters; the progress variant no longer performs the
+extra printer-status N-GET on a separate association. The discrete public functions remain
+for advanced callers, each documented as using its own association.)*
 **Problem:** `printWithTemplate` (and `printImagesWithProgress`) call the discrete functions
 (`createFilmSession`/`createFilmBox`/`setImageBox`/`printFilmBox`/`deleteFilmSession`), each of
 which opens **its own association** — a PS3.4 H.4 violation; the Film Session UID is invalid in
@@ -154,7 +165,12 @@ they each use a separate association.
 **Acceptance:** template + progress prints complete within one association (verify with mock SCP association count = 1).
 **Tests:** mock SCP asserts a single A-ASSOCIATE per print job.
 
-### P1-3. Honor the negotiated transfer syntax (serialize **and** parse)
+### ✅ P1-3. Honor the negotiated transfer syntax — **resolved 2026-07-22 (Explicit-VR-only decision)**
+*(Took the documented-limitation route: all print presentation contexts now propose
+**Explicit VR LE only**, so an implicit-only SCP cleanly rejects negotiation instead of
+receiving mis-encoded data, and the Explicit-VR byte-scanning response parsers are always
+valid. Full Implicit-VR support (serialize + parse) remains possible future work if a real
+printer requires it.)*
 **Problem:** Data sets are always serialized Explicit VR LE regardless of what the SCP accepted.
 A printer that accepts only Implicit VR LE gets mis-encoded data. **The gap is two-sided:** all
 response parsing (`parsePrinterStatus` once implemented, `parsePrintJobStatus`,
@@ -171,7 +187,11 @@ as a conformance limitation, not left implicit.
 **Acceptance:** against an Implicit-VR-only SCP, data sets encode *and* responses decode correctly (or the association is cleanly rejected with a documented reason).
 **Tests:** mock SCP that accepts only Implicit VR LE; assert successful N-CREATE/N-SET **and** correct parsing of its responses (printer status, image-box UIDs).
 
-### P1-4. DIMSE-response timeout
+### ✅ P1-4. DIMSE-response timeout — **done 2026-07-22**
+*(New `receiveWithTimeout` races `association.receive()` against `configuration.timeout`;
+the network read is not cancellation-aware, so on expiry the association is aborted to
+unblock it and `operationTimeout` is thrown. Wired through `sendAndReceive` (workflow) and
+every discrete receive loop. Live-timeout integration test blocked on the P3-4 mock SCP.)*
 **Problem:** `association.receive()` for N-responses has no timer; a silent SCP hangs the tool.
 **Files:** `Sources/DICOMNetwork/Association.swift` / `DICOMConnection.swift`, applied in `PrintService.swift`.
 **Change:** Wrap DIMSE-response reads in an operation timeout (reuse `TimeoutConfiguration.operation`),
@@ -291,7 +311,7 @@ before printing, for connectivity diagnosis. `VerificationService` already exist
    two logical commits (YBR descriptor fix; print enhancements + docs).
 1. ✅ **Milestone A (safety)** — done 2026-07-21: P0-3 (status parse), P0-4 (exit code), P0-5 (error detail, minimal scope).
 2. ✅ **Milestone B (image fidelity)** — done 2026-07-21: P0-1 (preprocess) + P0-2 (decompress) + P0-6 (multi-frame) + P1-5 (color, subsampled-YBR carve-out) + P2-6 (signed) — implemented in the CLI layer per the layering constraint. Remaining from B: uncompressed subsampled-YBR support needs `bytesPerFrame` 4:2:2 modeling in DICOMCore.
-3. **Milestone C (interop):** P1-1 (unconditional attrs), P1-2 (single association), P1-3 (transfer syntax, both directions — or the documented Explicit-VR-only decision), P1-4 (timeout).
+3. ✅ **Milestone C (interop)** — done 2026-07-22: P1-1 (descriptor required + unconditional attrs), P1-2 (single-association template/progress printing), P1-3 (Explicit-VR-LE-only decision, documented), P1-4 (DIMSE-response timeout).
 4. **Milestone D (coverage):** P3-4 (mock SCP + CLI target in CI) then backfill the full integration test matrix.
 5. **Milestone E (polish):** P2-* hardening (incl. P2-7), P3-1/2/3 CLI ergonomics.
 
