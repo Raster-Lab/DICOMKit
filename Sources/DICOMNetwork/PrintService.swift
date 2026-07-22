@@ -2599,44 +2599,12 @@ public enum DICOMPrintService {
     /// Helper: Parses Image Box UIDs from N-CREATE response data set
     /// - Parameter data: Response data set containing Referenced Image Box Sequence
     /// - Returns: Array of Image Box SOP Instance UIDs
+    ///
+    /// Scoped to the Referenced Image Box Sequence (2010,0510) — a whole-data-set
+    /// scan for (0008,1155) would also pick up annotation-box or presentation-LUT
+    /// references and mis-attribute them as image boxes (enhancement plan P2-2).
     private static func parseImageBoxUIDs(from data: Data) -> [String] {
-        // Parse the data set to extract Referenced Image Box Sequence (2010,0510)
-        // by scanning raw Explicit VR Little Endian binary data for UI elements
-        // within sequence items containing Referenced SOP Instance UID (0008,1155)
-        guard data.count >= 8 else {
-            return []
-        }
-        
-        var imageBoxUIDs: [String] = []
-        // Scan for Referenced SOP Instance UID (0008,1155) elements in the binary data
-        let targetGroup: UInt16 = 0x0008
-        let targetElement: UInt16 = 0x1155
-        var offset = 0
-        
-        data.withUnsafeBytes { buffer in
-            while offset + 8 <= buffer.count {
-                let group = buffer.loadUnaligned(fromByteOffset: offset, as: UInt16.self).littleEndian
-                let element = buffer.loadUnaligned(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
-                
-                if group == targetGroup && element == targetElement {
-                    // Found Referenced SOP Instance UID - extract the value
-                    // VR is at offset+4 (2 bytes), length at offset+6 (2 bytes for UI)
-                    let length = Int(buffer.loadUnaligned(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
-                    guard length > 0, length < 256, offset + 8 + length <= buffer.count else { break }
-                    let valueData = Data(bytes: buffer.baseAddress!.advanced(by: offset + 8), count: length)
-                    if let uid = String(data: valueData, encoding: .ascii)?.trimmingCharacters(in: CharacterSet(charactersIn: "\0 ")) {
-                        if !uid.isEmpty {
-                            imageBoxUIDs.append(uid)
-                        }
-                    }
-                    offset += 8 + length
-                } else {
-                    offset += 1
-                }
-            }
-        }
-
-        return imageBoxUIDs
+        parseReferencedSOPInstanceUIDs(from: data, withinSequence: .referencedImageBoxSequence)
     }
 
     /// Extracts Referenced SOP Instance UIDs (0008,1155) that live *inside* a
@@ -3910,7 +3878,14 @@ public enum DICOMPrintService {
                 if printJobUID.isEmpty {
                     printJobUID = actionRsp.affectedSOPInstanceUID
                 }
-                allPrintJobUIDs.append(printJobUID)
+                // The Print Job SOP Instance UID is optional in the N-ACTION
+                // response — some SCPs omit it. Don't record an empty UID
+                // (job-status polling with it would fail); consistent with the
+                // discrete printFilmBox, which rejects an empty UID outright
+                // (enhancement plan P2-4).
+                if !printJobUID.isEmpty {
+                    allPrintJobUIDs.append(printJobUID)
+                }
             }
             
             progressHandler?(PrintProgress(

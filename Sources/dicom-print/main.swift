@@ -276,6 +276,18 @@ struct SendCommand: ParsableCommand {
     @Option(name: .long, help: "Medium type: paper, clear-film, blue-film (default: paper)")
     var medium: MediumOption = .paper
 
+    @Option(name: .long, help: "Magnification type: replicate, bilinear, cubic (default: replicate)")
+    var magnification: MagnificationOption = .replicate
+
+    @Option(name: .long, help: "Film destination: magazine, processor, bin-1, bin-2 (default: processor)")
+    var filmDestination: FilmDestinationOption = .processor
+
+    @Flag(name: .long, help: "Query printer status before printing; abort on FAILURE, warn on WARNING")
+    var checkStatus: Bool = false
+
+    @Flag(name: .customLong("verify"), help: "Perform a C-ECHO connectivity check against the printer before printing")
+    var verifyFirst: Bool = false
+
     @Option(name: .long, help: "Color mode: grayscale, color (default: grayscale)")
     var color: ColorModeOption = .grayscale
 
@@ -414,10 +426,48 @@ struct SendCommand: ParsableCommand {
             filmSize: effectiveFilmSize,
             filmOrientation: effectiveOrientation,
             mediumType: medium.mediumType,
+            filmDestination: filmDestination.filmDestination,
+            magnificationType: magnification.magnificationType,
             presentationLUTShape: presentationLut?.shape,
             annotations: printAnnotations,
             annotationDisplayFormatID: annotationFormat
         )
+
+        // Optional pre-flight checks (before reading/decoding any files).
+        if verifyFirst {
+            let echoConfig = config
+            let ok = try runAsync {
+                try await DICOMVerificationService.verify(
+                    host: echoConfig.host,
+                    port: echoConfig.port,
+                    callingAE: echoConfig.callingAETitle,
+                    calledAE: echoConfig.calledAETitle,
+                    timeout: echoConfig.timeout
+                )
+            }
+            guard ok else {
+                throw ValidationError("C-ECHO verification failed — printer AE is not responding correctly")
+            }
+            if verbose { fprintln("✓ C-ECHO verification succeeded") }
+        }
+
+        if checkStatus {
+            let statusConfig = config
+            let printerStatus = try runAsync {
+                try await DICOMPrintService.getPrinterStatus(configuration: statusConfig)
+            }
+            switch printerStatus.status {
+            case "FAILURE":
+                let info = printerStatus.statusInfo.map { " (\($0))" } ?? ""
+                fprintln("✗ Printer reports FAILURE\(info) — aborting")
+                throw ExitCode.failure
+            case "WARNING":
+                let info = printerStatus.statusInfo.map { " (\($0))" } ?? ""
+                fprintln("⚠ Printer reports WARNING\(info) — continuing")
+            default:
+                if verbose { fprintln("✓ Printer status: \(printerStatus.status)") }
+            }
+        }
         
         // Read, decode, and prepare files for printing.
         //
@@ -1028,26 +1078,62 @@ enum OutputFormat: String, ExpressibleByArgument {
 
 enum FilmSizeOption: String, ExpressibleByArgument {
     case size8x10 = "8x10"
+    case size8_5x11 = "8.5x11"
     case size10x12 = "10x12"
     case size10x14 = "10x14"
     case size11x14 = "11x14"
     case size11x17 = "11x17"
     case size14x14 = "14x14"
     case size14x17 = "14x17"
+    case size24x24cm = "24x24cm"
+    case size24x30cm = "24x30cm"
     case a4
     case a3
-    
+
     var filmSize: FilmSize {
         switch self {
         case .size8x10: return .size8InX10In
+        case .size8_5x11: return .size8_5InX11In
         case .size10x12: return .size10InX12In
         case .size10x14: return .size10InX14In
         case .size11x14: return .size11InX14In
         case .size11x17: return .size11InX17In
         case .size14x14: return .size14InX14In
         case .size14x17: return .size14InX17In
+        case .size24x24cm: return .size24CmX24Cm
+        case .size24x30cm: return .size24CmX30Cm
         case .a4: return .a4
         case .a3: return .a3
+        }
+    }
+}
+
+enum MagnificationOption: String, ExpressibleByArgument {
+    case replicate
+    case bilinear
+    case cubic
+
+    var magnificationType: MagnificationType {
+        switch self {
+        case .replicate: return .replicate
+        case .bilinear: return .bilinear
+        case .cubic: return .cubic
+        }
+    }
+}
+
+enum FilmDestinationOption: String, ExpressibleByArgument {
+    case magazine
+    case processor
+    case bin1 = "bin-1"
+    case bin2 = "bin-2"
+
+    var filmDestination: FilmDestination {
+        switch self {
+        case .magazine: return .magazine
+        case .processor: return .processor
+        case .bin1: return .bin1
+        case .bin2: return .bin2
         }
     }
 }
@@ -1294,7 +1380,11 @@ func parseServerURL(_ urlString: String) throws -> (scheme: String, host: String
     
     let port: UInt16
     if let urlPort = url.port {
-        port = UInt16(urlPort)
+        // UInt16(urlPort) would trap on out-of-range values (P2-5).
+        guard let validPort = UInt16(exactly: urlPort), validPort > 0 else {
+            throw ValidationError("Port \(urlPort) is out of range (1-65535)")
+        }
+        port = validPort
     } else {
         port = 11112 // Default DICOM print port
     }

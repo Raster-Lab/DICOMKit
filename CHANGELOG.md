@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### DICOM Print — Milestone E hardening + CLI ergonomics (partial)
+
+- **Scoped image-box UID parsing (P2-2, bug fix):** `parseImageBoxUIDs` scanned
+  the whole response for (0008,1155) and could mis-attribute annotation-box or
+  presentation-LUT references as image boxes; it is now bounded to the
+  Referenced Image Box Sequence (2010,0510).
+- **Empty Print Job UID no longer recorded (P2-4):** the workflow silently
+  appended an empty job UID when the N-ACTION response omitted it; consistent
+  with the discrete `printFilmBox`, empty UIDs are now dropped.
+- **Port bounds guard (P2-5, crash fix):** `pacs://host:99999` trapped on
+  `UInt16` conversion; now a clean validation error.
+- **New `send` options (P3-1):** `--magnification replicate|bilinear|cubic`,
+  `--film-destination magazine|processor|bin-1|bin-2`, and the full film-size
+  set (`8.5x11`, `24x24cm`, `24x30cm` added).
+- **Pre-flight checks:** `--check-status` (P2-1) queries printer status before
+  printing — aborts on FAILURE, warns on WARNING; `--verify` (P3-3) performs a
+  C-ECHO connectivity check first.
+
 ### DICOM Print — Milestone C (interoperability) from the enhancement plan
 
 - **Image-box pixel attributes always sent (P1-1, bug fix):** the N-SET

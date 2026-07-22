@@ -223,11 +223,11 @@ What remains here:
 
 ## P2 — Robustness & Conformance Hardening
 
-### P2-1. Optional pre-print printer-status check
-Depends on **P0-3**. Add an opt-in (`--check-status`) that N-GETs printer status before printing
-and aborts on FAILURE (and warns on WARNING). Do **not** make it default (extra round-trip).
+### ✅ P2-1. Optional pre-print printer-status check — **done 2026-07-22**
+`--check-status` N-GETs printer status before printing; aborts (non-zero exit) on FAILURE,
+warns on WARNING. Opt-in — not default (extra round-trip).
 
-### P2-2. Bound `parseImageBoxUIDs` to the Referenced Image Box Sequence
+### ✅ P2-2. Bound `parseImageBoxUIDs` to the Referenced Image Box Sequence — **done 2026-07-22**
 `parseImageBoxUIDs` scans the whole data set for (0008,1155) and can mis-attribute UIDs. Replace
 its body with the existing scoped `parseReferencedSOPInstanceUIDs(from:withinSequence: .referencedImageBoxSequence)`.
 **Tests:** a film-box response containing both image-box and annotation-box sequences → only image-box UIDs returned.
@@ -237,11 +237,11 @@ its body with the existing scoped `parseReferencedSOPInstanceUIDs(from:withinSeq
 in-association Film Box N-DELETE / Film Session N-DELETE before abort where the association is still alive,
 to be friendly to SCPs that persist state.
 
-### P2-4. Reject empty Print Job UID from N-ACTION
+### ✅ P2-4. Reject empty Print Job UID from N-ACTION — **done 2026-07-22** (workflow no longer records empty job UIDs)
 The workflow appends an empty Job UID if the N-ACTION response lacks one; the discrete `printFilmBox`
 correctly rejects it. Make the workflow consistent (warn or error).
 
-### P2-5. Port bounds guard
+### ✅ P2-5. Port bounds guard — **done 2026-07-22** (`UInt16(exactly:)` + ValidationError)
 `UInt16(urlPort)` in `parseServerURL` traps on port > 65535. Validate and throw a `ValidationError`.
 
 ### ✅ P2-6. Signed pixel data handling — **done 2026-07-21** (via P0-1)
@@ -260,19 +260,19 @@ release window instead of failing the release.
 
 ## P3 — CLI & Coverage
 
-### P3-1. Add missing CLI options
-- `--magnification replicate|bilinear|cubic|none` (library supports it; `send` always sends REPLICATE).
-- `--film-destination` (library `FilmDestination` exists; CLI never sets it).
-- Expose the full `FilmSize` set (`8_5INX11IN`, `24CMX24CM`, `24CMX30CM` are currently unreachable).
+### ✅ P3-1. Add missing CLI options — **done 2026-07-22**
+- `--magnification replicate|bilinear|cubic` (library enum has no NONE case; add if a printer needs it).
+- `--film-destination magazine|processor|bin-1|bin-2`.
+- Full `FilmSize` set exposed (`8.5x11`, `24x24cm`, `24x30cm` added).
 
 ### P3-2. Machine-readable output contract
 Human/text output currently goes to **stderr**; only `--format json` writes stdout. Define and
 document the contract: result/status on **stdout** (at least in JSON mode), diagnostics on stderr,
 so scripts can consume results.
 
-### P3-3. C-ECHO / verification pre-flight (optional)
-Add an optional `--verify` (or a `verify` subcommand) that performs C-ECHO against the printer AE
-before printing, for connectivity diagnosis. `VerificationService` already exists in the module.
+### ✅ P3-3. C-ECHO / verification pre-flight (optional) — **done 2026-07-22**
+`--verify` on `send` performs C-ECHO (`DICOMVerificationService.verify`) against the printer AE
+before printing and fails with a clear message when the AE does not respond correctly.
 
 ### P3-4. Build & test the CLI in CI + integration tests *(partially done)*
 - ~~Re-enable the `DICOMNetworkTests` target~~ — **done** (177 tests; `PACSIntegrationTests`

@@ -104,7 +104,11 @@ dicom-print remove-printer --name radiology-printer
 | Option | Description |
 |--------|-------------|
 | `--copies` | Number of copies (default: 1) |
-| `--film-size` | Film size: 8x10, 10x12, 10x14, 11x14, 11x17, 14x14, 14x17, a4, a3 |
+| `--film-size` | Film size: 8x10, 8.5x11, 10x12, 10x14, 11x14, 11x17, 14x14, 14x17, 24x24cm, 24x30cm, a4, a3 |
+| `--magnification` | Magnification type: replicate, bilinear, cubic (default: replicate) |
+| `--film-destination` | Film destination: magazine, processor, bin-1, bin-2 (default: processor) |
+| `--check-status` | Query printer status first; abort on FAILURE, warn on WARNING |
+| `--verify` | C-ECHO connectivity check against the printer before printing |
 | `--orientation` | Film orientation: portrait, landscape |
 | `--priority` | Print priority: low, medium, high |
 | `--layout` | Image layout: 1x1, 1x2, 2x1, 2x2, 2x3, 3x3, 3x4, 4x4, 4x5 (auto if omitted) |
