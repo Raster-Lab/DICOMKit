@@ -343,16 +343,27 @@ public enum DecimateCropBehavior: String, Sendable {
 
 /// Printer status information
 public struct PrinterStatus: Sendable {
+    /// Printer Status (2110,0010) — NORMAL, WARNING, or FAILURE per PS3.3 C.13.9.
+    /// "UNKNOWN" when the SCP's N-GET response did not include the attribute.
     public let status: String
+    /// Printer Status Info (2110,0020) — printer-specific detail, e.g. "SUPPLY LOW".
     public let statusInfo: String?
+    /// Printer Name (2110,0030).
     public let printerName: String?
-    
-    public init(status: String, statusInfo: String? = nil, printerName: String? = nil) {
+    /// Manufacturer (0008,0070), when returned.
+    public let manufacturer: String?
+    /// Manufacturer Model Name (0008,1090), when returned.
+    public let manufacturerModelName: String?
+
+    public init(status: String, statusInfo: String? = nil, printerName: String? = nil,
+                manufacturer: String? = nil, manufacturerModelName: String? = nil) {
         self.status = status
         self.statusInfo = statusInfo
         self.printerName = printerName
+        self.manufacturer = manufacturer
+        self.manufacturerModelName = manufacturerModelName
     }
-    
+
     /// Whether the printer is in a normal operational state
     public var isNormal: Bool {
         status == "NORMAL"
@@ -2161,13 +2172,35 @@ public enum DICOMPrintService {
         }
     }
     
-    /// Parses printer status from response data
-    private static func parsePrinterStatus(from data: Data) -> PrinterStatus {
-        // Parse the data set for printer status attributes
-        // This is a simplified implementation - full parsing would decode
-        // the DICOM data set to extract Printer Status (2110,0010),
-        // Printer Status Info (2110,0020), and Printer Name (2110,0030)
-        return PrinterStatus(status: "NORMAL", statusInfo: nil, printerName: nil)
+    /// Builds a human-readable detail string from a failure response's
+    /// Error Comment (0000,0902) and Error ID (0000,0903), when the SCP
+    /// supplied them. Returns nil when neither is present.
+    static func errorDetail(from commandSet: CommandSet) -> String? {
+        var parts: [String] = []
+        if let comment = commandSet.errorComment, !comment.isEmpty {
+            parts.append(comment)
+        }
+        if let id = commandSet.errorID {
+            parts.append("(Error ID \(id))")
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    /// Parses printer status from an N-GET response data set (Explicit VR LE).
+    ///
+    /// Decodes Printer Status (2110,0010), Printer Status Info (2110,0020),
+    /// Printer Name (2110,0030), and — when the SCP returns them — Manufacturer
+    /// (0008,0070) and Manufacturer Model Name (0008,1090). Reference: PS3.3 C.13.9.
+    /// `internal` (not private) for unit-test access.
+    static func parsePrinterStatus(from data: Data) -> PrinterStatus {
+        let status = extractStringValue(from: data, group: 0x2110, element: 0x0010) ?? "UNKNOWN"
+        return PrinterStatus(
+            status: status,
+            statusInfo: extractStringValue(from: data, group: 0x2110, element: 0x0020),
+            printerName: extractStringValue(from: data, group: 0x2110, element: 0x0030),
+            manufacturer: extractStringValue(from: data, group: 0x0008, element: 0x0070),
+            manufacturerModelName: extractStringValue(from: data, group: 0x0008, element: 0x1090)
+        )
     }
     
     /// Helper: Selects the appropriate Print Management Meta SOP Class UID based on color mode
@@ -2337,7 +2370,7 @@ public enum DICOMPrintService {
                     
                     guard response.status.isSuccessOrWarning else {
                         try await association.abort()
-                        throw DICOMNetworkError.printOperationFailed(response.status)
+                        throw DICOMNetworkError.printOperationFailed(response.status, detail: errorDetail(from: response.commandSet))
                     }
                     
                     // Extract assigned SOP Instance UID
@@ -2513,7 +2546,7 @@ public enum DICOMPrintService {
                     
                     guard response.status.isSuccessOrWarning else {
                         try await association.abort()
-                        throw DICOMNetworkError.printOperationFailed(response.status)
+                        throw DICOMNetworkError.printOperationFailed(response.status, detail: errorDetail(from: response.commandSet))
                     }
                     
                     // Extract assigned Film Box SOP Instance UID
@@ -2680,7 +2713,7 @@ public enum DICOMPrintService {
         let rsp = NCreateResponse(commandSet: response.commandSet, presentationContextID: 1)
         guard rsp.status.isSuccessOrWarning else {
             try await association.abort()
-            throw DICOMNetworkError.printOperationFailed(rsp.status)
+            throw DICOMNetworkError.printOperationFailed(rsp.status, detail: errorDetail(from: rsp.commandSet))
         }
         let uid = rsp.affectedSOPInstanceUID
         guard !uid.isEmpty else {
@@ -2875,7 +2908,7 @@ public enum DICOMPrintService {
                     
                     guard response.status.isSuccessOrWarning else {
                         try await association.abort()
-                        throw DICOMNetworkError.printOperationFailed(response.status)
+                        throw DICOMNetworkError.printOperationFailed(response.status, detail: errorDetail(from: response.commandSet))
                     }
                     
                     try await association.release()
@@ -2966,7 +2999,7 @@ public enum DICOMPrintService {
                     
                     guard response.status.isSuccessOrWarning else {
                         try await association.abort()
-                        throw DICOMNetworkError.printOperationFailed(response.status)
+                        throw DICOMNetworkError.printOperationFailed(response.status, detail: errorDetail(from: response.commandSet))
                     }
                     
                     // Extract Print Job SOP Instance UID from the response
@@ -3062,7 +3095,7 @@ public enum DICOMPrintService {
                     
                     guard response.status.isSuccessOrWarning else {
                         try await association.abort()
-                        throw DICOMNetworkError.printOperationFailed(response.status)
+                        throw DICOMNetworkError.printOperationFailed(response.status, detail: errorDetail(from: response.commandSet))
                     }
                     
                     try await association.release()
@@ -3483,7 +3516,7 @@ public enum DICOMPrintService {
             let sessionRsp = NCreateResponse(commandSet: sessionResponse.commandSet, presentationContextID: 1)
             guard sessionRsp.status.isSuccessOrWarning else {
                 try await association.abort()
-                throw DICOMNetworkError.printOperationFailed(sessionRsp.status)
+                throw DICOMNetworkError.printOperationFailed(sessionRsp.status, detail: errorDetail(from: sessionRsp.commandSet))
             }
             let filmSessionUID = sessionRsp.affectedSOPInstanceUID
 
@@ -3582,7 +3615,7 @@ public enum DICOMPrintService {
                 let filmBoxRsp = NCreateResponse(commandSet: filmBoxResponse.commandSet, presentationContextID: 1)
                 guard filmBoxRsp.status.isSuccessOrWarning else {
                     try await association.abort()
-                    throw DICOMNetworkError.printOperationFailed(filmBoxRsp.status)
+                    throw DICOMNetworkError.printOperationFailed(filmBoxRsp.status, detail: errorDetail(from: filmBoxRsp.commandSet))
                 }
                 
                 let filmBoxUID = filmBoxRsp.affectedSOPInstanceUID
@@ -3663,7 +3696,7 @@ public enum DICOMPrintService {
                     let setRsp = NSetResponse(commandSet: setResponse.commandSet, presentationContextID: 1)
                     guard setRsp.status.isSuccessOrWarning else {
                         try await association.abort()
-                        throw DICOMNetworkError.printOperationFailed(setRsp.status)
+                        throw DICOMNetworkError.printOperationFailed(setRsp.status, detail: errorDetail(from: setRsp.commandSet))
                     }
                 }
 
@@ -3702,7 +3735,7 @@ public enum DICOMPrintService {
                         let annRsp = NSetResponse(commandSet: annResponse.commandSet, presentationContextID: 1)
                         guard annRsp.status.isSuccessOrWarning else {
                             try await association.abort()
-                            throw DICOMNetworkError.printOperationFailed(annRsp.status)
+                            throw DICOMNetworkError.printOperationFailed(annRsp.status, detail: errorDetail(from: annRsp.commandSet))
                         }
                     }
                 }
@@ -3730,7 +3763,7 @@ public enum DICOMPrintService {
                 let actionRsp = NActionResponse(commandSet: actionResponse.commandSet, presentationContextID: 1)
                 guard actionRsp.status.isSuccessOrWarning else {
                     try await association.abort()
-                    throw DICOMNetworkError.printOperationFailed(actionRsp.status)
+                    throw DICOMNetworkError.printOperationFailed(actionRsp.status, detail: errorDetail(from: actionRsp.commandSet))
                 }
                 
                 // Extract Print Job UID from response data if available
