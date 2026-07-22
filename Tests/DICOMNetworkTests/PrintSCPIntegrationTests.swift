@@ -284,6 +284,28 @@ final class PrintSCPIntegrationTests: XCTestCase {
         XCTAssertTrue(log.contains(.nEventReportResponse))
     }
 
+    func testEventDuringReleaseWindowDoesNotBreakRelease() async throws {
+        // P2-7: an N-EVENT-REPORT arriving between A-RELEASE-RQ and
+        // A-RELEASE-RP must be discarded — previously it aborted the
+        // association and failed an otherwise successful print.
+        var behavior = MockPrintSCPBehavior()
+        behavior.pushEventDuringRelease = true
+        let scp = MockPrintSCP(behavior: behavior)
+        try await scp.start()
+        defer { Task { await scp.stop() } }
+
+        let (pixels, descriptor) = makeImage()
+        let result = try await DICOMPrintService.printImages(
+            configuration: makeConfiguration(port: await scp.port),
+            images: [pixels],
+            imageDescriptors: [descriptor]
+        )
+
+        XCTAssertTrue(result.success)
+        let released = await scp.releasedCleanly
+        XCTAssertTrue(released)
+    }
+
     // MARK: - Omitted job UID (P2-4)
 
     func testOmittedPrintJobUIDIsNotRecorded() async throws {

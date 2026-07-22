@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### DICOM Network — release-window P-DATA tolerance (print plan P2-7)
+
+- **`Association.release()` no longer aborts on a late P-DATA PDU:** a message
+  pushed by the peer between A-RELEASE-RQ and A-RELEASE-RP (e.g. a Print SCP's
+  N-EVENT-REPORT) previously hit the unexpected-PDU path — abort + error on an
+  otherwise successful operation. Per PS3.8 §7.2 the release requestor now
+  discards P-DATA received in the release window and keeps waiting for
+  A-RELEASE-RP. Integration-tested with the mock Print SCP.
+
 ### DICOM Print — Milestone D: CLI re-enabled + mock SCP integration tests
 
 - **`dicom-print` re-enabled in `Package.swift`** (product + executable target,

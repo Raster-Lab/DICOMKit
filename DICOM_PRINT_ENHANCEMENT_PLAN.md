@@ -7,9 +7,9 @@
 
 ## Status at a Glance (2026-07-22)
 
-**19 of 20 items done.** All of P0, P1, and P3 are complete, P2 lacks only P2-7 — the SCU
-is past the plan's "production-grade for common printers" bar and integration-tested against
-an in-process mock Print SCP. Work landed as local commits on
+**All 20 items done.** P0 through P3 complete — the SCU is past the plan's
+"production-grade for common printers" bar and integration-tested against an in-process
+mock Print SCP. Work landed as local commits on
 `fix/bug-review-crash-and-hardening-2026-07-18` (not pushed):
 
 | Commit | Scope |
@@ -19,15 +19,17 @@ an in-process mock Print SCP. Work landed as local commits on
 | `9452a92` | Milestone B — P0-1, P0-2, P0-4, P0-6, P1-5, P2-6 |
 | `9ed14b3` | Milestone C — P1-1, P1-2, P1-3, P1-4 |
 | `e7aad5f` | Milestone E (partial) — P2-1, P2-2, P2-4, P2-5, P3-1, P3-3 |
-| *(pending commit)* | Milestone D — `dicom-print` target enabled (owner approved), MockPrintSCP + 10 integration tests, P2-3, P3-2 |
+| `07dab8c` | Milestone D — `dicom-print` target enabled (owner approved), MockPrintSCP + integration tests, P2-3, P3-2 |
+| *(follow-up `fix(network)` commit)* | P2-7 — release-window P-DATA tolerance in `Association.release()` + test |
 
 **Verified:** 236 tests green across `PrintServiceTests` / `PrintSCPIntegrationTests` /
 `CommandSetTests` / `DICOMFilePixelDataYBRDecodeTests`; `dicom-print` builds with zero
 warnings as an enabled Package.swift product.
 
-**Open items:** P2-7 (N-EVENT-REPORT during the release window) and the spawn-based CLI
-end-to-end tests (see test matrix). The `dicom-print`-target decision was made 2026-07-22:
-enabled, owner approved.
+**Open items (beyond the 20 plan items, all tracked in Out of Scope / test matrix):**
+spawn-based CLI end-to-end tests; the pre-existing `StorageCommitmentServiceTests` hang
+blocking full-suite CI gating; subsampled-YBR support (needs DICOMCore work).
+The `dicom-print`-target decision was made 2026-07-22: enabled, owner approved.
 
 This plan turns the audit findings into a prioritized, implementable backlog. Each item lists
 the problem, the target files, the change, and acceptance criteria + tests. Current SCU
@@ -274,12 +276,10 @@ correctly rejects it. Make the workflow consistent (warn or error).
 pipeline outputs unsigned 8-bit P-Values, so signed values are never sent to an Image Box
 (except with the explicit `--raw` bypass).
 
-### P2-7. Late N-EVENT-REPORT during association release
-The SCU now handles N-EVENT-REPORT-RQs interleaved *before* its own awaited response, but an
-event arriving between the last DIMSE response and `release()` collides with release processing.
-Tolerate (decode + acknowledge, or at minimum discard cleanly) an event received during the
-release window instead of failing the release.
-**Tests:** mock SCP pushes an N-EVENT-REPORT immediately before A-RELEASE-RP → release still succeeds (blocked on the P3-4 mock SCP).
+### ✅ P2-7. Late N-EVENT-REPORT during association release — **done 2026-07-22**
+*(`Association.release()` now discards P-DATA PDUs arriving between A-RELEASE-RQ and
+A-RELEASE-RP per PS3.8 §7.2 instead of aborting with `unexpectedPDUType`. Integration-tested
+with the mock SCP pushing an event inside the release window.)*
 
 ---
 
@@ -329,7 +329,7 @@ before printing and fails with a clear message when the AE does not respond corr
 | Workflow | happy path: session→box→image-box→N-ACTION→delete→release, single A-ASSOCIATE per job | ✅ integration tests done |
 | Failure | failure at N-CREATE/N-SET/N-ACTION → error detail + defensive N-DELETE + abort | ✅ integration tests done |
 | Timeout | SCP accepts then goes silent → `operationTimeout` within the configured window | ✅ integration test done |
-| Events | interleaved N-EVENT-REPORT delivered + acknowledged mid-workflow | ✅ integration test done (release-window case still open — P2-7) |
+| Events | interleaved N-EVENT-REPORT mid-workflow + during the release window | ✅ integration tests done |
 | Multi-film | 3 images on 2×1 → 2 film boxes, one association | ✅ integration test done |
 | Job UID | omitted Print Job UID not recorded (P2-4) | ✅ integration test done |
 | CLI | exit codes end-to-end via a spawned binary; JSON contract assertions | ⏳ open (target now builds in CI; spawn-based CLI tests not yet written) |
@@ -355,8 +355,8 @@ before printing and fails with a clear message when the AE does not respond corr
    interleaved events, omitted job UID, printer status). Still open from D's wish list:
    spawn-based CLI end-to-end tests; fixing/quarantining the hanging
    `StorageCommitmentServiceTests` case so the *full* `DICOMNetworkTests` suite can gate CI.
-5. ✅ **Milestone E (polish)** — done 2026-07-22 except **P2-7**: P2-1/2/3/4/5 + P3-1/2/3
-   all landed (P2-3 and P3-2 in the Milestone D commit).
+5. ✅ **Milestone E (polish)** — done 2026-07-22: P2-1/2/3/4/5/7 + P3-1/2/3 all landed
+   (P2-3 and P3-2 in the Milestone D commit; P2-7 in the follow-up commit).
 
 ---
 

@@ -58,6 +58,10 @@ struct MockPrintSCPBehavior: Sendable {
     /// Push a Printer SOP Class N-EVENT-REPORT (WARNING) immediately before
     /// responding to the first film-session N-CREATE (interleave test).
     var pushEventBeforeFirstResponse: Bool = false
+
+    /// Push an N-EVENT-REPORT after receiving A-RELEASE-RQ, before sending
+    /// A-RELEASE-RP (release-window test, plan P2-7).
+    var pushEventDuringRelease: Bool = false
 }
 
 /// Minimal in-process Print SCP. One instance handles any number of
@@ -229,6 +233,11 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
                     try await handle(message: message)
                 }
             case _ as ReleaseRequestPDU:
+                if behavior.pushEventDuringRelease {
+                    // P2-7: a late event lands between A-RELEASE-RQ and
+                    // A-RELEASE-RP — the SCU must discard it, not abort.
+                    try await pushPrinterEvent(contextID: 1)
+                }
                 try await send(pdu: ReleaseResponsePDU())
                 await owner.recordCleanRelease()
                 connection.cancel()
