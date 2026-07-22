@@ -1,6 +1,32 @@
 # DICOM Print SCU — Enhancement Plan
 
-**Date:** 2026-07-20 (revised 2026-07-21 — verified against the working tree)
+**Date:** 2026-07-20 (revised 2026-07-21; execution status updated 2026-07-22)
+
+## Status at a Glance (2026-07-22)
+
+**17 of 20 items done.** All of P0 and P1 are complete — the SCU is at the plan's
+"production-grade for common printers" bar. Work landed as local commits on
+`fix/bug-review-crash-and-hardening-2026-07-18` (not pushed):
+
+| Commit | Scope |
+|---|---|
+| `f8e6d42`, `49f5ab0` | Milestone 0 — housekeeping (YBR decode fix; prior print features + docs) |
+| `9afa860` | Milestone A — P0-3, P0-5 (library) |
+| `9452a92` | Milestone B — P0-1, P0-2, P0-4, P0-6, P1-5, P2-6 |
+| `9ed14b3` | Milestone C — P1-1, P1-2, P1-3, P1-4 |
+| `e7aad5f` | Milestone E (partial) — P2-1, P2-2, P2-4, P2-5, P3-1, P3-3 |
+
+**Verified:** `PrintServiceTests` / `CommandSetTests` / `DICOMFilePixelDataYBRDecodeTests`
+green at every milestone (~25 new tests); `dicom-print` compiles (target stays excluded per
+Phase-1 scope).
+
+**Open items:** P2-3 (defensive N-DELETE), P2-7 (event during release window),
+P3-2 (output contract), P3-4 / Milestone D (mock Print SCP + CLI target in CI + the
+integration-test matrix below).
+
+**Decision needed before Milestone D:** permanently re-enabling the `dicom-print` target in
+`Package.swift` reverses the deliberate Phase-1 exclusion and exposes the target to the
+release zero-warning gate — needs owner sign-off.
 **Basis:** Feature-completeness audit of `dicom-print` + `DICOMPrintService`
 **Reference:** DICOM PS3.4 Annex H (Print Management), PS3.3 C.11/C.13, PS3.7 (DIMSE-N)
 **Related docs:** [DICOM_PRINT_TOOL_ANALYSIS.md](DICOM_PRINT_TOOL_ANALYSIS.md)
@@ -16,11 +42,9 @@ completeness is ~55%; completing P0–P1 brings it to production-grade for commo
 > depend on `DICOMKit`) — or the needed helpers must be moved down a layer. Do not start these
 > items inside `PrintService.swift`.
 
-> **Process note:** the recent print work described in the analysis doc (N-EVENT-REPORT,
-> Presentation LUT, annotation boxes, descriptors, `DICOMNetworkTests` re-enable) is currently
-> **uncommitted** on `fix/bug-review-crash-and-hardening-2026-07-18`, mixed with unrelated
-> bug-review changes. Commit (or split) that work before starting Milestone A, since this plan's
-> baseline assumes it exists.
+> **Process note (✅ resolved 2026-07-21):** the previously uncommitted print work was split
+> into two logical commits (`f8e6d42` YBR decode fix, `49f5ab0` print features + docs) before
+> Milestone A began.
 
 ---
 
@@ -284,24 +308,32 @@ before printing and fails with a clear message when the AE does not respond corr
 
 ---
 
-## Test Matrix (gaps to close)
+## Test Matrix (updated 2026-07-22)
 
-| Area | Test | Blocked on |
+| Area | Test | Status |
 |---|---|---|
-| Association | accept / reject / abort / zero-context | mock SCP |
-| Printer status | NORMAL / WARNING / FAILURE parsed | P0-3 |
-| Workflow | happy path: session→box→image-box→N-ACTION→delete→release | mock SCP |
-| Failure | inject failure at each N-op → abort + no orphan + non-zero exit | P0-4 |
-| Error detail | Error Comment surfaced to user | P0-5 |
-| Timeout | SCP silence → timeout not hang | P1-4 |
-| Encoding | Implicit-VR-only SCP → correct data sent **and responses parsed** | P1-3 |
-| Pixels | windowed CT, MONOCHROME1 (incl. un-skipped quarantined tests), 16-bit, signed, rescale, presentation LUT | P0-1 |
-| Compression | JPEG/J2K/RLE decoded before send | P0-2 |
-| Multi-frame | frame selection, bounds, per-frame descriptor | P0-6 |
-| Color | uncompressed YBR→RGB (incl. 422 upsampling), RGB→gray, mode mismatch | P1-5 |
-| Events | N-EVENT-REPORT during release window | P2-7 / mock SCP |
-| Multi-film | images > layout capacity across one association | mock SCP |
-| CLI | exit codes, `--magnification`/`--film-destination`, output contract | P3-1/P3-2 |
+| Printer status | NORMAL / WARNING / FAILURE / UNKNOWN parsed | ✅ unit tests done |
+| Error detail | Error Comment / Error ID surfaced, offending elements decoded | ✅ unit tests done |
+| Pixels | MONOCHROME1 inversion (8-bit + 16-bit, un-quarantined), windowed output | ✅ unit tests done |
+| Multi-frame | frame selection, out-of-range rejection | ✅ unit tests done |
+| Color | uncompressed YBR_FULL→RGB, subsampled-YBR rejection | ✅ unit tests done |
+| Descriptors | workflow + setImageBox refuse missing descriptors before network | ✅ unit tests done |
+| Layout | template Image Display Format → PrintLayout (incl. malformed fallback) | ✅ unit tests done |
+| Scoped UIDs | annotation-box vs image-box UID separation | ✅ unit tests done |
+| Compression | JPEG/J2K/RLE decoded before send (decode path) | ✅ covered by `DICOMFilePixelDataYBRDecodeTests` + codec suites; end-to-end send blocked on mock SCP |
+| Association | accept / reject / abort / zero-context | ⏳ mock SCP (Milestone D) |
+| Workflow | happy path: session→box→image-box→N-ACTION→delete→release, single A-ASSOCIATE per job | ⏳ mock SCP |
+| Failure | inject failure at each N-op → abort + no orphan + non-zero exit | ⏳ mock SCP |
+| Timeout | SCP accepts then goes silent → `operationTimeout`, no hang | ⏳ mock SCP (helper unit-testable only with a live association) |
+| Encoding | Explicit-VR-only proposal → implicit-only SCP cleanly rejected | ⏳ mock SCP |
+| Events | N-EVENT-REPORT during release window | ⏳ P2-7 + mock SCP |
+| Multi-film | images > layout capacity across one association | ⏳ mock SCP |
+| CLI | exit codes end-to-end, output contract | ⏳ P3-2 + CLI target in CI |
+
+> Note: full `DICOMNetworkTests` runs currently stall in a pre-existing
+> `StorageCommitmentServiceTests` hang (see Out of Scope) — run print suites with
+> `swift test --filter 'PrintServiceTests|CommandSetTests|DICOMFilePixelDataYBRDecodeTests'`
+> until that suite is fixed or quarantined.
 
 ---
 
@@ -312,8 +344,13 @@ before printing and fails with a clear message when the AE does not respond corr
 1. ✅ **Milestone A (safety)** — done 2026-07-21: P0-3 (status parse), P0-4 (exit code), P0-5 (error detail, minimal scope).
 2. ✅ **Milestone B (image fidelity)** — done 2026-07-21: P0-1 (preprocess) + P0-2 (decompress) + P0-6 (multi-frame) + P1-5 (color, subsampled-YBR carve-out) + P2-6 (signed) — implemented in the CLI layer per the layering constraint. Remaining from B: uncompressed subsampled-YBR support needs `bytesPerFrame` 4:2:2 modeling in DICOMCore.
 3. ✅ **Milestone C (interop)** — done 2026-07-22: P1-1 (descriptor required + unconditional attrs), P1-2 (single-association template/progress printing), P1-3 (Explicit-VR-LE-only decision, documented), P1-4 (DIMSE-response timeout).
-4. **Milestone D (coverage):** P3-4 (mock SCP + CLI target in CI) then backfill the full integration test matrix.
-5. **Milestone E (polish):** P2-* hardening (incl. P2-7), P3-1/2/3 CLI ergonomics.
+4. **Milestone D (coverage) — NEXT:** P3-4 (mock SCP + CLI target in CI) then backfill the
+   integration rows of the test matrix. Prerequisites: owner decision on permanently
+   re-enabling the `dicom-print` target (see Status at a Glance); fix or quarantine the
+   hanging `StorageCommitmentServiceTests` case so the full suite can gate CI.
+5. 🔶 **Milestone E (polish)** — mostly done 2026-07-22: P2-1/2/4/5 + P3-1/3 landed
+   (`e7aad5f`). Still open: P2-3 (defensive N-DELETE), P2-7 (event during release,
+   test blocked on mock SCP), P3-2 (output contract).
 
 ---
 
