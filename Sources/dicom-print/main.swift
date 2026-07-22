@@ -288,6 +288,9 @@ struct SendCommand: ParsableCommand {
     @Flag(name: .customLong("verify"), help: "Perform a C-ECHO connectivity check against the printer before printing")
     var verifyFirst: Bool = false
 
+    @Option(name: .long, help: "Output format: text, json (json writes the result object to stdout; diagnostics stay on stderr)")
+    var format: OutputFormat = .text
+
     @Option(name: .long, help: "Color mode: grayscale, color (default: grayscale)")
     var color: ColorModeOption = .grayscale
 
@@ -624,10 +627,17 @@ struct SendCommand: ParsableCommand {
             throw lastError ?? ValidationError("Print failed")
         }
 
-        printResult(result, verbose: verbose)
+        // Output contract (P3-2): machine-readable result on stdout in JSON
+        // mode; human-readable text and diagnostics always on stderr.
+        switch format {
+        case .text:
+            printResult(result, verbose: verbose)
+        case .json:
+            printResultJSON(result)
+        }
 
-        // Automation contract: a failed print must exit non-zero. The human-readable
-        // message was already emitted by printResult, so exit silently with failure.
+        // Automation contract: a failed print must exit non-zero. The message
+        // was already emitted above, so exit silently with failure.
         if !result.success {
             throw ExitCode.failure
         }
@@ -635,6 +645,22 @@ struct SendCommand: ParsableCommand {
         #else
         throw ValidationError("Network functionality is not available on this platform")
         #endif
+    }
+
+    /// JSON result object on stdout (the only stdout output of `send`).
+    func printResultJSON(_ result: PrintResult) {
+        var dict: [String: Any] = [
+            "success": result.success
+        ]
+        if let jobUID = result.printJobUID { dict["printJobUID"] = jobUID }
+        if let sessionUID = result.filmSessionUID { dict["filmSessionUID"] = sessionUID }
+        if let filmBoxUID = result.filmBoxUID { dict["filmBoxUID"] = filmBoxUID }
+        if let error = result.errorMessage { dict["error"] = error }
+
+        if let data = try? JSONSerialization.data(withJSONObject: dict, options: [.prettyPrinted, .sortedKeys]),
+           let json = String(data: data, encoding: .utf8) {
+            print(json)
+        }
     }
 
     func printResult(_ result: PrintResult, verbose: Bool) {

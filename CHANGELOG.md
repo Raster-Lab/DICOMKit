@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### DICOM Print — Milestone D: CLI re-enabled + mock SCP integration tests
+
+- **`dicom-print` re-enabled in `Package.swift`** (product + executable target,
+  owner approved) — previously excluded under Phase-1 scope. Builds with zero
+  warnings.
+- **Mock Print SCP test harness:** new in-process, NWListener-based
+  `MockPrintSCP` (DICOMNetworkTests) implementing A-ASSOCIATE accept/reject,
+  N-GET printer status, N-CREATE film session / film box (Referenced Image Box
+  Sequence sized from the requested Image Display Format), N-SET, N-ACTION,
+  N-DELETE, and A-RELEASE — with scriptable failure injection (status + Error
+  Comment/ID), silence-after-accept, presentation-context rejection, omitted
+  job UID, and pushed N-EVENT-REPORTs.
+- **10 end-to-end workflow tests** (`PrintSCPIntegrationTests`): happy path with
+  exact DIMSE sequence + single-association assertion (PS3.4 H.4), multi-film on
+  one association, failure injection carrying "OUT OF FILM (Error ID 42)" to the
+  thrown error, defensive cleanup, silent-SCP timeout, zero-context rejection,
+  interleaved event delivery + acknowledgement, omitted-job-UID handling, and
+  printer-status round-trip.
+- **Defensive cleanup on failure (P2-3):** when a later workflow step fails, the
+  SCU now attempts a best-effort in-association Film Session N-DELETE before
+  aborting (the inner guards no longer abort pre-throw, so the association is
+  still alive for cleanup).
+- **Machine-readable output contract (P3-2):** `send` gained `--format json`
+  (result object on stdout); the stdout/stderr/exit-code contract is documented
+  in the CLI README.
+
 ### DICOM Print — Milestone E hardening + CLI ergonomics (partial)
 
 - **Scoped image-box UID parsing (P2-2, bug fix):** `parseImageBoxUIDs` scanned

@@ -120,11 +120,13 @@ let package = Package(
             name: "dicom-echo",
             targets: ["dicom-echo"]
         ),
-        // Phase 1 scope: exclude dicom-print because it is outside JPEG 2000 validation.
-        // .executable(
-        //     name: "dicom-print",
-        //     targets: ["dicom-print"]
-        // ),
+        // Re-enabled 2026-07-22 (owner approved) after the print enhancement plan
+        // Milestones A–C/E brought the tool to production-grade; previously excluded
+        // under Phase-1 (JPEG 2000 validation) scope.
+        .executable(
+            name: "dicom-print",
+            targets: ["dicom-print"]
+        ),
         .executable(
             name: "dicom-mwl",
             targets: ["dicom-mwl"]
@@ -648,19 +650,18 @@ let package = Package(
             path: "Sources/dicom-echo",
             exclude: ["README.md"]
         ),
-        // Phase 1 scope: exclude dicom-print because it is outside JPEG 2000 validation.
-        // (Source verified to compile 2026-07-21 with the Milestone A/B changes.)
-        // .executableTarget(
-        //     name: "dicom-print",
-        //     dependencies: [
-        //         "DICOMKit",
-        //         "DICOMCore",
-        //         "DICOMNetwork",
-        //         .product(name: "ArgumentParser", package: "swift-argument-parser")
-        //     ],
-        //     path: "Sources/dicom-print",
-        //     exclude: ["README.md"]
-        // ),
+        // Re-enabled 2026-07-22 (owner approved) — see the matching product entry above.
+        .executableTarget(
+            name: "dicom-print",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-print",
+            exclude: ["README.md"]
+        ),
         .executableTarget(
             name: "dicom-mwl",
             dependencies: [

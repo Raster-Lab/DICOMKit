@@ -139,6 +139,22 @@ Basic Image Boxes require uncompressed pixel data).
 A failed print exits with a non-zero status code, so scripts can detect
 failures reliably.
 
+### Output contract
+
+Scripts can rely on this split across all subcommands:
+
+- **stdout** carries machine-readable output only: the JSON object produced by
+  `--format json` (`status`, `job`, and `send` all support it). In text mode,
+  stdout stays empty.
+- **stderr** carries all human-readable text: progress, diagnostics, event
+  notifications, and text-mode results.
+- **Exit code** is `0` on success and non-zero on any failure (validation
+  error, connection error, printer FAILURE via `--check-status`, or an
+  unsuccessful print result).
+
+`send --format json` emits `{"success": bool, "printJobUID"?, "filmSessionUID"?,
+"filmBoxUID"?, "error"?}`.
+
 ### Presentation LUT
 
 `--presentation-lut` creates a Presentation LUT SOP Instance and references it

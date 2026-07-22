@@ -1,11 +1,15 @@
 # DICOM Print SCU — Enhancement Plan
 
 **Date:** 2026-07-20 (revised 2026-07-21; execution status updated 2026-07-22)
+**Basis:** Feature-completeness audit of `dicom-print` + `DICOMPrintService`
+**Reference:** DICOM PS3.4 Annex H (Print Management), PS3.3 C.11/C.13, PS3.7 (DIMSE-N)
+**Related docs:** [DICOM_PRINT_TOOL_ANALYSIS.md](DICOM_PRINT_TOOL_ANALYSIS.md)
 
 ## Status at a Glance (2026-07-22)
 
-**17 of 20 items done.** All of P0 and P1 are complete — the SCU is at the plan's
-"production-grade for common printers" bar. Work landed as local commits on
+**19 of 20 items done.** All of P0, P1, and P3 are complete, P2 lacks only P2-7 — the SCU
+is past the plan's "production-grade for common printers" bar and integration-tested against
+an in-process mock Print SCP. Work landed as local commits on
 `fix/bug-review-crash-and-hardening-2026-07-18` (not pushed):
 
 | Commit | Scope |
@@ -15,21 +19,15 @@
 | `9452a92` | Milestone B — P0-1, P0-2, P0-4, P0-6, P1-5, P2-6 |
 | `9ed14b3` | Milestone C — P1-1, P1-2, P1-3, P1-4 |
 | `e7aad5f` | Milestone E (partial) — P2-1, P2-2, P2-4, P2-5, P3-1, P3-3 |
+| *(pending commit)* | Milestone D — `dicom-print` target enabled (owner approved), MockPrintSCP + 10 integration tests, P2-3, P3-2 |
 
-**Verified:** `PrintServiceTests` / `CommandSetTests` / `DICOMFilePixelDataYBRDecodeTests`
-green at every milestone (~25 new tests); `dicom-print` compiles (target stays excluded per
-Phase-1 scope).
+**Verified:** 236 tests green across `PrintServiceTests` / `PrintSCPIntegrationTests` /
+`CommandSetTests` / `DICOMFilePixelDataYBRDecodeTests`; `dicom-print` builds with zero
+warnings as an enabled Package.swift product.
 
-**Open items:** P2-3 (defensive N-DELETE), P2-7 (event during release window),
-P3-2 (output contract), P3-4 / Milestone D (mock Print SCP + CLI target in CI + the
-integration-test matrix below).
-
-**Decision needed before Milestone D:** permanently re-enabling the `dicom-print` target in
-`Package.swift` reverses the deliberate Phase-1 exclusion and exposes the target to the
-release zero-warning gate — needs owner sign-off.
-**Basis:** Feature-completeness audit of `dicom-print` + `DICOMPrintService`
-**Reference:** DICOM PS3.4 Annex H (Print Management), PS3.3 C.11/C.13, PS3.7 (DIMSE-N)
-**Related docs:** [DICOM_PRINT_TOOL_ANALYSIS.md](DICOM_PRINT_TOOL_ANALYSIS.md)
+**Open items:** P2-7 (N-EVENT-REPORT during the release window) and the spawn-based CLI
+end-to-end tests (see test matrix). The `dicom-print`-target decision was made 2026-07-22:
+enabled, owner approved.
 
 This plan turns the audit findings into a prioritized, implementable backlog. Each item lists
 the problem, the target files, the change, and acceptance criteria + tests. Current SCU
@@ -256,7 +254,10 @@ warns on WARNING. Opt-in — not default (extra round-trip).
 its body with the existing scoped `parseReferencedSOPInstanceUIDs(from:withinSequence: .referencedImageBoxSequence)`.
 **Tests:** a film-box response containing both image-box and annotation-box sequences → only image-box UIDs returned.
 
-### P2-3. Explicit cleanup on failure (defensive N-DELETE)
+### ✅ P2-3. Explicit cleanup on failure (defensive N-DELETE) — **done 2026-07-22**
+*(The workflow catch now attempts a best-effort in-association Film Session N-DELETE
+before aborting whenever the session was created; the inner guards no longer abort
+pre-throw so the association is still alive for the cleanup. Integration-tested.)*
 `executePrintWorkflow`'s catch only aborts. While abort discards the hierarchy, add a best-effort
 in-association Film Box N-DELETE / Film Session N-DELETE before abort where the association is still alive,
 to be friendly to SCPs that persist state.
@@ -289,22 +290,25 @@ release window instead of failing the release.
 - `--film-destination magazine|processor|bin-1|bin-2`.
 - Full `FilmSize` set exposed (`8.5x11`, `24x24cm`, `24x30cm` added).
 
-### P3-2. Machine-readable output contract
-Human/text output currently goes to **stderr**; only `--format json` writes stdout. Define and
-document the contract: result/status on **stdout** (at least in JSON mode), diagnostics on stderr,
-so scripts can consume results.
+### ✅ P3-2. Machine-readable output contract — **done 2026-07-22**
+`send` gained `--format json` (result object `{success, printJobUID?, filmSessionUID?,
+filmBoxUID?, error?}` on stdout). Contract documented in the CLI README: stdout = JSON only,
+stderr = all human-readable text, exit code 0/non-zero.
 
 ### ✅ P3-3. C-ECHO / verification pre-flight (optional) — **done 2026-07-22**
 `--verify` on `send` performs C-ECHO (`DICOMVerificationService.verify`) against the printer AE
 before printing and fails with a clear message when the AE does not respond correctly.
 
-### P3-4. Build & test the CLI in CI + integration tests *(partially done)*
-- ~~Re-enable the `DICOMNetworkTests` target~~ — **done** (177 tests; `PACSIntegrationTests`
-  quarantined via `exclude:` pending an API port).
-- Re-enable the `dicom-print` **executable** target in `Package.swift` (still commented out for
-  Phase-1 scope) so the CLI is compiled and testable.
-- **Build a mock Print SCP** (none exists) implementing N-CREATE/N-SET/N-ACTION/N-DELETE/N-GET/N-EVENT-REPORT
-  with scriptable statuses — the prerequisite for all workflow tests below.
+### ✅ P3-4. Build & test the CLI in CI + integration tests — **done 2026-07-22**
+- ~~Re-enable the `DICOMNetworkTests` target~~ — done (`PACSIntegrationTests` quarantined).
+- ~~Re-enable the `dicom-print` executable target~~ — done (owner approved; product + target
+  active in `Package.swift`, builds with **zero warnings**).
+- ~~Build a mock Print SCP~~ — done: `Tests/DICOMNetworkTests/MockPrintSCP.swift`, an
+  in-process NWListener-based SCP handling A-ASSOCIATE accept/reject, N-GET, N-CREATE
+  (session/film box with Referenced Image Box Sequence sized from the Image Display Format),
+  N-SET, N-ACTION, N-DELETE, A-RELEASE — with scriptable failure injection (status + Error
+  Comment/ID), silence-after-accept, context rejection, omitted job UID, and a pushed
+  N-EVENT-REPORT. 10 integration tests in `PrintSCPIntegrationTests.swift`.
 
 ---
 
@@ -321,14 +325,14 @@ before printing and fails with a clear message when the AE does not respond corr
 | Layout | template Image Display Format → PrintLayout (incl. malformed fallback) | ✅ unit tests done |
 | Scoped UIDs | annotation-box vs image-box UID separation | ✅ unit tests done |
 | Compression | JPEG/J2K/RLE decoded before send (decode path) | ✅ covered by `DICOMFilePixelDataYBRDecodeTests` + codec suites; end-to-end send blocked on mock SCP |
-| Association | accept / reject / abort / zero-context | ⏳ mock SCP (Milestone D) |
-| Workflow | happy path: session→box→image-box→N-ACTION→delete→release, single A-ASSOCIATE per job | ⏳ mock SCP |
-| Failure | inject failure at each N-op → abort + no orphan + non-zero exit | ⏳ mock SCP |
-| Timeout | SCP accepts then goes silent → `operationTimeout`, no hang | ⏳ mock SCP (helper unit-testable only with a live association) |
-| Encoding | Explicit-VR-only proposal → implicit-only SCP cleanly rejected | ⏳ mock SCP |
-| Events | N-EVENT-REPORT during release window | ⏳ P2-7 + mock SCP |
-| Multi-film | images > layout capacity across one association | ⏳ mock SCP |
-| CLI | exit codes end-to-end, output contract | ⏳ P3-2 + CLI target in CI |
+| Association | accept / zero-context rejection | ✅ integration tests done (abort-source variants still open) |
+| Workflow | happy path: session→box→image-box→N-ACTION→delete→release, single A-ASSOCIATE per job | ✅ integration tests done |
+| Failure | failure at N-CREATE/N-SET/N-ACTION → error detail + defensive N-DELETE + abort | ✅ integration tests done |
+| Timeout | SCP accepts then goes silent → `operationTimeout` within the configured window | ✅ integration test done |
+| Events | interleaved N-EVENT-REPORT delivered + acknowledged mid-workflow | ✅ integration test done (release-window case still open — P2-7) |
+| Multi-film | 3 images on 2×1 → 2 film boxes, one association | ✅ integration test done |
+| Job UID | omitted Print Job UID not recorded (P2-4) | ✅ integration test done |
+| CLI | exit codes end-to-end via a spawned binary; JSON contract assertions | ⏳ open (target now builds in CI; spawn-based CLI tests not yet written) |
 
 > Note: full `DICOMNetworkTests` runs currently stall in a pre-existing
 > `StorageCommitmentServiceTests` hang (see Out of Scope) — run print suites with
@@ -344,13 +348,15 @@ before printing and fails with a clear message when the AE does not respond corr
 1. ✅ **Milestone A (safety)** — done 2026-07-21: P0-3 (status parse), P0-4 (exit code), P0-5 (error detail, minimal scope).
 2. ✅ **Milestone B (image fidelity)** — done 2026-07-21: P0-1 (preprocess) + P0-2 (decompress) + P0-6 (multi-frame) + P1-5 (color, subsampled-YBR carve-out) + P2-6 (signed) — implemented in the CLI layer per the layering constraint. Remaining from B: uncompressed subsampled-YBR support needs `bytesPerFrame` 4:2:2 modeling in DICOMCore.
 3. ✅ **Milestone C (interop)** — done 2026-07-22: P1-1 (descriptor required + unconditional attrs), P1-2 (single-association template/progress printing), P1-3 (Explicit-VR-LE-only decision, documented), P1-4 (DIMSE-response timeout).
-4. **Milestone D (coverage) — NEXT:** P3-4 (mock SCP + CLI target in CI) then backfill the
-   integration rows of the test matrix. Prerequisites: owner decision on permanently
-   re-enabling the `dicom-print` target (see Status at a Glance); fix or quarantine the
-   hanging `StorageCommitmentServiceTests` case so the full suite can gate CI.
-5. 🔶 **Milestone E (polish)** — mostly done 2026-07-22: P2-1/2/4/5 + P3-1/3 landed
-   (`e7aad5f`). Still open: P2-3 (defensive N-DELETE), P2-7 (event during release,
-   test blocked on mock SCP), P3-2 (output contract).
+4. ✅ **Milestone D (coverage)** — done 2026-07-22: `dicom-print` target enabled (owner
+   approved, zero warnings), MockPrintSCP harness + 10 integration tests covering the
+   previously blocked matrix rows (happy path, single association, multi-film, failure
+   injection with error detail, defensive cleanup, timeout, zero-context rejection,
+   interleaved events, omitted job UID, printer status). Still open from D's wish list:
+   spawn-based CLI end-to-end tests; fixing/quarantining the hanging
+   `StorageCommitmentServiceTests` case so the *full* `DICOMNetworkTests` suite can gate CI.
+5. ✅ **Milestone E (polish)** — done 2026-07-22 except **P2-7**: P2-1/2/3/4/5 + P3-1/2/3
+   all landed (P2-3 and P3-2 in the Milestone D commit).
 
 ---
 

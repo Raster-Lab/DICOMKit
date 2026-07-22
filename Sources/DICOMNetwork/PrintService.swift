@@ -2703,12 +2703,12 @@ public enum DICOMPrintService {
         )
         let rsp = NCreateResponse(commandSet: response.commandSet, presentationContextID: 1)
         guard rsp.status.isSuccessOrWarning else {
-            try await association.abort()
+            // Abort/cleanup handled by the workflow catch (P2-3).
             throw DICOMNetworkError.printOperationFailed(rsp.status, detail: errorDetail(from: rsp.commandSet))
         }
         let uid = rsp.affectedSOPInstanceUID
         guard !uid.isEmpty else {
-            try await association.abort()
+            // Abort/cleanup handled by the workflow catch (P2-3).
             throw DICOMNetworkError.unexpectedResponse
         }
         return uid
@@ -3558,18 +3558,22 @@ public enum DICOMPrintService {
         
         let associationConfig = try createPrintAssociationConfiguration(configuration)
         let association = Association(configuration: associationConfig)
-        
+
         progressHandler?(PrintProgress(
             phase: .connecting, progress: 0.0, message: "Connecting to print server..."))
 
+        // Set once the film session exists, so the catch below can attempt a
+        // best-effort in-association N-DELETE before aborting (P2-3).
+        var sessionCleanup: (negotiated: NegotiatedAssociation, filmSessionUID: String)?
+
         do {
             let negotiated = try await association.request(presentationContexts: [presentationContext])
-            
+
             guard negotiated.isContextAccepted(1) else {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
-            
+
             var messageID: UInt16 = 1
             
             progressHandler?(PrintProgress(
@@ -3605,10 +3609,11 @@ public enum DICOMPrintService {
             
             let sessionRsp = NCreateResponse(commandSet: sessionResponse.commandSet, presentationContextID: 1)
             guard sessionRsp.status.isSuccessOrWarning else {
-                try await association.abort()
+                // Abort/cleanup handled by the workflow catch (P2-3).
                 throw DICOMNetworkError.printOperationFailed(sessionRsp.status, detail: errorDetail(from: sessionRsp.commandSet))
             }
             let filmSessionUID = sessionRsp.affectedSOPInstanceUID
+            sessionCleanup = (negotiated, filmSessionUID)
 
             // ── Step 1b: N-CREATE Presentation LUT (optional) ─────────────
             // Created once per association and referenced from each film box.
@@ -3706,7 +3711,7 @@ public enum DICOMPrintService {
                 
                 let filmBoxRsp = NCreateResponse(commandSet: filmBoxResponse.commandSet, presentationContextID: 1)
                 guard filmBoxRsp.status.isSuccessOrWarning else {
-                    try await association.abort()
+                    // Abort/cleanup handled by the workflow catch (P2-3).
                     throw DICOMNetworkError.printOperationFailed(filmBoxRsp.status, detail: errorDetail(from: filmBoxRsp.commandSet))
                 }
                 
@@ -3793,7 +3798,7 @@ public enum DICOMPrintService {
                     
                     let setRsp = NSetResponse(commandSet: setResponse.commandSet, presentationContextID: 1)
                     guard setRsp.status.isSuccessOrWarning else {
-                        try await association.abort()
+                        // Abort/cleanup handled by the workflow catch (P2-3).
                         throw DICOMNetworkError.printOperationFailed(setRsp.status, detail: errorDetail(from: setRsp.commandSet))
                     }
                 }
@@ -3833,7 +3838,7 @@ public enum DICOMPrintService {
                         )
                         let annRsp = NSetResponse(commandSet: annResponse.commandSet, presentationContextID: 1)
                         guard annRsp.status.isSuccessOrWarning else {
-                            try await association.abort()
+                            // Abort/cleanup handled by the workflow catch (P2-3).
                             throw DICOMNetworkError.printOperationFailed(annRsp.status, detail: errorDetail(from: annRsp.commandSet))
                         }
                     }
@@ -3864,7 +3869,7 @@ public enum DICOMPrintService {
                 
                 let actionRsp = NActionResponse(commandSet: actionResponse.commandSet, presentationContextID: 1)
                 guard actionRsp.status.isSuccessOrWarning else {
-                    try await association.abort()
+                    // Abort/cleanup handled by the workflow catch (P2-3).
                     throw DICOMNetworkError.printOperationFailed(actionRsp.status, detail: errorDetail(from: actionRsp.commandSet))
                 }
                 
@@ -3921,11 +3926,32 @@ public enum DICOMPrintService {
                 printJobUID: allPrintJobUIDs.last
             )
         } catch {
+            // P2-3: while an abort discards the SCP's box hierarchy per PS3.4,
+            // some SCPs persist state — attempt a best-effort in-association
+            // Film Session N-DELETE first. Skipped implicitly when the
+            // association is already dead (send/receive just fails fast).
+            if let cleanup = sessionCleanup {
+                let deleteRequest = NDeleteRequest(
+                    messageID: 0xFFF0,
+                    requestedSOPClassUID: basicFilmSessionSOPClassUID,
+                    requestedSOPInstanceUID: cleanup.filmSessionUID,
+                    presentationContextID: 1
+                )
+                _ = try? await sendAndReceive(
+                    association: association,
+                    negotiated: cleanup.negotiated,
+                    commandSet: deleteRequest.commandSet,
+                    dataSet: nil,
+                    presentationContextID: 1,
+                    timeout: min(configuration.timeout, 5),
+                    eventHandler: nil
+                )
+            }
             try? await association.abort()
             throw error
         }
     }
-    
+
     /// Prints a single image using the complete print workflow
     ///
     /// All DICOM Print operations are performed within a single association as required
