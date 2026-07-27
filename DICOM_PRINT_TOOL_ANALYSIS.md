@@ -69,7 +69,7 @@ Added `PrintEvent` + `PrinterEventType`/`PrintJobEventType` models (with `summar
 - **Overlay Box:** SOP class UID + tag added (scaffolding); full overlay-plane extraction is a follow-up. VOI LUT box also remains a follow-up.
 
 ### 🔧 Bit-rot repaired + tests re-enabled
-The `dicom-print` target had drifted out of compilability (`DICOMParser`/`data(for:)` gone, `@Sendable` capture errors); fixed to use `DICOMFile.read(from:force:).dataSet` + `dataSet[.pixelData]?.valueData`. The **`DICOMNetworkTests` target is re-enabled** (177 tests) so print logic is covered in CI; the live-PACS `PACSIntegrationTests` is quarantined via `exclude:` (heavy API drift), and two outdated MONOCHROME1 `ImagePreprocessor` expectations are `XCTSkip`-quarantined pending a product decision. (Note: `dicom-print` itself remains excluded from `Package.swift` per the repo's Phase-1 scope — source builds when enabled, verified locally.)
+The `dicom-print` target had drifted out of compilability (`DICOMParser`/`data(for:)` gone, `@Sendable` capture errors); fixed to use `DICOMFile.read(from:force:).dataSet` + `dataSet[.pixelData]?.valueData`. The **`DICOMNetworkTests` target is re-enabled** so print logic is covered in CI; the live-PACS `PACSIntegrationTests` is quarantined via `exclude:` (heavy API drift). Update 2026-07-22: the `dicom-print` product/target is **permanently enabled** in `Package.swift` (owner approved). Update 2026-07-27: the long-standing `StorageCommitmentServiceTests` hang was fixed, so the full `DICOMNetworkTests` suite (1086 XCTest + 192 swift-testing tests) now completes green in ~15 s and can gate CI.
 
 ---
 
@@ -81,8 +81,8 @@ DICOMKit implements only the SCU/client. There's no print-server role to receive
 ### 5b. Remaining rendering attributes
 VOI LUT box and full Overlay Box (overlay-plane extraction from 60xx groups) are not yet wired; the Overlay Box SOP class UID/tag scaffolding is in place.
 
-### 8. `printWithTemplate` uses multiple associations
-The library's `printWithTemplate` opens a separate association for each of createFilmSession/createFilmBox/setImageBox/printFilmBox, violating PS3.4 H.4. The CLI avoids it by routing templates through `printImages`, but the library method itself should be reworked onto the single-association path.
+### ✅ 8. `printWithTemplate` uses multiple associations — fixed (P1-2, Milestone C)
+~~The library's `printWithTemplate` opens a separate association for each of createFilmSession/createFilmBox/setImageBox/printFilmBox, violating PS3.4 H.4.~~ Both `printWithTemplate` and `printImagesWithProgress` were reimplemented on top of the single-association `executePrintWorkflow`, gaining `imageDescriptors:`/`eventHandler:` in the process.
 
 ---
 
@@ -109,13 +109,34 @@ The library's `printWithTemplate` opens a separate association for each of creat
   tests re-enabled against the decided behavior.
 - ✅ Encapsulated sources decoded before N-SET via `DICOMFile.tryPixelData()`.
 - ✅ Multi-frame: `--frame N` / `--all-frames` with bounds validation.
-- ✅ Uncompressed YBR_FULL→RGB conversion; subsampled YBR rejected with a clear
-  error (needs DICOMCore 4:2:2 layout support).
+- ✅ Uncompressed YBR_FULL→RGB conversion; subsampled YBR initially rejected —
+  superseded 2026-07-24: packed YBR_FULL_422/YBR_PARTIAL_422 now converted to RGB
+  inside `ImagePreprocessor` (4:2:0/ICT/RCT remain rejected; never occur uncompressed).
 - ✅ Signed sources emitted as unsigned 8-bit P-Values via the pipeline.
 
-**Remaining (see DICOM_PRINT_ENHANCEMENT_PLAN.md for the full backlog):**
-1. **Milestone C (interop):** unconditional image-box attributes, single-association
-   `printWithTemplate` rework (PS3.4 H.4), negotiated transfer syntax, DIMSE timeout.
-2. **VOI LUT box + full Overlay Box** (overlay-plane extraction).
-3. **Print SCP** (provider role) if server-side is needed.
+**Done 2026-07-22 (Milestones C–E + Milestone D test harness):**
+- ✅ Milestone C (interop): unconditional image-box attributes, single-association
+  `printWithTemplate` rework (PS3.4 H.4), Explicit-VR-only negotiation (later
+  superseded by full Implicit VR support), DIMSE receive timeout with abort-to-unblock.
+- ✅ Milestone D: `dicom-print` target permanently enabled; `MockPrintSCP` harness +
+  integration tests (happy path, multi-film, failure injection with error detail,
+  defensive Film Session N-DELETE, timeout, zero-context rejection, interleaved and
+  release-window events, omitted job UID, printer status).
+- ✅ Milestone E: P2/P3 hardening + CLI ergonomics (`--check-status`, `--verify`,
+  `--film-destination`, extra film sizes, JSON result contract, port validation).
+
+**Done 2026-07-24 (post-plan items 1–7):** palette color printing, packed 4:2:2 YBR,
+explicit `--window-center`/`--window-width`, `--bit-depth 8|12|16`, full Implicit VR LE
+(serialize + parse per negotiated syntax), `--magnification none`, spawn-based CLI
+end-to-end tests (`PrintCLIEndToEndTests`).
+
+**Done 2026-07-27:** fixed the pre-existing `CommitmentNotificationListener.waitForResult`
+hang (plus two unmasked failures: keychain identity label matching, store-and-forward
+drain-race test) — full `DICOMNetworkTests` now gates green.
+
+**Remaining (out of scope, tracked in DICOM_PRINT_ENHANCEMENT_PLAN.md):**
+1. **VOI LUT box + full Overlay Box** (overlay-plane extraction from 60xx groups).
+2. **Print SCP** (provider role) if server-side is needed.
+3. Presentation LUT *Data* variant (only LUT Shape is implemented).
 4. Optionally surface `PrintQueue` / `PrinterRegistry` via CLI commands.
+5. Real-hardware printer validation.
