@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### DICOM Print — post-plan pending work (items 1–7)
+
+- **Palette color printing:** PALETTE COLOR sources are mapped through the data
+  set's Red/Green/Blue palette LUTs to RGB (or luminance grayscale); a missing
+  LUT module produces a clear error instead of `notYetImplemented`.
+- **Uncompressed subsampled YBR:** packed YBR_FULL_422 (full range) and
+  YBR_PARTIAL_422 (BT.601 studio range) frames are chroma-upsampled and
+  converted to RGB; 4:2:0/ICT/RCT remain rejected (never occur uncompressed).
+- **Deep grayscale output:** `--bit-depth 8|12|16` — depths above 8 emit
+  little-endian 16-bit-allocated P-Values with matching Bits Stored/High Bit.
+- **Explicit VOI window:** `--window-center`/`--window-width` override the
+  data set's window.
+- **Full Implicit VR LE support:** print presentation contexts propose
+  Explicit VR LE with Implicit VR LE fallback, and both serialization and all
+  response parsers honor the negotiated syntax — implicit-only printers now
+  work end-to-end (verified against the mock SCP in both syntaxes).
+- **`--magnification none`** exposed (library case existed).
+- **Spawn-based CLI end-to-end tests:** `PrintCLIEndToEndTests` runs the built
+  `dicom-print` binary — version/validation exit codes, dry-run behavior, the
+  JSON stdout contract, and a full print + failure path against the in-process
+  mock Print SCP.
+
 ### DICOM Network — release-window P-DATA tolerance (print plan P2-7)
 
 - **`Association.release()` no longer aborts on a late P-DATA PDU:** a message

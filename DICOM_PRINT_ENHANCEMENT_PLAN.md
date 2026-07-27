@@ -26,10 +26,15 @@ mock Print SCP. Work landed as local commits on
 `CommandSetTests` / `DICOMFilePixelDataYBRDecodeTests`; `dicom-print` builds with zero
 warnings as an enabled Package.swift product.
 
-**Open items (beyond the 20 plan items, all tracked in Out of Scope / test matrix):**
-spawn-based CLI end-to-end tests; the pre-existing `StorageCommitmentServiceTests` hang
-blocking full-suite CI gating; subsampled-YBR support (needs DICOMCore work).
-The `dicom-print`-target decision was made 2026-07-22: enabled, owner approved.
+**Post-plan pending work (items 1–7) — done 2026-07-22:** palette color, uncompressed
+4:2:2 YBR (full + partial range), `--window-center/--window-width`, `--bit-depth 8|12|16`,
+full Implicit VR LE support (supersedes the P1-3 Explicit-only decision — both directions
+honor the negotiated syntax), `--magnification none`, and spawn-based CLI end-to-end tests
+(`PrintCLIEndToEndTests`, 6 tests running the built binary against the mock SCP).
+
+**Sole remaining known issue:** the pre-existing `StorageCommitmentServiceTests` hang that
+blocks full-suite CI gating (not a print defect). The `dicom-print`-target decision was
+made 2026-07-22: enabled, owner approved.
 
 This plan turns the audit findings into a prioritized, implementable backlog. Each item lists
 the problem, the target files, the change, and acceptance criteria + tests. Current SCU
@@ -189,12 +194,11 @@ they each use a separate association.
 **Acceptance:** template + progress prints complete within one association (verify with mock SCP association count = 1).
 **Tests:** mock SCP asserts a single A-ASSOCIATE per print job.
 
-### ✅ P1-3. Honor the negotiated transfer syntax — **resolved 2026-07-22 (Explicit-VR-only decision)**
-*(Took the documented-limitation route: all print presentation contexts now propose
-**Explicit VR LE only**, so an implicit-only SCP cleanly rejects negotiation instead of
-receiving mis-encoded data, and the Explicit-VR byte-scanning response parsers are always
-valid. Full Implicit-VR support (serialize + parse) remains possible future work if a real
-printer requires it.)*
+### ✅ P1-3. Honor the negotiated transfer syntax — **fully done 2026-07-22**
+*(Initially resolved as Explicit-VR-only; superseded the same day by full support: contexts
+propose Explicit VR LE with Implicit VR LE fallback, and an `explicitVR` flag from the
+negotiated syntax drives both serialization (`serializeElements`/`DICOMWriter`) and every
+response parser. Verified end-to-end against an implicit-only mock SCP.)*
 **Problem:** Data sets are always serialized Explicit VR LE regardless of what the SCP accepted.
 A printer that accepts only Implicit VR LE gets mis-encoded data. **The gap is two-sided:** all
 response parsing (`parsePrinterStatus` once implemented, `parsePrintJobStatus`,
@@ -223,7 +227,10 @@ racing receive against a `Task.sleep`; on expiry, abort + throw a timeout error.
 **Acceptance:** an SCP that accepts then stalls → tool errors within the timeout, no hang.
 **Tests:** mock SCP that never answers N-CREATE → assert timeout error.
 
-### ✅ P1-5. Color-space conversion + color/mode validation — **done 2026-07-21** *(with one carve-out)*
+### ✅ P1-5. Color-space conversion + color/mode validation — **done 2026-07-21; carve-out closed 2026-07-22**
+*(Update: the subsampled-YBR carve-out below was closed in the post-plan work — packed
+YBR_FULL_422/YBR_PARTIAL_422 frames are now chroma-upsampled and converted to RGB in
+`ImagePreprocessor`, with unit tests for full- and studio-range conversion.)*
 *(YBR_FULL→RGB conversion implemented in `ImagePreprocessor`; RGB→grayscale for grayscale mode
 already existed and is now wired via the default preprocessing path. Carve-out: uncompressed
 **subsampled** YBR (YBR_FULL_422 etc.) is explicitly rejected with a clear error rather than
@@ -320,7 +327,7 @@ before printing and fails with a clear message when the AE does not respond corr
 | Error detail | Error Comment / Error ID surfaced, offending elements decoded | ✅ unit tests done |
 | Pixels | MONOCHROME1 inversion (8-bit + 16-bit, un-quarantined), windowed output | ✅ unit tests done |
 | Multi-frame | frame selection, out-of-range rejection | ✅ unit tests done |
-| Color | uncompressed YBR_FULL→RGB, subsampled-YBR rejection | ✅ unit tests done |
+| Color | uncompressed YBR_FULL→RGB, packed 4:2:2 full/partial-range conversion, palette color | ✅ unit tests done |
 | Descriptors | workflow + setImageBox refuse missing descriptors before network | ✅ unit tests done |
 | Layout | template Image Display Format → PrintLayout (incl. malformed fallback) | ✅ unit tests done |
 | Scoped UIDs | annotation-box vs image-box UID separation | ✅ unit tests done |
@@ -332,7 +339,8 @@ before printing and fails with a clear message when the AE does not respond corr
 | Events | interleaved N-EVENT-REPORT mid-workflow + during the release window | ✅ integration tests done |
 | Multi-film | 3 images on 2×1 → 2 film boxes, one association | ✅ integration test done |
 | Job UID | omitted Print Job UID not recorded (P2-4) | ✅ integration test done |
-| CLI | exit codes end-to-end via a spawned binary; JSON contract assertions | ⏳ open (target now builds in CI; spawn-based CLI tests not yet written) |
+| CLI | exit codes, dry-run, validation, JSON contract via the spawned binary + mock SCP | ✅ e2e tests done (`PrintCLIEndToEndTests`) |
+| Encoding | implicit-only SCP: full print + status round-trip in Implicit VR LE | ✅ integration tests done |
 
 > Note: full `DICOMNetworkTests` runs currently stall in a pre-existing
 > `StorageCommitmentServiceTests` hang (see Out of Scope) — run print suites with
@@ -363,9 +371,9 @@ before printing and fails with a clear message when the AE does not respond corr
 ## Out of Scope (tracked separately)
 
 - Print SCP (provider) role.
-- Uncompressed subsampled YBR (YBR_FULL_422/PARTIAL) print support — needs packed-4:2:2
-  `bytesPerFrame` modeling in `DICOMCore.PixelDataDescriptor` first (currently rejected
-  with a clear error in the print path).
+- ~~Uncompressed subsampled YBR print support~~ — ✅ done 2026-07-22 (packed-frame slicing
+  and 4:2:2→RGB conversion implemented inside `ImagePreprocessor`; `DICOMCore.bytesPerFrame`
+  deliberately left untouched to avoid renderer/codec blast radius).
 - Known CI hazard (found 2026-07-21): a `StorageCommitmentServiceTests` case hangs
   indefinitely when run in this environment — full `DICOMNetworkTests` runs stall after
   ~880 green tests. Investigate/quarantine before wiring the suite into a CI gate (P3-4).

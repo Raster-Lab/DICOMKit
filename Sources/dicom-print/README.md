@@ -105,7 +105,7 @@ dicom-print remove-printer --name radiology-printer
 |--------|-------------|
 | `--copies` | Number of copies (default: 1) |
 | `--film-size` | Film size: 8x10, 8.5x11, 10x12, 10x14, 11x14, 11x17, 14x14, 14x17, 24x24cm, 24x30cm, a4, a3 |
-| `--magnification` | Magnification type: replicate, bilinear, cubic (default: replicate) |
+| `--magnification` | Magnification type: replicate, bilinear, cubic, none (default: replicate) |
 | `--film-destination` | Film destination: magazine, processor, bin-1, bin-2 (default: processor) |
 | `--check-status` | Query printer status first; abort on FAILURE, warn on WARNING |
 | `--verify` | C-ECHO connectivity check against the printer before printing |
@@ -118,6 +118,8 @@ dicom-print remove-printer --name radiology-printer
 | `--frame` | 1-based frame to print from multi-frame files (default: 1) |
 | `--all-frames` | Print every frame of multi-frame files (one image box per frame) |
 | `--raw` | Send stored pixel values without preprocessing (compressed sources are still decoded) |
+| `--window-center` / `--window-width` | Explicit VOI window (paired; overrides the data set's window) |
+| `--bit-depth` | Grayscale output depth: 8, 12, or 16 (default: 8) |
 | `--presentation-lut` | Presentation LUT shape: identity, inverse, lin-od (default: none) |
 | `--annotate` | Annotation text on the film (repeatable; requires `--annotation-format`) |
 | `--annotation-format` | Printer-configured Annotation Display Format ID |
