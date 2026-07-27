@@ -2562,6 +2562,38 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertFalse(status.isNormal)
     }
 
+    /// Builds an Implicit VR LE element: [tag(4)][length(4)][value].
+    private func implicitElement(_ group: UInt16, _ element: UInt16, _ value: String) -> Data {
+        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        var v = value.data(using: .ascii)!
+        if v.count % 2 != 0 { v.append(0x20) }
+        return le16(group) + le16(element) + le32(UInt32(v.count)) + v
+    }
+
+    func testParsePrinterStatusImplicitVR() {
+        let data = implicitElement(0x2110, 0x0010, "WARNING")
+            + implicitElement(0x2110, 0x0020, "SUPPLY LOW")
+            + implicitElement(0x2110, 0x0030, "LASER1")
+        let status = DICOMPrintService.parsePrinterStatus(from: data, explicitVR: false)
+        XCTAssertEqual(status.status, "WARNING")
+        XCTAssertEqual(status.statusInfo, "SUPPLY LOW")
+        XCTAssertEqual(status.printerName, "LASER1")
+    }
+
+    func testParseReferencedSOPInstanceUIDsImplicitVR() {
+        func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
+        // Implicit VR: UI element is [tag][len32][value]; SQ is [tag][len32][items].
+        let ui = le16(0x0008) + le16(0x1155) + le32(6) + "1.2.10".data(using: .ascii)!
+        let item = le16(0xFFFE) + le16(0xE000) + le32(UInt32(ui.count)) + ui
+        let seq = le16(0x2010) + le16(0x0510) + le32(UInt32(item.count)) + item
+
+        let uids = DICOMPrintService.parseReferencedSOPInstanceUIDs(
+            from: seq, withinSequence: .referencedImageBoxSequence, explicitVR: false)
+        XCTAssertEqual(uids, ["1.2.10"])
+    }
+
     func testParsePrinterStatusEmptyData() {
         let status = DICOMPrintService.parsePrinterStatus(from: Data())
         XCTAssertEqual(status.status, "UNKNOWN")

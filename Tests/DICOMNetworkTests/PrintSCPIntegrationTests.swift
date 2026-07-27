@@ -237,6 +237,47 @@ final class PrintSCPIntegrationTests: XCTestCase {
         }
     }
 
+    // MARK: - Implicit VR LE printer (P1-3 full support)
+
+    func testImplicitVROnlySCPPrintsSuccessfully() async throws {
+        var behavior = MockPrintSCPBehavior()
+        behavior.acceptOnlyImplicitVR = true
+        let scp = MockPrintSCP(behavior: behavior)
+        try await scp.start()
+        defer { Task { await scp.stop() } }
+
+        let (pixels, descriptor) = makeImage()
+        let result = try await DICOMPrintService.printImages(
+            configuration: makeConfiguration(port: await scp.port),
+            images: [pixels],
+            imageDescriptors: [descriptor]
+        )
+
+        // The whole round-trip runs Implicit VR LE: film-session/box N-CREATEs
+        // (serialized implicit) and the film-box response's Referenced Image
+        // Box Sequence (parsed implicit) must all work.
+        XCTAssertTrue(result.success)
+        XCTAssertEqual(result.printJobUID, "1.2.826.0.1.3680043.9.mock.job.1")
+        let released = await scp.releasedCleanly
+        XCTAssertTrue(released)
+    }
+
+    func testImplicitVROnlySCPPrinterStatus() async throws {
+        var behavior = MockPrintSCPBehavior()
+        behavior.acceptOnlyImplicitVR = true
+        behavior.printerStatus = "FAILURE"
+        behavior.printerStatusInfo = "OUT OF FILM"
+        let scp = MockPrintSCP(behavior: behavior)
+        try await scp.start()
+        defer { Task { await scp.stop() } }
+
+        let status = try await DICOMPrintService.getPrinterStatus(
+            configuration: makeConfiguration(port: await scp.port))
+
+        XCTAssertEqual(status.status, "FAILURE")
+        XCTAssertEqual(status.statusInfo, "OUT OF FILM")
+    }
+
     // MARK: - Printer status (P0-3 end-to-end)
 
     func testGetPrinterStatusWarning() async throws {

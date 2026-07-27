@@ -2090,14 +2090,12 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            // Explicit VR LE only, by design: the print service serializes and
-            // parses Explicit VR LE exclusively (all response parsers are
-            // Explicit VR byte-scanners). Proposing Implicit VR here would let
-            // an implicit-only SCP accept a syntax we then mis-encode — better
-            // to fail negotiation cleanly. Documented conformance limitation
-            // (enhancement plan P1-3).
+            // Explicit VR LE preferred; Implicit VR LE accepted as fallback.
+            // Serialization and response parsing both honor the negotiated
+            // syntax (see the explicitVR flag threaded from the association).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2124,6 +2122,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
             
             // Send N-GET request for Printer SOP Instance
             let request = NGetRequest(
@@ -2164,7 +2166,7 @@ public enum DICOMPrintService {
                     
                     // Parse printer attributes from response data set
                     if let dataSetData = message.dataSet {
-                        let printerStatus = parsePrinterStatus(from: dataSetData)
+                        let printerStatus = parsePrinterStatus(from: dataSetData, explicitVR: explicitVR)
                         try await association.release()
                         return printerStatus
                     }
@@ -2199,14 +2201,14 @@ public enum DICOMPrintService {
     /// Printer Name (2110,0030), and — when the SCP returns them — Manufacturer
     /// (0008,0070) and Manufacturer Model Name (0008,1090). Reference: PS3.3 C.13.9.
     /// `internal` (not private) for unit-test access.
-    static func parsePrinterStatus(from data: Data) -> PrinterStatus {
-        let status = extractStringValue(from: data, group: 0x2110, element: 0x0010) ?? "UNKNOWN"
+    static func parsePrinterStatus(from data: Data, explicitVR: Bool = true) -> PrinterStatus {
+        let status = extractStringValue(from: data, group: 0x2110, element: 0x0010, explicitVR: explicitVR) ?? "UNKNOWN"
         return PrinterStatus(
             status: status,
-            statusInfo: extractStringValue(from: data, group: 0x2110, element: 0x0020),
-            printerName: extractStringValue(from: data, group: 0x2110, element: 0x0030),
-            manufacturer: extractStringValue(from: data, group: 0x0008, element: 0x0070),
-            manufacturerModelName: extractStringValue(from: data, group: 0x0008, element: 0x1090)
+            statusInfo: extractStringValue(from: data, group: 0x2110, element: 0x0020, explicitVR: explicitVR),
+            printerName: extractStringValue(from: data, group: 0x2110, element: 0x0030, explicitVR: explicitVR),
+            manufacturer: extractStringValue(from: data, group: 0x0008, element: 0x0070, explicitVR: explicitVR),
+            manufacturerModelName: extractStringValue(from: data, group: 0x0008, element: 0x1090, explicitVR: explicitVR)
         )
     }
     
@@ -2279,14 +2281,12 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            // Explicit VR LE only, by design: the print service serializes and
-            // parses Explicit VR LE exclusively (all response parsers are
-            // Explicit VR byte-scanners). Proposing Implicit VR here would let
-            // an implicit-only SCP accept a syntax we then mis-encode — better
-            // to fail negotiation cleanly. Documented conformance limitation
-            // (enhancement plan P1-3).
+            // Explicit VR LE preferred; Implicit VR LE accepted as fallback.
+            // Serialization and response parsing both honor the negotiated
+            // syntax (see the explicitVR flag threaded from the association).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2305,6 +2305,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
             
             // Build data set with Film Session attributes
             var elements: [DataElement] = []
@@ -2347,7 +2351,7 @@ public enum DICOMPrintService {
             }
             
             // Encode data set
-            let dataSetData = serializeElements(elements)
+            let dataSetData = serializeElements(elements, explicitVR: explicitVR)
             
             // Send N-CREATE request for Film Session
             let request = NCreateRequest(
@@ -2424,14 +2428,12 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            // Explicit VR LE only, by design: the print service serializes and
-            // parses Explicit VR LE exclusively (all response parsers are
-            // Explicit VR byte-scanners). Proposing Implicit VR here would let
-            // an implicit-only SCP accept a syntax we then mis-encode — better
-            // to fail negotiation cleanly. Documented conformance limitation
-            // (enhancement plan P1-3).
+            // Explicit VR LE preferred; Implicit VR LE accepted as fallback.
+            // Serialization and response parsing both honor the negotiated
+            // syntax (see the explicitVR flag threaded from the association).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2450,6 +2452,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
             
             // Build data set with Film Box attributes
             var elements: [DataElement] = []
@@ -2519,7 +2525,7 @@ public enum DICOMPrintService {
                 DataElement.string(tag: .referencedSOPInstanceUID, vr: .UI, value: filmSessionUID)
             ])
             
-            let writer = DICOMWriter()
+            let writer = DICOMWriter(explicitVR: explicitVR)
             let seqItemsData = writer.serializeSequenceItem(sessionSequenceItem)
             elements.append(DataElement(
                 tag: .referencedFilmSessionSequence,
@@ -2530,7 +2536,7 @@ public enum DICOMPrintService {
             ))
             
             // Encode data set
-            let dataSetData = serializeElements(elements)
+            let dataSetData = serializeElements(elements, explicitVR: explicitVR)
             
             // Send N-CREATE request for Film Box
             let request = NCreateRequest(
@@ -2576,7 +2582,7 @@ public enum DICOMPrintService {
                     // Parse Image Box UIDs from response data set
                     var imageBoxUIDs: [String] = []
                     if let dataSetData = message.dataSet {
-                        imageBoxUIDs = parseImageBoxUIDs(from: dataSetData)
+                        imageBoxUIDs = parseImageBoxUIDs(from: dataSetData, explicitVR: explicitVR)
                     }
                     
                     // Calculate expected number of image boxes from format
@@ -2603,8 +2609,9 @@ public enum DICOMPrintService {
     /// Scoped to the Referenced Image Box Sequence (2010,0510) — a whole-data-set
     /// scan for (0008,1155) would also pick up annotation-box or presentation-LUT
     /// references and mis-attribute them as image boxes (enhancement plan P2-2).
-    private static func parseImageBoxUIDs(from data: Data) -> [String] {
-        parseReferencedSOPInstanceUIDs(from: data, withinSequence: .referencedImageBoxSequence)
+    private static func parseImageBoxUIDs(from data: Data, explicitVR: Bool = true) -> [String] {
+        parseReferencedSOPInstanceUIDs(from: data, withinSequence: .referencedImageBoxSequence,
+                                       explicitVR: explicitVR)
     }
 
     /// Extracts Referenced SOP Instance UIDs (0008,1155) that live *inside* a
@@ -2613,7 +2620,8 @@ public enum DICOMPrintService {
     /// Unlike ``parseImageBoxUIDs`` (which scans the whole data set), this bounds
     /// the search to a single sequence so, for example, annotation-box UIDs are
     /// not confused with image-box UIDs when both sequences are present.
-    static func parseReferencedSOPInstanceUIDs(from data: Data, withinSequence sequenceTag: Tag) -> [String] {
+    static func parseReferencedSOPInstanceUIDs(from data: Data, withinSequence sequenceTag: Tag,
+                                               explicitVR: Bool = true) -> [String] {
         guard data.count >= 8 else { return [] }
 
         return data.withUnsafeBytes { buffer -> [String] in
@@ -2631,8 +2639,17 @@ public enum DICOMPrintService {
                 let element = loadU16(off + 2)
                 if group == sequenceTag.group && element == sequenceTag.element {
                     // Explicit VR: SQ uses [tag(4)][VR(2)][reserved(2)][len(4)].
-                    let length = loadU32(off + 8)
-                    let valueStart = off + 12
+                    // Implicit VR: [tag(4)][len(4)] (PS3.5 §7.1.3).
+                    let length: UInt32
+                    let valueStart: Int
+                    if explicitVR {
+                        guard off + 12 <= count else { return [] }
+                        length = loadU32(off + 8)
+                        valueStart = off + 12
+                    } else {
+                        length = loadU32(off + 4)
+                        valueStart = off + 8
+                    }
                     if length == 0xFFFF_FFFF {
                         windowStart = valueStart
                         windowEnd = count // undefined length → scan to delimiter/end below
@@ -2654,7 +2671,9 @@ public enum DICOMPrintService {
                 // Stop at a Sequence Delimitation Item when length was undefined.
                 if group == 0xFFFE && element == 0xE00D { break }
                 if group == 0x0008 && element == 0x1155 {
-                    let length = Int(loadU16(scan + 6))
+                    // Explicit VR UI: 16-bit length at +6, value at +8.
+                    // Implicit VR: 32-bit length at +4, value at +8.
+                    let length = explicitVR ? Int(loadU16(scan + 6)) : Int(loadU32(scan + 4))
                     guard length > 0, length < 256, scan + 8 + length <= windowEnd else { break }
                     let valueData = Data(bytes: buffer.baseAddress!.advanced(by: scan + 8), count: length)
                     if let uid = String(data: valueData, encoding: .ascii)?
@@ -2678,6 +2697,7 @@ public enum DICOMPrintService {
         shape: PresentationLUTShape,
         messageID: inout UInt16,
         timeout: TimeInterval = 30,
+        explicitVR: Bool = true,
         eventHandler: PrintEventHandler?
     ) async throws -> String {
         let elements = [
@@ -2696,7 +2716,7 @@ public enum DICOMPrintService {
             association: association,
             negotiated: negotiated,
             commandSet: request.commandSet,
-            dataSet: serializeElements(elements),
+            dataSet: serializeElements(elements, explicitVR: explicitVR),
             presentationContextID: 1,
             timeout: timeout,
             eventHandler: eventHandler
@@ -2753,7 +2773,8 @@ public enum DICOMPrintService {
             id: 1,
             abstractSyntax: sopClassUID,
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
 
@@ -2772,6 +2793,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
             
             // Build data set with Image Box attributes
             var elements: [DataElement] = []
@@ -2825,7 +2850,7 @@ public enum DICOMPrintService {
                 seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
 
                 let sequenceItem = SequenceItem(elements: seqElements)
-                let writer = DICOMWriter()
+                let writer = DICOMWriter(explicitVR: explicitVR)
                 let seqItemsData = writer.serializeSequenceItem(sequenceItem)
                 elements.append(DataElement(
                     tag: .preformattedGrayscaleImageSequence,
@@ -2851,7 +2876,7 @@ public enum DICOMPrintService {
                 seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: pixelData))
 
                 let sequenceItem = SequenceItem(elements: seqElements)
-                let writer = DICOMWriter()
+                let writer = DICOMWriter(explicitVR: explicitVR)
                 let seqItemsData = writer.serializeSequenceItem(sequenceItem)
                 elements.append(DataElement(
                     tag: .preformattedColorImageSequence,
@@ -2863,7 +2888,7 @@ public enum DICOMPrintService {
             }
             
             // Encode data set
-            let dataSetData = serializeElements(elements)
+            let dataSetData = serializeElements(elements, explicitVR: explicitVR)
             
             // Send N-SET request for Image Box
             let request = NSetRequest(
@@ -2934,14 +2959,12 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            // Explicit VR LE only, by design: the print service serializes and
-            // parses Explicit VR LE exclusively (all response parsers are
-            // Explicit VR byte-scanners). Proposing Implicit VR here would let
-            // an implicit-only SCP accept a syntax we then mis-encode — better
-            // to fail negotiation cleanly. Documented conformance limitation
-            // (enhancement plan P1-3).
+            // Explicit VR LE preferred; Implicit VR LE accepted as fallback.
+            // Serialization and response parsing both honor the negotiated
+            // syntax (see the explicitVR flag threaded from the association).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -2960,6 +2983,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
             
             // Send N-ACTION request for Film Box with Action Type ID = 1 (Print)
             // Note: N-ACTION Print typically does not include a data set
@@ -3040,14 +3067,12 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            // Explicit VR LE only, by design: the print service serializes and
-            // parses Explicit VR LE exclusively (all response parsers are
-            // Explicit VR byte-scanners). Proposing Implicit VR here would let
-            // an implicit-only SCP accept a syntax we then mis-encode — better
-            // to fail negotiation cleanly. Documented conformance limitation
-            // (enhancement plan P1-3).
+            // Explicit VR LE preferred; Implicit VR LE accepted as fallback.
+            // Serialization and response parsing both honor the negotiated
+            // syntax (see the explicitVR flag threaded from the association).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -3066,6 +3091,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
             
             // Send N-DELETE request for Film Session
             let request = NDeleteRequest(
@@ -3135,14 +3164,12 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            // Explicit VR LE only, by design: the print service serializes and
-            // parses Explicit VR LE exclusively (all response parsers are
-            // Explicit VR byte-scanners). Proposing Implicit VR here would let
-            // an implicit-only SCP accept a syntax we then mis-encode — better
-            // to fail negotiation cleanly. Documented conformance limitation
-            // (enhancement plan P1-3).
+            // Explicit VR LE preferred; Implicit VR LE accepted as fallback.
+            // Serialization and response parsing both honor the negotiated
+            // syntax (see the explicitVR flag threaded from the association).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -3161,6 +3188,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
             
             // Send N-GET request for Print Job SOP Instance
             let request = NGetRequest(
@@ -3201,7 +3232,7 @@ public enum DICOMPrintService {
                     
                     // Parse print job attributes from response data set
                     if let dataSetData = message.dataSet {
-                        let printJobStatus = parsePrintJobStatus(from: dataSetData, printJobUID: printJobUID)
+                        let printJobStatus = parsePrintJobStatus(from: dataSetData, printJobUID: printJobUID, explicitVR: explicitVR)
                         try await association.release()
                         return printJobStatus
                     }
@@ -3221,24 +3252,23 @@ public enum DICOMPrintService {
     }
     
     /// Parses print job status from response data
-    private static func parsePrintJobStatus(from data: Data, printJobUID: String) -> PrintJobStatus {
-        // Parse raw Explicit VR Little Endian binary data to extract Print Job attributes
-        
+    private static func parsePrintJobStatus(from data: Data, printJobUID: String,
+                                            explicitVR: Bool = true) -> PrintJobStatus {
         // Extract Execution Status (2100,0020) - CS
-        let executionStatus = extractStringValue(from: data, group: 0x2100, element: 0x0020) ?? "UNKNOWN"
-        
+        let executionStatus = extractStringValue(from: data, group: 0x2100, element: 0x0020, explicitVR: explicitVR) ?? "UNKNOWN"
+
         // Extract Execution Status Info (2100,0030) - CS (optional)
-        let executionStatusInfo = extractStringValue(from: data, group: 0x2100, element: 0x0030)
-        
+        let executionStatusInfo = extractStringValue(from: data, group: 0x2100, element: 0x0030, explicitVR: explicitVR)
+
         // Extract Creation Date (2100,0040) - DA (optional)
         var creationDate: Date? = nil
-        if let dateString = extractStringValue(from: data, group: 0x2100, element: 0x0040) {
+        if let dateString = extractStringValue(from: data, group: 0x2100, element: 0x0040, explicitVR: explicitVR) {
             creationDate = parseDICOMDate(dateString)
         }
-        
+
         // Extract Creation Time (2100,0050) - TM (optional)
         var creationTime: Date? = nil
-        if let timeString = extractStringValue(from: data, group: 0x2100, element: 0x0050) {
+        if let timeString = extractStringValue(from: data, group: 0x2100, element: 0x0050, explicitVR: explicitVR) {
             creationTime = parseDICOMTime(timeString)
         }
         
@@ -3274,8 +3304,8 @@ public enum DICOMPrintService {
     /// Serializes an array of DataElements into raw Explicit VR Little Endian binary data
     /// - Parameter elements: Array of data elements to serialize (will be sorted by tag)
     /// - Returns: Serialized data set as Data
-    private static func serializeElements(_ elements: [DataElement]) -> Data {
-        let writer = DICOMWriter()
+    private static func serializeElements(_ elements: [DataElement], explicitVR: Bool = true) -> Data {
+        let writer = DICOMWriter(explicitVR: explicitVR)
         var data = Data()
         for element in elements.sorted(by: { $0.tag < $1.tag }) {
             data.append(writer.serializeElement(element))
@@ -3289,38 +3319,46 @@ public enum DICOMPrintService {
     ///   - group: Tag group number
     ///   - element: Tag element number
     /// - Returns: The string value if found, nil otherwise
-    private static func extractStringValue(from data: Data, group: UInt16, element: UInt16) -> String? {
+    private static func extractStringValue(from data: Data, group: UInt16, element: UInt16,
+                                           explicitVR: Bool = true) -> String? {
         guard data.count >= 8 else { return nil }
-        
+
         return data.withUnsafeBytes { buffer -> String? in
             var offset = 0
-            
+
             while offset + 8 <= buffer.count {
                 let g = buffer.load(fromByteOffset: offset, as: UInt16.self).littleEndian
                 let e = buffer.load(fromByteOffset: offset + 2, as: UInt16.self).littleEndian
-                
-                // Read VR (2 bytes ASCII)
-                guard offset + 6 <= buffer.count else { break }
-                let vrByte0 = buffer.load(fromByteOffset: offset + 4, as: UInt8.self)
-                let vrByte1 = buffer.load(fromByteOffset: offset + 5, as: UInt8.self)
-                let vrString = String(UnicodeScalar(vrByte0)) + String(UnicodeScalar(vrByte1))
-                
-                // Determine length field size based on VR
-                let uses32BitLength = ["OB", "OD", "OF", "OL", "OW", "SQ", "UC", "UN", "UR", "UT"].contains(vrString)
+
                 let headerSize: Int
                 let valueLength: Int
-                
-                if uses32BitLength {
-                    guard offset + 12 <= buffer.count else { break }
-                    // 2 reserved bytes + 4 byte length
-                    valueLength = Int(buffer.load(fromByteOffset: offset + 8, as: UInt32.self).littleEndian)
-                    headerSize = 12
+
+                if explicitVR {
+                    // Read VR (2 bytes ASCII)
+                    guard offset + 6 <= buffer.count else { break }
+                    let vrByte0 = buffer.load(fromByteOffset: offset + 4, as: UInt8.self)
+                    let vrByte1 = buffer.load(fromByteOffset: offset + 5, as: UInt8.self)
+                    let vrString = String(UnicodeScalar(vrByte0)) + String(UnicodeScalar(vrByte1))
+
+                    // Determine length field size based on VR
+                    let uses32BitLength = ["OB", "OD", "OF", "OL", "OW", "SQ", "UC", "UN", "UR", "UT"].contains(vrString)
+
+                    if uses32BitLength {
+                        guard offset + 12 <= buffer.count else { break }
+                        // 2 reserved bytes + 4 byte length
+                        valueLength = Int(buffer.load(fromByteOffset: offset + 8, as: UInt32.self).littleEndian)
+                        headerSize = 12
+                    } else {
+                        guard offset + 8 <= buffer.count else { break }
+                        valueLength = Int(buffer.load(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
+                        headerSize = 8
+                    }
                 } else {
-                    guard offset + 8 <= buffer.count else { break }
-                    valueLength = Int(buffer.load(fromByteOffset: offset + 6, as: UInt16.self).littleEndian)
+                    // Implicit VR LE: [tag(4)][length(4)] (PS3.5 §7.1.3)
+                    valueLength = Int(buffer.loadUnaligned(fromByteOffset: offset + 4, as: UInt32.self).littleEndian)
                     headerSize = 8
                 }
-                
+
                 if g == group && e == element {
                     // Found the target tag - validate length is reasonable (< 1MB)
                     guard valueLength != 0xFFFFFFFF,
@@ -3545,14 +3583,12 @@ public enum DICOMPrintService {
         let presentationContext = try PresentationContext(
             id: 1,
             abstractSyntax: sopClassUID,
-            // Explicit VR LE only, by design: the print service serializes and
-            // parses Explicit VR LE exclusively (all response parsers are
-            // Explicit VR byte-scanners). Proposing Implicit VR here would let
-            // an implicit-only SCP accept a syntax we then mis-encode — better
-            // to fail negotiation cleanly. Documented conformance limitation
-            // (enhancement plan P1-3).
+            // Explicit VR LE preferred; Implicit VR LE accepted as fallback.
+            // Serialization and response parsing both honor the negotiated
+            // syntax (see the explicitVR flag threaded from the association).
             transferSyntaxes: [
-                explicitVRLittleEndianTransferSyntaxUID
+                explicitVRLittleEndianTransferSyntaxUID,
+                implicitVRLittleEndianTransferSyntaxUID
             ]
         )
         
@@ -3573,6 +3609,10 @@ public enum DICOMPrintService {
                 try await association.abort()
                 throw DICOMNetworkError.sopClassNotSupported(sopClassUID)
             }
+
+            // Honor the negotiated transfer syntax for both directions (P1-3 full).
+            let explicitVR = negotiated.acceptedTransferSyntax(forContextID: 1)
+                != implicitVRLittleEndianTransferSyntaxUID
 
             var messageID: UInt16 = 1
             
@@ -3601,7 +3641,7 @@ public enum DICOMPrintService {
                 association: association,
                 negotiated: negotiated,
                 commandSet: sessionRequest.commandSet,
-                dataSet: serializeElements(sessionElements),
+                dataSet: serializeElements(sessionElements, explicitVR: explicitVR),
                 presentationContextID: 1,
                 timeout: configuration.timeout,
                 eventHandler: eventHandler
@@ -3626,6 +3666,7 @@ public enum DICOMPrintService {
                     shape: lutShape,
                     messageID: &lutMessageID,
                     timeout: configuration.timeout,
+                    explicitVR: explicitVR,
                     eventHandler: eventHandler
                 )
             }
@@ -3655,7 +3696,7 @@ public enum DICOMPrintService {
                     DataElement.string(tag: .referencedSOPClassUID, vr: .UI, value: basicFilmSessionSOPClassUID),
                     DataElement.string(tag: .referencedSOPInstanceUID, vr: .UI, value: filmSessionUID)
                 ])
-                let writer = DICOMWriter()
+                let writer = DICOMWriter(explicitVR: explicitVR)
                 let seqItemsData = writer.serializeSequenceItem(sessionSeqItem)
                 filmBoxElements.append(DataElement(
                     tag: .referencedFilmSessionSequence,
@@ -3703,7 +3744,7 @@ public enum DICOMPrintService {
                     association: association,
                     negotiated: negotiated,
                     commandSet: filmBoxRequest.commandSet,
-                    dataSet: serializeElements(filmBoxElements),
+                    dataSet: serializeElements(filmBoxElements, explicitVR: explicitVR),
                     presentationContextID: 1,
                     timeout: configuration.timeout,
                     eventHandler: eventHandler
@@ -3721,7 +3762,7 @@ public enum DICOMPrintService {
                 // Parse Image Box UIDs from response data set
                 var imageBoxUIDs: [String] = []
                 if let dataSetData = filmBoxResponse.dataSet {
-                    imageBoxUIDs = parseImageBoxUIDs(from: dataSetData)
+                    imageBoxUIDs = parseImageBoxUIDs(from: dataSetData, explicitVR: explicitVR)
                 }
                 
                 // ── Step 2b: N-SET Image Boxes ────────────────────────────
@@ -3763,7 +3804,7 @@ public enum DICOMPrintService {
                     seqElements.append(DataElement.data(tag: .pixelData, vr: .OW, data: images[globalIndex]))
                     
                     let imgSeqItem = SequenceItem(elements: seqElements)
-                    let imgWriter = DICOMWriter()
+                    let imgWriter = DICOMWriter(explicitVR: explicitVR)
                     let imgSeqData = imgWriter.serializeSequenceItem(imgSeqItem)
                     
                     let seqTag: Tag = configuration.colorMode == .color
@@ -3790,7 +3831,7 @@ public enum DICOMPrintService {
                         association: association,
                         negotiated: negotiated,
                         commandSet: setRequest.commandSet,
-                        dataSet: serializeElements(imgElements),
+                        dataSet: serializeElements(imgElements, explicitVR: explicitVR),
                         presentationContextID: 1,
                         timeout: configuration.timeout,
                         eventHandler: eventHandler
@@ -3807,7 +3848,8 @@ public enum DICOMPrintService {
                 if annotationsEnabled, let dataSetData = filmBoxResponse.dataSet {
                     let annotationBoxUIDs = parseReferencedSOPInstanceUIDs(
                         from: dataSetData,
-                        withinSequence: .referencedBasicAnnotationBoxSequence
+                        withinSequence: .referencedBasicAnnotationBoxSequence,
+                        explicitVR: explicitVR
                     )
                     for annotation in options.annotations {
                         let idx = Int(annotation.position) - 1
@@ -3831,7 +3873,7 @@ public enum DICOMPrintService {
                             association: association,
                             negotiated: negotiated,
                             commandSet: annRequest.commandSet,
-                            dataSet: serializeElements(annElements),
+                            dataSet: serializeElements(annElements, explicitVR: explicitVR),
                             presentationContextID: 1,
                             timeout: configuration.timeout,
                             eventHandler: eventHandler

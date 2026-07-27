@@ -47,6 +47,9 @@ struct MockPrintSCPBehavior: Sendable {
     /// Reject every proposed presentation context (zero-context tests).
     var rejectAllContexts: Bool = false
 
+    /// Accept only Implicit VR LE (implicit-only printer emulation, P1-3 full).
+    var acceptOnlyImplicitVR: Bool = false
+
     /// Printer status returned by N-GET (2110,0010 / 0020 / 0030).
     var printerStatus: String = "NORMAL"
     var printerStatusInfo: String? = nil
@@ -160,6 +163,7 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
     private let owner: MockPrintSCP
     private var assembler = MessageAssembler()
     private var maxPDUSize: UInt32 = 16384
+    private var negotiatedExplicitVR = true
 
     init(connection: NWConnection, behavior: MockPrintSCPBehavior, owner: MockPrintSCP) {
         self.connection = connection
@@ -204,10 +208,17 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
             if behavior.rejectAllContexts {
                 return AcceptedPresentationContext(id: context.id, result: .abstractSyntaxNotSupported)
             }
-            guard let ts = context.transferSyntaxes.first else {
+            let ts: String?
+            if behavior.acceptOnlyImplicitVR {
+                ts = context.transferSyntaxes.first { $0 == implicitVRLittleEndianTransferSyntaxUID }
+            } else {
+                ts = context.transferSyntaxes.first
+            }
+            guard let selected = ts else {
                 return AcceptedPresentationContext(id: context.id, result: .transferSyntaxesNotSupported)
             }
-            return AcceptedPresentationContext(id: context.id, result: .acceptance, transferSyntax: ts)
+            self.negotiatedExplicitVR = selected != implicitVRLittleEndianTransferSyntaxUID
+            return AcceptedPresentationContext(id: context.id, result: .acceptance, transferSyntax: selected)
         }
 
         let accept = AssociateAcceptPDU(
@@ -297,7 +308,8 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
 
         case .nCreateRequest where sopClass == basicFilmBoxSOPClassUID:
             let boxIndex = await owner.nextFilmBoxIndex()
-            let imageBoxCount = imageBoxCount(fromFilmBoxRequest: message.dataSet)
+            let imageBoxCount = imageBoxCount(fromFilmBoxRequest: message.dataSet,
+                                              explicitVR: negotiatedExplicitVR)
             let uids = (1...imageBoxCount).map {
                 "1.2.826.0.1.3680043.9.mock.imagebox.\(boxIndex).\($0)"
             }
@@ -402,7 +414,7 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
         if let name = behavior.printerName {
             elements.append(DataElement.string(tag: Tag(group: 0x2110, element: 0x0030), vr: .LO, value: name))
         }
-        let writer = DICOMWriter()
+        let writer = DICOMWriter(explicitVR: negotiatedExplicitVR)
         var dataSet = Data()
         for element in elements { dataSet.append(writer.serializeElement(element)) }
 
@@ -434,14 +446,20 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
     /// Explicit VR LE Referenced Image Box Sequence (2010,0510) with one item
     /// per UID, each carrying Referenced SOP Instance UID (0008,1155).
     private func referencedImageBoxSequence(uids: [String]) -> Data {
+        let explicitVR = negotiatedExplicitVR
         func le16(_ v: UInt16) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
         func le32(_ v: UInt32) -> Data { withUnsafeBytes(of: v.littleEndian) { Data($0) } }
         func uiElement(_ value: String) -> Data {
             var v = value.data(using: .ascii)!
             if v.count % 2 != 0 { v.append(0x00) }
             var d = le16(0x0008) + le16(0x1155)
-            d.append(contentsOf: [0x55, 0x49]) // "UI"
-            d += le16(UInt16(v.count)) + v
+            if explicitVR {
+                d.append(contentsOf: [0x55, 0x49]) // "UI"
+                d += le16(UInt16(v.count))
+            } else {
+                d += le32(UInt32(v.count))
+            }
+            d += v
             return d
         }
         var items = Data()
@@ -450,17 +468,20 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
             items += le16(0xFFFE) + le16(0xE000) + le32(UInt32(content.count)) + content
         }
         var d = le16(0x2010) + le16(0x0510)
-        d.append(contentsOf: [0x53, 0x51]) // "SQ"
-        d += le16(0) // reserved
+        if explicitVR {
+            d.append(contentsOf: [0x53, 0x51]) // "SQ"
+            d += le16(0) // reserved
+        }
         d += le32(UInt32(items.count)) + items
         return d
     }
 
     /// Rows × columns from the film-box N-CREATE's Image Display Format
     /// (2010,0010), "STANDARD\r,c"; defaults to 1.
-    private func imageBoxCount(fromFilmBoxRequest dataSet: Data?) -> Int {
+    private func imageBoxCount(fromFilmBoxRequest dataSet: Data?, explicitVR: Bool) -> Int {
         guard let data = dataSet,
-              let format = Self.extractString(from: data, group: 0x2010, element: 0x0010) else {
+              let format = Self.extractString(from: data, group: 0x2010, element: 0x0010,
+                                              explicitVR: explicitVR) else {
             return 1
         }
         let layout = DICOMPrintService.layout(fromImageDisplayFormat: format)
@@ -468,7 +489,8 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
     }
 
     /// Minimal Explicit VR LE walk for short-form string elements.
-    private static func extractString(from data: Data, group: UInt16, element: UInt16) -> String? {
+    private static func extractString(from data: Data, group: UInt16, element: UInt16,
+                                      explicitVR: Bool = true) -> String? {
         var offset = 0
         let bytes = [UInt8](data)
         let longVRs: Set<String> = ["OB", "OD", "OF", "OL", "OW", "SQ", "UC", "UN", "UR", "UT"]
@@ -479,10 +501,12 @@ private final class MockPrintSCPConnection: @unchecked Sendable {
         }
         while offset + 8 <= bytes.count {
             let g = u16(offset), e = u16(offset + 2)
-            let vr = String(bytes: bytes[(offset + 4)...(offset + 5)], encoding: .ascii) ?? ""
             let headerSize: Int
             let length: Int
-            if longVRs.contains(vr) {
+            if !explicitVR {
+                length = Int(u32(offset + 4))
+                headerSize = 8
+            } else if longVRs.contains(String(bytes: bytes[(offset + 4)...(offset + 5)], encoding: .ascii) ?? "") {
                 guard offset + 12 <= bytes.count else { return nil }
                 length = Int(u32(offset + 8))
                 headerSize = 12
