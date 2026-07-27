@@ -32,9 +32,11 @@ full Implicit VR LE support (supersedes the P1-3 Explicit-only decision — both
 honor the negotiated syntax), `--magnification none`, and spawn-based CLI end-to-end tests
 (`PrintCLIEndToEndTests`, 6 tests running the built binary against the mock SCP).
 
-**Sole remaining known issue:** the pre-existing `StorageCommitmentServiceTests` hang that
-blocks full-suite CI gating (not a print defect). The `dicom-print`-target decision was
-made 2026-07-22: enabled, owner approved.
+**No remaining known issues.** The pre-existing `StorageCommitmentServiceTests` hang was
+root-caused and fixed 2026-07-27 (non-cancellation-aware continuation in
+`CommitmentNotificationListener.waitForResult`); the full `DICOMNetworkTests` suite now
+completes green in ~15 s and can gate CI. The `dicom-print`-target decision was made
+2026-07-22: enabled, owner approved.
 
 This plan turns the audit findings into a prioritized, implementable backlog. Each item lists
 the problem, the target files, the change, and acceptance criteria + tests. Current SCU
@@ -342,10 +344,10 @@ before printing and fails with a clear message when the AE does not respond corr
 | CLI | exit codes, dry-run, validation, JSON contract via the spawned binary + mock SCP | ✅ e2e tests done (`PrintCLIEndToEndTests`) |
 | Encoding | implicit-only SCP: full print + status round-trip in Implicit VR LE | ✅ integration tests done |
 
-> Note: full `DICOMNetworkTests` runs currently stall in a pre-existing
-> `StorageCommitmentServiceTests` hang (see Out of Scope) — run print suites with
-> `swift test --filter 'PrintServiceTests|CommandSetTests|DICOMFilePixelDataYBRDecodeTests'`
-> until that suite is fixed or quarantined.
+> Note: the `StorageCommitmentServiceTests` hang was fixed 2026-07-27 — the full
+> `DICOMNetworkTests` suite (1086 XCTest + 192 swift-testing tests) now completes green
+> in ~15 s and can be used directly for CI gating; the print-only filter is no longer
+> required.
 
 ---
 
@@ -360,9 +362,10 @@ before printing and fails with a clear message when the AE does not respond corr
    approved, zero warnings), MockPrintSCP harness + 10 integration tests covering the
    previously blocked matrix rows (happy path, single association, multi-film, failure
    injection with error detail, defensive cleanup, timeout, zero-context rejection,
-   interleaved events, omitted job UID, printer status). Still open from D's wish list:
-   spawn-based CLI end-to-end tests; fixing/quarantining the hanging
-   `StorageCommitmentServiceTests` case so the *full* `DICOMNetworkTests` suite can gate CI.
+   interleaved events, omitted job UID, printer status). D's wish list has since closed:
+   spawn-based CLI end-to-end tests landed 2026-07-24, and the hanging
+   `StorageCommitmentServiceTests` case was fixed 2026-07-27 — the *full*
+   `DICOMNetworkTests` suite now gates green.
 5. ✅ **Milestone E (polish)** — done 2026-07-22: P2-1/2/3/4/5/7 + P3-1/2/3 all landed
    (P2-3 and P3-2 in the Milestone D commit; P2-7 in the follow-up commit).
 
@@ -374,9 +377,19 @@ before printing and fails with a clear message when the AE does not respond corr
 - ~~Uncompressed subsampled YBR print support~~ — ✅ done 2026-07-22 (packed-frame slicing
   and 4:2:2→RGB conversion implemented inside `ImagePreprocessor`; `DICOMCore.bytesPerFrame`
   deliberately left untouched to avoid renderer/codec blast radius).
-- Known CI hazard (found 2026-07-21): a `StorageCommitmentServiceTests` case hangs
-  indefinitely when run in this environment — full `DICOMNetworkTests` runs stall after
-  ~880 green tests. Investigate/quarantine before wiring the suite into a CI gate (P3-4).
+- ~~Known CI hazard (found 2026-07-21): a `StorageCommitmentServiceTests` case hangs
+  indefinitely~~ — ✅ fixed 2026-07-27. Root cause: `CommitmentNotificationListener.waitForResult`
+  raced a timeout against a waiter child whose `withCheckedThrowingContinuation` was not
+  cancellation-aware, so the task group could never drain after the timeout threw
+  (`testCommitmentNotificationListenerWaitForResultTimeout` hung forever). The wait is now a
+  single actor-registered continuation resumed by exactly one of result / timeout / `stop()`.
+  Two further pre-existing failures unmasked by the now-completing suite were also fixed:
+  a drain-race in `StoreAndForwardQueueTests.test_queue_enqueueDrainingThrows` (empty queue
+  finished draining before the enqueue-must-throw assertion; test now holds the queue in
+  `.draining` via `notifyConnectivityLost()`), and `ClientIdentity.loadKeychainIdentity`
+  returning an arbitrary keychain identity because `kSecClassIdentity` queries don't reliably
+  filter on `kSecAttrLabel` (now fetches attributes and matches the label explicitly).
+  Full `DICOMNetworkTests` (1086 + 192 tests) completes green in ~15 s.
 - VOI LUT *Box* and full Overlay Box (overlay-plane extraction from 60xx groups).
 - Presentation LUT *Data* variant (only LUT Shape is implemented).
 - `PrintQueue` / `PrinterRegistry` CLI surface.

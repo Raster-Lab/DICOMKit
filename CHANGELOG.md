@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — DICOMNetwork test-suite hang and unmasked failures (2026-07-27)
+
+- **`CommitmentNotificationListener.waitForResult` hang:** the timeout race used
+  a task group whose waiter child suspended in a non-cancellation-aware
+  continuation, so after the timeout threw the group could never drain —
+  `testCommitmentNotificationListenerWaitForResultTimeout` (and any caller
+  hitting the timeout path) hung forever, stalling full `DICOMNetworkTests`
+  runs after ~880 tests. The wait is now a single continuation registered
+  synchronously on the actor and resumed by exactly one of: result arrival,
+  timeout, or `stop()`. `stop()` also no longer waits on a listener that is
+  already cancelled.
+- **`ClientIdentity` keychain lookup:** `kSecClassIdentity` queries do not
+  reliably filter on `kSecAttrLabel`, so a lookup for a non-existent label
+  could return an arbitrary keychain identity (wrong client certificate). The
+  lookup now fetches attributes for all candidates and matches the label
+  explicitly, throwing `keychainIdentityNotFound` when nothing matches.
+- **`StoreAndForwardQueueTests.test_queue_enqueueDrainingThrows` race:** an
+  empty queue could finish draining (→ `.stopped`) before the test's enqueue
+  ran; the test now holds the queue in `.draining` via
+  `notifyConnectivityLost()` first.
+- Full `DICOMNetworkTests` (1086 XCTest + 192 swift-testing tests) now
+  completes green in ~15 s and can gate CI.
+
 ### DICOM Print — post-plan pending work (items 1–7)
 
 - **Palette color printing:** PALETTE COLOR sources are mapped through the data

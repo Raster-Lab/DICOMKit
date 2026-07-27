@@ -563,27 +563,40 @@ public struct ClientIdentity: @unchecked Sendable, Hashable {
     }
     
     private func loadKeychainIdentity(label: String) throws -> SecIdentity {
+        // kSecClassIdentity queries do not reliably filter on kSecAttrLabel
+        // (the label lives on the certificate half of the identity), so fetch
+        // attributes for all candidates and match the label ourselves.
         let query: [String: Any] = [
             kSecClass as String: kSecClassIdentity,
             kSecAttrLabel as String: label,
-            kSecReturnRef as String: true
+            kSecReturnRef as String: true,
+            kSecReturnAttributes as String: true,
+            kSecMatchLimit as String: kSecMatchLimitAll
         ]
-        
-        var item: CFTypeRef?
-        let status = SecItemCopyMatching(query as CFDictionary, &item)
-        
+
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+
         guard status == errSecSuccess else {
             throw TLSConfigurationError.keychainIdentityNotFound(label: label, status: status)
         }
-        
-        guard item != nil else {
+
+        guard let items = result as? [[String: Any]] else {
             throw TLSConfigurationError.keychainIdentityNotFound(label: label, status: errSecItemNotFound)
         }
-        
-        // The identity is guaranteed to be a SecIdentity when querying with kSecClassIdentity
-        // swiftlint:disable:next force_cast
-        let identity = item as! SecIdentity
-        return identity
+
+        for attributes in items {
+            guard let itemLabel = attributes[kSecAttrLabel as String] as? String,
+                  itemLabel == label,
+                  let identityRef = attributes[kSecValueRef as String] else {
+                continue
+            }
+            // The value ref is guaranteed to be a SecIdentity for kSecClassIdentity
+            // swiftlint:disable:next force_cast
+            return identityRef as! SecIdentity
+        }
+
+        throw TLSConfigurationError.keychainIdentityNotFound(label: label, status: errSecItemNotFound)
     }
 }
 
