@@ -276,7 +276,7 @@ struct SendCommand: ParsableCommand {
     @Option(name: .long, help: "Medium type: paper, clear-film, blue-film (default: paper)")
     var medium: MediumOption = .paper
 
-    @Option(name: .long, help: "Magnification type: replicate, bilinear, cubic (default: replicate)")
+    @Option(name: .long, help: "Magnification type: replicate, bilinear, cubic, none (default: replicate)")
     var magnification: MagnificationOption = .replicate
 
     @Option(name: .long, help: "Film destination: magazine, processor, bin-1, bin-2 (default: processor)")
@@ -302,6 +302,15 @@ struct SendCommand: ParsableCommand {
 
     @Flag(name: .long, help: "Send stored pixel values without preprocessing (no rescale/window/inversion). Compressed sources are still decoded.")
     var raw: Bool = false
+
+    @Option(name: .long, help: "Explicit VOI window center (requires --window-width; overrides the data set's window)")
+    var windowCenter: Double?
+
+    @Option(name: .long, help: "Explicit VOI window width (requires --window-center)")
+    var windowWidth: Double?
+
+    @Option(name: .long, help: "Grayscale output bit depth: 8, 12, or 16 (default: 8; >8 sends 16-bit-allocated P-Values)")
+    var bitDepth: Int = 8
 
     @Option(name: .long, help: "Presentation LUT shape: identity, inverse, lin-od (default: none)")
     var presentationLut: PresentationLUTOption?
@@ -342,6 +351,18 @@ struct SendCommand: ParsableCommand {
         }
         if allFrames && frame != 1 {
             throw ValidationError("--frame and --all-frames are mutually exclusive")
+        }
+        if (windowCenter == nil) != (windowWidth == nil) {
+            throw ValidationError("--window-center and --window-width must be given together")
+        }
+        if let width = windowWidth, width < 1 {
+            throw ValidationError("--window-width must be 1 or greater")
+        }
+        guard [8, 12, 16].contains(bitDepth) else {
+            throw ValidationError("--bit-depth must be 8, 12, or 16")
+        }
+        if raw && (windowCenter != nil || bitDepth != 8) {
+            throw ValidationError("--raw bypasses preprocessing; it cannot be combined with --window-center/--window-width or --bit-depth")
         }
         if !annotate.isEmpty && annotationFormat == nil {
             throw ValidationError("--annotate requires --annotation-format (the printer-configured Annotation Display Format ID)")
@@ -491,6 +512,11 @@ struct SendCommand: ParsableCommand {
         let sendRaw = raw
         let preprocessColorMode = color.preprocessColorMode
         let beVerbose = verbose
+        let outputBitDepth = bitDepth
+        let explicitWindow: WindowSettings? = {
+            guard let center = windowCenter, let width = windowWidth else { return nil }
+            return WindowSettings(center: center, width: width)
+        }()
         let (images, descriptors): ([Data], [PrintImageData]) = try runAsync {
             var imageDataList: [Data] = []
             var descriptorList: [PrintImageData] = []
@@ -547,20 +573,22 @@ struct SendCommand: ParsableCommand {
                             pixelData: pixelData,
                             dataSet: file.dataSet,
                             frameIndex: frameIndex,
-                            colorMode: preprocessColorMode
+                            colorMode: preprocessColorMode,
+                            windowSettings: explicitWindow,
+                            outputBitDepth: outputBitDepth
                         )
                         guard prepared.width <= Int(UInt16.max),
                               prepared.height <= Int(UInt16.max) else {
                             throw ValidationError("Image dimensions out of range in: \(path)")
                         }
-                        let bits = UInt16(prepared.bitsAllocated)
+                        let stored = UInt16(prepared.bitsStored)
                         printImage = PrintImageData(
                             pixelData: prepared.pixelData,
                             rows: UInt16(prepared.height),
                             columns: UInt16(prepared.width),
-                            bitsAllocated: bits,
-                            bitsStored: bits,
-                            highBit: bits > 0 ? bits - 1 : 0,
+                            bitsAllocated: UInt16(prepared.bitsAllocated),
+                            bitsStored: stored,
+                            highBit: stored > 0 ? stored - 1 : 0,
                             samplesPerPixel: UInt16(prepared.samplesPerPixel),
                             pixelRepresentation: 0,
                             photometricInterpretation: prepared.photometricInterpretation
@@ -568,7 +596,7 @@ struct SendCommand: ParsableCommand {
                         if beVerbose {
                             fprintln("Prepared \(path) frame \(frameIndex + 1): "
                                 + "\(prepared.width)x\(prepared.height) "
-                                + "\(prepared.photometricInterpretation) \(prepared.bitsAllocated)-bit")
+                                + "\(prepared.photometricInterpretation) \(prepared.bitsStored)-bit")
                         }
                     }
                     imageDataList.append(printImage.pixelData)
@@ -1138,12 +1166,14 @@ enum MagnificationOption: String, ExpressibleByArgument {
     case replicate
     case bilinear
     case cubic
+    case none
 
     var magnificationType: MagnificationType {
         switch self {
         case .replicate: return .replicate
         case .bilinear: return .bilinear
         case .cubic: return .cubic
+        case .none: return MagnificationType.none
         }
     }
 }

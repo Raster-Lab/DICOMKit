@@ -2750,9 +2750,8 @@ final class PrintServiceTests: XCTestCase {
         }
     }
 
-    func testPrepareForPrintRejectsSubsampledYBR() async throws {
-        // Uncompressed YBR_FULL_422 has a packed layout the frame slicer does not
-        // model — it must be rejected, not mis-converted.
+    func testPrepareForPrintConvertsYBRFull422ToRGB() async throws {
+        // Packed 4:2:2 (Y1 Y2 Cb Cr): both pixels encode pure red at full range.
         let descriptor = PixelDataDescriptor(
             rows: 1, columns: 2, numberOfFrames: 1,
             bitsAllocated: 8, bitsStored: 8, highBit: 7,
@@ -2760,12 +2759,173 @@ final class PrintServiceTests: XCTestCase {
             photometricInterpretation: .ybrFull422,
             planarConfiguration: 0
         )
-        let pixelData = PixelData(data: Data(repeating: 0, count: 6), descriptor: descriptor)
+        let pixelData = PixelData(data: Data([76, 76, 85, 255]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .color)
+
+        XCTAssertEqual(prepared.photometricInterpretation, "RGB")
+        XCTAssertEqual(prepared.pixelData.count, 6) // 2 pixels × RGB
+        for pixel in 0..<2 {
+            XCTAssertGreaterThanOrEqual(prepared.pixelData[pixel * 3], 252, "red channel")
+            XCTAssertLessThanOrEqual(prepared.pixelData[pixel * 3 + 1], 2, "green channel")
+            XCTAssertLessThanOrEqual(prepared.pixelData[pixel * 3 + 2], 2, "blue channel")
+        }
+    }
+
+    func testPrepareForPrintConvertsYBRPartial422StudioRange() async throws {
+        // BT.601 studio range: Y=16 is black, Y=235 is white (neutral chroma).
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 3,
+            photometricInterpretation: .ybrPartial422,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([16, 235, 128, 128]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .color)
+
+        XCTAssertLessThanOrEqual(prepared.pixelData[0], 1)   // black pixel
+        XCTAssertGreaterThanOrEqual(prepared.pixelData[3], 254) // white pixel
+    }
+
+    // MARK: - Bit depth, explicit window, palette color
+
+    func testPrepareForPrint12BitOutput() async throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 2, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0, 80, 160, 240]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0,
+            colorMode: .grayscale, outputBitDepth: 12)
+
+        XCTAssertEqual(prepared.bitsAllocated, 16)
+        XCTAssertEqual(prepared.bitsStored, 12)
+        XCTAssertEqual(prepared.pixelData.count, 8) // 4 px × 2 bytes
+
+        // Little-endian samples; darkest → 0, brightest → 4095.
+        func sample(_ i: Int) -> UInt16 {
+            UInt16(prepared.pixelData[i * 2]) | (UInt16(prepared.pixelData[i * 2 + 1]) << 8)
+        }
+        XCTAssertEqual(sample(0), 0)
+        XCTAssertEqual(sample(3), 4095)
+        XCTAssertTrue((1...2).allSatisfy { sample($0) > 0 && sample($0) < 4095 })
+    }
+
+    func testPrepareForPrintRejectsInvalidBitDepth() async throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 1, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        do {
+            _ = try await preprocessor.prepareForPrint(
+                pixelData: pixelData, dataSet: DataSet(), frameIndex: 0,
+                colorMode: .grayscale, outputBitDepth: 24)
+            XCTFail("Expected unsupportedBitsAllocated")
+        } catch {
+            // expected
+        }
+    }
+
+    func testPrepareForPrintHonorsExplicitWindow() async throws {
+        // Window [100 ± 10]: values ≤90 → black, ≥110 → white.
+        let descriptor = PixelDataDescriptor(
+            rows: 2, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .monochrome2,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0, 90, 110, 255]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+        let prepared = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: DataSet(), frameIndex: 0,
+            colorMode: .grayscale,
+            windowSettings: WindowSettings(center: 100, width: 20))
+
+        XCTAssertEqual(prepared.pixelData[0], 0)
+        XCTAssertLessThanOrEqual(prepared.pixelData[1], 5)
+        XCTAssertGreaterThanOrEqual(prepared.pixelData[2], 250)
+        XCTAssertEqual(prepared.pixelData[3], 255)
+    }
+
+    func testPrepareForPrintPaletteColor() async throws {
+        // 2-entry palette: index 0 → red, index 1 → blue. LUT entries carry
+        // their significant byte in the high byte (PS3.3 C.7.6.3.1.5).
+        var dataSet = DataSet()
+        func descriptorData(entries: UInt16) -> Data {
+            var d = Data()
+            for v in [entries, 0, 16] as [UInt16] {
+                d.append(UInt8(v & 0xFF)); d.append(UInt8(v >> 8))
+            }
+            return d
+        }
+        func lutData(_ values: [UInt16]) -> Data {
+            var d = Data()
+            for v in values { d.append(UInt8(v & 0xFF)); d.append(UInt8(v >> 8)) }
+            return d
+        }
+        dataSet[.redPaletteColorLookupTableDescriptor] = DataElement.data(
+            tag: .redPaletteColorLookupTableDescriptor, vr: .US, data: descriptorData(entries: 2))
+        dataSet[.greenPaletteColorLookupTableDescriptor] = DataElement.data(
+            tag: .greenPaletteColorLookupTableDescriptor, vr: .US, data: descriptorData(entries: 2))
+        dataSet[.bluePaletteColorLookupTableDescriptor] = DataElement.data(
+            tag: .bluePaletteColorLookupTableDescriptor, vr: .US, data: descriptorData(entries: 2))
+        dataSet[.redPaletteColorLookupTableData] = DataElement.data(
+            tag: .redPaletteColorLookupTableData, vr: .OW, data: lutData([0xFF00, 0x0000]))
+        dataSet[.greenPaletteColorLookupTableData] = DataElement.data(
+            tag: .greenPaletteColorLookupTableData, vr: .OW, data: lutData([0x0000, 0x0000]))
+        dataSet[.bluePaletteColorLookupTableData] = DataElement.data(
+            tag: .bluePaletteColorLookupTableData, vr: .OW, data: lutData([0x0000, 0xFF00]))
+
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 2, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .paletteColor,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0, 1]), descriptor: descriptor)
+        let preprocessor = ImagePreprocessor()
+
+        let color = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: dataSet, frameIndex: 0, colorMode: .color)
+        XCTAssertEqual(color.photometricInterpretation, "RGB")
+        XCTAssertEqual([UInt8](color.pixelData), [255, 0, 0, 0, 0, 255])
+
+        let gray = try await preprocessor.prepareForPrint(
+            pixelData: pixelData, dataSet: dataSet, frameIndex: 0, colorMode: .grayscale)
+        XCTAssertEqual(gray.photometricInterpretation, "MONOCHROME2")
+        XCTAssertEqual(gray.pixelData.count, 2)
+    }
+
+    func testPrepareForPrintPaletteColorMissingLUTThrows() async throws {
+        let descriptor = PixelDataDescriptor(
+            rows: 1, columns: 1, numberOfFrames: 1,
+            bitsAllocated: 8, bitsStored: 8, highBit: 7,
+            isSigned: false, samplesPerPixel: 1,
+            photometricInterpretation: .paletteColor,
+            planarConfiguration: 0
+        )
+        let pixelData = PixelData(data: Data([0]), descriptor: descriptor)
         let preprocessor = ImagePreprocessor()
         do {
             _ = try await preprocessor.prepareForPrint(
                 pixelData: pixelData, dataSet: DataSet(), frameIndex: 0, colorMode: .color)
-            XCTFail("Expected unsupported photometric interpretation error")
+            XCTFail("Expected missingPaletteLUT")
         } catch {
             // expected
         }
