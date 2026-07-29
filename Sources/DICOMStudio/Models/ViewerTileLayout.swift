@@ -77,8 +77,13 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
     /// Frames in the source, for the tile's label.
     public var frameCount: Int
 
-    public var windowCenter: Double
-    public var windowWidth: Double
+    /// The tile's window, or `nil` when it has none of its own yet.
+    ///
+    /// `nil` means "whatever this image's own VOI says": a freshly hung series
+    /// has never been windowed by the user, and inventing a value here would
+    /// show it at a window belonging to some other image.
+    public var windowCenter: Double?
+    public var windowWidth: Double?
 
     public var zoom: Double
     public var panX: Double
@@ -100,8 +105,8 @@ public struct ViewerCellState: Sendable, Equatable, Identifiable {
         fileIndex: Int = 0,
         frameIndex: Int = 0,
         frameCount: Int = 1,
-        windowCenter: Double = 128,
-        windowWidth: Double = 256,
+        windowCenter: Double? = nil,
+        windowWidth: Double? = nil,
         zoom: Double = 1,
         panX: Double = 0,
         panY: Double = 0,

@@ -527,26 +527,7 @@ public final class ImageViewerViewModel {
         self.rescaleIntercept = intercept
 
         // Extract window settings from header
-        headerWindowSettings = file.allWindowSettings()
-        if let firstWindow = headerWindowSettings.first {
-            // Header window settings are in output units (post-rescale).
-            // Convert to stored-value space since the renderer operates on raw stored values.
-            if slope != 0 {
-                windowCenter = (firstWindow.center - intercept) / slope
-                windowWidth = firstWindow.width / abs(slope)
-            } else {
-                windowCenter = firstWindow.center
-                windowWidth = firstWindow.width
-            }
-            voiLUTFunction = firstWindow.function.rawValue
-        } else {
-            // No header window settings — auto-calculate from actual pixel data range
-            if let pixData = file.pixelData(),
-               let range = pixData.pixelRange(forFrame: 0) {
-                windowCenter = Double(range.min + range.max) / 2.0
-                windowWidth = max(1.0, Double(range.max - range.min))
-            }
-        }
+        applyDefaultWindow(for: file, slope: slope, intercept: intercept)
 
         // Load modality presets
         let modality = file.dataSet.string(for: .modality) ?? ""
@@ -661,6 +642,47 @@ public final class ImageViewerViewModel {
     }
 
     // MARK: - Window/Level
+
+    /// Adopts a file's own presentation: its header VOI, or the pixel range when
+    /// it declares none.
+    ///
+    /// The renderer works in stored-value space, so header values (which are in
+    /// output units) are converted through the rescale pair.
+    /// The numbers come from ``DICOMImageExporter/determineWindowSettings`` — the
+    /// one window-resolution policy shared with export, the tile cache and the
+    /// film — so a tile and the viewport showing the same image cannot disagree.
+    func applyDefaultWindow(for file: DICOMFile, slope: Double, intercept: Double) {
+        headerWindowSettings = file.allWindowSettings()
+        if let firstWindow = headerWindowSettings.first {
+            voiLUTFunction = firstWindow.function.rawValue
+        }
+        guard let pixData = file.pixelData() else {
+            // No pixels to measure: the header VOI is all there is to go on.
+            guard let firstWindow = headerWindowSettings.first else { return }
+            if slope != 0 {
+                windowCenter = (firstWindow.center - intercept) / slope
+                windowWidth = firstWindow.width / abs(slope)
+            } else {
+                windowCenter = firstWindow.center
+                windowWidth = firstWindow.width
+            }
+            return
+        }
+        let window = DICOMImageExporter.determineWindowSettings(
+            from: file, pixelData: pixData, frameIndex: 0,
+            windowCenter: nil, windowWidth: nil)
+        windowCenter = window.center
+        windowWidth = window.width
+    }
+
+    /// Re-adopts the loaded file's default window, discarding any adjustment.
+    ///
+    /// Used when a tile has no window of its own — a freshly hung series must
+    /// read at its own VOI, not at whatever the previous image was set to.
+    func resetWindowToFileDefault() {
+        guard let file = dicomFile else { return }
+        applyDefaultWindow(for: file, slope: rescaleSlope, intercept: rescaleIntercept)
+    }
 
     /// Applies a window/level preset.
     ///

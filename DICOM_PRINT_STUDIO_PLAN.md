@@ -209,7 +209,9 @@ Things the four steps don't cover but this workflow needs in practice:
 1. **Frame-level marking** (folded into Milestone 2) — without it, cine/multi-frame studies
    can't be printed selectively, and the CLI already supports `--frame`/`--all-frames`.
 2. **Ordering and reordering of marks** — image box position is order-significant on film; a
-   `Set` would randomise the film. Ship a drag-to-reorder tray.
+   `Set` would randomise the film. Ship a drag-to-reorder tray. *(Superseded in §9.3: the
+   ordered model stayed, but film order is taken from the viewer's tile order — the arrangement
+   the film is meant to reproduce — instead of being dragged in a separate tray.)*
 3. **Multi-film spillover** — already implemented in DICOMNetwork; the app only has to *show*
    it. See §6 below for the confirmed behaviour and the one gap it leaves.
 4. **Burn in the viewer's current presentation.** Users expect the film to look like the screen:
@@ -374,8 +376,8 @@ Milestone 5 is held.
   `printer-profiles.json` (§0.1).
 - [PrintSettingsView.swift](Sources/DICOMStudio/Views/Print/PrintSettingsView.swift) — printer
   picker with Test / Status, layout (auto | grid | preset), film size, orientation, copies, the
-  film preview, the reorderable marks tray, and an Advanced disclosure covering the rest of the
-  CLI surface.
+  film preview, the marks tray, and an Advanced disclosure covering the rest of the
+  CLI surface. (Relaid out in §9.3; marks now follow viewer order rather than being dragged.)
 - [FilmPreviewView.swift](Sources/DICOMStudio/Views/Print/FilmPreviewView.swift) — one sheet per
   film with filled/empty cells, so spillover is visible before printing.
 - [PrinterManagementView.swift](Sources/DICOMStudio/Views/Print/PrinterManagementView.swift) —
@@ -476,3 +478,45 @@ New, all green (`swift build` clean; `DICOMStudioTests` 4,185 tests pass, 2026-0
 | `PrintSelectionModelTests` | Ordering, frame-level marks, presentation capture |
 | `ViewerTileLayoutTests` | Layout changes, per-tile state, focus hand-off, fill-from-series |
 | `ViewerSeriesPaneTests` | Catalog building, hanging a series in a tile, current/visited tracking |
+
+---
+
+## 9. Reading-surface corrections (2026-07-29)
+
+Using §8 against real studies turned up three things that only show once a grid holds images
+from more than one series, plus a print sheet whose settings column was taking room the film
+needed.
+
+### 9.1 One window policy, and a window that stays where it belongs
+
+The viewer, the tile cache, the film preview and export must not disagree about how an image
+is presented, and a window belonging to one image must not be applied to another.
+
+| File | Change |
+|---|---|
+| [DICOMImageExporter.swift](Sources/DICOMKit/ImageExport/DICOMImageExporter.swift) | `determineWindowSettings` reads `allWindowSettings().first` before `windowSettings()`. A CT routinely carries a lung and a soft-tissue window in one multi-valued element (`-600\50` / `1200\350`); `windowSettings()` parses a *single* DS and returns nil for those files, so a perfectly good VOI was dropped and the frame auto-stretched over the full pixel range. |
+| [ImageViewerViewModel.swift](Sources/DICOMStudio/ViewModels/ImageViewerViewModel.swift) | `applyDefaultWindow(for:slope:intercept:)` — the load path now resolves the default window through `determineWindowSettings` instead of its own copy of the rescale maths, so the viewport and a tile showing the same image cannot differ. `resetWindowToFileDefault()` re-adopts it. |
+| [FrameRenderer.swift](Sources/DICOMStudio/Services/FrameRenderer.swift) | The no-window rung of the ladder now goes through `determineWindowSettings` as well. `tryRenderFrameWithStoredWindow` is gone from the ladder: it hands the raw Window Center to a renderer that reads *stored* pixels, so on a CT with a large Rescale Intercept (−1024, −8192) a −615 HU centre sits below every stored value and the frame washes out to white. |
+| [ViewerTileLayout.swift](Sources/DICOMStudio/Models/ViewerTileLayout.swift) | `ViewerCellState.windowCenter/windowWidth` are `Double?`. `nil` means "whatever this image's own VOI says" — the old defaults (128/256) were a stock window belonging to no image in particular. |
+| [ImageViewerViewModel+Layout.swift](Sources/DICOMStudio/ViewModels/ImageViewerViewModel+Layout.swift) | A new tile inherits the viewer's window only when it is in the anchor tile's series (`windowTravels(to:)`). The viewer's window is held in stored-value space — divided through *this* image's rescale pair — and may be an adjustment made for this reconstruction; a grid filled from a flat file list can span a lung kernel, a soft-tissue kernel and an MPR. Focusing a tile with no window of its own calls `resetWindowToFileDefault()` rather than leaving the previous tile's window in place. |
+
+### 9.2 Series pane order
+
+| File | Change |
+|---|---|
+| [ViewerSeriesCatalog.swift](Sources/DICOMStudio/Services/ViewerSeriesCatalog.swift) | `isOrderedBefore` — ascending Series Number, unnumbered series *last*. The library's ordering treats a missing number as 0, which files unnumbered series ahead of series 1. Ties and missing numbers fall back to title then UID, so the pane cannot reshuffle between two reads of the same study. Orientation refinement preserves the order. |
+| [ViewerSeriesEntry.swift](Sources/DICOMStudio/Models/ViewerSeriesEntry.swift), [ViewerSeriesPaneView.swift](Sources/DICOMStudio/Views/ViewerSeriesPaneView.swift) | `seriesNumberLabel` (nil when the series has no number — an invented one would imply an ordering the study does not assert) drawn as a badge on the thumbnail, and `spokenLabel` so VoiceOver announces "Series 4, …": the number is how a reader refers to a series aloud and in a report. |
+
+### 9.3 The print sheet is the film
+
+| File | Change |
+|---|---|
+| [PrintSettingsView.swift](Sources/DICOMStudio/Views/Print/PrintSettingsView.swift) | Options moved out of the 320 pt left column into a horizontal band across the top, so the preview — the thing actually being judged — owns the whole centre. The sheet opens at the size of the window it was raised from (`parentSize`, captured while the viewer is still key). Advanced expands into four side-by-side columns under a 300 pt cap rather than pushing the film off the bottom. The marks tray became a "Show List…" popover. |
+| [ImageViewerViewModel+Layout.swift](Sources/DICOMStudio/ViewModels/ImageViewerViewModel+Layout.swift) | `syncPrintOrderToViewer()` — film order follows tile order, not the order the boxes were ticked, so the preview reads like the screen. Marks with no tile on screen keep their relative order behind those that have one. The list is therefore reported, not dragged: reordering happens by arranging the tiles the film reproduces. |
+
+### 9.4 Tests
+
+| Suite | Added |
+|---|---|
+| `ExportWindowParityTests` | The first of several VOI pairs is the one used |
+| `ViewerSeriesPaneTests` | Numeric (not textual) series ordering, unnumbered-last, stable ties, order preserved across orientation refinement, the number badge, and four window-inheritance cases: a newly hung tile keeps its image's VOI, a windowless tile imposes no stock window on focus, the window does not travel across series, and does travel within one |

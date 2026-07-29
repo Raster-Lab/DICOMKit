@@ -73,9 +73,37 @@ extension ImageViewerViewModel {
             fileIndex: filePath.flatMap { seriesFiles.firstIndex(of: $0) } ?? 0,
             frameIndex: 0,
             frameCount: 1,
-            windowCenter: windowCenter,
-            windowWidth: windowWidth
+            windowCenter: inheritedWindowCenter(for: filePath),
+            windowWidth: inheritedWindowWidth(for: filePath)
         )
+    }
+
+    /// The window a new tile should start from, or `nil` to let its image decide.
+    ///
+    /// The viewer's window is only meaningful for images that share the current
+    /// one's presentation: it is held in stored-value space, so it has been
+    /// divided through *this* image's rescale pair, and it may be an adjustment
+    /// the user made for this reconstruction. A grid drawn from a flat file list
+    /// can span several series — a lung kernel, a soft-tissue kernel, an MPR —
+    /// and stamping one series' window across all of them is what washes the
+    /// other tiles out. So the window travels only within its own series.
+    private func windowTravels(to filePath: String?) -> Bool {
+        guard let filePath else { return false }
+        if filePath == self.filePath { return true }
+        guard let anchorSeries = seriesEntry(containing: self.filePath) else {
+            // No catalogue to check against — only the current file is known to
+            // share this window.
+            return false
+        }
+        return anchorSeries.filePaths.contains(filePath)
+    }
+
+    private func inheritedWindowCenter(for filePath: String?) -> Double? {
+        windowTravels(to: filePath) ? windowCenter : nil
+    }
+
+    private func inheritedWindowWidth(for filePath: String?) -> Double? {
+        windowTravels(to: filePath) ? windowWidth : nil
     }
 
     // MARK: - Focus
@@ -135,9 +163,13 @@ extension ImageViewerViewModel {
         isFlippedHorizontal = cell.isFlippedHorizontal
         isFlippedVertical = cell.isFlippedVertical
         isInverted = cell.isInverted
-        if cell.windowWidth >= 1 {
-            windowCenter = cell.windowCenter
-            windowWidth = cell.windowWidth
+        // A tile with no window of its own reads at the image's VOI — the
+        // previous tile's window must not follow the user across a hang.
+        if let cellCenter = cell.windowCenter, let cellWidth = cell.windowWidth, cellWidth >= 1 {
+            windowCenter = cellCenter
+            windowWidth = cellWidth
+        } else {
+            resetWindowToFileDefault()
         }
         if cell.frameIndex != currentFrameIndex, cell.frameIndex < numberOfFrames {
             currentFrameIndex = cell.frameIndex
@@ -203,6 +235,37 @@ extension ImageViewerViewModel {
         } else if let item = currentSelectionItem {
             printSelection.update(item)
         }
+    }
+
+    /// Reorders existing marks to follow the viewer's tile order.
+    ///
+    /// Marks accumulate in the order the user ticked them, which need not be the
+    /// order the images sit on screen. The film preview is read against the
+    /// viewer, so tile order wins: marks that correspond to a tile take that
+    /// tile's position, and anything not on screen keeps its relative order
+    /// behind them.
+    public func syncPrintOrderToViewer() {
+        guard isMultiCellLayout else { return }
+        var rankByID: [String: Int] = [:]
+        for cell in cells {
+            guard let path = cell.filePath else { continue }
+            let frame = cell.index == focusedCellIndex ? currentFrameIndex : cell.frameIndex
+            rankByID["\(path)#\(frame)"] = cell.index
+        }
+        guard !rankByID.isEmpty else { return }
+        let ordered = printSelection.items.enumerated().sorted { lhs, rhs in
+            switch (rankByID[lhs.element.id], rankByID[rhs.element.id]) {
+            case let (left?, right?):
+                return left == right ? lhs.offset < rhs.offset : left < right
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                return lhs.offset < rhs.offset
+            }
+        }.map(\.element)
+        printSelection.replace(with: ordered)
     }
 
     /// Marks every non-empty tile, in grid order.

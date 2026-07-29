@@ -93,8 +93,8 @@ Library → viewer → mark images → print. Plan and full file map:
   film position, and the context menu carries mark-all-frames / whole-series / clear.
 - **Print settings sheet**: printer picker with Test (C-ECHO) and Status (N-GET), layout
   (auto | grid | preset), film size, orientation, copies, a live film preview showing
-  spillover, a reorderable marks tray, and an Advanced disclosure covering the rest of the
-  CLI surface.
+  spillover, a marks tray, and an Advanced disclosure covering the rest of the CLI surface.
+  (Reworked 2026-07-29 — see below.)
 - **Printer management**: `PrinterProfile` + `PrinterProfileStorageService`
   (`printer-profiles.json`), modelled on the existing PACS server profiles. The CLI's
   `~/.config/dicomkit/printers.json` registry stays independent by design — a sandboxed app
@@ -105,6 +105,33 @@ Library → viewer → mark images → print. Plan and full file map:
 - **New `Print` navigation destination** (printers + job history) and a **Print…** action on
   a study/series in the library, which adds those files to the selection without discarding
   marks already made in the viewer.
+
+### Fixed — DICOM Studio: windowing, series order and the print sheet layout (2026-07-29)
+
+- **Multi-valued VOI no longer discarded** (`DICOMImageExporter.determineWindowSettings`): a
+  CT that carries a lung *and* a soft-tissue window in one element (`-600\50` / `1200\350`)
+  fell through `windowSettings()` — which parses a single DS — and was auto-stretched over the
+  full pixel range. The multi-valued form is read first and its first pair, the default
+  presentation, wins.
+- **One window policy everywhere**: `ImageViewerViewModel` now adopts a file's default window
+  through `determineWindowSettings` (the same call the exporter, tile cache and film use), and
+  `FrameRenderer`'s fallback ladder goes through it too instead of
+  `renderFrameWithStoredWindow`, which hands a raw HU centre to a renderer reading *stored*
+  values and washes a CT with a large Rescale Intercept out to white.
+- **A window no longer follows the user across a hang**: `ViewerCellState.windowCenter/Width`
+  are optional, `nil` meaning "this image's own VOI". A freshly hung tile starts at its own
+  VOI, and the viewer's window is inherited only by tiles in the same series — filling a grid
+  from a flat file list used to stamp one kernel's window across an MPR and every other
+  reconstruction in the study.
+- **Series pane in series-number order**: ascending, unnumbered series last (the library's
+  ordering treated a missing number as 0, filing them ahead of series 1), ties broken by title
+  then UID so the pane cannot reshuffle between two reads. Cards show the series number badge,
+  and VoiceOver announces "Series 4, …".
+- **Print sheet reworked**: options moved from a 320 pt left column into a band across the top
+  so the film preview owns the whole centre; the sheet opens at the size of the window it was
+  raised from; Advanced expands sideways under a height cap instead of pushing the film off
+  the bottom; the marks tray became a "Show List…" popover, since film order now follows the
+  viewer's tile order (`syncPrintOrderToViewer`) rather than the order the boxes were ticked.
 
 ### Added — DICOM Studio: the film matches the screen (2026-07-28)
 

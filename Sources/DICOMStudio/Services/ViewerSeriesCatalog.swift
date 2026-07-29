@@ -20,20 +20,49 @@ public enum ViewerSeriesCatalog {
         in library: LibraryModel
     ) -> [ViewerSeriesEntry] {
         library.seriesForStudy(studyUID).map { series in
-            let instances = library.instancesForSeries(series.seriesInstanceUID)
-            return ViewerSeriesEntry(
-                seriesInstanceUID: series.seriesInstanceUID,
-                title: title(for: series),
-                seriesNumber: series.seriesNumber,
-                modality: series.modality,
-                orientation: nil,
-                filePaths: instances.map(\.filePath),
-                // A multi-frame series has more frames than objects; the pane
-                // states both because a 1-object, 358-frame cine and a
-                // 358-object stack read very differently.
-                frameCount: instances.reduce(0) { $0 + ($1.numberOfFrames ?? 1) }
-            )
+            entry(for: series, in: library)
         }
+        .sorted(by: isOrderedBefore)
+    }
+
+    /// Series-number order: ascending, unnumbered series last.
+    ///
+    /// The library's own ordering treats a missing Series Number as 0, which
+    /// files unnumbered series *ahead* of series 1. Ties and missing numbers
+    /// fall back to title then UID so the pane cannot reshuffle between two
+    /// reads of the same study.
+    static func isOrderedBefore(_ lhs: ViewerSeriesEntry, _ rhs: ViewerSeriesEntry) -> Bool {
+        switch (lhs.seriesNumber, rhs.seriesNumber) {
+        case let (left?, right?) where left != right:
+            return left < right
+        case (nil, _?):
+            return false
+        case (_?, nil):
+            return true
+        default:
+            break
+        }
+        if lhs.title != rhs.title { return lhs.title < rhs.title }
+        return lhs.seriesInstanceUID < rhs.seriesInstanceUID
+    }
+
+    private static func entry(
+        for series: SeriesModel,
+        in library: LibraryModel
+    ) -> ViewerSeriesEntry {
+        let instances = library.instancesForSeries(series.seriesInstanceUID)
+        return ViewerSeriesEntry(
+            seriesInstanceUID: series.seriesInstanceUID,
+            title: title(for: series),
+            seriesNumber: series.seriesNumber,
+            modality: series.modality,
+            orientation: nil,
+            filePaths: instances.map(\.filePath),
+            // A multi-frame series has more frames than objects; the pane
+            // states both because a 1-object, 358-frame cine and a
+            // 358-object stack read very differently.
+            frameCount: instances.reduce(0) { $0 + ($1.numberOfFrames ?? 1) }
+        )
     }
 
     /// The study a file belongs to, so the viewer can find its own pane contents.

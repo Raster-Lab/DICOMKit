@@ -49,6 +49,19 @@ struct ViewerSeriesPaneView: View {
                 .frame(maxWidth: .infinity)
                 .background(Color.black)
                 .clipShape(RoundedRectangle(cornerRadius: 4))
+                .overlay(alignment: .topLeading) {
+                    // The series number, which is how the pane is ordered and how
+                    // a reader refers to a series aloud.
+                    if let number = entry.seriesNumberLabel {
+                        Text(number)
+                            .font(.caption2.monospacedDigit().bold())
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(.black.opacity(0.6), in: Capsule())
+                            .padding(4)
+                    }
+                }
 
             if isCurrent {
                 Label("Current series", systemImage: "checkmark.circle.fill")
@@ -105,7 +118,7 @@ struct ViewerSeriesPaneView: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(entry.title), \(entry.countsLabel), \(entry.orientationLabel)"
+            "\(entry.spokenLabel), \(entry.countsLabel), \(entry.orientationLabel)"
             + (isCurrent ? ", current series" : "")
             + (viewModel.isSeriesVisited(entry.seriesInstanceUID) ? "" : ", not yet visited"))
         .accessibilityHint("Double-click to show in the selected tile")

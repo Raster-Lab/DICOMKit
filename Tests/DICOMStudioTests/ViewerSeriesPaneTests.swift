@@ -26,6 +26,21 @@ struct ViewerSeriesEntryTests {
         #expect(stack.countsLabel == "715 objects, 715 frames")
     }
 
+    @Test("The card shows the series number, and omits it when there is none")
+    func testSeriesNumberLabel() {
+        let numbered = ViewerSeriesEntry(
+            seriesInstanceUID: "1.1", title: "THIN LUNG",
+            seriesNumber: 4, filePaths: ["/a.dcm"], frameCount: 1)
+        #expect(numbered.seriesNumberLabel == "4")
+        #expect(numbered.spokenLabel == "Series 4, THIN LUNG")
+
+        let unnumbered = ViewerSeriesEntry(
+            seriesInstanceUID: "1.2", title: "Patient Protocol",
+            filePaths: ["/a.dcm"], frameCount: 1)
+        #expect(unnumbered.seriesNumberLabel == nil)
+        #expect(unnumbered.spokenLabel == "Patient Protocol")
+    }
+
     @Test("An unknown orientation says so rather than being left blank")
     func testOrientationLabel() {
         let entry = ViewerSeriesEntry(
@@ -68,9 +83,65 @@ struct ViewerSeriesCatalogTests {
     @Test("Entries list the study's series in series-number order")
     func testEntriesOrdered() {
         let entries = ViewerSeriesCatalog.entries(forStudy: "study-1", in: library())
+        #expect(entries.map(\.seriesNumber) == [1, 2])
         #expect(entries.map(\.title) == ["Topogram", "THIN LUNG"])
         #expect(entries[1].filePaths == ["/lung1.dcm", "/lung2.dcm"])
         #expect(entries[1].objectCount == 2)
+    }
+
+    @Test("Series numbers order numerically, not as text")
+    func testNumericOrdering() {
+        var model = LibraryModel()
+        model.addStudy(StudyModel(studyInstanceUID: "s"))
+        for number in [10, 2, 1, 20] {
+            model.addSeries(SeriesModel(
+                seriesInstanceUID: "u\(number)", studyInstanceUID: "s",
+                seriesNumber: number, modality: "CT",
+                seriesDescription: "Series \(number)"))
+        }
+        let entries = ViewerSeriesCatalog.entries(forStudy: "s", in: model)
+        #expect(entries.map(\.seriesNumber) == [1, 2, 10, 20])
+    }
+
+    @Test("Unnumbered series sort last, not ahead of series 1")
+    func testUnnumberedSeriesSortLast() {
+        var model = LibraryModel()
+        model.addStudy(StudyModel(studyInstanceUID: "s"))
+        model.addSeries(SeriesModel(
+            seriesInstanceUID: "u-none", studyInstanceUID: "s",
+            modality: "CT", seriesDescription: "Unnumbered"))
+        model.addSeries(SeriesModel(
+            seriesInstanceUID: "u-1", studyInstanceUID: "s",
+            seriesNumber: 1, modality: "CT", seriesDescription: "First"))
+
+        let entries = ViewerSeriesCatalog.entries(forStudy: "s", in: model)
+        #expect(entries.map(\.title) == ["First", "Unnumbered"])
+    }
+
+    @Test("Series sharing a number keep a stable order")
+    func testTiedNumbersAreStable() {
+        var model = LibraryModel()
+        model.addStudy(StudyModel(studyInstanceUID: "s"))
+        model.addSeries(SeriesModel(
+            seriesInstanceUID: "u-b", studyInstanceUID: "s",
+            seriesNumber: 3, modality: "CT", seriesDescription: "Beta"))
+        model.addSeries(SeriesModel(
+            seriesInstanceUID: "u-a", studyInstanceUID: "s",
+            seriesNumber: 3, modality: "CT", seriesDescription: "Alpha"))
+
+        // A study can repeat a Series Number; the pane must not reshuffle
+        // between reads, so ties fall back to title.
+        let first = ViewerSeriesCatalog.entries(forStudy: "s", in: model).map(\.title)
+        let second = ViewerSeriesCatalog.entries(forStudy: "s", in: model).map(\.title)
+        #expect(first == ["Alpha", "Beta"])
+        #expect(first == second)
+    }
+
+    @Test("Resolving orientations preserves the pane's order")
+    func testOrientationRefinementKeepsOrder() async {
+        let entries = ViewerSeriesCatalog.entries(forStudy: "study-1", in: library())
+        let resolved = await ViewerSeriesCatalog.resolvingOrientations(entries)
+        #expect(resolved.map(\.seriesInstanceUID) == entries.map(\.seriesInstanceUID))
     }
 
     @Test("A series with no description still gets a usable title")
@@ -175,6 +246,76 @@ struct HangingSeriesInTilesTests {
         // The tile keeps the space it occupies, so its zoom still resolves.
         #expect(viewModel.cells[1].viewportWidth == 400)
         #expect(viewModel.cells[1].viewportHeight == 600)
+    }
+
+    @Test("A newly hung tile has no window of its own, so the image keeps its VOI")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testAssignLeavesWindowToTheImage() {
+        let viewModel = viewerWithSeries()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+
+        viewModel.assignSeries("series-2", toCell: 1)
+
+        #expect(viewModel.cells[1].windowCenter == nil,
+                "a hung series has never been windowed by the user")
+        #expect(viewModel.cells[1].windowWidth == nil)
+    }
+
+    @Test("Focusing a tile that was never windowed does not impose a stock window")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testWindowlessTileKeepsTheLoadedImageWindow() {
+        let viewModel = viewerWithSeries()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.assignSeries("series-2", toCell: 1)
+
+        // Stand in for the window the loaded file's VOI produces — a lung window,
+        // nothing like the 128/256 a blank tile used to carry.
+        viewModel.windowCenter = -600
+        viewModel.windowWidth = 1600
+
+        viewModel.focusCell(1)
+
+        #expect(viewModel.windowCenter == -600)
+        #expect(viewModel.windowWidth == 1600)
+    }
+
+    @Test("Filling a grid does not stamp one series' window on another's images")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testWindowDoesNotTravelAcrossSeries() {
+        let viewModel = viewerWithSeries()
+        // A grid drawn from a flat file list — a folder of a whole study — runs
+        // off the end of one series and into the next.
+        viewModel.seriesFiles = topogram.filePaths + lung.filePaths
+        viewModel.filePath = "/topo.dcm"
+        viewModel.windowCenter = 424
+        viewModel.windowWidth = 1200
+
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 4))
+
+        #expect(viewModel.cells[0].windowCenter == 424, "the current image's own window stays put")
+        for index in 1..<4 {
+            #expect(viewModel.cells[index].windowCenter == nil,
+                    "tile \(index) shows another series — its rescale pair may differ entirely")
+            #expect(viewModel.cells[index].windowWidth == nil)
+        }
+    }
+
+    @Test("Within one series the user's window follows across the grid")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testWindowTravelsWithinASeries() {
+        let viewModel = viewerWithSeries()
+        viewModel.seriesFiles = lung.filePaths
+        viewModel.filePath = "/lung1.dcm"
+        viewModel.windowCenter = 7577
+        viewModel.windowWidth = 1160
+
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 3))
+
+        for index in 0..<3 {
+            #expect(viewModel.cells[index].windowCenter == 7577,
+                    "slices of one series share a rescale pair, so the adjustment carries")
+            #expect(viewModel.cells[index].windowWidth == 1160)
+        }
     }
 
     @Test("Double-clicking hangs the series in the selected tile")

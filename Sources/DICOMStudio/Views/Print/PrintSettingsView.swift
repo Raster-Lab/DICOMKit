@@ -4,6 +4,9 @@
 // DICOM Studio — the print sheet: pick a printer and layout, check the film
 // plan, and send the marked images to the DICOM printer.
 //
+// Every option lives in a band across the top; the whole centre belongs to the
+// film preview, which is the thing actually being judged.
+//
 // Visible zone: printer, layout, orientation, film size, copies, preview.
 // Advanced zone: everything else the dicom-print CLI exposes.
 
@@ -19,9 +22,15 @@ public struct PrintSettingsView: View {
 
     @State private var showAdvanced = false
     @State private var showPrinterManagement = false
+    @State private var showImageList = false
 
-    public init(viewModel: PrintViewModel) {
+    /// Size of the window the sheet was raised from. The print screen opens at
+    /// the same size as the screen behind it.
+    private let parentSize: CGSize?
+
+    public init(viewModel: PrintViewModel, parentSize: CGSize? = nil) {
         self.viewModel = viewModel
+        self.parentSize = parentSize
     }
 
     public var body: some View {
@@ -40,8 +49,12 @@ public struct PrintSettingsView: View {
 
             footer
         }
-        // Wide enough that the settings column leaves the film real room.
-        .frame(minWidth: 960, minHeight: 640)
+        // Match the screen it was raised from; fall back to a size wide enough
+        // that the options band fits without scrolling.
+        .frame(
+            minWidth: max(960, parentSize?.width ?? 0),
+            minHeight: max(640, parentSize?.height ?? 0)
+        )
         .sheet(isPresented: $showPrinterManagement) {
             PrinterManagementView(viewModel: viewModel)
         }
@@ -72,23 +85,14 @@ public struct PrintSettingsView: View {
 
     // MARK: - Configuration
 
-    /// Settings on the left, film in the centre.
+    /// Options across the top, film everywhere below.
     ///
-    /// The preview is the thing being judged, so it gets the room: the controls
-    /// are pinned to a fixed, scrollable column and never push it around as
-    /// sections expand.
+    /// The preview is the thing being judged, so it gets the whole centre: the
+    /// controls live in one band that scrolls sideways rather than a column that
+    /// eats width the film needs.
     private var configurationForm: some View {
-        HStack(spacing: 0) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 12) {
-                    printerSection
-                    basicSection
-                    marksSection
-                    advancedSection
-                }
-                .padding(12)
-            }
-            .frame(width: Self.settingsColumnWidth)
+        VStack(spacing: 0) {
+            optionsBand
 
             Divider()
 
@@ -97,86 +101,105 @@ public struct PrintSettingsView: View {
         }
     }
 
-    /// Width of the settings column. Wide enough for a segmented layout picker
-    /// and a printer name, narrow enough to leave the film the majority.
-    private static let settingsColumnWidth: CGFloat = 320
+    /// The band of controls pinned to the top of the sheet.
+    private var optionsBand: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 16) {
+                    printerSection
+                    bandDivider
+                    basicSection
+                    bandDivider
+                    marksSection
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 10)
+            }
 
-    /// Widest a control in the settings column grows to.
+            advancedSection
+                .padding(.horizontal, 14)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private var bandDivider: some View {
+        Divider().frame(height: Self.bandRowHeight)
+    }
+
+    /// Height of one row of band controls, used to size the separators.
+    private static let bandRowHeight: CGFloat = 54
+
+    /// Widest a picker in the band grows to.
     private static let controlWidth: CGFloat = 180
 
     // MARK: Printer
 
     private var printerSection: some View {
-        GroupBox("Printer") {
-            VStack(alignment: .leading, spacing: 10) {
-                if viewModel.printers.isEmpty {
-                    HStack {
-                        Text("No printers configured.")
-                            .foregroundStyle(.secondary)
-                        Button("Add Printer…") { showPrinterManagement = true }
-                    }
-                } else {
-                    // Picker above its actions: four controls in a row would not
-                    // fit the settings column without truncating printer names.
+        bandGroup("Printer") {
+            if viewModel.printers.isEmpty {
+                HStack {
+                    Text("No printers configured.")
+                        .foregroundStyle(.secondary)
+                    Button("Add Printer…") { showPrinterManagement = true }
+                        .controlSize(.small)
+                }
+            } else {
+                HStack(spacing: 8) {
                     Picker("Printer", selection: $viewModel.selectedPrinterID) {
                         ForEach(viewModel.printers) { printer in
                             Text(printer.summary).tag(Optional(printer.id))
                         }
                     }
                     .labelsHidden()
+                    .frame(width: 220)
 
-                    HStack(spacing: 6) {
-                        Button("Manage…") { showPrinterManagement = true }
-                            .help("Add, edit, or remove printers")
+                    Button("Manage…") { showPrinterManagement = true }
+                        .help("Add, edit, or remove printers")
 
-                        Button("Test") {
-                            Task { await viewModel.testConnection() }
-                        }
-                        .disabled(viewModel.isQueryingPrinter)
-                        .help("C-ECHO the printer AE")
-
-                        Button("Status") {
-                            Task { await viewModel.queryPrinterStatus() }
-                        }
-                        .disabled(viewModel.isQueryingPrinter)
-                        .help("Query printer status (N-GET)")
-
-                        if viewModel.isQueryingPrinter {
-                            ProgressView().controlSize(.small)
-                        }
+                    Button("Test") {
+                        Task { await viewModel.testConnection() }
                     }
-                    .controlSize(.small)
+                    .disabled(viewModel.isQueryingPrinter)
+                    .help("C-ECHO the printer AE")
 
-                    if let status = viewModel.printerStatus {
-                        Label(
-                            "Printer status: \(status.status)"
-                                + (status.statusInfo.map { " (\($0))" } ?? ""),
-                            systemImage: status.isNormal
-                                ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
-                        )
-                        .font(.caption)
-                        .foregroundStyle(status.isNormal ? .green : .orange)
+                    Button("Status") {
+                        Task { await viewModel.queryPrinterStatus() }
                     }
+                    .disabled(viewModel.isQueryingPrinter)
+                    .help("Query printer status (N-GET)")
 
-                    if let message = viewModel.printerQueryMessage {
-                        Text(message)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .textSelection(.enabled)
+                    if viewModel.isQueryingPrinter {
+                        ProgressView().controlSize(.small)
                     }
                 }
+                .controlSize(.small)
+
+                if let status = viewModel.printerStatus {
+                    Label(
+                        "Printer status: \(status.status)"
+                            + (status.statusInfo.map { " (\($0))" } ?? ""),
+                        systemImage: status.isNormal
+                            ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(status.isNormal ? .green : .orange)
+                    .lineLimit(1)
+                } else if let message = viewModel.printerQueryMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .textSelection(.enabled)
+                }
             }
-            .padding(4)
         }
     }
 
     // MARK: Basic settings
 
     private var basicSection: some View {
-        GroupBox("Film") {
-            // One control per row in the narrow column: a label-and-control grid
-            // would leave neither enough width to read.
-            VStack(alignment: .leading, spacing: 8) {
+        bandGroup("Film") {
+            HStack(alignment: .center, spacing: 12) {
                 Picker("Layout mode", selection: $viewModel.layoutMode) {
                     ForEach(PrintViewModel.LayoutMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -184,23 +207,11 @@ public struct PrintSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .frame(width: 300)
 
                 switch viewModel.layoutMode {
-                case .matchViewer:
-                    if let viewerLayout = viewModel.viewerLayout {
-                        Text("Matching the viewer's "
-                             + "\(viewerLayout.rows)×\(viewerLayout.columns) grid")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("No viewer grid — falling back to automatic")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                case .automatic:
-                    Text("Grid chosen to fit \(viewModel.selection.count) image(s)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                case .matchViewer, .automatic:
+                    EmptyView()
                 case .explicit:
                     labeledControl("Grid") {
                         Picker("Grid", selection: $viewModel.layoutOption) {
@@ -238,6 +249,7 @@ public struct PrintSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
+                .frame(width: 200)
                 .disabled(viewModel.layoutMode == .template)
 
                 labeledControl("Copies") {
@@ -246,31 +258,61 @@ public struct PrintSettingsView: View {
                             .monospacedDigit()
                     }
                 }
-
-                if viewModel.layoutMode == .template {
-                    Text("Film size and orientation are set by the preset.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
             }
-            .padding(4)
+
+            Text(layoutCaption)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
     }
 
-    /// A caption above its control — vertical stacking reads better than a
-    /// label column once the column is only 320pt wide.
+    /// One line explaining what the chosen layout mode will do.
+    private var layoutCaption: String {
+        switch viewModel.layoutMode {
+        case .matchViewer:
+            if let viewerLayout = viewModel.viewerLayout {
+                return "Matching the viewer's \(viewerLayout.rows)×\(viewerLayout.columns) grid"
+            }
+            return "No viewer grid — falling back to automatic"
+        case .automatic:
+            return "Grid chosen to fit \(viewModel.selection.count) image(s)"
+        case .explicit:
+            return "Fixed grid"
+        case .template:
+            return "Film size and orientation are set by the preset."
+        }
+    }
+
+    /// A caption beside its control, sized so a row of them lines up.
     @ViewBuilder
     private func labeledControl<Content: View>(
         _ title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Text(title)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .frame(width: 68, alignment: .leading)
             content()
                 .frame(maxWidth: Self.controlWidth, alignment: .leading)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
+    /// A titled cluster of band controls — a GroupBox would stack the band too
+    /// tall for the room the film needs.
+    @ViewBuilder
+    private func bandGroup<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            content()
         }
     }
 
@@ -283,65 +325,71 @@ public struct PrintSettingsView: View {
 
     // MARK: Marks
 
+    /// The marked images. Film order is the viewer's order, so it is reported
+    /// here rather than edited — reordering happens on screen, by arranging the
+    /// tiles the film is meant to reproduce.
     private var marksSection: some View {
-        GroupBox("Images (\(viewModel.selection.count))") {
-            VStack(alignment: .leading, spacing: 6) {
-                if viewModel.selection.isEmpty {
-                    Text("Mark images in the viewer, then return here.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else {
-                    // Order is film-cell order — drag to rearrange.
-                    List {
-                        ForEach(Array(viewModel.selection.items.enumerated()), id: \.element.id) { index, item in
-                            HStack {
-                                Text("\(index + 1)")
-                                    .font(.caption.monospacedDigit())
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 24, alignment: .trailing)
-                                Text(item.displayLabel)
-                                    .lineLimit(1)
-                                Spacer()
-                            }
+        bandGroup("Images (\(viewModel.selection.count))") {
+            if viewModel.selection.isEmpty {
+                Text("Mark images in the viewer, then return here.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                HStack(spacing: 8) {
+                    Button("Show List…") { showImageList = true }
+                        .popover(isPresented: $showImageList, arrowEdge: .bottom) {
+                            imageListPopover
                         }
-                        .onMove { source, destination in
-                            viewModel.selection.move(fromOffsets: source, toOffset: destination)
-                        }
-                        .onDelete { offsets in
-                            viewModel.selection.remove(atOffsets: offsets)
-                        }
-                    }
-                    .frame(height: 120)
-
-                    HStack {
-                        Text("Drag to reorder.")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Clear All", role: .destructive) {
-                            viewModel.selection.clear()
-                        }
-                        .controlSize(.small)
+                    Button("Clear All", role: .destructive) {
+                        viewModel.selection.clear()
                     }
                 }
+                .controlSize(.small)
+
+                Text("In viewer order.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .padding(4)
         }
+    }
+
+    private var imageListPopover: some View {
+        List {
+            ForEach(Array(viewModel.selection.items.enumerated()), id: \.element.id) { index, item in
+                HStack {
+                    Text("\(index + 1)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 24, alignment: .trailing)
+                    Text(item.displayLabel)
+                        .lineLimit(1)
+                    Spacer()
+                }
+            }
+            .onDelete { offsets in
+                viewModel.selection.remove(atOffsets: offsets)
+            }
+        }
+        .frame(width: 320, height: 240)
     }
 
     // MARK: Advanced
 
     private var advancedSection: some View {
         DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
-            VStack(alignment: .leading, spacing: 14) {
-                filmAdvanced
-                imageAdvanced
-                renderingAdvanced
-                executionAdvanced
+            // Side by side and height-capped: expanding the advanced options
+            // must not push the film off the bottom of the sheet.
+            ScrollView(.horizontal) {
+                HStack(alignment: .top, spacing: 14) {
+                    filmAdvanced
+                    imageAdvanced
+                    renderingAdvanced
+                    executionAdvanced
+                }
+                .padding(.vertical, 8)
             }
-            .padding(.top, 8)
+            .frame(maxHeight: 300)
         }
-        .padding(.horizontal, 4)
     }
 
     private var filmAdvanced: some View {

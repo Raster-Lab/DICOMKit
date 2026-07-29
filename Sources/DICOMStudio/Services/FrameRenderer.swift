@@ -49,10 +49,22 @@ enum FrameRenderer {
 
     /// Decodes, windows, arranges and scales one frame, off the main actor.
     ///
-    /// The render ladder mirrors the viewer's: the supplied window first, then
-    /// automatic windowing, then the file's stored window. Arranging happens on
-    /// the full-resolution frame and scaling last, so a zoomed tile shows the
-    /// detail it will print rather than a blow-up of a thumbnail.
+    /// A supplied window is already in stored-value space — it comes from the
+    /// live viewer, which divides the header VOI through the rescale pair — so it
+    /// is used as given. Without one, the image's own window is resolved through
+    /// the shared export policy: the header VOI *rescale-adjusted*, then the
+    /// frame's pixel range. That is the same resolution the focused viewport
+    /// performs on load, so an un-windowed tile matches the image beside it.
+    ///
+    /// Note what must NOT be used here: ``DICOMFile/renderFrameWithStoredWindow``
+    /// hands the raw Window Center straight to the renderer, which reads *stored*
+    /// pixels. On a CT with a large Rescale Intercept (−1024, −8192) a −615 HU
+    /// centre then sits far below every stored value and the frame washes out to
+    /// white.
+    ///
+    /// Arranging happens on the full-resolution frame and scaling last, so a
+    /// zoomed tile shows the detail it will print rather than a blow-up of a
+    /// thumbnail.
     static func render(
         path: String,
         frameIndex: Int,
@@ -70,11 +82,14 @@ enum FrameRenderer {
                 image = try? file.tryRenderFrame(
                     frameIndex, window: WindowSettings(center: windowCenter, width: windowWidth))
             }
-            if image == nil {
-                image = try? file.tryRenderFrame(frameIndex)
+            if image == nil, let pixelData = file.pixelData() {
+                let window = DICOMImageExporter.determineWindowSettings(
+                    from: file, pixelData: pixelData, frameIndex: frameIndex,
+                    windowCenter: nil, windowWidth: nil)
+                image = try? file.tryRenderFrame(frameIndex, window: window)
             }
             if image == nil {
-                image = try? file.tryRenderFrameWithStoredWindow(frameIndex)
+                image = try? file.tryRenderFrame(frameIndex)
             }
             guard var image else { return nil }
 

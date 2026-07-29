@@ -30,6 +30,10 @@ public struct ImageViewerView: View {
     /// when this view is used stand-alone.
     @State private var printViewModel: PrintViewModel?
 
+    /// Size of the window the print sheet was raised from, so the sheet opens at
+    /// the same size as the screen behind it.
+    @State private var parentWindowSize: CGSize?
+
     public init(viewModel: ImageViewerViewModel, printViewModel: PrintViewModel? = nil) {
         self.viewModel = viewModel
         _printViewModel = State(initialValue: printViewModel)
@@ -228,7 +232,11 @@ public struct ImageViewerView: View {
             // Hosted rather than inlined: the sheet can also be raised from the
             // library ("Print…"), which may happen before this view has ever
             // appeared, so the print state must be created by the sheet itself.
-            PrintSheetHost(selection: viewModel.printSelection, printViewModel: $printViewModel)
+            PrintSheetHost(
+                selection: viewModel.printSelection,
+                printViewModel: $printViewModel,
+                parentSize: parentWindowSize
+            )
         }
         .sheet(isPresented: $viewModel.showDICOMInspector) {
             if let file = viewModel.dicomFile {
@@ -302,6 +310,15 @@ public struct ImageViewerView: View {
         // what is actually on screen — the user has usually kept arranging since
         // ticking the boxes.
         viewModel.refreshMarksFromViewer()
+
+        // Film order follows the grid, so the preview reads like the screen.
+        viewModel.syncPrintOrderToViewer()
+
+        // Captured before the sheet exists, while the key window is still the
+        // viewer's: the sheet opens at the size of the screen it came from.
+        #if canImport(AppKit)
+        parentWindowSize = NSApplication.shared.keyWindow?.frame.size
+        #endif
 
         if printViewModel == nil {
             printViewModel = PrintViewModel(selection: viewModel.printSelection)
@@ -657,11 +674,13 @@ public struct ImageViewerView: View {
 private struct PrintSheetHost: View {
     let selection: PrintSelectionModel
     @Binding var printViewModel: PrintViewModel?
+    /// Size of the window the sheet was raised from, when it is known.
+    var parentSize: CGSize?
 
     var body: some View {
         Group {
             if let printViewModel {
-                PrintSettingsView(viewModel: printViewModel)
+                PrintSettingsView(viewModel: printViewModel, parentSize: parentSize)
             } else {
                 ProgressView()
                     .frame(minWidth: 480, minHeight: 300)

@@ -70,6 +70,20 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
         orientation ?? "Orientation Unavailable"
     }
 
+    /// Series Number as shown on the card badge, e.g. "4".
+    ///
+    /// `nil` when the series carries no number: an invented one would imply an
+    /// ordering the study does not actually assert.
+    public var seriesNumberLabel: String? {
+        seriesNumber.map { String($0) }
+    }
+
+    /// How the pane announces this series, number first — the number is how a
+    /// reader refers to a series aloud and in a report.
+    public var spokenLabel: String {
+        seriesNumber.map { "Series \($0), \(title)" } ?? title
+    }
+
     /// The file a tile shows when this series is first hung.
     public var firstFilePath: String? { filePaths.first }
 }
