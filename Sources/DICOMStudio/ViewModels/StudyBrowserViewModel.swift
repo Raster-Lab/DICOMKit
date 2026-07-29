@@ -65,6 +65,12 @@ public final class StudyBrowserViewModel {
     /// When set, this takes priority over `onOpenInViewer` for study/series opens.
     public var onOpenSeriesInViewer: (([String], Int) -> Void)?
 
+    /// Callback invoked when the user requests to print a study or series.
+    ///
+    /// The parameter is the ordered file paths to mark for print. Printing a
+    /// whole study or series from here skips the mark-in-the-viewer step.
+    public var onPrintFiles: (([String]) -> Void)?
+
     /// Creates a study browser ViewModel.
     public init(
         library: LibraryModel = LibraryModel(),
@@ -86,6 +92,7 @@ public final class StudyBrowserViewModel {
         self.isFileImporterPresented = false
         self.onOpenInViewer = nil
         self.onOpenSeriesInViewer = nil
+        self.onPrintFiles = nil
     }
 
     /// Returns the filtered and sorted studies for display.
@@ -281,6 +288,27 @@ public final class StudyBrowserViewModel {
         } else {
             onOpenInViewer?(paths[idx])
         }
+    }
+
+    /// Marks every instance of a study for printing and opens the print sheet.
+    ///
+    /// - Parameter studyUID: The Study Instance UID to print.
+    public func printStudy(_ studyUID: String) {
+        var allPaths: [String] = []
+        for series in library.seriesForStudy(studyUID) {
+            allPaths.append(contentsOf: library.instancesForSeries(series.seriesInstanceUID).map(\.filePath))
+        }
+        guard !allPaths.isEmpty else { return }
+        onPrintFiles?(allPaths)
+    }
+
+    /// Marks every instance of a series for printing and opens the print sheet.
+    ///
+    /// - Parameter seriesUID: The Series Instance UID to print.
+    public func printSeries(_ seriesUID: String) {
+        let paths = library.instancesForSeries(seriesUID).map(\.filePath)
+        guard !paths.isEmpty else { return }
+        onPrintFiles?(paths)
     }
 
     /// Handles file URLs selected via the file importer or drag-and-drop.

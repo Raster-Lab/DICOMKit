@@ -201,6 +201,55 @@ public final class ImageViewerViewModel {
     /// Last render time in seconds.
     public var lastRenderTime: Double = 0.0
 
+    // MARK: - DICOM Print
+
+    /// Frames marked for printing, in film-cell order.
+    ///
+    /// Marking happens here in the viewer; the print sheet consumes this list.
+    /// See `ImageViewerViewModel+Print.swift` for the marking API.
+    public var printSelection = PrintSelectionModel()
+
+    /// Whether the print settings sheet is showing.
+    public var isPrintSheetPresented: Bool = false
+
+    // MARK: - Tile Layout
+
+    /// The viewer's tile grid. 1×1 by default — one image, as before.
+    ///
+    /// The grid mirrors the film: tile order is film-cell order. See
+    /// `ImageViewerViewModel+Layout.swift`.
+    public internal(set) var layout: ViewerTileLayout = .single
+
+    /// Per-tile state. Empty at 1×1, where the view model itself is the tile.
+    public internal(set) var cells: [ViewerCellState] = []
+
+    /// The tile currently receiving gestures and window/level.
+    public internal(set) var focusedCellIndex: Int = 0
+
+    // MARK: - Study Series
+
+    /// Every series of the open study, for the viewer's series pane.
+    ///
+    /// Populated by the shell from the library. Empty when the viewer was given
+    /// loose files rather than a study, in which case the pane stays hidden.
+    /// See `ImageViewerViewModel+Series.swift`.
+    public internal(set) var studySeries: [ViewerSeriesEntry] = []
+
+    /// Study Instance UID of the series in ``studySeries``.
+    public internal(set) var studyInstanceUID: String?
+
+    /// Series the focused tile is showing, for the pane's "Current series" mark.
+    public internal(set) var currentSeriesUID: String?
+
+    /// Series shown in a tile at some point this session.
+    ///
+    /// Tracked so the pane can distinguish what has been looked at from what has
+    /// not — the reading-completeness cue a "Not yet visited" card carries.
+    public internal(set) var visitedSeriesUIDs: Set<String> = []
+
+    /// Whether the series pane is showing.
+    public var isSeriesPaneVisible: Bool = true
+
     // MARK: - Codec Inspector (Phase 8)
 
     /// Codec inspector state — populated after each successful decode.
@@ -344,7 +393,12 @@ public final class ImageViewerViewModel {
     /// Internal file loader that does NOT reset series state.
     /// Used by both the public loadFile methods (after they clear series state)
     /// and by series navigation methods.
-    private func loadFileInternal(at path: String, securityScopedParent: URL?) {
+    /// Loads a file *without* touching series state.
+    ///
+    /// Internal rather than private so tile focus can move between files of the
+    /// loaded series: `loadFile(at:)` clears the series, which would throw away
+    /// navigation the moment the user clicked a second tile.
+    func loadFileInternal(at path: String, securityScopedParent: URL?) {
         if let scopedURL = securityScopedParent {
             isLoading = true
             errorMessage = nil
@@ -571,6 +625,13 @@ public final class ImageViewerViewModel {
             } catch {
                 if detailedError == nil { detailedError = error.localizedDescription }
             }
+        }
+
+        // Inversion is applied to the rendered frame rather than the window: the
+        // renderer has no invert option, and negating the window would clip
+        // differently for signed and rescaled modalities.
+        if isInverted, let rendered = image {
+            image = ImageInversion.inverted(rendered) ?? rendered
         }
 
         lastRenderTime = Date().timeIntervalSince(start)

@@ -174,6 +174,85 @@ struct ImageViewerViewModelTests {
         #expect(vm.currentFrameIndex == 0)
     }
 
+    // MARK: - Arrow-Key Image Navigation
+
+    @Test("Right arrow steps to the next frame of a multi-frame image")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testNextImageStepsFrame() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.currentFrameIndex = 3
+        #expect(vm.canGoNextImage)
+        #expect(vm.navigateToNextImage() == true)
+        #expect(vm.currentFrameIndex == 4)
+    }
+
+    @Test("Left arrow steps to the previous frame")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testPreviousImageStepsFrame() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.currentFrameIndex = 3
+        #expect(vm.canGoPreviousImage)
+        #expect(vm.navigateToPreviousImage() == true)
+        #expect(vm.currentFrameIndex == 2)
+    }
+
+    @Test("Image navigation stops at the ends instead of wrapping")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageNavigationDoesNotWrap() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+
+        vm.currentFrameIndex = 9
+        #expect(vm.canGoNextImage == false)
+        #expect(vm.navigateToNextImage() == false)
+        #expect(vm.currentFrameIndex == 9)
+
+        vm.currentFrameIndex = 0
+        #expect(vm.canGoPreviousImage == false)
+        #expect(vm.navigateToPreviousImage() == false)
+        #expect(vm.currentFrameIndex == 0)
+    }
+
+    @Test("Single-frame image with no series has nowhere to go")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageNavigationSingleFrameNoSeries() {
+        let vm = ImageViewerViewModel()
+        #expect(vm.canGoNextImage == false)
+        #expect(vm.canGoPreviousImage == false)
+    }
+
+    @Test("Stepping past the last frame rolls onto the next file")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testNextImageRollsOntoNextFile() {
+        let vm = ImageViewerViewModel()
+        vm.seriesFiles = ["/a.dcm", "/b.dcm"]
+        vm.currentFileIndex = 0
+        vm.numberOfFrames = 4
+        vm.currentFrameIndex = 3
+
+        #expect(vm.canGoNextImage)
+        vm.navigateToNextImage()
+        // The load fails (no such file), but navigation moved on regardless.
+        #expect(vm.currentFileIndex == 1)
+    }
+
+    @Test("Stepping by hand pauses cine playback without rewinding")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testManualStepPausesPlayback() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.currentFrameIndex = 2
+        vm.togglePlayback()
+        #expect(vm.playbackState == .playing)
+
+        vm.navigateToNextImage()
+        #expect(vm.playbackState == .paused)
+        // Paused, not stopped: stopping would rewind to frame 0.
+        #expect(vm.currentFrameIndex == 3)
+    }
+
     // MARK: - Cine Playback
 
     @Test("Toggle playback from stopped")

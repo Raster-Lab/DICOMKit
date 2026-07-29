@@ -304,9 +304,25 @@ dicom-print send pacs://mammo-printer:11112 mammo_*.dcm \
 | 66 | Cannot open input file |
 | 74 | I/O error |
 
+## Implementation
+
+The command-line surface here is a thin ArgumentParser shell. Image preparation, the job
+model, workflow orchestration and all console/JSON output live in the shared
+**`DICOMPrintKit`** target (`PrintImagePreparer`, `PrintJobRequest`, `PrintOptionCatalog`,
+`PrintWorkflow`, `PrintConsoleFormatter`), which DICOMStudio's print screens use as well, so
+both surfaces run one pipeline and print identical output. The DIMSE sequence itself remains
+`DICOMPrintService` in `DICOMNetwork`.
+
+The printer registry read by `list-printers` / `add-printer` / `remove-printer`
+(`~/.config/dicomkit/printers.json`) is the CLI's own; DICOMStudio keeps a separate,
+sandbox-reachable store. That separation is by design, not a parity defect.
+
 ## See Also
 
 - [DICOM_PRINTER_PLAN.md](../../DICOM_PRINTER_PLAN.md) - Full implementation plan
+- [DICOM_PRINT_STUDIO_PLAN.md](../../DICOM_PRINT_STUDIO_PLAN.md) - The same capability in DICOMStudio
+- [DICOM_PRINT_SCP_PLAN.md](../../DICOM_PRINT_SCP_PLAN.md) - The printer emulator (Print SCP) side
+- [PRINT_CONFORMANCE.md](../../PRINT_CONFORMANCE.md) - Print conformance statement (SCU and SCP)
 - [DICOM_PRINTER_QUICK_REFERENCE.md](../../DICOM_PRINTER_QUICK_REFERENCE.md) - Quick reference
 - DICOM PS3.4 Annex H - Print Management Service Class specification
 

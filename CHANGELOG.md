@@ -7,6 +7,137 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — DICOM Print SCP: printer emulator (2026-07-28/29)
+
+DICOMKit now implements Print Management (PS3.4 Annex H) in **both** roles. Any Print SCU —
+modality, workstation or third-party tool — can associate, send a film session, film boxes
+and image boxes, and issue N-ACTION *print*; the film is composed and handed to an output
+sink. Conformance statement: `PRINT_CONFORMANCE.md`. Plan: `DICOM_PRINT_SCP_PLAN.md`.
+
+- **Protocol machine** (`DICOMNetwork`): `DICOMPrintServer` actor + `PrintSCP.swift`,
+  `PrintSCPTypes.swift`, `PrintSCPEncoder.swift` — association accept/reject, called/calling
+  AE checks, N-CREATE / N-SET / N-GET / N-ACTION / N-DELETE / N-EVENT-REPORT across Film
+  Session, Film Box, Grayscale/Color Image Box, Printer, Print Job, Presentation LUT and
+  Basic Annotation Box, with the PS3.4 H.4 lifecycle and cascade deletes. Configurable via
+  `PrintSCPConfiguration` (film sizes, medium types, colour, max boxes per film, annotation
+  boxes, idle timeout, AE lists, printer identity).
+- **SCP-direction dataset parsing** (`PrintDatasetReader.swift`, `PrintSCPParser.swift`):
+  a real element walk for both Explicit and Implicit VR LE, including sequences with defined
+  and undefined length and image-box `PixelData`, mapped back onto the existing `FilmSession`
+  / `FilmBox` / `ImageBoxContent` / `PrintImageData` model.
+- **`PrintImageDisplayFormat`**: parses `STANDARD` / `ROW` / `COL` / `SLIDE` / `SUPERSLIDE` /
+  `CUSTOM`, driving image-box allocation, composer cell layout and the SCU's box maths.
+- **Film composition** (`DICOMPrintKit/Printing/`): `FilmGeometry` (sheet sizes at a
+  configurable DPI, cell layout, fitting), `FilmComposer` (image boxes → one page bitmap:
+  magnification, polarity, LUT shape, border/empty density, trim marks) and `ComposedFilm`.
+  Four inversions compose correctly — MONOCHROME1, Polarity REVERSE, INVERSE / LIN OD
+  Presentation LUT shape, and film emulation. `DensityMapping` is `.paperDirect` by default,
+  with `.filmEmulation` opt-in rather than a silent guess.
+- **Output sinks**: `PrintOutputSink` protocol with `ScreenSink` (full-resolution stream +
+  bounded downsampled scrollback; never blocks the SCP on a viewer that is not draining),
+  `PDFSink`, `ImageSink` (PNG/TIFF), `PaperPrinterSink` (CUPS `lp`, opt-in) and
+  `CompositePrintSink`; `FilmComposingPrintHandler` wires the SCP to them.
+- **Tests**: `PrintSCPTests.swift` (74 — parser round-trip in both VRs, encoder, loopback SCU
+  → SCP, status matrix, robustness) and `DICOMPrintKitTests` (63 — geometry, composer, sinks,
+  screen scrollback, DCMTK interop).
+
+### Fixed — DICOM Print interoperability, verified against DCMTK 3.7.0 (2026-07-29)
+
+Automated in `Tests/DICOMPrintKitTests/DCMTKInteropTests.swift` (skips when DCMTK is absent):
+`dcmpsprt`/`dcmprscu` → our SCP, and our SCU → `dcmprscp` (IHE Full profile).
+
+- **SCU proposes the meta *and* the individual SOP Classes** and routes each N-service to an
+  accepted context (`PrintPresentationContexts`). A printer that rejects the meta class was
+  previously unusable.
+- **Image Display Format order was a conformance bug:** PS3.3 C.13.3 defines `STANDARD\C,R`
+  as columns-first; `PrintLayout.imageDisplayFormat` emitted rows-first, so every non-square
+  layout printed transposed on a conformant printer. `PrintLayout` is now the single source
+  of the string.
+- **Configuration Information (2010,0150) threaded end to end** — Studio and the CLI collected
+  it but `PrintOptions` had no field and it was never sent; several vendors require it.
+- **0x0106 reclassified as a failure** (`DIMSEStatus`) — it was treated as a warning, so a job
+  sailed past a printer's rejection and failed later with a misleading code.
+- **Trim (2010,0140) omitted when NO** and **Requested Decimate/Crop Behavior (2020,0040)
+  omitted when DECIMATE** — printers that do not implement them reject a box for merely
+  carrying them.
+- **SCP idle-association timeout** (default 300 s) so a vanished peer no longer holds a slot
+  forever, and **A-ASSOCIATE-RJ at capacity** instead of dropping the socket.
+- **Error Comment (0000,0902) transliterated to ASCII** — `CommandSet` encodes as ASCII and
+  silently dropped any value containing a non-ASCII character, discarding the only diagnostic
+  an SCU developer gets.
+
+### Added — `DICOMPrintKit`: shared print core for the CLI and Studio
+
+- **New target/product `DICOMPrintKit`** (DICOMCore + DICOMDictionary + DICOMKit +
+  DICOMNetwork), consumed by `dicom-print` and `DICOMStudio`. The shared core cannot live in
+  DICOMKit — it needs both `ImagePreprocessor` and `PrintImageData` — and putting networking
+  into DICOMKit would force it on all ~30 CLIs.
+- `PrintJobRequest` (every job knob as one value type, plus `validate()`, `filmCount(for:)`
+  and `PrintPlan`), `PrintOptionCatalog` (one table of selectable values per option, feeding
+  both UI pickers and the CLI's arg enums), `PrintImagePreparer`, `PrintWorkflow` (preflight,
+  retries, events, progress, job/printer status) and `PrintConsoleFormatter` (text + JSON).
+- **`dicom-print` refactored** onto all of the above — arg declarations, help text and output
+  unchanged; `PrintCLIEndToEndTests`, `PrintServiceTests` and `PrintSCPIntegrationTests` stay
+  green.
+- **Multi-film gap fixed:** `PrintResult` now carries `filmBoxUIDs` and `printJobUIDs` (the
+  singular properties remain as last-element accessors), so per-film job-status polling and
+  job history work for multi-film jobs.
+
+### Added — DICOM Studio: print workflow (2026-07-28)
+
+Library → viewer → mark images → print. Plan and full file map:
+`DICOM_PRINT_STUDIO_PLAN.md`.
+
+- **Marking in the viewer**: ordered, frame-level `PrintSelectionModel`; **M** marks the
+  current image, **⌘P** opens the print sheet, a badge shows the count, a capsule shows the
+  film position, and the context menu carries mark-all-frames / whole-series / clear.
+- **Print settings sheet**: printer picker with Test (C-ECHO) and Status (N-GET), layout
+  (auto | grid | preset), film size, orientation, copies, a live film preview showing
+  spillover, a reorderable marks tray, and an Advanced disclosure covering the rest of the
+  CLI surface.
+- **Printer management**: `PrinterProfile` + `PrinterProfileStorageService`
+  (`printer-profiles.json`), modelled on the existing PACS server profiles. The CLI's
+  `~/.config/dicomkit/printers.json` registry stays independent by design — a sandboxed app
+  cannot reach it.
+- **Execution**: `PrintViewModel` + Studio `PrintService` over `DICOMPrintKit`, determinate
+  per-image-box progress, live N-EVENT-REPORT console, cancel with film-session cleanup,
+  per-film **Check Status**, and job history persisted to `print-job-history.json`.
+- **New `Print` navigation destination** (printers + job history) and a **Print…** action on
+  a study/series in the library, which adds those files to the selection without discarding
+  marks already made in the viewer.
+
+### Added — DICOM Studio: the film matches the screen (2026-07-28)
+
+- **`ViewerPresentation` + `PrintPresentationTransform`** (`DICOMPrintKit`): a mark now
+  records the viewer's arrangement as *geometry over the source image* — zoom, pan, viewport,
+  quarter turns, flips, invert — and the print path crops, permutes and negates the
+  full-resolution frame accordingly. Nothing resamples, so a zoomed print carries the
+  modality's real detail rather than an upscaled copy of what the monitor showed.
+- **Film preview shows the actual frames**: `FrameRenderer` + `FrameImageStore` +
+  `PrintThumbnailCache` render each marked frame as it will print. Cache keys include the
+  whole arrangement, so two marks of the same frame at different zooms are two pictures.
+- **`ImageInversion`**: the viewer inverts the rendered frame rather than negating the VOI
+  window, which is not equivalent once Rescale Slope/Intercept or a signed representation are
+  involved; the print path inverts P-values directly.
+
+### Added — DICOM Studio: viewer tile grid and series pane (2026-07-28)
+
+- **Tile grid 1×1 … 4×4** whose cells map to film cells in the same order. The focused tile
+  *is* the live view model, so gestures, window/level and cine behave exactly as at 1×1;
+  every tile keeps its own file, frame, window, zoom/pan, rotation, flips and inversion.
+  Unfocused tiles are cached renders keyed on full tile state, so panning one tile does not
+  re-decode the others.
+- **Series pane**: every series of the open study as a card (thumbnail, description, objects
+  *and* frames, current/visited state). Drag a card onto a tile, or select a tile and
+  double-click, to hang a different series there. Built from indexed library metadata, with
+  orientation read from one file per series afterwards and folded in.
+- **Arrow-key navigation by image, not by file**: frames first, rolling onto the neighbouring
+  file and stopping at the end of the series; wrapping stays cine behaviour.
+- **Tests**: `ViewerPresentationTests`, `PrintPresentationTransformTests`,
+  `PrintViewerPresentationEndToEndTests`, `PrintThumbnailCacheTests`,
+  `PrintSelectionModelTests`, `ViewerTileLayoutTests`, `ViewerSeriesPaneTests` —
+  `DICOMStudioTests` 4,185 tests green.
+
 ### Fixed — DICOMNetwork test-suite hang and unmasked failures (2026-07-27)
 
 - **`CommitmentNotificationListener.waitForResult` hang:** the timeout race used

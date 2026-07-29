@@ -902,7 +902,8 @@ final class PrintServiceTests: XCTestCase {
         XCTAssertEqual(layout.rows, 2)
         XCTAssertEqual(layout.columns, 3)
         XCTAssertEqual(layout.imageCount, 6)
-        XCTAssertEqual(layout.imageDisplayFormat, "STANDARD\\2,3")
+        // PS3.3 C.13.3: STANDARD\\C,R — columns first.
+        XCTAssertEqual(layout.imageDisplayFormat, "STANDARD\\3,2")
     }
     
     func testPrintLayoutMinimumValues() {
@@ -1134,12 +1135,12 @@ final class PrintServiceTests: XCTestCase {
         let template = ComparisonTemplate()
         
         XCTAssertEqual(template.name, "Comparison")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\1,2")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\2,1")
         XCTAssertEqual(template.imageCount, 2)
         XCTAssertEqual(template.filmOrientation, .landscape)
         
         let filmBox = template.createFilmBox()
-        XCTAssertEqual(filmBox.imageDisplayFormat, "STANDARD\\1,2")
+        XCTAssertEqual(filmBox.imageDisplayFormat, "STANDARD\\2,1")
     }
     
     func testGridTemplate2x2() {
@@ -1157,7 +1158,7 @@ final class PrintServiceTests: XCTestCase {
         let template = GridTemplate(rows: 3, columns: 4, filmSize: .size11InX17In)
         
         XCTAssertEqual(template.name, "3x4 Grid")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,4")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\4,3")
         XCTAssertEqual(template.imageCount, 12)
         XCTAssertEqual(template.filmSize, .size11InX17In)
     }
@@ -1173,7 +1174,7 @@ final class PrintServiceTests: XCTestCase {
         let template = MultiPhaseTemplate(rows: 2, columns: 3)
         
         XCTAssertEqual(template.name, "Multi-Phase 2x3")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\2,3")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,2")
         XCTAssertEqual(template.imageCount, 6)
     }
     
@@ -1181,7 +1182,7 @@ final class PrintServiceTests: XCTestCase {
         let template = MultiPhaseTemplate(rows: 3, columns: 4)
         
         XCTAssertEqual(template.name, "Multi-Phase 3x4")
-        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\3,4")
+        XCTAssertEqual(template.imageDisplayFormat, "STANDARD\\4,3")
         XCTAssertEqual(template.imageCount, 12)
     }
     
@@ -2718,9 +2719,10 @@ final class PrintServiceTests: XCTestCase {
     // MARK: - Milestone C (interop)
 
     func testLayoutFromImageDisplayFormat() {
+        // PS3.3 C.13.3: "STANDARD\\C,R" — 2 columns, 3 rows.
         let l1 = DICOMPrintService.layout(fromImageDisplayFormat: "STANDARD\\2,3")
-        XCTAssertEqual(l1.rows, 2)
-        XCTAssertEqual(l1.columns, 3)
+        XCTAssertEqual(l1.rows, 3)
+        XCTAssertEqual(l1.columns, 2)
 
         let l2 = DICOMPrintService.layout(fromImageDisplayFormat: "STANDARD\\1,1")
         XCTAssertEqual(l2.rows, 1)

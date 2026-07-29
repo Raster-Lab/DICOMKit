@@ -203,6 +203,10 @@ let package = Package(
         //     targets: ["dicom-server"]
         // ),
         .library(
+            name: "DICOMPrintKit",
+            targets: ["DICOMPrintKit"]
+        ),
+        .library(
             name: "DICOMStudio",
             targets: ["DICOMStudio"]
         )
@@ -288,6 +292,20 @@ let package = Package(
         .target(
             name: "DICOMToolbox"
         ),
+        // Shared DICOM Print core: image preparation, job options, workflow
+        // orchestration, and console formatting used by BOTH the dicom-print CLI
+        // and DICOMStudio. It sits above DICOMKit (pixel decode/preprocess) and
+        // DICOMNetwork (Print SCU DIMSE), which is why it is its own target —
+        // DICOMKit itself must not gain a networking dependency.
+        .target(
+            name: "DICOMPrintKit",
+            dependencies: [
+                "DICOMCore",
+                "DICOMDictionary",
+                "DICOMKit",
+                "DICOMNetwork"
+            ]
+        ),
         .testTarget(
             name: "DICOMCoreTests",
             dependencies: [
@@ -370,6 +388,12 @@ let package = Package(
         .testTarget(
             name: "DICOMWebTests",
             dependencies: ["DICOMWeb", "DICOMKit"]
+        ),
+        // Film composition and output sinks (Print SCP Milestones C/D), plus
+        // the emulator end-to-end: SCU → Print SCP → composer → sink.
+        .testTarget(
+            name: "DICOMPrintKitTests",
+            dependencies: ["DICOMPrintKit", "DICOMNetwork", "DICOMCore"]
         ),
         .testTarget(
             name: "DICOMToolboxTests",
@@ -657,6 +681,7 @@ let package = Package(
                 "DICOMKit",
                 "DICOMCore",
                 "DICOMNetwork",
+                "DICOMPrintKit",
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-print",
@@ -870,6 +895,7 @@ let package = Package(
                 "DICOMCore",
                 "DICOMDictionary",
                 "DICOMNetwork",
+                "DICOMPrintKit",
                 "DICOMWeb"
             ],
             path: "Sources/DICOMStudio",
@@ -907,7 +933,9 @@ let package = Package(
         ),
         .testTarget(
             name: "DICOMStudioTests",
-            dependencies: ["DICOMStudio", "DICOMWeb"]
+            // DICOMPrintKit: the viewer-presentation geometry and film-pixel
+            // transform the print path bakes into marks.
+            dependencies: ["DICOMStudio", "DICOMWeb", "DICOMPrintKit", "DICOMNetwork"]
         ),
         // Tier-2 output-parity harness: drives the in-app Studio reimplementations
         // (CLIWorkshopViewModel.executeCommand) headlessly against the bundled

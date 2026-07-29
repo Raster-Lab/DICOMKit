@@ -65,7 +65,8 @@ public struct MainView: View {
             StudyBrowserView(viewModel: viewModel.studyBrowserViewModel)
                 .id(NavigationDestination.library)
         case .viewer:
-            ImageViewerView(viewModel: viewModel.imageViewerViewModel)
+            ImageViewerView(viewModel: viewModel.imageViewerViewModel,
+                            printViewModel: viewModel.printViewModel)
         case .volumeViewer:
             DICOMVolumeViewerView(viewModel: viewModel.volumeViewerViewModel)
         case .jp3dComparison:
@@ -82,6 +83,8 @@ public struct MainView: View {
             GatewayView(viewModel: viewModel.gatewayViewModel)
         case .reporting:
             StructuredReportView(viewModel: StructuredReportViewModel())
+        case .printing:
+            PrintCenterView(viewModel: viewModel.printViewModel)
         case .tools:
             DataExchangeView(viewModel: DataExchangeViewModel())
         case .validation:

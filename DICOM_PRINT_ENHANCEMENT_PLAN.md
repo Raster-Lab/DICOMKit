@@ -3,7 +3,17 @@
 **Date:** 2026-07-20 (revised 2026-07-21; execution status updated 2026-07-22)
 **Basis:** Feature-completeness audit of `dicom-print` + `DICOMPrintService`
 **Reference:** DICOM PS3.4 Annex H (Print Management), PS3.3 C.11/C.13, PS3.7 (DIMSE-N)
-**Related docs:** [DICOM_PRINT_TOOL_ANALYSIS.md](DICOM_PRINT_TOOL_ANALYSIS.md)
+**Related docs:** [DICOM_PRINT_TOOL_ANALYSIS.md](DICOM_PRINT_TOOL_ANALYSIS.md),
+[DICOM_PRINT_STUDIO_PLAN.md](DICOM_PRINT_STUDIO_PLAN.md),
+[DICOM_PRINT_SCP_PLAN.md](DICOM_PRINT_SCP_PLAN.md),
+[PRINT_CONFORMANCE.md](PRINT_CONFORMANCE.md)
+
+> **This plan is closed** (all 20 items + post-plan items 1–7). Work that followed it is
+> tracked elsewhere: the Studio print workflow, the Print SCP (printer emulator), and the
+> DCMTK 3.7.0 interop hardening — which added four SCU-visible fixes not in this plan:
+> columns-first `STANDARD\C,R` (PS3.3 C.13.3), Configuration Information (2010,0150) sent
+> end to end, 0x0106 treated as a failure rather than a warning, and Trim / Requested
+> Decimate-Crop Behavior omitted at their default values. See `PRINT_CONFORMANCE.md`.
 
 ## Status at a Glance (2026-07-22)
 

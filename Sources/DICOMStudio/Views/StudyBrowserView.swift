@@ -199,6 +199,11 @@ public struct StudyBrowserView: View {
                 } label: {
                     Label("Open in Viewer", systemImage: "photo")
                 }
+                Button {
+                    viewModel.printStudy(study.studyInstanceUID)
+                } label: {
+                    Label("Print…", systemImage: "printer")
+                }
                 Divider()
                 Button {
                     viewModel.toggleFavorite(study.studyInstanceUID)

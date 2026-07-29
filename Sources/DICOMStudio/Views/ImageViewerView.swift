@@ -6,6 +6,8 @@
 #if canImport(SwiftUI)
 import SwiftUI
 import UniformTypeIdentifiers
+import DICOMNetwork
+import DICOMPrintKit
 
 /// Main DICOM image viewer view.
 ///
@@ -20,11 +22,37 @@ public struct ImageViewerView: View {
     @State private var viewSize: CGSize = .zero
     @State private var wlDragStart: CGSize = .zero
 
-    public init(viewModel: ImageViewerViewModel) {
+    /// Keyboard focus for the image area, so the arrow keys reach `onKeyPress`.
+    @FocusState private var isImageAreaFocused: Bool
+
+    /// Print state. Injected by the shell so the print sheet, the standalone
+    /// Print screen, and job history are one shared state; created locally only
+    /// when this view is used stand-alone.
+    @State private var printViewModel: PrintViewModel?
+
+    public init(viewModel: ImageViewerViewModel, printViewModel: PrintViewModel? = nil) {
         self.viewModel = viewModel
+        _printViewModel = State(initialValue: printViewModel)
     }
 
     public var body: some View {
+        HStack(spacing: 0) {
+            // The study's series, when the viewer was opened from a study. Loose
+            // files have no series to list, so the pane stays out of the way.
+            if viewModel.isSeriesPaneVisible && !viewModel.studySeries.isEmpty {
+                ViewerSeriesPaneView(viewModel: viewModel)
+                    .frame(width: Self.seriesPaneWidth)
+                Divider()
+            }
+            imageArea
+        }
+    }
+
+    /// Width of the series pane — enough for a legible thumbnail and two lines
+    /// of series description.
+    private static let seriesPaneWidth: CGFloat = 190
+
+    private var imageArea: some View {
         ZStack {
             // Background
             Color.black
@@ -46,7 +74,15 @@ public struct ImageViewerView: View {
                 }
                 .padding()
             } else if viewModel.hasImage {
-                imageContent
+                // At 1×1 the viewer is the image; beyond that it is one tile of
+                // a grid, and the grid decides where the live viewer sits.
+                Group {
+                    if viewModel.isMultiCellLayout {
+                        ViewerTileGridView(viewModel: viewModel) { imageContent }
+                    } else {
+                        imageContent
+                    }
+                }
                     .contextMenu {
                         Button("Fit to View") {
                             viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
@@ -63,6 +99,31 @@ public struct ImageViewerView: View {
                             Divider()
                             Button(viewModel.isInverted ? "Remove Inversion" : "Invert Grayscale") {
                                 viewModel.toggleInversion()
+                            }
+                        }
+                        Divider()
+                        Button(viewModel.isCurrentFrameMarkedForPrint
+                               ? "Unmark for Print" : "Mark for Print") {
+                            viewModel.togglePrintMarkForCurrentFrame()
+                        }
+                        if viewModel.isMultiCellLayout {
+                            Button("Mark All Tiles for Print") {
+                                viewModel.markLayoutForPrint()
+                            }
+                        }
+                        if viewModel.isMultiFrame {
+                            Button("Mark All Frames for Print") {
+                                viewModel.markAllFramesOfCurrentFileForPrint()
+                            }
+                        }
+                        if viewModel.isInSeries {
+                            Button("Mark Whole Series for Print") {
+                                viewModel.markWholeSeriesForPrint()
+                            }
+                        }
+                        if !viewModel.printSelection.isEmpty {
+                            Button("Clear Print Marks", role: .destructive) {
+                                viewModel.clearAllPrintMarks()
                             }
                         }
                     }
@@ -87,18 +148,47 @@ public struct ImageViewerView: View {
                 }
             }
         }
+        // Arrow-key image navigation. The image area takes focus so the keys are
+        // delivered here; `.focusEffectDisabled()` keeps the focus ring off the
+        // film. Left/Right walk images (frames, then files); Up/Down jump whole
+        // files, which is how one skims a series past a long cine loop.
+        // At 1×1 the whole image area is the drop target; in a grid each tile
+        // has its own, so this one would swallow the drop first.
+        .dropDestination(for: String.self) { seriesUIDs, _ in
+            guard !viewModel.isMultiCellLayout, let uid = seriesUIDs.first else { return false }
+            return viewModel.assignSeries(uid, toCell: 0)
+        }
+        .focusable(viewModel.hasImage)
+        .focusEffectDisabled()
+        .focused($isImageAreaFocused)
+        .onAppear { isImageAreaFocused = true }
+        .onChange(of: viewModel.filePath) { _, _ in isImageAreaFocused = true }
+        .onKeyPress(.leftArrow) {
+            viewModel.navigateToPreviousImage() ? .handled : .ignored
+        }
+        .onKeyPress(.rightArrow) {
+            viewModel.navigateToNextImage() ? .handled : .ignored
+        }
+        .onKeyPress(.upArrow) {
+            guard viewModel.canGoPreviousFile else { return .ignored }
+            viewModel.navigateToPreviousFile()
+            return .handled
+        }
+        .onKeyPress(.downArrow) {
+            guard viewModel.canGoNextFile else { return .ignored }
+            viewModel.navigateToNextFile()
+            return .handled
+        }
         .background(
             GeometryReader { geo in
                 Color.clear
                     .onAppear {
                         viewSize = geo.size
-                        viewModel.viewContentWidth = geo.size.width
-                        viewModel.viewContentHeight = geo.size.height
+                        updateViewportSize(geo.size)
                     }
                     .onChange(of: geo.size) { _, newSize in
                         viewSize = newSize
-                        viewModel.viewContentWidth = newSize.width
-                        viewModel.viewContentHeight = newSize.height
+                        updateViewportSize(newSize)
                     }
             }
         )
@@ -121,8 +211,24 @@ public struct ImageViewerView: View {
                     .padding(.bottom, 40)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            // Print mark: an explicit checkbox on the image, unchecked until the
+            // user ticks it. Only ticked frames reach the print sheet.
+            // In a grid each tile carries its own checkbox, so this one would be
+            // ambiguous about which image it marks.
+            if viewModel.hasImage && !viewModel.isWaveform && !viewModel.isMultiCellLayout {
+                printMarkCheckbox
+                    .padding(8)
+            }
+        }
         .toolbar {
             viewerToolbar
+        }
+        .sheet(isPresented: $viewModel.isPrintSheetPresented) {
+            // Hosted rather than inlined: the sheet can also be raised from the
+            // library ("Print…"), which may happen before this view has ever
+            // appeared, so the print state must be created by the sheet itself.
+            PrintSheetHost(selection: viewModel.printSelection, printViewModel: $printViewModel)
         }
         .sheet(isPresented: $viewModel.showDICOMInspector) {
             if let file = viewModel.dicomFile {
@@ -143,6 +249,80 @@ public struct ImageViewerView: View {
                 viewModel.errorMessage = "Failed to open file: \(error.localizedDescription)"
             }
         }
+    }
+
+    // MARK: - Print
+
+    /// On-image checkbox that marks the displayed frame for print.
+    ///
+    /// Unchecked by default — nothing is printed unless the user ticks it. When
+    /// ticked it also shows the frame's 1-based film position.
+    private var printMarkCheckbox: some View {
+        let isMarked = viewModel.isCurrentFrameMarkedForPrint
+        return Button {
+            viewModel.togglePrintMarkForCurrentFrame()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: isMarked ? "checkmark.square.fill" : "square")
+                    .font(.body)
+                    .foregroundStyle(isMarked ? Color.accentColor : .secondary)
+                if let position = viewModel.currentFramePrintPosition {
+                    Text("Print \(position)")
+                        .font(.caption.monospacedDigit())
+                } else {
+                    Text("Print")
+                        .font(.caption)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .background(.thinMaterial, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(isMarked ? "Unmark image for print" : "Mark image for print")
+        .accessibilityAddTraits(isMarked ? [.isSelected] : [])
+        .help(isMarked ? "Marked for print — click to unmark (M)"
+                       : "Mark this image for print (M)")
+    }
+
+    /// Records the size the focused image is displayed at.
+    ///
+    /// In a grid the tiles report their own sizes, and the focused tile's is far
+    /// smaller than the whole viewer — taking the outer size there would resolve
+    /// zoom and pan against the wrong viewport and crop the wrong region.
+    private func updateViewportSize(_ size: CGSize) {
+        guard !viewModel.isMultiCellLayout else { return }
+        viewModel.viewContentWidth = size.width
+        viewModel.viewContentHeight = size.height
+    }
+
+    /// Opens the print sheet, creating its state on first use.
+    private func openPrintSheet() {
+        // The sheet is about to read the marks, so bring them up to date with
+        // what is actually on screen — the user has usually kept arranging since
+        // ticking the boxes.
+        viewModel.refreshMarksFromViewer()
+
+        if printViewModel == nil {
+            printViewModel = PrintViewModel(selection: viewModel.printSelection)
+        } else {
+            // Printers may have been added since the sheet was last open.
+            printViewModel?.loadPrinters()
+        }
+
+        // Mirror the viewer's grid on film, so the preview matches the screen.
+        if viewModel.isMultiCellLayout {
+            printViewModel?.viewerLayout = PrintLayout(
+                rows: viewModel.layout.rows, columns: viewModel.layout.columns)
+            printViewModel?.layoutMode = .matchViewer
+        } else {
+            printViewModel?.viewerLayout = nil
+            if printViewModel?.layoutMode == .matchViewer {
+                printViewModel?.layoutMode = .automatic
+            }
+        }
+
+        viewModel.isPrintSheetPresented = true
     }
 
     // MARK: - Image Content
@@ -284,7 +464,7 @@ public struct ImageViewerView: View {
                     }
                     .disabled(!viewModel.canGoPreviousFile)
                     .accessibilityLabel("Previous file in series")
-                    .help("Previous file in series")
+                    .help("Previous file in series (↑)")
 
                     Text(viewModel.seriesPositionText)
                         .font(.caption)
@@ -299,9 +479,82 @@ public struct ImageViewerView: View {
                     }
                     .disabled(!viewModel.canGoNextFile)
                     .accessibilityLabel("Next file in series")
-                    .help("Next file in series")
+                    .help("Next file in series (↓)")
                 }
             }
+        }
+
+        // Series pane
+        if !viewModel.studySeries.isEmpty {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    viewModel.isSeriesPaneVisible.toggle()
+                } label: {
+                    Image(systemName: viewModel.isSeriesPaneVisible
+                          ? "sidebar.left" : "sidebar.leading")
+                }
+                .accessibilityLabel(viewModel.isSeriesPaneVisible
+                                    ? "Hide series list" : "Show series list")
+                .help("Show or hide the study's series")
+            }
+        }
+
+        // Tile layout — the viewer grid, which is also the film grid
+        ToolbarItem(placement: .automatic) {
+            Menu {
+                ForEach(ViewerTileLayout.allCases) { option in
+                    Button {
+                        viewModel.applyLayout(option)
+                    } label: {
+                        if option == viewModel.layout {
+                            Label(option.displayName, systemImage: "checkmark")
+                        } else {
+                            Text(option.displayName)
+                        }
+                    }
+                }
+            } label: {
+                Label(viewModel.layout.displayName, systemImage: "square.grid.2x2")
+            }
+            .disabled(!viewModel.hasImage)
+            .accessibilityLabel("Tile layout, currently \(viewModel.layout.displayName)")
+            .help("Viewer tile layout — tiles map to film cells in the same order")
+        }
+
+        // DICOM print — mark the current frame, then open the print sheet
+        ToolbarItemGroup(placement: .automatic) {
+            Button {
+                viewModel.togglePrintMarkForCurrentFrame()
+            } label: {
+                Image(systemName: viewModel.isCurrentFrameMarkedForPrint
+                      ? "checkmark.rectangle.stack.fill"
+                      : "checkmark.rectangle.stack")
+            }
+            .disabled(!viewModel.hasImage)
+            .accessibilityLabel(viewModel.isCurrentFrameMarkedForPrint
+                                ? "Unmark image for print" : "Mark image for print")
+            .help("Mark this image for print (M)")
+            .keyboardShortcut("m", modifiers: [])
+
+            Button {
+                openPrintSheet()
+            } label: {
+                Image(systemName: "printer")
+                    .overlay(alignment: .topTrailing) {
+                        if viewModel.printSelection.count > 0 {
+                            Text("\(viewModel.printSelection.count)")
+                                .font(.system(size: 9).monospacedDigit())
+                                .padding(3)
+                                .background(.tint, in: Circle())
+                                .foregroundStyle(.white)
+                                .offset(x: 8, y: -8)
+                        }
+                    }
+            }
+            .disabled(viewModel.printSelection.isEmpty)
+            .accessibilityLabel("Print marked images")
+            .help("Print marked images (⌘P)")
+            .keyboardShortcut("p", modifiers: .command)
         }
 
         // Zoom / view controls — kept as a group so they stay together if overflow occurs
@@ -392,6 +645,35 @@ public struct ImageViewerView: View {
                 Image(systemName: "square.stack.3d.up")
             }
             .help("Overlays and panels")
+        }
+    }
+}
+
+// MARK: - Print Sheet Host
+
+/// Creates the print state on demand so the sheet works no matter who opened it
+/// — the toolbar button, or "Print…" in the library before this view appeared.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct PrintSheetHost: View {
+    let selection: PrintSelectionModel
+    @Binding var printViewModel: PrintViewModel?
+
+    var body: some View {
+        Group {
+            if let printViewModel {
+                PrintSettingsView(viewModel: printViewModel)
+            } else {
+                ProgressView()
+                    .frame(minWidth: 480, minHeight: 300)
+            }
+        }
+        .task {
+            if printViewModel == nil {
+                printViewModel = PrintViewModel(selection: selection)
+            } else {
+                printViewModel?.selection = selection
+                printViewModel?.loadPrinters()
+            }
         }
     }
 }

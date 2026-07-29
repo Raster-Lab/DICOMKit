@@ -9,6 +9,21 @@ DICOM print in DICOMKit spans two layers:
 - **Library** — [`Sources/DICOMNetwork/PrintService.swift`](Sources/DICOMNetwork/PrintService.swift) (3,718 lines) — the `DICOMPrintService` SCU + supporting models.
 - **CLI** — [`Sources/dicom-print/main.swift`](Sources/dicom-print/main.swift) (1,048 lines) — the `dicom-print` tool, v1.4.5.
 
+> **This audit covers the SCU only, as of 2026-07-20. Print has grown three layers since;
+> line counts and "CLI-private" statements below are stale.** Current picture:
+>
+> - **Shared core** — image preparation, the job model, workflow orchestration and all
+>   console/JSON output moved out of the CLI into the `DICOMPrintKit` target, which
+>   `dicom-print` and DICOMStudio both consume. The CLI is now a thin ArgumentParser shell.
+> - **Studio** — the print workflow (mark in the viewer → settings → execute → job history)
+>   is implemented; see [DICOM_PRINT_STUDIO_PLAN.md](DICOM_PRINT_STUDIO_PLAN.md).
+> - **SCP** — DICOMKit is now also a printer emulator; see
+>   [DICOM_PRINT_SCP_PLAN.md](DICOM_PRINT_SCP_PLAN.md).
+> - **Conformance** — [PRINT_CONFORMANCE.md](PRINT_CONFORMANCE.md) is the authoritative
+>   statement for both roles, including the DCMTK 3.7.0 interop results and the SCU fixes
+>   they produced (columns-first Image Display Format, Configuration Information, 0x0106 as
+>   a failure, Trim / Decimate-Crop omission).
+
 ---
 
 ## ✅ What's Implemented
