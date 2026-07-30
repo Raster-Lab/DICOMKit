@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — DICOM Studio: the film as a working surface (2026-07-30)
+
+Plan: `DICOM_PRINT_STUDIO_PLAN.md` §10.
+
+- **Patient identification burned into the film** (`DICOMPrintKit/ImageAnnotationBurner.swift`,
+  `PatientOverlayText`, `PatientOverlayTextCache`, `PatientIdentificationOverlayView`): "name,
+  ID, study date" over the study description, from one definition shared by viewer tiles and
+  film cells. A DICOM printer draws identification from annotation boxes to its own layout and
+  many ignore them, so the lines are burned into the prepared 8-bit frame instead — one bitmap
+  pass per cell, applied last so a later crop or rotate cannot carry the caption with it, and
+  skipped quietly on an unexpected pixel format rather than failing the print. The viewer draws
+  it as a reserved band below the picture; the film preview overlays it, since there the cell
+  *is* the film.
+- **Drawn annotations on a film cell** (`PrintOverlayAnnotation`, `PrintViewModel+Annotations`,
+  `FilmCellAnnotationLayer`): text and arrows, in coordinates normalized to the **image** and
+  held per **mark ID** — so re-arranging the film, changing layout or printing to another sheet
+  cannot move an arrow off the vessel it pointed at, and the 512-pixel preview and the
+  3000-pixel frame agree. The preview uses the burner's own arrow geometry.
+- **Per-cell editing in the print preview** (`PrintViewModel+CellEditing`): window/level, zoom,
+  pan, text and arrow tools writing back into the mark that `PrintService.prepare` reads, so
+  the preview cannot drift from the film. `FrameSourceCache` keeps decoded pixels so a
+  window/level drag re-maps rather than re-decoding (tens of ms per event on a JPEG 2000 CT);
+  cell renders moved 256 → 512 (at 256 half the grey levels being judged are lost to
+  downscaling) and the previous rendering stands in during a gesture instead of a spinner.
+- **Non-image instances open instead of failing** (`ViewerContentKind`, `ViewerNonImageContent`,
+  `ViewerNonImageContentView`): SR read as a narrative, encapsulated PDF as pages, presentation
+  states / KOS / raw data as named summaries. Previously a valid SR was reported as an
+  "unsupported transfer syntax" — a decode failure for pixels it never claimed to have.
+- **Library rows describe the study again** (`StudyModel.merging`, `StudyRowSummary`,
+  `LibraryModel`, `DICOMFileService`): study fields are unioned across the files of a study
+  rather than overwritten by whichever was read last; rows fall back to the series' modality
+  and description, then patient ID / accession, before saying "Unknown"; series and instances
+  sort by Series/Instance Number with unnumbered **last** and a total-order tiebreak (a series
+  used to open on a different image on each read); empty studies are pruned; a DICOMDIR and any
+  object with no SOP/Series Instance UID are refused at import instead of manufacturing an
+  unopenable "Unknown Patient, 0 series, 0 images" row.
+- **Reading with one hand on the keyboard**: shared `ScrollWheelHandler` (viewer pages images,
+  film preview zooms cells, both live while the print sheet is over the viewer) with step
+  accumulation for fine trackpad deltas; first/last jumps and opt-in wrap at series ends;
+  `ViewerPrintTrayView` — the selection in film order, each row rendered with that mark's own
+  window and arrangement, without opening the print sheet; ⌘/ keyboard-shortcut legend on both
+  screens.
+- **Tests**: `PrintOverlayAnnotationTests`, `ImageAnnotationBurnerTests`,
+  `PrintCellAnnotationTests`, `PrintCellEditingTests`, `PatientOverlayTextTests`,
+  `PatientIdentificationOverlaySizingTests`, `ViewerContentKindTests`,
+  `ViewerProtocolLineTests`, `LibraryStudyMergeTests`, `LibraryImportEndToEndTests`,
+  `StudyRowSummaryTests`, `ScrollStepAccumulatorTests`, `ViewerTileLayoutTests` —
+  4,335 tests in 394 suites green.
+
 ### Added — DICOM Print SCP: printer emulator (2026-07-28/29)
 
 DICOMKit now implements Print Management (PS3.4 Annex H) in **both** roles. Any Print SCU —

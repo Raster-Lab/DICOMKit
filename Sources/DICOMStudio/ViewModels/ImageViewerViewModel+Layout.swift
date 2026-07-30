@@ -51,8 +51,17 @@ extension ImageViewerViewModel {
         loadFocusedCellIfNeeded()
     }
 
-    /// The series file for a tile, or `nil` when the series runs out.
+    /// The file a tile shows when a grid is applied.
+    ///
+    /// With a study open, a grid is a comparison of *series*: each tile takes
+    /// the first image of the next series, starting from the one on screen, so a
+    /// 2×2 reads as "this series and the next three" rather than four adjacent
+    /// slices of one stack — which the wheel already gives, one tile at a time.
+    /// Grids larger than the study has series fall back to filling the rest from
+    /// the current stack, so no tile is left blank while there are images to put
+    /// in it.
     private func fileForCell(offset: Int, anchorIndex: Int) -> String? {
+        if let path = seriesLedFile(offset: offset) { return path }
         guard !seriesFiles.isEmpty else {
             return offset == 0 ? filePath : nil
         }
@@ -60,17 +69,47 @@ extension ImageViewerViewModel {
         return seriesFiles.indices.contains(index) ? seriesFiles[index] : nil
     }
 
+    /// The first image of the offset-th series from the current one.
+    private func seriesLedFile(offset: Int) -> String? {
+        guard !studySeries.isEmpty else { return nil }
+        let start = currentSeriesIndex ?? 0
+        let index = start + offset
+        guard studySeries.indices.contains(index) else { return nil }
+        return studySeries[index].firstFilePath
+    }
+
+    /// Where the series on screen sits in the study's series list.
+    private var currentSeriesIndex: Int? {
+        if let currentSeriesUID,
+           let index = studySeries.firstIndex(where: { $0.seriesInstanceUID == currentSeriesUID }) {
+            return index
+        }
+        guard let filePath else { return nil }
+        return studySeries.firstIndex { $0.filePaths.contains(filePath) }
+    }
+
+    /// The series a tile's file belongs to, for hanging it as a series rather
+    /// than as a loose file.
+    private func seriesEntryForFile(_ path: String?) -> ViewerSeriesEntry? {
+        guard let path else { return nil }
+        return studySeries.first { $0.filePaths.contains(path) }
+    }
+
     /// A tile showing `filePath` with the viewer's default presentation.
     ///
     /// New tiles inherit the viewer's current series, so a fresh grid reads as
     /// "this series, continued" until the user hangs something else in a tile.
     private func blankCell(at index: Int, filePath: String?) -> ViewerCellState {
-        ViewerCellState(
+        // A tile showing another series navigates *that* series: scrolling it
+        // must walk its own stack, not the one the grid was applied from.
+        let entry = seriesEntryForFile(filePath)
+        let tileSeriesFiles = entry?.filePaths ?? seriesFiles
+        return ViewerCellState(
             index: index,
             filePath: filePath,
-            seriesUID: currentSeriesUID,
-            seriesFiles: seriesFiles,
-            fileIndex: filePath.flatMap { seriesFiles.firstIndex(of: $0) } ?? 0,
+            seriesUID: entry?.seriesInstanceUID ?? currentSeriesUID,
+            seriesFiles: tileSeriesFiles,
+            fileIndex: filePath.flatMap { tileSeriesFiles.firstIndex(of: $0) } ?? 0,
             frameIndex: 0,
             frameCount: 1,
             windowCenter: inheritedWindowCenter(for: filePath),
@@ -126,6 +165,15 @@ extension ImageViewerViewModel {
         var cell = cells[focusedCellIndex]
         // A tile that never had a file adopts whatever the viewer is showing.
         if cell.filePath == nil { cell.filePath = filePath }
+        // The focused tile owns navigation, so stepping through its series moves
+        // the *tile* onto the new file. Without this the tile keeps pointing at
+        // the file it was hung with, and everything read from `cells` — the
+        // print checkbox, the marks, film order — describes an image that is no
+        // longer on screen.
+        if cell.filePath != filePath, let filePath,
+           cell.seriesFiles.contains(filePath) || seriesFiles.contains(filePath) {
+            cell.filePath = filePath
+        }
         guard cell.filePath == filePath else { return }
 
         cell.frameIndex = currentFrameIndex
@@ -191,10 +239,17 @@ extension ImageViewerViewModel {
     // MARK: - Print marking
 
     /// Whether a tile is marked for print.
+    ///
+    /// The focused tile is read from the live view model rather than from its
+    /// stored state: it is the one tile the user can navigate, and its box must
+    /// track the image actually on screen — ticked only for images that are
+    /// marked, unticked the moment it scrolls onto one that is not.
     public func isCellMarkedForPrint(_ index: Int) -> Bool {
-        guard cells.indices.contains(index),
-              let path = cells[index].filePath else { return false }
-        let frame = index == focusedCellIndex ? currentFrameIndex : cells[index].frameIndex
+        guard cells.indices.contains(index) else { return false }
+        let isFocused = index == focusedCellIndex
+        guard let path = isFocused ? (filePath ?? cells[index].filePath)
+                                   : cells[index].filePath else { return false }
+        let frame = isFocused ? currentFrameIndex : cells[index].frameIndex
         return printSelection.contains(filePath: path, frameIndex: frame)
     }
 
@@ -268,13 +323,16 @@ extension ImageViewerViewModel {
         printSelection.replace(with: ordered)
     }
 
-    /// Marks every non-empty tile, in grid order.
+    /// The images the layout is currently showing, in grid order.
     ///
+    /// This is what "select all" means in the viewer: the pictures on screen,
+    /// not the study behind them. At 1×1 the viewer itself is the one tile.
     /// Grid order is film order, so a 2×2 of viewer tiles prints as that 2×2.
-    @discardableResult
-    public func markLayoutForPrint() -> Int {
-        captureFocusedCell()
-        let items = cells.compactMap { cell -> PrintSelectionItem? in
+    public var layoutSelectionItems: [PrintSelectionItem] {
+        guard isMultiCellLayout else {
+            return currentSelectionItem.map { [$0] } ?? []
+        }
+        return cells.compactMap { cell -> PrintSelectionItem? in
             let isFocused = cell.index == focusedCellIndex
             return cell.selectionItem(
                 sopInstanceUID: isFocused ? sopInstanceUID : nil,
@@ -282,6 +340,43 @@ extension ImageViewerViewModel {
                 instanceNumber: isFocused ? instanceNumberForPrint : nil
             )
         }
-        return printSelection.add(contentsOf: items)
+    }
+
+    /// Marks every image the layout is showing. Returns how many were added.
+    @discardableResult
+    public func markLayoutForPrint() -> Int {
+        captureFocusedCell()
+        return printSelection.add(contentsOf: layoutSelectionItems)
+    }
+
+    /// Unmarks every image the layout is showing.
+    ///
+    /// Scoped to the screen, like its counterpart: marks taken elsewhere in the
+    /// study are left alone, because the user is unticking what they can see.
+    /// Returns how many were removed.
+    @discardableResult
+    public func unmarkLayoutForPrint() -> Int {
+        captureFocusedCell()
+        let before = printSelection.count
+        for item in layoutSelectionItems {
+            printSelection.remove(filePath: item.filePath, frameIndex: item.frameIndex)
+        }
+        return before - printSelection.count
+    }
+
+    /// Whether every image on screen is already marked.
+    public var isLayoutFullyMarkedForPrint: Bool {
+        let items = layoutSelectionItems
+        guard !items.isEmpty else { return false }
+        return items.allSatisfy {
+            printSelection.contains(filePath: $0.filePath, frameIndex: $0.frameIndex)
+        }
+    }
+
+    /// Whether any image on screen is marked.
+    public var isAnyLayoutImageMarkedForPrint: Bool {
+        layoutSelectionItems.contains {
+            printSelection.contains(filePath: $0.filePath, frameIndex: $0.frameIndex)
+        }
     }
 }

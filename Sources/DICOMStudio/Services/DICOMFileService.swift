@@ -79,13 +79,40 @@ public final class DICOMFileService: Sendable {
         let transferSyntaxUID = fmi.string(for: .transferSyntaxUID)
             ?? ds.string(for: .transferSyntaxUID)
 
+        // A DICOMDIR is an index of a file set, not an instance of anything: it
+        // has no image, no series and no study of its own. Importing one used to
+        // manufacture a study out of it — the "Unknown Patient, 0 series, 0
+        // images" row — so it is refused here, where the SOP Class is known.
+        let mediaStorageSOPClass = fmi.string(for: .mediaStorageSOPClassUID)
+            ?? ds.string(for: .sopClassUID)
+        if mediaStorageSOPClass == Self.mediaStorageDirectoryUID {
+            throw DICOMError.parsingFailed(
+                "This is a DICOMDIR index, not an image — import the files it refers to")
+        }
+
+        // Identity is what makes an instance filable. Without a SOP Instance UID
+        // and a Series Instance UID there is nothing to key a series on, and the
+        // fabricated UUIDs below would file the object under a study that can
+        // never be opened again.
+        guard let realSOPInstanceUID = ds.string(for: .sopInstanceUID)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !realSOPInstanceUID.isEmpty,
+              let realSeriesInstanceUID = ds.string(for: .seriesInstanceUID)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !realSeriesInstanceUID.isEmpty
+        else {
+            throw DICOMError.parsingFailed(
+                "File carries no SOP Instance UID or Series Instance UID")
+        }
+
         // --- Instance ---
-        let sopInstanceUID = ds.string(for: .sopInstanceUID) ?? UUID().uuidString
+        let sopInstanceUID = realSOPInstanceUID
         let sopClassUID = ds.string(for: .sopClassUID)
             ?? fmi.string(for: .mediaStorageSOPClassUID)
             ?? ""
-        let seriesInstanceUID = ds.string(for: .seriesInstanceUID) ?? ""
-        let instanceNumber = ds.int32(for: .instanceNumber).map { Int($0) }
+        let seriesInstanceUID = realSeriesInstanceUID
+        // Instance Number is IS — an *integer string* — so it has to be read as
+        // text. Read as a binary SL it is always nil, which is how a series ends
+        // up in file-system order instead of acquisition order.
+        let instanceNumber = Self.integerString(in: ds, tag: .instanceNumber)
         let rows = ds.uint16(for: .rows).map { Int($0) }
         let columns = ds.uint16(for: .columns).map { Int($0) }
         let bitsAllocated = ds.uint16(for: .bitsAllocated).map { Int($0) }
@@ -110,24 +137,36 @@ public final class DICOMFileService: Sendable {
         )
 
         // --- Study ---
-        let studyInstanceUID = ds.string(for: .studyInstanceUID) ?? UUID().uuidString
+        // A file with no Study Instance UID still has to be filed somewhere. A
+        // fresh UUID per file put every image in a study of its own — a library
+        // full of one-image studies — so the series it belongs to is used as the
+        // key instead: the objects that belong together stay together, and the
+        // study is stable across re-imports of the same file.
+        let declaredStudyUID = ds.string(for: .studyInstanceUID)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let studyInstanceUID = (declaredStudyUID?.isEmpty == false)
+            ? declaredStudyUID! : realSeriesInstanceUID
         let modality = ds.string(for: .modality)
         var modalitiesInStudy: Set<String> = []
-        if let mod = modality { modalitiesInStudy.insert(mod) }
+        if let mod = modality?.trimmingCharacters(in: .whitespaces), !mod.isEmpty {
+            modalitiesInStudy.insert(mod)
+        }
+        // Modalities in Study (0008,0061) is a multi-valued list naming every
+        // modality of the exam. Where it is present it says more than this one
+        // file's own Modality, so both are folded in.
+        for value in ds.strings(for: Tag(group: 0x0008, element: 0x0061)) ?? [] {
+            let trimmed = value.trimmingCharacters(in: .whitespaces)
+            if !trimmed.isEmpty { modalitiesInStudy.insert(trimmed) }
+        }
 
-        let studyDate: Date? = {
-            guard let raw = ds.string(for: .studyDate)?
-                    .trimmingCharacters(in: .whitespaces),
-                  !raw.isEmpty else { return nil }
-            let fmt = DateFormatter()
-            fmt.locale = Locale(identifier: "en_US_POSIX")
-            fmt.timeZone = TimeZone(secondsFromGMT: 0)
-            for pattern in ["yyyyMMdd", "yyyy.MM.dd"] {
-                fmt.dateFormat = pattern
-                if let d = fmt.date(from: raw) { return d }
-            }
-            return nil
-        }()
+        // Study Date, then the dates a study falls back to when it has none of
+        // its own. A study filed under "Unknown Date" sorts to the bottom of the
+        // library and reads as a broken import, so a date is worth looking for.
+        let studyDate = Self.date(in: ds, tags: [
+            .studyDate,
+            Tag(group: 0x0008, element: 0x0021),   // Series Date
+            Tag(group: 0x0008, element: 0x0022)    // Acquisition Date
+        ])
 
         let study = StudyModel(
             studyInstanceUID: studyInstanceUID,
@@ -147,7 +186,7 @@ public final class DICOMFileService: Sendable {
         let series = SeriesModel(
             seriesInstanceUID: seriesInstanceUID,
             studyInstanceUID: studyInstanceUID,
-            seriesNumber: ds.int32(for: .seriesNumber).map { Int($0) },
+            seriesNumber: Self.integerString(in: ds, tag: .seriesNumber),
             modality: modality ?? "OT",
             seriesDescription: ds.string(for: .seriesDescription),
             bodyPartExamined: ds.string(for: .bodyPartExamined),
@@ -192,4 +231,62 @@ public final class DICOMFileService: Sendable {
     public func extractSeriesMetadataFromData(_ data: Data) throws -> SeriesModel {
         try parseAllMetadata(data: data, url: URL(fileURLWithPath: "/unknown")).series
     }
+
+    /// The first parsable date among a list of date tags.
+    ///
+    /// DA is eight digits, but real files carry `yyyy.MM.dd` (ACR-NEMA era),
+    /// `yyyy-MM-dd`, and dates with a time or a range appended. Anything with
+    /// eight leading digits is a date, and reading it beats filing the study
+    /// under "Unknown Date".
+    static func date(in dataSet: DataSet, tags: [Tag]) -> Date? {
+        for tag in tags {
+            guard let raw = dataSet.string(for: tag)?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else { continue }
+            if let parsed = parseDICOMDate(raw) { return parsed }
+        }
+        return nil
+    }
+
+    /// Parses one DA value, tolerating the separators found in the wild.
+    static func parseDICOMDate(_ raw: String) -> Date? {
+        // An empty value is not a date, and `DateFormatter` is happy to read one
+        // as the start of its era rather than refusing it.
+        guard raw.contains(where: \.isNumber) else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        for pattern in ["yyyyMMdd", "yyyy.MM.dd", "yyyy-MM-dd", "yyyy/MM/dd"] {
+            formatter.dateFormat = pattern
+            if let date = formatter.date(from: raw) { return date }
+        }
+        // Last resort: the leading eight digits, which covers a date with a
+        // time, a range, or padding stuck to it.
+        let digits = raw.filter(\.isNumber)
+        guard digits.count >= 8 else { return nil }
+        formatter.dateFormat = "yyyyMMdd"
+        return formatter.date(from: String(digits.prefix(8)))
+    }
+
+
+    /// Media Storage Directory Storage — the SOP Class of a DICOMDIR.
+    static let mediaStorageDirectoryUID = "1.2.840.10008.1.3.10"
+
+    /// Reads an IS (Integer String) element, e.g. Series Number, Instance Number.
+    ///
+    /// IS values are text — `"7"`, `" 7 "`, `"+7"` — and are padded to an even
+    /// length. `DataSet.int32(for:)` decodes binary SL only and returns nil for
+    /// every one of them, which silently un-numbers every series and instance in
+    /// the library.
+    static func integerString(in dataSet: DataSet, tag: Tag) -> Int? {
+        guard let raw = dataSet.string(for: tag)?
+            .trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            // Some devices really do write it as binary; honour that too.
+            return dataSet.int32(for: tag).map(Int.init)
+        }
+        if let value = Int(raw) { return value }
+        // Multi-valued or decorated: take the leading signed integer.
+        let firstValue = raw.split(separator: "\\").first.map(String.init) ?? raw
+        return Int(firstValue.trimmingCharacters(in: .whitespaces))
+    }
+
 }

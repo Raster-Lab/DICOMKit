@@ -46,6 +46,20 @@ public final class ImageViewerViewModel {
     /// with no displayable pixel data.
     public var isWaveform: Bool { waveform != nil }
 
+    /// Parsed content when the loaded file is not a picture: a structured
+    /// report, an encapsulated document, a key object selection, a presentation
+    /// state. Non-nil disables the pixel path and drives the document display.
+    public var nonImageContent: ViewerNonImageContent?
+
+    /// Whether the loaded file holds something other than pixels or a waveform.
+    public var isNonImageContent: Bool { nonImageContent != nil }
+
+    /// What kind of content the viewer is currently showing.
+    public var contentKind: ViewerContentKind {
+        if let nonImageContent { return nonImageContent.kind }
+        return isWaveform ? .waveform : .image
+    }
+
     /// Whether an image is currently loading.
     public var isLoading: Bool = false
 
@@ -159,6 +173,13 @@ public final class ImageViewerViewModel {
     /// Whether the performance overlay is visible.
     public var showPerformanceOverlay: Bool = false
 
+    /// Whether the patient identification overlay is burned over the image.
+    ///
+    /// On by default: identifying the patient on the picture is the reading-room
+    /// expectation, and it is what reaches film when these images are printed.
+    /// See `ImageViewerViewModel+PatientOverlay.swift`.
+    public var showPatientOverlay: Bool = true
+
     /// Whether the DICOM tag inspector sheet is visible.
     public var showDICOMInspector: Bool = false
 
@@ -212,6 +233,9 @@ public final class ImageViewerViewModel {
     /// Whether the print settings sheet is showing.
     public var isPrintSheetPresented: Bool = false
 
+    /// Whether the tray of selected images is showing on the right.
+    public var isPrintTrayVisible: Bool = true
+
     // MARK: - Tile Layout
 
     /// The viewer's tile grid. 1×1 by default — one image, as before.
@@ -249,6 +273,13 @@ public final class ImageViewerViewModel {
 
     /// Whether the series pane is showing.
     public var isSeriesPaneVisible: Bool = true
+
+    /// Whether stepping past either end of the series wraps round to the other.
+    ///
+    /// On by default: a tile is scrolled through with the wheel, and stopping
+    /// dead at the last image reads as a stuck viewer rather than as the end of
+    /// the series. See `ImageViewerViewModel+ImageNavigation.swift`.
+    public var isRepeatNavigationEnabled: Bool = true
 
     // MARK: - Codec Inspector (Phase 8)
 
@@ -442,8 +473,9 @@ public final class ImageViewerViewModel {
     /// Shared implementation for loading parsed DICOM data.
     private func loadDICOMData(_ data: Data, path: String) throws {
         // Clear any prior waveform so a failed/non-waveform load can't leave a stale
-        // tracing on screen.
+        // tracing on screen. The same holds for a report or document.
         self.waveform = nil
+        self.nonImageContent = nil
 
         let file: DICOMFile
         do {
@@ -476,6 +508,21 @@ public final class ImageViewerViewModel {
            let parsed = try? WaveformParser.parse(from: ds),
            !parsed.multiplexGroups.isEmpty {
             self.waveform = parsed
+            self.currentImage = nil
+            self.numberOfFrames = 1
+            self.currentFrameIndex = 0
+            self.errorMessage = nil
+            self.isLoading = false
+            return
+        }
+
+        // Reports, encapsulated documents, key object selections and
+        // presentation states carry no Pixel Data. They are classified by SOP
+        // Class before the pixel path runs: falling through would report a
+        // perfectly valid SR as an image that failed to decode.
+        if let content = ViewerNonImageContentReader.content(
+            of: ds, sopClassUID: ds.string(for: .sopClassUID)) {
+            self.nonImageContent = content
             self.currentImage = nil
             self.numberOfFrames = 1
             self.currentFrameIndex = 0

@@ -105,12 +105,61 @@ public struct StudyModel: Identifiable, Hashable, Sendable {
         self.isFavorite = isFavorite
     }
 
+    /// This study with anything it is missing filled in from another reading of
+    /// the same study.
+    ///
+    /// Union rather than replacement: two files of one study describe the same
+    /// exam, and the one that carries a Study Description does not become wrong
+    /// because a later file omits it. Identity (`id`, `studyInstanceUID`) and
+    /// user state (`isFavorite`) stay with the record already in the library.
+    public func merging(_ other: StudyModel) -> StudyModel {
+        var merged = self
+        if merged.studyID.isEmpty { merged.studyID = other.studyID }
+        merged.studyDate = merged.studyDate ?? other.studyDate
+        merged.studyTime = merged.studyTime ?? other.studyTime
+        merged.studyDescription = Self.preferred(merged.studyDescription, other.studyDescription)
+        merged.accessionNumber = Self.preferred(merged.accessionNumber, other.accessionNumber)
+        merged.referringPhysicianName = Self.preferred(
+            merged.referringPhysicianName, other.referringPhysicianName)
+        merged.patientName = Self.preferred(merged.patientName, other.patientName)
+        merged.patientID = Self.preferred(merged.patientID, other.patientID)
+        merged.patientBirthDate = merged.patientBirthDate ?? other.patientBirthDate
+        merged.patientSex = Self.preferred(merged.patientSex, other.patientSex)
+        merged.institutionName = Self.preferred(merged.institutionName, other.institutionName)
+        merged.storagePath = Self.preferred(merged.storagePath, other.storagePath)
+        // A study spans modalities — a CT with a dose SR, an MR with a scout —
+        // so this accumulates rather than overwriting.
+        merged.modalitiesInStudy.formUnion(other.modalitiesInStudy)
+        merged.numberOfSeries = max(merged.numberOfSeries, other.numberOfSeries)
+        merged.numberOfInstances = max(merged.numberOfInstances, other.numberOfInstances)
+        merged.isFavorite = merged.isFavorite || other.isFavorite
+        return merged
+    }
+
+    /// The first of two optional strings that actually says something.
+    private static func preferred(_ lhs: String?, _ rhs: String?) -> String? {
+        if let lhs, !lhs.trimmingCharacters(in: .whitespaces).isEmpty { return lhs }
+        if let rhs, !rhs.trimmingCharacters(in: .whitespaces).isEmpty { return rhs }
+        return lhs ?? rhs
+    }
+
     /// Returns a display-friendly patient name (e.g., "Doe, John" from "Doe^John").
+    ///
+    /// A study with no Patient Name is still a study someone has to find again,
+    /// so the row falls back to whatever does identify it — the patient ID, the
+    /// description of the exam, the accession number — before admitting it knows
+    /// nothing. "Unknown Patient" on a study that carries an ID is a label the
+    /// library invented, not something the data says.
     public var displayPatientName: String {
-        guard let name = patientName, !name.isEmpty else {
-            return "Unknown Patient"
+        if let name = patientName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+            return name.replacingOccurrences(of: "^", with: ", ")
         }
-        return name.replacingOccurrences(of: "^", with: ", ")
+        for fallback in [patientID, studyDescription, accessionNumber, studyID] {
+            if let value = fallback?.trimmingCharacters(in: .whitespaces), !value.isEmpty {
+                return value
+            }
+        }
+        return "Unknown Patient"
     }
 
     /// Returns a formatted study date string or "Unknown Date".

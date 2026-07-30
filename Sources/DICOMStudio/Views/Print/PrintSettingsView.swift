@@ -4,14 +4,19 @@
 // DICOM Studio — the print sheet: pick a printer and layout, check the film
 // plan, and send the marked images to the DICOM printer.
 //
-// Every option lives in a band across the top; the whole centre belongs to the
-// film preview, which is the thing actually being judged.
+// Three columns, like every other print dialog: the settings down the left, the
+// film large in the middle, the focused cell's controls down the right. The film
+// is the thing actually being judged, so it keeps the centre at full height —
+// nothing is stacked above or below it that could take that height away.
 //
 // Visible zone: printer, layout, orientation, film size, copies, preview.
 // Advanced zone: everything else the dicom-print CLI exposes.
 
 #if canImport(SwiftUI)
 import SwiftUI
+#if canImport(AppKit)
+import AppKit
+#endif
 import DICOMNetwork
 import DICOMPrintKit
 
@@ -21,8 +26,16 @@ public struct PrintSettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var showAdvanced = false
+
+    /// Whether the full options band is showing. Collapsed, the sheet is film
+    /// size, orientation and the preview — which is all a film usually needs.
+    @State private var showOptions = true
     @State private var showPrinterManagement = false
     @State private var showImageList = false
+
+    /// Keyboard focus for the annotation's text field, so text placed on a cell
+    /// can be typed straight away rather than clicked into first.
+    @FocusState private var isAnnotationTextFocused: Bool
 
     /// Size of the window the sheet was raised from. The print screen opens at
     /// the same size as the screen behind it.
@@ -49,16 +62,64 @@ public struct PrintSettingsView: View {
 
             footer
         }
-        // Match the screen it was raised from; fall back to a size wide enough
-        // that the options band fits without scrolling.
-        .frame(
-            minWidth: max(960, parentSize?.width ?? 0),
-            minHeight: max(640, parentSize?.height ?? 0)
-        )
+        // Text placed on a cell is created empty, so the caret goes to its field:
+        // clicking to place text and then having to click again to type it is one
+        // click too many for something done a dozen times a film.
+        .onChange(of: viewModel.selectedAnnotationID) { _, _ in
+            if let selected = viewModel.selectedAnnotation,
+               selected.annotation.kind == .text, selected.annotation.text.isEmpty {
+                isAnnotationTextFocused = true
+            }
+        }
+        // A fixed size, not a range: given only a range, the sheet settles on
+        // whatever its content asks for — which is the minimum — and the options
+        // band ends up clipped with the film in a small square in the middle.
+        .frame(width: sheetSize.width, height: sheetSize.height)
         .sheet(isPresented: $showPrinterManagement) {
             PrinterManagementView(viewModel: viewModel)
         }
     }
+
+    /// The size the sheet opens at.
+    ///
+    /// Three quarters of the window it was raised from: enough that the options
+    /// band fits without clipping and the film gets real room, while the viewer
+    /// stays visible around it. Never below the size the band needs — on a small
+    /// window the sheet takes the whole of it rather than hiding controls — and
+    /// never past the display it sits on.
+    private var sheetSize: CGSize {
+        let parentWidth = parentSize?.width ?? Self.fallbackWidth
+        let parentHeight = parentSize?.height ?? Self.fallbackHeight
+
+        var width = max(Self.minimumWidth, parentWidth * Self.parentFraction)
+        var height = max(Self.minimumHeight, parentHeight * Self.parentFraction)
+
+        // Never larger than the window behind it, or its edges fall outside.
+        width = min(width, parentWidth)
+        height = min(height, parentHeight)
+
+        #if canImport(AppKit)
+        // A sheet is presented on its parent's screen, and the visible frame
+        // already excludes the menu bar and Dock.
+        if let visible = (NSApplication.shared.keyWindow?.screen ?? NSScreen.main)?.visibleFrame {
+            width = min(width, visible.width)
+            height = min(height, visible.height)
+        }
+        #endif
+
+        return CGSize(width: width, height: height)
+    }
+
+    /// How much of the parent window the sheet takes.
+    private static let parentFraction: CGFloat = 0.75
+
+    /// Below these the two columns and the film stop fitting side by side.
+    private static let minimumWidth: CGFloat = 1160
+    private static let minimumHeight: CGFloat = 680
+
+    /// Used when the sheet was raised without a window size to match.
+    private static let fallbackWidth: CGFloat = 1100
+    private static let fallbackHeight: CGFloat = 760
 
     // MARK: - Header
 
@@ -72,6 +133,21 @@ public struct PrintSettingsView: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
+            if !viewModel.isRunning {
+                KeyboardShortcutsButton(
+                    title: "Print Preview Shortcuts",
+                    groups: KeyboardShortcutsLegendView.printPreviewGroups)
+                    .controlSize(.small)
+
+                Button {
+                    showOptions.toggle()
+                } label: {
+                    Label(showOptions ? "Hide Options" : "Show Options",
+                          systemImage: showOptions ? "chevron.up" : "slider.horizontal.3")
+                }
+                .controlSize(.small)
+                .help("Hide the settings column and give the film the whole sheet")
+            }
             if let message = viewModel.validationMessage, !viewModel.isRunning {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
                     .font(.caption)
@@ -85,51 +161,120 @@ public struct PrintSettingsView: View {
 
     // MARK: - Configuration
 
-    /// Options across the top, film everywhere below.
+    /// Settings left, film centre, focused cell right.
     ///
-    /// The preview is the thing being judged, so it gets the whole centre: the
-    /// controls live in one band that scrolls sideways rather than a column that
-    /// eats width the film needs.
+    /// The preview gets the whole middle column at full sheet height. The
+    /// settings scroll in their own column instead of banding across the top,
+    /// where they capped how tall the film could be drawn.
     private var configurationForm: some View {
-        VStack(spacing: 0) {
-            optionsBand
-
-            Divider()
-
-            previewSection
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-    }
-
-    /// The band of controls pinned to the top of the sheet.
-    private var optionsBand: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 16) {
-                    printerSection
-                    bandDivider
-                    basicSection
-                    bandDivider
-                    marksSection
-                }
-                .padding(.horizontal, 14)
-                .padding(.top, 10)
+        HStack(spacing: 0) {
+            if showOptions {
+                optionsSidebar
+                Divider()
             }
 
-            advancedSection
-                .padding(.horizontal, 14)
-                .padding(.bottom, 8)
+            VStack(spacing: 0) {
+                // Collapsed, the two things a reading room still changes per
+                // film ride above the preview as a single slim row.
+                if !showOptions {
+                    compactBand
+                    Divider()
+                }
+
+                previewSection
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if !viewModel.selection.isEmpty {
+                Divider()
+                inspectorSidebar
+            }
         }
     }
 
-    private var bandDivider: some View {
-        Divider().frame(height: Self.bandRowHeight)
+    /// The column of settings down the left edge.
+    ///
+    /// One card per subject — where the film goes, what the film is, what is on
+    /// it — rather than a single run of controls under rules. A card is what makes
+    /// "film size" obviously a property of the film and not of the printer, which
+    /// a flat list of pickers cannot say.
+    private var optionsSidebar: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 10) {
+                card { printerSection }
+                card { basicSection }
+                card { marksSection }
+                card { advancedSection }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 12)
+            .frame(width: Self.sidebarWidth, alignment: .leading)
+        }
+        .frame(width: Self.sidebarWidth)
     }
 
-    /// Height of one row of band controls, used to size the separators.
-    private static let bandRowHeight: CGFloat = 54
+    /// One section of the settings column.
+    @ViewBuilder
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 7))
+        .overlay(
+            RoundedRectangle(cornerRadius: 7)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+    }
 
-    /// Widest a picker in the band grows to.
+    /// Width of the settings column — enough for a picker and its caption.
+    private static let sidebarWidth: CGFloat = 320
+
+    /// Width of the focused-cell column on the right.
+    private static let inspectorWidth: CGFloat = 260
+
+    /// The band collapsed to what a reading room changes per film: the sheet it
+    /// prints on and which way round it goes. Everything else keeps the value it
+    /// already has — collapsing hides controls, it never resets them.
+    private var compactBand: some View {
+        HStack(spacing: 14) {
+            labeledControl("Film size") {
+                Picker("Film size", selection: $viewModel.filmSize) {
+                    ForEach(PrintOptionCatalog.filmSizes, id: \.cliToken) { entry in
+                        Text(entry.label).tag(entry.value)
+                    }
+                }
+                .labelsHidden()
+                .disabled(viewModel.layoutMode == .template)
+            }
+
+            Picker("Orientation", selection: $viewModel.filmOrientation) {
+                ForEach(PrintOptionCatalog.orientations, id: \.cliToken) { entry in
+                    Text(entry.label).tag(entry.value)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(width: 200)
+            .disabled(viewModel.layoutMode == .template)
+
+            if let printer = viewModel.selectedPrinter {
+                Text(printer.summary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+        }
+        .controlSize(.small)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+    }
+
+    /// Widest a picker in the sidebar grows to.
     private static let controlWidth: CGFloat = 180
 
     // MARK: Printer
@@ -137,42 +282,54 @@ public struct PrintSettingsView: View {
     private var printerSection: some View {
         bandGroup("Printer") {
             if viewModel.printers.isEmpty {
-                HStack {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("No printers configured.")
+                        .font(.caption)
                         .foregroundStyle(.secondary)
                     Button("Add Printer…") { showPrinterManagement = true }
                         .controlSize(.small)
                 }
             } else {
-                HStack(spacing: 8) {
-                    Picker("Printer", selection: $viewModel.selectedPrinterID) {
-                        ForEach(viewModel.printers) { printer in
-                            Text(printer.summary).tag(Optional(printer.id))
-                        }
+                Picker("Printer", selection: $viewModel.selectedPrinterID) {
+                    ForEach(viewModel.printers) { printer in
+                        Text(printer.summary).tag(Optional(printer.id))
                     }
-                    .labelsHidden()
-                    .frame(width: 220)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity)
 
+                // One row of equal buttons, so the column reads as a column
+                // rather than as three differently-sized things.
+                HStack(spacing: 6) {
                     Button("Manage…") { showPrinterManagement = true }
+                        .frame(maxWidth: .infinity)
                         .help("Add, edit, or remove printers")
 
                     Button("Test") {
                         Task { await viewModel.testConnection() }
                     }
+                    .frame(maxWidth: .infinity)
                     .disabled(viewModel.isQueryingPrinter)
                     .help("C-ECHO the printer AE")
 
                     Button("Status") {
                         Task { await viewModel.queryPrinterStatus() }
                     }
+                    .frame(maxWidth: .infinity)
                     .disabled(viewModel.isQueryingPrinter)
                     .help("Query printer status (N-GET)")
-
-                    if viewModel.isQueryingPrinter {
-                        ProgressView().controlSize(.small)
-                    }
                 }
                 .controlSize(.small)
+
+                if viewModel.isQueryingPrinter {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Querying the printer…")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
                 if let status = viewModel.printerStatus {
                     Label(
@@ -183,12 +340,12 @@ public struct PrintSettingsView: View {
                     )
                     .font(.caption)
                     .foregroundStyle(status.isNormal ? .green : .orange)
-                    .lineLimit(1)
+                    .lineLimit(2)
                 } else if let message = viewModel.printerQueryMessage {
                     Text(message)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .lineLimit(3)
                         .textSelection(.enabled)
                 }
             }
@@ -199,7 +356,7 @@ public struct PrintSettingsView: View {
 
     private var basicSection: some View {
         bandGroup("Film") {
-            HStack(alignment: .center, spacing: 12) {
+            stackedControl("Layout") {
                 Picker("Layout mode", selection: $viewModel.layoutMode) {
                     ForEach(PrintViewModel.LayoutMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
@@ -207,41 +364,43 @@ public struct PrintSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 300)
+                .controlSize(.small)
+            }
 
-                switch viewModel.layoutMode {
-                case .matchViewer, .automatic:
-                    EmptyView()
-                case .explicit:
-                    labeledControl("Grid") {
-                        Picker("Grid", selection: $viewModel.layoutOption) {
-                            ForEach(PrintLayoutOption.allCases) { option in
-                                Text(option.displayName).tag(option)
-                            }
-                        }
-                        .labelsHidden()
-                    }
-                case .template:
-                    labeledControl("Preset") {
-                        Picker("Preset", selection: $viewModel.templatePreset) {
-                            ForEach(PrintTemplatePreset.allCases) { preset in
-                                Text(preset.displayName).tag(preset)
-                            }
-                        }
-                        .labelsHidden()
-                    }
-                }
-
-                labeledControl("Film size") {
-                    Picker("Film size", selection: $viewModel.filmSize) {
-                        ForEach(PrintOptionCatalog.filmSizes, id: \.cliToken) { entry in
-                            Text(entry.label).tag(entry.value)
+            switch viewModel.layoutMode {
+            case .matchViewer, .automatic:
+                EmptyView()
+            case .explicit:
+                stackedControl("Grid") {
+                    Picker("Grid", selection: $viewModel.layoutOption) {
+                        ForEach(PrintLayoutOption.allCases) { option in
+                            Text(option.displayName).tag(option)
                         }
                     }
                     .labelsHidden()
-                    .disabled(viewModel.layoutMode == .template)
                 }
+            case .template:
+                stackedControl("Preset") {
+                    Picker("Preset", selection: $viewModel.templatePreset) {
+                        ForEach(PrintTemplatePreset.allCases) { preset in
+                            Text(preset.displayName).tag(preset)
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
 
+            stackedControl("Film size") {
+                Picker("Film size", selection: $viewModel.filmSize) {
+                    ForEach(PrintOptionCatalog.filmSizes, id: \.cliToken) { entry in
+                        Text(entry.label).tag(entry.value)
+                    }
+                }
+                .labelsHidden()
+                .disabled(viewModel.layoutMode == .template)
+            }
+
+            stackedControl("Orientation") {
                 Picker("Orientation", selection: $viewModel.filmOrientation) {
                     ForEach(PrintOptionCatalog.orientations, id: \.cliToken) { entry in
                         Text(entry.label).tag(entry.value)
@@ -249,21 +408,22 @@ public struct PrintSettingsView: View {
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
-                .frame(width: 200)
+                .controlSize(.small)
                 .disabled(viewModel.layoutMode == .template)
+            }
 
-                labeledControl("Copies") {
-                    Stepper(value: $viewModel.copies, in: 1...99) {
-                        Text("\(viewModel.copies)")
-                            .monospacedDigit()
-                    }
+            stackedControl("Copies") {
+                Stepper(value: $viewModel.copies, in: 1...99) {
+                    Text("\(viewModel.copies)")
+                        .monospacedDigit()
                 }
+                .controlSize(.small)
             }
 
             Text(layoutCaption)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-                .lineLimit(1)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -300,8 +460,7 @@ public struct PrintSettingsView: View {
         }
     }
 
-    /// A titled cluster of band controls — a GroupBox would stack the band too
-    /// tall for the room the film needs.
+    /// A titled cluster of controls: the section's name, then its controls.
     @ViewBuilder
     private func bandGroup<Content: View>(
         _ title: String,
@@ -316,11 +475,369 @@ public struct PrintSettingsView: View {
         }
     }
 
+    /// A titled block inside the Advanced disclosure.
+    ///
+    /// A plain header rather than a `GroupBox`: the disclosure already sits inside
+    /// a card, and a box inside a box inside a card is three borders deep for one
+    /// row of pickers.
+    @ViewBuilder
+    private func subsection<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            content()
+        }
+    }
+
     // MARK: Preview
 
     private var previewSection: some View {
-        FilmPreviewView(plan: viewModel.plan, items: viewModel.selection.items)
-            .padding(16)
+        FilmPreviewView(viewModel: viewModel)
+            // Tight to the panel: the film is the thing being judged, and every
+            // point of padding is a point it cannot use. Its own aspect ratio
+            // still decides its shape.
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+    }
+
+    // MARK: Cell inspector
+
+    /// Window/level and arrangement of the cell picked in the preview.
+    ///
+    /// A column beside the film rather than a strip beneath it: the film is what
+    /// is being judged and height is what it needs most, so these controls take
+    /// width instead. Every control here writes into the mark, so what it
+    /// changes is what prints.
+    private var inspectorSidebar: some View {
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 14) {
+                bandGroup("Cell") { cellInspector }
+                Divider()
+                bandGroup(annotationSectionTitle) { annotationInspector }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .frame(width: Self.inspectorWidth, alignment: .leading)
+        }
+        .frame(width: Self.inspectorWidth)
+    }
+
+    /// The annotation section says whether it is editing something or setting up
+    /// the next thing drawn — the controls are the same either way, and without
+    /// the distinction it is unclear what a change is about to affect.
+    private var annotationSectionTitle: String {
+        viewModel.selectedAnnotation == nil ? "New annotations" : "Annotation"
+    }
+
+    // MARK: Annotations
+
+    /// Text, size and colour of the selected annotation — or, with nothing
+    /// selected, of the next one drawn.
+    @ViewBuilder
+    private var annotationInspector: some View {
+        let selected = viewModel.selectedAnnotation
+
+        VStack(alignment: .leading, spacing: 8) {
+            if let selected, selected.annotation.kind == .text {
+                stackedControl("Text") {
+                    TextField("Type the annotation", text: annotationTextBinding(selected))
+                        .focused($isAnnotationTextFocused)
+                        .onSubmit { isAnnotationTextFocused = false }
+                }
+            }
+
+            stackedControl("Size") {
+                HStack(spacing: 6) {
+                    Slider(
+                        value: annotationScaleBinding(selected),
+                        in: PrintOverlayAnnotation.minimumScale...PrintOverlayAnnotation.maximumScale)
+                    Text(annotationSizeLabel(selected))
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                        .frame(width: 34, alignment: .trailing)
+                }
+            }
+
+            stackedControl("Colour") {
+                HStack(spacing: 6) {
+                    ForEach(Self.annotationSwatches, id: \.name) { swatch in
+                        swatchButton(swatch, selected: selected)
+                    }
+                    Spacer(minLength: 0)
+                    ColorPicker("Colour", selection: annotationColorBinding(selected))
+                        .labelsHidden()
+                }
+            }
+
+            if viewModel.resolvedColorMode == .grayscale {
+                Text("This printer prints in greys — a colour is burned in at its "
+                     + "own brightness, not as a colour.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if let selected {
+                HStack(spacing: 6) {
+                    Button("Delete") {
+                        viewModel.removeAnnotation(selected.annotation.id,
+                                                   forItemID: selected.itemID)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .help("Remove this annotation (⌫)")
+
+                    Button("Clear Cell") {
+                        viewModel.clearAnnotations(forItemID: selected.itemID)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .help("Remove every annotation from this cell")
+                }
+                .controlSize(.small)
+            } else {
+                Text(viewModel.cellTool.isDrawing
+                     ? (viewModel.cellTool == .text
+                        ? "Click a cell to place text."
+                        : "Drag on a cell to draw an arrow.")
+                     : "Pick the text (T) or arrow (R) tool, then draw on a cell.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                if viewModel.hasAnnotations {
+                    Button("Clear All Annotations", role: .destructive) {
+                        viewModel.clearAllAnnotations()
+                    }
+                    .controlSize(.small)
+                }
+            }
+        }
+    }
+
+    /// One colour swatch. The reading-room set: yellow reads over lung and over
+    /// mediastinum, and the rest are there for telling two arrows apart.
+    private func swatchButton(
+        _ swatch: (name: String, color: PrintOverlayColor),
+        selected: (itemID: String, annotation: PrintOverlayAnnotation)?
+    ) -> some View {
+        let current = selected?.annotation.color ?? viewModel.annotationColor
+        let isCurrent = current == swatch.color
+        return Button {
+            apply(color: swatch.color, to: selected)
+        } label: {
+            Circle()
+                .fill(Color(red: swatch.color.red,
+                            green: swatch.color.green,
+                            blue: swatch.color.blue))
+                .frame(width: 16, height: 16)
+                .overlay(
+                    Circle().strokeBorder(isCurrent ? Color.accentColor : .secondary.opacity(0.4),
+                                          lineWidth: isCurrent ? 2 : 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(swatch.name)
+        .accessibilityAddTraits(isCurrent ? [.isSelected] : [])
+        .help(swatch.name)
+    }
+
+    private static let annotationSwatches: [(name: String, color: PrintOverlayColor)] = [
+        ("Yellow", .yellow), ("White", .white), ("Red", .red),
+        ("Green", .green), ("Cyan", .cyan)
+    ]
+
+    /// Writes a colour to the selected annotation, or to the next one drawn.
+    private func apply(
+        color: PrintOverlayColor,
+        to selected: (itemID: String, annotation: PrintOverlayAnnotation)?
+    ) {
+        if let selected {
+            viewModel.setAnnotationColor(color, id: selected.annotation.id,
+                                         forItemID: selected.itemID)
+        } else {
+            viewModel.annotationColor = color
+        }
+    }
+
+    private func annotationTextBinding(
+        _ selected: (itemID: String, annotation: PrintOverlayAnnotation)
+    ) -> Binding<String> {
+        Binding(
+            get: {
+                viewModel.annotations(forItemID: selected.itemID)
+                    .first { $0.id == selected.annotation.id }?.text ?? ""
+            },
+            set: { newValue in
+                viewModel.setAnnotationText(newValue, id: selected.annotation.id,
+                                            forItemID: selected.itemID)
+            }
+        )
+    }
+
+    /// Size of the selected annotation, or the size the next one will be drawn at.
+    private func annotationScaleBinding(
+        _ selected: (itemID: String, annotation: PrintOverlayAnnotation)?
+    ) -> Binding<Double> {
+        Binding(
+            get: {
+                guard let selected else { return viewModel.annotationScale }
+                return viewModel.annotations(forItemID: selected.itemID)
+                    .first { $0.id == selected.annotation.id }?.scale ?? viewModel.annotationScale
+            },
+            set: { newValue in
+                guard let selected else {
+                    viewModel.annotationScale = PrintOverlayAnnotation.clampScale(newValue)
+                    return
+                }
+                viewModel.setAnnotationScale(newValue, id: selected.annotation.id,
+                                             forItemID: selected.itemID)
+            }
+        )
+    }
+
+    private func annotationColorBinding(
+        _ selected: (itemID: String, annotation: PrintOverlayAnnotation)?
+    ) -> Binding<Color> {
+        Binding(
+            get: {
+                let color = selected?.annotation.color ?? viewModel.annotationColor
+                return Color(red: color.red, green: color.green, blue: color.blue)
+            },
+            set: { newValue in
+                guard let overlayColor = PrintOverlayColor(newValue) else { return }
+                apply(color: overlayColor, to: selected)
+            }
+        )
+    }
+
+    /// Size as a percentage of the image's height — the unit it is actually
+    /// stored in, so what the slider says is what gets burned in.
+    private func annotationSizeLabel(
+        _ selected: (itemID: String, annotation: PrintOverlayAnnotation)?
+    ) -> String {
+        let scale = annotationScaleBinding(selected).wrappedValue
+        return "\(Int((scale * 100).rounded()))%"
+    }
+
+    @ViewBuilder
+    private var cellInspector: some View {
+        if let focused = viewModel.focusedItem {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(focused.displayLabel)
+                    .font(.caption.weight(.semibold))
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                VStack(alignment: .leading, spacing: 6) {
+                    labeledControl("Center") {
+                        TextField("Center", value: windowCenterBinding(focused), format: .number)
+                            .frame(width: 80)
+                            .monospacedDigit()
+                    }
+                    labeledControl("Width") {
+                        TextField("Width", value: windowWidthBinding(focused), format: .number)
+                            .frame(width: 80)
+                            .monospacedDigit()
+                    }
+
+                    Menu("Presets") {
+                        ForEach(WindowLevelPresets.allPresets) { preset in
+                            Button("\(preset.modality) \(preset.name)  "
+                                   + "\(Int(preset.center))/\(Int(preset.width))") {
+                                viewModel.applyWindowPreset(preset, toItemID: focused.id)
+                            }
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+
+                    Button("Apply to All") { viewModel.applyFocusedWindowToAllCells() }
+                        .help("Give every image on film this window")
+                        .disabled(viewModel.window(forItemID: focused.id) == nil)
+
+                    Button("Revert") { viewModel.revertCell(forItemID: focused.id) }
+                        .help("Undo the adjustments made here, back to how the viewer left it")
+                        .disabled(!viewModel.isCellAdjusted(focused.id))
+
+                    Button("Reset Cell") { viewModel.resetCell(forItemID: focused.id) }
+                        .help("Back to the untouched frame: the file's own window, no crop")
+                        .disabled(!viewModel.isCellEdited(focused))
+                }
+                .controlSize(.small)
+                .disabled(viewModel.isCellWindowingOverridden)
+
+                if let reason = viewModel.cellWindowingBlockedReason {
+                    Label(reason, systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if viewModel.useExplicitWindow && !viewModel.sendRawPixels {
+                        Button("Use Per-Image Windows") {
+                            viewModel.useExplicitWindow = false
+                        }
+                        .controlSize(.small)
+                    }
+                } else {
+                    Text("Drag on a cell to \(viewModel.cellTool.displayName.lowercased()) it."
+                         + (viewModel.isCellAdjusted(focused.id)
+                            ? " This cell no longer follows the viewer." : ""))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Divider()
+
+                arrangementToggle
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Click a film cell to window or arrange it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+
+                arrangementToggle
+            }
+        }
+    }
+
+    /// Arrangement is a job-wide switch, not a windowing control, so a window
+    /// override must not grey it out — and it stays reachable with no cell
+    /// focused.
+    private var arrangementToggle: some View {
+        Toggle("Viewer arrangement", isOn: $viewModel.useViewerPresentation)
+            .toggleStyle(.checkbox)
+            .controlSize(.small)
+            .help("Print each image zoomed, rotated and flipped as the viewer showed it")
+    }
+
+    /// Editing binding for the focused cell's window centre.
+    ///
+    /// Reads the mark and writes straight back to it — there is no separate
+    /// editing copy that could drift from what prints.
+    private func windowCenterBinding(_ item: PrintSelectionItem) -> Binding<Double> {
+        Binding(
+            get: { viewModel.window(forItemID: item.id)?.center ?? 0 },
+            set: { newValue in
+                let width = viewModel.window(forItemID: item.id)?.width ?? 400
+                viewModel.setWindow(forItemID: item.id, center: newValue, width: width)
+            }
+        )
+    }
+
+    private func windowWidthBinding(_ item: PrintSelectionItem) -> Binding<Double> {
+        Binding(
+            get: { viewModel.window(forItemID: item.id)?.width ?? 0 },
+            set: { newValue in
+                let center = viewModel.window(forItemID: item.id)?.center ?? 0
+                viewModel.setWindow(forItemID: item.id, center: center, width: newValue)
+            }
+        )
     }
 
     // MARK: Marks
@@ -335,14 +852,16 @@ public struct PrintSettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Button("Show List…") { showImageList = true }
+                        .frame(maxWidth: .infinity)
                         .popover(isPresented: $showImageList, arrowEdge: .bottom) {
                             imageListPopover
                         }
                     Button("Clear All", role: .destructive) {
                         viewModel.selection.clear()
                     }
+                    .frame(maxWidth: .infinity)
                 }
                 .controlSize(.small)
 
@@ -377,128 +896,135 @@ public struct PrintSettingsView: View {
 
     private var advancedSection: some View {
         DisclosureGroup("Advanced", isExpanded: $showAdvanced) {
-            // Side by side and height-capped: expanding the advanced options
-            // must not push the film off the bottom of the sheet.
-            ScrollView(.horizontal) {
-                HStack(alignment: .top, spacing: 14) {
-                    filmAdvanced
-                    imageAdvanced
-                    renderingAdvanced
-                    executionAdvanced
-                }
-                .padding(.vertical, 8)
+            // Stacked in the settings column: it is already scrolling, so
+            // expanding these can never push the film out of the centre.
+            VStack(alignment: .leading, spacing: 10) {
+                filmAdvanced
+                Divider()
+                imageAdvanced
+                Divider()
+                renderingAdvanced
+                Divider()
+                executionAdvanced
             }
-            .frame(maxHeight: 300)
+            .padding(.top, 8)
         }
+        .font(.caption)
     }
 
     private var filmAdvanced: some View {
-        GroupBox("Film session") {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                GridRow {
-                    Text("Priority")
+        subsection("Film session") {
+            VStack(alignment: .leading, spacing: 8) {
+                stackedControl("Priority") {
                     Picker("Priority", selection: $viewModel.priority) {
                         ForEach(PrintOptionCatalog.priorities, id: \.cliToken) { entry in
                             Text(entry.label).tag(entry.value)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Medium")
+                stackedControl("Medium") {
                     Picker("Medium", selection: $viewModel.mediumType) {
                         ForEach(PrintOptionCatalog.mediumTypes, id: \.cliToken) { entry in
                             Text(entry.label).tag(entry.value)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Destination")
+                stackedControl("Destination") {
                     Picker("Destination", selection: $viewModel.filmDestination) {
                         ForEach(PrintOptionCatalog.filmDestinations, id: \.cliToken) { entry in
                             Text(entry.label).tag(entry.value)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Session label")
+                stackedControl("Session label") {
                     TextField("Optional", text: $viewModel.sessionLabel)
-                        .frame(width: 220)
                 }
             }
             .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var imageAdvanced: some View {
-        GroupBox("Film box & image box") {
-            Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
-                GridRow {
-                    Text("Magnification")
+        subsection("Film box & image box") {
+            VStack(alignment: .leading, spacing: 8) {
+                stackedControl("Magnification") {
                     Picker("Magnification", selection: $viewModel.magnificationType) {
                         ForEach(PrintOptionCatalog.magnificationTypes, id: \.cliToken) { entry in
                             Text(entry.label).tag(entry.value)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Trim")
+                stackedControl("Trim") {
                     Picker("Trim", selection: $viewModel.trimOption) {
                         ForEach(PrintOptionCatalog.trimOptions, id: \.cliToken) { entry in
                             Text(entry.label).tag(entry.value)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Border density")
+                stackedControl("Border density") {
                     Picker("Border density", selection: $viewModel.borderDensity) {
                         ForEach(PrintOptionCatalog.densities, id: \.self) { density in
                             Text(density.capitalized).tag(density)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Empty cells")
+                stackedControl("Empty cells") {
                     Picker("Empty image density", selection: $viewModel.emptyImageDensity) {
                         ForEach(PrintOptionCatalog.densities, id: \.self) { density in
                             Text(density.capitalized).tag(density)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Polarity")
+                stackedControl("Polarity") {
                     Picker("Polarity", selection: $viewModel.polarity) {
                         ForEach(PrintOptionCatalog.polarities, id: \.cliToken) { entry in
                             Text(entry.label).tag(entry.value)
                         }
-                    }.labelsHidden().frame(width: 220)
+                    }.labelsHidden()
                 }
-                GridRow {
-                    Text("Configuration info")
+                stackedControl("Configuration info") {
                     TextField("Printer-specific", text: $viewModel.configurationInformation)
-                        .frame(width: 220)
                 }
-                GridRow {
-                    Text("Annotation format ID")
+                stackedControl("Annotation format ID") {
                     TextField("Required for annotations", text: $viewModel.annotationDisplayFormatID)
-                        .frame(width: 220)
                 }
             }
             .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// A caption above its control, for the settings column — a label beside the
+    /// control needs width the column does not have.
+    @ViewBuilder
+    private func stackedControl<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            content()
+                .frame(maxWidth: .infinity)
         }
     }
 
     private var renderingAdvanced: some View {
-        GroupBox("Rendering") {
+        subsection("Rendering") {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Auto-detect color mode from the printer", isOn: $viewModel.autoDetectColorMode)
                 if !viewModel.autoDetectColorMode {
-                    Picker("Color mode", selection: $viewModel.colorMode) {
-                        ForEach(PrintOptionCatalog.colorModes, id: \.cliToken) { entry in
-                            Text(entry.label).tag(entry.value)
+                    stackedControl("Color mode") {
+                        Picker("Color mode", selection: $viewModel.colorMode) {
+                            ForEach(PrintOptionCatalog.colorModes, id: \.cliToken) { entry in
+                                Text(entry.label).tag(entry.value)
+                            }
                         }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
                     }
-                    .pickerStyle(.segmented)
-                    .frame(width: 260)
                 }
 
                 Toggle("Match the viewer's window/level", isOn: $viewModel.useViewerWindow)
@@ -520,42 +1046,48 @@ public struct PrintSettingsView: View {
                     }
                 }
 
-                Picker("Grayscale bit depth", selection: $viewModel.bitDepth) {
-                    ForEach(PrintOptionCatalog.bitDepths, id: \.self) { depth in
-                        Text("\(depth)-bit").tag(depth)
+                stackedControl("Grayscale bit depth") {
+                    Picker("Grayscale bit depth", selection: $viewModel.bitDepth) {
+                        ForEach(PrintOptionCatalog.bitDepths, id: \.self) { depth in
+                            Text("\(depth)-bit").tag(depth)
+                        }
                     }
+                    .labelsHidden()
+                    .disabled(viewModel.sendRawPixels)
                 }
-                .frame(width: 260)
-                .disabled(viewModel.sendRawPixels)
 
-                Picker("Presentation LUT", selection: $viewModel.presentationLUTShape) {
-                    Text("None").tag(DICOMNetwork.PresentationLUTShape?.none)
-                    ForEach(PrintOptionCatalog.presentationLUTShapes, id: \.cliToken) { entry in
-                        Text(entry.label).tag(Optional(entry.value))
+                stackedControl("Presentation LUT") {
+                    Picker("Presentation LUT", selection: $viewModel.presentationLUTShape) {
+                        Text("None").tag(DICOMNetwork.PresentationLUTShape?.none)
+                        ForEach(PrintOptionCatalog.presentationLUTShapes, id: \.cliToken) { entry in
+                            Text(entry.label).tag(Optional(entry.value))
+                        }
                     }
+                    .labelsHidden()
                 }
-                .frame(width: 300)
 
                 Toggle("Send stored pixels unprocessed (raw)", isOn: $viewModel.sendRawPixels)
                     .help("No rescale, window, or inversion. Compressed sources are still decoded.")
             }
             .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private var executionAdvanced: some View {
-        GroupBox("Execution") {
+        subsection("Execution") {
             VStack(alignment: .leading, spacing: 8) {
                 Toggle("Check printer status before printing", isOn: $viewModel.checkStatusBeforePrinting)
                     .help("Aborts on FAILURE, warns on WARNING")
                 Toggle("Verify with C-ECHO before printing", isOn: $viewModel.verifyBeforePrinting)
                 Toggle("Dry run (build the film plan, send nothing)", isOn: $viewModel.dryRun)
                 Stepper(value: $viewModel.retries, in: 0...5) {
-                    Text("Retries on connection failure: \(viewModel.retries)")
+                    Text("Retries: \(viewModel.retries)")
                 }
-                .frame(width: 320)
+                .help("Retries on connection failure")
             }
             .padding(4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 

@@ -22,6 +22,12 @@ public struct ImageViewerView: View {
     @State private var viewSize: CGSize = .zero
     @State private var wlDragStart: CGSize = .zero
 
+    /// Anchor for a ⌘-drag zoom, so the gesture applies deltas not absolutes.
+    @State private var zoomDragStart: CGSize = .zero
+
+    /// Turns scroll events into whole image steps — one per wheel notch.
+    @State private var scrollSteps = ScrollStepAccumulator()
+
     /// Keyboard focus for the image area, so the arrow keys reach `onKeyPress`.
     @FocusState private var isImageAreaFocused: Bool
 
@@ -39,6 +45,13 @@ public struct ImageViewerView: View {
         _printViewModel = State(initialValue: printViewModel)
     }
 
+    /// Series pane, reading area, selection tray.
+    ///
+    /// The reading area is the only pure black on screen and the only thing that
+    /// is framed: the panes and the gutter between them are chrome grey, so the
+    /// image reads as a light box set into the station rather than as a third
+    /// panel of equal weight. That is the habit a reporting station trains — the
+    /// darkest, quietest rectangle is the one being read.
     public var body: some View {
         HStack(spacing: 0) {
             // The study's series, when the viewer was opened from a study. Loose
@@ -46,27 +59,77 @@ public struct ImageViewerView: View {
             if viewModel.isSeriesPaneVisible && !viewModel.studySeries.isEmpty {
                 ViewerSeriesPaneView(viewModel: viewModel)
                     .frame(width: Self.seriesPaneWidth)
-                Divider()
             }
-            imageArea
+
+            readingArea
+
+            // The selection, on the right: what has been picked, in film order.
+            if viewModel.isPrintTrayVisible {
+                ViewerPrintTrayView(viewModel: viewModel)
+                    .frame(width: Self.printTrayWidth)
+            }
         }
+        // No dividers: the gutter and the change in tone already separate the
+        // panes from the image, and a hairline beside a framed light box only
+        // adds a second edge to read.
+        .background(StudioColors.viewerChrome)
     }
+
+    /// The image, framed and inset into the chrome.
+    private var readingArea: some View {
+        imageArea
+            .background(Color.black)
+            .clipShape(RoundedRectangle(cornerRadius: Self.readingAreaCornerRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: Self.readingAreaCornerRadius)
+                    .strokeBorder(readingAreaBorderColor, lineWidth: 1)
+            }
+            .padding(Self.readingAreaGutter)
+    }
+
+    /// The frame around the image.
+    ///
+    /// Neutral while the viewer is idle; picking up the accent once the image
+    /// area holds the keyboard, which is what says the arrow keys will walk this
+    /// stack. In a grid the focused tile carries its own ring, so the outer frame
+    /// stays neutral there rather than drawing a second one around it.
+    private var readingAreaBorderColor: Color {
+        guard isImageAreaFocused, viewModel.hasImage, !viewModel.isMultiCellLayout else {
+            return StudioColors.readingAreaBorder
+        }
+        return Color.accentColor.opacity(0.45)
+    }
+
+    /// Width of the selection tray — a legible thumbnail and two lines of label.
+    private static let printTrayWidth: CGFloat = 180
 
     /// Width of the series pane — enough for a legible thumbnail and two lines
     /// of series description.
     private static let seriesPaneWidth: CGFloat = 190
 
+    /// Chrome left visible around the image. Small on purpose: enough to read as
+    /// a separate surface, not enough to cost the picture real room.
+    private static let readingAreaGutter: CGFloat = 6
+
+    private static let readingAreaCornerRadius: CGFloat = 5
+
     private var imageArea: some View {
         ZStack {
-            // Background
+            // The light box. Painted by the reading area around it too, so this
+            // one only has to cover the content — it must not spill past the
+            // frame, which is what `ignoresSafeArea` here used to do.
             Color.black
-                .ignoresSafeArea()
 
             if viewModel.isLoading {
                 ProgressView("Loading…")
                     .foregroundStyle(.white)
             } else if let waveform = viewModel.waveform {
                 WaveformChartView(waveform: waveform)
+            } else if let content = viewModel.nonImageContent {
+                // Reports, encapsulated documents and the rest are read, not
+                // rendered. This branch sits ahead of the error branch because
+                // such an object is not a picture that failed — it never was one.
+                ViewerNonImageContentView(content: content)
             } else if let errorMessage = viewModel.errorMessage {
                 VStack(spacing: 12) {
                     Image(systemName: "exclamationmark.triangle")
@@ -87,6 +150,12 @@ public struct ImageViewerView: View {
                         imageContent
                     }
                 }
+                    // Zoom and pan are drawn with `scaleEffect`/`offset`, which
+                    // do not affect layout: without clipping, a zoomed image
+                    // paints straight over the series pane and the selection
+                    // tray beside it. The viewer is its own viewport.
+                    .clipped()
+                    .contentShape(Rectangle())
                     .contextMenu {
                         Button("Fit to View") {
                             viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
@@ -99,6 +168,11 @@ public struct ImageViewerView: View {
                         Button("Rotate Counter-Clockwise") { viewModel.rotateCounterClockwise() }
                         Button("Flip Horizontal") { viewModel.flipHorizontal() }
                         Button("Flip Vertical") { viewModel.flipVertical() }
+                        Divider()
+                        Button(viewModel.showPatientOverlay
+                               ? "Hide Patient Overlay" : "Show Patient Overlay") {
+                            viewModel.showPatientOverlay.toggle()
+                        }
                         if viewModel.isMonochrome {
                             Divider()
                             Button(viewModel.isInverted ? "Remove Inversion" : "Invert Grayscale") {
@@ -110,11 +184,16 @@ public struct ImageViewerView: View {
                                ? "Unmark for Print" : "Mark for Print") {
                             viewModel.togglePrintMarkForCurrentFrame()
                         }
-                        if viewModel.isMultiCellLayout {
-                            Button("Mark All Tiles for Print") {
-                                viewModel.markLayoutForPrint()
-                            }
+                        // "All" is what is on screen — the images the current
+                        // layout is showing, not the study behind them.
+                        Button("Select All for Print") {
+                            viewModel.markLayoutForPrint()
                         }
+                        .disabled(viewModel.isLayoutFullyMarkedForPrint)
+                        Button("Unselect All for Print") {
+                            viewModel.unmarkLayoutForPrint()
+                        }
+                        .disabled(!viewModel.isAnyLayoutImageMarkedForPrint)
                         if viewModel.isMultiFrame {
                             Button("Mark All Frames for Print") {
                                 viewModel.markAllFramesOfCurrentFileForPrint()
@@ -207,6 +286,26 @@ public struct ImageViewerView: View {
             if viewModel.showPerformanceOverlay && viewModel.hasImage && !viewModel.isWaveform {
                 performanceOverlay
                     .padding(8)
+            }
+        }
+        // Patient identification in a reserved band under the picture, so text
+        // and anatomy never share pixels. `safeAreaInset` takes the height from
+        // the image area rather than covering it. In a grid each tile reserves
+        // its own band, so this one is the 1×1 case only.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Images only: a report or a document is not a picture with a
+            // caption, and the band would sit under a page of text.
+            if viewModel.showPatientOverlay && viewModel.hasImage
+                && !viewModel.isWaveform && !viewModel.isNonImageContent
+                && !viewModel.isMultiCellLayout
+                && viewModel.hasPatientOverlayText {
+                PatientIdentificationOverlayView(
+                    primaryLine: viewModel.patientOverlayPrimaryLine,
+                    secondaryLine: viewModel.patientOverlaySecondaryLine,
+                    cellSize: viewSize,
+                    style: .band
+                )
+                .allowsHitTesting(false)
             }
         }
         .overlay(alignment: .bottom) {
@@ -356,17 +455,16 @@ public struct ImageViewerView: View {
                 .gesture(panGesture)
                 .gesture(magnificationGesture)
                 #if os(macOS)
-                .background(ScrollWheelHandler { delta in
-                    viewModel.zoomLevel = GestureHelpers.zoomFromScrollDelta(
-                        currentZoom: viewModel.zoomLevel,
-                        scrollDelta: delta
-                    )
-                })
+                .background(ScrollWheelHandler { scrollImages($0) })
                 #endif
         } else if let cgImage = viewModel.currentImage {
             Image(decorative: cgImage, scale: 1.0)
                 .resizable()
+                // Uses the whole viewport, aspect ratio intact: `.fit` grows the
+                // image until one edge meets the cell, so nothing is stretched
+                // and nothing is left unnecessarily small.
                 .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .scaleEffect(viewModel.zoomLevel * magnifyBy)
                 .offset(
                     x: viewModel.panOffsetX + dragOffset.width,
@@ -381,14 +479,9 @@ public struct ImageViewerView: View {
                 .gesture(magnificationGesture)
                 .accessibilityLabel("DICOM Image")
                 .accessibilityValue(viewModel.dimensionsText)
-                .accessibilityHint("Use pinch to zoom, drag to pan")
+                .accessibilityHint("Drag to pan, ⌘-drag to zoom, ⌥-drag for window/level; scroll to step through images")
                 #if os(macOS)
-                .background(ScrollWheelHandler { delta in
-                    viewModel.zoomLevel = GestureHelpers.zoomFromScrollDelta(
-                        currentZoom: viewModel.zoomLevel,
-                        scrollDelta: delta
-                    )
-                })
+                .background(ScrollWheelHandler { scrollImages($0) })
                 #endif
         } else {
             Text("Unable to render image")
@@ -398,6 +491,25 @@ public struct ImageViewerView: View {
     }
 
     // MARK: - Gestures
+
+    /// Steps through the series with the scroll wheel.
+    ///
+    /// Scrolling pages images rather than zooming: on a wheel that is the
+    /// reading gesture — walk the stack — and zoom is on the mouse button
+    /// (⌘-drag), where it can be held steady. One notch is one image, however
+    /// hard the wheel is spun; see ``ScrollStepAccumulator``.
+    private func scrollImages(_ delta: ScrollWheelDelta) {
+        let steps = scrollSteps.steps(for: delta)
+        guard steps != 0 else { return }
+        for _ in 0..<abs(steps) {
+            // Scrolling up walks back through the stack, as it does in a list.
+            if steps > 0 {
+                viewModel.navigateToPreviousImage()
+            } else {
+                viewModel.navigateToNextImage()
+            }
+        }
+    }
 
     private var magnificationGesture: some Gesture {
         MagnifyGesture()
@@ -412,6 +524,10 @@ public struct ImageViewerView: View {
             }
     }
 
+    /// Drag: pan by default, window/level with ⌥, zoom with ⌘.
+    ///
+    /// Zoom lives on a held button rather than the wheel, which now pages the
+    /// series. Dragging up enlarges, as pushing a zoom slider away from you does.
     private var panGesture: some Gesture {
         DragGesture()
             .onChanged { value in
@@ -423,6 +539,13 @@ public struct ImageViewerView: View {
                     wlDragStart = value.translation
                     return
                 }
+                if NSEvent.modifierFlags.contains(.command) {
+                    let dy = Double(value.translation.height - zoomDragStart.height)
+                    viewModel.zoomLevel = GestureHelpers.clampZoom(
+                        viewModel.zoomLevel * (1.0 - dy * Self.dragZoomSensitivity))
+                    zoomDragStart = value.translation
+                    return
+                }
                 #endif
                 dragOffset = value.translation
             }
@@ -432,12 +555,19 @@ public struct ImageViewerView: View {
                     wlDragStart = .zero
                     return
                 }
+                if NSEvent.modifierFlags.contains(.command) {
+                    zoomDragStart = .zero
+                    return
+                }
                 #endif
                 viewModel.panOffsetX += value.translation.width
                 viewModel.panOffsetY += value.translation.height
                 dragOffset = .zero
             }
     }
+
+    /// Zoom fraction per point dragged.
+    private static let dragZoomSensitivity: Double = 0.005
 
     // MARK: - Performance Overlay
 
@@ -510,9 +640,10 @@ public struct ImageViewerView: View {
                     Image(systemName: viewModel.isSeriesPaneVisible
                           ? "sidebar.left" : "sidebar.leading")
                 }
+                .keyboardShortcut("s", modifiers: [])
                 .accessibilityLabel(viewModel.isSeriesPaneVisible
                                     ? "Hide series list" : "Show series list")
-                .help("Show or hide the study's series")
+                .help("Show or hide the study's series (S)")
             }
         }
 
@@ -529,6 +660,10 @@ public struct ImageViewerView: View {
                             Text(option.displayName)
                         }
                     }
+                    // The square grids get a digit each — the digit is the side,
+                    // so ⌘3 is 3×3. The oblong layouts stay menu-only rather than
+                    // taking digits whose number means nothing.
+                    .modifier(SquareLayoutShortcut(layout: option))
                 }
             } label: {
                 Label(viewModel.layout.displayName, systemImage: "square.grid.2x2")
@@ -540,18 +675,56 @@ public struct ImageViewerView: View {
 
         // DICOM print — mark the current frame, then open the print sheet
         ToolbarItemGroup(placement: .automatic) {
-            Button {
-                viewModel.togglePrintMarkForCurrentFrame()
+            // Clicking marks the image on screen; the menu offers the bulk
+            // selections, so "select all" is one click from where marking lives.
+            Menu {
+                Button("Select All for Print") {
+                    viewModel.markLayoutForPrint()
+                }
+                .disabled(viewModel.isLayoutFullyMarkedForPrint)
+                Button("Unselect All for Print") {
+                    viewModel.unmarkLayoutForPrint()
+                }
+                .disabled(!viewModel.isAnyLayoutImageMarkedForPrint)
+                if viewModel.isInSeries {
+                    Button("Mark Whole Series for Print") {
+                        viewModel.markWholeSeriesForPrint()
+                    }
+                }
+                if viewModel.isMultiFrame {
+                    Button("Mark All Frames for Print") {
+                        viewModel.markAllFramesOfCurrentFileForPrint()
+                    }
+                }
+                if !viewModel.printSelection.isEmpty {
+                    Divider()
+                    Button("Clear Print Marks", role: .destructive) {
+                        viewModel.clearAllPrintMarks()
+                    }
+                }
             } label: {
                 Image(systemName: viewModel.isCurrentFrameMarkedForPrint
                       ? "checkmark.rectangle.stack.fill"
                       : "checkmark.rectangle.stack")
+            } primaryAction: {
+                viewModel.togglePrintMarkForCurrentFrame()
             }
             .disabled(!viewModel.hasImage)
             .accessibilityLabel(viewModel.isCurrentFrameMarkedForPrint
                                 ? "Unmark image for print" : "Mark image for print")
             .help("Mark this image for print (M)")
             .keyboardShortcut("m", modifiers: [])
+
+            Button {
+                viewModel.isPrintTrayVisible.toggle()
+            } label: {
+                Image(systemName: viewModel.isPrintTrayVisible
+                      ? "sidebar.trailing" : "sidebar.right")
+            }
+            .keyboardShortcut("t", modifiers: [])
+            .accessibilityLabel(viewModel.isPrintTrayVisible
+                                ? "Hide selected images" : "Show selected images")
+            .help("Show the images selected for print (T)")
 
             Button {
                 openPrintSheet()
@@ -663,6 +836,41 @@ public struct ImageViewerView: View {
             }
             .help("Overlays and panels")
         }
+
+        // The keys, where they can be found.
+        ToolbarItem(placement: .automatic) {
+            KeyboardShortcutsButton(
+                title: "Viewer Shortcuts",
+                groups: KeyboardShortcutsLegendView.viewerGroups)
+        }
+    }
+}
+
+// MARK: - Layout shortcuts
+
+/// Gives the square tile grids a digit each: ⌘1 is 1×1, ⌘4 is 4×4.
+///
+/// A modifier rather than an inline `if`, because `keyboardShortcut` has to be
+/// absent — not merely unreachable — on the layouts that get no digit.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct SquareLayoutShortcut: ViewModifier {
+    let layout: ViewerTileLayout
+
+    func body(content: Content) -> some View {
+        if layout.rows == layout.columns, (1...4).contains(layout.rows),
+           let key = KeyEquivalent(exactly: layout.rows) {
+            content.keyboardShortcut(key, modifiers: .command)
+        } else {
+            content
+        }
+    }
+}
+
+private extension KeyEquivalent {
+    /// The digit key for a small number, or `nil` if there isn't one.
+    init?(exactly number: Int) {
+        guard let character = String(number).first else { return nil }
+        self.init(character)
     }
 }
 
@@ -696,45 +904,5 @@ private struct PrintSheetHost: View {
         }
     }
 }
-
-// MARK: - Scroll Wheel Zoom (macOS)
-
-#if os(macOS)
-/// Zero-size NSView that installs a local NSEvent monitor for scroll-wheel events.
-///
-/// The monitor is application-wide, so it must self-scope: a scroll only zooms the
-/// image when the cursor is actually over this view *in the viewer's own window*.
-/// Sheets, popovers and other popups are presented in separate windows, so scrolling
-/// inside them no longer leaks through and zooms the image behind them.
-private struct ScrollWheelHandler: NSViewRepresentable {
-    let onScroll: (CGFloat) -> Void
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        context.coordinator.monitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { [weak view] event in
-            guard let view, let window = view.window else { return event }
-            // Reject scrolls aimed at a different window (sheet / popover / popup).
-            guard let eventWindow = event.window, eventWindow === window else { return event }
-            // Only zoom when the cursor is over the image view itself.
-            let pointInView = view.convert(event.locationInWindow, from: nil)
-            guard view.bounds.contains(pointInView) else { return event }
-            onScroll(event.deltaY)
-            return event
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    final class Coordinator {
-        var monitor: Any?
-        deinit {
-            if let m = monitor { NSEvent.removeMonitor(m) }
-        }
-    }
-}
-#endif
 
 #endif

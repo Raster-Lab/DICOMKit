@@ -22,7 +22,10 @@ struct PrintThumbnailCacheTests {
         attempts: Int = 200
     ) async {
         for _ in 0..<attempts {
-            if cache.image(for: item) != nil || cache.didFail(item) { return }
+            // The exact arrangement, not the stand-in the cache serves during a
+            // gesture — waiting on the stand-in would return before this
+            // arrangement had rendered at all.
+            if cache.renderedImage(for: item) != nil || cache.didFail(item) { return }
             try? await Task.sleep(for: .milliseconds(10))
         }
     }
@@ -44,7 +47,7 @@ struct PrintThumbnailCacheTests {
         let image = try #require(cache.image(for: item), "thumbnail should render")
         #expect(cache.didFail(item) == false)
         // Downscaled for the film cell rather than held at full size.
-        #expect(max(image.width, image.height) <= 256)
+        #expect(max(image.width, image.height) <= 512)
         #expect(image.width > 0 && image.height > 0)
     }
 
@@ -106,6 +109,28 @@ struct PrintThumbnailCacheTests {
         #expect(zoomedImage.width != plainImage.width
                 || zoomedImage.height != plainImage.height,
                 "the zoomed mark must render its own cropped picture")
+    }
+
+    @Test("A re-windowed cell keeps showing the previous picture while it renders")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testStandsInDuringAnEdit() async throws {
+        let url = try #require(CLIParityEngine.fixtureURL(named: "syn-ct.dcm"))
+        let cache = PrintThumbnailCache()
+
+        let before = PrintSelectionItem(filePath: url.path, windowCenter: 40, windowWidth: 400)
+        cache.refresh(for: [before])
+        await waitForSettled(cache, before)
+        #expect(cache.renderedImage(for: before) != nil)
+
+        // Mid-drag: a new window, so a new key, and nothing rendered for it yet.
+        let during = PrintSelectionItem(filePath: url.path, windowCenter: 41, windowWidth: 400)
+        cache.refresh(for: [during])
+        #expect(cache.renderedImage(for: during) == nil, "the new window has not rendered yet")
+        #expect(cache.image(for: during) != nil, "but the cell still has a picture to show")
+
+        // And it does settle on its own picture rather than keeping the stand-in.
+        await waitForSettled(cache, during)
+        #expect(cache.renderedImage(for: during) != nil)
     }
 
     @Test("Clear forgets every thumbnail")

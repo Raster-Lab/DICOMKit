@@ -1,12 +1,16 @@
 # DICOM Print in DICOMStudio — Implementation Plan
 
-> **Status (2026-07-29): Milestones 1–4 are implemented and green; Milestone 5 is held**
+> **Status (2026-07-30): Milestones 1–4 are implemented and green; Milestone 5 is held**
 > at the user's request pending a UI review. See §7 for what landed in Milestones 1–4 and
 > §8 for the work that followed them — the viewer's tile grid and series pane, and the
 > viewer's presentation (window, zoom/pan, orientation, invert) baked into film pixels,
-> which closes the deferral in "Suggested additions" item 4.
+> which closes the deferral in "Suggested additions" item 4. §9 corrects the reading
+> surface; §10 turns the film preview into a working surface — patient identification
+> burned into the film, per-cell windowing and drawn annotations, non-image instances,
+> and a library that says what a study is.
 >
-> Verified 2026-07-29: `swift build` clean; `DICOMStudioTests` 4,185 tests green.
+> Verified 2026-07-30: `swift build` clean; `DICOMStudioTests` + `DICOMPrintKitTests`
+> 4,335 tests in 394 suites green.
 
 Goal: bring the finished `dicom-print` capability into the DICOMStudio app as a clinical
 workflow: **Library → Viewer → mark images → Print icon → Print settings → PrintSCU job**.
@@ -520,3 +524,90 @@ is presented, and a window belonging to one image must not be applied to another
 |---|---|
 | `ExportWindowParityTests` | The first of several VOI pairs is the one used |
 | `ViewerSeriesPaneTests` | Numeric (not textual) series ordering, unnumbered-last, stable ties, order preserved across orientation refinement, the number badge, and four window-inheritance cases: a newly hung tile keeps its image's VOI, a windowless tile imposes no stock window on focus, the window does not travel across series, and does travel within one |
+
+---
+
+## 10. The film as a working surface (2026-07-30)
+
+§9 made the preview trustworthy. This section makes it *editable*, and fixes the two places a
+reading session ran into something the viewer could not show at all: an object with no pixels,
+and a library row that had lost what the study was.
+
+Verified 2026-07-30: `swift build` clean; `DICOMStudioTests` + `DICOMPrintKitTests` — 4,335
+tests in 394 suites green.
+
+### 10.1 Patient identification, on the screen and in the film pixels
+
+Film is identified by the patient, not by the file. A DICOM printer draws identification from
+the film box's annotation boxes, which every printer lays out differently and many ignore, so
+identification that must reach the sheet is burned into the image pixels instead.
+
+| File | Change |
+|---|---|
+| [PatientOverlayText.swift](Sources/DICOMStudio/Models/PatientOverlayText.swift) | One definition of what the overlay says — "name, ID, study date" over the study description — used by viewer tiles and film cells alike. Two definitions would be two answers to "who is this patient", and the film would eventually disagree with the screen it was composed on. |
+| [ImageViewerViewModel+PatientOverlay.swift](Sources/DICOMStudio/ViewModels/ImageViewerViewModel+PatientOverlay.swift) | The four values read from the file the viewer has open. They are study-level, so every tile of a hung study shows the same text without opening each tile's file. |
+| [PatientOverlayTextCache.swift](Sources/DICOMStudio/Services/PatientOverlayTextCache.swift) | For tiles and cells showing a file the view model has *not* loaded — two studies can hang side by side, and their patients differ. Each header is read once and kept. |
+| [PatientIdentificationOverlayView.swift](Sources/DICOMStudio/Views/PatientIdentificationOverlayView.swift) | Type scales with the cell, so a 4×4 tile carries the same overlay as a full-screen image. The viewer draws it as a reserved *band* below the picture (text and anatomy never share pixels); the film preview overlays it, because there the cell is the film and nothing may take space from it. |
+| [ImageAnnotationBurner.swift](Sources/DICOMPrintKit/Printing/ImageAnnotationBurner.swift) | Draws the lines into the prepared 8-bit frame — one bitmap pass per film cell, not per redraw. Refuses quietly on any other pixel format: an unexpected format is a reason to print the picture without a caption, never a reason to fail the print. |
+| [PrintService.swift](Sources/DICOMStudio/Services/PrintService.swift) | Burned *last*, on the pixels as they will be sent — cropping or rotating afterwards would take the caption with it. The reader's drawing goes on first and the caption over it: the caption is the one thing on the film that must stay legible. |
+
+The preview overlay and the burn are one setting, because they are one intent.
+
+### 10.2 What the reader draws on a cell
+
+| File | Change |
+|---|---|
+| [PrintOverlayAnnotation.swift](Sources/DICOMPrintKit/Printing/PrintOverlayAnnotation.swift) | A line of text or an arrow. Coordinates are normalized to the **image**, not the film cell: the cell is a screen measurement that changes with window size and layout, while the image is what gets printed. An annotation therefore survives a re-layout, a differently sized sheet, and the gap between a 512-pixel preview and a 3000-pixel frame. Points are clamped on the way in — an annotation off the image has no pixels to be burned into. |
+| [PrintViewModel+Annotations.swift](Sources/DICOMStudio/ViewModels/PrintViewModel+Annotations.swift) | Held per **mark ID**, not per film position: re-arranging the film or changing the layout must not move an arrow off the vessel it was pointing at. Two marks can be different frames of one file, and each carries its own drawing. |
+| [FilmCellAnnotationLayer.swift](Sources/DICOMStudio/Views/Print/FilmCellAnnotationLayer.swift) | Draws the preview from the same numbers, with the same arrow geometry formula the burner uses — an arrow that looks balanced in the preview and heavy on the film is a preview that lied. Positioned against the image rect, so nothing can be dropped in a portrait image's black margin. |
+| [PrintOverlayColor+SwiftUI.swift](Sources/DICOMStudio/Views/Print/PrintOverlayColor+SwiftUI.swift) | The one mapping from the print-kit colour to a SwiftUI colour. |
+
+### 10.3 Adjusting a cell in the preview
+
+Windowing a cell on the film is the last chance to fix a picture before it is committed to a
+sheet, and it is where the user is already looking.
+
+| File | Change |
+|---|---|
+| [PrintViewModel+CellEditing.swift](Sources/DICOMStudio/ViewModels/PrintViewModel+CellEditing.swift) | Window/level, zoom, pan, text and arrow tools acting on the selected cell. Every edit writes back into the **mark**, which is the same field `PrintService.prepare` reads — the preview cannot drift away from the film. Windowing is the default tool: it is the adjustment a film is actually rejected over. |
+| [FrameSourceCache.swift](Sources/DICOMStudio/Services/FrameSourceCache.swift) | Windowing a cell changes how a frame is shown, not which frame it is. Without this, every mouse delta re-read and re-decoded the file — tens of milliseconds per event for a JPEG 2000 CT, which is exactly the lag a drag feels as stutter. |
+| [PrintThumbnailCache.swift](Sources/DICOMStudio/Services/PrintThumbnailCache.swift) | Cell renders capped at 512 rather than 256: the cells are now where windowing is *judged*, and at 256 half the grey levels being tuned are lost to downscaling. While a mark is re-rendering the previous picture stands in, so a gesture does not flicker to a spinner on every delta — with `renderedThumbnail` exposed separately so a test or a caller waiting for the picture to settle is never answered with the stale one. |
+| [FrameRenderer.swift](Sources/DICOMStudio/Services/FrameRenderer.swift) | `defaultWindow(...)` — a mark made without ever opening the file carries no window, and a drag has to start from what the cell is showing rather than from zero. Resolved by the same export policy the renderer falls back to, so seeding changes nothing on screen until the user drags. |
+
+### 10.4 A study is not only pictures
+
+| File | Change |
+|---|---|
+| [ViewerContentKind.swift](Sources/DICOMStudio/Models/ViewerContentKind.swift) | Classifies an instance by SOP Class UID: image, waveform, report, key object selection, document, presentation state, raw data. Prefix matching by family, so a new SR flavour lands in the right branch rather than in "other". Until the viewer could name these, a perfectly valid SR was reported as an "unsupported transfer syntax" — a decode failure for pixels the object never claimed to have. |
+| [ViewerNonImageContent.swift](Sources/DICOMStudio/Models/ViewerNonImageContent.swift) | Parsed once at load, so paging a series stays as cheap as it is for images. Anything that cannot be parsed still yields a named summary. |
+| [ViewerNonImageContentView.swift](Sources/DICOMStudio/Views/ViewerNonImageContentView.swift) | An SR read as a narrative, an encapsulated PDF read as pages (PDFKit), anything else as "label: value" rows. |
+
+### 10.5 The library says what the study is
+
+| File | Change |
+|---|---|
+| [StudyModel.swift](Sources/DICOMStudio/Models/StudyModel.swift) | `merging(_:)` — a study is imported one file at a time and the files disagree: a secondary capture with no Study Description, a scout with no Study Date. Replacing the record per file left the study describing whichever file was read last. Every field is now filled from the first file that has it, the modality set accumulates, and identity plus user state (`isFavorite`) stay with the record already in the library. |
+| [LibraryModel.swift](Sources/DICOMStudio/Models/LibraryModel.swift) | Series in ascending Series Number and instances in ascending Instance Number, unnumbered **last** in both (a missing number is not zero), with UID/path breaking every tie — instances come out of an unordered set, so without a total order a series would open on a different image on each read. `pruneEmptyStudies()` drops studies and series holding no instances, including ones already saved to disk, so a library that collected them heals itself. |
+| [StudyRowSummary.swift](Sources/DICOMStudio/Models/StudyRowSummary.swift) | Study-level tags are Type 2/3, and a row built from the study record alone showed a patient name and nothing else — while the series underneath knew the modality and description all along. One summary type for both the list and the grid, falling back through patient ID, description and accession before admitting it knows nothing: "Unknown Patient" on a study carrying an ID is a label the library invented. |
+| [DICOMFileService.swift](Sources/DICOMStudio/Services/DICOMFileService.swift) | A DICOMDIR is an index of a file set, not an instance — importing one manufactured the "Unknown Patient, 0 series, 0 images" row, so it is refused where the SOP Class is known. An object with no SOP Instance UID or Series Instance UID is refused too: the fabricated UUIDs would file it under a study that can never be opened again. |
+
+### 10.6 Reading with one hand on the keyboard
+
+| File | Change |
+|---|---|
+| [ScrollWheelHandler.swift](Sources/DICOMStudio/Views/ScrollWheelHandler.swift) | One scroll-wheel path for the viewer (pages images) and the film preview (zooms cells). Both are on screen at once when the print sheet sits over the viewer, so the scoping rules are not an implementation detail of either. Step accumulation keeps a trackpad's fine deltas from either dropping or stampeding. |
+| [ImageViewerViewModel+ImageNavigation.swift](Sources/DICOMStudio/ViewModels/ImageViewerViewModel+ImageNavigation.swift) | Stepping across files rather than wrapping within a multi-frame file, plus first/last jumps and opt-in wrap at the ends of a series — what makes scrolling a tile loop rather than stick. |
+| [ViewerPrintTrayView.swift](Sources/DICOMStudio/Views/ViewerPrintTrayView.swift) | The answer to "what have I actually picked?" — the selection in film order, one row per image, each thumbnail rendered with *that mark's* window and arrangement, without opening the print sheet. A click brings the image back on screen; the cross takes it off the film. |
+| [KeyboardShortcutsLegendView.swift](Sources/DICOMStudio/Views/KeyboardShortcutsLegendView.swift) | ⌘/ on both the viewer and the print sheet. Written by hand, not derived: SwiftUI does not expose what a `keyboardShortcut` was attached to, and a legend that silently drifts from the bindings would be worse than none. |
+
+### 10.7 Tests
+
+| Suite | Covers |
+|---|---|
+| `PrintOverlayAnnotationTests`, `ImageAnnotationBurnerTests` | Normalized coordinates clamp and survive rescaling; the burn is a no-op on unsupported formats and leaves the frame's dimensions intact |
+| `PrintCellAnnotationTests`, `PrintCellEditingTests` | Annotations follow the mark through a re-layout; window/zoom/pan edits land in the mark that `prepare` reads |
+| `PatientOverlayTextTests`, `PatientIdentificationOverlaySizingTests` | What the two lines say for sparse headers; type scales with the cell |
+| `ViewerContentKindTests`, `ViewerProtocolLineTests` | SOP-class family classification; the protocol line a tile shows |
+| `LibraryStudyMergeTests`, `LibraryImportEndToEndTests`, `StudyRowSummaryTests` | Field-wise merge and modality accumulation; DICOMDIR and UID-less objects refused; empty studies pruned; row fallbacks |
+| `ScrollStepAccumulatorTests` | Fine trackpad deltas neither drop nor stampede |
+| `ViewerTileLayoutTests` | Tile grid arrangement, hanging and focus behaviour |

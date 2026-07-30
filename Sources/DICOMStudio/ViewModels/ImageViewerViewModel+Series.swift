@@ -20,12 +20,70 @@ extension ImageViewerViewModel {
     /// Marks as visited whichever series the viewer is already showing, so the
     /// pane opens describing the state the user is actually in.
     public func loadStudySeries(_ entries: [ViewerSeriesEntry], studyUID: String? = nil) {
-        studySeries = entries
+        // Series Number order, whatever order the caller had them in: the pane
+        // is how a reader finds "series 4", and that only works if the list is
+        // in the order the study itself asserts. Unnumbered series sort last —
+        // see `ViewerSeriesCatalog.isOrderedBefore`.
+        studySeries = entries.sorted(by: ViewerSeriesCatalog.isOrderedBefore)
         studyInstanceUID = studyUID
         if let current = seriesEntry(containing: filePath) {
             currentSeriesUID = current.seriesInstanceUID
             visitedSeriesUIDs.insert(current.seriesInstanceUID)
+            return
         }
+        // Nothing of this study is on screen yet — open the pane on its first
+        // series, showing that series' first image. A study that lists its
+        // series but shows none of them leaves the reader with an empty viewer
+        // and no obvious next click.
+        selectFirstSeriesIfNothingShown()
+    }
+
+    /// Clears the viewer down to a blank slate for a different study.
+    ///
+    /// Opening a study from the library is a fresh read, and everything the
+    /// previous one left behind is misleading here: another study's tiles in the
+    /// grid, its zoom and rotation, its window, its stale error or report. The
+    /// print selection is deliberately *not* cleared — marks are the user's
+    /// work, they span studies, and the tray is where they are managed.
+    public func prepareForNewStudy() {
+        layout = .single
+        cells = []
+        focusedCellIndex = 0
+        studySeries = []
+        studyInstanceUID = nil
+        currentSeriesUID = nil
+        visitedSeriesUIDs = []
+        waveform = nil
+        nonImageContent = nil
+        errorMessage = nil
+        #if canImport(CoreGraphics)
+        currentImage = nil
+        #endif
+        currentFrameIndex = 0
+        playbackState = .stopped
+        resetTransformations()
+        isInverted = false
+    }
+
+    /// Hangs the first series of the study when the viewer has nothing to show.
+    ///
+    /// Deliberately conditional: a viewer already showing an image is showing
+    /// what the user asked for, and replacing it would take the study away from
+    /// them the moment the pane finished loading.
+    func selectFirstSeriesIfNothingShown() {
+        guard filePath == nil, let first = studySeries.first(where: { $0.firstFilePath != nil })
+        else { return }
+        selectSeries(first.seriesInstanceUID)
+    }
+
+    /// Shows a series in the viewer, from its first image.
+    ///
+    /// The single-click path from the series pane: clicking a card is a request
+    /// to read that series, which means it lands in the tile the user is working
+    /// in and starts at the top of the stack.
+    @discardableResult
+    public func selectSeries(_ uid: String) -> Bool {
+        assignSeriesToFocusedCell(uid)
     }
 
     /// The series pane entry a file belongs to, if any.

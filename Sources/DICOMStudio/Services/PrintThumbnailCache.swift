@@ -22,16 +22,33 @@ public final class PrintThumbnailCache {
 
     /// Longest edge of a cached thumbnail, in pixels.
     ///
-    /// A film cell is at most a couple of hundred points; holding full-size
-    /// frames for a 100-image selection would cost hundreds of megabytes.
-    private static let maxDimension = 256
+    /// Holding full-size frames for a 100-image selection would cost hundreds of
+    /// megabytes, but the cells are now where windowing is judged and adjusted —
+    /// at 256 the grey levels a user is tuning are half-lost to downscaling — so
+    /// the cap sits above a full-sheet cell rather than at a thumbnail's size.
+    private static let maxDimension = 512
 
     private let store = FrameImageStore(maxDimension: maxDimension)
 
     public init() {}
 
     /// The thumbnail for a mark, or `nil` while it loads or if it failed.
+    ///
+    /// While a mark is being re-windowed or re-arranged the previous rendering
+    /// stands in, so the cell keeps showing the image through the gesture rather
+    /// than flickering to a spinner on every delta.
     public func image(for item: PrintSelectionItem) -> CGImage? {
+        let request = Self.request(for: item)
+        return store.image(forKey: request.key, identity: request.identity)
+    }
+
+    /// The thumbnail rendered for this exact arrangement, with no stand-in.
+    ///
+    /// The stand-in exists so a cell does not blink during a gesture; anything
+    /// asking "has *this* arrangement been rendered yet?" — a test, or a caller
+    /// waiting for the picture to settle — must not be answered with the
+    /// previous one.
+    public func renderedImage(for item: PrintSelectionItem) -> CGImage? {
         store.image(forKey: Self.request(for: item).key)
     }
 
@@ -63,7 +80,8 @@ public final class PrintThumbnailCache {
             frameIndex: item.frameIndex,
             windowCenter: item.windowCenter,
             windowWidth: item.windowWidth,
-            presentation: item.presentation)
+            presentation: item.presentation,
+            identity: item.id)
     }
 }
 #endif

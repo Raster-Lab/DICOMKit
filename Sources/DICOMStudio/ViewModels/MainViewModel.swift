@@ -210,6 +210,10 @@ public final class MainViewModel {
         // Series callback (preferred): loads all files in the series with navigation.
         self.studyBrowserViewModel.onOpenSeriesInViewer = { [weak self] files, startIdx in
             guard let self else { return }
+            // A different study is a fresh read: the previous one's grid, zoom,
+            // window and series pane would otherwise still be on screen behind
+            // the new images.
+            self.imageViewerViewModel.prepareForNewStudy()
             self.imageViewerViewModel.loadSeries(files: files, startIndex: startIdx)
             self.populateViewerSeriesPane(forFile: files.first)
             self.selectedDestination = .viewer
@@ -217,6 +221,7 @@ public final class MainViewModel {
         // Single-file fallback: kept for API consumers that only set onOpenInViewer.
         self.studyBrowserViewModel.onOpenInViewer = { [weak self] filePath in
             guard let self else { return }
+            self.imageViewerViewModel.prepareForNewStudy()
             self.imageViewerViewModel.loadFile(at: filePath)
             self.populateViewerSeriesPane(forFile: filePath)
             self.selectedDestination = .viewer

@@ -24,6 +24,14 @@ public final class FrameImageStore {
     private var failed: Set<String> = []
     private var inFlight: Set<String> = []
 
+    /// The last picture successfully rendered for each identity.
+    ///
+    /// A window/level drag changes the key on every mouse delta, and evicting on
+    /// each one would blank the cell back to a spinner for the whole gesture.
+    /// Holding the previous picture per identity means the cell keeps showing
+    /// something while its replacement renders.
+    private var lastGood: [String: CGImage] = [:]
+
     /// Longest edge of a stored image, in pixels.
     private let maxDimension: Int
 
@@ -34,6 +42,12 @@ public final class FrameImageStore {
     /// The image for a key, or `nil` while it renders or if it failed.
     public func image(forKey key: String) -> CGImage? { images[key] }
 
+    /// The image for a key, falling back to the last one rendered for the same
+    /// identity while a new arrangement of it is still rendering.
+    public func image(forKey key: String, identity: String) -> CGImage? {
+        images[key] ?? lastGood[identity]
+    }
+
     /// Whether this key was tried and could not be rendered.
     public func didFail(_ key: String) -> Bool { failed.contains(key) }
 
@@ -42,11 +56,18 @@ public final class FrameImageStore {
         images.removeAll()
         failed.removeAll()
         inFlight.removeAll()
+        lastGood.removeAll()
     }
 
     /// One thing to render, identified by everything that changes its pixels.
     public struct Request: Sendable {
         public let key: String
+
+        /// What this render is *of*, ignoring the arrangement — a mark's id, say.
+        /// Two renders sharing an identity are the same picture differently
+        /// arranged, which is what makes one a usable stand-in for the other.
+        public let identity: String
+
         public let path: String
         public let frameIndex: Int
         public let windowCenter: Double?
@@ -58,7 +79,8 @@ public final class FrameImageStore {
             frameIndex: Int = 0,
             windowCenter: Double? = nil,
             windowWidth: Double? = nil,
-            presentation: ViewerPresentation? = nil
+            presentation: ViewerPresentation? = nil,
+            identity: String? = nil
         ) {
             self.key = FrameRenderer.cacheKey(
                 path: path,
@@ -66,6 +88,7 @@ public final class FrameImageStore {
                 windowCenter: windowCenter,
                 windowWidth: windowWidth,
                 presentation: presentation)
+            self.identity = identity ?? "\(path)#\(frameIndex)"
             self.path = path
             self.frameIndex = frameIndex
             self.windowCenter = windowCenter
@@ -81,9 +104,13 @@ public final class FrameImageStore {
     /// re-evaluates mid-load.
     public func refresh(_ requests: [Request]) {
         let live = Set(requests.map(\.key))
+        let liveIdentities = Set(requests.map(\.identity))
         images = images.filter { live.contains($0.key) }
         failed = failed.intersection(live)
         inFlight = inFlight.intersection(live)
+        // Stand-ins survive a re-key of the same picture, but not the picture
+        // leaving the film.
+        lastGood = lastGood.filter { liveIdentities.contains($0.key) }
 
         for request in requests {
             guard images[request.key] == nil,
@@ -96,6 +123,7 @@ public final class FrameImageStore {
     private func load(_ request: Request) {
         inFlight.insert(request.key)
         let key = request.key
+        let identity = request.identity
         let limit = maxDimension
 
         Task { [weak self] in
@@ -110,6 +138,7 @@ public final class FrameImageStore {
             self.inFlight.remove(key)
             if let rendered {
                 self.images[key] = rendered
+                self.lastGood[identity] = rendered
             } else {
                 self.failed.insert(key)
             }

@@ -36,6 +36,14 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
     /// Total frames across the series, which is what a cine tile steps through.
     public let frameCount: Int
 
+    /// What the series holds: images, a report, a document, and so on.
+    ///
+    /// Read from the instances' SOP Class rather than guessed from the
+    /// modality: "OT" is used for both a scanned image and an encapsulated PDF,
+    /// and the pane has to tell them apart to know whether a thumbnail is even
+    /// possible.
+    public let contentKind: ViewerContentKind
+
     public init(
         seriesInstanceUID: String,
         title: String,
@@ -43,7 +51,8 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
         modality: String = "OT",
         orientation: String? = nil,
         filePaths: [String],
-        frameCount: Int
+        frameCount: Int,
+        contentKind: ViewerContentKind = .image
     ) {
         self.seriesInstanceUID = seriesInstanceUID
         self.title = title
@@ -52,6 +61,7 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
         self.orientation = orientation
         self.filePaths = filePaths
         self.frameCount = frameCount
+        self.contentKind = contentKind
     }
 
     /// Objects in the series.
@@ -86,4 +96,7 @@ public struct ViewerSeriesEntry: Identifiable, Hashable, Sendable {
 
     /// The file a tile shows when this series is first hung.
     public var firstFilePath: String? { filePaths.first }
+
+    /// Whether this series is shown as pixels.
+    public var isImageSeries: Bool { contentKind.isImage }
 }

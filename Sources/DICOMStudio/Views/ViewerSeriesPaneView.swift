@@ -3,10 +3,14 @@
 //
 // DICOM Studio — the viewer's series pane.
 //
-// Lists every series of the open study as a card: a thumbnail, what it is, how
-// much of it there is, and whether it has been looked at yet. A series is hung
-// in a tile by dragging its card onto the tile, or by selecting a tile and
-// double-clicking the card.
+// Who the patient is at the top, then every series of the open study as a card:
+// a thumbnail, what it is, how much of it there is, and whether it has been
+// looked at yet. Clicking a card shows that series; dragging it onto a tile
+// hangs it there.
+//
+// Not every series is pictures. Reports, encapsulated documents and presentation
+// states are listed too, with the symbol for what they hold in place of a
+// thumbnail that could never be rendered.
 
 #if canImport(SwiftUI)
 import SwiftUI
@@ -22,6 +26,65 @@ struct ViewerSeriesPaneView: View {
     #endif
 
     var body: some View {
+        VStack(spacing: 0) {
+            patientBanner
+
+            Divider().overlay(Color.white.opacity(0.15))
+
+            seriesList
+        }
+        // Chrome grey, not near-black: the image beside it is the pure black on
+        // screen, and a pane at the same tone would read as a third viewport.
+        .background(StudioColors.viewerChrome)
+    }
+
+    // MARK: - Who this is
+
+    /// Patient and study identification, above the series.
+    ///
+    /// The pane is the one part of the viewer that is always on screen while
+    /// reading, so it is where "whose study am I in?" belongs — the image
+    /// overlay answers it per picture, this answers it for the session.
+    @ViewBuilder
+    private var patientBanner: some View {
+        let text = viewModel.patientOverlayText
+        if text.isEmpty {
+            EmptyView()
+        } else {
+            VStack(alignment: .leading, spacing: 2) {
+                // Who this is, in the largest type in the pane: it is the one
+                // thing a reader must never have to squint at, and it is checked
+                // far more often than any series description.
+                if !viewModel.patientNameLine.isEmpty {
+                    Text(viewModel.patientNameLine)
+                        .font(.title3.bold())
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.6)
+                }
+                if !viewModel.studyLine.isEmpty {
+                    Text(viewModel.studyLine)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.75))
+                        .lineLimit(2)
+                }
+                if let protocolLine = viewModel.protocolLineForOverlay {
+                    Text(protocolLine)
+                        .font(.caption)
+                        .foregroundStyle(.white.opacity(0.6))
+                        .lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .textSelection(.enabled)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Patient: \(text.primaryLine). \(text.secondaryLine)")
+        }
+    }
+
+    private var seriesList: some View {
         ScrollView {
             LazyVStack(spacing: 10) {
                 ForEach(viewModel.studySeries) { entry in
@@ -30,7 +93,6 @@ struct ViewerSeriesPaneView: View {
             }
             .padding(8)
         }
-        .background(.black.opacity(0.35))
         #if canImport(CoreGraphics)
         .onAppear { refreshThumbnails() }
         .onChange(of: viewModel.studySeries) { _, _ in refreshThumbnails() }
@@ -98,10 +160,14 @@ struct ViewerSeriesPaneView: View {
                 .strokeBorder(isCurrent ? Color.accentColor : .clear, lineWidth: 2)
         }
         .contentShape(Rectangle())
-        // Double-click hangs the series in whichever tile is selected — the
-        // keyboard-and-mouse alternative to dragging.
+        // A click shows the series, from its first image. Reading is a matter of
+        // moving between series constantly, so it is one click, not two; the
+        // double-click and the drag still work for anyone expecting them.
+        .onTapGesture {
+            viewModel.selectSeries(entry.seriesInstanceUID)
+        }
         .onTapGesture(count: 2) {
-            viewModel.assignSeriesToFocusedCell(entry.seriesInstanceUID)
+            viewModel.selectSeries(entry.seriesInstanceUID)
         }
         // The drag payload is the Series Instance UID, which is all a tile needs
         // to look the series up again.
@@ -121,11 +187,30 @@ struct ViewerSeriesPaneView: View {
             "\(entry.spokenLabel), \(entry.countsLabel), \(entry.orientationLabel)"
             + (isCurrent ? ", current series" : "")
             + (viewModel.isSeriesVisited(entry.seriesInstanceUID) ? "" : ", not yet visited"))
-        .accessibilityHint("Double-click to show in the selected tile")
+        .accessibilityHint("Click to show this series in the selected tile")
     }
 
     @ViewBuilder
     private func thumbnail(_ entry: ViewerSeriesEntry) -> some View {
+        // A report or a document has no frame to render, so the card shows what
+        // it holds instead of spinning forever on a thumbnail that cannot exist.
+        if !entry.isImageSeries {
+            VStack(spacing: 4) {
+                Image(systemName: entry.contentKind.symbolName)
+                    .font(.title2)
+                    .foregroundStyle(.white.opacity(0.75))
+                Text(entry.contentKind.displayName)
+                    .font(.caption2)
+                    .foregroundStyle(.white.opacity(0.55))
+                    .multilineTextAlignment(.center)
+            }
+        } else {
+            imageThumbnail(entry)
+        }
+    }
+
+    @ViewBuilder
+    private func imageThumbnail(_ entry: ViewerSeriesEntry) -> some View {
         #if canImport(CoreGraphics)
         if let path = entry.firstFilePath {
             let key = FrameImageStore.Request(path: path).key
@@ -151,7 +236,8 @@ struct ViewerSeriesPaneView: View {
     #if canImport(CoreGraphics)
     private func refreshThumbnails() {
         thumbnails.refresh(viewModel.studySeries.compactMap { entry in
-            entry.firstFilePath.map { FrameImageStore.Request(path: $0) }
+            guard entry.isImageSeries else { return nil }
+            return entry.firstFilePath.map { FrameImageStore.Request(path: $0) }
         })
     }
     #endif

@@ -256,6 +256,279 @@ struct ViewerTileLayoutViewModelTests {
         #expect(viewModel.markLayoutForPrint() == 1)
         #expect(viewModel.printSelection.items.map(\.filePath) == ["/e.dcm"])
     }
+
+    @Test("Select all covers what the layout shows, not the series behind it")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSelectAllIsLayoutScoped() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+
+        #expect(viewModel.markLayoutForPrint() == 2)
+        // /c, /d and /e are in the series but not on screen.
+        #expect(viewModel.printSelection.items.map(\.filePath) == ["/a.dcm", "/b.dcm"])
+        #expect(viewModel.isLayoutFullyMarkedForPrint)
+    }
+
+    @Test("Unselect all clears the images on screen and leaves the rest alone")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testUnselectAllIsLayoutScoped() {
+        let viewModel = seriesViewModel()
+        // A mark taken elsewhere in the study, off screen.
+        viewModel.printSelection.add(PrintSelectionItem(filePath: "/z.dcm"))
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.markLayoutForPrint()
+        #expect(viewModel.printSelection.count == 3)
+
+        #expect(viewModel.unmarkLayoutForPrint() == 2)
+        #expect(viewModel.printSelection.items.map(\.filePath) == ["/z.dcm"])
+        #expect(!viewModel.isAnyLayoutImageMarkedForPrint)
+    }
+
+    @Test("Nothing is marked until the user asks — select all starts available")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testDefaultsToNothingMarked() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+
+        #expect(viewModel.printSelection.isEmpty)
+        #expect(!viewModel.isLayoutFullyMarkedForPrint)
+        #expect(!viewModel.isAnyLayoutImageMarkedForPrint)
+    }
+
+    @Test("At 1×1 the layout is the one image on screen")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSelectAllAtSingleLayout() {
+        let viewModel = seriesViewModel()
+
+        #expect(viewModel.markLayoutForPrint() == 1)
+        #expect(viewModel.printSelection.items.map(\.filePath) == ["/a.dcm"])
+        #expect(viewModel.isLayoutFullyMarkedForPrint)
+
+        #expect(viewModel.unmarkLayoutForPrint() == 1)
+        #expect(viewModel.printSelection.isEmpty)
+    }
+
+    @Test("Scrolling the focused tile moves its checkbox onto the new image")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testCheckboxFollowsTheImageOnScreen() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+        viewModel.togglePrintMarkForCell(0)
+        #expect(viewModel.isCellMarkedForPrint(0))
+
+        // The focused tile steps onto the next image, which is not marked.
+        viewModel.currentFileIndex = 2
+        viewModel.filePath = "/c.dcm"
+        #expect(!viewModel.isCellMarkedForPrint(0), "an unmarked image reads as unticked")
+
+        // Ticking here marks the image now on screen, not the one hung earlier.
+        #expect(viewModel.togglePrintMarkForCell(0))
+        #expect(viewModel.printSelection.items.map(\.filePath).contains("/c.dcm"))
+        #expect(viewModel.isCellMarkedForPrint(0))
+
+        // Stepping back onto the first image finds it still marked.
+        viewModel.currentFileIndex = 0
+        viewModel.filePath = "/a.dcm"
+        #expect(viewModel.isCellMarkedForPrint(0))
+    }
+
+    @Test("Capturing a navigated tile records the image it is showing")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testCaptureFollowsNavigation() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+
+        viewModel.currentFileIndex = 3
+        viewModel.filePath = "/d.dcm"
+        viewModel.captureFocusedCell()
+
+        #expect(viewModel.cells[0].filePath == "/d.dcm")
+        #expect(viewModel.cells[0].fileIndex == 3)
+    }
+
+    // MARK: - Grids across series
+
+    private func studyViewModel() -> ImageViewerViewModel {
+        let viewModel = ImageViewerViewModel()
+        viewModel.loadStudySeries([
+            ViewerSeriesEntry(seriesInstanceUID: "s1", title: "Topogram", seriesNumber: 1,
+                              filePaths: ["/s1-a.dcm", "/s1-b.dcm"], frameCount: 2),
+            ViewerSeriesEntry(seriesInstanceUID: "s2", title: "Brain 0.80", seriesNumber: 2,
+                              filePaths: ["/s2-a.dcm", "/s2-b.dcm", "/s2-c.dcm"], frameCount: 3),
+            ViewerSeriesEntry(seriesInstanceUID: "s3", title: "Brain 3.00", seriesNumber: 3,
+                              filePaths: ["/s3-a.dcm"], frameCount: 1)
+        ], studyUID: "1.2")
+        return viewModel
+    }
+
+    @Test("A grid hangs the first image of each series, in series order")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testGridFillsFromStudySeries() throws {
+        let viewModel = studyViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 3))
+
+        #expect(viewModel.cells.map(\.filePath) == ["/s1-a.dcm", "/s2-a.dcm", "/s3-a.dcm"])
+        // Each tile navigates its own series, not the one the grid came from.
+        #expect(viewModel.cells[1].seriesUID == "s2")
+        #expect(viewModel.cells[1].seriesFiles == ["/s2-a.dcm", "/s2-b.dcm", "/s2-c.dcm"])
+    }
+
+    @Test("A grid starts from the series on screen, not always the first")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testGridStartsFromCurrentSeries() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s2")
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 2))
+
+        #expect(viewModel.cells.map(\.filePath) == ["/s2-a.dcm", "/s3-a.dcm"])
+    }
+
+    @Test("More tiles than series falls back to the current stack rather than blanks")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testGridFallsBackToTheStack() {
+        let viewModel = studyViewModel()
+        viewModel.selectSeries("s2")
+        viewModel.applyLayout(ViewerTileLayout(rows: 2, columns: 2))
+
+        let paths = viewModel.cells.map(\.filePath)
+        #expect(paths[0] == "/s2-a.dcm")
+        #expect(paths[1] == "/s3-a.dcm")
+        // Beyond the last series, the tiles continue through the open stack.
+        #expect(paths[2] != nil)
+        #expect(!viewModel.cells[2].isEmpty)
+    }
+
+    @Test("Loose files with no study still fill a grid from the open series")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testGridWithoutAStudy() {
+        let viewModel = seriesViewModel()
+        viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 3))
+
+        #expect(viewModel.cells.map(\.filePath) == ["/a.dcm", "/b.dcm", "/c.dcm"])
+    }
+
+    // MARK: - Series selection
+
+    @Test("A study with nothing on screen opens on its first series")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testFirstSeriesSelectedByDefault() {
+        let viewModel = ImageViewerViewModel()
+        viewModel.loadStudySeries([
+            ViewerSeriesEntry(seriesInstanceUID: "1.2.1", title: "Scout", seriesNumber: 1,
+                              filePaths: ["/s1-a.dcm", "/s1-b.dcm"], frameCount: 2),
+            ViewerSeriesEntry(seriesInstanceUID: "1.2.2", title: "Axial", seriesNumber: 2,
+                              filePaths: ["/s2-a.dcm"], frameCount: 1)
+        ], studyUID: "1.2")
+
+        #expect(viewModel.currentSeriesUID == "1.2.1")
+        #expect(viewModel.seriesFiles == ["/s1-a.dcm", "/s1-b.dcm"])
+        #expect(viewModel.currentFileIndex == 0, "the series opens at its first image")
+    }
+
+    @Test("A viewer already showing an image is not taken over by the pane")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testExistingImageIsNotReplaced() {
+        let viewModel = ImageViewerViewModel()
+        viewModel.filePath = "/opened-by-the-user.dcm"
+
+        viewModel.loadStudySeries([
+            ViewerSeriesEntry(seriesInstanceUID: "1.2.1", title: "Scout",
+                              filePaths: ["/s1-a.dcm"], frameCount: 1)
+        ], studyUID: "1.2")
+
+        #expect(viewModel.filePath == "/opened-by-the-user.dcm")
+    }
+
+    @Test("The pane lists series in Series Number order, whatever order they arrive in")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSeriesSortedBySeriesNumber() {
+        let viewModel = ImageViewerViewModel()
+        viewModel.filePath = "/other.dcm"
+        viewModel.loadStudySeries([
+            ViewerSeriesEntry(seriesInstanceUID: "c", title: "Delayed", seriesNumber: 10,
+                              filePaths: ["/c.dcm"], frameCount: 1),
+            ViewerSeriesEntry(seriesInstanceUID: "a", title: "Scout", seriesNumber: 2,
+                              filePaths: ["/a.dcm"], frameCount: 1),
+            ViewerSeriesEntry(seriesInstanceUID: "d", title: "Unnumbered",
+                              filePaths: ["/d.dcm"], frameCount: 1),
+            ViewerSeriesEntry(seriesInstanceUID: "b", title: "Axial", seriesNumber: 3,
+                              filePaths: ["/b.dcm"], frameCount: 1)
+        ], studyUID: "1.2")
+
+        #expect(viewModel.studySeries.map(\.seriesInstanceUID) == ["a", "b", "c", "d"],
+                "ascending Series Number, unnumbered last — not the order given")
+    }
+
+    @Test("A study opening on its first series takes the lowest Series Number")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testDefaultSelectionFollowsSeriesNumber() {
+        let viewModel = ImageViewerViewModel()
+        viewModel.loadStudySeries([
+            ViewerSeriesEntry(seriesInstanceUID: "later", title: "Axial", seriesNumber: 4,
+                              filePaths: ["/later.dcm"], frameCount: 1),
+            ViewerSeriesEntry(seriesInstanceUID: "first", title: "Scout", seriesNumber: 1,
+                              filePaths: ["/first.dcm"], frameCount: 1)
+        ], studyUID: "1.2")
+
+        #expect(viewModel.currentSeriesUID == "first")
+    }
+
+    @Test("Selecting a series shows it from its first image")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testSelectSeries() {
+        let viewModel = ImageViewerViewModel()
+        viewModel.filePath = "/other.dcm"
+        viewModel.loadStudySeries([
+            ViewerSeriesEntry(seriesInstanceUID: "1.2.1", title: "Scout", seriesNumber: 1,
+                              filePaths: ["/s1-a.dcm"], frameCount: 1),
+            ViewerSeriesEntry(seriesInstanceUID: "1.2.2", title: "Axial", seriesNumber: 2,
+                              filePaths: ["/s2-a.dcm", "/s2-b.dcm"], frameCount: 2)
+        ], studyUID: "1.2")
+
+        #expect(viewModel.selectSeries("1.2.2"))
+        #expect(viewModel.currentSeriesUID == "1.2.2")
+        #expect(viewModel.seriesFiles == ["/s2-a.dcm", "/s2-b.dcm"])
+        #expect(viewModel.currentFileIndex == 0)
+    }
+
+    // MARK: - Repeat navigation
+
+    @Test("Stepping past the last image wraps round to the first")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testRepeatWrapsForward() {
+        let viewModel = seriesViewModel()
+        viewModel.currentFileIndex = 4
+        viewModel.filePath = "/e.dcm"
+        #expect(!viewModel.canGoNextImage)
+
+        #expect(viewModel.navigateToNextImage())
+        #expect(viewModel.currentFileIndex == 0)
+    }
+
+    @Test("Stepping back from the first image wraps round to the last")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testRepeatWrapsBackward() {
+        let viewModel = seriesViewModel()
+        #expect(!viewModel.canGoPreviousImage)
+
+        #expect(viewModel.navigateToPreviousImage())
+        #expect(viewModel.currentFileIndex == 4)
+    }
+
+    @Test("With repeat off, the ends of the series are the ends")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testRepeatDisabledStops() {
+        let viewModel = seriesViewModel()
+        viewModel.isRepeatNavigationEnabled = false
+
+        #expect(!viewModel.navigateToPreviousImage())
+        #expect(viewModel.currentFileIndex == 0)
+
+        viewModel.currentFileIndex = 4
+        viewModel.filePath = "/e.dcm"
+        #expect(!viewModel.navigateToNextImage())
+        #expect(viewModel.currentFileIndex == 4)
+    }
 }
 
 @MainActor

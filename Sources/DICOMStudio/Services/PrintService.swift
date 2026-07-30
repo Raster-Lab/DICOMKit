@@ -48,12 +48,21 @@ public struct PrintService: Sendable {
     ///     Cropping and permutation happen on the full-resolution decoded frame,
     ///     so a zoomed print keeps the modality's detail. Ignored for `raw`
     ///     requests, whose whole point is untouched stored pixels.
+    ///   - annotations: Lines of identification to burn into each frame's
+    ///     pixels, keyed by file path. Empty leaves the pixels alone. Burning is
+    ///     how film carries a patient's name reliably: a DICOM printer draws
+    ///     annotation boxes to its own layout, and many ignore them entirely.
+    ///   - drawnAnnotations: The text and arrows a reader drew on each film cell,
+    ///     keyed by mark ID — per mark rather than per file, because two marks can
+    ///     be different frames of the same file and each carries its own drawing.
     ///   - onProgress: Optional per-frame diagnostic line.
     public func prepare(
         items: [PrintSelectionItem],
         request: PrintJobRequest,
         useViewerWindow: Bool = true,
         applyViewerPresentation: Bool = true,
+        annotations: [String: [String]] = [:],
+        drawnAnnotations: [String: [PrintOverlayAnnotation]] = [:],
         onProgress: PrintImagePreparer.ProgressHandler? = nil
     ) async throws -> [PreparedPrintImage] {
         var prepared: [PreparedPrintImage] = []
@@ -71,14 +80,30 @@ public struct PrintService: Sendable {
                 request: itemRequest,
                 onProgress: onProgress
             )
+            var arranged: [PreparedPrintImage]
             if applyViewerPresentation, !request.raw,
                let presentation = item.presentation, !presentation.isIdentity {
-                prepared.append(contentsOf: frames.map {
-                    $0.applying(presentation, onProgress: onProgress)
-                })
+                arranged = frames.map { $0.applying(presentation, onProgress: onProgress) }
             } else {
-                prepared.append(contentsOf: frames)
+                arranged = frames
             }
+
+            // Burned last, on the pixels as they will be sent: cropping or
+            // rotating afterwards would take the caption with it, and a
+            // half-rotated patient name is worse than none. The reader's own
+            // drawing goes on first and the identification caption over it — the
+            // caption is the one thing on the film that must stay legible, and an
+            // arrow drawn across the bottom would otherwise cover it.
+            #if canImport(CoreGraphics)
+            if !request.raw, let overlays = drawnAnnotations[item.id], !overlays.isEmpty {
+                arranged = arranged.map { ImageAnnotationBurner.burning(overlays: overlays, into: $0) }
+            }
+            if !request.raw, let lines = annotations[item.filePath], !lines.isEmpty {
+                arranged = arranged.map { ImageAnnotationBurner.burning(lines, into: $0) }
+            }
+            #endif
+
+            prepared.append(contentsOf: arranged)
         }
         return prepared
     }

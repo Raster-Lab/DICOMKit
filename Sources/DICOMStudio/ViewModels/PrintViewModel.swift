@@ -32,6 +32,80 @@ public final class PrintViewModel {
     /// The frames to print, in film-cell order.
     public var selection: PrintSelectionModel
 
+    // MARK: - Preview editing
+
+    /// The film cell the preview's tools act on. See
+    /// `PrintViewModel+CellEditing.swift`.
+    public var focusedItemID: String?
+
+    /// What a drag on a film cell does.
+    public enum CellTool: String, CaseIterable, Sendable, Identifiable {
+        case window
+        case zoom
+        case pan
+        case text
+        case arrow
+
+        public var id: String { rawValue }
+
+        public var displayName: String {
+            switch self {
+            case .window: return "Window/Level"
+            case .zoom:   return "Zoom"
+            case .pan:    return "Pan"
+            case .text:   return "Text Annotation"
+            case .arrow:  return "Arrow"
+            }
+        }
+
+        public var symbolName: String {
+            switch self {
+            case .window: return "circle.lefthalf.filled"
+            case .zoom:   return "magnifyingglass"
+            case .pan:    return "hand.draw"
+            case .text:   return "character.textbox"
+            case .arrow:  return "arrow.up.left"
+            }
+        }
+
+        /// Whether this tool draws something new rather than adjusting the picture.
+        public var isDrawing: Bool {
+            self == .text || self == .arrow
+        }
+    }
+
+    /// The active preview tool. Windowing by default — it is the adjustment a
+    /// film is actually rejected over.
+    public var cellTool: CellTool = .window
+
+    // MARK: - Drawn annotations
+
+    /// The text and arrows drawn on each cell, keyed by mark ID. See
+    /// `PrintViewModel+Annotations.swift`.
+    public var cellAnnotations: [String: [PrintOverlayAnnotation]] = [:]
+
+    /// The annotation the inspector is editing, if any.
+    public var selectedAnnotationID: UUID?
+
+    /// Size the next annotation is drawn at, as a fraction of the image's height.
+    /// Changing a selected annotation's size adopts it here too.
+    public var annotationScale: Double = PrintOverlayAnnotation.defaultScale
+
+    /// Colour the next annotation is drawn in.
+    public var annotationColor: PrintOverlayColor = .yellow
+
+    /// Whether patient identification is drawn over each image and burned into
+    /// the film.
+    ///
+    /// One setting for both halves of the same intent: the preview overlays the
+    /// text (cheap, and it moves with the cell as it is windowed and zoomed) and
+    /// the print run burns those same lines into the pixels it sends. Burning is
+    /// what makes it reliable — a DICOM printer draws annotation boxes to its own
+    /// layout and many ignore them — and it costs one bitmap pass per film cell.
+    ///
+    /// On by default: film that cannot be tied to a patient is not useful film.
+    public var showPatientIdentification: Bool = true
+
     // MARK: - Printers
 
     /// Configured printers.
@@ -381,6 +455,8 @@ public final class PrintViewModel {
         let useViewerWindow = self.useViewerWindow
         let useViewerPresentation = self.useViewerPresentation
         let service = self.service
+        let burnIdentification = self.showPatientIdentification
+        let drawnAnnotations = self.annotationsForPrinting
 
         consoleLines = []
         result = nil
@@ -420,11 +496,31 @@ public final class PrintViewModel {
                 try await service.preflight(
                     profile: printer, request: jobRequest, diagnostics: diagnostics)
 
+                // Read from the files themselves, so what is burned in does not
+                // depend on the preview having been opened.
+                let annotationLines = burnIdentification
+                    ? await self.identificationLines(for: items) : [:]
+                if !annotationLines.isEmpty {
+                    self.append(.info, "Burning patient identification into \(annotationLines.count) image(s)")
+                }
+                if !drawnAnnotations.isEmpty {
+                    let count = drawnAnnotations.values.reduce(0) { $0 + $1.count }
+                    self.append(.info,
+                                "Burning \(count) drawn annotation(s) into "
+                                + "\(drawnAnnotations.count) image(s)")
+                }
+                if !drawnAnnotations.isEmpty, jobRequest.raw {
+                    self.append(.warning,
+                                "Raw pixels are being sent — drawn annotations are not burned in.")
+                }
+
                 let images = try await service.prepare(
                     items: items,
                     request: jobRequest,
                     useViewerWindow: useViewerWindow,
                     applyViewerPresentation: useViewerPresentation,
+                    annotations: annotationLines,
+                    drawnAnnotations: drawnAnnotations,
                     onProgress: { line in
                         Task { @MainActor in self.append(.info, line) }
                     }

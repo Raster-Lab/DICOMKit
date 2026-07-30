@@ -46,18 +46,47 @@ public struct LibraryModel: Sendable {
         }
     }
 
-    /// Returns the series for a given study, sorted by series number.
+    /// Returns the series of a study in Series Number order.
+    ///
+    /// Ascending, with unnumbered series last — a missing number is not series
+    /// zero — and Series UID breaking ties, so a study lists its series the same
+    /// way every time it is opened.
     public func seriesForStudy(_ studyUID: String) -> [SeriesModel] {
         guard let seriesUIDs = studySeries[studyUID] else { return [] }
-        return seriesUIDs.compactMap { series[$0] }
-            .sorted { ($0.seriesNumber ?? 0) < ($1.seriesNumber ?? 0) }
+        return seriesUIDs.compactMap { series[$0] }.sorted { lhs, rhs in
+            let left = lhs.seriesNumber ?? Int.max
+            let right = rhs.seriesNumber ?? Int.max
+            if left != right { return left < right }
+            return lhs.seriesInstanceUID < rhs.seriesInstanceUID
+        }
     }
 
-    /// Returns the instances for a given series, sorted by instance number.
+    /// Returns the instances for a given series, in Instance Number order.
+    ///
+    /// Instance Number (0020,0013) is the order the images were acquired in,
+    /// which is the order a stack is read in — so it decides which image a
+    /// series opens on and which way the arrow keys walk.
+    ///
+    /// Unnumbered instances sort last rather than first (a missing number is
+    /// not instance zero), and file path breaks every tie: instances come out of
+    /// an unordered set, so without a total order a series with duplicate or
+    /// absent numbers would arrange itself differently on each read — and open
+    /// on a different image each time.
     public func instancesForSeries(_ seriesUID: String) -> [InstanceModel] {
         guard let instanceUIDs = seriesInstances[seriesUID] else { return [] }
-        return instanceUIDs.compactMap { instances[$0] }
-            .sorted { ($0.instanceNumber ?? 0) < ($1.instanceNumber ?? 0) }
+        return instanceUIDs.compactMap { instances[$0] }.sorted { lhs, rhs in
+            let left = lhs.instanceNumber ?? Int.max
+            let right = rhs.instanceNumber ?? Int.max
+            if left != right { return left < right }
+            return lhs.filePath < rhs.filePath
+        }
+    }
+
+    /// Number of instances across every series of a study.
+    public func instanceCount(forStudy studyUID: String) -> Int {
+        seriesForStudy(studyUID).reduce(0) {
+            $0 + (seriesInstances[$1.seriesInstanceUID]?.count ?? 0)
+        }
     }
 
     /// Total number of studies in the library.
@@ -69,9 +98,21 @@ public struct LibraryModel: Sendable {
     /// Total number of instances in the library.
     public var instanceCount: Int { instances.count }
 
-    /// Adds a study to the library.
+    /// Adds a study, merging it into one already known.
+    ///
+    /// A study is imported one file at a time, and the files disagree: a
+    /// secondary capture may carry no Study Description, a scout no Study Date,
+    /// a lone object no Modality. Replacing the record per file left the study
+    /// describing whichever file happened to be read last — which is how a study
+    /// with a full header ends up in the library showing nothing but a patient
+    /// name. Every field is therefore filled from the first file that has it,
+    /// and the modality set accumulates across the study.
     public mutating func addStudy(_ study: StudyModel) {
-        studies[study.studyInstanceUID] = study
+        if let existing = studies[study.studyInstanceUID] {
+            studies[study.studyInstanceUID] = existing.merging(study)
+        } else {
+            studies[study.studyInstanceUID] = study
+        }
         if studySeries[study.studyInstanceUID] == nil {
             studySeries[study.studyInstanceUID] = []
         }
@@ -113,6 +154,34 @@ public struct LibraryModel: Sendable {
             }
         }
         studies.removeValue(forKey: studyUID)
+    }
+
+    /// Drops studies and series that hold no instances.
+    ///
+    /// A study with nothing under it cannot be opened, printed or exported —
+    /// it is a row that does nothing but claim a patient is in the library.
+    /// Ones already saved to disk are cleared on load, so a library that
+    /// collected them before they were prevented heals itself.
+    /// - Returns: the number of studies removed.
+    @discardableResult
+    public mutating func pruneEmptyStudies() -> Int {
+        let emptySeries = series.values
+            .filter { (seriesInstances[$0.seriesInstanceUID]?.isEmpty ?? true) }
+            .map(\.seriesInstanceUID)
+        for seriesUID in emptySeries {
+            series.removeValue(forKey: seriesUID)
+            seriesInstances.removeValue(forKey: seriesUID)
+            for (studyUID, uids) in studySeries where uids.contains(seriesUID) {
+                studySeries[studyUID]?.remove(seriesUID)
+            }
+        }
+
+        let emptyStudies = studies.keys.filter { studySeries[$0]?.isEmpty ?? true }
+        for studyUID in emptyStudies {
+            studies.removeValue(forKey: studyUID)
+            studySeries.removeValue(forKey: studyUID)
+        }
+        return emptyStudies.count
     }
 
     /// Removes all data from the library.

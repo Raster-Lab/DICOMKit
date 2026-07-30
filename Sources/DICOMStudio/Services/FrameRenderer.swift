@@ -73,23 +73,35 @@ enum FrameRenderer {
         presentation: ViewerPresentation?,
         maxDimension: Int
     ) async -> CGImage? {
-        await Task.detached(priority: .userInitiated) { () -> CGImage? in
-            guard let data = FileManager.default.contents(atPath: path),
-                  let file = try? DICOMFile.read(from: data, force: true) else { return nil }
+        // Decoded pixels are shared and reused: re-windowing or re-cropping the
+        // same frame must not re-read and re-decode the file, or a window/level
+        // drag renders at the speed of the codec.
+        guard let source = await FrameSourceCache.shared.source(forPath: path) else {
+            return nil
+        }
+
+        return await Task.detached(priority: .userInitiated) { () -> CGImage? in
+            let file = source.file
+            let renderer = PixelDataRenderer(
+                pixelData: source.pixelData, paletteColorLUT: source.paletteLUT)
+            let isMonochrome = source.pixelData.descriptor
+                .photometricInterpretation.isMonochrome
 
             var image: CGImage?
-            if let windowCenter, let windowWidth, windowWidth >= 1 {
-                image = try? file.tryRenderFrame(
-                    frameIndex, window: WindowSettings(center: windowCenter, width: windowWidth))
-            }
-            if image == nil, let pixelData = file.pixelData() {
-                let window = DICOMImageExporter.determineWindowSettings(
-                    from: file, pixelData: pixelData, frameIndex: frameIndex,
-                    windowCenter: nil, windowWidth: nil)
-                image = try? file.tryRenderFrame(frameIndex, window: window)
-            }
-            if image == nil {
-                image = try? file.tryRenderFrame(frameIndex)
+            if isMonochrome {
+                let window: WindowSettings
+                if let windowCenter, let windowWidth, windowWidth >= 1 {
+                    window = WindowSettings(center: windowCenter, width: windowWidth)
+                } else {
+                    window = DICOMImageExporter.determineWindowSettings(
+                        from: file, pixelData: source.pixelData, frameIndex: frameIndex,
+                        windowCenter: nil, windowWidth: nil)
+                }
+                image = renderer.renderMonochromeFrame(frameIndex, window: window)
+            } else if source.pixelData.descriptor.photometricInterpretation.isPaletteColor {
+                image = renderer.renderPaletteColorFrame(frameIndex)
+            } else {
+                image = renderer.renderColorFrame(frameIndex)
             }
             guard var image else { return nil }
 
@@ -98,6 +110,20 @@ enum FrameRenderer {
             }
             return downscaled(image, maxDimension: maxDimension) ?? image
         }.value
+    }
+
+    /// The window a frame would be rendered with if none is supplied.
+    ///
+    /// Needed to seed an edit: a mark made without ever opening the file carries
+    /// no window, and a window/level drag has to start from the values the cell
+    /// is actually showing rather than from zero. Resolved by the same export
+    /// policy ``render(path:frameIndex:windowCenter:windowWidth:presentation:maxDimension:)``
+    /// falls back to, so seeding changes nothing on screen until the user drags.
+    static func resolvedWindow(path: String, frameIndex: Int) async -> WindowSettings? {
+        guard let source = await FrameSourceCache.shared.source(forPath: path) else { return nil }
+        return DICOMImageExporter.determineWindowSettings(
+            from: source.file, pixelData: source.pixelData, frameIndex: frameIndex,
+            windowCenter: nil, windowWidth: nil)
     }
 
     // MARK: - Arrangement

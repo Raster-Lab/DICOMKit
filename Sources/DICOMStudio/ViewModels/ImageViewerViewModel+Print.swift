@@ -117,6 +117,41 @@ extension ImageViewerViewModel {
         return printSelection.add(contentsOf: items)
     }
 
+    // MARK: - Revisiting a mark
+
+    /// Brings a marked image back on screen, in the focused tile.
+    ///
+    /// The tray is a list of what will be printed, and the reason to click one
+    /// is to look at it again — usually to re-window it or to decide whether it
+    /// belongs on the film at all. Loading through the series it belongs to
+    /// rather than as a loose file keeps the arrow keys and the scroll wheel
+    /// working from wherever the reader lands.
+    public func showMarkedImage(_ item: PrintSelectionItem) {
+        captureFocusedCell()
+
+        if let index = seriesFiles.firstIndex(of: item.filePath) {
+            if index != currentFileIndex || filePath != item.filePath {
+                currentFileIndex = index
+                loadFileInternal(at: item.filePath,
+                                 securityScopedParent: seriesSecurityScopedParent)
+            }
+        } else if let entry = seriesEntry(containing: item.filePath),
+                  let index = entry.filePaths.firstIndex(of: item.filePath) {
+            loadSeries(files: entry.filePaths, startIndex: index,
+                       securityScopedParent: seriesSecurityScopedParent)
+            currentSeriesUID = entry.seriesInstanceUID
+            visitedSeriesUIDs.insert(entry.seriesInstanceUID)
+        } else if filePath != item.filePath {
+            loadFile(at: item.filePath, securityScopedParent: seriesSecurityScopedParent)
+        }
+
+        // Multi-frame marks name a frame; it can only be applied once the file
+        // has reported how many frames it has.
+        if item.frameIndex != currentFrameIndex, item.frameIndex < numberOfFrames {
+            goToFrame(item.frameIndex)
+        }
+    }
+
     /// Removes every mark belonging to the currently loaded file.
     public func clearPrintMarksForCurrentFile() {
         guard let filePath else { return }

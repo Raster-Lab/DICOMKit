@@ -61,7 +61,11 @@ public enum ViewerSeriesCatalog {
             // A multi-frame series has more frames than objects; the pane
             // states both because a 1-object, 358-frame cine and a
             // 358-object stack read very differently.
-            frameCount: instances.reduce(0) { $0 + ($1.numberOfFrames ?? 1) }
+            frameCount: instances.reduce(0) { $0 + ($1.numberOfFrames ?? 1) },
+            // The first instance decides: a series is one SOP Class in
+            // practice, and reading every instance to confirm it would make
+            // opening a study proportional to its object count.
+            contentKind: ViewerContentKind.kind(forSOPClassUID: instances.first?.sopClassUID)
         )
     }
 

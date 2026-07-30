@@ -29,12 +29,13 @@ extension ImageViewerViewModel {
 
     /// Advances one image: the next frame of this file, or the next file.
     ///
-    /// Unlike ``nextFrame()`` this does not wrap at the end of a multi-frame
-    /// file — it steps into the next file instead, and stops at the end of the
-    /// series. Wrapping is cine behaviour; arrow keys are for traversal.
+    /// Unlike ``nextFrame()`` this does not wrap *within* a multi-frame file —
+    /// it steps into the next file instead. At the end of the series it wraps
+    /// round to the first image when ``isRepeatNavigationEnabled`` is on, which
+    /// is what makes scrolling a tile loop rather than stick.
     @discardableResult
     public func navigateToNextImage() -> Bool {
-        guard canGoNextImage else { return false }
+        guard canGoNextImage else { return isRepeatNavigationEnabled ? wrapToFirstImage() : false }
         stopPlaybackForManualStep()
         if currentFrameIndex < numberOfFrames - 1 {
             goToFrame(currentFrameIndex + 1)
@@ -51,13 +52,49 @@ extension ImageViewerViewModel {
     /// known until then, so seeking to the end here would race the load.
     @discardableResult
     public func navigateToPreviousImage() -> Bool {
-        guard canGoPreviousImage else { return false }
+        guard canGoPreviousImage else {
+            return isRepeatNavigationEnabled ? wrapToLastImage() : false
+        }
         stopPlaybackForManualStep()
         if currentFrameIndex > 0 {
             goToFrame(currentFrameIndex - 1)
         } else {
             navigateToPreviousFile()
         }
+        return true
+    }
+
+    // MARK: - Wrapping
+
+    /// Jumps to the first image of the series (or of this file, if standalone).
+    @discardableResult
+    private func wrapToFirstImage() -> Bool {
+        stopPlaybackForManualStep()
+        if seriesFiles.count > 1, currentFileIndex != 0 {
+            currentFileIndex = 0
+            loadFileInternal(at: seriesFiles[0], securityScopedParent: seriesSecurityScopedParent)
+            return true
+        }
+        guard currentFrameIndex != 0 else { return false }
+        goToFrame(0)
+        return true
+    }
+
+    /// Jumps to the last image of the series.
+    ///
+    /// Lands on the last file's first frame for the same reason stepping back
+    /// does: the frame count is not known until the file has loaded.
+    @discardableResult
+    private func wrapToLastImage() -> Bool {
+        stopPlaybackForManualStep()
+        if seriesFiles.count > 1, currentFileIndex != seriesFiles.count - 1 {
+            currentFileIndex = seriesFiles.count - 1
+            loadFileInternal(at: seriesFiles[currentFileIndex],
+                             securityScopedParent: seriesSecurityScopedParent)
+            return true
+        }
+        guard numberOfFrames > 1, currentFrameIndex != numberOfFrames - 1 else { return false }
+        goToFrame(numberOfFrames - 1)
         return true
     }
 

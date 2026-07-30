@@ -198,19 +198,34 @@ struct ImageViewerViewModelTests {
         #expect(vm.currentFrameIndex == 2)
     }
 
-    @Test("Image navigation stops at the ends instead of wrapping")
+    @Test("Image navigation repeats at the ends: past the last is the first")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
-    func testImageNavigationDoesNotWrap() {
+    func testImageNavigationWrapsWhenRepeating() {
         let vm = ImageViewerViewModel()
         vm.numberOfFrames = 10
 
         vm.currentFrameIndex = 9
-        #expect(vm.canGoNextImage == false)
+        #expect(vm.canGoNextImage == false, "there is no *next* image — it wraps instead")
+        #expect(vm.navigateToNextImage() == true)
+        #expect(vm.currentFrameIndex == 0)
+
+        #expect(vm.canGoPreviousImage == false)
+        #expect(vm.navigateToPreviousImage() == true)
+        #expect(vm.currentFrameIndex == 9)
+    }
+
+    @Test("With repeat off, image navigation stops at the ends")
+    @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+    func testImageNavigationDoesNotWrapWhenRepeatIsOff() {
+        let vm = ImageViewerViewModel()
+        vm.numberOfFrames = 10
+        vm.isRepeatNavigationEnabled = false
+
+        vm.currentFrameIndex = 9
         #expect(vm.navigateToNextImage() == false)
         #expect(vm.currentFrameIndex == 9)
 
         vm.currentFrameIndex = 0
-        #expect(vm.canGoPreviousImage == false)
         #expect(vm.navigateToPreviousImage() == false)
         #expect(vm.currentFrameIndex == 0)
     }

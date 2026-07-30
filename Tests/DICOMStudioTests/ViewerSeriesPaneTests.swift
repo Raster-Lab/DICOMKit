@@ -303,13 +303,22 @@ struct HangingSeriesInTilesTests {
     @Test("Within one series the user's window follows across the grid")
     @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
     func testWindowTravelsWithinASeries() {
-        let viewModel = viewerWithSeries()
+        // A grid hangs one series per tile until the study runs out of series;
+        // past that the tiles continue through the open stack, and those slices
+        // share its rescale pair — so the user's window travels with them. Here
+        // the study is a single series, so every tile is one of its slices.
+        let viewModel = ImageViewerViewModel()
         viewModel.seriesFiles = lung.filePaths
         viewModel.filePath = "/lung1.dcm"
+        viewModel.viewContentWidth = 800
+        viewModel.viewContentHeight = 600
+        viewModel.loadStudySeries([lung], studyUID: "study-1")
         viewModel.windowCenter = 7577
         viewModel.windowWidth = 1160
 
         viewModel.applyLayout(ViewerTileLayout(rows: 1, columns: 3))
+        #expect(viewModel.cells.map(\.filePath)
+                == ["/lung1.dcm", "/lung2.dcm", "/lung3.dcm"])
 
         for index in 0..<3 {
             #expect(viewModel.cells[index].windowCenter == 7577,

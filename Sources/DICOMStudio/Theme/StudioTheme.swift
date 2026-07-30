@@ -26,6 +26,16 @@ public enum StudioColors: Sendable {
     public static let backgroundGreen: Double = 0.07
     public static let backgroundBlue: Double = 0.10
 
+    /// Neutral grey for the chrome around a reading area — the series pane, the
+    /// selection tray, and the gutter between them and the image.
+    ///
+    /// Deliberately lighter than the image area, which is pure black: on a
+    /// reporting station the darkest thing on screen must be the picture, so the
+    /// panes read as furniture and the eye lands on the anatomy without being
+    /// told to. Neutral grey rather than tinted — a colour cast next to a
+    /// greyscale image shifts how its own greys are judged.
+    public static let viewerChromeWhite: Double = 0.14
+
     /// Soft white for text on dark backgrounds.
     public static let textOnDarkRed: Double = 0.92
     public static let textOnDarkGreen: Double = 0.93
@@ -92,6 +102,41 @@ extension StudioColors {
     /// Radiology-mode background color.
     public static var radiologyBackground: Color {
         Color(red: backgroundRed, green: backgroundGreen, blue: backgroundBlue)
+    }
+
+    /// Chrome around a reading area: the viewer's side panes and the gutter.
+    public static var viewerChrome: Color {
+        Color(white: viewerChromeWhite)
+    }
+
+    /// Fill behind the selected study in the library.
+    ///
+    /// A dimmed, desaturated version of the accent rather than the accent
+    /// itself: selection has to be obvious at a glance without competing with
+    /// the row's own text, and a full-strength tint behind a list of studies is
+    /// tiring to read against on a dark window.
+    public static var selectionFill: Color {
+        Color(red: primaryRed * selectionDim,
+              green: primaryGreen * selectionDim,
+              blue: primaryBlue * selectionDim)
+        .opacity(0.35)
+    }
+
+    /// Edge of the selected study, a little brighter than its fill so the row's
+    /// extent is readable where the fill meets the background.
+    public static var selectionBorder: Color {
+        Color(red: primaryRed * selectionDim,
+              green: primaryGreen * selectionDim,
+              blue: primaryBlue * selectionDim)
+        .opacity(0.75)
+    }
+
+    /// How far the accent is knocked back for selection surfaces.
+    private static let selectionDim: Double = 0.62
+
+    /// Hairline that frames the reading area against the chrome.
+    public static var readingAreaBorder: Color {
+        Color.white.opacity(0.14)
     }
 
     /// Text color for dark backgrounds.

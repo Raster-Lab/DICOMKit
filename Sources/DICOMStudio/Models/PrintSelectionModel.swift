@@ -74,6 +74,30 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
         self.presentation = presentation
     }
 
+    /// A copy of this mark with its presentation fields replaced.
+    ///
+    /// The identity fields are left alone, so the copy still matches the mark it
+    /// came from and takes its place on film. Each parameter is doubly optional
+    /// because "leave this alone" and "clear this" are different edits: passing
+    /// `.some(nil)` clears the value, omitting it keeps it.
+    public func with(
+        windowCenter: Double?? = .none,
+        windowWidth: Double?? = .none,
+        presentation: ViewerPresentation?? = .none
+    ) -> PrintSelectionItem {
+        PrintSelectionItem(
+            filePath: filePath,
+            sopInstanceUID: sopInstanceUID,
+            frameIndex: frameIndex,
+            frameCount: frameCount,
+            seriesDescription: seriesDescription,
+            instanceNumber: instanceNumber,
+            windowCenter: windowCenter ?? self.windowCenter,
+            windowWidth: windowWidth ?? self.windowWidth,
+            presentation: presentation ?? self.presentation
+        )
+    }
+
     /// Label for the marks tray, e.g. "CHEST AXIAL · #14 · frame 3/60".
     public var displayLabel: String {
         var parts: [String] = []
@@ -105,6 +129,18 @@ public final class PrintSelectionModel {
 
     /// The marked frames, in film-cell order.
     public private(set) var items: [PrintSelectionItem] = []
+
+    /// Marks the user has adjusted by hand in the print preview.
+    ///
+    /// The viewer keeps marks in step with the screen (`refreshMarksFromViewer`),
+    /// which is right until the user has deliberately windowed a film cell —
+    /// re-syncing then throws that work away without saying so. A hand-adjusted
+    /// mark stops following the viewer until it is reverted or reset.
+    public private(set) var adjustedIDs: Set<String> = []
+
+    /// Each adjusted mark as it stood before the first hand adjustment, so the
+    /// edit can be taken back.
+    private var preAdjustment: [String: PrintSelectionItem] = [:]
 
     public init() {}
 
@@ -151,11 +187,13 @@ public final class PrintSelectionModel {
     /// Removes a frame if marked.
     public func remove(filePath: String, frameIndex: Int) {
         items.removeAll { $0.filePath == filePath && $0.frameIndex == frameIndex }
+        pruneAdjustments()
     }
 
     /// Removes every marked frame of a file.
     public func removeAllFrames(ofFile filePath: String) {
         items.removeAll { $0.filePath == filePath }
+        pruneAdjustments()
     }
 
     /// Replaces a mark's payload in place, keeping its film position.
@@ -164,14 +202,67 @@ public final class PrintSelectionModel {
     /// still arranging: zooming a tile after ticking it must change what prints,
     /// or the film silently disagrees with the screen. Returns `true` if a
     /// matching mark was found and updated.
+    ///
+    /// A mark the user has adjusted by hand in the print preview is left alone —
+    /// see ``adjustedIDs``. Pass `force: true` for edits that are themselves the
+    /// user's (the preview's own tools), which is what ``adjust(_:)`` does.
     @discardableResult
-    public func update(_ item: PrintSelectionItem) -> Bool {
+    public func update(_ item: PrintSelectionItem, force: Bool = false) -> Bool {
         guard let index = items.firstIndex(where: {
             $0.filePath == item.filePath && $0.frameIndex == item.frameIndex
         }) else { return false }
+        guard force || !adjustedIDs.contains(item.id) else { return false }
         guard items[index] != item else { return false }
         items[index] = item
         return true
+    }
+
+    /// Applies a hand adjustment made in the print preview.
+    ///
+    /// Records the mark as it stood first, so the edit can be reverted, and from
+    /// here on the mark ignores viewer re-syncs.
+    @discardableResult
+    public func adjust(_ item: PrintSelectionItem) -> Bool {
+        guard let index = items.firstIndex(where: {
+            $0.filePath == item.filePath && $0.frameIndex == item.frameIndex
+        }) else { return false }
+        if preAdjustment[item.id] == nil {
+            preAdjustment[item.id] = items[index]
+        }
+        adjustedIDs.insert(item.id)
+        guard items[index] != item else { return false }
+        items[index] = item
+        return true
+    }
+
+    /// Whether a mark has been adjusted by hand.
+    public func isAdjusted(_ id: String) -> Bool { adjustedIDs.contains(id) }
+
+    /// Takes back every hand adjustment to a mark, restoring it to how it was
+    /// marked, and lets it follow the viewer again.
+    @discardableResult
+    public func revertAdjustments(forID id: String) -> Bool {
+        guard let original = preAdjustment.removeValue(forKey: id) else { return false }
+        adjustedIDs.remove(id)
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return false }
+        items[index] = original
+        return true
+    }
+
+    /// Forgets that a mark was adjusted, without restoring anything.
+    ///
+    /// Used by "reset cell", whose result — the untouched frame — is a state the
+    /// viewer may legitimately overwrite again.
+    public func clearAdjustment(forID id: String) {
+        adjustedIDs.remove(id)
+        preAdjustment.removeValue(forKey: id)
+    }
+
+    /// Drops adjustment bookkeeping for marks that are no longer selected.
+    private func pruneAdjustments() {
+        let live = Set(items.map(\.id))
+        adjustedIDs.formIntersection(live)
+        preAdjustment = preAdjustment.filter { live.contains($0.key) }
     }
 
     /// Marks the frame if unmarked, unmarks it otherwise. Returns the new state.
@@ -203,15 +294,18 @@ public final class PrintSelectionModel {
     /// Removes marks at the given offsets (swipe/delete in the marks tray).
     public func remove(atOffsets offsets: IndexSet) {
         items.remove(atOffsets: offsets)
+        pruneAdjustments()
     }
 
     /// Clears every mark.
     public func clear() {
         items.removeAll()
+        pruneAdjustments()
     }
 
     /// Replaces the entire selection (used by "print this series" entry points).
     public func replace(with newItems: [PrintSelectionItem]) {
         items = newItems
+        pruneAdjustments()
     }
 }
