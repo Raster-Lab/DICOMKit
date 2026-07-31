@@ -30,6 +30,13 @@ public struct PrintSettingsView: View {
     /// Whether the full options band is showing. Collapsed, the sheet is film
     /// size, orientation and the preview — which is all a film usually needs.
     @State private var showOptions = true
+
+    /// Whether the console log panel is showing on the right, alongside the film.
+    ///
+    /// The log used to *replace* the sheet, which took the film away at the one
+    /// moment a user wants to see what was sent. It is a permanent side panel the
+    /// film keeps its room beside, toggled from the header.
+    @State private var showConsole = true
     @State private var showPrinterManagement = false
     @State private var showImageList = false
 
@@ -53,7 +60,7 @@ public struct PrintSettingsView: View {
             Divider()
 
             if viewModel.isRunning || viewModel.phase != .configuring {
-                PrintProgressView(viewModel: viewModel)
+                runLayout
             } else {
                 configurationForm
             }
@@ -82,11 +89,11 @@ public struct PrintSettingsView: View {
 
     /// The size the sheet opens at.
     ///
-    /// Three quarters of the window it was raised from: enough that the options
-    /// band fits without clipping and the film gets real room, while the viewer
-    /// stays visible around it. Never below the size the band needs — on a small
-    /// window the sheet takes the whole of it rather than hiding controls — and
-    /// never past the display it sits on.
+    /// The size of the window it was raised from. The film and the print log are
+    /// both read the way images are read in the viewer, so the print screen gets
+    /// the same room the viewer had rather than a smaller card floating on it.
+    /// Never below the size the options band needs, and never past the display
+    /// it sits on.
     private var sheetSize: CGSize {
         let parentWidth = parentSize?.width ?? Self.fallbackWidth
         let parentHeight = parentSize?.height ?? Self.fallbackHeight
@@ -110,8 +117,8 @@ public struct PrintSettingsView: View {
         return CGSize(width: width, height: height)
     }
 
-    /// How much of the parent window the sheet takes.
-    private static let parentFraction: CGFloat = 0.75
+    /// How much of the parent window the sheet takes — all of it.
+    private static let parentFraction: CGFloat = 1.0
 
     /// Below these the two columns and the film stop fitting side by side.
     private static let minimumWidth: CGFloat = 1160
@@ -127,17 +134,23 @@ public struct PrintSettingsView: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Print to DICOM Printer")
-                    .font(.headline)
+                    .font(.title3.bold())
                 Text(viewModel.planSummary)
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            if !viewModel.isRunning {
+            Button {
+                showConsole.toggle()
+            } label: {
+                Label(showConsole ? "Hide Console" : "Show Console",
+                      systemImage: showConsole ? "sidebar.trailing" : "sidebar.right")
+            }
+            .help("Show or hide the print console and give the film more room")
+            if viewModel.phase == .configuring {
                 KeyboardShortcutsButton(
                     title: "Print Preview Shortcuts",
                     groups: KeyboardShortcutsLegendView.printPreviewGroups)
-                    .controlSize(.small)
 
                 Button {
                     showOptions.toggle()
@@ -145,12 +158,11 @@ public struct PrintSettingsView: View {
                     Label(showOptions ? "Hide Options" : "Show Options",
                           systemImage: showOptions ? "chevron.up" : "slider.horizontal.3")
                 }
-                .controlSize(.small)
                 .help("Hide the settings column and give the film the whole sheet")
             }
             if let message = viewModel.validationMessage, !viewModel.isRunning {
                 Label(message, systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption)
+                    .font(.callout)
                     .foregroundStyle(.orange)
                     .labelStyle(.titleAndIcon)
                     .frame(maxWidth: 280, alignment: .trailing)
@@ -159,13 +171,37 @@ public struct PrintSettingsView: View {
         .padding()
     }
 
+    // MARK: - While the job runs
+
+    /// The film large, the console beside it, and the console toggleable away.
+    ///
+    /// A print is judged by what went on the film, so the film stays on screen
+    /// for the whole job and afterwards — at the same size the preview gave it.
+    /// The console is a side panel rather than something stacked under the
+    /// film, so hiding it hands its width back to the film without touching
+    /// the film's height.
+    private var runLayout: some View {
+        HStack(spacing: 0) {
+            previewSection
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            if showConsole {
+                Divider()
+                consolePanel
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: - Configuration
 
-    /// Settings left, film centre, focused cell right.
+    /// Settings left, film centre, console right.
     ///
     /// The preview gets the whole middle column at full sheet height. The
     /// settings scroll in their own column instead of banding across the top,
-    /// where they capped how tall the film could be drawn.
+    /// where they capped how tall the film could be drawn. Per-cell window and
+    /// annotation controls live in the settings column too (below Advanced),
+    /// so the right edge is dedicated to the console.
     private var configurationForm: some View {
         HStack(spacing: 0) {
             if showOptions {
@@ -186,12 +222,23 @@ public struct PrintSettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-            if !viewModel.selection.isEmpty {
+            if showConsole {
                 Divider()
-                inspectorSidebar
+                consolePanel
             }
         }
     }
+
+    /// The console log panel, permanently on the right — reset each time the
+    /// preview is opened (see `PrintViewModel.resetConsole()`), not just when
+    /// a job finishes.
+    private var consolePanel: some View {
+        PrintProgressView(viewModel: viewModel)
+            .frame(width: Self.consoleWidth)
+    }
+
+    /// Width of the console column on the right.
+    private static let consoleWidth: CGFloat = 300
 
     /// The column of settings down the left edge.
     ///
@@ -206,6 +253,7 @@ public struct PrintSettingsView: View {
                 card { basicSection }
                 card { marksSection }
                 card { advancedSection }
+                card { cellAndAnnotationSection }
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 12)
@@ -231,9 +279,6 @@ public struct PrintSettingsView: View {
 
     /// Width of the settings column — enough for a picker and its caption.
     private static let sidebarWidth: CGFloat = 320
-
-    /// Width of the focused-cell column on the right.
-    private static let inspectorWidth: CGFloat = 260
 
     /// The band collapsed to what a reading room changes per film: the sheet it
     /// prints on and which way round it goes. Everything else keeps the value it
@@ -506,24 +551,18 @@ public struct PrintSettingsView: View {
 
     // MARK: Cell inspector
 
-    /// Window/level and arrangement of the cell picked in the preview.
-    ///
-    /// A column beside the film rather than a strip beneath it: the film is what
-    /// is being judged and height is what it needs most, so these controls take
-    /// width instead. Every control here writes into the mark, so what it
-    /// changes is what prints.
-    private var inspectorSidebar: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 14) {
-                bandGroup("Cell") { cellInspector }
-                Divider()
-                bandGroup(annotationSectionTitle) { annotationInspector }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(width: Self.inspectorWidth, alignment: .leading)
+    /// Window/level, arrangement, and annotations of the cell picked in the
+    /// preview — a card in the settings column, below Advanced, rather than a
+    /// column of its own: the right edge is dedicated to the console, and
+    /// these controls are no less at home scrolling with the rest of the
+    /// settings. Every control here writes into the mark, so what it changes
+    /// is what prints.
+    private var cellAndAnnotationSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            bandGroup("Cell") { cellInspector }
+            Divider()
+            bandGroup(annotationSectionTitle) { annotationInspector }
         }
-        .frame(width: Self.inspectorWidth)
     }
 
     /// The annotation section says whether it is editing something or setting up

@@ -44,9 +44,14 @@ extension PrintViewModel {
                             : (useViewerWindow ? item.windowCenter : nil)
         let width: Double? = useExplicitWindow ? explicitWindowWidth
                            : (useViewerWindow ? item.windowWidth : nil)
+        // The job-wide window is typed by a user, so it is in output units (HU);
+        // the mark's own window came off the viewer, which holds stored values.
+        // Rendering one as the other puts the window nowhere near the pixels and
+        // washes the cell out, so which it is travels with the numbers.
         return item.with(
             windowCenter: .some(center),
             windowWidth: .some(width),
+            windowSpace: useExplicitWindow ? .outputUnits : item.windowSpace,
             presentation: .some(useViewerPresentation ? item.presentation : nil))
     }
 

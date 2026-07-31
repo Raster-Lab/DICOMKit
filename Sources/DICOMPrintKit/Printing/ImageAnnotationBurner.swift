@@ -438,33 +438,31 @@ public enum ImageAnnotationBurner {
         guard length > 0 else { return }
 
         // Line weight and head size come off the same control as the type size, so
-        // one setting makes an annotation heavier or lighter as a whole.
-        let lineWidth = max(1.0, Double(canvas.height) * overlay.scale * 0.18)
-        let headLength = max(lineWidth * 3, Double(canvas.height) * overlay.scale * 0.9)
-        let headHalfWidth = headLength * 0.45
+        // one setting makes an annotation heavier or lighter as a whole — and off
+        // the shared geometry, so the film matches the preview that was approved.
+        let geometry = PrintArrowGeometry(
+            scale: overlay.scale, imageHeight: Double(canvas.height), arrowLength: length)
+        guard let outline = geometry.outline(
+            tail: PrintPlanePoint(x: tail.x, y: tail.y),
+            head: PrintPlanePoint(x: head.x, y: head.y)) else { return }
 
-        let ux = dx / length
-        let uy = dy / length
-        // The shaft stops where the head begins, or the head's point would sit on
-        // a line that already reaches past it.
-        let shaftEnd = CGPoint(x: head.x - ux * headLength, y: head.y - uy * headLength)
-        let base = shaftEnd
-        let left = CGPoint(x: base.x - uy * headHalfWidth, y: base.y + ux * headHalfWidth)
-        let right = CGPoint(x: base.x + uy * headHalfWidth, y: base.y - ux * headHalfWidth)
+        let shaftEnd = cgPoint(outline.shaftEnd)
+        let left = cgPoint(outline.headLeft)
+        let right = cgPoint(outline.headRight)
 
         canvas.context.saveGState()
         canvas.context.setLineCap(.round)
         canvas.context.setLineJoin(.round)
 
-        for (extra, color) in [(max(1.0, lineWidth * 0.8), canvas.halo(for: overlay.color)),
+        for (extra, color) in [(geometry.haloWidth, canvas.halo(for: overlay.color)),
                                (0.0, canvas.color(for: overlay.color))] {
             canvas.context.setStrokeColor(color)
             canvas.context.setFillColor(color)
-            canvas.context.setLineWidth(lineWidth + extra)
+            canvas.context.setLineWidth(geometry.lineWidth + extra)
 
             canvas.context.beginPath()
             canvas.context.move(to: tail)
-            canvas.context.addLine(to: length > headLength ? shaftEnd : head)
+            canvas.context.addLine(to: shaftEnd)
             canvas.context.strokePath()
 
             canvas.context.beginPath()
@@ -477,6 +475,10 @@ public enum ImageAnnotationBurner {
             canvas.context.drawPath(using: extra > 0 ? .fillStroke : .fill)
         }
         canvas.context.restoreGState()
+    }
+
+    private static func cgPoint(_ point: PrintPlanePoint) -> CGPoint {
+        CGPoint(x: point.x, y: point.y)
     }
 
     /// A normalized point in the context's own coordinates, which run bottom-up.

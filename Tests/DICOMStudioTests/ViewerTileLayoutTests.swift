@@ -15,12 +15,12 @@ struct ViewerTileLayoutTests {
 
     // MARK: - The layout itself
 
-    @Test("Every grid from 1×1 to 4×4 is offered, rows varying slowest")
+    @Test("Every grid from 1×1 to 4×4 is offered, rows varying slowest, plus 4×5")
     func testAllCases() {
         let all = ViewerTileLayout.allCases
-        #expect(all.count == 16)
+        #expect(all.count == 17)
         #expect(all.first == ViewerTileLayout(rows: 1, columns: 1))
-        #expect(all.last == ViewerTileLayout(rows: 4, columns: 4))
+        #expect(all.last == ViewerTileLayout(rows: 4, columns: 5))
         // 1×1, 1×2, 1×3, 1×4, 2×1 … — the order the labels read in.
         #expect(all.prefix(5).map(\.displayName) == ["1×1", "1×2", "1×3", "1×4", "2×1"])
     }

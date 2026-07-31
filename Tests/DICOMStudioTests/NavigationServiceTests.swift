@@ -55,7 +55,7 @@ struct NavigationServiceTests {
         #expect(Set(NavigationDestination.allCases) == [
             .library, .viewer, .volumeViewer, .jp3dComparison, .aiAnalysis,
             .networking, .dicomWeb, .cloudIntegration, .gateway, .reporting, .printing,
-            .tools, .validation, .archiveManagement, .security, .cliWorkshop,
+            .printSCP, .tools, .validation, .archiveManagement, .security, .cliWorkshop,
             .cliParity, .networkUtility, .performanceTools, .macOSEnhancements,
             .polishRelease, .integrationTesting, .j2kTestBench, .settings,
         ])

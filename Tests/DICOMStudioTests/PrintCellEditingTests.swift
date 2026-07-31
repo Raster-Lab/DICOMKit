@@ -111,6 +111,23 @@ struct PrintCellEditingTests {
         #expect(viewModel.selection.items.first?.windowCenter == 40)
     }
 
+    @Test("A job-wide window is previewed as the output units it was typed in")
+    func testExplicitWindowIsPreviewedInOutputUnits() {
+        let viewModel = makeViewModel(items: markedFrames)
+        viewModel.useExplicitWindow = true
+        viewModel.explicitWindowCenter = 90
+        viewModel.explicitWindowWidth = 700
+
+        // 90 is HU, as typed. Rendered as a stored value it would sit far below
+        // every pixel on a CT and wash the cell out, so the preview has to know
+        // which space it was handed.
+        #expect(viewModel.previewItems.allSatisfy { $0.windowSpace == .outputUnits })
+
+        // A mark's own window still comes off the viewer, which is stored space.
+        viewModel.useExplicitWindow = false
+        #expect(viewModel.previewItems.allSatisfy { $0.windowSpace == .storedValues })
+    }
+
     @Test("Turning off the viewer window previews the file's own window")
     func testViewerWindowOffFoldedIntoPreview() {
         let viewModel = makeViewModel(items: markedFrames)

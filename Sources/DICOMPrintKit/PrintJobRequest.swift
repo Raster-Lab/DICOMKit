@@ -66,6 +66,30 @@ public enum PrintLayoutSelection: Sendable, Equatable {
     }
 }
 
+// MARK: - Window space
+
+/// Which value space a request's ``PrintJobRequest/windowSettings`` is stated in.
+///
+/// A VOI window is two numbers with no unit attached, and the same pair means
+/// two different pictures depending on which side of Rescale Slope/Intercept it
+/// is read on. A window typed by a user ("40 / 400") is in output units — HU on
+/// CT — while a window carried off the viewer has already been divided through
+/// the rescale pair, because the renderer works on stored values. Handing one
+/// where the other is expected is not a subtle shift: on a CT with an intercept
+/// of −1024 (or −8192, which occurs) the window lands entirely outside the
+/// pixels and the frame prints black.
+///
+/// So the space travels with the numbers rather than being assumed.
+public enum PrintWindowSpace: String, Sendable, Equatable, Codable {
+    /// Rescaled output units — Hounsfield on CT. What a user types, and what
+    /// `dicom-print --window-center/--window-width` carries.
+    case outputUnits
+
+    /// Stored pixel values, as the viewer and ``DICOMImageExporter`` hold them.
+    /// Converted back through the rescale pair before the window is applied.
+    case storedValues
+}
+
 // MARK: - Print Job Request
 
 /// A complete, validated description of a print job.
@@ -128,6 +152,8 @@ public struct PrintJobRequest: Sendable {
     public var raw: Bool
     /// Explicit VOI window overriding the data set's own window.
     public var windowSettings: WindowSettings?
+    /// The space ``windowSettings`` is stated in (see ``PrintWindowSpace``).
+    public var windowSpace: PrintWindowSpace
     /// Grayscale output bit depth: 8, 12, or 16.
     public var bitDepth: Int
 
@@ -164,6 +190,7 @@ public struct PrintJobRequest: Sendable {
         frameSelection: PrintFrameSelection = .first,
         raw: Bool = false,
         windowSettings: WindowSettings? = nil,
+        windowSpace: PrintWindowSpace = .outputUnits,
         bitDepth: Int = 8,
         verifyFirst: Bool = false,
         checkStatus: Bool = false,
@@ -191,6 +218,7 @@ public struct PrintJobRequest: Sendable {
         self.frameSelection = frameSelection
         self.raw = raw
         self.windowSettings = windowSettings
+        self.windowSpace = windowSpace
         self.bitDepth = bitDepth
         self.verifyFirst = verifyFirst
         self.checkStatus = checkStatus

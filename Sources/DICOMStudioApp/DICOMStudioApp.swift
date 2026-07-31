@@ -21,6 +21,18 @@ struct DICOMStudioApp: App {
         }
         .defaultSize(width: 1200, height: 800)
 
+        // The printer emulator is watched while a print is being sent from the
+        // main window, so it is a window rather than a detail pane. A single
+        // `Window`, not a `WindowGroup`: there is one emulator, and choosing the
+        // sidebar entry again raises the window that exists instead of opening a
+        // second view onto the same server.
+        Window("Printer Emulator", id: StudioWindowID.printerEmulator) {
+            PrintSCPView(viewModel: viewModel.printSCPViewModel)
+                .frame(minWidth: 900, minHeight: 620)
+        }
+        .defaultSize(width: 1320, height: 880)
+        .windowResizability(.contentMinSize)
+
         Settings {
             SettingsView(viewModel: SettingsViewModel(settingsService: viewModel.settingsService))
         }

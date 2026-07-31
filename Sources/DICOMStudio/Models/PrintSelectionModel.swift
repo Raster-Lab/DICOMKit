@@ -45,6 +45,17 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
     /// Window width captured from the viewer when the frame was marked.
     public let windowWidth: Double?
 
+    /// Which space ``windowCenter`` / ``windowWidth`` are stated in.
+    ///
+    /// A mark's window normally comes off the viewer, which holds it in stored
+    /// values — so that is the default. The exception is the print sheet's
+    /// job-wide window, which a user types in output units (HU) and which
+    /// ``PrintViewModel/previewItem(for:)`` folds into a mark so the preview
+    /// shows the film's actual window. Carrying the space with the numbers is
+    /// what stops the preview from rendering one as the other and washing the
+    /// cell out. See ``PrintWindowSpace``.
+    public let windowSpace: PrintWindowSpace
+
     /// Zoom, pan, rotation, flip and inversion as the viewer was showing them.
     ///
     /// Carried so the film reproduces the arrangement the user built rather than
@@ -61,6 +72,7 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
         instanceNumber: Int? = nil,
         windowCenter: Double? = nil,
         windowWidth: Double? = nil,
+        windowSpace: PrintWindowSpace = .storedValues,
         presentation: ViewerPresentation? = nil
     ) {
         self.filePath = filePath
@@ -71,6 +83,7 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
         self.instanceNumber = instanceNumber
         self.windowCenter = windowCenter
         self.windowWidth = windowWidth
+        self.windowSpace = windowSpace
         self.presentation = presentation
     }
 
@@ -80,9 +93,13 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
     /// came from and takes its place on film. Each parameter is doubly optional
     /// because "leave this alone" and "clear this" are different edits: passing
     /// `.some(nil)` clears the value, omitting it keeps it.
+    /// - Parameter windowSpace: The space a replaced window is stated in.
+    ///   Defaults to the viewer's, which is where a mark's window comes from
+    ///   everywhere except the job-wide override.
     public func with(
         windowCenter: Double?? = .none,
         windowWidth: Double?? = .none,
+        windowSpace: PrintWindowSpace = .storedValues,
         presentation: ViewerPresentation?? = .none
     ) -> PrintSelectionItem {
         PrintSelectionItem(
@@ -94,6 +111,7 @@ public struct PrintSelectionItem: Identifiable, Hashable, Sendable {
             instanceNumber: instanceNumber,
             windowCenter: windowCenter ?? self.windowCenter,
             windowWidth: windowWidth ?? self.windowWidth,
+            windowSpace: windowSpace,
             presentation: presentation ?? self.presentation
         )
     }

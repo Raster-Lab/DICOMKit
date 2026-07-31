@@ -73,7 +73,16 @@ public struct PrintService: Sendable {
             itemRequest.frameSelection = .single(item.frameIndex + 1)
             if request.windowSettings == nil, useViewerWindow, !request.raw,
                let center = item.windowCenter, let width = item.windowWidth, width >= 1 {
+                // A mark carries the viewer's window, which is in stored values:
+                // the renderer works on stored pixels, so `applyPreset` and
+                // `applyDefaultWindow` divide the header's output-unit window
+                // through the rescale pair before holding it. The preparer
+                // windows *after* rescaling, so it is told which space these
+                // numbers are in rather than left to assume the wrong one — on
+                // a CT with a −1024 (or −8192) intercept that assumption puts
+                // the window clear of every pixel and prints a black cell.
                 itemRequest.windowSettings = WindowSettings(center: center, width: width)
+                itemRequest.windowSpace = item.windowSpace
             }
             let frames = try await preparer.prepare(
                 paths: [item.filePath],

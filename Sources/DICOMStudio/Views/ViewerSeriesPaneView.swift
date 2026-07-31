@@ -51,22 +51,32 @@ struct ViewerSeriesPaneView: View {
         if text.isEmpty {
             EmptyView()
         } else {
-            VStack(alignment: .leading, spacing: 2) {
-                // Who this is, in the largest type in the pane: it is the one
-                // thing a reader must never have to squint at, and it is checked
-                // far more often than any series description.
-                if !viewModel.patientNameLine.isEmpty {
-                    Text(viewModel.patientNameLine)
+            VStack(alignment: .leading, spacing: 3) {
+                // Who this is and what made the pictures, in the largest type in
+                // the pane: it is the one thing a reader must never have to
+                // squint at, and it is checked far more often than any series
+                // description.
+                if !viewModel.patientIdentityLine.isEmpty {
+                    Text(viewModel.patientIdentityLine)
                         .font(.title3.bold())
                         .foregroundStyle(.white)
                         .lineLimit(2)
                         .minimumScaleFactor(0.6)
                 }
-                if !viewModel.studyLine.isEmpty {
-                    Text(viewModel.studyLine)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.75))
+                // Description then date, each on its own line and each in the
+                // same lit type as the name: run together on one line they read
+                // as a caption, which is not what identification is for.
+                if let description = viewModel.studyDescriptionSanitizedForOverlay {
+                    Text(description)
+                        .font(.callout.weight(.semibold))
+                        .foregroundStyle(.white)
                         .lineLimit(2)
+                }
+                if let date = viewModel.studyDateForOverlay {
+                    Text(date)
+                        .font(.callout.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
                 }
                 if let protocolLine = viewModel.protocolLineForOverlay {
                     Text(protocolLine)
@@ -76,11 +86,27 @@ struct ViewerSeriesPaneView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            // The identification is lit, not just written: a tinted plate under
+            // it separates whose study this is from the list of series below it
+            // at a glance, without a rule that would read as another divider.
+            .background(
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.accentColor.opacity(0.22))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 6)
+                            .strokeBorder(Color.accentColor.opacity(0.45), lineWidth: 1)
+                    )
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+            )
             .textSelection(.enabled)
             .accessibilityElement(children: .combine)
-            .accessibilityLabel("Patient: \(text.primaryLine). \(text.secondaryLine)")
+            .accessibilityLabel(
+                "Patient: \(viewModel.patientIdentityLine). "
+                + [viewModel.studyDescriptionSanitizedForOverlay, viewModel.studyDateForOverlay]
+                    .compactMap { $0 }.joined(separator: ". "))
         }
     }
 
@@ -145,11 +171,6 @@ struct ViewerSeriesPaneView: View {
                 .font(.caption2)
                 .foregroundStyle(.white.opacity(0.5))
 
-            if !viewModel.isSeriesVisited(entry.seriesInstanceUID) {
-                Label("Not yet visited", systemImage: "circle")
-                    .font(.caption2)
-                    .foregroundStyle(.white.opacity(0.5))
-            }
         }
         .padding(8)
         .frame(maxWidth: .infinity)
@@ -185,8 +206,7 @@ struct ViewerSeriesPaneView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(entry.spokenLabel), \(entry.countsLabel), \(entry.orientationLabel)"
-            + (isCurrent ? ", current series" : "")
-            + (viewModel.isSeriesVisited(entry.seriesInstanceUID) ? "" : ", not yet visited"))
+            + (isCurrent ? ", current series" : ""))
         .accessibilityHint("Click to show this series in the selected tile")
     }
 

@@ -28,11 +28,15 @@ enum FrameRenderer {
         frameIndex: Int,
         windowCenter: Double?,
         windowWidth: Double?,
+        windowSpace: PrintWindowSpace = .storedValues,
         presentation: ViewerPresentation?
     ) -> String {
         var parts: [String] = [path, String(frameIndex)]
         parts.append(windowCenter.map { String($0) } ?? "-")
         parts.append(windowWidth.map { String($0) } ?? "-")
+        // The same pair of numbers is two different pictures depending on the
+        // space, so it belongs in the key.
+        if windowCenter != nil { parts.append(windowSpace.rawValue) }
         if let presentation {
             parts.append(contentsOf: [
                 String(presentation.zoom),
@@ -49,9 +53,12 @@ enum FrameRenderer {
 
     /// Decodes, windows, arranges and scales one frame, off the main actor.
     ///
-    /// A supplied window is already in stored-value space — it comes from the
-    /// live viewer, which divides the header VOI through the rescale pair — so it
-    /// is used as given. Without one, the image's own window is resolved through
+    /// A supplied window is normally already in stored-value space — it comes
+    /// from the live viewer, which divides the header VOI through the rescale
+    /// pair — so it is used as given. A window declared in output units (the
+    /// print sheet's job-wide window, which a user types in HU) is converted
+    /// first, through the same shared policy. Without a window at all, the
+    /// image's own is resolved through
     /// the shared export policy: the header VOI *rescale-adjusted*, then the
     /// frame's pixel range. That is the same resolution the focused viewport
     /// performs on load, so an un-windowed tile matches the image beside it.
@@ -70,6 +77,7 @@ enum FrameRenderer {
         frameIndex: Int,
         windowCenter: Double?,
         windowWidth: Double?,
+        windowSpace: PrintWindowSpace = .storedValues,
         presentation: ViewerPresentation?,
         maxDimension: Int
     ) async -> CGImage? {
@@ -91,7 +99,16 @@ enum FrameRenderer {
             if isMonochrome {
                 let window: WindowSettings
                 if let windowCenter, let windowWidth, windowWidth >= 1 {
-                    window = WindowSettings(center: windowCenter, width: windowWidth)
+                    switch windowSpace {
+                    case .storedValues:
+                        window = WindowSettings(center: windowCenter, width: windowWidth)
+                    case .outputUnits:
+                        // The shared policy's explicit rung: output units in,
+                        // stored values out, through this file's rescale pair.
+                        window = DICOMImageExporter.determineWindowSettings(
+                            from: file, pixelData: source.pixelData, frameIndex: frameIndex,
+                            windowCenter: windowCenter, windowWidth: windowWidth)
+                    }
                 } else {
                     window = DICOMImageExporter.determineWindowSettings(
                         from: file, pixelData: source.pixelData, frameIndex: frameIndex,
@@ -104,6 +121,13 @@ enum FrameRenderer {
                 image = renderer.renderColorFrame(frameIndex)
             }
             guard var image else { return nil }
+
+            // Overlay planes go on before the frame is cropped, turned or
+            // scaled: they are defined against the image's own pixel matrix, so
+            // burning them here means they travel with the picture instead of
+            // having to be re-registered against every arrangement.
+            image = OverlayPlaneRenderer.burningOverlays(
+                of: file.dataSet, onto: image, frameIndex: frameIndex)
 
             if let presentation, !presentation.isIdentity {
                 image = applying(presentation, to: image) ?? image

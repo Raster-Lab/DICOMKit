@@ -72,6 +72,12 @@ public final class FrameImageStore {
         public let frameIndex: Int
         public let windowCenter: Double?
         public let windowWidth: Double?
+
+        /// Which space the window is stated in. Stored values by default: that
+        /// is what the viewer holds, and every window here comes from a viewer
+        /// except the print sheet's typed job-wide one.
+        public let windowSpace: PrintWindowSpace
+
         public let presentation: ViewerPresentation?
 
         public init(
@@ -79,6 +85,7 @@ public final class FrameImageStore {
             frameIndex: Int = 0,
             windowCenter: Double? = nil,
             windowWidth: Double? = nil,
+            windowSpace: PrintWindowSpace = .storedValues,
             presentation: ViewerPresentation? = nil,
             identity: String? = nil
         ) {
@@ -87,12 +94,14 @@ public final class FrameImageStore {
                 frameIndex: frameIndex,
                 windowCenter: windowCenter,
                 windowWidth: windowWidth,
+                windowSpace: windowSpace,
                 presentation: presentation)
             self.identity = identity ?? "\(path)#\(frameIndex)"
             self.path = path
             self.frameIndex = frameIndex
             self.windowCenter = windowCenter
             self.windowWidth = windowWidth
+            self.windowSpace = windowSpace
             self.presentation = presentation
         }
     }
@@ -132,6 +141,7 @@ public final class FrameImageStore {
                 frameIndex: request.frameIndex,
                 windowCenter: request.windowCenter,
                 windowWidth: request.windowWidth,
+                windowSpace: request.windowSpace,
                 presentation: request.presentation,
                 maxDimension: limit)
             guard let self else { return }

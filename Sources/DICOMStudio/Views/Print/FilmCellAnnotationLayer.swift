@@ -109,9 +109,13 @@ struct FilmCellAnnotationLayer: View {
             tail: tail, head: head)
 
         ZStack(alignment: .topLeading) {
+            // Drawn the way it is burned: a halo tracing the outline, then the
+            // arrow filled over it. A blurred shadow softened the head into the
+            // shaft and made the arrow read as a plain line.
+            ArrowShape(metrics: metrics)
+                .stroke(halo(annotation.color), lineWidth: metrics.haloWidth)
             ArrowShape(metrics: metrics)
                 .fill(color(annotation.color))
-                .shadow(color: halo(annotation.color), radius: max(1, metrics.lineWidth * 0.5))
                 // A thin arrow is hard to hit, so the touchable area is the line
                 // fattened, not the drawn width.
                 .contentShape(ArrowShape(metrics: metrics).stroke(lineWidth: Self.grabWidth))
@@ -133,12 +137,23 @@ struct FilmCellAnnotationLayer: View {
     }
 
     /// A draggable end of a selected arrow.
+    ///
+    /// A ring, not a disc, and small: a handle is chrome for grabbing the arrow
+    /// with, and one big enough to sit over the head hides the very thing the
+    /// reader is aiming. What it loses in target size it takes back invisibly —
+    /// the grab area is well over twice the drawn ring.
     private func handle(at position: CGPoint, move: @escaping (PrintOverlayPoint) -> Void) -> some View {
-        Circle()
-            .fill(Color.accentColor)
-            .overlay(Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1))
-            .frame(width: Self.handleSize, height: Self.handleSize)
-            .offset(x: position.x - Self.handleSize / 2, y: position.y - Self.handleSize / 2)
+        Color.clear
+            .frame(width: Self.handleGrabSize, height: Self.handleGrabSize)
+            .overlay {
+                Circle()
+                    .fill(.white.opacity(0.95))
+                    .overlay(Circle().strokeBorder(Color.accentColor, lineWidth: 1.5))
+                    .frame(width: Self.handleSize, height: Self.handleSize)
+            }
+            .contentShape(Circle())
+            .offset(x: position.x - Self.handleGrabSize / 2,
+                    y: position.y - Self.handleGrabSize / 2)
             .gesture(
                 DragGesture(minimumDistance: 1, coordinateSpace: .named(Self.space))
                     .onChanged { value in move(normalized(value.location)) }
@@ -196,7 +211,12 @@ struct FilmCellAnnotationLayer: View {
     /// Below this the preview type is illegible however small the cell is.
     private static let minimumPreviewFontSize: CGFloat = 6
 
-    private static let handleSize: CGFloat = 9
+    /// The drawn ring at each end of a selected arrow.
+    private static let handleSize: CGFloat = 6
+
+    /// What that ring is worth to the pointer — big enough to grab, without
+    /// covering the anatomy the arrow points at.
+    private static let handleGrabSize: CGFloat = 16
 
     /// How wide an arrow is to the pointer, whatever it is to the eye.
     private static let grabWidth: CGFloat = 12
@@ -206,22 +226,35 @@ struct FilmCellAnnotationLayer: View {
 
 /// The measurements of one drawn arrow, in cell points.
 ///
-/// Mirrors ``ImageAnnotationBurner``'s arrow: same fractions of the image height,
-/// so preview and film agree on how heavy the arrow looks.
+/// Nothing is decided here: the proportions come from ``PrintArrowGeometry``,
+/// which is what ``ImageAnnotationBurner`` draws the film from — so preview and
+/// film agree on how heavy the arrow looks and how big its head is.
 @available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
 struct ArrowMetrics: Equatable {
     let tail: CGPoint
     let head: CGPoint
-    let lineWidth: CGFloat
-    let headLength: CGFloat
-    let headHalfWidth: CGFloat
+    let geometry: PrintArrowGeometry
 
     init(scale: Double, imageHeight: CGFloat, tail: CGPoint, head: CGPoint) {
         self.tail = tail
         self.head = head
-        self.lineWidth = max(1, imageHeight * scale * 0.18)
-        self.headLength = max(lineWidth * 3, imageHeight * scale * 0.9)
-        self.headHalfWidth = headLength * 0.45
+        let dx = Double(head.x - tail.x)
+        let dy = Double(head.y - tail.y)
+        self.geometry = PrintArrowGeometry(
+            scale: scale,
+            imageHeight: Double(imageHeight),
+            arrowLength: (dx * dx + dy * dy).squareRoot())
+    }
+
+    var lineWidth: CGFloat { CGFloat(geometry.lineWidth) }
+
+    /// How far the halo spreads beyond the arrow, as a stroke width on its
+    /// outline — half of it falls outside the shape, as it does on film.
+    var haloWidth: CGFloat { CGFloat(geometry.haloWidth) }
+
+    var outline: PrintArrowOutline? {
+        geometry.outline(tail: PrintPlanePoint(x: Double(tail.x), y: Double(tail.y)),
+                         head: PrintPlanePoint(x: Double(head.x), y: Double(head.y)))
     }
 }
 
@@ -232,35 +265,31 @@ struct ArrowShape: Shape {
 
     func path(in rect: CGRect) -> Path {
         var path = Path()
-        let dx = metrics.head.x - metrics.tail.x
-        let dy = metrics.head.y - metrics.tail.y
-        let length = (dx * dx + dy * dy).squareRoot()
-        guard length > 0 else { return path }
+        guard let outline = metrics.outline else { return path }
 
-        let ux = dx / length
-        let uy = dy / length
-        let shaftEnd = CGPoint(x: metrics.head.x - ux * metrics.headLength,
-                               y: metrics.head.y - uy * metrics.headLength)
-
+        let half = metrics.lineWidth / 2
         // The shaft as a quad rather than a stroked line, so the whole arrow is
         // one filled path and needs no separate stroke pass.
-        let nx = -uy * metrics.lineWidth / 2
-        let ny = ux * metrics.lineWidth / 2
-        let end = length > metrics.headLength ? shaftEnd : metrics.head
-        path.move(to: CGPoint(x: metrics.tail.x + nx, y: metrics.tail.y + ny))
+        let nx = CGFloat(-outline.unitY) * half
+        let ny = CGFloat(outline.unitX) * half
+        let tail = point(outline.tail)
+        let end = point(outline.shaftEnd)
+        path.move(to: CGPoint(x: tail.x + nx, y: tail.y + ny))
         path.addLine(to: CGPoint(x: end.x + nx, y: end.y + ny))
         path.addLine(to: CGPoint(x: end.x - nx, y: end.y - ny))
-        path.addLine(to: CGPoint(x: metrics.tail.x - nx, y: metrics.tail.y - ny))
+        path.addLine(to: CGPoint(x: tail.x - nx, y: tail.y - ny))
         path.closeSubpath()
 
-        path.move(to: metrics.head)
-        path.addLine(to: CGPoint(x: shaftEnd.x - uy * metrics.headHalfWidth,
-                                 y: shaftEnd.y + ux * metrics.headHalfWidth))
-        path.addLine(to: CGPoint(x: shaftEnd.x + uy * metrics.headHalfWidth,
-                                 y: shaftEnd.y - ux * metrics.headHalfWidth))
+        path.move(to: point(outline.head))
+        path.addLine(to: point(outline.headLeft))
+        path.addLine(to: point(outline.headRight))
         path.closeSubpath()
 
         return path
+    }
+
+    private func point(_ planePoint: PrintPlanePoint) -> CGPoint {
+        CGPoint(x: planePoint.x, y: planePoint.y)
     }
 }
 #endif

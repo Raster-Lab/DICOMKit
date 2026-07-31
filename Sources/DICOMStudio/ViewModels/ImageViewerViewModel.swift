@@ -183,9 +183,6 @@ public final class ImageViewerViewModel {
     /// Whether the DICOM tag inspector sheet is visible.
     public var showDICOMInspector: Bool = false
 
-    /// Whether the file importer dialog is presented.
-    public var isFileImporterPresented: Bool = false
-
     // MARK: - Series / Multi-File Navigation
 
     /// All file paths in the current series (empty when viewing a standalone file).
@@ -337,29 +334,6 @@ public final class ImageViewerViewModel {
     }
 
     // MARK: - File Loading
-
-    /// Loads a DICOM file from a security-scoped URL.
-    ///
-    /// Use this overload when opening files from a file importer or drag-and-drop,
-    /// where the URL carries sandbox access rights.
-    ///
-    /// - Parameter url: A security-scoped URL to the DICOM file.
-    public func loadFile(from url: URL) {
-        clearSeriesState()
-        let accessing = url.startAccessingSecurityScopedResource()
-        defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-
-        isLoading = true
-        errorMessage = nil
-
-        do {
-            let data = try Data(contentsOf: url)
-            try loadDICOMData(data, path: url.path)
-        } catch {
-            errorMessage = "Failed to load file: \(error.localizedDescription)"
-            isLoading = false
-        }
-    }
 
     /// Loads a DICOM file for viewing.
     ///
@@ -655,6 +629,16 @@ public final class ImageViewerViewModel {
             }
         }
 
+        // Anything the modality drew *over* the image rather than into it.
+        // Some Secondary Captures — Siemens' Patient Protocol is the standing
+        // example — carry pixel data that is entirely zero and put their whole
+        // content in a 1-bit overlay plane, so a viewer that renders only Pixel
+        // Data shows a black square where a page of text should be.
+        if let rendered = image {
+            image = OverlayPlaneRenderer.burningOverlays(
+                of: file.dataSet, onto: rendered, frameIndex: currentFrameIndex)
+        }
+
         // Inversion is applied to the rendered frame rather than the window: the
         // renderer has no invert option, and negating the window would clip
         // differently for signed and rescaled modalities.
@@ -876,9 +860,13 @@ public final class ImageViewerViewModel {
         updateROIOnZoom()
     }
 
-    /// Resets zoom, pan, and rotation to defaults.
+    /// Resets the image back to how it looked when it was first opened: zoom,
+    /// pan, rotation, flip, window/level, and inversion all undone.
     public func resetView() {
         resetTransformations()
+        autoWindowLevel()
+        isInverted = false
+        renderCurrentFrame()
     }
 
     /// Resets all image transforms: zoom, pan, rotation, and flip.

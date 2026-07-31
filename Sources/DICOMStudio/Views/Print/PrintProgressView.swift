@@ -34,6 +34,7 @@ struct PrintProgressView: View {
                     Text(viewModel.progressMessage.isEmpty
                          ? "Working…" : viewModel.progressMessage)
                 }
+                .font(.callout)
                 .progressViewStyle(.linear)
                 .accessibilityLabel("Print progress")
                 .accessibilityValue(viewModel.progressMessage)
@@ -49,7 +50,10 @@ struct PrintProgressView: View {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(viewModel.consoleLines) { line in
                         Text(line.text)
-                            .font(.system(size: StudioTypography.captionSize, design: .monospaced))
+                            // Body size, not caption: this is the record of what
+                            // was sent to the printer and it is read across a
+                            // room, not squinted at.
+                            .font(.system(size: StudioTypography.bodySize, design: .monospaced))
                             .foregroundStyle(color(for: line.level))
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -60,7 +64,7 @@ struct PrintProgressView: View {
             }
             .background(.black.opacity(0.85))
             .clipShape(RoundedRectangle(cornerRadius: 6))
-            .frame(minHeight: 260)
+            .frame(maxHeight: .infinity)
             .onChange(of: viewModel.consoleLines.count) { _, _ in
                 if let last = viewModel.consoleLines.last {
                     withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
@@ -87,14 +91,14 @@ struct PrintProgressView: View {
             VStack(alignment: .leading, spacing: 8) {
                 if result.printJobUIDs.isEmpty {
                     Text("The printer did not return a print job UID, so job status cannot be polled.")
-                        .font(.caption)
+                        .font(.callout)
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(Array(result.printJobUIDs.enumerated()), id: \.offset) { index, uid in
                         HStack {
                             Text(result.printJobUIDs.count > 1
                                  ? "Film \(index + 1): \(uid)" : uid)
-                                .font(.caption.monospaced())
+                                .font(.callout.monospaced())
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                                 .textSelection(.enabled)
@@ -114,7 +118,7 @@ struct PrintProgressView: View {
                             ? "exclamationmark.triangle.fill"
                             : (status.isCompleted ? "checkmark.circle.fill" : "clock")
                     )
-                    .font(.caption)
+                    .font(.callout)
                 }
             }
         }

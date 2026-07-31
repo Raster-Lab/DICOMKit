@@ -42,9 +42,12 @@ extension ImageViewerViewModel {
     ///
     /// Opening a study from the library is a fresh read, and everything the
     /// previous one left behind is misleading here: another study's tiles in the
-    /// grid, its zoom and rotation, its window, its stale error or report. The
-    /// print selection is deliberately *not* cleared — marks are the user's
-    /// work, they span studies, and the tray is where they are managed.
+    /// grid, its zoom and rotation, its window, its stale error or report — and
+    /// its print selection, whose marks point at files that are no longer on
+    /// screen. Opening a study from the library is the one entry point that means
+    /// "start over", so the selected-images panel starts over with it; the
+    /// library's own "Print…" does not come through here, so the files it marks
+    /// survive.
     public func prepareForNewStudy() {
         layout = .single
         cells = []
@@ -63,6 +66,10 @@ extension ImageViewerViewModel {
         playbackState = .stopped
         resetTransformations()
         isInverted = false
+        // Everything the print panel held: the marks, their captured windows and
+        // their film positions, and the sheet itself if it was still up.
+        printSelection.clear()
+        isPrintSheetPresented = false
     }
 
     /// Hangs the first series of the study when the viewer has nothing to show.

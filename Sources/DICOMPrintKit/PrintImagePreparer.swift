@@ -53,6 +53,9 @@ public struct PreparedPrintImage: Sendable {
 ///   (rescale → VOI window → MONOCHROME1 inversion → 8-bit MONOCHROME2, or
 ///   8-bit RGB/grayscale for color sources) so the print matches clinical
 ///   presentation instead of raw stored values.
+/// - The window is resolved the way the rest of the app resolves one: the
+///   request's own window, else the data set's VOI, else the preprocessor's
+///   auto-stretch (see ``resolvedWindow(_:dataSet:)``).
 public struct PrintImagePreparer: Sendable {
 
     /// A progress/diagnostic line emitted while preparing (verbose output).
@@ -162,7 +165,7 @@ public struct PrintImagePreparer: Sendable {
                     dataSet: dataSet,
                     frameIndex: frameIndex,
                     colorMode: request.preprocessColorMode,
-                    windowSettings: request.windowSettings,
+                    windowSettings: Self.resolvedWindow(request, dataSet: dataSet),
                     outputBitDepth: request.bitDepth
                 )
                 guard image.width <= Int(UInt16.max),
@@ -170,8 +173,25 @@ public struct PrintImagePreparer: Sendable {
                     throw PrintRequestError("Image dimensions out of range in: \(label)")
                 }
                 let stored = UInt16(image.bitsStored)
+                // Whatever the modality drew *over* the image goes on the film
+                // too. Some Secondary Captures — a Siemens Patient Protocol —
+                // have all-zero Pixel Data and put their whole content in a
+                // 1-bit overlay plane, and the preview shows it; a film printed
+                // without it is a black sheet that disagrees with the screen it
+                // was approved on. Not for `--raw`, which sends stored pixels
+                // untouched by definition.
+                let samples = OverlayPlaneRenderer.burningOverlays(
+                    of: dataSet,
+                    into: image.pixelData,
+                    width: image.width,
+                    height: image.height,
+                    bitsAllocated: image.bitsAllocated,
+                    bitsStored: image.bitsStored,
+                    samplesPerPixel: image.samplesPerPixel,
+                    photometricInterpretation: image.photometricInterpretation,
+                    frameIndex: frameIndex)
                 descriptor = PrintImageData(
-                    pixelData: image.pixelData,
+                    pixelData: samples,
                     rows: UInt16(image.height),
                     columns: UInt16(image.width),
                     bitsAllocated: UInt16(image.bitsAllocated),
@@ -195,6 +215,62 @@ public struct PrintImagePreparer: Sendable {
         }
 
         return prepared
+    }
+
+    // MARK: - Window resolution
+
+    /// The window a frame is printed with, in the units ``ImagePreprocessor``
+    /// windows in (output units — HU on CT).
+    ///
+    /// Three rungs, in the order the rest of the app resolves a window
+    /// (`DICOMImageExporter.determineWindowSettings`): the request's own window,
+    /// then the data set's VOI, then nothing — which leaves the preprocessor to
+    /// stretch the frame's full pixel range.
+    ///
+    /// The middle rung is why this exists. A mark made without opening the file
+    /// — marking a whole series, or printing straight from the library — carries
+    /// no window, and auto-stretching a CT from air to bone leaves soft tissue
+    /// in a handful of indistinguishable greys. The viewer, the tiles and export
+    /// all fall back to the VOI the scanner recorded; film that does not is film
+    /// that disagrees with the screen it was approved on.
+    ///
+    /// A multi-valued VOI (`-600\50` / `1200\350`, a lung and a soft-tissue
+    /// window in one element) resolves to its first pair, which PS3.3 C.11.2
+    /// makes the default presentation.
+    static func resolvedWindow(
+        _ request: PrintJobRequest,
+        dataSet: DataSet
+    ) -> WindowSettings? {
+        if request.windowSettings != nil {
+            return windowInOutputUnits(request, dataSet: dataSet)
+        }
+        // Header VOI values are already in output units — that is the space the
+        // attribute is defined in — so this rung needs no conversion.
+        return dataSet.allWindowSettings().first ?? dataSet.windowSettings()
+    }
+
+    /// The request's window in the units ``ImagePreprocessor`` windows in.
+    ///
+    /// The preprocessor rescales before it windows, so it expects output units.
+    /// A window taken off the viewer is in stored values — the space the
+    /// renderer works in — and has to be put back through the rescale pair, or
+    /// the window sits nowhere near the pixels and the frame prints as a flat
+    /// black (or white) cell. See ``PrintWindowSpace``.
+    static func windowInOutputUnits(
+        _ request: PrintJobRequest,
+        dataSet: DataSet
+    ) -> WindowSettings? {
+        guard let window = request.windowSettings else { return nil }
+        guard request.windowSpace == .storedValues else { return window }
+
+        let slope = dataSet.rescaleSlope()
+        guard slope != 0 else { return window }
+        let intercept = dataSet.rescaleIntercept()
+        return WindowSettings(
+            center: window.center * slope + intercept,
+            width: window.width * abs(slope),
+            explanation: window.explanation,
+            function: window.function)
     }
 }
 

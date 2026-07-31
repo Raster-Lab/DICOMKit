@@ -73,6 +73,11 @@ public final class MainViewModel {
     /// viewer's print sheet always describe the same selection.
     public var printViewModel: PrintViewModel
 
+    /// Persistent Print SCP ViewModel — the printer emulator's listener and the
+    /// films it has received must survive tab switches, or navigating away from
+    /// the screen would drop an association mid-job.
+    public var printSCPViewModel: PrintSCPViewModel
+
     /// Persistent standalone 3D MPR viewer ViewModel — survives tab switches.
     public var volumeViewerViewModel: DICOMVolumeViewerViewModel
 
@@ -161,6 +166,8 @@ public final class MainViewModel {
         let imageViewer = ImageViewerViewModel()
         self.imageViewerViewModel = imageViewer
         self.printViewModel = PrintViewModel(selection: imageViewer.printSelection)
+        self.printSCPViewModel = PrintSCPViewModel(
+            storage: PrintSCPSettingsStorageService(storageService: storageService))
         self.volumeViewerViewModel = DICOMVolumeViewerViewModel()
         self.jp3dComparisonViewModel = JP3DComparisonViewModel()
         self.volumeComparisonViewModel = JP3DVolumeComparisonViewModel()
@@ -287,6 +294,10 @@ public final class MainViewModel {
         for series in seriesList {
             let instances = library.instancesForSeries(series.seriesInstanceUID)
             if let first = instances.first {
+                // Same fresh read as the browser's own callbacks: this is a study
+                // opened from the library, so nothing of the last one — including
+                // its print selection — carries over.
+                imageViewerViewModel.prepareForNewStudy()
                 // Load the whole first series, not just its first file: the
                 // viewer needs a navigation list, and the pane needs the study.
                 imageViewerViewModel.loadSeries(

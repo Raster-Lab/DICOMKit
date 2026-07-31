@@ -60,8 +60,35 @@ or a real CUPS queue. Only the Studio screen (E) and the CLI (F) remain.
 | C — `FilmComposer` | ✅ done | `Sources/DICOMPrintKit/Printing/FilmGeometry.swift`, `ComposedFilm.swift`, `FilmComposer.swift` |
 | D — `PrintOutputSink` | ✅ done | `Sources/DICOMPrintKit/Printing/PrintOutputSink.swift`, `FilmComposingPrintHandler.swift` |
 | G — loopback, status matrix, composer, sinks, end-to-end | ✅ partial | `Tests/DICOMNetworkTests/PrintSCPTests.swift` (74), `Tests/DICOMPrintKitTests/` (63) |
-| E — emulator screen | ⬜ deferred (UI later, per the user) | |
-| F — `dicom-printscp` CLI | ⬜ | |
+| E — emulator screen | ✅ done | `Sources/DICOMStudio/Views/Print/PrintSCPView.swift`, `ViewModels/PrintSCPViewModel.swift` |
+| F — `dicom-printscp` CLI | ✅ done | `Sources/dicom-printscp/` (4 files + README), shared core in `Sources/DICOMPrintKit/Printing/PrintSCPSettings.swift`, `PrintSCPService.swift`, `PrintSCPConsole.swift`, `PrintSCPSimulator.swift` |
+
+### Milestone F as built (2026-07-31)
+
+Subcommands: `serve` (default), `simulate`, `status`, `queues`. The plan sketched
+`simulate <film.json>`; it takes **DICOM files** instead — the composer needs pixels, and going
+through `PrintImagePreparer` means a simulated sheet is prepared by the same code an SCU
+prepares a real one with. A `film.json` descriptor would have been a third, untested path.
+
+The shared-API rule drove the shape: everything both surfaces need moved *out* of DICOMStudio
+into DICOMPrintKit, and Studio now consumes it rather than owning it.
+
+| Shared type | What it owns | Used by |
+|---|---|---|
+| `PrintSCPSettings` (+ `PrintSCPSettingsFile`) | every knob, the `PrintSCPConfiguration` / `FilmComposerConfiguration` mapping, the JSON document | Studio's settings sheet, `--config` |
+| `PrintSCPService` | sink stack, delegate, server assembly, thumbnails, paper queues | Studio's view model, `serve` / `simulate` / `queues` |
+| `PrintSCPConsole` (+ `PrintSCPLogEntry`, `PrintSCPSessionCounters`) | the wording of every event, film line, startup echo and total | Studio's event log, the CLI's stdout |
+| `PrintSCPSimulator` | film assembly from prepared images, no network | `simulate` |
+
+Two defects the live SCU→SCP run caught, both fixed:
+
+- `--max-films` counted films off the **screen stream** (delivered the moment a sheet is
+  composed), so the listener stopped mid-N-ACTION: the SCU saw "Association aborted" and the
+  PNG was never written. It now counts `.filmPrinted` — emitted after the sinks have written —
+  and waits for the association to release (5 s grace) before stopping.
+- The association line rendered `127.0.0.1:53167:0`: the Print SCP reports the whole endpoint in
+  `AssociationInfo.remoteHost` and leaves `remotePort` at 0. Fixed in the shared console, so
+  Studio's log was fixed with it.
 
 ### Layering decision
 

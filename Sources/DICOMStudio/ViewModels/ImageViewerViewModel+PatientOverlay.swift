@@ -32,6 +32,62 @@ extension ImageViewerViewModel {
         overlayString(Tag(group: 0x0008, element: 0x1030))
     }
 
+    /// Study Description with the punctuation a reading room does not want to
+    /// read stripped out.
+    ///
+    /// Descriptions arrive carrying the separators of whatever system wrote
+    /// them — carets, pipes, backslashes, underscores, stray brackets — which
+    /// carry no meaning once the value is on its own line. Letters, digits,
+    /// spaces and the three marks that do read as words (`-`, `.`, `/`) are
+    /// kept; everything else becomes a space and runs of spaces collapse.
+    public var studyDescriptionSanitizedForOverlay: String? {
+        guard let raw = studyDescriptionForOverlay else { return nil }
+        let cleaned = String(raw.map { character in
+            character.isLetter || character.isNumber || character == " "
+                || character == "-" || character == "." || character == "/"
+                ? character : " "
+        })
+        let collapsed = cleaned.split(separator: " ", omittingEmptySubsequences: true)
+            .joined(separator: " ")
+        return collapsed.isEmpty ? nil : collapsed
+    }
+
+    /// Every modality in the open study, in series order, without repeats.
+    ///
+    /// A study is routinely more than one modality (PET/CT, a CT with an SR),
+    /// and which ones are in it is part of "what am I looking at". Falls back to
+    /// the open file's Modality (0008,0060) when the series pane has not been
+    /// populated — a single file opened on its own still has one.
+    public var modalitiesForOverlay: [String] {
+        var seen = Set<String>()
+        var ordered: [String] = []
+        for entry in studySeries {
+            let modality = entry.modality.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !modality.isEmpty, seen.insert(modality).inserted else { continue }
+            ordered.append(modality)
+        }
+        if ordered.isEmpty, let modality = overlayString(Tag(group: 0x0008, element: 0x0060)) {
+            ordered.append(modality)
+        }
+        return ordered
+    }
+
+    /// The study's modalities as one label — "CT", or "PT / CT".
+    public var modalityLineForOverlay: String? {
+        let modalities = modalitiesForOverlay
+        return modalities.isEmpty ? nil : modalities.joined(separator: " / ")
+    }
+
+    /// "Patient name, ID · CT / PT" — who this is and what made the pictures.
+    ///
+    /// The modality rides with the identification rather than with the study
+    /// description because it is checked in the same glance as the name.
+    public var patientIdentityLine: String {
+        [patientNameLine.isEmpty ? nil : patientNameLine, modalityLineForOverlay]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+    }
+
     /// Study Date (0008,0020), formatted as a readable date.
     public var studyDateForOverlay: String? {
         overlayString(Tag(group: 0x0008, element: 0x0020))

@@ -34,12 +34,13 @@ public struct ViewerTileLayout: Sendable, Hashable, Identifiable {
     /// The single-image default.
     public static let single = ViewerTileLayout(rows: 1, columns: 1)
 
-    /// Every offered layout: 1×1, 1×2 … 1×4, 2×1 … 4×4.
+    /// Every offered layout: 1×1, 1×2 … 1×4, 2×1 … 4×4, plus the 4×5 film-sheet
+    /// grid.
     ///
     /// Rows vary slowest so the menu reads the way the labels do.
     public static let allCases: [ViewerTileLayout] = (1...4).flatMap { rows in
         (1...4).map { ViewerTileLayout(rows: rows, columns: $0) }
-    }
+    } + [ViewerTileLayout(rows: 4, columns: 5)]
 }
 
 // MARK: - Tile state

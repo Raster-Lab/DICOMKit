@@ -7,6 +7,87 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added — DICOM Print SCP: emulator screen and `dicom-printscp` CLI (2026-07-31)
+
+Milestones E and F of `DICOM_PRINT_SCP_PLAN.md` — the last two rows in that plan's
+matrix. The app surface came first, so the sharing ran in the direction opposite
+every other print entry: settings, assembly and wording were **moved** out of
+`DICOMStudio` into `DICOMPrintKit`, and both the Studio screen and the CLI now
+consume rather than own them.
+
+- **`PrintSCPSettings` / `PrintSCPService` / `PrintSCPConsole` / `PrintSCPSimulator`**
+  (`DICOMPrintKit/Printing/`): every configuration knob and its
+  `PrintSCPConfiguration` / `FilmComposerConfiguration` mapping, the sink stack and
+  server assembly, the wording of every event/film/startup line, and a no-network
+  film simulator, in one place — Studio's view model now owns only what a window
+  owns (retained films, selection, button state).
+- **`dicom-printscp`** (`Sources/dicom-printscp/`): `serve` (default) / `simulate`
+  / `status` / `queues`. `simulate` takes DICOM files rather than a `film.json`
+  descriptor as originally sketched — the composer needs real pixels, and routing
+  through `PrintImagePreparer` means a simulated sheet is built by the same code a
+  live SCU's job is.
+- **Studio's "Printer Emulator"** (`PrintSCPView`, `PrintSCPViewModel`,
+  `PrintSCPSettingsStorageService`): a persistent `Window` (not a `WindowGroup` —
+  one emulator, one listener) reachable from the sidebar while a print is in
+  flight from the main window.
+- **Two defects a live SCU→SCP run caught, both fixed in the shared core:**
+  `--max-films` counted off the screen stream (delivered the instant a sheet is
+  composed) instead of `.filmPrinted`, so the listener could stop mid-N-ACTION and
+  abort the SCU's association before its PNG was written; and the association log
+  line rendered the port as `:0` because `AssociationInfo.remotePort` is always 0
+  for this SCP and the whole endpoint is in `remoteHost` — fixed once in the
+  shared console.
+
+Plan: `DICOM_PRINT_SCP_PLAN.md` ("Milestone F as built" section has the full
+shared-type table). Not in the CLI-parity harness (print tools are covered by
+dedicated tests instead, per `APP_CLI_SHARED_API.md`).
+
+### Added — DICOM Studio: overlay planes, patient identification, and print window fixes (2026-07-31)
+
+- **Overlay plane rendering** (`DICOMKit/OverlayPlaneRenderer.swift`): PS3.3
+  C.9.2 group-60xx overlay bitmaps, read and drawn both as a `CGImage` composite
+  (viewer) and burned into raw samples (film). Written for Siemens' "Patient
+  Protocol" Secondary Capture, whose Pixel Data is entirely zero and whose whole
+  content lives in a 1-bit overlay — previously rendered as a black square, now
+  shown/printed correctly. Wired into both `ImageViewerViewModel` (render path)
+  and `PrintImagePreparer` (so a film matches the screen it was approved on,
+  except under `--raw`).
+- **Print window resolution now falls back to the file's own VOI**
+  (`PrintImagePreparer.resolvedWindow`, `PrintWindowSpace`): a mark made without
+  opening the file (whole-series or library print) previously auto-stretched a
+  CT's full pixel range and left soft tissue in a handful of indistinguishable
+  greys; it now falls back to the data set's VOI window like the viewer, export
+  and tiles already do. `PrintWindowSpace` (`.outputUnits` / `.storedValues`)
+  travels with an explicit window so a value taken off the viewer (stored units)
+  is converted through Rescale Slope/Intercept before printing — sending it
+  unconverted put the window entirely outside the pixels and printed a flat
+  black cell.
+- **Arrow geometry fully consolidated** (`PrintArrowGeometry.swift`): the
+  fractional-of-image-height math for shaft width and head size, previously
+  duplicated between `ImageAnnotationBurner` (film) and `FilmCellAnnotationLayer`
+  (preview), now lives once and both call it; the preview's arrow rendering also
+  switched from a shadow-based halo to a stroked-outline halo so the head no
+  longer blurs into the shaft and reads as a plain line. Selection handles on a
+  selected arrow shrank to a small ring with a separately-sized (2x) invisible
+  grab area, so a handle no longer hides the anatomy the arrow points at.
+- **Viewer patient-identification header** (`ImageViewerViewModel+PatientOverlay`):
+  `patientIdentityLine` ("name, ID · CT / PT"), `modalitiesForOverlay` (every
+  modality in the open study, series order, no repeats — a study is routinely
+  PET/CT or a CT with an SR), and `studyDescriptionSanitizedForOverlay` (strips
+  the caret/pipe/backslash separators a description arrives with, keeping only
+  what reads as words).
+- **Viewer toolbar reworked around click-armed tools**: windowing and zoom are
+  now toggled tool buttons (highlighted while armed) rather than ⌥-drag/⌘-drag
+  modifiers, freeing ⌘-drag; `resetView()` now also resets window/level and
+  inversion, not just pan/zoom/rotation; the inline "Open DICOM File" button,
+  file importer and ⌘O shortcut were removed from the viewer.
+- **Tests**: `PrintSCPSharedCoreTests` (23), `PrintSCPScreenTests` (39),
+  `PrintWindowSpaceTests` (9), `OverlayPlaneRendererTests` (17),
+  `PrintMarkWindowTests` (5), `ViewerIdentificationHeaderTests` (5);
+  `PrintOverlayAnnotationTests`, `PrintCellEditingTests`, `NavigationServiceTests`,
+  `ViewerTileLayoutTests` and `PolishReleaseViewModelTests` updated for the
+  arrow-geometry, cell-editing-window and toolbar/reset-view changes.
+
 ### Added — DICOM Studio: the film as a working surface (2026-07-30)
 
 Plan: `DICOM_PRINT_STUDIO_PLAN.md` §10.

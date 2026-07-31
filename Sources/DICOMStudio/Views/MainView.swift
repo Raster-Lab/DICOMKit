@@ -85,6 +85,9 @@ public struct MainView: View {
             StructuredReportView(viewModel: StructuredReportViewModel())
         case .printing:
             PrintCenterView(viewModel: viewModel.printViewModel)
+        case .printSCP:
+            // The emulator is a window of its own — this entry raises it.
+            PrintSCPLauncherView(viewModel: viewModel.printSCPViewModel)
         case .tools:
             DataExchangeView(viewModel: DataExchangeViewModel())
         case .validation:

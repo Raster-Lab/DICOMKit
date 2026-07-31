@@ -256,67 +256,68 @@ struct FilmPreviewView: View {
     /// A rail rather than a menu bar: it sits beside the film, where the cell
     /// being adjusted is, and costs the film no height.
     private var toolRail: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 3) {
             ForEach(PrintViewModel.CellTool.allCases) { tool in
-                Button {
+                FilmToolButton(
+                    symbol: tool.symbolName,
+                    isOn: viewModel.cellTool == tool,
+                    help: "\(tool.displayName) — drag on a film cell "
+                        + "(\(Self.shortcut(for: tool)))",
+                    label: tool.displayName
+                ) {
                     viewModel.cellTool = tool
-                } label: {
-                    Image(systemName: tool.symbolName)
-                        .frame(width: 22, height: 22)
                 }
-                .buttonStyle(.plain)
                 .keyboardShortcut(KeyEquivalent(Self.shortcut(for: tool)), modifiers: [])
-                .padding(4)
-                .background(
-                    viewModel.cellTool == tool ? Color.accentColor.opacity(0.25) : .clear,
-                    in: RoundedRectangle(cornerRadius: 5))
-                .foregroundStyle(viewModel.cellTool == tool ? Color.accentColor : .secondary)
-                .help("\(tool.displayName) — drag on a film cell (\(Self.shortcut(for: tool)))")
-                .accessibilityLabel(tool.displayName)
-                .accessibilityAddTraits(viewModel.cellTool == tool ? [.isSelected] : [])
             }
 
-            Divider().frame(width: 24)
+            Divider().frame(width: 20).padding(.vertical, 3)
 
-            Button {
+            FilmToolButton(
+                symbol: "person.text.rectangle",
+                isOn: viewModel.showPatientIdentification,
+                help: "Patient ID caption (I) — the patient, ID and study burned across "
+                    + "the bottom of every cell",
+                label: "Patient ID caption"
+            ) {
                 viewModel.showPatientIdentification.toggle()
-            } label: {
-                Image(systemName: "person.text.rectangle").frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
-            .padding(4)
-            .background(
-                viewModel.showPatientIdentification ? Color.accentColor.opacity(0.25) : .clear,
-                in: RoundedRectangle(cornerRadius: 5))
-            .foregroundStyle(viewModel.showPatientIdentification ? Color.accentColor : .secondary)
             .keyboardShortcut("i", modifiers: [])
-            .help("Patient ID caption (I) — the patient, ID and study burned across "
-                  + "the bottom of every cell")
-            .accessibilityLabel("Patient ID caption")
-            .accessibilityAddTraits(viewModel.showPatientIdentification ? [.isSelected] : [])
 
             // Rotation and inversion of a single cell are not offered here: the
             // film is meant to reproduce what the viewer showed, and arranging a
             // cell differently from the screen it came from is how a film ends up
             // disagreeing with the report written from that screen.
 
-            Button {
+            FilmToolButton(
+                symbol: "arrow.uturn.backward",
+                isOn: false,
+                isEnabled: viewModel.focusedItemID != nil,
+                help: "Reset the focused cell to the untouched frame (0)",
+                label: "Reset focused cell"
+            ) {
                 if let id = viewModel.focusedItemID {
                     viewModel.resetCell(forItemID: id)
                 }
-            } label: {
-                Image(systemName: "arrow.uturn.backward").frame(width: 22, height: 22)
             }
-            .buttonStyle(.plain)
-            .disabled(viewModel.focusedItemID == nil)
             .keyboardShortcut("0", modifiers: [])
-            .help("Reset the focused cell to the untouched frame (0)")
-            .accessibilityLabel("Reset focused cell")
 
-            Spacer()
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
-        .frame(width: 34)
+        .padding(5)
+        // The rail reads as an instrument beside the film rather than five grey
+        // glyphs floating on the panel: a raised surface, so the tool that is
+        // armed is obvious from across a reading room.
+        .background {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(.thinMaterial)
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                }
+                .shadow(color: .black.opacity(0.22), radius: 6, x: 0, y: 2)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.vertical, 2)
     }
 
     // MARK: - One film
@@ -731,5 +732,75 @@ private struct CellInteraction: ViewModifier {
 
     /// Zoom fraction per point dragged.
     private static let zoomSensitivity: Double = 0.005
+}
+
+// MARK: - Tool rail button
+
+/// One tool on the rail beside the film.
+///
+/// The armed tool is filled, not tinted: which tool a drag will run decides what
+/// happens to a cell, and a faint wash behind a grey glyph is not a strong enough
+/// answer to "what is my mouse about to do". Hover lights the button so the rail
+/// answers before it is clicked.
+@available(macOS 14.0, iOS 17.0, visionOS 1.0, *)
+private struct FilmToolButton: View {
+    let symbol: String
+    let isOn: Bool
+    var isEnabled: Bool = true
+    let help: String
+    let label: String
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(width: Self.size, height: Self.size)
+                .foregroundStyle(foreground)
+                .background {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill(fill)
+                        .shadow(color: isOn ? Color.accentColor.opacity(0.45) : .clear,
+                                radius: 4, x: 0, y: 1)
+                }
+                .overlay {
+                    // A hairline over the armed tool, so it still reads as a
+                    // pressed key on a light background where the accent fill and
+                    // the panel are close in value.
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(Color.white.opacity(isOn ? 0.25 : 0), lineWidth: 1)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+        .onHover { isHovering = $0 }
+        .animation(.easeOut(duration: 0.12), value: isOn)
+        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .help(help)
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isOn ? [.isSelected] : [])
+    }
+
+    private var foreground: some ShapeStyle {
+        if !isEnabled { return AnyShapeStyle(.tertiary) }
+        if isOn { return AnyShapeStyle(Color.white) }
+        return AnyShapeStyle(isHovering ? Color.primary : Color.secondary)
+    }
+
+    private var fill: some ShapeStyle {
+        if isOn {
+            return AnyShapeStyle(LinearGradient(
+                colors: [Color.accentColor, Color.accentColor.opacity(0.72)],
+                startPoint: .top, endPoint: .bottom))
+        }
+        return AnyShapeStyle(isEnabled && isHovering
+                             ? Color.primary.opacity(0.12)
+                             : Color.clear)
+    }
+
+    private static let size: CGFloat = 26
 }
 #endif

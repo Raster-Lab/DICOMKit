@@ -80,6 +80,7 @@ public final class PrintThumbnailCache {
             frameIndex: item.frameIndex,
             windowCenter: item.windowCenter,
             windowWidth: item.windowWidth,
+            windowSpace: item.windowSpace,
             presentation: item.presentation,
             identity: item.id)
     }

@@ -217,5 +217,63 @@ struct PrintOverlayAnnotationTests {
         let pixels = [UInt8](burned.descriptor.pixelData)
         #expect(pixels.contains { $0 < 128 })
     }
+
+    // MARK: - Arrow geometry
+
+    @Test("An arrow's head is unmistakably wider than its shaft")
+    func testArrowHeadReadsAsAHead() {
+        // The complaint this guards: a head only a little wider than the line
+        // reads as a plain line with a dot on the end. Both the preview overlay
+        // and the burn take these numbers, so one assertion covers both.
+        let geometry = PrintArrowGeometry(
+            scale: PrintOverlayAnnotation.defaultScale, imageHeight: 512, arrowLength: 200)
+        #expect(geometry.headHalfWidth * 2 > geometry.lineWidth * 5)
+        #expect(geometry.headLength > geometry.lineWidth * 3)
+    }
+
+    @Test("A short arrow keeps a shaft — the head never swallows it")
+    func testShortArrowKeepsShaft() {
+        let length = 12.0
+        let geometry = PrintArrowGeometry(scale: 0.2, imageHeight: 512, arrowLength: length)
+        #expect(geometry.headLength < length)
+
+        let outline = geometry.outline(tail: PrintPlanePoint(x: 0, y: 0),
+                                       head: PrintPlanePoint(x: length, y: 0))
+        // The shaft stops short of the point rather than collapsing onto it.
+        #expect(outline?.shaftEnd.x ?? 0 > 0)
+        #expect((outline?.shaftEnd.x ?? 0) < length)
+    }
+
+    @Test("An arrow of no length draws nothing")
+    func testZeroLengthArrowHasNoOutline() {
+        let geometry = PrintArrowGeometry(scale: 0.04, imageHeight: 512, arrowLength: 0)
+        #expect(geometry.outline(tail: PrintPlanePoint(x: 10, y: 10),
+                                 head: PrintPlanePoint(x: 10, y: 10)) == nil)
+    }
+
+    @Test("An arrow burns pixels along its whole length, head included")
+    func testArrowBurnsHeadAndShaft() {
+        let arrow = PrintOverlayAnnotation(
+            kind: .arrow, start: .init(x: 0.2, y: 0.5), end: .init(x: 0.8, y: 0.5),
+            color: .white)
+        let burned = ImageAnnotationBurner.burning(
+            overlays: [arrow], into: frame(photometric: "MONOCHROME2", fill: 0))
+        let pixels = [UInt8](burned.descriptor.pixelData)
+        let width = Int(burned.descriptor.columns)
+
+        // The head end is wider across than the shaft: count lit rows in a column
+        // just behind the point, and in a column back along the shaft. The
+        // threshold is well under white because a hairline shaft lands
+        // antialiased across two rows on a small frame.
+        func litRows(atColumn column: Int) -> Int {
+            (0..<Int(burned.descriptor.rows)).count { y in
+                pixels[y * width + column] > 64
+            }
+        }
+        let shaftColumn = Int(Double(width) * 0.3)
+        let headColumn = Int(Double(width) * 0.76)
+        #expect(litRows(atColumn: shaftColumn) > 0)
+        #expect(litRows(atColumn: headColumn) > litRows(atColumn: shaftColumn))
+    }
 }
 #endif

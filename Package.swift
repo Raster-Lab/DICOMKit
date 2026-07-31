@@ -127,6 +127,11 @@ let package = Package(
             name: "dicom-print",
             targets: ["dicom-print"]
         ),
+        // The receiving half of dicom-print: the printer emulator, headless.
+        .executable(
+            name: "dicom-printscp",
+            targets: ["dicom-printscp"]
+        ),
         .executable(
             name: "dicom-mwl",
             targets: ["dicom-mwl"]
@@ -685,6 +690,20 @@ let package = Package(
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ],
             path: "Sources/dicom-print",
+            exclude: ["README.md"]
+        ),
+        // Milestone F of DICOM_PRINT_SCP_PLAN.md — a thin shell over the same
+        // DICOMPrintKit types DICOM Studio's Print SCP screen runs.
+        .executableTarget(
+            name: "dicom-printscp",
+            dependencies: [
+                "DICOMKit",
+                "DICOMCore",
+                "DICOMNetwork",
+                "DICOMPrintKit",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ],
+            path: "Sources/dicom-printscp",
             exclude: ["README.md"]
         ),
         .executableTarget(

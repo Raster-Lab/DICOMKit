@@ -660,4 +660,10 @@ public final class PrintViewModel {
         result = nil
         jobStatus = nil
     }
+
+    /// Clears the console log — called when the print preview is (re)opened, so
+    /// a prior job's lines don't linger on the next look at the film.
+    public func resetConsole() {
+        consoleLines = []
+    }
 }

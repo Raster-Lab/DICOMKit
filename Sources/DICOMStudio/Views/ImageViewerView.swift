@@ -22,8 +22,14 @@ public struct ImageViewerView: View {
     @State private var viewSize: CGSize = .zero
     @State private var wlDragStart: CGSize = .zero
 
-    /// Anchor for a ⌘-drag zoom, so the gesture applies deltas not absolutes.
+    /// Anchor for a zoom-tool drag, so the gesture applies deltas not absolutes.
     @State private var zoomDragStart: CGSize = .zero
+
+    /// The click-and-drag tool currently armed, or `nil` for plain pan.
+    ///
+    /// Windowing and zoom are mutually exclusive: picking one arms it and
+    /// disarms the other, and the toolbar highlights whichever is active.
+    @State private var activeTool: ImageViewerDragTool?
 
     /// Turns scroll events into whole image steps — one per wheel notch.
     @State private var scrollSteps = ScrollStepAccumulator()
@@ -217,17 +223,6 @@ public struct ImageViewerView: View {
                         .foregroundStyle(.gray)
                     Text("No image loaded")
                         .foregroundStyle(.gray)
-                    Text("Open a DICOM file to view it here")
-                        .font(.caption)
-                        .foregroundStyle(.gray.opacity(0.7))
-                    Button {
-                        viewModel.isFileImporterPresented = true
-                    } label: {
-                        Label("Open DICOM File", systemImage: "folder")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .padding(.top, 8)
-                    .accessibilityHint("Opens a file picker to select a DICOM file")
                 }
             }
         }
@@ -342,20 +337,6 @@ public struct ImageViewerView: View {
                 DICOMInspectorView(dicomFile: file)
             }
         }
-        .fileImporter(
-            isPresented: $viewModel.isFileImporterPresented,
-            allowedContentTypes: [.data],
-            allowsMultipleSelection: false
-        ) { result in
-            switch result {
-            case .success(let urls):
-                if let url = urls.first {
-                    viewModel.loadFile(from: url)
-                }
-            case .failure(let error):
-                viewModel.errorMessage = "Failed to open file: \(error.localizedDescription)"
-            }
-        }
     }
 
     // MARK: - Print
@@ -438,6 +419,10 @@ public struct ImageViewerView: View {
             }
         }
 
+        // The console reads like a fresh log each time the preview is opened,
+        // not a running transcript of every past visit to this sheet.
+        printViewModel?.resetConsole()
+
         viewModel.isPrintSheetPresented = true
     }
 
@@ -479,7 +464,7 @@ public struct ImageViewerView: View {
                 .gesture(magnificationGesture)
                 .accessibilityLabel("DICOM Image")
                 .accessibilityValue(viewModel.dimensionsText)
-                .accessibilityHint("Drag to pan, ⌘-drag to zoom, ⌥-drag for window/level; scroll to step through images")
+                .accessibilityHint("Drag to pan, or use the windowing/zoom tools to drag-adjust; scroll to step through images")
                 #if os(macOS)
                 .background(ScrollWheelHandler { scrollImages($0) })
                 #endif
@@ -524,50 +509,71 @@ public struct ImageViewerView: View {
             }
     }
 
-    /// Drag: pan by default, window/level with ⌥, zoom with ⌘.
+    /// Drag: pans by default, or applies whichever tool is armed.
     ///
-    /// Zoom lives on a held button rather than the wheel, which now pages the
-    /// series. Dragging up enlarges, as pushing a zoom slider away from you does.
+    /// A single click still reaches tile focus/selection unaffected — this is
+    /// a `DragGesture`, so a tap that never moves resolves as a tap on the
+    /// container instead. Dragging up enlarges, as pushing a zoom slider away
+    /// from you does.
     private var panGesture: some Gesture {
         DragGesture()
             .onChanged { value in
-                #if os(macOS)
-                if NSEvent.modifierFlags.contains(.option) {
+                switch activeTool {
+                case .windowing:
                     let dx = Double(value.translation.width - wlDragStart.width)
                     let dy = Double(value.translation.height - wlDragStart.height)
                     viewModel.adjustWindowLevel(deltaX: dx, deltaY: dy)
                     wlDragStart = value.translation
-                    return
-                }
-                if NSEvent.modifierFlags.contains(.command) {
+                case .zoom:
                     let dy = Double(value.translation.height - zoomDragStart.height)
                     viewModel.zoomLevel = GestureHelpers.clampZoom(
                         viewModel.zoomLevel * (1.0 - dy * Self.dragZoomSensitivity))
                     zoomDragStart = value.translation
-                    return
+                case nil:
+                    dragOffset = value.translation
                 }
-                #endif
-                dragOffset = value.translation
             }
             .onEnded { value in
-                #if os(macOS)
-                if NSEvent.modifierFlags.contains(.option) {
+                switch activeTool {
+                case .windowing:
                     wlDragStart = .zero
-                    return
-                }
-                if NSEvent.modifierFlags.contains(.command) {
+                case .zoom:
                     zoomDragStart = .zero
-                    return
+                case nil:
+                    viewModel.panOffsetX += value.translation.width
+                    viewModel.panOffsetY += value.translation.height
+                    dragOffset = .zero
                 }
-                #endif
-                viewModel.panOffsetX += value.translation.width
-                viewModel.panOffsetY += value.translation.height
-                dragOffset = .zero
             }
     }
 
     /// Zoom fraction per point dragged.
     private static let dragZoomSensitivity: Double = 0.005
+
+    // MARK: - Toolbar tool buttons
+
+    /// A toolbar icon for an armable tool (windowing, zoom): tinted while
+    /// active, so it's clear at a glance which one a drag will apply.
+    @ViewBuilder
+    private func toolButton(
+        systemImage: String,
+        isActive: Bool,
+        label: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+        }
+        .accessibilityLabel(label)
+        .accessibilityAddTraits(isActive ? [.isSelected] : [])
+        .help(help)
+        .background(
+            isActive ? Color.accentColor.opacity(0.25) : Color.clear,
+            in: RoundedRectangle(cornerRadius: 6)
+        )
+        .foregroundStyle(isActive ? Color.accentColor : Color.primary)
+    }
 
     // MARK: - Performance Overlay
 
@@ -588,18 +594,6 @@ public struct ImageViewerView: View {
 
     @ToolbarContentBuilder
     private var viewerToolbar: some ToolbarContent {
-        // Open file
-        ToolbarItem(placement: .automatic) {
-            Button {
-                viewModel.isFileImporterPresented = true
-            } label: {
-                Image(systemName: "folder")
-            }
-            .accessibilityLabel("Open DICOM file")
-            .help("Open a DICOM file (⌘O)")
-            .keyboardShortcut("o", modifiers: .command)
-        }
-
         // Series navigation — grouped in one item so it doesn't fragment the toolbar
         if viewModel.isInSeries {
             ToolbarItem(placement: .automatic) {
@@ -747,28 +741,57 @@ public struct ImageViewerView: View {
             .keyboardShortcut("p", modifiers: .command)
         }
 
-        // Zoom / view controls — kept as a group so they stay together if overflow occurs
+        // Tools — windowing and zoom are click-and-drag tools, exclusive of
+        // each other and highlighted while armed; invert, rotate, flip, fit
+        // and reset are one-shot actions. No dropdown: every tool is a single
+        // visible icon, in the order windowing, invert, zoom, rotate, flip,
+        // fit to view, reset.
         ToolbarItemGroup(placement: .automatic) {
-            Button { viewModel.zoomIn() } label: {
-                Image(systemName: "plus.magnifyingglass")
+            toolButton(
+                systemImage: "slider.horizontal.below.rectangle",
+                isActive: activeTool == .windowing,
+                label: "Windowing tool",
+                help: "Windowing tool — drag on the image to adjust window/level"
+            ) {
+                activeTool = activeTool == .windowing ? nil : .windowing
             }
-            .accessibilityLabel("Zoom in")
-            .help("Zoom in (=)")
-            .keyboardShortcut("=", modifiers: [])
 
-            Button { viewModel.zoomOut() } label: {
-                Image(systemName: "minus.magnifyingglass")
+            if viewModel.isMonochrome {
+                Button {
+                    viewModel.toggleInversion()
+                } label: {
+                    Image(systemName: viewModel.isInverted ? "circle.lefthalf.filled" : "circle.righthalf.filled")
+                }
+                .accessibilityLabel(viewModel.isInverted ? "Remove inversion" : "Invert grayscale")
+                .help(viewModel.isInverted ? "Remove grayscale inversion" : "Invert grayscale")
             }
-            .accessibilityLabel("Zoom out")
-            .help("Zoom out (-)")
-            .keyboardShortcut("-", modifiers: [])
 
-            Button { viewModel.resetView() } label: {
-                Image(systemName: "arrow.counterclockwise")
+            toolButton(
+                systemImage: "magnifyingglass",
+                isActive: activeTool == .zoom,
+                label: "Zoom tool",
+                help: "Zoom tool — drag on the image to zoom in or out"
+            ) {
+                activeTool = activeTool == .zoom ? nil : .zoom
             }
-            .accessibilityLabel("Reset view")
-            .help("Reset view (R)")
-            .keyboardShortcut("r", modifiers: [])
+
+            Button { viewModel.rotateClockwise() } label: {
+                Image(systemName: "rotate.right")
+            }
+            .accessibilityLabel("Rotate")
+            .help("Rotate 90° clockwise")
+
+            Button { viewModel.flipHorizontal() } label: {
+                Image(systemName: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+            }
+            .accessibilityLabel("Flip horizontal")
+            .help("Flip horizontally")
+
+            Button { viewModel.flipVertical() } label: {
+                Image(systemName: "arrow.up.and.down.righttriangle.up.righttriangle.down")
+            }
+            .accessibilityLabel("Flip vertical")
+            .help("Flip vertically")
 
             Button {
                 viewModel.fitToView(viewWidth: viewSize.width, viewHeight: viewSize.height)
@@ -778,43 +801,13 @@ public struct ImageViewerView: View {
             .accessibilityLabel("Fit image to view")
             .help("Fit image to view (F)")
             .keyboardShortcut("f", modifiers: [])
-        }
 
-        // Transform menu — collapses rotate, flip, and invert into one button
-        ToolbarItem(placement: .automatic) {
-            Menu {
-                if viewModel.isMonochrome {
-                    Button {
-                        viewModel.toggleInversion()
-                    } label: {
-                        Label(
-                            viewModel.isInverted ? "Remove Inversion" : "Invert Grayscale",
-                            systemImage: viewModel.isInverted ? "circle.lefthalf.filled" : "circle.righthalf.filled"
-                        )
-                    }
-                    Divider()
-                }
-                Button { viewModel.rotateCounterClockwise() } label: {
-                    Label("Rotate Counter-Clockwise", systemImage: "rotate.left")
-                }
-                Button { viewModel.rotateClockwise() } label: {
-                    Label("Rotate Clockwise", systemImage: "rotate.right")
-                }
-                Divider()
-                Button { viewModel.flipHorizontal() } label: {
-                    Label("Flip Horizontal", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
-                }
-                Button { viewModel.flipVertical() } label: {
-                    Label("Flip Vertical", systemImage: "arrow.up.and.down.righttriangle.up.righttriangle.down")
-                }
-                Divider()
-                Button { viewModel.resetTransformations() } label: {
-                    Label("Reset All Transforms", systemImage: "arrow.counterclockwise.circle")
-                }
-            } label: {
-                Image(systemName: "wand.and.stars")
+            Button { viewModel.resetView() } label: {
+                Image(systemName: "arrow.counterclockwise")
             }
-            .help("Transform — rotate, flip, invert")
+            .accessibilityLabel("Reset to original image")
+            .help("Reset to original image — undoes zoom, pan, rotation, flip, and windowing (R)")
+            .keyboardShortcut("r", modifiers: [])
         }
 
         // Overlays & Panels menu — collapses toggles and panels into one button
@@ -844,6 +837,15 @@ public struct ImageViewerView: View {
                 groups: KeyboardShortcutsLegendView.viewerGroups)
         }
     }
+}
+
+// MARK: - Tools
+
+/// A click-and-drag tool armed from the toolbar. `nil` (no case selected)
+/// means a plain drag pans; picking one of these has the drag do that instead.
+private enum ImageViewerDragTool {
+    case windowing
+    case zoom
 }
 
 // MARK: - Layout shortcuts
