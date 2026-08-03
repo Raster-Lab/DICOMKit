@@ -12,7 +12,7 @@ This document is what a modality or printer vendor will ask for. It states what 
 implemented, what is deliberately not, and what has been verified against a foreign
 implementation.
 
-Version: 2026-07-29.
+Version: 2026-08-03.
 
 ---
 
@@ -85,8 +85,17 @@ Notes:
 
 - One Film Session per association (a second N-CREATE is refused with 0x0111). Print state
   is association-scoped, per PS3.4 H.4.
+- **The SCU may supply the SOP Instance UID on N-CREATE** (PS3.7 10.1.5). When Affected SOP
+  Instance UID (0000,1000) is present and valid, the SCP stores the object under *that* UID
+  and echoes it in the response; otherwise it mints one. This applies to Film Session, Film
+  Box, Presentation LUT and Basic Annotation Box. A supplied UID is accepted only if it is
+  non-empty after trimming NUL/space padding, at most 64 characters, and composed of digits
+  and dots; anything else is ignored and the SCP mints its own. Honoring it matters:
+  dcm4che-based SCUs address every follow-up N-SET / N-ACTION by the UID *they* sent, not by
+  the one returned.
 - Image Box SOP Instance UIDs are allocated at Film Box N-CREATE and returned in
-  Referenced Image Box Sequence (2010,0510), in film order.
+  Referenced Image Box Sequence (2010,0510), in film order. They are never SCU-supplied —
+  image boxes are created implicitly with the film box.
 - A film box carrying Annotation Display Format ID (2010,0030) is answered with
   `annotationBoxesPerFilm` (default 6) Basic Annotation Boxes in Referenced Basic
   Annotation Box Sequence (2010,0520) for the SCU to N-SET.
@@ -170,7 +179,7 @@ Returned by the SCP; understood by the SCU (PS3.4 H.4, PS3.7 Annex C).
 | 0x0105 | No such attribute | — |
 | 0x0106 | Invalid attribute value | Unsupported film size / medium type, bad enumerated value, bad pixel module, short Pixel Data |
 | 0x0110 | Processing failure | The delegate could not produce the film |
-| 0x0111 | Duplicate SOP Instance | Second Film Session on one association |
+| 0x0111 | Duplicate SOP Instance | Second Film Session on one association; Film Box N-CREATE with an SCU-supplied UID already in use |
 | 0x0112 | No such SOP Instance | Unknown film box / image box / annotation box / print job UID |
 | 0x0117 | Invalid object instance | — |
 | 0x0120 | Missing attribute | Film Box N-CREATE without Image Display Format |

@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed — Print SCP honors SCU-supplied SOP Instance UIDs (2026-08-03)
+
+A dcm4che-based Print SCU failed at N-ACTION with `0x0112` "Unknown Film Session" and
+never produced a film. PS3.7 10.1.5 lets the SCU supply the Affected SOP Instance UID on
+N-CREATE, and such SCUs then address every follow-up N-SET / N-ACTION by *their* UID
+regardless of what the response carries — while our SCP minted and stored its own.
+
+- `PrintSCP.assignedUID(requested:)` stores the object under the SCU's UID whenever one is
+  supplied, for Film Session, Film Box, Presentation LUT and Basic Annotation Box N-CREATE;
+  it falls back to the generator otherwise. A supplied UID must be non-empty after trimming
+  NUL/space padding, ≤ 64 characters, and digits-and-dots only, so a malformed value can
+  never become a stored key.
+- Film Box N-CREATE now rejects a UID already in use with `0x0111` (Duplicate SOP
+  Instance) — unreachable while the SCP minted its own.
+- Image Box UIDs remain SCP-allocated; they are created implicitly with the film box.
+- `PrintSCPStatusMatrixTests.testSCUSuppliedSOPInstanceUIDsAreHonored` replays the field
+  sequence end to end and asserts the composed film carries the SCU's UIDs.
+- `PRINT_CONFORMANCE.md` §2.1 / §4 and `DICOM_PRINT_SCP_PLAN.md` updated.
+
 ### Added — DICOM Print SCP: emulator screen and `dicom-printscp` CLI (2026-07-31)
 
 Milestones E and F of `DICOM_PRINT_SCP_PLAN.md` — the last two rows in that plan's

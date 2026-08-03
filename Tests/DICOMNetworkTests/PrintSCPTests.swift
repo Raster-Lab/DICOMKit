@@ -756,12 +756,17 @@ private actor RawPrintSCU {
         return messageID
     }
 
-    func nCreate(sopClass: String, elements: [DataElement] = []) async throws -> AssembledMessage {
+    func nCreate(
+        sopClass: String,
+        sopInstance: String? = nil,
+        elements: [DataElement] = []
+    ) async throws -> AssembledMessage {
         let dataSet = elements.isEmpty ? nil : PrintSCPEncoder.serialize(elements, explicitVR: true)
         var command = CommandSet()
         command.setCommand(.nCreateRequest)
         command.setMessageID(nextMessageID())
         command.setAffectedSOPClassUID(sopClass)
+        if let sopInstance { command.setAffectedSOPInstanceUID(sopInstance) }
         command.setHasDataSet(dataSet != nil)
         return try await send(command, dataSet: dataSet)
     }
@@ -814,16 +819,18 @@ final class PrintSCPStatusMatrixTests: XCTestCase {
 
     private var server: DICOMPrintServer!
     private var scu: RawPrintSCU!
+    private var handler: CollectingPrintHandler!
     private static let calledAE = "DCMPRINT"
 
     override func setUp() async throws {
         try await super.setUp()
+        handler = CollectingPrintHandler()
         server = DICOMPrintServer(
             configuration: PrintSCPConfiguration(
                 aeTitle: try AETitle(Self.calledAE), port: 0,
                 supportedFilmSizes: [.a4, .size8InX10In],
                 maxImageBoxesPerFilm: 8),
-            delegate: CollectingPrintHandler())
+            delegate: handler)
         try await server.start()
         scu = try RawPrintSCU(port: await server.boundPort, calledAE: Self.calledAE)
         try await scu.connect()
@@ -834,6 +841,7 @@ final class PrintSCPStatusMatrixTests: XCTestCase {
         scu = nil
         await server?.stop()
         server = nil
+        handler = nil
         try await super.tearDown()
     }
 
@@ -985,6 +993,59 @@ final class PrintSCPStatusMatrixTests: XCTestCase {
         let unknownJob = try await scu.nGet(
             sopClass: printJobSOPClassUID, sopInstance: "1.2.826.0.1.99.no.such.job")
         XCTAssertEqual(status(unknownJob), PrintSCPStatus.noSuchSOPInstance.rawValue)
+    }
+
+    /// Some Print SCUs (dcm4che-based ones) supply their own Affected SOP
+    /// Instance UID on N-CREATE and then keep using it — printing broke with
+    /// "Unknown Film Session" when the SCP minted its own UID instead.
+    func testSCUSuppliedSOPInstanceUIDsAreHonored() async throws {
+        let sessionUID = "1.2.40.0.13.1.1.127.0.1.1.20260803110146465.32770"
+        let filmBoxUID = "1.2.40.0.13.1.1.127.0.1.1.20260803110146465.32771"
+
+        let session = try await scu.nCreate(
+            sopClass: basicFilmSessionSOPClassUID, sopInstance: sessionUID)
+        XCTAssertEqual(status(session), PrintSCPStatus.success.rawValue)
+        XCTAssertEqual(session.commandSet.affectedSOPInstanceUID, sessionUID)
+
+        let boxResponse = try await scu.nCreate(
+            sopClass: basicFilmBoxSOPClassUID, sopInstance: filmBoxUID,
+            elements: [DataElement.string(tag: .imageDisplayFormat, vr: .ST, value: "STANDARD\\1,1")])
+        XCTAssertEqual(status(boxResponse), PrintSCPStatus.success.rawValue)
+        XCTAssertEqual(boxResponse.commandSet.affectedSOPInstanceUID, filmBoxUID)
+        let imageBoxUIDs = try PrintDatasetReader(explicitVR: true)
+            .parse(try XCTUnwrap(boxResponse.dataSet))
+            .items(for: .referencedImageBoxSequence)
+            .compactMap { $0.string(for: .referencedSOPInstanceUID) }
+
+        let item = SequenceItem(elements: [
+            DataElement.uint16(tag: .samplesPerPixel, value: 1),
+            DataElement.string(tag: .photometricInterpretation, vr: .CS, value: "MONOCHROME2"),
+            DataElement.uint16(tag: .rows, value: 4),
+            DataElement.uint16(tag: .columns, value: 4),
+            DataElement.uint16(tag: .bitsAllocated, value: 8),
+            DataElement.uint16(tag: .bitsStored, value: 8),
+            DataElement.uint16(tag: .highBit, value: 7),
+            DataElement.uint16(tag: .pixelRepresentation, value: 0),
+            DataElement.data(tag: .pixelData, vr: .OW, data: Data(repeating: 0x20, count: 16))
+        ])
+        let fill = try await scu.nSet(
+            sopClass: basicGrayscaleImageBoxSOPClassUID,
+            sopInstance: try XCTUnwrap(imageBoxUIDs.first),
+            elements: [
+                DataElement.uint16(tag: .imageBoxPosition, value: 1),
+                DataElement(tag: .preformattedGrayscaleImageSequence, vr: .SQ, length: 0,
+                            valueData: Data(), sequenceItems: [item])
+            ])
+        XCTAssertEqual(status(fill), PrintSCPStatus.success.rawValue)
+
+        // N-ACTION on the *SCU's* Film Session UID — the case from the field report.
+        let printResponse = try await scu.nAction(
+            sopClass: basicFilmSessionSOPClassUID, sopInstance: sessionUID)
+        XCTAssertEqual(status(printResponse), PrintSCPStatus.success.rawValue)
+        let films = await handler.films
+        XCTAssertEqual(films.count, 1)
+        XCTAssertEqual(films.first?.filmSession.sopInstanceUID, sessionUID)
+        XCTAssertEqual(films.first?.filmBox.sopInstanceUID, filmBoxUID)
     }
 
     func testPrinterNGetReturnsStatus() async throws {

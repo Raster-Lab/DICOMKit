@@ -446,9 +446,11 @@ CPU fallback branch still rendering correctly when Metal is forced off.
 - A staging-buffer Metal path for non-UMA (Intel + discrete GPU) hardware — those devices resolve
   to the LUT-accelerated CPU renderer. See Design pillar 2.
 - Replacing `PixelDataRenderer` — it remains the reference implementation and the fallback.
-- 3D / MPR / volume rendering. That is the workload with the strongest GPU case, and the
-  `MetalRenderDevice` and `MTKView` infrastructure from M2/M5 is the natural foundation for it,
-  but it is a separate effort.
+- 3D / MPR / volume rendering. **Out of scope for DICOMStudio entirely — not deferred, not a
+  follow-on.** Nothing in this plan should be generalised, abstracted, or over-built in
+  anticipation of a volume renderer: `MetalRenderDevice`, the buffer pool and the shader
+  interface are designed for 2D frame display and may stay that way. If a 3D need ever appears
+  it belongs in a separate effort with its own plan.
 
 ## Effort summary
 

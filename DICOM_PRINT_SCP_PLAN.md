@@ -17,6 +17,35 @@ tests), the single genuinely new piece being film composition → bitmap.
 
 ---
 
+## Status (2026-08-03)
+
+### SCU-supplied SOP Instance UIDs on N-CREATE (fixed)
+
+**Symptom from the field:** a dcm4che-based Print SCU got `0x0112` "Unknown Film Session" at
+N-ACTION and no film was ever produced.
+
+**Cause.** PS3.7 10.1.5 lets the SCU supply the Affected SOP Instance UID on N-CREATE. Our SCP
+minted its own UID unconditionally and returned it, but such SCUs keep using *their* UID for the
+follow-up N-SET / N-ACTION regardless of what the response carries — so every subsequent service
+addressed an instance the SCP had never heard of.
+
+**Fix** ([PrintSCP.swift](Sources/DICOMNetwork/PrintSCP.swift)): `assignedUID(requested:)` honors
+the requested UID when the SCU offers one, and falls back to the generator otherwise. It applies
+to Film Session, Film Box, Presentation LUT and Basic Annotation Box N-CREATE. A supplied UID is
+accepted only if it survives validation — non-empty after trimming NUL/space padding, ≤ 64
+characters, digits and dots only; anything else is ignored and the SCP mints its own rather than
+storing an out-of-spec key. Film Box N-CREATE additionally refuses a UID that is already in use
+with `0x0111` (Duplicate SOP Instance), which the mint-our-own path could never hit. Image Box
+UIDs are still always allocated by the SCP — they are created implicitly with the film box, so
+there is no SCU-supplied UID to honor.
+
+**Test.** `PrintSCPStatusMatrixTests.testSCUSuppliedSOPInstanceUIDsAreHonored` replays the field
+sequence with dcm4che-shaped UIDs: N-CREATE Film Session and Film Box with SCU UIDs, N-SET the
+image box, then N-ACTION on the *SCU's* Film Session UID. It asserts the responses echo the
+supplied UIDs and that the composed film carries them. `PrintSCPTests.swift` 74 tests green.
+
+Conformance statement updated: `PRINT_CONFORMANCE.md` §2.1 and §4.
+
 ## Status (2026-07-29)
 
 ### Interoperability hardening (done)

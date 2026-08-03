@@ -616,7 +616,9 @@ actor PrintSCPAssociation {
     ) async throws -> Outcome {
         switch command {
         case .nCreateRequest:
-            return try nCreate(sopClass: sopClass, attributes: attributes, contextID: contextID)
+            return try nCreate(
+                sopClass: sopClass, requestedSOPInstance: sopInstance,
+                attributes: attributes, contextID: contextID)
         case .nSetRequest:
             return try nSet(sopClass: sopClass, sopInstance: sopInstance, attributes: attributes)
         case .nActionRequest:
@@ -635,8 +637,25 @@ actor PrintSCPAssociation {
 
     // MARK: N-CREATE
 
+    /// The SOP Instance UID to assign to a newly created object.
+    ///
+    /// PS3.7 10.1.5 lets the SCU supply the Affected SOP Instance UID on
+    /// N-CREATE, and several Print SCUs (dcm4che-based ones in particular) do
+    /// exactly that, then keep using *their* UID for the follow-up N-SET /
+    /// N-ACTION regardless of what the response carries. Minting our own UID
+    /// unconditionally made those jobs fail at N-ACTION with "Unknown Film
+    /// Session", so honor the requested UID whenever the SCU offers one.
+    private func assignedUID(requested: String) -> String {
+        let trimmed = requested.trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
+        guard !trimmed.isEmpty, trimmed.count <= 64,
+              trimmed.allSatisfy({ $0.isNumber || $0 == "." })
+        else { return uidGenerator.generate().value }
+        return trimmed
+    }
+
     private func nCreate(
         sopClass: String,
+        requestedSOPInstance: String,
         attributes: PrintAttributeSet,
         contextID: UInt8
     ) throws -> Outcome {
@@ -647,7 +666,7 @@ actor PrintSCPAssociation {
                     .duplicateSOPInstance,
                     comment: "A Film Session already exists on this association")
             }
-            let uid = uidGenerator.generate().value
+            let uid = assignedUID(requested: requestedSOPInstance)
             var session = FilmSession(sopInstanceUID: uid)
             try PrintSCPParser.applyFilmSession(attributes, to: &session, configuration: configuration)
             filmSession = session
@@ -672,7 +691,11 @@ actor PrintSCPAssociation {
                         + "this printer supports \(configuration.maxImageBoxesPerFilm)")
             }
 
-            let filmBoxUID = uidGenerator.generate().value
+            let filmBoxUID = assignedUID(requested: requestedSOPInstance)
+            guard filmBoxes[filmBoxUID] == nil else {
+                throw PrintSCPFailure(
+                    .duplicateSOPInstance, comment: "Film Box \(filmBoxUID) already exists")
+            }
             let imageBoxUIDs = (0..<format.imageBoxCount).map { _ in uidGenerator.generate().value }
             let imageBoxSOPClass = imageBoxSOPClassUID(forContext: contextID)
 
@@ -727,7 +750,7 @@ actor PrintSCPAssociation {
                 throw PrintSCPFailure(
                     .sopClassNotSupported, comment: "Presentation LUT is not supported")
             }
-            let uid = uidGenerator.generate().value
+            let uid = assignedUID(requested: requestedSOPInstance)
             // Only the shape is honored during composition; LUT *data* tables are
             // a documented gap (see PRINT_SCP_CONFORMANCE).
             presentationLUTs[uid] = try PrintSCPParser.presentationLUTShape(in: attributes)
@@ -738,7 +761,7 @@ actor PrintSCPAssociation {
                 throw PrintSCPFailure(
                     .sopClassNotSupported, comment: "Basic Annotation Box is not supported")
             }
-            let uid = uidGenerator.generate().value
+            let uid = assignedUID(requested: requestedSOPInstance)
             if let annotation = PrintSCPParser.annotation(in: attributes) {
                 annotationBoxes[uid] = annotation
             }
