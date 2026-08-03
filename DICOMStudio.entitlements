@@ -2,17 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- ╔══════════════════════════════════════════════════════════════════╗
-	     ║  ⚠️  TESTING-ONLY: App Sandbox is DISABLED (set to <false/>).      ║
-	     ║  This is required so the CLI Workshop can spawn the real           ║
-	     ║  `dicom-info` binary for the dicom-info "Compare CLI (TEST)"        ║
-	     ║  side-by-side parity check (see DicomInfoTerminalCompare.swift).    ║
-	     ║  BEFORE PRODUCTION: set this back to <true/> and remove the         ║
-	     ║  terminal-compare feature. Memory: dicom-info-terminal-compare-     ║
-	     ║  testonly.                                                          ║
-	     ╚══════════════════════════════════════════════════════════════════╝ -->
+	<!-- App Sandbox ENABLED (2026-08-03). It had been disabled so the CLI Workshop
+	     could spawn the real `dicom-*` binaries for the side-by-side terminal
+	     compare; that feature's UI is gone, so the sandbox is back on.
+	     NOTE: CLIToolTerminalCompare is still in the source tree but CANNOT launch
+	     a subprocess under the sandbox — re-enabling it for local testing means
+	     temporarily flipping this back to <false/>. Do not ship it as <false/>. -->
 	<key>com.apple.security.app-sandbox</key>
-	<false/>
+	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
 	<key>com.apple.security.network.server</key>
@@ -23,13 +20,12 @@
 	<true/>
 	<key>com.apple.security.files.downloads.read-write</key>
 	<true/>
-	<!-- CLI Workshop testing folders: grant the sandboxed app read/write to the
-	     default DICOM input/output directories so typed/default paths work
-	     without a manual open-panel selection. (Development convenience.) -->
-	<key>com.apple.security.temporary-exception.files.absolute-path.read-write</key>
-	<array>
-		<string>/Users/raster/Desktop/DICOM_Input/</string>
-		<string>/Users/raster/Desktop/DICOM_Output/</string>
-	</array>
+	<!-- NOTE: the absolute-path temporary exceptions for one developer's
+	     ~/Desktop/DICOM_Input and ~/Desktop/DICOM_Output were removed on
+	     2026-08-03. They weakened the sandbox and the App Store rejects them.
+	     Files are reached the sandbox-approved way instead: the user picks them
+	     (files.user-selected.read-write) and access persists via app-scoped
+	     bookmarks. Do not reintroduce absolute-path exceptions. -->
+
 </dict>
 </plist>

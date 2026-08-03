@@ -38,7 +38,6 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
     case archiveManagement = "Archive"
     case security         = "Security"
     case cliWorkshop      = "CLI Workshop"
-    case cliParity        = "CLI Parity"
     case networkUtility   = "Network Utility"
     case performanceTools   = "Performance Tools"
     case macOSEnhancements  = "macOS Enhancements"
@@ -69,7 +68,6 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .archiveManagement:  return "archivebox"
         case .security:           return "lock.shield"
         case .cliWorkshop:        return "terminal"
-        case .cliParity:          return "rectangle.split.2x1"
         case .networkUtility:     return "network.badge.shield.half.filled"
         case .performanceTools:   return "speedometer"
         case .macOSEnhancements:  return "macwindow"
@@ -100,7 +98,6 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .archiveManagement:  return "DICOM Archive Management"
         case .security:           return "Security & Privacy Center"
         case .cliWorkshop:        return "CLI Tools Workshop"
-        case .cliParity:          return "CLI Parity Test Runner (App vs CLI)"
         case .networkUtility:     return "Network Utility – General Network Diagnostics"
         case .performanceTools:   return "Performance & Developer Tools"
         case .macOSEnhancements:  return "macOS-Specific Enhancements"
@@ -119,7 +116,7 @@ public enum NavigationDestination: String, CaseIterable, Identifiable, Sendable 
         case .networking, .dicomWeb, .cloudIntegration, .gateway:
             return .network
         case .reporting, .printing, .printSCP, .tools, .validation, .archiveManagement,
-             .cliWorkshop, .cliParity, .networkUtility:
+             .cliWorkshop, .networkUtility:
             return .dataTools
         case .security, .performanceTools, .macOSEnhancements,
              .polishRelease, .integrationTesting, .j2kTestBench, .settings:

@@ -114,13 +114,6 @@ public final class MainViewModel {
     /// Persistent Validation ViewModel (dicom-validate parity) — survives tab switches.
     public var validationViewModel: ValidationViewModel
 
-    /// Persistent CLI Automation Testing ViewModel — survives tab switches.
-    public var cliAutomationTestingViewModel: CLIAutomationTestingViewModel
-
-    /// Persistent CLI Parity Runner ViewModel (TESTING-ONLY App-vs-live-CLI batch
-    /// parity) — survives tab switches.
-    public var cliParityRunnerViewModel: CLIParityRunnerViewModel
-
     /// Persistent Network Utility ViewModel (general, non-DICOM network
     /// diagnostics) — survives tab switches.
     public var networkUtilityViewModel: NetworkUtilityViewModel
@@ -185,8 +178,6 @@ public final class MainViewModel {
         self.gatewayViewModel = GatewayViewModel()
         self.archiveManagementViewModel = ArchiveManagementViewModel()
         self.validationViewModel = ValidationViewModel()
-        self.cliAutomationTestingViewModel = CLIAutomationTestingViewModel()
-        self.cliParityRunnerViewModel = CLIParityRunnerViewModel()
         self.networkUtilityViewModel = NetworkUtilityViewModel()
         // Share saved server profiles so CLI Workshop can pick from them.
         self.cliWorkshopViewModel.savedServerProfiles = networkingViewModel.serverProfiles

@@ -918,50 +918,18 @@ let package = Package(
                 "DICOMWeb"
             ],
             path: "Sources/DICOMStudio",
-            exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"],
-            resources: [
-                // Bundled CLI-parity data read by the in-app CLI Automation
-                // Testing screen (Swift-native, no runtime exec).
-                // Regenerate with: swift run cli-parity-gen
-                .copy("Resources/CLIParity")
-            ]
-        ),
-        // Developer tool (not shipped): dumps the Studio CLI Workshop tool
-        // catalog to JSON for the CLI parity harness (Scripts/cli-parity.sh).
-        .executableTarget(
-            name: "studio-cli-introspect",
-            dependencies: ["DICOMStudio"],
-            path: "Sources/studio-cli-introspect"
-        ),
-        // Developer tool (not shipped): emits a per-tool CLI↔DICOMStudio parity
-        // matrix (docs/cli-parity/<tool>.md) — every flag's input-contract parity
-        // + output-behavior success/drift/coverage — computed in-process from the
-        // bundled CLIContracts.json + goldens (no binary dumping). See the plan.
-        .executableTarget(
-            name: "cli-parity-docs",
-            dependencies: ["DICOMStudio"],
-            path: "Sources/cli-parity-docs"
-        ),
-        // Developer tool (not shipped): regenerates the bundled CLI-parity data
-        // (CLIContracts.json, fixture.dcm, goldens.json) read by the in-app
-        // CLI Automation Testing screen. See Scripts/CLI-PARITY-README.md.
-        .executableTarget(
-            name: "cli-parity-gen",
-            dependencies: ["DICOMKit", "DICOMCore", "DICOMStudio"],
-            path: "Sources/cli-parity-gen"
+            exclude: ["ARCHITECTURE.md", "App/DICOMStudioApp.swift"]
         ),
         .testTarget(
             name: "DICOMStudioTests",
             // DICOMPrintKit: the viewer-presentation geometry and film-pixel
             // transform the print path bakes into marks.
-            dependencies: ["DICOMStudio", "DICOMWeb", "DICOMPrintKit", "DICOMNetwork"]
-        ),
-        // Tier-2 output-parity harness: drives the in-app Studio reimplementations
-        // (CLIWorkshopViewModel.executeCommand) headlessly against the bundled
-        // CLI goldens and diffs the normalized output. See Scripts/CLI-PARITY-TIER2-PLAN.md.
-        .testTarget(
-            name: "StudioParityTests",
-            dependencies: ["DICOMStudio"]
+            dependencies: ["DICOMStudio", "DICOMWeb", "DICOMPrintKit", "DICOMNetwork"],
+            resources: [
+                // Small synthetic DICOM the print tests render (see
+                // StudioTestFixtures). PHI-free — generated, not patient data.
+                .copy("Fixtures")
+            ]
         ),
         .testTarget(
             name: "dicom-j2kTests",
